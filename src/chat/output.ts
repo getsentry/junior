@@ -47,6 +47,20 @@ function shouldAttach(text: string): boolean {
   return text.split("\n").length > MAX_INLINE_LINES;
 }
 
+export function shouldUseAttachmentFallback(text: string): boolean {
+  const parsed = parseDeliveryDirectives(text);
+  const normalized = normalizeForSlack(parsed.text);
+  if (!normalized) {
+    return false;
+  }
+
+  if (parsed.options.forceInline) {
+    return false;
+  }
+
+  return parsed.options.forceAttachment || shouldAttach(normalized);
+}
+
 function sanitizePrefix(value: string): string {
   const cleaned = value
     .toLowerCase()

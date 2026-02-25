@@ -1,10 +1,16 @@
 import { Chat } from "chat";
-import type { PostableMessage } from "chat";
+import type { FileUpload, PostableMessage } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { captureException, toOptionalString, withSpan } from "@/chat/observability";
-import { buildSlackOutputMessage } from "@/chat/output";
+import { buildSlackOutputMessage, shouldUseAttachmentFallback } from "@/chat/output";
 import { generateAssistantReply } from "@/chat/respond";
+import { createCanvas } from "@/chat/slack-actions/canvases";
+import {
+  buildArtifactStatePatch,
+  coerceThreadArtifactsState,
+  type ThreadArtifactsState
+} from "@/chat/slack-actions/types";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { createStateAdapter } from "@/chat/state";
 
@@ -26,6 +32,13 @@ function getThreadId(thread: unknown, message: unknown): string | undefined {
   );
 }
 
+function getThreadTs(thread: unknown, message: unknown): string | undefined {
+  return (
+    toOptionalString((message as { threadTs?: unknown }).threadTs) ??
+    toOptionalString((thread as { threadTs?: unknown }).threadTs)
+  );
+}
+
 function getWorkflowRunId(thread: unknown, message: unknown): string | undefined {
   return (
     toOptionalString((thread as { runId?: unknown }).runId) ??
@@ -35,6 +48,17 @@ function getWorkflowRunId(thread: unknown, message: unknown): string | undefined
 
 function getChannelId(message: unknown): string | undefined {
   return toOptionalString((message as { channelId?: unknown }).channelId);
+}
+
+function summarizeForThread(text: string): string {
+  const lines = text
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+
+  return lines.join("\n") || "Prepared a longer response.";
 }
 
 interface ProgressSentMessage {
@@ -50,37 +74,13 @@ function getSlackAdapter(): SlackAdapter {
   return bot.getAdapter("slack") as SlackAdapter;
 }
 
-function parseAssistantThreadMeta(threadId: string | undefined): AssistantThreadMeta | null {
-  if (!threadId) {
-    return null;
-  }
-
-  const match = threadId.match(/^slack:([^:]+):(.+)$/);
-  if (!match) {
-    return null;
-  }
-
-  const channelId = match[1];
-  const threadTs = match[2];
-  if (!channelId || !threadTs) {
-    return null;
-  }
-
-  return { channelId, threadTs };
-}
-
-interface ProgressContext {
-  slackThreadId?: string;
-  slackUserId?: string;
-  slackChannelId?: string;
-  workflowRunId?: string;
-}
+const assistantThreadMetaById = new Map<string, AssistantThreadMeta>();
 
 function createProgressReporter(thread: {
   post: (message: string | PostableMessage) => Promise<unknown>;
   startTyping?: (status?: string) => Promise<void>;
   id?: string;
-}, context: ProgressContext) {
+}) {
   const fallbackStatus = "Still working on it...";
   const assistantStatuses = ["Analyzing context...", "Running tools...", "Drafting response..."];
   const startDelayMs = 3500;
@@ -90,40 +90,24 @@ function createProgressReporter(thread: {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let intervalId: ReturnType<typeof setInterval> | undefined;
   let statusMessage: ProgressSentMessage | null = null;
-  let missingMetaCaptured = false;
-
-  const reportProgressIssue = (reason: string, error?: unknown): void => {
-    const payload = error ?? new Error(reason);
-    captureException(payload, {
-      ...context,
-      assistantUserName: botConfig.userName,
-      modelId: botConfig.modelId
-    });
-    console.warn("[junior] progress indicator issue", {
-      reason,
-      error: error instanceof Error ? error.message : error ? String(error) : undefined,
-      threadId: context.slackThreadId,
-      channelId: context.slackChannelId
-    });
-  };
 
   const postFallbackStatus = async (): Promise<void> => {
+    if (!botConfig.progressFallbackEnabled) {
+      return;
+    }
+
     try {
       await thread.startTyping?.(fallbackStatus);
       statusMessage = (await thread.post(fallbackStatus)) as ProgressSentMessage;
-    } catch (error) {
-      reportProgressIssue("fallback_status_post_failed", error);
+    } catch {
+      // Best effort only.
     }
   };
 
   const postAssistantStatus = async (text: string): Promise<void> => {
     const threadId = toOptionalString(thread.id);
-    const assistantThread = parseAssistantThreadMeta(threadId);
+    const assistantThread = threadId ? assistantThreadMetaById.get(threadId) : undefined;
     if (!assistantThread || !threadId) {
-      if (!missingMetaCaptured) {
-        missingMetaCaptured = true;
-        reportProgressIssue("assistant_thread_metadata_missing");
-      }
       await postFallbackStatus();
       return;
     }
@@ -135,8 +119,7 @@ function createProgressReporter(thread: {
         text,
         assistantStatuses
       );
-    } catch (error) {
-      reportProgressIssue("assistant_status_update_failed", error);
+    } catch {
       await postFallbackStatus();
     }
   };
@@ -162,8 +145,8 @@ function createProgressReporter(thread: {
       if (statusMessage?.delete) {
         try {
           await statusMessage.delete();
-        } catch (error) {
-          reportProgressIssue("fallback_status_delete_failed", error);
+        } catch {
+          // Best effort only.
         }
       }
     }
@@ -221,12 +204,60 @@ export const bot = new Chat({
   state: createStateAdapter()
 });
 
+async function maybePostCanvasFallback(args: {
+  text: string;
+  files?: FileUpload[];
+  userText: string;
+  thread: { post: (message: string | PostableMessage) => Promise<unknown> };
+  channelId?: string;
+  artifactStatePatch?: Partial<ThreadArtifactsState>;
+}): Promise<boolean> {
+  const { text, files, userText, thread, channelId, artifactStatePatch } = args;
+
+  if (!botConfig.slackCanvasesEnabled || !channelId) {
+    return false;
+  }
+
+  if (artifactStatePatch?.lastCanvasId) {
+    return false;
+  }
+
+  if (!shouldUseAttachmentFallback(text)) {
+    return false;
+  }
+
+  const heading = userText.split("\n")[0]?.trim();
+  const title = (heading && heading.length > 0 ? heading : "Junior response").slice(0, 120);
+
+  const created = await createCanvas({
+    title,
+    markdown: text,
+    channelId
+  });
+
+  artifactStatePatch && Object.assign(artifactStatePatch, { lastCanvasId: created.canvasId });
+
+  await thread.post({
+    markdown: [
+      "Summary:",
+      summarizeForThread(text),
+      "",
+      `Created Slack canvas: \`${created.canvasId}\`.`
+    ].join("\n"),
+    files
+  });
+
+  return true;
+}
+
 async function replyToThread(
   thread: {
     post: (message: string | PostableMessage) => Promise<unknown>;
     startTyping?: (status?: string) => Promise<void>;
     recentMessages?: ThreadMessageSnapshot[];
     id?: string;
+    state?: Promise<unknown | null>;
+    setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
   },
   message: {
     author: { isMe: boolean; userId?: string; userName?: string; fullName?: string };
@@ -238,6 +269,7 @@ async function replyToThread(
   }
 
   const threadId = getThreadId(thread, message);
+  const threadTs = getThreadTs(thread, message);
   const channelId = getChannelId(message);
   const workflowRunId = getWorkflowRunId(thread, message);
 
@@ -256,13 +288,10 @@ async function replyToThread(
       const userText = stripLeadingBotMention(message.text ?? "");
       const chatHistory = buildChatHistory(thread.recentMessages, userText);
       const fallbackIdentity = await lookupSlackUser(message.author.userId);
+      const currentState = coerceThreadArtifactsState(await thread.state);
+
       await thread.startTyping?.("Thinking...");
-      const progress = createProgressReporter(thread, {
-        slackThreadId: threadId,
-        slackUserId: message.author.userId,
-        slackChannelId: channelId,
-        workflowRunId
-      });
+      const progress = createProgressReporter(thread);
       progress.start();
 
       try {
@@ -277,19 +306,58 @@ async function replyToThread(
             fullName: message.author.fullName ?? fallbackIdentity?.fullName
           },
           chatHistory,
+          artifactState: currentState,
           correlation: {
             threadId,
+            threadTs,
             workflowRunId,
             channelId,
             requesterId: message.author.userId
           }
         });
 
-        await thread.post(
-          buildSlackOutputMessage(reply.text, {
-            files: reply.files
-          })
-        );
+        const artifactStatePatch = reply.artifactStatePatch ? { ...reply.artifactStatePatch } : undefined;
+
+        let usedCanvasFallback = false;
+        try {
+          usedCanvasFallback = await maybePostCanvasFallback({
+            text: reply.text,
+            files: reply.files,
+            userText,
+            thread,
+            channelId,
+            artifactStatePatch
+          });
+        } catch (error) {
+          captureException(error, {
+            slackThreadId: threadId,
+            slackUserId: message.author.userId,
+            slackChannelId: channelId,
+            workflowRunId,
+            assistantUserName: botConfig.userName,
+            modelId: botConfig.modelId
+          });
+        }
+
+        if (!usedCanvasFallback) {
+          await thread.post(
+            buildSlackOutputMessage(reply.text, {
+              files: reply.files
+            })
+          );
+        }
+
+        if (artifactStatePatch && thread.setState) {
+          const nextArtifacts: ThreadArtifactsState = {
+            ...currentState,
+            ...artifactStatePatch,
+            listColumnMap: {
+              ...currentState.listColumnMap,
+              ...artifactStatePatch.listColumnMap
+            }
+          };
+          await thread.setState(buildArtifactStatePatch(nextArtifacts));
+        }
       } finally {
         await progress.stop();
       }
@@ -302,6 +370,11 @@ async function initializeAssistantThread(event: {
   channelId: string;
   threadTs: string;
 }): Promise<void> {
+  assistantThreadMetaById.set(event.threadId, {
+    channelId: event.channelId,
+    threadTs: event.threadTs
+  });
+
   const slack = getSlackAdapter();
   await slack.setAssistantTitle(event.channelId, event.threadTs, "Junior");
   await slack.setSuggestedPrompts(event.channelId, event.threadTs, [

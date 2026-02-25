@@ -2,6 +2,7 @@ import { generateText, gateway, stepCountIs } from "ai";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { captureException, setTags, withSpan } from "@/chat/observability";
+import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
   discoverSkills,
@@ -25,14 +26,17 @@ export interface ReplyRequestContext {
     threadId?: string;
     workflowRunId?: string;
     channelId?: string;
+    threadTs?: string;
     requesterId?: string;
   };
   chatHistory?: string;
+  artifactState?: ThreadArtifactsState;
 }
 
 export interface AssistantReply {
   text: string;
   files?: FileUpload[];
+  artifactStatePatch?: Partial<ThreadArtifactsState>;
 }
 
 export async function generateAssistantReply(
@@ -55,6 +59,7 @@ export async function generateAssistantReply(
     const activeSkills = await loadSkillsByName(activeSkillNames, availableSkills);
     const userInput = invocation ? invocation.args : messageText;
     const generatedFiles: FileUpload[] = [];
+    const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const telemetryMetadata: Record<string, string> = {
       modelId: botConfig.modelId
     };
@@ -96,7 +101,8 @@ export async function generateAssistantReply(
             invocation,
             assistant: context.assistant,
             requester: context.requester,
-            chatHistory: context.chatHistory
+            chatHistory: context.chatHistory,
+            artifactState: context.artifactState
           }),
           prompt: userInput,
           stopWhen: stepCountIs(12),
@@ -107,17 +113,29 @@ export async function generateAssistantReply(
             recordOutputs: true,
             metadata: telemetryMetadata
           },
-          tools: createTools(availableSkills, {
-            onGeneratedFiles: (files) => {
-              generatedFiles.push(...files);
+          tools: createTools(
+            availableSkills,
+            {
+              onGeneratedFiles: (files) => {
+                generatedFiles.push(...files);
+              },
+              onArtifactStatePatch: (patch) => {
+                Object.assign(artifactStatePatch, patch);
+              }
+            },
+            {
+              channelId: context.correlation?.channelId,
+              threadTs: context.correlation?.threadTs,
+              artifactState: context.artifactState
             }
-          })
+          )
         })
     );
 
     return {
       text: result.text || "I couldn't produce a response.",
-      files: generatedFiles.length > 0 ? generatedFiles : undefined
+      files: generatedFiles.length > 0 ? generatedFiles : undefined,
+      artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
     };
   } catch (error) {
     captureException(error, {

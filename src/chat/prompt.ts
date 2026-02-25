@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { botConfig } from "@/chat/config";
 import { slackOutputPolicy } from "@/chat/output";
+import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 
 function loadSoul(): string {
@@ -67,8 +68,9 @@ export function buildSystemPrompt(params: {
     userId?: string;
   };
   chatHistory?: string;
+  artifactState?: ThreadArtifactsState;
 }): string {
-  const { availableSkills, activeSkills, invocation, requester, assistant, chatHistory } = params;
+  const { availableSkills, activeSkills, invocation, requester, assistant, chatHistory, artifactState } = params;
   // Core harness contract:
   // - Keep this prompt generic and platform-level (tone, evidence, output constraints).
   // - Do not encode per-skill behavior here.
@@ -129,6 +131,17 @@ export function buildSystemPrompt(params: {
     "<chat_history>",
     chatHistory?.trim() || "none",
     "</chat_history>",
+    "## Artifact Context",
+    "",
+    "Use this thread-scoped memory for follow-up updates to existing Slack artifacts.",
+    "<artifact_context>",
+    artifactState
+      ? [
+          artifactState.lastCanvasId ? `- last_canvas_id: ${escapeXml(artifactState.lastCanvasId)}` : "- last_canvas_id: none",
+          artifactState.lastListId ? `- last_list_id: ${escapeXml(artifactState.lastListId)}` : "- last_list_id: none"
+        ].join("\n")
+      : "- none",
+    "</artifact_context>",
     "## Tool Usage",
     "",
     "- For factual or external questions, run tools/skills first, then answer from evidence.",
@@ -136,6 +149,9 @@ export function buildSystemPrompt(params: {
     "- Use `web_search` to discover sources.",
     "- Use `web_fetch` to inspect specific URLs.",
     "- Use `image_generate` when the user asks for image creation.",
+    "- Use `slack_canvas_create` for long-form docs/specs and `slack_canvas_update` for doc follow-ups.",
+    "- Use `slack_list_create`, `slack_list_add_items`, and `slack_list_update_item` for actionable task tracking.",
+    "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
     "- Prefer `web_search` before `web_fetch` when the user gave no URL.",
     "## Output Contract",
     "",
