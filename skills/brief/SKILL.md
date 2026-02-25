@@ -41,6 +41,7 @@ Use [candidate rubric](references/candidate-rubric.md) as the baseline scoring c
 - Do not make unverified claims; tie every material claim to cited evidence.
 - Use public data only; do not rely on private or unverifiable claims.
 - If a component cannot be evaluated from public data, mark it `insufficient public evidence` instead of guessing.
+- Treat personal references/endorsements as low-weight and never as primary evidence.
 
 ## Output format
 

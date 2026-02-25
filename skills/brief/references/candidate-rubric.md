@@ -8,6 +8,7 @@ Use this rubric to convert public technical evidence into a candidate brief.
 - Separate `observed facts` from `inference`.
 - Treat self-claims as unverified until corroborated.
 - Do not use private/internal signals.
+- Personal references/endorsements are secondary context only, not primary evidence.
 
 ## Allowed source types
 

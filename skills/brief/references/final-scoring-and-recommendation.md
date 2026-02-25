@@ -6,8 +6,8 @@ Use this reference to convert component-level evaluations into a final grade and
 
 - Component sections completed for:
   - GitHub/code evaluation
-  - Collaboration evaluation
-  - Technical communication evaluation
+  - CV and claim verification
+  - Public speaking and technical content evaluation
   - Public presence evaluation
   - Maintenance and operations evaluation
   - Location and hub evaluation
@@ -15,17 +15,20 @@ Use this reference to convert component-level evaluations into a final grade and
 
 ## Synthesis process
 
-1. Score each major component on a 1-5 scale (except location/hub, which is categorical).
-2. Map component evidence to weighted rubric dimensions from `candidate-rubric.md`.
-3. Convert weighted score to profile grade (`A-F`).
-4. Apply location/hub modifier rules to recommendation when required.
-5. Set final confidence (`high`, `medium`, `low`) based on evidence depth, consistency, and authenticity.
+1. Set `evidence sufficiency` for each component (`assessed`, `limited`, `not-assessed`).
+2. Score each assessable major component on a 1-5 scale (except location/hub, which is categorical).
+3. For CV verification, score based on verified-vs-unverified key claims.
+4. Compute weighted score from assessed/limited components only and normalize to 100.
+5. Convert weighted score to profile grade (`A-F`).
+6. Apply location/hub modifier rules to recommendation when required.
+7. Set final confidence (`high`, `medium`, `low`) based on evidence depth, consistency, and corroboration.
 
 ## Authenticity and sparsity guardrails
 
-- If 2 or more major components have weakly verifiable evidence, cap confidence at `medium`.
-- If evidence is sparse/stale across most components, cap recommendation at `mixed`.
-- If core ownership or delivery evidence is unverified, do not output `strong yes`.
+- If less than 60% of weighted dimensions are assessable, cap recommendation at `mixed`.
+- If GitHub/code evaluation is `not-assessed`, cap recommendation at `mixed`.
+- If key CV claims are unverified, do not output `strong yes`.
+- Personal references/endorsements cannot be primary evidence for recommendations.
 
 ## Recommendation mapping
 
@@ -42,4 +45,3 @@ Use this reference to convert component-level evaluations into a final grade and
 - `Confidence`: state level and unknowns.
 
 All synthesis claims must trace back to component-level `References` sections. Do not introduce uncited claims in final recommendation.
-
