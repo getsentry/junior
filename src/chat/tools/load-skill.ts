@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { loadSkillsByName, type SkillMetadata } from "@/chat/skills";
+import { getSkillSandbox } from "@/chat/skill-sandbox";
 
 export function createLoadSkillTool(availableSkills: SkillMetadata[]) {
   return tool({
@@ -11,7 +12,29 @@ export function createLoadSkillTool(availableSkills: SkillMetadata[]) {
         .min(1)
         .describe("Skill name to load, without the leading slash.")
     }),
-    execute: async ({ skill_name }) => {
+    execute: async ({ skill_name }, options) => {
+      const sandboxResult = getSkillSandbox(options.experimental_context);
+      if (sandboxResult.ok) {
+        const skill = await sandboxResult.sandbox.loadSkill(skill_name);
+        if (!skill) {
+          return {
+            ok: false,
+            error: `Unknown skill: ${skill_name}`,
+            available_skills: sandboxResult.sandbox.getAvailableSkills().map((entry) => entry.name)
+          };
+        }
+
+        return {
+          ok: true,
+          skill_name: skill.name,
+          description: skill.description,
+          skill_dir: skill.skillPath,
+          location: `${skill.skillPath}/SKILL.md`,
+          allowed_tools: skill.allowedTools ?? [],
+          instructions: skill.body
+        };
+      }
+
       const requested = skill_name.trim().toLowerCase();
       const meta =
         availableSkills.find((skill) => skill.name.toLowerCase() === requested) ?? null;
@@ -31,6 +54,7 @@ export function createLoadSkillTool(availableSkills: SkillMetadata[]) {
         description: skill.description,
         skill_dir: skill.skillPath,
         location: `${skill.skillPath}/SKILL.md`,
+        allowed_tools: skill.allowedTools ?? [],
         instructions: skill.body
       };
     }

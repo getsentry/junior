@@ -162,6 +162,7 @@ export function buildSystemPrompt(params: {
         "- For factual or external questions, run tools/skills first, then answer from evidence.",
         "- Use `web_search` to discover sources.",
         "- Use `web_fetch` to inspect specific URLs.",
+        "- Use `list_skill_files` and `read_skill_file` to progressively load referenced files from active skill directories.",
         "- Use `image_generate` when the user asks for image creation.",
         "- Use `slack_canvas_create` for long-form docs/specs and `slack_canvas_update` for doc follow-ups.",
         "- Use `slack_list_create`, `slack_list_add_items`, and `slack_list_update_item` for actionable task tracking.",
@@ -181,6 +182,7 @@ export function buildSystemPrompt(params: {
         "- Never apply skill-specific behavior unless the skill is present in <active-skills> or `load_skill` succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",
         "- After `load_skill`, resolve any relative paths in skill instructions against `skill_dir` (or SKILL.md parent).",
+        "- After `load_skill`, if `allowed_tools` is returned, stay within that allowlist.",
         "- If no skill is a clear fit, continue with normal tool usage."
       ].join("\n")
     ),

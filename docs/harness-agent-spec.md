@@ -24,7 +24,7 @@ This document defines how the Junior harness must run AI SDK v6 agents for Slack
 
 ## Tool Semantics
 
-- Working tools (`web_search`, `web_fetch`, Slack tools, skills, etc.) perform intermediate actions.
+- Working tools (`web_search`, `web_fetch`, `list_skill_files`, `read_skill_file`, Slack tools, skills, etc.) perform intermediate actions.
 - `final_answer` is the only canonical completion signal for a turn.
 - Do not rely on provider/tool-only finish states (`finishReason: "tool-calls"`) as a complete user response.
 

@@ -9,6 +9,7 @@ export interface SkillMetadata {
   name: string;
   description: string;
   skillPath: string;
+  allowedTools?: string[];
 }
 
 export interface Skill extends SkillMetadata {
@@ -38,6 +39,19 @@ function resolveSkillRoots(): string[] {
   return [...envRoots, ...defaults];
 }
 
+function parseAllowedTools(value: unknown): string[] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const parsed = value
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 async function readSkillDirectory(skillDir: string): Promise<SkillMetadata | null> {
   const skillFile = path.join(skillDir, "SKILL.md");
 
@@ -57,7 +71,8 @@ async function readSkillDirectory(skillDir: string): Promise<SkillMetadata | nul
     return {
       name,
       description,
-      skillPath: skillDir
+      skillPath: skillDir,
+      allowedTools: parseAllowedTools(parsed.frontmatter["allowed-tools"])
     };
   } catch (error) {
     logWarn("skill_directory_read_failed", {}, {

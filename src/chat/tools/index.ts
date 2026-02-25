@@ -1,7 +1,9 @@
 import type { SkillMetadata } from "@/chat/skills";
 import { createFinalAnswerTool } from "@/chat/tools/final-answer";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
+import { createListSkillFilesTool } from "@/chat/tools/list-skill-files";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
+import { createReadSkillFileTool } from "@/chat/tools/read-skill-file";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
 import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-update";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
@@ -86,6 +88,8 @@ export function createTools(
   return {
     final_answer: createFinalAnswerTool(),
     load_skill: wrapToolExecution("load_skill", createLoadSkillTool(availableSkills), hooks),
+    list_skill_files: wrapToolExecution("list_skill_files", createListSkillFilesTool(), hooks),
+    read_skill_file: wrapToolExecution("read_skill_file", createReadSkillFileTool(), hooks),
     web_search: wrapToolExecution("web_search", createWebSearchTool(), hooks),
     web_fetch: wrapToolExecution("web_fetch", createWebFetchTool(hooks), hooks),
     image_generate: wrapToolExecution("image_generate", createImageGenerateTool(hooks), hooks),

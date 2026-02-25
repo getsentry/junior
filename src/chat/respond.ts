@@ -1,10 +1,12 @@
 import { gateway, hasToolCall, NoSuchToolError, stepCountIs, ToolLoopAgent, type ToolCallRepairFunction } from "ai";
 import type { FileUpload } from "chat";
+import { z } from "zod";
 import { generateObjectWithTelemetry, generateTextWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
 import { logException, logInfo, logWarn, setTags, withSpan } from "@/chat/observability";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { buildSystemPrompt } from "@/chat/prompt";
+import { SkillSandbox } from "@/chat/skill-sandbox";
 import {
   discoverSkills,
   findSkillByName,
@@ -76,6 +78,8 @@ function isExecutionEscapeResponse(text: string): boolean {
 function formatToolStatus(toolName: string): string {
   const known: Record<string, string> = {
     load_skill: "Loading skill instructions",
+    list_skill_files: "Listing skill resources",
+    read_skill_file: "Reading skill resource",
     web_search: "Searching public sources",
     web_fetch: "Reading source pages",
     slack_canvas_create: "Creating detailed brief",
@@ -289,6 +293,7 @@ export async function generateAssistantReply(
     const activeSkills: Skill[] = requiredSkillName
       ? await loadSkillsByName([requiredSkillName], availableSkills)
       : [];
+    const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
     if (explicitInvocation && !explicitSkill) {
       return {
@@ -430,6 +435,16 @@ export async function generateAssistantReply(
     const allToolNames = Object.keys(tools) as Array<keyof typeof tools>;
     const nonFinalToolNames = allToolNames.filter((toolName) => toolName !== "final_answer");
     const finalAnswerOnlyTools = ["final_answer"] as Array<keyof typeof tools>;
+    const applySkillToolFilter = (candidateTools: Array<keyof typeof tools>): Array<keyof typeof tools> => {
+      const filteredBySkill = skillSandbox.filterToolNames(candidateTools.map((toolName) => String(toolName)));
+      if (!filteredBySkill) {
+        return candidateTools;
+      }
+
+      const allowed = new Set(filteredBySkill);
+      const narrowed = candidateTools.filter((toolName) => allowed.has(String(toolName)));
+      return narrowed.length > 0 ? narrowed : finalAnswerOnlyTools;
+    };
     let loopGuardLogged = false;
 
     const agent = new ToolLoopAgent({
@@ -437,13 +452,20 @@ export async function generateAssistantReply(
       instructions: baseInstructions,
       tools,
       toolChoice: "required",
+      callOptionsSchema: z.object({
+        sandbox: z.custom<SkillSandbox>((value) => value instanceof SkillSandbox)
+      }),
+      prepareCall: ({ options, ...settings }) => ({
+        ...settings,
+        experimental_context: options.sandbox
+      }),
       stopWhen: [hasToolCall("final_answer"), stepCountIs(100)],
       prepareStep: ({ stepNumber, steps }) => {
         const loopState = computeLoopGuardState(steps as LoopStepLike[]);
 
         if (!loopState.hasNonFinalToolCall && nonFinalToolNames.length > 0) {
           return {
-            activeTools: nonFinalToolNames
+            activeTools: applySkillToolFilter(nonFinalToolNames)
           };
         }
 
@@ -475,7 +497,7 @@ export async function generateAssistantReply(
         }
 
         return {
-          activeTools: allToolNames
+          activeTools: applySkillToolFilter(allToolNames)
         };
       },
       onStepFinish: (step) => {
@@ -522,7 +544,10 @@ export async function generateAssistantReply(
               role: "user",
               content: userContentParts
             }
-          ]
+          ],
+          options: {
+            sandbox: skillSandbox
+          }
         })
     );
 
