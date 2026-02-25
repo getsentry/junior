@@ -7,8 +7,18 @@ export function createSlackListGetItemsTool(state: ToolState) {
   return tool({
     description: "List items from a Slack list.",
     inputSchema: z.object({
-      list_id: z.string().min(1).optional(),
-      limit: z.number().int().min(1).max(200).default(100)
+      list_id: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Optional list ID. Defaults to the last list used in this thread."),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(200)
+        .default(100)
+        .describe("Maximum number of list items to return.")
     }),
     execute: async ({ list_id, limit }) => {
       try {

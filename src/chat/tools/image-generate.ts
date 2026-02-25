@@ -16,7 +16,11 @@ export function createImageGenerateTool(hooks: ToolHooks) {
   return tool({
     description: "Generate an image using AI Gateway (Gemini 3 Pro Image).",
     inputSchema: z.object({
-      prompt: z.string().min(1).max(4000)
+      prompt: z
+        .string()
+        .min(1)
+        .max(4000)
+        .describe("Image generation prompt describing the desired visual output.")
     }),
     execute: async ({ prompt }) => {
       try {

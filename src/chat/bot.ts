@@ -1,6 +1,9 @@
 import { Chat } from "chat";
 import type { Attachment, FileUpload, PostableMessage } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
+import { gateway } from "ai";
+import { z } from "zod";
+import { generateObjectWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
 import { captureException, logError, logWarn, toOptionalString, withSpan } from "@/chat/observability";
 import { buildSlackOutputMessage, shouldUseAttachmentFallback } from "@/chat/output";
@@ -22,6 +25,27 @@ function stripLeadingBotMention(text: string): string {
   if (!text.trim()) return text;
   const mentionRe = new RegExp(`^\\s*@${escapeRegExp(botConfig.userName)}\\b[\\s,:-]*`, "i");
   return text.replace(mentionRe, "").trim();
+}
+
+function messageExplicitlyMentionsBot(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  const byName = new RegExp(`\\b@?${escapeRegExp(botConfig.userName)}\\b`, "i").test(trimmed);
+  if (byName) return true;
+
+  const botUserId = botConfig.slackBotUserId?.trim();
+  if (!botUserId) return false;
+  return new RegExp(`<@${escapeRegExp(botUserId)}>`, "i").test(trimmed);
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
 function getThreadId(thread: unknown, message: unknown): string | undefined {
@@ -230,8 +254,8 @@ async function resolveUserAttachments(
             modelId: botConfig.modelId
           },
           {
-            bytes: data.byteLength,
-            media_type: mediaType
+            "file.size": data.byteLength,
+            "file.mime_type": mediaType
           }
         );
         continue;
@@ -254,8 +278,8 @@ async function resolveUserAttachments(
           modelId: botConfig.modelId
         },
         {
-          error: error instanceof Error ? error.message : String(error),
-          media_type: mediaType
+          "error.message": error instanceof Error ? error.message : String(error),
+          "file.mime_type": mediaType
         }
       );
     }
@@ -296,6 +320,126 @@ function buildChatHistory(recentMessages: ThreadMessageSnapshot[] | undefined, c
   }
 
   return window.map((item) => `[${item.role}] ${item.displayName}: ${item.text}`).join("\n");
+}
+
+const replyDecisionSchema = z.object({
+  should_reply: z.boolean().describe("Whether Junior should respond to this thread message."),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe("Classifier confidence from 0 to 1."),
+  reason: z
+    .string()
+    .max(160)
+    .optional()
+    .describe("Short reason for the decision.")
+});
+
+const ROUTER_CONFIDENCE_THRESHOLD = 0.72;
+
+async function shouldReplyInSubscribedThread(args: {
+  rawText: string;
+  text: string;
+  chatHistory?: string;
+  context: {
+    threadId?: string;
+    requesterId?: string;
+    channelId?: string;
+    workflowRunId?: string;
+  };
+}): Promise<{ shouldReply: boolean; reason: string }> {
+  const text = args.text.trim();
+  const rawText = args.rawText.trim();
+  if (!text) {
+    return { shouldReply: false, reason: "empty message" };
+  }
+
+  if (messageExplicitlyMentionsBot(rawText)) {
+    return { shouldReply: true, reason: "explicit mention" };
+  }
+
+  try {
+    const routerSystem = [
+      "You are a message router for a Slack assistant named Junior in a subscribed Slack thread.",
+      "Decide whether Junior should reply to the latest message.",
+      "Default to should_reply=false unless the user is clearly asking Junior for help or follow-up.",
+      "",
+      "Reply should be true only when the user is clearly asking Junior a question, requesting help,",
+      "or when a direct follow-up is contextually aimed at Junior's previous response in the thread context.",
+      "",
+      "Reply should be false for side conversations between humans, acknowledgements (thanks, +1),",
+      "status chatter, or messages not seeking assistant input.",
+      "Junior must not participate in casual banter.",
+      "If uncertain, set should_reply=false and use low confidence.",
+      "",
+      "Return JSON with should_reply, confidence, and a short reason. Do not return any extra keys.",
+      "",
+      `<assistant-name>${escapeXml(botConfig.userName)}</assistant-name>`,
+      `<chat-history>${escapeXml(args.chatHistory?.trim() || "[none]")}</chat-history>`
+    ].join("\n");
+
+    const result = await generateObjectWithTelemetry(
+      {
+        model: gateway(botConfig.routerModelId),
+        schema: replyDecisionSchema,
+        maxOutputTokens: 80,
+        temperature: 0,
+        system: routerSystem,
+        prompt: rawText
+      },
+      {
+        functionId: "workflow.should_reply_in_subscribed_thread",
+        metadata: {
+          modelId: botConfig.routerModelId,
+          threadId: args.context.threadId ?? "",
+          channelId: args.context.channelId ?? "",
+          requesterId: args.context.requesterId ?? "",
+          workflowRunId: args.context.workflowRunId ?? ""
+        }
+      }
+    );
+
+    const parsed = replyDecisionSchema.parse(result.object);
+    const reason = parsed.reason?.trim() || "llm classifier";
+    if (!parsed.should_reply) {
+      return {
+        shouldReply: false,
+        reason
+      };
+    }
+
+    if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
+      return {
+        shouldReply: false,
+        reason: `low confidence (${parsed.confidence.toFixed(2)}): ${reason}`
+      };
+    }
+
+    return {
+      shouldReply: true,
+      reason
+    };
+  } catch (error) {
+    logWarn(
+      "subscribed-thread reply classifier failed; skipping reply",
+      {
+        slackThreadId: args.context.threadId,
+        slackUserId: args.context.requesterId,
+        slackChannelId: args.context.channelId,
+        workflowRunId: args.context.workflowRunId,
+        assistantUserName: botConfig.userName,
+        modelId: botConfig.routerModelId
+      },
+      {
+        "error.message": error instanceof Error ? error.message : String(error)
+      }
+    );
+    return {
+      shouldReply: false,
+      reason: "classifier error"
+    };
+  }
 }
 
 export const bot = new Chat({
@@ -538,7 +682,7 @@ bot.onNewMention(async (thread, message) => {
       modelId: botConfig.modelId
     };
     logError("onNewMention failed", observabilityContext, {
-      error: error instanceof Error ? error.message : String(error)
+      "error.message": error instanceof Error ? error.message : String(error)
     });
     captureException(error, {
       ...observabilityContext
@@ -552,6 +696,38 @@ bot.onSubscribedMessage(async (thread, message) => {
     const threadId = getThreadId(thread, message);
     const channelId = getChannelId(message);
     const workflowRunId = getWorkflowRunId(thread, message);
+    const rawUserText = message.text ?? "";
+    const userText = stripLeadingBotMention(rawUserText);
+    const chatHistory = buildChatHistory(thread.recentMessages, userText);
+    const decision = await shouldReplyInSubscribedThread({
+      rawText: rawUserText,
+      text: userText,
+      chatHistory,
+      context: {
+        threadId,
+        requesterId: message.author.userId,
+        channelId,
+        workflowRunId
+      }
+    });
+
+    if (!decision.shouldReply) {
+      logWarn(
+        "skipping subscribed message reply",
+        {
+          slackThreadId: threadId,
+          slackUserId: message.author.userId,
+          slackChannelId: channelId,
+          workflowRunId,
+          assistantUserName: botConfig.userName,
+          modelId: botConfig.modelId
+        },
+        {
+          "app.decision.reason": decision.reason
+        }
+      );
+      return;
+    }
 
     await withSpan(
       "workflow.chat_turn",
@@ -578,7 +754,7 @@ bot.onSubscribedMessage(async (thread, message) => {
       modelId: botConfig.modelId
     };
     logError("onSubscribedMessage failed", observabilityContext, {
-      error: error instanceof Error ? error.message : String(error)
+      "error.message": error instanceof Error ? error.message : String(error)
     });
     captureException(error, {
       ...observabilityContext
@@ -603,7 +779,7 @@ bot.onAssistantThreadStarted(async (event) => {
       modelId: botConfig.modelId
     };
     logError("onAssistantThreadStarted failed", observabilityContext, {
-      error: error instanceof Error ? error.message : String(error)
+      "error.message": error instanceof Error ? error.message : String(error)
     });
     captureException(error, {
       ...observabilityContext
@@ -627,7 +803,7 @@ bot.onAssistantContextChanged(async (event) => {
       modelId: botConfig.modelId
     };
     logError("onAssistantContextChanged failed", observabilityContext, {
-      error: error instanceof Error ? error.message : String(error)
+      "error.message": error instanceof Error ? error.message : String(error)
     });
     captureException(error, {
       ...observabilityContext

@@ -23,8 +23,17 @@ export function createWebFetchTool(hooks: ToolHooks) {
   return tool({
     description: "Fetch and extract readable text from a URL.",
     inputSchema: z.object({
-      url: z.string().url(),
-      max_chars: z.number().int().min(500).max(MAX_FETCH_CHARS).optional()
+      url: z
+        .string()
+        .url()
+        .describe("HTTP(S) URL to fetch."),
+      max_chars: z
+        .number()
+        .int()
+        .min(500)
+        .max(MAX_FETCH_CHARS)
+        .optional()
+        .describe("Optional maximum number of extracted characters to return.")
     }),
     execute: async ({ url, max_chars }) => {
       try {

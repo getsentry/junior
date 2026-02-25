@@ -8,10 +8,24 @@ export function createSlackListUpdateItemTool(state: ToolState) {
     description: "Update an existing Slack list item (completion state or title).",
     inputSchema: z
       .object({
-        list_id: z.string().min(1).optional(),
-        item_id: z.string().min(1),
-        completed: z.boolean().optional(),
-        title: z.string().min(1).optional()
+        list_id: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Optional list ID. Defaults to the last list used in this thread."),
+        item_id: z
+          .string()
+          .min(1)
+          .describe("ID of the Slack list item to update."),
+        completed: z
+          .boolean()
+          .optional()
+          .describe("Optional completion status update."),
+        title: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Optional new item title.")
       })
       .refine((value) => value.completed !== undefined || value.title !== undefined, {
         message: "Provide at least one field to update: completed or title"

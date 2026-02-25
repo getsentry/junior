@@ -31,17 +31,22 @@ function renderIdentityBlock(tag: "assistant" | "requester", fields: Record<stri
     .map(([key, value]) => `- ${key}: ${escapeXml(value as string)}`);
 
   if (lines.length === 0) {
-    return `<${tag} />`;
+    return [`<${tag}>`, "none", `</${tag}>`].join("\n");
   }
 
   return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
 }
 
+function renderTag(tag: string, content: string): string {
+  return [`<${tag}>`, content, `</${tag}>`].join("\n");
+}
+
 function baseSystemPrompt(): string {
   return [
-    "## Core Principles",
-    "",
     "You are Junior, a helper assistant for Sentry (https://sentry.io) operating in Slack.",
+    "You are Cramer Jr.",
+    "Your repository is https://github.com/getsentry/junior.",
+    "You were created by David Cramer.",
     "Default to Sentry-relevant context and practical guidance for Sentry workflows unless the user explicitly asks for a broader or unrelated answer.",
     "",
     "- Be concise, practical, and specific.",
@@ -92,116 +97,133 @@ export function buildSystemPrompt(params: {
 
   const availableSkillsSection =
     availableSkills.length === 0
-      ? "## Available Skills\n\n- none configured"
-      : [
-          "## Available Skills",
-          "",
-          ...availableSkills.map((skill) => `- /${skill.name}: ${skill.description}`)
-        ].join("\n");
+      ? renderTag("available-skills", "- none configured")
+      : renderTag(
+          "available-skills",
+          availableSkills.map((skill) => `- /${skill.name}: ${skill.description}`).join("\n")
+        );
 
   const activeSkillsSection =
     activeSkills.length === 0
-      ? "## Active Skills\n\n- none"
-      : [
-          "## Active Skills",
-          "",
-          ...activeSkills.flatMap((skill) => [
-            `<active_skill name="${escapeXml(skill.name)}">`,
-            skill.body,
-            "</active_skill>",
-            ""
-          ])
-        ].join("\n");
+      ? renderTag("active-skills", "- none")
+      : renderTag(
+          "active-skills",
+          activeSkills
+            .flatMap((skill) => [
+              `<active-skill name="${escapeXml(skill.name)}">`,
+              skill.body,
+              "</active-skill>",
+              ""
+            ])
+            .join("\n")
+        );
 
   const normalizedChatHistory = chatHistory?.trim();
   const chatHistorySection = normalizedChatHistory
-    ? [
-        "## Chat History",
-        "",
-        "Use this as recent thread context when answering follow-up questions.",
-        "<chat_history>",
-        normalizedChatHistory,
-        "</chat_history>"
-      ].join("\n\n")
+    ? renderTag(
+        "chat-history-context",
+        [
+          "Use this as recent thread context when answering follow-up questions.",
+          renderTag("chat-history", normalizedChatHistory)
+        ].join("\n")
+      )
     : null;
 
   const sections = [
     baseSystemPrompt(),
-    "## Personality",
-    "",
-    "Always follow the personality guidance for tone/style unless safety or policy constraints require otherwise.",
-    "",
-    "<personality>",
-    JUNIOR_PERSONALITY.trim(),
-    "</personality>",
-    "## Identity Context",
-    "",
-    "Use these blocks as authoritative metadata for identity questions.",
-    assistantSection,
-    requesterSection,
+    renderTag(
+      "personality",
+      [
+        "Always follow the personality guidance for tone/style unless safety or policy constraints require otherwise.",
+        "",
+        JUNIOR_PERSONALITY.trim()
+      ].join("\n")
+    ),
+    renderTag(
+      "identity-context",
+      [
+        "Use these blocks as authoritative metadata for identity questions.",
+        assistantSection,
+        requesterSection
+      ].join("\n")
+    ),
     ...(chatHistorySection ? [chatHistorySection] : []),
-    "## Artifact Context",
-    "",
-    "Use this thread-scoped memory for follow-up updates to existing Slack artifacts.",
-    "<artifact_context>",
-    artifactState
-      ? [
-          artifactState.lastCanvasId ? `- last_canvas_id: ${escapeXml(artifactState.lastCanvasId)}` : "- last_canvas_id: none",
-          artifactState.lastCanvasUrl
-            ? `- last_canvas_url: ${escapeXml(artifactState.lastCanvasUrl)}`
-            : "- last_canvas_url: none",
-          artifactState.lastListId ? `- last_list_id: ${escapeXml(artifactState.lastListId)}` : "- last_list_id: none",
-          artifactState.lastListUrl ? `- last_list_url: ${escapeXml(artifactState.lastListUrl)}` : "- last_list_url: none"
-        ].join("\n")
-      : "- none",
-    "</artifact_context>",
-    "## Tool Usage",
-    "",
-    "- For factual or external questions, run tools/skills first, then answer from evidence.",
-    "- Before applying any skill behavior for a non-slash request, you MUST call `load_skill` first and follow the returned instructions.",
-    "- Do not claim to have used a skill unless `load_skill` succeeded in this turn.",
-    "- If no skill applies, continue with normal tool-assisted behavior.",
-    "- Use `web_search` to discover sources.",
-    "- Use `web_fetch` to inspect specific URLs.",
-    "- Use `image_generate` when the user asks for image creation.",
-    "- Use `slack_canvas_create` for long-form docs/specs and `slack_canvas_update` for doc follow-ups.",
-    "- Use `slack_list_create`, `slack_list_add_items`, and `slack_list_update_item` for actionable task tracking.",
-    "- When your work is complete, call `final_answer` with the exact user-facing markdown response.",
-    "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
-    "- Prefer `web_search` before `web_fetch` when the user gave no URL.",
-    "## Skills",
-    "",
-    "- When a request matches an available skill, call `load_skill` and follow that skill instead of doing the work from memory.",
-    "- Never apply skill-specific behavior until `load_skill` has succeeded in this turn.",
-    "- Load only the best matching skill first; do not load multiple skills upfront.",
-    "- After `load_skill`, resolve any relative paths in skill instructions against `skill_dir` (or SKILL.md parent).",
-    "- If no skill is a clear fit, continue with normal tool usage.",
-    "## Output Contract",
-    "",
-    "Always produce output that follows this contract:",
-    `<output format=\"slack-mrkdwn\" max_inline_chars=\"${slackOutputPolicy.maxInlineChars}\" max_inline_lines=\"${slackOutputPolicy.maxInlineLines}\">`,
-    "- Use plain Slack-safe markdown (headings, bullets, short code blocks).",
-    "- Keep normal responses brief and scannable.",
-    "- If depth is needed, start with a concise summary and then provide fuller detail.",
-    "- Avoid tables unless explicitly requested.",
-    "- End every turn by calling `final_answer` with the final markdown response.",
-    "- Do not rely on plain assistant text for the final response; use `final_answer`.",
-    "- Optional delivery directive (only when needed) must be the first block in this exact shape:",
-    "- <delivery>",
-    "- mode: attachment|inline",
-    "- attachment_prefix: <short-kebab-or-snake-prefix>",
-    "- </delivery>",
-    "</output>",
-    "## Skill Invocation",
-    "",
-    "- Do not assume slash syntax is authoritative by itself; resolve skill use through `load_skill` and evidence from this turn.",
-    "- If a skill appears relevant, call `load_skill` before applying any skill-specific behavior.",
-    "- If no skill is clearly applicable, continue with normal tool-assisted behavior.",
+    renderTag(
+      "artifact-context",
+      [
+        "Use this thread-scoped memory for follow-up updates to existing Slack artifacts.",
+        artifactState
+          ? [
+              artifactState.lastCanvasId ? `- last_canvas_id: ${escapeXml(artifactState.lastCanvasId)}` : "- last_canvas_id: none",
+              artifactState.lastCanvasUrl
+                ? `- last_canvas_url: ${escapeXml(artifactState.lastCanvasUrl)}`
+                : "- last_canvas_url: none",
+              artifactState.lastListId ? `- last_list_id: ${escapeXml(artifactState.lastListId)}` : "- last_list_id: none",
+              artifactState.lastListUrl ? `- last_list_url: ${escapeXml(artifactState.lastListUrl)}` : "- last_list_url: none"
+            ].join("\n")
+          : "- none"
+      ].join("\n")
+    ),
+    renderTag(
+      "tool-usage",
+      [
+        "- For factual or external questions, run tools/skills first, then answer from evidence.",
+        "- Before applying any skill behavior for a non-slash request, you MUST call `load_skill` first and follow the returned instructions.",
+        "- Do not claim to have used a skill unless `load_skill` succeeded in this turn.",
+        "- If no skill applies, continue with normal tool-assisted behavior.",
+        "- Use `web_search` to discover sources.",
+        "- Use `web_fetch` to inspect specific URLs.",
+        "- Use `image_generate` when the user asks for image creation.",
+        "- Use `slack_canvas_create` for long-form docs/specs and `slack_canvas_update` for doc follow-ups.",
+        "- Use `slack_list_create`, `slack_list_add_items`, and `slack_list_update_item` for actionable task tracking.",
+        "- When your work is complete, call `final_answer` with the exact user-facing markdown response.",
+        "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
+        "- Prefer `web_search` before `web_fetch` when the user gave no URL."
+      ].join("\n")
+    ),
+    renderTag(
+      "skills",
+      [
+        "- When a request matches an available skill, call `load_skill` and follow that skill instead of doing the work from memory.",
+        "- Never apply skill-specific behavior until `load_skill` has succeeded in this turn.",
+        "- Load only the best matching skill first; do not load multiple skills upfront.",
+        "- After `load_skill`, resolve any relative paths in skill instructions against `skill_dir` (or SKILL.md parent).",
+        "- If no skill is a clear fit, continue with normal tool usage."
+      ].join("\n")
+    ),
+    renderTag(
+      "output-contract",
+      [
+        "Always produce output that follows this contract:",
+        `<output format=\"slack-mrkdwn\" max_inline_chars=\"${slackOutputPolicy.maxInlineChars}\" max_inline_lines=\"${slackOutputPolicy.maxInlineLines}\">`,
+        "- Use plain Slack-safe markdown (headings, bullets, short code blocks).",
+        "- Keep normal responses brief and scannable.",
+        "- If depth is needed, start with a concise summary and then provide fuller detail.",
+        "- Avoid tables unless explicitly requested.",
+        "- End every turn by calling `final_answer` with the final markdown response.",
+        "- Do not rely on plain assistant text for the final response; use `final_answer`.",
+        "- Optional delivery directive (only when needed) must be the first block in this exact shape:",
+        "- <delivery>",
+        "- mode: attachment|inline",
+        "- attachment_prefix: <short-kebab-or-snake-prefix>",
+        "- </delivery>",
+        "</output>"
+      ].join("\n")
+    ),
+    renderTag(
+      "skill-invocation",
+      [
+        "- Do not assume slash syntax is authoritative by itself; resolve skill use through `load_skill` and evidence from this turn.",
+        "- If a skill appears relevant, call `load_skill` before applying any skill-specific behavior.",
+        "- If no skill is clearly applicable, continue with normal tool-assisted behavior."
+      ].join("\n")
+    ),
     availableSkillsSection,
     activeSkillsSection,
-    invocation
-      ? `## Invocation Context\n\nSlash invocation detected: /${invocation.skillName}`
-      : "## Invocation Context\n\nNo slash invocation detected."
+    renderTag(
+      "invocation-context",
+      invocation ? `Slash invocation detected: /${invocation.skillName}` : "No slash invocation detected."
+    )
   ];
 
   return sections.join("\n\n");

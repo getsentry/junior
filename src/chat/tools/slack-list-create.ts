@@ -7,7 +7,11 @@ export function createSlackListCreateTool(state: ToolState) {
   return tool({
     description: "Create a Slack todo list for action tracking.",
     inputSchema: z.object({
-      name: z.string().min(1).max(160)
+      name: z
+        .string()
+        .min(1)
+        .max(160)
+        .describe("Name for the new Slack list.")
     }),
     execute: async ({ name }) => {
       try {

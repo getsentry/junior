@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { bot } from "@/chat/bot";
-import { captureException, logError, logWarn, withSpan } from "@/chat/observability";
+import { createRequestContext, logException, withContext, withSpan } from "@/chat/observability";
 
 type Platform = keyof typeof bot.webhooks;
 
@@ -9,45 +9,31 @@ export const runtime = "nodejs";
 export async function POST(request: Request, context: RouteContext<"/api/webhooks/[platform]">): Promise<Response> {
   const { platform } = await context.params;
   const handler = bot.webhooks[platform as Platform];
-  const requestId = request.headers.get("x-request-id") ?? undefined;
+  const requestContext = createRequestContext(request, { platform });
+  const requestId = requestContext.requestId;
 
-  if (!handler) {
-    logWarn("unknown webhook platform", { platform, requestId });
-    captureException(new Error(`Unknown platform: ${platform}`), {
-      platform,
-      requestId
-    });
-    return new Response(`Unknown platform: ${platform}`, { status: 404 });
-  }
+  return withContext(requestContext, async () => {
+    if (!handler) {
+      const error = new Error(`Unknown platform: ${platform}`);
+      logException(error, "unknown webhook platform", {}, {
+        "http.response.status_code": 404
+      });
+      return new Response(`Unknown platform: ${platform}`, { status: 404 });
+    }
 
-  try {
-    return await withSpan(
-      "webhook.handle",
-      "webhook.handle",
-      {
-        platform,
-        requestId
-      },
-      () =>
-        handler(request, {
-          waitUntil: (task) => after(() => task)
-        })
-    );
-  } catch (error) {
-    logError(
-      "webhook handler failed",
-      {
-        platform,
-        requestId
-      },
-      {
-        error: error instanceof Error ? error.message : String(error)
-      }
-    );
-    captureException(error, {
-      platform,
-      requestId
-    });
-    throw error;
-  }
+    try {
+      return await withSpan(
+        "webhook.handle",
+        "webhook.handle",
+        requestContext,
+        () =>
+          handler(request, {
+            waitUntil: (task) => after(() => task)
+          })
+      );
+    } catch (error) {
+      logException(error, "webhook handler failed");
+      throw error;
+    }
+  });
 }

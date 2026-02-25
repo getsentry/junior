@@ -119,10 +119,10 @@ export function buildSlackOutputMessage(text: string, options: SlackOutputOption
 
   if (!normalized) {
     logWarn("slack output normalized to empty content", {}, {
-      originalLength: text.length,
-      parsedLength: parsed.text.length,
-      directiveMode: parsed.options.forceAttachment ? "attachment" : parsed.options.forceInline ? "inline" : "default",
-      fileCount: options.files?.length ?? 0
+      "app.output.original_length": text.length,
+      "app.output.parsed_length": parsed.text.length,
+      "app.output.directive_mode": parsed.options.forceAttachment ? "attachment" : parsed.options.forceInline ? "inline" : "default",
+      "app.output.file_count": options.files?.length ?? 0
     });
     return {
       markdown: "I couldn't produce a response.",

@@ -1,6 +1,6 @@
-import { gateway, hasToolCall, stepCountIs, ToolLoopAgent } from "ai";
+import { gateway, hasToolCall, NoSuchToolError, stepCountIs, ToolLoopAgent, type ToolCallRepairFunction } from "ai";
 import type { FileUpload } from "chat";
-import { generateTextWithTelemetry } from "@/chat/ai";
+import { generateObjectWithTelemetry, generateTextWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
 import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -248,6 +248,64 @@ export async function generateAssistantReply(
         artifactState: context.artifactState
       }
     );
+    const repairToolCall: ToolCallRepairFunction<typeof tools> = async ({ toolCall, tools, inputSchema, error }) => {
+      if (NoSuchToolError.isInstance(error)) {
+        return null;
+      }
+
+      if (!(toolCall.toolName in tools)) {
+        return null;
+      }
+      const tool = tools[toolCall.toolName as keyof typeof tools];
+
+      try {
+        const toolJsonSchema = await inputSchema({ toolName: toolCall.toolName });
+        const { object: repairedInput } = await generateObjectWithTelemetry(
+          {
+            model: gateway(botConfig.modelId),
+            schema: tool.inputSchema,
+            prompt: [
+              `Repair the invalid tool input for tool "${toolCall.toolName}".`,
+              "Return only valid JSON arguments that match the tool schema.",
+              "",
+              "Original invalid tool input:",
+              toolCall.input,
+              "",
+              "Validation error:",
+              error.message,
+              "",
+              "Tool JSON schema:",
+              JSON.stringify(toolJsonSchema)
+            ].join("\n")
+          },
+          {
+            functionId: "generateAssistantReply.repair_tool_call",
+            metadata: {
+              ...telemetryMetadata,
+              toolName: toolCall.toolName
+            }
+          }
+        );
+
+        return {
+          ...toolCall,
+          input: JSON.stringify(repairedInput)
+        };
+      } catch (repairError) {
+        logWarn("tool call repair failed; proceeding without repair", {
+          slackThreadId: context.correlation?.threadId,
+          slackUserId: context.correlation?.requesterId,
+          slackChannelId: context.correlation?.channelId,
+          workflowRunId: context.correlation?.workflowRunId,
+          assistantUserName: context.assistant?.userName,
+          modelId: botConfig.modelId
+        }, {
+          "app.tool.name": toolCall.toolName,
+          "error.message": repairError instanceof Error ? repairError.message : "unknown repair error"
+        });
+        return null;
+      }
+    };
 
     const baseInstructions = buildSystemPrompt({
       availableSkills,
@@ -265,6 +323,7 @@ export async function generateAssistantReply(
       tools,
       toolChoice: "required",
       stopWhen: [hasToolCall("final_answer"), stepCountIs(100)],
+      experimental_repairToolCall: repairToolCall,
       experimental_telemetry: {
         isEnabled: true,
         recordInputs: true,
@@ -281,6 +340,7 @@ export async function generateAssistantReply(
       toolChoice: "required",
       activeTools: ["final_answer"],
       stopWhen: [hasToolCall("final_answer"), stepCountIs(5)],
+      experimental_repairToolCall: repairToolCall,
       experimental_telemetry: {
         isEnabled: true,
         recordInputs: true,
@@ -329,10 +389,10 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       }, {
-        attempt,
-        steps: finalResult.steps.length,
-        toolCalls: finalResult.toolCalls.length,
-        toolResults: finalResult.toolResults.length
+        "app.retry.attempt": attempt,
+        "app.ai.steps": finalResult.steps.length,
+        "app.ai.tool_calls": finalResult.toolCalls.length,
+        "app.ai.tool_results": finalResult.toolResults.length
       });
 
       finalResult = await finalizationAgent.generate({
@@ -366,10 +426,10 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       }, {
-        finishReason: finalResult.finishReason,
-        steps: finalResult.steps.length,
-        toolCalls: finalResult.toolCalls.length,
-        toolResults: finalResult.toolResults.length
+        "app.ai.finish_reason": finalResult.finishReason,
+        "app.ai.steps": finalResult.steps.length,
+        "app.ai.tool_calls": finalResult.toolCalls.length,
+        "app.ai.tool_results": finalResult.toolResults.length
       });
 
       try {
@@ -435,15 +495,15 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       }, {
-        finishReason: finalResult.finishReason,
-        steps: finalResult.steps.length,
-        sources: finalResult.sources.length,
-        toolCalls: finalResult.toolCalls.length,
-        toolResults: finalResult.toolResults.length,
-        generatedFiles: generatedFiles.length,
-        resultFiles: finalResult.files.length,
-        responseMessages: finalResult.response.messages.length,
-        stepDiagnostics: summarizeStepDiagnostics(finalResult)
+        "app.ai.finish_reason": finalResult.finishReason,
+        "app.ai.steps": finalResult.steps.length,
+        "app.ai.sources": finalResult.sources.length,
+        "app.ai.tool_calls": finalResult.toolCalls.length,
+        "app.ai.tool_results": finalResult.toolResults.length,
+        "app.ai.generated_files": generatedFiles.length,
+        "app.ai.result_files": finalResult.files.length,
+        "app.ai.response_messages": finalResult.response.messages.length,
+        "app.ai.step_diagnostics": summarizeStepDiagnostics(finalResult)
       });
     }
 
@@ -464,8 +524,8 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       }, {
-        inferredSkill: inferredSkill.name,
-        inferredScore: inferredSkill.score
+        "app.skill.name": inferredSkill.name,
+        "app.skill.score": inferredSkill.score
       });
 
       const retryAgent = new ToolLoopAgent({
@@ -487,6 +547,7 @@ export async function generateAssistantReply(
         tools,
         toolChoice: "required",
         stopWhen: [hasToolCall("final_answer"), stepCountIs(100)],
+        experimental_repairToolCall: repairToolCall,
         experimental_telemetry: {
           isEnabled: true,
           recordInputs: true,

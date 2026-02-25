@@ -6,7 +6,10 @@ export function createLoadSkillTool(availableSkills: SkillMetadata[]) {
   return tool({
     description: "Load a named skill and return its instructions to the reasoning context.",
     inputSchema: z.object({
-      skill_name: z.string().min(1)
+      skill_name: z
+        .string()
+        .min(1)
+        .describe("Skill name to load, without the leading slash.")
     }),
     execute: async ({ skill_name }) => {
       const requested = skill_name.trim().toLowerCase();
