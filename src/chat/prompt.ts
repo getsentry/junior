@@ -52,7 +52,7 @@ function baseSystemPrompt(): string {
     "- Never claim a lookup succeeded unless a tool result supports it.",
     "- Do not give up when unsure how to do something; find a viable path, gather evidence, and provide the best actionable way forward.",
     "- When active skills are present, follow their instructions before default behavior."
-  ].join(" ");
+  ].join("\n");
 }
 
 export function buildSystemPrompt(params: {
@@ -112,7 +112,19 @@ export function buildSystemPrompt(params: {
           ])
         ].join("\n");
 
-  return [
+  const normalizedChatHistory = chatHistory?.trim();
+  const chatHistorySection = normalizedChatHistory
+    ? [
+        "## Chat History",
+        "",
+        "Use this as recent thread context when answering follow-up questions.",
+        "<chat_history>",
+        normalizedChatHistory,
+        "</chat_history>"
+      ].join("\n\n")
+    : null;
+
+  const sections = [
     baseSystemPrompt(),
     "## Personality",
     "",
@@ -126,12 +138,7 @@ export function buildSystemPrompt(params: {
     "Use these blocks as authoritative metadata for identity questions.",
     assistantSection,
     requesterSection,
-    "## Chat History",
-    "",
-    "Use this as recent thread context when answering follow-up questions.",
-    "<chat_history>",
-    chatHistory?.trim() || "none",
-    "</chat_history>",
+    ...(chatHistorySection ? [chatHistorySection] : []),
     "## Artifact Context",
     "",
     "Use this thread-scoped memory for follow-up updates to existing Slack artifacts.",
@@ -174,6 +181,8 @@ export function buildSystemPrompt(params: {
     "- Keep normal responses brief and scannable.",
     "- If depth is needed, start with a concise summary and then provide fuller detail.",
     "- Avoid tables unless explicitly requested.",
+    "- After any tool calls, always finish with a user-visible markdown response in this same turn.",
+    "- Never end a turn with only tool calls/results and no final user-facing text.",
     "- Optional delivery directive (only when needed) must be the first block in this exact shape:",
     "- <delivery>",
     "- mode: attachment|inline",
@@ -182,7 +191,7 @@ export function buildSystemPrompt(params: {
     "</output>",
     "## Skill Invocation",
     "",
-    "- If the full user message starts with `/<skill-name>`, treat it as an explicit skill command.",
+    "- If the user message contains `/<skill-name>` anywhere, treat it as an explicit skill command.",
     "- For slash invocations, the skill is already active and you do not need to call `load_skill` again.",
     "- Never reinterpret explicit slash skill commands as plain chat intent.",
     "- If skill is unknown, return an unknown-skill error and list available skills.",
@@ -191,5 +200,7 @@ export function buildSystemPrompt(params: {
     invocation
       ? `## Invocation Context\n\nSlash invocation detected: /${invocation.skillName}`
       : "## Invocation Context\n\nNo slash invocation detected."
-  ].join("\n\n");
+  ];
+
+  return sections.join("\n\n");
 }

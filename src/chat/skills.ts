@@ -97,7 +97,7 @@ export async function discoverSkills(): Promise<SkillMetadata[]> {
 
 export function parseSkillInvocation(messageText: string): SkillInvocation | null {
   const trimmed = messageText.trim();
-  const match = /^\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?$/i.exec(trimmed);
+  const match = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(trimmed);
   if (!match) {
     return null;
   }
@@ -156,7 +156,7 @@ export function renderSkillsHarnessXml(skills: SkillMetadata[]): string {
   return [
     "<skills>",
     "  <rules>",
-    "    1. If the full message starts with /<skill-name>, treat it as a skill invocation request.",
+    "    1. If the message contains /<skill-name> anywhere, treat it as a skill invocation request.",
     "    2. If a slash-invoked skill exists, apply that skill's instructions first.",
     "    3. If a slash-invoked skill does not exist, return an unknown-skill error and list available skills.",
     "    4. Never reinterpret slash skill commands as plain text chat intent.",

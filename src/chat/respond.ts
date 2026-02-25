@@ -45,6 +45,30 @@ export interface AssistantReply {
   artifactStatePatch?: Partial<ThreadArtifactsState>;
 }
 
+function summarizeStepDiagnostics(result: {
+  steps: Array<{
+    finishReason: string;
+    text: string;
+    toolCalls: unknown[];
+    toolResults: unknown[];
+    content: Array<{ type?: string }>;
+  }>;
+}): string {
+  return result.steps
+    .map((step, index) => {
+      const contentTypes = step.content.map((part) => part.type ?? "unknown").join(",");
+      return [
+        `step=${index + 1}`,
+        `finish=${step.finishReason}`,
+        `text_len=${step.text.length}`,
+        `tool_calls=${step.toolCalls.length}`,
+        `tool_results=${step.toolResults.length}`,
+        `content=${contentTypes || "none"}`
+      ].join("|");
+    })
+    .join(" ; ");
+}
+
 export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {}
@@ -177,7 +201,9 @@ export async function generateAssistantReply(
         toolCalls: result.toolCalls.length,
         toolResults: result.toolResults.length,
         generatedFiles: generatedFiles.length,
-        resultFiles: result.files.length
+        resultFiles: result.files.length,
+        responseMessages: result.response.messages.length,
+        stepDiagnostics: summarizeStepDiagnostics(result)
       });
     }
 
