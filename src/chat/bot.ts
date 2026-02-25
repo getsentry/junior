@@ -50,13 +50,37 @@ function getSlackAdapter(): SlackAdapter {
   return bot.getAdapter("slack") as SlackAdapter;
 }
 
-const assistantThreadMetaById = new Map<string, AssistantThreadMeta>();
+function parseAssistantThreadMeta(threadId: string | undefined): AssistantThreadMeta | null {
+  if (!threadId) {
+    return null;
+  }
+
+  const match = threadId.match(/^slack:([^:]+):(.+)$/);
+  if (!match) {
+    return null;
+  }
+
+  const channelId = match[1];
+  const threadTs = match[2];
+  if (!channelId || !threadTs) {
+    return null;
+  }
+
+  return { channelId, threadTs };
+}
+
+interface ProgressContext {
+  slackThreadId?: string;
+  slackUserId?: string;
+  slackChannelId?: string;
+  workflowRunId?: string;
+}
 
 function createProgressReporter(thread: {
   post: (message: string | PostableMessage) => Promise<unknown>;
   startTyping?: (status?: string) => Promise<void>;
   id?: string;
-}) {
+}, context: ProgressContext) {
   const fallbackStatus = "Still working on it...";
   const assistantStatuses = ["Analyzing context...", "Running tools...", "Drafting response..."];
   const startDelayMs = 3500;
@@ -66,20 +90,40 @@ function createProgressReporter(thread: {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let intervalId: ReturnType<typeof setInterval> | undefined;
   let statusMessage: ProgressSentMessage | null = null;
+  let missingMetaCaptured = false;
+
+  const reportProgressIssue = (reason: string, error?: unknown): void => {
+    const payload = error ?? new Error(reason);
+    captureException(payload, {
+      ...context,
+      assistantUserName: botConfig.userName,
+      modelId: botConfig.modelId
+    });
+    console.warn("[junior] progress indicator issue", {
+      reason,
+      error: error instanceof Error ? error.message : error ? String(error) : undefined,
+      threadId: context.slackThreadId,
+      channelId: context.slackChannelId
+    });
+  };
 
   const postFallbackStatus = async (): Promise<void> => {
     try {
       await thread.startTyping?.(fallbackStatus);
       statusMessage = (await thread.post(fallbackStatus)) as ProgressSentMessage;
-    } catch {
-      // Best effort only.
+    } catch (error) {
+      reportProgressIssue("fallback_status_post_failed", error);
     }
   };
 
   const postAssistantStatus = async (text: string): Promise<void> => {
     const threadId = toOptionalString(thread.id);
-    const assistantThread = threadId ? assistantThreadMetaById.get(threadId) : undefined;
+    const assistantThread = parseAssistantThreadMeta(threadId);
     if (!assistantThread || !threadId) {
+      if (!missingMetaCaptured) {
+        missingMetaCaptured = true;
+        reportProgressIssue("assistant_thread_metadata_missing");
+      }
       await postFallbackStatus();
       return;
     }
@@ -91,7 +135,8 @@ function createProgressReporter(thread: {
         text,
         assistantStatuses
       );
-    } catch {
+    } catch (error) {
+      reportProgressIssue("assistant_status_update_failed", error);
       await postFallbackStatus();
     }
   };
@@ -117,8 +162,8 @@ function createProgressReporter(thread: {
       if (statusMessage?.delete) {
         try {
           await statusMessage.delete();
-        } catch {
-          // Best effort only.
+        } catch (error) {
+          reportProgressIssue("fallback_status_delete_failed", error);
         }
       }
     }
@@ -212,7 +257,12 @@ async function replyToThread(
       const chatHistory = buildChatHistory(thread.recentMessages, userText);
       const fallbackIdentity = await lookupSlackUser(message.author.userId);
       await thread.startTyping?.("Thinking...");
-      const progress = createProgressReporter(thread);
+      const progress = createProgressReporter(thread, {
+        slackThreadId: threadId,
+        slackUserId: message.author.userId,
+        slackChannelId: channelId,
+        workflowRunId
+      });
       progress.start();
 
       try {
@@ -252,11 +302,6 @@ async function initializeAssistantThread(event: {
   channelId: string;
   threadTs: string;
 }): Promise<void> {
-  assistantThreadMetaById.set(event.threadId, {
-    channelId: event.channelId,
-    threadTs: event.threadTs
-  });
-
   const slack = getSlackAdapter();
   await slack.setAssistantTitle(event.channelId, event.threadTs, "Junior");
   await slack.setSuggestedPrompts(event.channelId, event.threadTs, [
