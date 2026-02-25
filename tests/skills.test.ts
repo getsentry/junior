@@ -11,6 +11,7 @@ describe("skills", () => {
   it("discovers valid skills from the default skills directory", async () => {
     const skills = await discoverSkills();
     expect(skills.some((skill) => skill.name === "summarize-candidate")).toBe(true);
+    expect(skills.some((skill) => skill.name === "candidate-executive-summary")).toBe(true);
   });
 
   it("parses skill invocation by slash command", () => {

@@ -19,8 +19,8 @@ describe("web fetch content conversion", () => {
   });
 
   it("pretty-prints json content", () => {
-    const result = extractContent('{"name":"shim","ok":true}', "application/json", 5000);
-    expect(result).toContain('"name": "shim"');
+    const result = extractContent('{"name":"junior","ok":true}', "application/json", 5000);
+    expect(result).toContain('"name": "junior"');
     expect(result).toContain('"ok": true');
   });
 });

@@ -1,9 +1,9 @@
-# shim
+# junior
 
 Slack bot built with Chat SDK + Next.js + a skill-aware harness.
 
 The bot behavior is:
-- On `@shim` mention: subscribe to that thread and respond.
+- On `@junior` mention: subscribe to that thread and respond.
 - After subscription: respond to follow-up messages in that same thread.
 
 ## Core design
@@ -58,14 +58,14 @@ npm run dev
 2. Create app from manifest (recommended) and use:
 
 Use the checked-in manifest file:
-- [`slack-manifest.yml`](/home/dcramer/src/shim/slack-manifest.yml)
+- [`slack-manifest.yml`](slack-manifest.yml)
 
 ```yaml
 display_information:
-  name: shim
+  name: junior
 features:
   bot_user:
-    display_name: shim
+    display_name: junior
     always_online: true
 oauth_config:
   scopes:
@@ -119,8 +119,8 @@ ngrok http 3000
 - `https://<your-ngrok-domain>/api/webhooks/slack` for Interactivity
 
 4. In Slack channel:
-- Invite bot: `/invite @shim`
-- Mention bot in a thread: `@shim hello`
+- Invite bot: `/invite @junior`
+- Mention bot in a thread: `@junior hello`
 - Verify it responds and continues responding to replies in that thread.
 
 ## Deploy on Vercel

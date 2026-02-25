@@ -12,7 +12,7 @@ function loadSoul(): string {
   return raw;
 }
 
-const SHIM_PERSONALITY = loadSoul();
+const JUNIOR_PERSONALITY = loadSoul();
 
 function escapeXml(value: string): string {
   return value
@@ -108,7 +108,7 @@ export function buildSystemPrompt(params: {
     "Always follow the personality guidance for tone/style unless safety or policy constraints require otherwise.",
     "",
     "<personality>",
-    SHIM_PERSONALITY.trim(),
+    JUNIOR_PERSONALITY.trim(),
     "</personality>",
     "## Identity Context",
     "",

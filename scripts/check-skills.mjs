@@ -14,7 +14,7 @@ function resolveSkillRoots() {
     .map((value) => value.trim())
     .filter(Boolean)
     .map((value) => path.resolve(value));
-  return [...envRoots, path.resolve(process.cwd(), "skills")];
+  return [...envRoots, path.resolve(process.cwd(), ".agents", "skills"), path.resolve(process.cwd(), "skills")];
 }
 
 function parseFrontmatter(raw) {

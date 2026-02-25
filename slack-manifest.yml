@@ -1,8 +1,8 @@
 display_information:
-  name: shim
+  name: junior
 features:
   bot_user:
-    display_name: shim
+    display_name: junior
     always_online: true
 oauth_config:
   scopes:

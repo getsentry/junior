@@ -52,7 +52,7 @@ export async function generateAssistantReply(messageText: string, context: Reply
 
     return result.text || "I couldn't produce a response.";
   } catch (error) {
-    console.error("[shim] generateAssistantReply failed", {
+    console.error("[junior] generateAssistantReply failed", {
       error: error instanceof Error ? error.message : String(error)
     });
     return "I hit an internal error while processing that request. Please try again.";

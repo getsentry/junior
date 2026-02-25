@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 export async function GET(): Promise<Response> {
   return Response.json({
     status: "ok",
-    service: "shim",
+    service: "junior",
     timestamp: new Date().toISOString()
   });
 }

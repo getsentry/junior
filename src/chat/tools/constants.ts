@@ -1,4 +1,4 @@
-export const USER_AGENT = "shim-bot/0.1";
+export const USER_AGENT = "junior-bot/0.1";
 export const FETCH_TIMEOUT_MS = 8000;
 export const MAX_REDIRECTS = 3;
 export const DEFAULT_MAX_CHARS = 6000;
