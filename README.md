@@ -15,6 +15,7 @@ The bot behavior is:
 - State: Redis in prod (`REDIS_URL`), memory fallback in dev
 - Tools: `load_skill`, `web_search`, `web_fetch`
 - `web_search` uses Brave when `BRAVE_SEARCH_API_KEY` is set; otherwise falls back to DuckDuckGo
+- `web_fetch` converts HTML to markdown-like content (headings/lists/links) for better agent grounding
 - Skills: loaded from `skills/*/SKILL.md` with YAML validation
 
 ## Local setup

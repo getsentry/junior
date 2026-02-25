@@ -9,9 +9,9 @@ import {
   assertPublicUrl,
   fetchTextWithRedirects,
   readResponseBody,
-  stripHtml,
   withTimeout
 } from "@/chat/tools/network";
+import { extractContent } from "@/chat/tools/web_fetch/convert";
 
 export { MAX_FETCH_CHARS };
 
@@ -30,6 +30,6 @@ export async function webFetch(url: string, maxChars = DEFAULT_MAX_CHARS): Promi
   }
 
   const body = await withTimeout(readResponseBody(response, MAX_FETCH_BYTES), FETCH_TIMEOUT_MS, "read");
-  const text = stripHtml(body).slice(0, safeMaxChars);
+  const text = extractContent(body, contentType, safeMaxChars);
   return { url: safeUrl.toString(), content: text };
 }
