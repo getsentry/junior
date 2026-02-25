@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Sandbox } from "@vercel/sandbox";
 import type { SkillMetadata } from "@/chat/skills";
+import { assertPublicUrl } from "@/chat/tools/network";
 
 interface SandboxExecutionInput {
   toolName: string;
@@ -500,8 +501,21 @@ export class VercelSandboxToolExecutor {
       await this.ensureSkillsSynced();
     }
 
+    let safeParams: SandboxExecutionInput = params;
+    if (params.toolName === "web_fetch") {
+      const rawInput = (params.input ?? {}) as Record<string, unknown>;
+      const safeUrl = await assertPublicUrl(String(rawInput.url ?? ""));
+      safeParams = {
+        ...params,
+        input: {
+          ...rawInput,
+          url: safeUrl.toString()
+        }
+      };
+    }
+
     const payload = JSON.stringify({
-      ...params,
+      ...safeParams,
       skillState: {
         activeSkillName: this.activeSkillName
       }

@@ -71,6 +71,9 @@ interface LoadedSkillForSteering {
   skillDir: string;
 }
 
+const AGENT_TURN_TIMEOUT_MS = 120_000;
+const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
+
 function formatUnknownSkillMessage(requestedSkill: string, availableSkills: Array<{ name: string }>): string {
   const available = availableSkills.map((skill) => `/${skill.name}`).join(", ");
   return [
@@ -181,6 +184,28 @@ function buildUserTurnText(userInput: string, conversationContext?: string): str
     "Use this context for continuity across prior thread turns.",
     trimmedContext,
     "</thread-conversation-context>"
+  ].join("\n");
+}
+
+function encodeNonImageAttachmentForPrompt(attachment: {
+  data: Buffer;
+  mediaType: string;
+  filename?: string;
+}): string {
+  const base64 = attachment.data.toString("base64");
+  const wasTruncated = base64.length > MAX_INLINE_ATTACHMENT_BASE64_CHARS;
+  const encodedPayload = wasTruncated ? `${base64.slice(0, MAX_INLINE_ATTACHMENT_BASE64_CHARS)}...` : base64;
+
+  return [
+    "<attachment>",
+    `filename: ${attachment.filename ?? "unnamed"}`,
+    `media_type: ${attachment.mediaType}`,
+    "encoding: base64",
+    `truncated: ${wasTruncated ? "true" : "false"}`,
+    "<data_base64>",
+    encodedPayload,
+    "</data_base64>",
+    "</attachment>"
   ].join("\n");
 }
 
@@ -528,7 +553,7 @@ export async function generateAssistantReply(
       } else {
         userContentParts.push({
           type: "text",
-          text: `Attached file: ${attachment.filename ?? "unnamed"} (${attachment.mediaType}).`
+          text: encodeNonImageAttachmentForPrompt(attachment)
         });
       }
     }
@@ -576,12 +601,47 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       },
-      () =>
-        agent.prompt({
+      async () => {
+        const promptPromise = agent.prompt({
           role: "user",
           content: userContentParts,
           timestamp: Date.now()
-        })
+        });
+
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let didTimeout = false;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            didTimeout = true;
+            agent.abort();
+            reject(new Error(`Agent turn timed out after ${AGENT_TURN_TIMEOUT_MS}ms`));
+          }, AGENT_TURN_TIMEOUT_MS);
+        });
+
+        try {
+          await Promise.race([promptPromise, timeoutPromise]);
+        } catch (error) {
+          if (didTimeout) {
+            logWarn(
+              "agent_turn_timeout",
+              {},
+              {
+                "gen_ai.system": "vercel-ai-gateway",
+                "gen_ai.operation.name": "agent_turn",
+                "gen_ai.request.model": botConfig.modelId,
+                "app.ai.turn_timeout_ms": AGENT_TURN_TIMEOUT_MS
+              },
+              "Agent turn timed out and was aborted"
+            );
+            await promptPromise.catch(() => {});
+          }
+          throw error;
+        } finally {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+        }
+      }
     );
 
     await context.onStatus?.("Drafting response...");
