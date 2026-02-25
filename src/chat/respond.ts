@@ -1,7 +1,7 @@
 import { generateText, gateway, stepCountIs } from "ai";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
-import { captureException, setTags, withSpan } from "@/chat/observability";
+import { captureException, logError, logWarn, setTags, withSpan } from "@/chat/observability";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
@@ -132,12 +132,35 @@ export async function generateAssistantReply(
         })
     );
 
+    if (!result.text || result.text.trim().length === 0) {
+      logWarn("model returned empty text response", {
+        slackThreadId: context.correlation?.threadId,
+        slackUserId: context.correlation?.requesterId,
+        slackChannelId: context.correlation?.channelId,
+        workflowRunId: context.correlation?.workflowRunId,
+        assistantUserName: context.assistant?.userName,
+        modelId: botConfig.modelId,
+        skillName: invokedSkill?.name
+      });
+    }
+
     return {
       text: result.text || "I couldn't produce a response.",
       files: generatedFiles.length > 0 ? generatedFiles : undefined,
       artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
     };
   } catch (error) {
+    logError("generateAssistantReply failed", {
+      slackThreadId: context.correlation?.threadId,
+      slackUserId: context.correlation?.requesterId,
+      slackChannelId: context.correlation?.channelId,
+      workflowRunId: context.correlation?.workflowRunId,
+      assistantUserName: context.assistant?.userName,
+      modelId: botConfig.modelId
+    }, {
+      error: error instanceof Error ? error.message : String(error)
+    });
+
     captureException(error, {
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,
@@ -147,9 +170,6 @@ export async function generateAssistantReply(
       modelId: botConfig.modelId
     });
 
-    console.error("[junior] generateAssistantReply failed", {
-      error: error instanceof Error ? error.message : String(error)
-    });
     return {
       text: "I hit an internal error while processing that request. Please try again."
     };

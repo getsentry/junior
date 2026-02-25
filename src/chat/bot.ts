@@ -2,7 +2,7 @@ import { Chat } from "chat";
 import type { FileUpload, PostableMessage } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
-import { captureException, toOptionalString, withSpan } from "@/chat/observability";
+import { captureException, logError, toOptionalString, withSpan } from "@/chat/observability";
 import { buildSlackOutputMessage, shouldUseAttachmentFallback } from "@/chat/output";
 import { generateAssistantReply } from "@/chat/respond";
 import { createCanvas } from "@/chat/slack-actions/canvases";
@@ -407,17 +407,19 @@ bot.onNewMention(async (thread, message) => {
       }
     );
   } catch (error) {
-    captureException(error, {
+    const observabilityContext = {
       slackThreadId: getThreadId(thread, message),
       slackUserId: message.author.userId,
       slackChannelId: getChannelId(message),
       workflowRunId: getWorkflowRunId(thread, message),
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
-    });
-
-    console.error("[junior] onNewMention failed", {
+    };
+    logError("onNewMention failed", observabilityContext, {
       error: error instanceof Error ? error.message : String(error)
+    });
+    captureException(error, {
+      ...observabilityContext
     });
     await thread.post("I hit an internal error and couldn't respond. Please try again.");
   }
@@ -445,17 +447,19 @@ bot.onSubscribedMessage(async (thread, message) => {
       }
     );
   } catch (error) {
-    captureException(error, {
+    const observabilityContext = {
       slackThreadId: getThreadId(thread, message),
       slackUserId: message.author.userId,
       slackChannelId: getChannelId(message),
       workflowRunId: getWorkflowRunId(thread, message),
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
-    });
-
-    console.error("[junior] onSubscribedMessage failed", {
+    };
+    logError("onSubscribedMessage failed", observabilityContext, {
       error: error instanceof Error ? error.message : String(error)
+    });
+    captureException(error, {
+      ...observabilityContext
     });
     await thread.post("I hit an internal error and couldn't respond. Please try again.");
   }
@@ -469,16 +473,18 @@ bot.onAssistantThreadStarted(async (event) => {
       threadTs: event.threadTs
     });
   } catch (error) {
-    captureException(error, {
+    const observabilityContext = {
       slackThreadId: event.threadId,
       slackUserId: event.userId,
       slackChannelId: event.channelId,
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
-    });
-
-    console.error("[junior] onAssistantThreadStarted failed", {
+    };
+    logError("onAssistantThreadStarted failed", observabilityContext, {
       error: error instanceof Error ? error.message : String(error)
+    });
+    captureException(error, {
+      ...observabilityContext
     });
   }
 });
@@ -491,16 +497,18 @@ bot.onAssistantContextChanged(async (event) => {
       threadTs: event.threadTs
     });
   } catch (error) {
-    captureException(error, {
+    const observabilityContext = {
       slackThreadId: event.threadId,
       slackUserId: event.userId,
       slackChannelId: event.channelId,
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
-    });
-
-    console.error("[junior] onAssistantContextChanged failed", {
+    };
+    logError("onAssistantContextChanged failed", observabilityContext, {
       error: error instanceof Error ? error.message : String(error)
+    });
+    captureException(error, {
+      ...observabilityContext
     });
   }
 });

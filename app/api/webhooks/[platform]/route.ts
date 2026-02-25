@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { bot } from "@/chat/bot";
-import { captureException, withSpan } from "@/chat/observability";
+import { captureException, logError, logWarn, withSpan } from "@/chat/observability";
 
 type Platform = keyof typeof bot.webhooks;
 
@@ -12,6 +12,7 @@ export async function POST(request: Request, context: RouteContext<"/api/webhook
   const requestId = request.headers.get("x-request-id") ?? undefined;
 
   if (!handler) {
+    logWarn("unknown webhook platform", { platform, requestId });
     captureException(new Error(`Unknown platform: ${platform}`), {
       platform,
       requestId
@@ -33,6 +34,16 @@ export async function POST(request: Request, context: RouteContext<"/api/webhook
         })
     );
   } catch (error) {
+    logError(
+      "webhook handler failed",
+      {
+        platform,
+        requestId
+      },
+      {
+        error: error instanceof Error ? error.message : String(error)
+      }
+    );
     captureException(error, {
       platform,
       requestId
