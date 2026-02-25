@@ -1,7 +1,7 @@
 import { gateway, NoSuchToolError, stepCountIs, ToolLoopAgent, type ToolCallRepairFunction } from "ai";
 import type { FileUpload } from "chat";
 import { z } from "zod";
-import { generateObjectWithTelemetry, generateTextWithTelemetry } from "@/chat/ai";
+import { generateObjectWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
 import { logException, logInfo, logWarn, setTags, withSpan } from "@/chat/observability";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -165,44 +165,32 @@ function buildUserTurnText(userInput: string, conversationContext?: string): str
 }
 
 function summarizeStepDiagnostics(result: {
-  steps: Array<{
-    finishReason: string;
-    text: string;
-    toolCalls: unknown[];
-    toolResults: unknown[];
-    content: Array<{ type?: string }>;
+  steps?: Array<{
+    finishReason?: string;
+    text?: string;
+    toolCalls?: unknown[];
+    toolResults?: unknown[];
+    content?: Array<{ type?: string }>;
   }>;
 }): string {
-  return result.steps
+  const steps = Array.isArray(result.steps) ? result.steps : [];
+  return steps
     .map((step, index) => {
-      const contentTypes = step.content.map((part) => part.type ?? "unknown").join(",");
+      const text = typeof step.text === "string" ? step.text : "";
+      const toolCalls = Array.isArray(step.toolCalls) ? step.toolCalls : [];
+      const toolResults = Array.isArray(step.toolResults) ? step.toolResults : [];
+      const content = Array.isArray(step.content) ? step.content : [];
+      const contentTypes = content.map((part) => part.type ?? "unknown").join(",");
       return [
         `step=${index + 1}`,
-        `finish=${step.finishReason}`,
-        `text_len=${step.text.length}`,
-        `tool_calls=${step.toolCalls.length}`,
-        `tool_results=${step.toolResults.length}`,
+        `finish=${step.finishReason ?? "unknown"}`,
+        `text_len=${text.length}`,
+        `tool_calls=${toolCalls.length}`,
+        `tool_results=${toolResults.length}`,
         `content=${contentTypes || "none"}`
       ].join("|");
     })
     .join(" ; ");
-}
-
-function serializeToolResultsForRetry(result: { toolResults: unknown[] }): string {
-  let raw = "[]";
-  try {
-    raw = JSON.stringify(result.toolResults);
-  } catch {
-    raw = "[unserializable tool results]";
-  }
-
-  const maxChars = 12_000;
-  if (raw.length <= maxChars) return raw;
-  return `${raw.slice(0, maxChars)}...[truncated]`;
-}
-
-function hasToolResults(result: { toolResults: unknown[] }): boolean {
-  return Array.isArray(result.toolResults) && result.toolResults.length > 0;
 }
 
 function extractFinalAnswerFromInput(input: unknown): string | undefined {
@@ -226,9 +214,9 @@ function extractFinalAnswerFromInput(input: unknown): string | undefined {
 }
 
 function extractFinalAnswer(result: {
-  staticToolCalls: Array<{ toolName: string; input: unknown }>;
-  steps: Array<{
-    staticToolCalls: Array<{ toolName: string; input: unknown }>;
+  staticToolCalls?: Array<{ toolName: string; input: unknown }>;
+  steps?: Array<{
+    staticToolCalls?: Array<{ toolName: string; input: unknown }>;
   }>;
 }): string | undefined {
   const fromCall = (call: { toolName: string; input: unknown }): string | undefined => {
@@ -236,12 +224,15 @@ function extractFinalAnswer(result: {
     return extractFinalAnswerFromInput(call.input);
   };
 
-  for (const call of [...result.staticToolCalls].reverse()) {
+  const staticToolCalls = Array.isArray(result.staticToolCalls) ? result.staticToolCalls : [];
+  for (const call of [...staticToolCalls].reverse()) {
     const answer = fromCall(call);
     if (answer) return answer;
   }
-  for (const step of [...result.steps].reverse()) {
-    for (const call of [...step.staticToolCalls].reverse()) {
+  const steps = Array.isArray(result.steps) ? result.steps : [];
+  for (const step of [...steps].reverse()) {
+    const stepToolCalls = Array.isArray(step.staticToolCalls) ? step.staticToolCalls : [];
+    for (const call of [...stepToolCalls].reverse()) {
       const answer = fromCall(call);
       if (answer) return answer;
     }
@@ -283,6 +274,7 @@ function toolCallSignature(call: { toolName: string; input: unknown }): string {
 }
 
 function hasToolError(step: LoopStepLike): boolean {
+  if (!Array.isArray(step.toolResults)) return false;
   return step.toolResults.some((result) => result?.type === "tool-error" || result?.error !== undefined);
 }
 
@@ -318,8 +310,9 @@ function computeLoopGuardState(steps: LoopStepLike[]): LoopGuardState {
   };
 }
 
-function countToolErrorSteps(result: { steps: LoopStepLike[] }): number {
-  return result.steps.reduce((count, step) => count + (hasToolError(step) ? 1 : 0), 0);
+function countToolErrorSteps(result: { steps?: LoopStepLike[] }): number {
+  const steps = Array.isArray(result.steps) ? result.steps : [];
+  return steps.reduce((count, step) => count + (hasToolError(step) ? 1 : 0), 0);
 }
 
 function buildExecutionFailureMessage(result: {
@@ -618,120 +611,13 @@ export async function generateAssistantReply(
 
     let finalResult = result;
     let finalAnswer = extractFinalAnswer(finalResult);
-    const skippedRetries =
-      !finalAnswer &&
-      (!finalResult.text || finalResult.text.trim().length === 0) &&
-      finalResult.finishReason === "tool-calls";
-    if (skippedRetries) {
-      logInfo("ai_finalization_retry_skipped", {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      }, {
-        "app.ai.steps": finalResult.steps.length,
-        "app.ai.tool_calls": finalResult.toolCalls.length,
-        "app.ai.tool_results": finalResult.toolResults.length
-      }, "Skipped finalization retries; proceeding to forced no-tool finalization");
-    }
-
     const primaryText = finalResult.text?.trim();
-
-    if (!finalAnswer && !primaryText) {
-      const toolErrorSteps = countToolErrorSteps(finalResult as { steps: LoopStepLike[] });
-      logWarn("ai_finalization_forced", {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      }, {
-        "app.ai.finish_reason": finalResult.finishReason,
-        "app.ai.steps": finalResult.steps.length,
-        "app.ai.tool_calls": finalResult.toolCalls.length,
-        "app.ai.tool_results": finalResult.toolResults.length,
-        "app.ai.tool_error_steps": toolErrorSteps
-      }, "Empty text after primary execution; forcing no-tool finalization");
-
-      try {
-        const forcedFinalizationToolSection = hasToolResults(finalResult)
-          ? [
-              "Tool results from the previous attempt (JSON):",
-              serializeToolResultsForRetry(finalResult)
-            ]
-          : [
-              "No tool results were produced in the previous attempt.",
-              "If required, reason from available thread context only."
-            ];
-
-        const forcedFinalization = await withSpan(
-          "ai.generateAssistantReply.forced_finalization",
-          "ai.generate_text",
-          {
-            slackThreadId: context.correlation?.threadId,
-            slackUserId: context.correlation?.requesterId,
-            slackChannelId: context.correlation?.channelId,
-            workflowRunId: context.correlation?.workflowRunId,
-            assistantUserName: context.assistant?.userName,
-            modelId: botConfig.modelId
-          },
-          () =>
-            generateTextWithTelemetry(
-              {
-                model: gateway(botConfig.modelId),
-                prompt: [
-                  "You are generating the final user-facing reply for a Slack assistant turn.",
-                  "Do not call tools. Do not describe internal reasoning.",
-                  "Return only markdown text intended for the user.",
-                  "",
-                  "Original user turn content:",
-                  userTurnText,
-                  "",
-                  ...forcedFinalizationToolSection
-                ].join("\n")
-              },
-              {
-                functionId: "generateAssistantReply.forced_finalization",
-                metadata: telemetryMetadata,
-                isEnabled: true,
-                recordInputs: true,
-                recordOutputs: true
-              }
-            )
-        );
-
-        const forcedText = forcedFinalization.text?.trim();
-        if (forcedText && forcedText.length > 0) {
-          finalAnswer = forcedText;
-        } else {
-          logWarn("ai_finalization_forced_empty", {
-            slackThreadId: context.correlation?.threadId,
-            slackUserId: context.correlation?.requesterId,
-            slackChannelId: context.correlation?.channelId,
-            workflowRunId: context.correlation?.workflowRunId,
-            assistantUserName: context.assistant?.userName,
-            modelId: botConfig.modelId
-          }, {
-            "app.ai.forced_finish_reason": forcedFinalization.finishReason,
-            "app.ai.forced_response_messages": forcedFinalization.response.messages.length,
-            "app.ai.forced_sources": forcedFinalization.sources.length,
-            "app.ai.forced_files": forcedFinalization.files.length
-          }, "Forced no-tool finalization returned empty text");
-        }
-      } catch (error) {
-        logException(error, "ai_finalization_forced_failed", {
-          slackThreadId: context.correlation?.threadId,
-          slackUserId: context.correlation?.requesterId,
-          slackChannelId: context.correlation?.channelId,
-          workflowRunId: context.correlation?.workflowRunId,
-          assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId
-        }, {}, "Forced no-tool finalization failed");
-      }
-    }
+    const stepCount = Array.isArray(finalResult.steps) ? finalResult.steps.length : 0;
+    const toolCalls = Array.isArray(finalResult.toolCalls) ? finalResult.toolCalls : [];
+    const toolResults = Array.isArray(finalResult.toolResults) ? finalResult.toolResults : [];
+    const sourceCount = Array.isArray(finalResult.sources) ? finalResult.sources.length : 0;
+    const resultFileCount = Array.isArray(finalResult.files) ? finalResult.files.length : 0;
+    const responseMessageCount = Array.isArray(finalResult.response?.messages) ? finalResult.response.messages.length : 0;
 
     if (!finalAnswer && !primaryText) {
       const toolErrorSteps = countToolErrorSteps(finalResult as { steps: LoopStepLike[] });
@@ -744,22 +630,22 @@ export async function generateAssistantReply(
         modelId: botConfig.modelId
       }, {
         "app.ai.finish_reason": finalResult.finishReason,
-        "app.ai.steps": finalResult.steps.length,
-        "app.ai.sources": finalResult.sources.length,
-        "app.ai.tool_calls": finalResult.toolCalls.length,
-        "app.ai.tool_results": finalResult.toolResults.length,
+        "app.ai.steps": stepCount,
+        "app.ai.tool_calls": toolCalls.length,
+        "app.ai.tool_results": toolResults.length,
         "app.ai.tool_error_steps": toolErrorSteps,
         "app.ai.generated_files": generatedFiles.length,
-        "app.ai.result_files": finalResult.files.length,
-        "app.ai.response_messages": finalResult.response.messages.length,
+        "app.ai.sources": sourceCount,
+        "app.ai.result_files": resultFileCount,
+        "app.ai.response_messages": responseMessageCount,
         "app.ai.step_diagnostics": summarizeStepDiagnostics(finalResult)
       }, "Model returned empty text response");
 
       finalAnswer = buildExecutionFailureMessage({
         finishReason: finalResult.finishReason,
         steps: finalResult.steps as LoopStepLike[],
-        toolCalls: finalResult.toolCalls,
-        toolResults: finalResult.toolResults
+        toolCalls,
+        toolResults
       });
     }
 
@@ -769,15 +655,15 @@ export async function generateAssistantReply(
       buildExecutionFailureMessage({
         finishReason: finalResult.finishReason,
         steps: finalResult.steps as LoopStepLike[],
-        toolCalls: finalResult.toolCalls,
-        toolResults: finalResult.toolResults
+        toolCalls,
+        toolResults
       });
     if (isExecutionEscapeResponse(resolvedText)) {
       const failureMessage = buildExecutionFailureMessage({
         finishReason: finalResult.finishReason,
         steps: finalResult.steps as LoopStepLike[],
-        toolCalls: finalResult.toolCalls,
-        toolResults: finalResult.toolResults
+        toolCalls,
+        toolResults
       });
       logWarn("ai_execution_escape_response", {
         slackThreadId: context.correlation?.threadId,
@@ -788,8 +674,8 @@ export async function generateAssistantReply(
         modelId: botConfig.modelId
       }, {
         "app.ai.finish_reason": finalResult.finishReason,
-        "app.ai.tool_calls": finalResult.toolCalls.length,
-        "app.ai.tool_results": finalResult.toolResults.length,
+        "app.ai.tool_calls": toolCalls.length,
+        "app.ai.tool_results": toolResults.length,
         "app.ai.tool_error_steps": countToolErrorSteps(finalResult as { steps: LoopStepLike[] })
       }, "Resolved text matched execution-escape pattern");
 
@@ -804,8 +690,8 @@ export async function generateAssistantReply(
       const failureMessage = buildExecutionFailureMessage({
         finishReason: finalResult.finishReason,
         steps: finalResult.steps as LoopStepLike[],
-        toolCalls: finalResult.toolCalls,
-        toolResults: finalResult.toolResults
+        toolCalls,
+        toolResults
       });
       logWarn("ai_raw_tool_payload_response", {
         slackThreadId: context.correlation?.threadId,
@@ -816,8 +702,8 @@ export async function generateAssistantReply(
         modelId: botConfig.modelId
       }, {
         "app.ai.finish_reason": finalResult.finishReason,
-        "app.ai.tool_calls": finalResult.toolCalls.length,
-        "app.ai.tool_results": finalResult.toolResults.length
+        "app.ai.tool_calls": toolCalls.length,
+        "app.ai.tool_results": toolResults.length
       }, "Resolved text matched raw tool-payload shape");
 
       return {
