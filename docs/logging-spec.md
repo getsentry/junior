@@ -42,6 +42,18 @@ Each emitted log record follows this logical shape (transport can vary):
 - `trace_id` (if active span)
 - `span_id` (if active span)
 
+### Message Semantics
+- Every log record must include both:
+  - `event.name`: stable snake_case identifier for machines, dashboards, and alert rules.
+  - `body`: natural-language message for humans.
+- `event.name` is the canonical grouping/filter key in tooling.
+- `body` should follow plain language semantics:
+  - concise
+  - specific
+  - past/present tense factual statement (not a promise)
+  - no ambiguous placeholders like "something failed"
+- Do not use `event.name` as a prose sentence and do not omit `event.name` in favor of only text.
+
 ### API Surface (`src/chat/logging.ts`)
 - `log.debug(eventName, attrs?, body?)`
 - `log.info(eventName, attrs?, body?)`
@@ -155,6 +167,7 @@ Only when no semantic key exists:
 - 100% of application logs go through `src/chat/logging.ts`.
 - 0 mixed key style for migrated callsites (no `media_type` / ad-hoc keys).
 - Every warning/error log has stable `event.name` and semantic attributes.
+- Every emitted log has both structured `event.name` and human-readable `body`.
 - Request/thread/user/model context appears automatically in child logs.
 - Secret redaction tests pass.
 

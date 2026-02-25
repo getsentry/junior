@@ -3,9 +3,15 @@ import type { Attachment, FileUpload, PostableMessage } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { gateway } from "ai";
 import { z } from "zod";
-import { generateObjectWithTelemetry } from "@/chat/ai";
+import { generateObjectWithTelemetry, generateTextWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
-import { captureException, logException, logWarn, toOptionalString, withSpan } from "@/chat/observability";
+import { buildConversationStatePatch, coerceThreadConversationState } from "@/chat/conversation-state";
+import type {
+  ConversationCompaction,
+  ConversationMessage,
+  ThreadConversationState
+} from "@/chat/conversation-state";
+import { captureException, logException, logInfo, logWarn, toOptionalString, withSpan } from "@/chat/observability";
 import { buildSlackOutputMessage, shouldUseAttachmentFallback } from "@/chat/output";
 import { generateAssistantReply } from "@/chat/respond";
 import { createCanvas } from "@/chat/slack-actions/canvases";
@@ -198,8 +204,14 @@ function createProgressReporter(thread: {
 }
 
 interface ThreadMessageSnapshot {
+  id?: string;
   text?: string | null;
+  metadata?: {
+    dateSent?: Date;
+  };
   author?: {
+    userId?: string;
+    isBot?: boolean | "unknown";
     isMe?: boolean;
     userName?: string;
     fullName?: string;
@@ -297,38 +309,387 @@ async function resolveUserAttachments(
   return results;
 }
 
-function buildChatHistory(recentMessages: ThreadMessageSnapshot[] | undefined, currentUserText: string): string | undefined {
-  if (!recentMessages || recentMessages.length === 0) {
+const CONTEXT_COMPACTION_TRIGGER_TOKENS = 9000;
+const CONTEXT_COMPACTION_TARGET_TOKENS = 7000;
+const CONTEXT_MIN_LIVE_MESSAGES = 12;
+const CONTEXT_COMPACTION_BATCH_SIZE = 24;
+const CONTEXT_MAX_COMPACTIONS = 16;
+const CONTEXT_MAX_MESSAGE_CHARS = 3200;
+const BACKFILL_MESSAGE_LIMIT = 80;
+
+function generateConversationId(prefix: "assistant" | "backfill" | "compaction" | "turn"): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeConversationText(text: string): string {
+  return text.trim().replace(/\s+/g, " ").slice(0, CONTEXT_MAX_MESSAGE_CHARS);
+}
+
+function estimateTokenCount(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+function renderConversationMessageLine(message: ConversationMessage): string {
+  const displayName =
+    message.author?.fullName ||
+    message.author?.userName ||
+    (message.role === "assistant" ? botConfig.userName : message.role);
+
+  const markers: string[] = [];
+  if (message.meta?.replied === false) {
+    markers.push(`assistant skipped: ${message.meta?.skippedReason ?? "no-reply route"}`);
+  }
+  if (message.meta?.explicitMention) {
+    markers.push("explicit mention");
+  }
+
+  const markerSuffix = markers.length > 0 ? ` (${markers.join("; ")})` : "";
+  return `[${message.role}] ${displayName}: ${message.text}${markerSuffix}`;
+}
+
+function updateConversationStats(conversation: ThreadConversationState): void {
+  const contextText = buildConversationContext(conversation);
+  conversation.stats.estimatedContextTokens = estimateTokenCount(contextText ?? "");
+  conversation.stats.totalMessageCount = conversation.messages.length;
+  conversation.stats.updatedAtMs = Date.now();
+}
+
+function upsertConversationMessage(conversation: ThreadConversationState, message: ConversationMessage): string {
+  const existingIndex = conversation.messages.findIndex((entry) => entry.id === message.id);
+  if (existingIndex >= 0) {
+    conversation.messages[existingIndex] = {
+      ...conversation.messages[existingIndex],
+      ...message,
+      meta: {
+        ...conversation.messages[existingIndex]?.meta,
+        ...message.meta
+      }
+    };
+    updateConversationStats(conversation);
+    return message.id;
+  }
+
+  conversation.messages.push(message);
+  updateConversationStats(conversation);
+  return message.id;
+}
+
+function markConversationMessage(
+  conversation: ThreadConversationState,
+  messageId: string | undefined,
+  patch: Partial<NonNullable<ConversationMessage["meta"]>>
+): void {
+  if (!messageId) return;
+
+  const messageIndex = conversation.messages.findIndex((entry) => entry.id === messageId);
+  if (messageIndex < 0) return;
+
+  const current = conversation.messages[messageIndex];
+  conversation.messages[messageIndex] = {
+    ...current,
+    meta: {
+      ...(current.meta ?? {}),
+      ...patch
+    }
+  };
+  updateConversationStats(conversation);
+}
+
+function buildConversationContext(
+  conversation: ThreadConversationState,
+  options: {
+    excludeMessageId?: string;
+  } = {}
+): string | undefined {
+  const messages = conversation.messages.filter((entry) => entry.id !== options.excludeMessageId);
+  if (messages.length === 0 && conversation.compactions.length === 0) {
     return undefined;
   }
 
-  const items = recentMessages
-    .filter((entry) => typeof entry.text === "string" && entry.text.trim().length > 0)
-    .map((entry) => {
-      const role = entry.author?.isMe ? "assistant" : "user";
-      const displayName = entry.author?.fullName || entry.author?.userName || role;
-      return {
-        role,
-        displayName,
-        text: (entry.text ?? "").trim()
-      };
+  const lines: string[] = [];
+  if (conversation.compactions.length > 0) {
+    lines.push("<thread-compactions>");
+    for (const [index, compaction] of conversation.compactions.entries()) {
+      lines.push(
+        [
+          `summary_${index + 1}:`,
+          compaction.summary,
+          `covered_messages: ${compaction.coveredMessageIds.length}`,
+          `created_at: ${new Date(compaction.createdAtMs).toISOString()}`
+        ].join(" ")
+      );
+    }
+    lines.push("</thread-compactions>");
+    lines.push("");
+  }
+
+  lines.push("<thread-transcript>");
+  for (const message of messages) {
+    lines.push(renderConversationMessageLine(message));
+  }
+  lines.push("</thread-transcript>");
+  return lines.join("\n");
+}
+
+function pruneCompactions(compactions: ConversationCompaction[]): ConversationCompaction[] {
+  if (compactions.length <= CONTEXT_MAX_COMPACTIONS) {
+    return compactions;
+  }
+
+  const overflowCount = compactions.length - CONTEXT_MAX_COMPACTIONS + 1;
+  const merged = compactions.slice(0, overflowCount);
+  const mergedSummary = merged.map((entry) => entry.summary).join("\n").slice(0, 3500);
+  const mergedIds = merged.flatMap((entry) => entry.coveredMessageIds).slice(0, 500);
+
+  const compacted: ConversationCompaction = {
+    id: generateConversationId("compaction"),
+    createdAtMs: Date.now(),
+    summary: mergedSummary,
+    coveredMessageIds: mergedIds
+  };
+  return [compacted, ...compactions.slice(overflowCount)];
+}
+
+async function summarizeConversationChunk(
+  messages: ConversationMessage[],
+  context: {
+    threadId?: string;
+    channelId?: string;
+    requesterId?: string;
+    workflowRunId?: string;
+  }
+): Promise<string> {
+  const transcript = messages.map((message) => renderConversationMessageLine(message)).join("\n");
+
+  try {
+    const result = await generateTextWithTelemetry(
+      {
+        model: gateway(botConfig.routerModelId),
+        temperature: 0,
+        prompt: [
+          "Summarize the following older Slack thread transcript segment for future assistant turns.",
+          "Keep the summary factual and concise.",
+          "Preserve decisions, commitments, constraints, locations, hiring criteria, and unresolved asks.",
+          "Do not invent details.",
+          "",
+          transcript
+        ].join("\n")
+      },
+      {
+        functionId: "workflow.compact_thread_context",
+        metadata: {
+          modelId: botConfig.routerModelId,
+          threadId: context.threadId ?? "",
+          channelId: context.channelId ?? "",
+          requesterId: context.requesterId ?? "",
+          workflowRunId: context.workflowRunId ?? ""
+        },
+        isEnabled: true,
+        recordInputs: true,
+        recordOutputs: true
+      }
+    );
+    const summary = result.text.trim();
+    if (summary.length > 0) {
+      return summary.slice(0, 3500);
+    }
+  } catch (error) {
+    logWarn(
+      "conversation_compaction_summary_failed",
+      {
+        slackThreadId: context.threadId,
+        slackUserId: context.requesterId,
+        slackChannelId: context.channelId,
+        workflowRunId: context.workflowRunId,
+        assistantUserName: botConfig.userName,
+        modelId: botConfig.routerModelId
+      },
+      {
+        "error.message": error instanceof Error ? error.message : String(error),
+        "app.compaction_messages_covered": messages.length
+      },
+      "Compaction summarization failed; using fallback summary"
+    );
+  }
+
+  return transcript.slice(0, 2800);
+}
+
+async function compactConversationIfNeeded(
+  conversation: ThreadConversationState,
+  context: {
+    threadId?: string;
+    channelId?: string;
+    requesterId?: string;
+    workflowRunId?: string;
+  }
+): Promise<void> {
+  updateConversationStats(conversation);
+  let estimatedTokens = conversation.stats.estimatedContextTokens;
+  logInfo(
+    "conversation_context_estimated",
+    {
+      slackThreadId: context.threadId,
+      slackUserId: context.requesterId,
+      slackChannelId: context.channelId,
+      workflowRunId: context.workflowRunId,
+      assistantUserName: botConfig.userName,
+      modelId: botConfig.modelId
+    },
+    {
+      "app.context_tokens_estimated": estimatedTokens
+    },
+    "Estimated thread context tokens"
+  );
+
+  while (
+    estimatedTokens > CONTEXT_COMPACTION_TRIGGER_TOKENS &&
+    conversation.messages.length > CONTEXT_MIN_LIVE_MESSAGES
+  ) {
+    const compactCount = Math.min(
+      CONTEXT_COMPACTION_BATCH_SIZE,
+      conversation.messages.length - CONTEXT_MIN_LIVE_MESSAGES
+    );
+    if (compactCount <= 0) {
+      break;
+    }
+
+    const compactedChunk = conversation.messages.slice(0, compactCount);
+    const summary = await summarizeConversationChunk(compactedChunk, context);
+    conversation.compactions.push({
+      id: generateConversationId("compaction"),
+      createdAtMs: Date.now(),
+      summary,
+      coveredMessageIds: compactedChunk.map((entry) => entry.id)
     });
+    conversation.compactions = pruneCompactions(conversation.compactions);
+    conversation.messages = conversation.messages.slice(compactCount);
+    conversation.stats.compactedMessageCount += compactCount;
+    updateConversationStats(conversation);
 
-  if (items.length === 0) {
-    return undefined;
+    estimatedTokens = conversation.stats.estimatedContextTokens;
+    logInfo(
+      "conversation_compaction_applied",
+      {
+        slackThreadId: context.threadId,
+        slackUserId: context.requesterId,
+        slackChannelId: context.channelId,
+        workflowRunId: context.workflowRunId,
+        assistantUserName: botConfig.userName,
+        modelId: botConfig.modelId
+      },
+      {
+        "app.compaction_messages_covered": compactCount,
+        "app.context_tokens_estimated": estimatedTokens
+      },
+      "Compacted thread transcript context"
+    );
+
+    if (estimatedTokens <= CONTEXT_COMPACTION_TARGET_TOKENS) {
+      break;
+    }
+  }
+}
+
+function createConversationMessageFromThreadSnapshot(
+  entry: ThreadMessageSnapshot,
+  fallbackPrefix: "backfill" | "turn"
+): ConversationMessage | null {
+  const rawText = typeof entry.text === "string" ? normalizeConversationText(entry.text) : "";
+  if (!rawText) {
+    return null;
   }
 
-  const last = items[items.length - 1];
-  if (last && last.role === "user" && last.text === currentUserText.trim()) {
-    items.pop();
+  return {
+    id: toOptionalString(entry.id) ?? generateConversationId(fallbackPrefix),
+    role: entry.author?.isMe ? "assistant" : "user",
+    text: rawText,
+    createdAtMs:
+      entry.metadata?.dateSent instanceof Date && Number.isFinite(entry.metadata.dateSent.getTime())
+        ? entry.metadata.dateSent.getTime()
+        : Date.now(),
+    author: {
+      userId: toOptionalString(entry.author?.userId),
+      userName: toOptionalString(entry.author?.userName),
+      fullName: toOptionalString(entry.author?.fullName),
+      isBot: typeof entry.author?.isBot === "boolean" ? entry.author.isBot : undefined
+    }
+  };
+}
+
+async function seedConversationBackfill(
+  thread: {
+    messages?: AsyncIterable<ThreadMessageSnapshot>;
+    recentMessages?: ThreadMessageSnapshot[];
+    refresh?: () => Promise<void>;
+  },
+  conversation: ThreadConversationState
+): Promise<void> {
+  if (conversation.backfill.completedAtMs) {
+    return;
+  }
+  if (conversation.messages.length > 0 || conversation.compactions.length > 0) {
+    conversation.backfill = {
+      completedAtMs: Date.now(),
+      source: "recent_messages"
+    };
+    updateConversationStats(conversation);
+    return;
   }
 
-  const window = items.slice(-12);
-  if (window.length === 0) {
-    return undefined;
+  const seeded: ConversationMessage[] = [];
+  let source: "recent_messages" | "thread_fetch" = "recent_messages";
+
+  try {
+    if (thread.messages) {
+      const fetchedNewestFirst: ThreadMessageSnapshot[] = [];
+      for await (const entry of thread.messages) {
+        fetchedNewestFirst.push(entry);
+        if (fetchedNewestFirst.length >= BACKFILL_MESSAGE_LIMIT) {
+          break;
+        }
+      }
+      fetchedNewestFirst.reverse();
+      for (const entry of fetchedNewestFirst) {
+        const message = createConversationMessageFromThreadSnapshot(entry, "backfill");
+        if (message) {
+          seeded.push(message);
+        }
+      }
+      if (seeded.length > 0) {
+        source = "thread_fetch";
+      }
+    }
+  } catch {
+    // Fallback below.
   }
 
-  return window.map((item) => `[${item.role}] ${item.displayName}: ${item.text}`).join("\n");
+  if (seeded.length === 0) {
+    try {
+      await thread.refresh?.();
+    } catch {
+      // Best effort only.
+    }
+
+    const fromRecent = (thread.recentMessages ?? []).slice(-BACKFILL_MESSAGE_LIMIT);
+    for (const entry of fromRecent) {
+      const message = createConversationMessageFromThreadSnapshot(entry, "backfill");
+      if (message) {
+        seeded.push(message);
+      }
+    }
+    source = "recent_messages";
+  }
+
+  for (const message of seeded) {
+    upsertConversationMessage(conversation, message);
+  }
+
+  conversation.backfill = {
+    completedAtMs: Date.now(),
+    source
+  };
+  updateConversationStats(conversation);
 }
 
 const replyDecisionSchema = z.object({
@@ -350,7 +711,7 @@ const ROUTER_CONFIDENCE_THRESHOLD = 0.72;
 async function shouldReplyInSubscribedThread(args: {
   rawText: string;
   text: string;
-  chatHistory?: string;
+  conversationContext?: string;
   isExplicitMention?: boolean;
   context: {
     threadId?: string;
@@ -386,7 +747,7 @@ async function shouldReplyInSubscribedThread(args: {
       "Return JSON with should_reply, confidence, and a short reason. Do not return any extra keys.",
       "",
       `<assistant-name>${escapeXml(botConfig.userName)}</assistant-name>`,
-      `<chat-history>${escapeXml(args.chatHistory?.trim() || "[none]")}</chat-history>`
+      `<thread-context>${escapeXml(args.conversationContext?.trim() || "[none]")}</thread-context>`
     ].join("\n");
 
     const result = await generateObjectWithTelemetry(
@@ -515,23 +876,169 @@ async function maybePostCanvasFallback(args: {
   return true;
 }
 
+interface ThreadTurnHandle {
+  id?: string;
+  messages?: AsyncIterable<ThreadMessageSnapshot>;
+  post: (message: string | PostableMessage) => Promise<unknown>;
+  recentMessages?: ThreadMessageSnapshot[];
+  refresh?: () => Promise<void>;
+  setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
+  startTyping?: (status?: string) => Promise<void>;
+  state?: Promise<unknown | null>;
+}
+
+interface IncomingThreadMessage {
+  attachments?: Attachment[];
+  author: {
+    fullName?: string;
+    isBot?: boolean | "unknown";
+    isMe: boolean;
+    userId?: string;
+    userName?: string;
+  };
+  id?: string;
+  isMention?: boolean;
+  metadata?: {
+    dateSent?: Date;
+  };
+  text?: string | null;
+}
+
+interface PreparedTurnState {
+  artifacts: ThreadArtifactsState;
+  conversation: ThreadConversationState;
+  conversationContext?: string;
+  routingContext?: string;
+  userMessageId?: string;
+}
+
+function mergeArtifactsState(
+  artifacts: ThreadArtifactsState,
+  patch: Partial<ThreadArtifactsState> | undefined
+): ThreadArtifactsState {
+  if (!patch) {
+    return artifacts;
+  }
+
+  return {
+    ...artifacts,
+    ...patch,
+    listColumnMap: {
+      ...artifacts.listColumnMap,
+      ...patch.listColumnMap
+    }
+  };
+}
+
+async function persistThreadState(
+  thread: ThreadTurnHandle,
+  patch: {
+    artifacts?: ThreadArtifactsState;
+    conversation?: ThreadConversationState;
+  }
+): Promise<void> {
+  if (!thread.setState) {
+    return;
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (patch.artifacts) {
+    Object.assign(payload, buildArtifactStatePatch(patch.artifacts));
+  }
+  if (patch.conversation) {
+    Object.assign(payload, buildConversationStatePatch(patch.conversation));
+  }
+
+  if (Object.keys(payload).length === 0) {
+    return;
+  }
+  await thread.setState(payload);
+}
+
+async function prepareTurnState(args: {
+  explicitMention: boolean;
+  message: IncomingThreadMessage;
+  thread: ThreadTurnHandle;
+  userText: string;
+  context: {
+    threadId?: string;
+    requesterId?: string;
+    channelId?: string;
+    workflowRunId?: string;
+  };
+}): Promise<PreparedTurnState> {
+  const existingState = args.thread.state ? await args.thread.state : null;
+  const artifacts = coerceThreadArtifactsState(existingState);
+  const conversation = coerceThreadConversationState(existingState);
+
+  await seedConversationBackfill(args.thread, conversation);
+
+  const normalizedUserText = normalizeConversationText(args.userText) || "[non-text message]";
+  const incomingUserMessage: ConversationMessage = {
+    id: toOptionalString(args.message.id) ?? generateConversationId("turn"),
+    role: "user",
+    text: normalizedUserText,
+    createdAtMs:
+      args.message.metadata?.dateSent instanceof Date && Number.isFinite(args.message.metadata.dateSent.getTime())
+        ? args.message.metadata.dateSent.getTime()
+        : Date.now(),
+    author: {
+      userId: args.message.author.userId,
+      userName: args.message.author.userName,
+      fullName: args.message.author.fullName,
+      isBot: typeof args.message.author.isBot === "boolean" ? args.message.author.isBot : undefined
+    },
+    meta: {
+      explicitMention: args.explicitMention
+    }
+  };
+
+  const userMessageId = upsertConversationMessage(conversation, incomingUserMessage);
+
+  await compactConversationIfNeeded(conversation, {
+    threadId: args.context.threadId,
+    channelId: args.context.channelId,
+    requesterId: args.context.requesterId,
+    workflowRunId: args.context.workflowRunId
+  });
+
+  const conversationContext = buildConversationContext(conversation);
+  const routingContext = buildConversationContext(conversation, {
+    excludeMessageId: userMessageId
+  });
+
+  logInfo(
+    "conversation_turn_prepared",
+    {
+      slackThreadId: args.context.threadId,
+      slackUserId: args.context.requesterId,
+      slackChannelId: args.context.channelId,
+      workflowRunId: args.context.workflowRunId,
+      assistantUserName: botConfig.userName,
+      modelId: botConfig.modelId
+    },
+    {
+      "app.backfill_source": conversation.backfill.source ?? "none",
+      "app.context_tokens_estimated": conversation.stats.estimatedContextTokens
+    },
+    "Prepared thread conversation state"
+  );
+
+  return {
+    artifacts,
+    conversation,
+    conversationContext,
+    routingContext,
+    userMessageId
+  };
+}
+
 async function replyToThread(
-  thread: {
-    post: (message: string | PostableMessage) => Promise<unknown>;
-    startTyping?: (status?: string) => Promise<void>;
-    recentMessages?: ThreadMessageSnapshot[];
-    id?: string;
-    state?: Promise<unknown | null>;
-    setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
-  },
-  message: {
-    author: { isMe: boolean; userId?: string; userName?: string; fullName?: string };
-    text?: string | null;
-    attachments?: Attachment[];
-    isMention?: boolean;
-  },
+  thread: ThreadTurnHandle,
+  message: IncomingThreadMessage,
   options: {
     explicitMention?: boolean;
+    preparedState?: PreparedTurnState;
   } = {}
 ) {
   if (message.author.isMe) {
@@ -558,9 +1065,29 @@ async function replyToThread(
       const userText = stripLeadingBotMention(message.text ?? "", {
         stripLeadingSlackMentionToken: options.explicitMention || Boolean(message.isMention)
       });
-      const chatHistory = buildChatHistory(thread.recentMessages, userText);
+
+      const preparedState =
+        options.preparedState ??
+        (await prepareTurnState({
+          thread,
+          message,
+          userText,
+          explicitMention: Boolean(options.explicitMention || message.isMention),
+          context: {
+            threadId,
+            requesterId: message.author.userId,
+            channelId,
+            workflowRunId
+          }
+        }));
+
+      preparedState.conversation.processing.activeTurnId = generateConversationId("turn");
+      updateConversationStats(preparedState.conversation);
+      await persistThreadState(thread, {
+        conversation: preparedState.conversation
+      });
+
       const fallbackIdentity = await lookupSlackUser(message.author.userId);
-      const currentState = coerceThreadArtifactsState(await thread.state);
       const userAttachments = await resolveUserAttachments(message.attachments, {
         threadId,
         requesterId: message.author.userId,
@@ -570,6 +1097,7 @@ async function replyToThread(
 
       const progress = createProgressReporter(thread);
       await progress.start();
+      let persistedAtLeastOnce = false;
 
       try {
         const reply = await generateAssistantReply(userText, {
@@ -582,8 +1110,8 @@ async function replyToThread(
             userName: message.author.userName ?? fallbackIdentity?.userName,
             fullName: message.author.fullName ?? fallbackIdentity?.fullName
           },
-          chatHistory,
-          artifactState: currentState,
+          conversationContext: preparedState.routingContext ?? preparedState.conversationContext,
+          artifactState: preparedState.artifacts,
           userAttachments,
           correlation: {
             threadId,
@@ -595,7 +1123,29 @@ async function replyToThread(
           onStatus: (status) => progress.setStatus(status)
         });
 
-        const artifactStatePatch = reply.artifactStatePatch ? { ...reply.artifactStatePatch } : undefined;
+        markConversationMessage(preparedState.conversation, preparedState.userMessageId, {
+          replied: true,
+          skippedReason: undefined
+        });
+
+        upsertConversationMessage(preparedState.conversation, {
+          id: generateConversationId("assistant"),
+          role: "assistant",
+          text: normalizeConversationText(reply.text) || "[empty response]",
+          createdAtMs: Date.now(),
+          author: {
+            userId: botConfig.slackBotUserId,
+            userName: botConfig.userName,
+            isBot: true
+          },
+          meta: {
+            replied: true
+          }
+        });
+
+        const artifactStatePatch: Partial<ThreadArtifactsState> = reply.artifactStatePatch
+          ? { ...reply.artifactStatePatch }
+          : {};
 
         let usedCanvasFallback = false;
         try {
@@ -626,19 +1176,30 @@ async function replyToThread(
           );
         }
 
-        if (artifactStatePatch && thread.setState) {
-          const latestState = coerceThreadArtifactsState(await thread.state);
-          const nextArtifacts: ThreadArtifactsState = {
-            ...latestState,
-            ...artifactStatePatch,
-            listColumnMap: {
-              ...latestState.listColumnMap,
-              ...artifactStatePatch.listColumnMap
-            }
-          };
-          await thread.setState(buildArtifactStatePatch(nextArtifacts));
-        }
+        const shouldPersistArtifacts = Object.keys(artifactStatePatch).length > 0;
+        const nextArtifacts = shouldPersistArtifacts
+          ? mergeArtifactsState(preparedState.artifacts, artifactStatePatch)
+          : undefined;
+        preparedState.conversation.processing.activeTurnId = undefined;
+        preparedState.conversation.processing.lastCompletedAtMs = Date.now();
+        updateConversationStats(preparedState.conversation);
+        await persistThreadState(thread, {
+          artifacts: nextArtifacts,
+          conversation: preparedState.conversation
+        });
+        persistedAtLeastOnce = true;
       } finally {
+        if (!persistedAtLeastOnce) {
+          preparedState.conversation.processing.activeTurnId = undefined;
+          preparedState.conversation.processing.lastCompletedAtMs = Date.now();
+          markConversationMessage(preparedState.conversation, preparedState.userMessageId, {
+            replied: false,
+            skippedReason: "reply failed"
+          });
+          await persistThreadState(thread, {
+            conversation: preparedState.conversation
+          });
+        }
         await progress.stop();
       }
     }
@@ -714,11 +1275,27 @@ bot.onSubscribedMessage(async (thread, message) => {
     const userText = stripLeadingBotMention(rawUserText, {
       stripLeadingSlackMentionToken: Boolean(message.isMention)
     });
-    const chatHistory = buildChatHistory(thread.recentMessages, userText);
+    const preparedState = await prepareTurnState({
+      thread,
+      message,
+      userText,
+      explicitMention: Boolean(message.isMention),
+      context: {
+        threadId,
+        requesterId: message.author.userId,
+        channelId,
+        workflowRunId
+      }
+    });
+
+    await persistThreadState(thread, {
+      conversation: preparedState.conversation
+    });
+
     const decision = await shouldReplyInSubscribedThread({
       rawText: rawUserText,
       text: userText,
-      chatHistory,
+      conversationContext: preparedState.routingContext ?? preparedState.conversationContext,
       isExplicitMention: Boolean(message.isMention),
       context: {
         threadId,
@@ -744,6 +1321,16 @@ bot.onSubscribedMessage(async (thread, message) => {
         },
         "Skipping subscribed message reply"
       );
+      markConversationMessage(preparedState.conversation, preparedState.userMessageId, {
+        replied: false,
+        skippedReason: decision.reason
+      });
+      preparedState.conversation.processing.activeTurnId = undefined;
+      preparedState.conversation.processing.lastCompletedAtMs = Date.now();
+      updateConversationStats(preparedState.conversation);
+      await persistThreadState(thread, {
+        conversation: preparedState.conversation
+      });
       return;
     }
 
@@ -760,7 +1347,8 @@ bot.onSubscribedMessage(async (thread, message) => {
       },
       async () => {
         await replyToThread(thread, message, {
-          explicitMention: decision.reason === "explicit mention"
+          explicitMention: decision.reason === "explicit mention",
+          preparedState
         });
       }
     );

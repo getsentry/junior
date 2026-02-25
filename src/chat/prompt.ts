@@ -172,10 +172,11 @@ export function buildSystemPrompt(params: {
       "skills",
       [
         "- For explicit slash commands, treat `/skill-name` as authoritative intent for that skill.",
-        "- For slash-invoked skills, call `load_skill` for that exact skill before applying skill-specific behavior.",
+        "- If slash-invoked skill instructions are already present in <active-skills>, apply them immediately.",
+        "- Otherwise, for slash-invoked skills, call `load_skill` for that exact skill before applying skill-specific behavior.",
         "- For non-slash requests where a skill clearly matches, call `load_skill` before applying skill-specific behavior.",
-        "- Do not claim to have used a skill unless `load_skill` succeeded in this turn.",
-        "- Never apply skill-specific behavior until `load_skill` has succeeded in this turn.",
+        "- Do not claim to have used a skill unless it is present in <active-skills> or `load_skill` succeeded in this turn.",
+        "- Never apply skill-specific behavior unless the skill is present in <active-skills> or `load_skill` succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",
         "- After `load_skill`, resolve any relative paths in skill instructions against `skill_dir` (or SKILL.md parent).",
         "- If no skill is a clear fit, continue with normal tool usage."

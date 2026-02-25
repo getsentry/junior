@@ -1,5 +1,6 @@
 import { gateway, hasToolCall, NoSuchToolError, stepCountIs, ToolLoopAgent, type ToolCallRepairFunction } from "ai";
 import type { FileUpload } from "chat";
+import { z } from "zod";
 import { generateObjectWithTelemetry, generateTextWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
 import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
@@ -8,6 +9,7 @@ import { buildSystemPrompt } from "@/chat/prompt";
 import {
   discoverSkills,
   findSkillByName,
+  loadSkillsByName,
   parseSkillInvocation
 } from "@/chat/skills";
 import type { Skill } from "@/chat/skills";
@@ -30,7 +32,7 @@ export interface ReplyRequestContext {
     threadTs?: string;
     requesterId?: string;
   };
-  chatHistory?: string;
+  conversationContext?: string;
   artifactState?: ThreadArtifactsState;
   userAttachments?: Array<{
     data: Buffer;
@@ -54,15 +56,25 @@ function formatUnknownSkillMessage(requestedSkill: string, availableSkills: Arra
   ].join("\n");
 }
 
-function isExecutionDeferralResponse(text: string): boolean {
-  return /\b(want me to proceed|do you want me to proceed|shall i proceed|give me a moment|let me do that now|i need to run|i need to gather|i need to load|can i proceed|should i proceed)\b/i.test(
-    text
-  );
-}
+const completionOutcomeClassificationSchema = z.object({
+  outcome: z.enum(["completed", "continue", "blocked"]).describe("Execution outcome classification."),
+  confidence: z.number().min(0).max(1).optional().describe("Classifier confidence from 0 to 1."),
+  reason: z.string().max(200).optional().describe("Short reason for this classification."),
+  blocking_question: z
+    .string()
+    .max(240)
+    .optional()
+    .describe("One concrete question to ask the user when outcome is blocked."),
+  missing_input: z
+    .string()
+    .max(120)
+    .optional()
+    .describe("Short name for the missing required input when outcome is blocked.")
+});
 
-function buildUserTurnText(userInput: string, chatHistory?: string): string {
-  const trimmedHistory = chatHistory?.trim();
-  if (!trimmedHistory) {
+function buildUserTurnText(userInput: string, conversationContext?: string): string {
+  const trimmedContext = conversationContext?.trim();
+  if (!trimmedContext) {
     return userInput;
   }
 
@@ -71,10 +83,10 @@ function buildUserTurnText(userInput: string, chatHistory?: string): string {
     userInput,
     "</current-message>",
     "",
-    "<recent-thread-context>",
-    "Use this as context for follow-up continuity when relevant.",
-    trimmedHistory,
-    "</recent-thread-context>"
+    "<thread-conversation-context>",
+    "Use this context for continuity across prior thread turns.",
+    trimmedContext,
+    "</thread-conversation-context>"
   ].join("\n");
 }
 
@@ -143,19 +155,131 @@ function extractFinalAnswer(result: {
   return undefined;
 }
 
+type CompletionOutcome = "completed" | "continue" | "blocked";
+
+interface CompletionOutcomeDecision {
+  outcome: CompletionOutcome;
+  confidence?: number;
+  reason: string;
+  blockingQuestion?: string;
+  missingInput?: string;
+}
+
+async function classifyCompletionOutcome(args: {
+  candidateText: string;
+  userTurnText: string;
+  requiredSkillName?: string;
+  telemetryMetadata: Record<string, string>;
+  context: ReplyRequestContext;
+}): Promise<CompletionOutcomeDecision> {
+  const candidate = args.candidateText.trim();
+  if (!candidate) {
+    return {
+      outcome: "continue",
+      reason: "empty response"
+    };
+  }
+
+  try {
+    const classifierSystem = [
+      "You are classifying an assistant response outcome for an autonomous execution loop.",
+      "Use exactly one outcome:",
+      "- completed: the task was completed in this turn.",
+      "- continue: the response is incomplete and execution should continue autonomously without asking the user.",
+      "- blocked: progress is blocked by a required missing input that cannot be discovered via available tools.",
+      "Only use blocked for true hard blockers.",
+      "Return strict JSON with keys: outcome, confidence, reason, blocking_question, missing_input.",
+      "Include blocking_question only when outcome is blocked. It must be one concise, concrete question."
+    ].join("\n");
+
+    const result = await generateObjectWithTelemetry(
+      {
+        model: gateway(botConfig.routerModelId),
+        schema: completionOutcomeClassificationSchema,
+        temperature: 0,
+        maxOutputTokens: 80,
+        system: classifierSystem,
+        prompt: [
+          "<user-request>",
+          args.userTurnText,
+          "</user-request>",
+          "",
+          args.requiredSkillName ? `Active slash skill: /${args.requiredSkillName}` : "No active slash skill.",
+          "",
+          "<candidate-response>",
+          candidate,
+          "</candidate-response>"
+        ].join("\n")
+      },
+      {
+        functionId: "generateAssistantReply.classify_completion_outcome",
+        metadata: {
+          ...args.telemetryMetadata,
+          routerModelId: botConfig.routerModelId
+        },
+        isEnabled: true,
+        recordInputs: true,
+        recordOutputs: true
+      }
+    );
+
+    const parsed = completionOutcomeClassificationSchema.parse(result.object);
+    return {
+      outcome: parsed.outcome,
+      confidence: parsed.confidence,
+      reason: parsed.reason?.trim() || "llm classifier",
+      blockingQuestion: parsed.blocking_question?.trim(),
+      missingInput: parsed.missing_input?.trim()
+    };
+  } catch (error) {
+    logWarn("ai_completion_classifier_failed", {
+      slackThreadId: args.context.correlation?.threadId,
+      slackUserId: args.context.correlation?.requesterId,
+      slackChannelId: args.context.correlation?.channelId,
+      workflowRunId: args.context.correlation?.workflowRunId,
+      assistantUserName: args.context.assistant?.userName,
+      modelId: botConfig.routerModelId
+    }, {
+      "error.message": error instanceof Error ? error.message : String(error)
+    }, "Completion outcome classifier failed");
+
+    return {
+      outcome: "continue",
+      reason: "classifier failed"
+    };
+  }
+}
+
+function toBlockedQuestion(decision: CompletionOutcomeDecision, fallbackText: string): string {
+  const explicit = decision.blockingQuestion?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const fallback = fallbackText.trim();
+  if (fallback.endsWith("?")) {
+    return fallback;
+  }
+
+  return "I need one required input to continue. What should I use?";
+}
+
 export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {}
 ): Promise<AssistantReply> {
   try {
     const availableSkills = await discoverSkills();
-    const activeSkills: Skill[] = [];
     const userInput = messageText;
-    const userTurnText = buildUserTurnText(userInput, context.chatHistory);
+    const userTurnText = buildUserTurnText(userInput, context.conversationContext);
     const explicitInvocation = parseSkillInvocation(userInput);
     const explicitSkill = explicitInvocation
       ? findSkillByName(explicitInvocation.skillName, availableSkills)
       : null;
+    const requiredSkillName = explicitSkill?.name;
+    const activeSkills: Skill[] = requiredSkillName
+      ? await loadSkillsByName([requiredSkillName], availableSkills)
+      : [];
 
     if (explicitInvocation && !explicitSkill) {
       return {
@@ -486,8 +610,16 @@ export async function generateAssistantReply(
     }
 
     const candidateText = finalAnswer ?? finalResult.text ?? "";
-    if (candidateText.trim().length > 0 && isExecutionDeferralResponse(candidateText)) {
-      logWarn("ai_completion_retry_enforced", {
+    const initialOutcome = await classifyCompletionOutcome({
+      candidateText,
+      userTurnText,
+      requiredSkillName,
+      telemetryMetadata,
+      context
+    });
+
+    if (initialOutcome.outcome === "blocked") {
+      logWarn("ai_completion_blocked", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
         slackChannelId: context.correlation?.channelId,
@@ -495,15 +627,39 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       }, {
-        "app.ai.finish_reason": finalResult.finishReason
-      }, "Model attempted to defer execution; running completion retry");
+        "app.ai.finish_reason": finalResult.finishReason,
+        "app.completion.reason": initialOutcome.reason,
+        "app.completion.confidence": initialOutcome.confidence,
+        "app.completion.missing_input": initialOutcome.missingInput ?? ""
+      }, "Completion blocked by missing required input");
+
+      return {
+        text: toBlockedQuestion(initialOutcome, candidateText),
+        files: generatedFiles.length > 0 ? generatedFiles : undefined,
+        artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
+      };
+    }
+
+    if (initialOutcome.outcome === "continue") {
+      logWarn("ai_completion_auto_continue", {
+        slackThreadId: context.correlation?.threadId,
+        slackUserId: context.correlation?.requesterId,
+        slackChannelId: context.correlation?.channelId,
+        workflowRunId: context.correlation?.workflowRunId,
+        assistantUserName: context.assistant?.userName,
+        modelId: botConfig.modelId
+      }, {
+        "app.ai.finish_reason": finalResult.finishReason,
+        "app.completion.reason": initialOutcome.reason,
+        "app.completion.confidence": initialOutcome.confidence
+      }, "Completion incomplete; continuing autonomously");
 
       const completionRetryAgent = new ToolLoopAgent({
         model: gateway(botConfig.modelId),
         instructions: [
           buildSystemPrompt({
             availableSkills,
-            activeSkills: [],
+            activeSkills,
             invocation: explicitInvocation,
             assistant: context.assistant,
             requester: context.requester,
@@ -513,6 +669,9 @@ export async function generateAssistantReply(
           "- Complete the user's requested task in this turn using tools as needed.",
           "- Do not ask for permission, confirmation, or more time unless there is a hard blocker.",
           "- Do not output status updates about intended future work.",
+          requiredSkillName
+            ? `- A slash-invoked skill is active: /${requiredSkillName}. Follow that skill's instructions first.`
+            : "- If a skill clearly applies, load it before finalizing.",
           "- Call final_answer with the completed user-facing markdown output."
         ].join("\n"),
         tools,
@@ -528,28 +687,113 @@ export async function generateAssistantReply(
         }
       });
 
-      const completionRetry = await completionRetryAgent.generate({
-        messages: [
-          {
-            role: "user",
-            content: userContentParts
-          },
-          {
-            role: "user",
-            content: [
-              "Previous attempt deferred execution. Complete the task now.",
-              "",
-              "Prior tool results from previous attempt (JSON):",
-              serializeToolResultsForRetry(finalResult)
-            ].join("\n")
-          }
-        ]
-      });
+      let retryResult = finalResult;
+      let retryText = candidateText;
+      let lastOutcome: CompletionOutcomeDecision = initialOutcome;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const completionRetry = await completionRetryAgent.generate({
+          messages: [
+            {
+              role: "user",
+              content: userContentParts
+            },
+            {
+              role: "user",
+              content: [
+                "Previous attempt was incomplete.",
+                "Complete the task now and provide the final answer directly.",
+                "Continue autonomously unless there is a true hard blocker.",
+                "",
+                "Prior tool results from previous attempt (JSON):",
+                serializeToolResultsForRetry(retryResult),
+                "",
+                "Previous assistant output that was not acceptable:",
+                retryText
+              ].join("\n")
+            }
+          ]
+        });
 
-      const completionAnswer = extractFinalAnswer(completionRetry) ?? completionRetry.text?.trim();
-      if (completionAnswer) {
+        const completionAnswer = extractFinalAnswer(completionRetry) ?? completionRetry.text?.trim();
+        if (!completionAnswer) {
+          retryResult = completionRetry;
+          retryText = completionRetry.text?.trim() ?? "";
+          continue;
+        }
+
+        const retryOutcome = await classifyCompletionOutcome({
+          candidateText: completionAnswer,
+          userTurnText,
+          requiredSkillName,
+          telemetryMetadata,
+          context
+        });
+
+        if (retryOutcome.outcome === "completed") {
+          return {
+            text: completionAnswer,
+            files: generatedFiles.length > 0 ? generatedFiles : undefined,
+            artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
+          };
+        }
+
+        if (retryOutcome.outcome === "blocked") {
+          logWarn("ai_completion_blocked_after_retry", {
+            slackThreadId: context.correlation?.threadId,
+            slackUserId: context.correlation?.requesterId,
+            slackChannelId: context.correlation?.channelId,
+            workflowRunId: context.correlation?.workflowRunId,
+            assistantUserName: context.assistant?.userName,
+            modelId: botConfig.modelId
+          }, {
+            "app.retry.attempt": attempt,
+            "app.completion.reason": retryOutcome.reason,
+            "app.completion.confidence": retryOutcome.confidence,
+            "app.completion.missing_input": retryOutcome.missingInput ?? ""
+          }, "Completion became blocked during retry");
+
+          return {
+            text: toBlockedQuestion(retryOutcome, completionAnswer),
+            files: generatedFiles.length > 0 ? generatedFiles : undefined,
+            artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
+          };
+        }
+
+        logWarn("ai_completion_retry_still_incomplete", {
+          slackThreadId: context.correlation?.threadId,
+          slackUserId: context.correlation?.requesterId,
+          slackChannelId: context.correlation?.channelId,
+          workflowRunId: context.correlation?.workflowRunId,
+          assistantUserName: context.assistant?.userName,
+          modelId: botConfig.modelId
+        }, {
+          "app.retry.attempt": attempt,
+          "app.completion.reason": retryOutcome.reason,
+          "app.completion.confidence": retryOutcome.confidence
+        }, "Completion retry remained incomplete");
+
+        lastOutcome = retryOutcome;
+        retryResult = completionRetry;
+        retryText = completionAnswer;
+      }
+
+      logWarn("ai_completion_retry_exhausted", {
+        slackThreadId: context.correlation?.threadId,
+        slackUserId: context.correlation?.requesterId,
+        slackChannelId: context.correlation?.channelId,
+        workflowRunId: context.correlation?.workflowRunId,
+        assistantUserName: context.assistant?.userName,
+        modelId: botConfig.modelId
+      }, {
+        "app.completion.reason": lastOutcome.reason,
+        "app.completion.confidence": lastOutcome.confidence
+      }, "Completion retries exhausted without terminal completion");
+
+      const exhaustedAnswerFromRetry = extractFinalAnswer(retryResult);
+      const exhaustedAnswer = exhaustedAnswerFromRetry ?? (retryText.trim() || retryResult.text?.trim());
+      if (exhaustedAnswer && exhaustedAnswer.length > 0) {
         return {
-          text: completionAnswer,
+          text: exhaustedAnswer,
           files: generatedFiles.length > 0 ? generatedFiles : undefined,
           artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
         };
