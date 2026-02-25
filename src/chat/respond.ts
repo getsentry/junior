@@ -2,7 +2,7 @@ import { gateway, hasToolCall, NoSuchToolError, stepCountIs, ToolLoopAgent, type
 import type { FileUpload } from "chat";
 import { generateObjectWithTelemetry, generateTextWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
-import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
+import { logException, logInfo, logWarn, setTags, withSpan } from "@/chat/observability";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
@@ -193,17 +193,6 @@ interface LoopGuardState {
   toolErrorStreak: number;
 }
 
-type RetryHistoryMessage = {
-  role: "assistant" | "tool" | "user" | "system";
-  content: any;
-  [key: string]: unknown;
-};
-
-interface RetryHistorySanitizeResult {
-  messages: RetryHistoryMessage[];
-  removedToolCallCount: number;
-}
-
 const LOOP_GUARD_REPEAT_TOOL_CALL_STREAK = 2;
 const LOOP_GUARD_TOOL_ERROR_STREAK = 2;
 const LOOP_GUARD_FORCE_FINAL_AT_STEP = 24;
@@ -262,70 +251,26 @@ function computeLoopGuardState(steps: LoopStepLike[]): LoopGuardState {
   };
 }
 
-function sanitizeRetryHistoryMessages(messages: RetryHistoryMessage[]): RetryHistorySanitizeResult {
-  const resolvedToolCallIds = new Set<string>();
+function countToolErrorSteps(result: { steps: LoopStepLike[] }): number {
+  return result.steps.reduce((count, step) => count + (hasToolError(step) ? 1 : 0), 0);
+}
 
-  for (const message of messages) {
-    if (message.role !== "tool" || !Array.isArray(message.content)) {
-      continue;
-    }
-
-    for (const part of message.content) {
-      if (!part || typeof part !== "object") continue;
-      const type = (part as { type?: unknown }).type;
-      const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
-      if (type === "tool-result" && typeof toolCallId === "string") {
-        resolvedToolCallIds.add(toolCallId);
-      }
-    }
+function buildExecutionFailureMessage(result: {
+  finishReason: string;
+  steps: LoopStepLike[];
+  toolCalls: unknown[];
+  toolResults: unknown[];
+}): string {
+  const toolErrorSteps = countToolErrorSteps(result);
+  if (toolErrorSteps > 0) {
+    return "I couldn’t complete this because one or more required tools failed in this turn. I’ve logged the failure details.";
   }
 
-  let removedToolCallCount = 0;
-  const sanitizedMessages: RetryHistoryMessage[] = [];
-
-  for (const message of messages) {
-    if (message.role !== "assistant" || !Array.isArray(message.content)) {
-      sanitizedMessages.push(message);
-      continue;
-    }
-
-    const filteredParts = message.content.filter((part) => {
-      if (!part || typeof part !== "object") return true;
-      const type = (part as { type?: unknown }).type;
-      if (type !== "tool-call") return true;
-
-      const providerExecuted = (part as { providerExecuted?: unknown }).providerExecuted;
-      if (providerExecuted === true) {
-        return true;
-      }
-
-      const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
-      if (typeof toolCallId !== "string") {
-        removedToolCallCount += 1;
-        return false;
-      }
-      if (resolvedToolCallIds.has(toolCallId)) {
-        return true;
-      }
-
-      removedToolCallCount += 1;
-      return false;
-    });
-
-    if (filteredParts.length === 0) {
-      continue;
-    }
-
-    sanitizedMessages.push({
-      ...message,
-      content: filteredParts
-    });
+  if (result.finishReason === "tool-calls" && result.toolCalls.length > 0 && result.toolResults.length === 0) {
+    return "I couldn’t complete this because the turn ended with unresolved tool calls and no usable tool results.";
   }
 
-  return {
-    messages: sanitizedMessages,
-    removedToolCallCount
-  };
+  return "I couldn’t complete this request in this turn due to an execution failure. I’ve logged the details for debugging.";
 }
 
 export async function generateAssistantReply(
@@ -537,7 +482,7 @@ export async function generateAssistantReply(
         const loopStep = step as LoopStepLike;
         if (!hasToolError(loopStep)) return;
 
-        logWarn("ai_tool_error_step", {
+        logInfo("ai_tool_error_step", {
           slackThreadId: context.correlation?.threadId,
           slackUserId: context.correlation?.requesterId,
           slackChannelId: context.correlation?.channelId,
@@ -555,23 +500,6 @@ export async function generateAssistantReply(
         recordInputs: true,
         recordOutputs: true,
         functionId: "generateAssistantReply",
-        metadata: telemetryMetadata
-      }
-    });
-
-    const finalizationAgent = new ToolLoopAgent({
-      model: gateway(botConfig.modelId),
-      instructions: baseInstructions,
-      tools,
-      toolChoice: "required",
-      activeTools: ["final_answer"],
-      stopWhen: [hasToolCall("final_answer"), stepCountIs(5)],
-      experimental_repairToolCall: repairToolCall,
-      experimental_telemetry: {
-        isEnabled: true,
-        recordInputs: true,
-        recordOutputs: true,
-        functionId: "generateAssistantReply.finalization_agent",
         metadata: telemetryMetadata
       }
     });
@@ -602,12 +530,12 @@ export async function generateAssistantReply(
 
     let finalResult = result;
     let finalAnswer = extractFinalAnswer(finalResult);
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      if (finalAnswer) break;
-      if (finalResult.text && finalResult.text.trim().length > 0) break;
-      if (finalResult.finishReason !== "tool-calls") break;
-
-      logWarn("ai_finalization_retry_requested", {
+    const skippedRetries =
+      !finalAnswer &&
+      (!finalResult.text || finalResult.text.trim().length === 0) &&
+      finalResult.finishReason === "tool-calls";
+    if (skippedRetries) {
+      logInfo("ai_finalization_retry_skipped", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
         slackChannelId: context.correlation?.channelId,
@@ -615,63 +543,14 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       }, {
-        "app.retry.attempt": attempt,
         "app.ai.steps": finalResult.steps.length,
         "app.ai.tool_calls": finalResult.toolCalls.length,
         "app.ai.tool_results": finalResult.toolResults.length
-      }, "Empty text after tool calls; requesting finalization");
-
-      const finalizationRetryContext = hasToolResults(finalResult)
-        ? [
-            "Tool results from the previous attempt (JSON):",
-            serializeToolResultsForRetry(finalResult),
-            "",
-            "Use these results to produce the final answer."
-          ]
-        : [
-            "No tool results were produced in the previous attempt.",
-            "Run the required tools now before final_answer."
-          ];
-      const finalizationRetryInstruction = [
-        ...finalizationRetryContext,
-        "",
-        "Do not ask the user to re-run, re-tag, or confirm to proceed.",
-        "",
-        "Call final_answer with the final user-facing markdown response.",
-        "Do not repeat earlier tool calls unless absolutely necessary."
-      ].join("\n");
-      const retryHistory = sanitizeRetryHistoryMessages(finalResult.response.messages);
-      if (retryHistory.removedToolCallCount > 0) {
-        logWarn("ai_retry_history_sanitized", {
-          slackThreadId: context.correlation?.threadId,
-          slackUserId: context.correlation?.requesterId,
-          slackChannelId: context.correlation?.channelId,
-          workflowRunId: context.correlation?.workflowRunId,
-          assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId
-        }, {
-          "app.ai.removed_tool_call_count": retryHistory.removedToolCallCount
-        }, "Sanitized unresolved tool calls from retry history");
-      }
-
-      finalResult = await finalizationAgent.generate({
-        messages: [
-          {
-            role: "user",
-            content: userContentParts
-          },
-          ...retryHistory.messages,
-          {
-            role: "user",
-            content: finalizationRetryInstruction
-          }
-        ]
-      });
-      await context.onStatus?.("Drafting response...");
-      finalAnswer = extractFinalAnswer(finalResult);
+      }, "Skipped finalization retries; proceeding to forced no-tool finalization");
     }
 
     if ((!finalAnswer && !finalResult.text) || (!finalAnswer && finalResult.text.trim().length === 0)) {
+      const toolErrorSteps = countToolErrorSteps(finalResult as { steps: LoopStepLike[] });
       logWarn("ai_finalization_forced", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
@@ -683,8 +562,9 @@ export async function generateAssistantReply(
         "app.ai.finish_reason": finalResult.finishReason,
         "app.ai.steps": finalResult.steps.length,
         "app.ai.tool_calls": finalResult.toolCalls.length,
-        "app.ai.tool_results": finalResult.toolResults.length
-      }, "Empty text after retries; forcing no-tool finalization");
+        "app.ai.tool_results": finalResult.toolResults.length,
+        "app.ai.tool_error_steps": toolErrorSteps
+      }, "Empty text after primary execution; forcing no-tool finalization");
 
       try {
         const forcedFinalizationToolSection = hasToolResults(finalResult)
@@ -750,6 +630,7 @@ export async function generateAssistantReply(
     }
 
     if ((!finalAnswer && !finalResult.text) || (!finalAnswer && finalResult.text.trim().length === 0)) {
+      const toolErrorSteps = countToolErrorSteps(finalResult as { steps: LoopStepLike[] });
       logWarn("ai_model_response_empty", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
@@ -763,6 +644,7 @@ export async function generateAssistantReply(
         "app.ai.sources": finalResult.sources.length,
         "app.ai.tool_calls": finalResult.toolCalls.length,
         "app.ai.tool_results": finalResult.toolResults.length,
+        "app.ai.tool_error_steps": toolErrorSteps,
         "app.ai.generated_files": generatedFiles.length,
         "app.ai.result_files": finalResult.files.length,
         "app.ai.response_messages": finalResult.response.messages.length,
@@ -772,8 +654,28 @@ export async function generateAssistantReply(
 
     const resolvedText = finalAnswer ?? (finalResult.text || "I couldn't produce a response.");
     if (isExecutionEscapeResponse(resolvedText)) {
+      const failureMessage = buildExecutionFailureMessage({
+        finishReason: finalResult.finishReason,
+        steps: finalResult.steps as LoopStepLike[],
+        toolCalls: finalResult.toolCalls,
+        toolResults: finalResult.toolResults
+      });
+      logWarn("ai_execution_escape_response", {
+        slackThreadId: context.correlation?.threadId,
+        slackUserId: context.correlation?.requesterId,
+        slackChannelId: context.correlation?.channelId,
+        workflowRunId: context.correlation?.workflowRunId,
+        assistantUserName: context.assistant?.userName,
+        modelId: botConfig.modelId
+      }, {
+        "app.ai.finish_reason": finalResult.finishReason,
+        "app.ai.tool_calls": finalResult.toolCalls.length,
+        "app.ai.tool_results": finalResult.toolResults.length,
+        "app.ai.tool_error_steps": countToolErrorSteps(finalResult as { steps: LoopStepLike[] })
+      }, "Resolved text matched execution-escape pattern");
+
       return {
-        text: "I hit an internal issue while executing that request and could not complete it in this turn. Please retry the same request.",
+        text: failureMessage,
         files: generatedFiles.length > 0 ? generatedFiles : undefined,
         artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
       };

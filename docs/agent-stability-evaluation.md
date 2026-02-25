@@ -40,6 +40,9 @@ This document tracks stability risks in the Slack agent loop, concrete mitigatio
   - Symptom: `AI_MissingToolResultsError` during finalization retries.
   - Cause: Retry history reused `response.messages` that could contain unresolved non-provider `tool-call` parts before appending a new user message.
   - Mitigation: sanitize retry history and strip unresolved non-provider tool calls before finalization retry generation (`src/chat/respond.ts`).
+- Policy update (2026-02-25):
+  - Finalization retries are disabled for now to avoid masking failures and compounding instability.
+  - Runtime flow is now: primary loop -> forced no-tool finalization (single fallback) -> explicit failure surfacing.
 - Validation run after mitigation:
   - `pnpm typecheck` passed
   - `pnpm test` passed (8 files, 25 tests)
