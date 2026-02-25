@@ -1,38 +1,18 @@
+import fs from "node:fs";
+import path from "node:path";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 import { renderActiveSkillsXml, renderSkillsHarnessXml } from "@/chat/skills";
 
-const SHIM_PERSONALITY = [
-  "# Brand Guidelines",
-  "",
-  "Write in Sentry Plain Speech by default.",
-  "",
-  "## Tone",
-  "",
-  "- default to plain speech: clear, direct, and functional",
-  "- use sentry voice only for earned moments: empty states, onboarding, loading states, and similar low-stress copy",
-  "- do not use sentry voice for errors, settings, billing, or documentation-style guidance",
-  "",
-  "## Style Rules",
-  "",
-  "- be concise and specific",
-  "- use active voice and action-first phrasing",
-  "- avoid jargon, hedging, sarcasm, slang, and internet shorthand",
-  "- do not be dismissive or snarky toward the user",
-  "- for uncertain facts, state uncertainty directly and ask for what you need",
-  "",
-  "## Formatting",
-  "",
-  "- use american english spelling",
-  "- use sentence case for normal responses",
-  "- avoid exclamation marks unless the moment is clearly celebratory",
-  "- keep labels and short actions short and direct",
-  "",
-  "## Response Defaults",
-  "",
-  "- prioritize practical next steps",
-  "- explain what happened, why it matters, and what to do next",
-  "- when blocked by policy, explain the limit plainly and offer a safe alternative"
-].join("\n");
+function loadSoul(): string {
+  const soulPath = path.join(process.cwd(), "src", "chat", "SOUL.md");
+  const raw = fs.readFileSync(soulPath, "utf8").trim();
+  if (raw.length === 0) {
+    throw new Error(`SOUL.md is empty: ${soulPath}`);
+  }
+  return raw;
+}
+
+const SHIM_PERSONALITY = loadSoul();
 
 function escapeXml(value: string): string {
   return value
