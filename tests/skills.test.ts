@@ -11,7 +11,6 @@ describe("skills", () => {
   it("discovers valid skills from the default skills directory", async () => {
     const skills = await discoverSkills();
     expect(skills.some((skill) => skill.name === "summarize-candidate")).toBe(true);
-    expect(skills.some((skill) => skill.name === "candidate-executive-summary")).toBe(true);
   });
 
   it("parses skill invocation by slash command", () => {
@@ -25,8 +24,11 @@ describe("skills", () => {
     expect(parseSkillInvocation("please summarize this candidate")).toBeNull();
   });
 
-  it("does not parse slash tokens that are not the full message command", () => {
-    expect(parseSkillInvocation("hey /summarize-candidate github: octocat")).toBeNull();
+  it("parses slash tokens anywhere in the message", () => {
+    expect(parseSkillInvocation("hey /summarize-candidate github: octocat")).toEqual({
+      skillName: "summarize-candidate",
+      args: "github: octocat"
+    });
   });
 
   it("renders available and active skill XML blocks", () => {

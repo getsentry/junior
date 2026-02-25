@@ -18,7 +18,6 @@ Co-Authored-By: (agent model name) <email>
 ## Local Skills
 - Use `agents-md` for `AGENTS.md`/`CLAUDE.md` maintenance. See `.agents/skills/agents-md/SKILL.md`
 - Use `brand-guidelines` for user-facing copy. See `.agents/skills/brand-guidelines/SKILL.md`
-- Use `candidate-executive-summary` for candidate dossiers. See `.agents/skills/candidate-executive-summary/SKILL.md`
 - Use `commit` for commits. See `.agents/skills/commit/SKILL.md`
 - Use `create-pr` for pull requests. See `.agents/skills/create-pr/SKILL.md`
 - Use `dotagents` for `agents.toml`/`agents.lock` and skill dependency management. See `.agents/skills/dotagents/SKILL.md`
