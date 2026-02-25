@@ -14,6 +14,8 @@ Co-Authored-By: (agent model name) <email>
 - Use `/commit` skill for any commit operation.
 - Use `/create-pr` skill for any PR creation operation.
 - Use `/skill-creator` skill when creating or updating skills.
+- Use structured logging conventions from `docs/logging-spec.md`.
+- Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
 
 ## Local Skills
 - Use `agents-md` for `AGENTS.md`/`CLAUDE.md` maintenance. See `.agents/skills/agents-md/SKILL.md`
