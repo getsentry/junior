@@ -244,7 +244,42 @@ export async function generateAssistantReply(
         })
     );
 
-    if (!result.text || result.text.trim().length === 0) {
+    let finalResult = result;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      if (finalResult.text && finalResult.text.trim().length > 0) break;
+      if (finalResult.finishReason !== "tool-calls") break;
+
+      logWarn("empty text after tool-calls; requesting finalization step", {
+        slackThreadId: context.correlation?.threadId,
+        slackUserId: context.correlation?.requesterId,
+        slackChannelId: context.correlation?.channelId,
+        workflowRunId: context.correlation?.workflowRunId,
+        assistantUserName: context.assistant?.userName,
+        modelId: botConfig.modelId
+      }, {
+        attempt,
+        steps: finalResult.steps.length,
+        toolCalls: finalResult.toolCalls.length,
+        toolResults: finalResult.toolResults.length
+      });
+
+      finalResult = await agent.generate({
+        messages: [
+          {
+            role: "user",
+            content: userContentParts
+          },
+          ...finalResult.response.messages,
+          {
+            role: "user",
+            content:
+              "Now provide the final user-facing markdown response using the available tool results."
+          }
+        ]
+      });
+    }
+
+    if (!finalResult.text || finalResult.text.trim().length === 0) {
       logWarn("model returned empty text response", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
@@ -253,19 +288,19 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       }, {
-        finishReason: result.finishReason,
-        steps: result.steps.length,
-        sources: result.sources.length,
-        toolCalls: result.toolCalls.length,
-        toolResults: result.toolResults.length,
+        finishReason: finalResult.finishReason,
+        steps: finalResult.steps.length,
+        sources: finalResult.sources.length,
+        toolCalls: finalResult.toolCalls.length,
+        toolResults: finalResult.toolResults.length,
         generatedFiles: generatedFiles.length,
-        resultFiles: result.files.length,
-        responseMessages: result.response.messages.length,
-        stepDiagnostics: summarizeStepDiagnostics(result)
+        resultFiles: finalResult.files.length,
+        responseMessages: finalResult.response.messages.length,
+        stepDiagnostics: summarizeStepDiagnostics(finalResult)
       });
     }
 
-    const toolNames = collectToolNames(result);
+    const toolNames = collectToolNames(finalResult);
     const loadedSkillDuringTurn = toolNames.has("load_skill");
     if (inferredSkill && !loadedSkillDuringTurn) {
       logWarn("matched skill without load_skill; running enforced retry", {
@@ -329,7 +364,7 @@ export async function generateAssistantReply(
     }
 
     return {
-      text: result.text || "I couldn't produce a response.",
+      text: finalResult.text || "I couldn't produce a response.",
       files: generatedFiles.length > 0 ? generatedFiles : undefined,
       artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
     };
