@@ -13,6 +13,7 @@
     "skills:check": "node scripts/check-skills.mjs"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^3.0.55",
     "@chat-adapter/slack": "^4.14.0",
     "@chat-adapter/state-memory": "^4.14.0",
     "@chat-adapter/state-redis": "^4.14.0",

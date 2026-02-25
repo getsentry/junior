@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { generateText, tool } from "ai";
 import { z } from "zod";
 import { gateway } from "@ai-sdk/gateway";
 import { findSkillByName, loadSkillsByName, type SkillMetadata } from "@/chat/skills";
@@ -48,6 +48,45 @@ export function createTools(availableSkills: SkillMetadata[]) {
           return {
             ok: false,
             error: error instanceof Error ? error.message : "fetch failed"
+          };
+        }
+      }
+    }),
+    image_generate: tool({
+      description: "Generate an image using AI Gateway (Gemini 3 Pro Image).",
+      inputSchema: z.object({
+        prompt: z.string().min(1).max(4000)
+      }),
+      execute: async ({ prompt }) => {
+        try {
+          const result = await generateText({
+            model: gateway("google/gemini-3-pro-image"),
+            prompt
+          });
+
+          const images = result.files
+            .filter((file) => file.mediaType.startsWith("image/"))
+            .map((file) => {
+              const base64 = Buffer.from(file.uint8Array).toString("base64");
+
+              return {
+                media_type: file.mediaType,
+                bytes: file.uint8Array.byteLength,
+                data_url: `data:${file.mediaType};base64,${base64}`
+              };
+            });
+
+          return {
+            ok: true,
+            model: "google/gemini-3-pro-image",
+            prompt,
+            image_count: images.length,
+            images
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : "image generation failed"
           };
         }
       }

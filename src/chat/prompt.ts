@@ -121,6 +121,7 @@ export function buildSystemPrompt(params: {
     "- Use `load_skill` when task-specific instructions are needed.",
     "- Use `web_search` to discover sources.",
     "- Use `web_fetch` to inspect specific URLs.",
+    "- Use `image_generate` when the user asks for image creation.",
     "- Prefer `web_search` before `web_fetch` when the user gave no URL.",
     "## Skill Invocation",
     "",
