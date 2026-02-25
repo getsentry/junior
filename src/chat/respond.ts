@@ -9,7 +9,15 @@ import {
 } from "@/chat/skills";
 import { createTools } from "@/chat/tools";
 
-export async function generateAssistantReply(messageText: string): Promise<string> {
+export interface ReplyRequestContext {
+  requester?: {
+    userId?: string;
+    userName?: string;
+    fullName?: string;
+  };
+}
+
+export async function generateAssistantReply(messageText: string, context: ReplyRequestContext = {}): Promise<string> {
   try {
     const availableSkills = await discoverSkills();
     const invocation = parseSkillInvocation(messageText);
@@ -26,7 +34,7 @@ export async function generateAssistantReply(messageText: string): Promise<strin
 
     const result = await generateText({
       model: gateway(botConfig.modelId),
-      system: buildSystemPrompt({ availableSkills, activeSkills, invocation }),
+      system: buildSystemPrompt({ availableSkills, activeSkills, invocation, requester: context.requester }),
       prompt: userInput,
       stopWhen: stepCountIs(12),
       tools: createTools(availableSkills)

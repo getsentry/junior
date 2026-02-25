@@ -14,13 +14,22 @@ export const bot = new Chat({
 
 async function replyToThread(
   thread: { post: (text: string) => Promise<unknown> },
-  message: { author: { isMe: boolean }; text?: string | null }
+  message: {
+    author: { isMe: boolean; userId?: string; userName?: string; fullName?: string };
+    text?: string | null;
+  }
 ) {
   if (message.author.isMe) {
     return;
   }
 
-  const text = await generateAssistantReply(message.text ?? "");
+  const text = await generateAssistantReply(message.text ?? "", {
+    requester: {
+      userId: message.author.userId,
+      userName: message.author.userName,
+      fullName: message.author.fullName
+    }
+  });
   await thread.post(text);
 }
 
