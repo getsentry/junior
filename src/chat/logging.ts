@@ -69,6 +69,22 @@ const LEGACY_KEY_MAP: Record<string, string> = {
 
 const contextStorage = new AsyncLocalStorage<LogAttributes>();
 
+function getSentryEnvironment(): string {
+  return (
+    process.env.SENTRY_ENVIRONMENT ??
+    process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ??
+    process.env.VERCEL_ENV ??
+    process.env.NODE_ENV ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function shouldSuppressInfoLog(level: LogLevel): boolean {
+  return level === "info" && getSentryEnvironment() === "production";
+}
+
 function redactSecrets(input: string): string {
   let out = input;
   for (const pattern of SECRETS_RE) {
@@ -212,6 +228,10 @@ function mergeAttributes(...maps: Array<Record<string, unknown> | undefined>): L
 }
 
 function emitSentry(level: LogLevel, body: string, attributes: LogAttributes): void {
+  if (shouldSuppressInfoLog(level)) {
+    return;
+  }
+
   const sentry = Sentry as unknown as SentryLike;
   const loggerFn = sentry.logger?.[level];
   if (typeof loggerFn === "function") {
