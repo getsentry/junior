@@ -1,4 +1,4 @@
-import { gateway, stepCountIs, ToolLoopAgent } from "ai";
+import { gateway, hasToolCall, stepCountIs, ToolLoopAgent } from "ai";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
@@ -132,6 +132,34 @@ function summarizeStepDiagnostics(result: {
     .join(" ; ");
 }
 
+function extractFinalAnswer(result: {
+  staticToolCalls: Array<{ toolName: string; input: unknown }>;
+  steps: Array<{
+    staticToolCalls: Array<{ toolName: string; input: unknown }>;
+  }>;
+}): string | undefined {
+  const fromCall = (call: { toolName: string; input: unknown }): string | undefined => {
+    if (call.toolName !== "final_answer") return undefined;
+    if (!call.input || typeof call.input !== "object") return undefined;
+    const answer = (call.input as { answer?: unknown }).answer;
+    if (typeof answer !== "string") return undefined;
+    const trimmed = answer.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+
+  for (const call of [...result.staticToolCalls].reverse()) {
+    const answer = fromCall(call);
+    if (answer) return answer;
+  }
+  for (const step of [...result.steps].reverse()) {
+    for (const call of [...step.staticToolCalls].reverse()) {
+      const answer = fromCall(call);
+      if (answer) return answer;
+    }
+  }
+  return undefined;
+}
+
 export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {}
@@ -212,7 +240,8 @@ export async function generateAssistantReply(
         artifactState: context.artifactState
       }),
       tools,
-      stopWhen: stepCountIs(100),
+      toolChoice: "required",
+      stopWhen: [hasToolCall("final_answer"), stepCountIs(100)],
       experimental_telemetry: {
         isEnabled: true,
         recordInputs: true,
@@ -245,7 +274,9 @@ export async function generateAssistantReply(
     );
 
     let finalResult = result;
+    let finalAnswer = extractFinalAnswer(finalResult);
     for (let attempt = 1; attempt <= 3; attempt += 1) {
+      if (finalAnswer) break;
       if (finalResult.text && finalResult.text.trim().length > 0) break;
       if (finalResult.finishReason !== "tool-calls") break;
 
@@ -277,9 +308,10 @@ export async function generateAssistantReply(
           }
         ]
       });
+      finalAnswer = extractFinalAnswer(finalResult);
     }
 
-    if (!finalResult.text || finalResult.text.trim().length === 0) {
+    if ((!finalAnswer && !finalResult.text) || (!finalAnswer && finalResult.text.trim().length === 0)) {
       logWarn("model returned empty text response", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
@@ -332,7 +364,8 @@ export async function generateAssistantReply(
           "After loading, follow only that skill's instructions and then provide a final user-visible markdown response."
         ].join("\n\n"),
         tools,
-        stopWhen: stepCountIs(100),
+        toolChoice: "required",
+        stopWhen: [hasToolCall("final_answer"), stepCountIs(100)],
         experimental_telemetry: {
           isEnabled: true,
           recordInputs: true,
@@ -354,6 +387,15 @@ export async function generateAssistantReply(
         ]
       });
 
+      const retryAnswer = extractFinalAnswer(retry);
+      if (retryAnswer) {
+        return {
+          text: retryAnswer,
+          files: generatedFiles.length > 0 ? generatedFiles : undefined,
+          artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
+        };
+      }
+
       if (retry.text && retry.text.trim().length > 0) {
         return {
           text: retry.text,
@@ -364,7 +406,7 @@ export async function generateAssistantReply(
     }
 
     return {
-      text: finalResult.text || "I couldn't produce a response.",
+      text: finalAnswer ?? (finalResult.text || "I couldn't produce a response."),
       files: generatedFiles.length > 0 ? generatedFiles : undefined,
       artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
     };

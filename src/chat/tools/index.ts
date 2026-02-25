@@ -1,4 +1,5 @@
 import type { SkillMetadata } from "@/chat/skills";
+import { createFinalAnswerTool } from "@/chat/tools/final-answer";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
@@ -52,6 +53,7 @@ export function createTools(
   const state = createToolState(hooks, context);
 
   return {
+    final_answer: createFinalAnswerTool(),
     load_skill: createLoadSkillTool(availableSkills),
     web_search: createWebSearchTool(),
     web_fetch: createWebFetchTool(hooks),

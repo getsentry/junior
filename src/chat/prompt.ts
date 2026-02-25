@@ -73,6 +73,7 @@ export function buildSystemPrompt(params: {
 }): string {
   const { availableSkills, activeSkills, invocation, requester, assistant, chatHistory, artifactState } = params;
   // Core harness contract:
+  // - See docs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
   // - Keep this prompt generic and platform-level (tone, evidence, output constraints).
   // - Do not encode per-skill behavior here.
   // - Skill-specific instructions belong in skills/*/SKILL.md and are injected via active skill context.
@@ -165,6 +166,7 @@ export function buildSystemPrompt(params: {
     "- Use `image_generate` when the user asks for image creation.",
     "- Use `slack_canvas_create` for long-form docs/specs and `slack_canvas_update` for doc follow-ups.",
     "- Use `slack_list_create`, `slack_list_add_items`, and `slack_list_update_item` for actionable task tracking.",
+    "- When your work is complete, call `final_answer` with the exact user-facing markdown response.",
     "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
     "- Prefer `web_search` before `web_fetch` when the user gave no URL.",
     "## Skills",
@@ -182,8 +184,8 @@ export function buildSystemPrompt(params: {
     "- Keep normal responses brief and scannable.",
     "- If depth is needed, start with a concise summary and then provide fuller detail.",
     "- Avoid tables unless explicitly requested.",
-    "- After any tool calls, always finish with a user-visible markdown response in this same turn.",
-    "- Never end a turn with only tool calls/results and no final user-facing text.",
+    "- End every turn by calling `final_answer` with the final markdown response.",
+    "- Do not rely on plain assistant text for the final response; use `final_answer`.",
     "- Optional delivery directive (only when needed) must be the first block in this exact shape:",
     "- <delivery>",
     "- mode: attachment|inline",
