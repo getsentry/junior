@@ -132,6 +132,19 @@ function summarizeStepDiagnostics(result: {
     .join(" ; ");
 }
 
+function serializeToolResultsForRetry(result: { toolResults: unknown[] }): string {
+  let raw = "[]";
+  try {
+    raw = JSON.stringify(result.toolResults);
+  } catch {
+    raw = "[unserializable tool results]";
+  }
+
+  const maxChars = 12_000;
+  if (raw.length <= maxChars) return raw;
+  return `${raw.slice(0, maxChars)}...[truncated]`;
+}
+
 function extractFinalAnswer(result: {
   staticToolCalls: Array<{ toolName: string; input: unknown }>;
   steps: Array<{
@@ -300,11 +313,15 @@ export async function generateAssistantReply(
             role: "user",
             content: userContentParts
           },
-          ...finalResult.response.messages,
           {
             role: "user",
-            content:
-              "Now provide the final user-facing markdown response using the available tool results."
+            content: [
+              "Prior tool results from the previous attempt (JSON):",
+              serializeToolResultsForRetry(finalResult),
+              "",
+              "Using these results, call final_answer with the final user-facing markdown response.",
+              "Do not repeat earlier tool calls unless absolutely necessary."
+            ].join("\n")
           }
         ]
       });
