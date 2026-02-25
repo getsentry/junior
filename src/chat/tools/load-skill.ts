@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool } from "@/chat/tools/definition";
 import { z } from "zod";
 import { loadSkillsByName, type SkillMetadata } from "@/chat/skills";
 import { getSkillSandbox } from "@/chat/skill-sandbox";
@@ -30,7 +30,6 @@ export function createLoadSkillTool(availableSkills: SkillMetadata[]) {
           description: skill.description,
           skill_dir: skill.skillPath,
           location: `${skill.skillPath}/SKILL.md`,
-          allowed_tools: skill.allowedTools ?? [],
           instructions: skill.body
         };
       }
@@ -54,7 +53,6 @@ export function createLoadSkillTool(availableSkills: SkillMetadata[]) {
         description: skill.description,
         skill_dir: skill.skillPath,
         location: `${skill.skillPath}/SKILL.md`,
-        allowed_tools: skill.allowedTools ?? [],
         instructions: skill.body
       };
     }

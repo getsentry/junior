@@ -1,7 +1,6 @@
-import { gateway } from "@ai-sdk/gateway";
-import { tool } from "ai";
+import { tool } from "@/chat/tools/definition";
 import { z } from "zod";
-import { generateTextWithTelemetry } from "@/chat/ai";
+import { getGatewayApiKey } from "@/chat/pi/client";
 import type { ToolHooks } from "@/chat/tools/types";
 
 function extensionForMediaType(mediaType: string): string {
@@ -14,61 +13,79 @@ function extensionForMediaType(mediaType: string): string {
 
 export function createImageGenerateTool(hooks: ToolHooks) {
   return tool({
-    description: "Generate an image using AI Gateway (Gemini 3 Pro Image).",
+    description: "Generate an image from a prompt.",
     inputSchema: z.object({
-      prompt: z
-        .string()
-        .min(1)
-        .max(4000)
-        .describe("Image generation prompt describing the desired visual output.")
+      prompt: z.string().min(1).max(4000).describe("Image generation prompt.")
     }),
     execute: async ({ prompt }) => {
-      try {
-        const result = await generateTextWithTelemetry(
-          {
-            model: gateway("google/gemini-3-pro-image"),
-            prompt
-          },
-          {
-            functionId: "image_generate",
-            metadata: {
-              modelId: "google/gemini-3-pro-image",
-              toolName: "image_generate"
-            }
-          }
-        );
+      const apiKey = getGatewayApiKey();
+      if (!apiKey) {
+        throw new Error("AI_GATEWAY_API_KEY is required for image generation");
+      }
 
-        const uploads = result.files
-          .filter((file) => file.mediaType.startsWith("image/"))
-          .map((file, index) => {
-            const extension = extensionForMediaType(file.mediaType);
-            const filename = `generated-image-${Date.now()}-${index + 1}.${extension}`;
-            return {
-              data: Buffer.from(file.uint8Array),
-              filename,
-              mimeType: file.mediaType
-            };
-          });
+      const response = await fetch("https://ai-gateway.vercel.sh/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-pro-image",
+          prompt
+        })
+      });
 
-        if (uploads.length > 0) {
-          hooks.onGeneratedFiles?.(uploads);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`image generation failed: ${response.status} ${text}`);
+      }
+
+      const payload = (await response.json()) as {
+        data?: Array<{
+          b64_json?: string;
+          url?: string;
+          mime_type?: string;
+        }>;
+      };
+      const uploads: Array<{ data: Buffer; filename: string; mimeType: string }> = [];
+      for (const [index, image] of (payload.data ?? []).entries()) {
+        let bytes: Buffer | null = null;
+        let mimeType = image.mime_type ?? "image/png";
+
+        if (typeof image.b64_json === "string" && image.b64_json.length > 0) {
+          bytes = Buffer.from(image.b64_json, "base64");
+        } else if (typeof image.url === "string" && image.url.length > 0) {
+          const fetched = await fetch(image.url);
+          if (!fetched.ok) continue;
+          mimeType = fetched.headers.get("content-type") ?? mimeType;
+          bytes = Buffer.from(await fetched.arrayBuffer());
         }
 
-        return {
-          ok: true,
-          model: "google/gemini-3-pro-image",
-          prompt,
-          image_count: uploads.length,
-          images: uploads.map((upload) => ({
-            filename: upload.filename,
-            media_type: upload.mimeType,
-            bytes: Buffer.isBuffer(upload.data) ? upload.data.byteLength : 0
-          })),
-          delivery: "Images will be attached to the Slack response as files."
-        };
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "image generation failed");
+        if (!bytes) continue;
+        const extension = extensionForMediaType(mimeType);
+        uploads.push({
+          data: bytes,
+          filename: `generated-image-${Date.now()}-${index + 1}.${extension}`,
+          mimeType
+        });
       }
+
+      if (uploads.length > 0) {
+        hooks.onGeneratedFiles?.(uploads);
+      }
+
+      return {
+        ok: true,
+        model: "google/gemini-3-pro-image",
+        prompt,
+        image_count: uploads.length,
+        images: uploads.map((upload) => ({
+          filename: upload.filename,
+          media_type: upload.mimeType,
+          bytes: upload.data.byteLength
+        })),
+        delivery: "Images will be attached to the Slack response as files."
+      };
     }
   });
 }

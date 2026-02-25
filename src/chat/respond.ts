@@ -1,20 +1,17 @@
-import { gateway, NoSuchToolError, stepCountIs, ToolLoopAgent, type ToolCallRepairFunction } from "ai";
+import { Agent, type AgentTool } from "@mariozechner/pi-agent-core";
+import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
+import { Type } from "@sinclair/typebox";
 import type { FileUpload } from "chat";
-import { z } from "zod";
-import { generateObjectWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
-import { logException, logInfo, logWarn, setTags, withSpan } from "@/chat/observability";
-import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
 import { buildSystemPrompt } from "@/chat/prompt";
 import { SkillSandbox } from "@/chat/skill-sandbox";
-import {
-  discoverSkills,
-  findSkillByName,
-  loadSkillsByName,
-  parseSkillInvocation
-} from "@/chat/skills";
-import type { Skill } from "@/chat/skills";
+import { discoverSkills, findSkillByName, loadSkillsByName, parseSkillInvocation, type Skill } from "@/chat/skills";
+import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
+import type { ToolDefinition } from "@/chat/tools/definition";
+import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
+import { isVercelSandboxEnabled, VercelSandboxToolExecutor } from "@/chat/sandbox/vercel";
 
 export interface ReplyRequestContext {
   assistant?: {
@@ -40,6 +37,9 @@ export interface ReplyRequestContext {
     mediaType: string;
     filename?: string;
   }>;
+  sandbox?: {
+    sandboxId?: string;
+  };
   onStatus?: (status: string) => void | Promise<void>;
 }
 
@@ -47,7 +47,32 @@ export interface AssistantReply {
   text: string;
   files?: FileUpload[];
   artifactStatePatch?: Partial<ThreadArtifactsState>;
+  sandboxId?: string;
+  diagnostics: AgentTurnDiagnostics;
 }
+
+export interface AgentTurnDiagnostics {
+  assistantMessageCount: number;
+  errorMessage?: string;
+  modelId: string;
+  outcome: "success" | "execution_failure" | "provider_error";
+  stopReason?: string;
+  toolCalls: string[];
+  toolErrorCount: number;
+  toolResultCount: number;
+  usedFinalAnswer: boolean;
+  usedPrimaryText: boolean;
+}
+
+interface LoadedSkillForSteering {
+  instructions: string;
+  location: string;
+  name: string;
+  skillDir: string;
+}
+
+const AGENT_TURN_TIMEOUT_MS = 120_000;
+const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 
 function formatUnknownSkillMessage(requestedSkill: string, availableSkills: Array<{ name: string }>): string {
   const available = availableSkills.map((skill) => `/${skill.name}`).join(", ");
@@ -82,7 +107,6 @@ function parseJsonCandidate(text: string): unknown {
   try {
     return JSON.parse(trimmed) as unknown;
   } catch {
-    // Handle common fenced-json model responses.
     const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
     if (!fenced) return undefined;
     try {
@@ -125,8 +149,7 @@ function isRawToolPayloadResponse(text: string): boolean {
 function formatToolStatus(toolName: string): string {
   const known: Record<string, string> = {
     load_skill: "Loading skill instructions",
-    list_skill_files: "Listing skill resources",
-    read_skill_file: "Reading skill resource",
+    bash: "Running shell command in sandbox",
     web_search: "Searching public sources",
     web_fetch: "Reading source pages",
     slack_canvas_create: "Creating detailed brief",
@@ -164,173 +187,207 @@ function buildUserTurnText(userInput: string, conversationContext?: string): str
   ].join("\n");
 }
 
-function summarizeStepDiagnostics(result: {
-  steps?: Array<{
-    finishReason?: string;
-    text?: string;
-    toolCalls?: unknown[];
-    toolResults?: unknown[];
-    content?: Array<{ type?: string }>;
-  }>;
+function encodeNonImageAttachmentForPrompt(attachment: {
+  data: Buffer;
+  mediaType: string;
+  filename?: string;
 }): string {
-  const steps = Array.isArray(result.steps) ? result.steps : [];
-  return steps
-    .map((step, index) => {
-      const text = typeof step.text === "string" ? step.text : "";
-      const toolCalls = Array.isArray(step.toolCalls) ? step.toolCalls : [];
-      const toolResults = Array.isArray(step.toolResults) ? step.toolResults : [];
-      const content = Array.isArray(step.content) ? step.content : [];
-      const contentTypes = content.map((part) => part.type ?? "unknown").join(",");
-      return [
-        `step=${index + 1}`,
-        `finish=${step.finishReason ?? "unknown"}`,
-        `text_len=${text.length}`,
-        `tool_calls=${toolCalls.length}`,
-        `tool_results=${toolResults.length}`,
-        `content=${contentTypes || "none"}`
-      ].join("|");
-    })
-    .join(" ; ");
+  const base64 = attachment.data.toString("base64");
+  const wasTruncated = base64.length > MAX_INLINE_ATTACHMENT_BASE64_CHARS;
+  const encodedPayload = wasTruncated ? `${base64.slice(0, MAX_INLINE_ATTACHMENT_BASE64_CHARS)}...` : base64;
+
+  return [
+    "<attachment>",
+    `filename: ${attachment.filename ?? "unnamed"}`,
+    `media_type: ${attachment.mediaType}`,
+    "encoding: base64",
+    `truncated: ${wasTruncated ? "true" : "false"}`,
+    "<data_base64>",
+    encodedPayload,
+    "</data_base64>",
+    "</attachment>"
+  ].join("\n");
 }
 
-function extractFinalAnswerFromInput(input: unknown): string | undefined {
-  if (typeof input === "string") {
-    const trimmed = input.trim();
-    if (!trimmed) return undefined;
+function buildSkillSteeringBlock(skill: LoadedSkillForSteering, args?: string): string {
+  const skillBlock = [
+    `<skill name="${skill.name}" location="${skill.location}">`,
+    `References are relative to ${skill.skillDir}.`,
+    "",
+    skill.instructions.trim(),
+    "</skill>"
+  ].join("\n");
 
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      return extractFinalAnswerFromInput(parsed);
-    } catch {
-      return trimmed;
-    }
+  const trimmedArgs = args?.trim();
+  return trimmedArgs ? `${skillBlock}\n\n${trimmedArgs}` : skillBlock;
+}
+
+function buildExecutionFailureMessage(toolErrorCount: number): string {
+  if (toolErrorCount > 0) {
+    return "I couldn’t complete this because one or more required tools failed in this turn. I’ve logged the failure details.";
   }
 
-  if (!input || typeof input !== "object") return undefined;
-  const answer = (input as { answer?: unknown }).answer;
+  return "I couldn’t complete this request in this turn due to an execution failure. I’ve logged the details for debugging.";
+}
+
+function finalAnswerFromToolDetails(details: unknown): string | undefined {
+  if (!details || typeof details !== "object") return undefined;
+  const answer = (details as { answer?: unknown }).answer;
   if (typeof answer !== "string") return undefined;
   const trimmed = answer.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function extractFinalAnswer(result: {
-  staticToolCalls?: Array<{ toolName: string; input: unknown }>;
-  steps?: Array<{
-    staticToolCalls?: Array<{ toolName: string; input: unknown }>;
-  }>;
-}): string | undefined {
-  const fromCall = (call: { toolName: string; input: unknown }): string | undefined => {
-    if (call.toolName !== "final_answer") return undefined;
-    return extractFinalAnswerFromInput(call.input);
-  };
-
-  const staticToolCalls = Array.isArray(result.staticToolCalls) ? result.staticToolCalls : [];
-  for (const call of [...staticToolCalls].reverse()) {
-    const answer = fromCall(call);
-    if (answer) return answer;
+function toToolContentText(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
-  const steps = Array.isArray(result.steps) ? result.steps : [];
-  for (const step of [...steps].reverse()) {
-    const stepToolCalls = Array.isArray(step.staticToolCalls) ? step.staticToolCalls : [];
-    for (const call of [...stepToolCalls].reverse()) {
-      const answer = fromCall(call);
-      if (answer) return answer;
+}
+
+function isToolResultMessage(value: unknown): value is ToolResultMessage<any> {
+  return typeof value === "object" && value !== null && (value as { role?: unknown }).role === "toolResult";
+}
+
+function isAssistantMessage(value: unknown): value is AssistantMessage {
+  return typeof value === "object" && value !== null && (value as { role?: unknown }).role === "assistant";
+}
+
+function extractAssistantText(message: AssistantMessage): string {
+  return message.content
+    .filter((part): part is { type: "text"; text: string } => part.type === "text")
+    .map((part) => part.text)
+    .join("\n");
+}
+
+function createAgentTools(
+  tools: Record<string, ToolDefinition>,
+  sandbox: SkillSandbox,
+  onStatus?: (status: string) => void | Promise<void>,
+  sandboxExecutor?: VercelSandboxToolExecutor,
+  hooks?: {
+    onGeneratedFiles?: (files: FileUpload[]) => void;
+    onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
+    onToolCall?: (toolName: string) => void;
+  }
+): AgentTool[] {
+  return Object.entries(tools).map(([toolName, toolDef]) => ({
+    name: toolName,
+    label: toolName,
+    description: toolDef.description,
+    parameters: Type.Any(),
+    execute: async (_toolCallId, params) => {
+      hooks?.onToolCall?.(toolName);
+      const toolStartedAt = Date.now();
+      logWarn(
+        "agent_tool_call_start",
+        {},
+        {
+          "gen_ai.system": "vercel-ai-gateway",
+          "gen_ai.operation.name": "tool_call",
+          "app.ai.tool_name": toolName
+        },
+        "Agent tool call started"
+      );
+      await onStatus?.(`${formatToolStatus(toolName)}...`);
+      const parsed = toolDef.inputSchema.safeParse(params);
+      if (!parsed.success) {
+        logWarn(
+          "agent_tool_call_invalid_input",
+          {},
+          {
+            "gen_ai.system": "vercel-ai-gateway",
+            "gen_ai.operation.name": "tool_call",
+            "app.ai.tool_name": toolName,
+            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
+          },
+          "Agent tool call input validation failed"
+        );
+        throw new Error(parsed.error.message);
+      }
+
+      try {
+        if (typeof toolDef.execute !== "function") {
+          const answer = toolName === "final_answer" ? String((parsed.data as { answer?: string }).answer ?? "") : "";
+          await onStatus?.("Reviewing tool results...");
+          logWarn(
+            "agent_tool_call_end",
+            {},
+            {
+              "gen_ai.system": "vercel-ai-gateway",
+              "gen_ai.operation.name": "tool_call",
+              "app.ai.tool_name": toolName,
+              "app.ai.tool_duration_ms": Date.now() - toolStartedAt
+            },
+            "Agent tool call finished"
+          );
+          return {
+            content: answer ? [{ type: "text", text: answer }] : [{ type: "text", text: "ok" }],
+            details: toolName === "final_answer" ? { answer } : { ok: true }
+          };
+        }
+
+        const result = sandboxExecutor?.canExecute(toolName)
+          ? await sandboxExecutor.execute({
+              toolName,
+              input: parsed.data
+            })
+          : await toolDef.execute(parsed.data, {
+              experimental_context: sandbox
+            });
+
+        const normalizedResult =
+          sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
+            ? (result as { result: unknown; generatedFiles?: Array<{ dataBase64: string; filename: string; mimeType: string }>; artifactStatePatch?: Partial<ThreadArtifactsState> })
+            : null;
+        if (normalizedResult?.generatedFiles && normalizedResult.generatedFiles.length > 0) {
+          hooks?.onGeneratedFiles?.(
+            normalizedResult.generatedFiles.map((file) => ({
+              data: Buffer.from(file.dataBase64, "base64"),
+              filename: file.filename,
+              mimeType: file.mimeType
+            }))
+          );
+        }
+        if (normalizedResult?.artifactStatePatch && Object.keys(normalizedResult.artifactStatePatch).length > 0) {
+          hooks?.onArtifactStatePatch?.(normalizedResult.artifactStatePatch);
+        }
+
+        await onStatus?.("Reviewing tool results...");
+        logWarn(
+          "agent_tool_call_end",
+          {},
+          {
+            "gen_ai.system": "vercel-ai-gateway",
+            "gen_ai.operation.name": "tool_call",
+            "app.ai.tool_name": toolName,
+            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
+          },
+          "Agent tool call finished"
+        );
+        return {
+          content: [{ type: "text", text: toToolContentText(normalizedResult ? normalizedResult.result : result) }],
+          details: normalizedResult ? normalizedResult.result : result
+        };
+      } catch (error) {
+        logException(
+          error,
+          "agent_tool_call_failed",
+          {},
+          {
+            "gen_ai.system": "vercel-ai-gateway",
+            "gen_ai.operation.name": "tool_call",
+            "app.ai.tool_name": toolName,
+            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
+          },
+          "Agent tool call failed"
+        );
+        throw error;
+      }
     }
-  }
-  return undefined;
-}
-
-interface LoopStepLike {
-  toolCalls: Array<{ toolName: string; input: unknown }>;
-  toolResults: Array<{ type?: string; error?: unknown }>;
-}
-
-interface LoopGuardState {
-  hasNonFinalToolCall: boolean;
-  repeatedToolCallStreak: number;
-  toolErrorStreak: number;
-}
-
-const LOOP_GUARD_REPEAT_TOOL_CALL_STREAK = 2;
-const LOOP_GUARD_TOOL_ERROR_STREAK = 2;
-const LOOP_GUARD_FORCE_FINAL_AT_STEP = 24;
-
-function stableSerialize(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableSerialize(entry)).join(",")}]`;
-  }
-
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).sort((a, b) => a[0].localeCompare(b[0]));
-    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`).join(",")}}`;
-  }
-
-  const serialized = JSON.stringify(value);
-  return serialized === undefined ? String(value) : serialized;
-}
-
-function toolCallSignature(call: { toolName: string; input: unknown }): string {
-  return `${call.toolName}:${stableSerialize(call.input)}`;
-}
-
-function hasToolError(step: LoopStepLike): boolean {
-  if (!Array.isArray(step.toolResults)) return false;
-  return step.toolResults.some((result) => result?.type === "tool-error" || result?.error !== undefined);
-}
-
-function computeLoopGuardState(steps: LoopStepLike[]): LoopGuardState {
-  const hasNonFinalToolCall = steps.some((step) => step.toolCalls.some((call) => call.toolName !== "final_answer"));
-
-  let repeatedToolCallStreak = 0;
-  const trailingNonFinalSignatures = [...steps]
-    .reverse()
-    .map((step) => {
-      const nonFinalCalls = step.toolCalls.filter((call) => call.toolName !== "final_answer");
-      if (nonFinalCalls.length !== 1) return null;
-      return toolCallSignature(nonFinalCalls[0]);
-    });
-  const firstSignature = trailingNonFinalSignatures[0];
-  if (firstSignature) {
-    for (const signature of trailingNonFinalSignatures) {
-      if (signature !== firstSignature) break;
-      repeatedToolCallStreak += 1;
-    }
-  }
-
-  let toolErrorStreak = 0;
-  for (const step of [...steps].reverse()) {
-    if (!hasToolError(step)) break;
-    toolErrorStreak += 1;
-  }
-
-  return {
-    hasNonFinalToolCall,
-    repeatedToolCallStreak,
-    toolErrorStreak
-  };
-}
-
-function countToolErrorSteps(result: { steps?: LoopStepLike[] }): number {
-  const steps = Array.isArray(result.steps) ? result.steps : [];
-  return steps.reduce((count, step) => count + (hasToolError(step) ? 1 : 0), 0);
-}
-
-function buildExecutionFailureMessage(result: {
-  finishReason: string;
-  steps: LoopStepLike[];
-  toolCalls: unknown[];
-  toolResults: unknown[];
-}): string {
-  const toolErrorSteps = countToolErrorSteps(result);
-  if (toolErrorSteps > 0) {
-    return "I couldn’t complete this because one or more required tools failed in this turn. I’ve logged the failure details.";
-  }
-
-  if (result.finishReason === "tool-calls" && result.toolCalls.length > 0 && result.toolResults.length === 0) {
-    return "I couldn’t complete this because the turn ended with unresolved tool calls and no usable tool results.";
-  }
-
-  return "I couldn’t complete this request in this turn due to an execution failure. I’ve logged the details for debugging.";
+  }));
 }
 
 export async function generateAssistantReply(
@@ -338,57 +395,108 @@ export async function generateAssistantReply(
   context: ReplyRequestContext = {}
 ): Promise<AssistantReply> {
   try {
+    const sandboxExecutor: VercelSandboxToolExecutor = isVercelSandboxEnabled()
+      ? new VercelSandboxToolExecutor({ sandboxId: context.sandbox?.sandboxId })
+      : new VercelSandboxToolExecutor();
+
     const availableSkills = await discoverSkills();
-    const userInput = messageText;
-    const userTurnText = buildUserTurnText(userInput, context.conversationContext);
+    sandboxExecutor.configureSkills(availableSkills);
+    let userInput = messageText;
     const explicitInvocation = parseSkillInvocation(userInput);
     const explicitSkill = explicitInvocation
       ? findSkillByName(explicitInvocation.skillName, availableSkills)
       : null;
-    const requiredSkillName = explicitSkill?.name;
-    const activeSkills: Skill[] = requiredSkillName
-      ? await loadSkillsByName([requiredSkillName], availableSkills)
-      : [];
+    const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
 
     if (explicitInvocation && !explicitSkill) {
       return {
-        text: formatUnknownSkillMessage(explicitInvocation.skillName, availableSkills)
+        text: formatUnknownSkillMessage(explicitInvocation.skillName, availableSkills),
+        sandboxId: sandboxExecutor.getSandboxId(),
+        diagnostics: {
+          outcome: "execution_failure",
+          modelId: botConfig.modelId,
+          assistantMessageCount: 0,
+          toolCalls: [],
+          toolResultCount: 0,
+          toolErrorCount: 0,
+          usedFinalAnswer: false,
+          usedPrimaryText: false
+        }
       };
     }
 
-    const userContentParts: Array<
-      | { type: "text"; text: string }
-      | { type: "image"; image: Buffer; mediaType: string }
-      | { type: "file"; data: Buffer; mediaType: string; filename?: string }
-    > = [{ type: "text", text: userTurnText }];
+    if (explicitInvocation && explicitSkill) {
+      let loadedForSteering: LoadedSkillForSteering | null = null;
 
-    for (const attachment of context.userAttachments ?? []) {
-      if (attachment.mediaType.startsWith("image/")) {
-        userContentParts.push({
-          type: "image",
-          image: attachment.data,
-          mediaType: attachment.mediaType
+      if (sandboxExecutor.canExecute("load_skill")) {
+        const envelope = await sandboxExecutor.execute<{
+          ok?: boolean;
+          skill_name?: string;
+          location?: string;
+          skill_dir?: string;
+          instructions?: string;
+        }>({
+          toolName: "load_skill",
+          input: { skill_name: explicitSkill.name }
         });
+        const result = envelope.result;
+        if (
+          result &&
+          typeof result === "object" &&
+          (result as { ok?: unknown }).ok === true &&
+          typeof (result as { skill_name?: unknown }).skill_name === "string" &&
+          typeof (result as { location?: unknown }).location === "string" &&
+          typeof (result as { skill_dir?: unknown }).skill_dir === "string" &&
+          typeof (result as { instructions?: unknown }).instructions === "string"
+        ) {
+          loadedForSteering = {
+            name: (result as { skill_name: string }).skill_name,
+            location: (result as { location: string }).location,
+            skillDir: (result as { skill_dir: string }).skill_dir,
+            instructions: (result as { instructions: string }).instructions
+          };
+        }
       } else {
-        userContentParts.push({
-          type: "file",
-          data: attachment.data,
-          mediaType: attachment.mediaType,
-          filename: attachment.filename
-        });
+        const [skill] = await loadSkillsByName([explicitSkill.name], availableSkills);
+        if (skill) {
+          loadedForSteering = {
+            name: skill.name,
+            location: `${skill.skillPath}/SKILL.md`,
+            skillDir: skill.skillPath,
+            instructions: skill.body
+          };
+        }
+      }
+
+      if (loadedForSteering) {
+        userInput = buildSkillSteeringBlock(loadedForSteering, explicitInvocation.args);
       }
     }
+
+    const userTurnText = buildUserTurnText(userInput, context.conversationContext);
+
+    if (!getGatewayApiKey()) {
+      return {
+        text: "I hit an internal error while processing that request. Please try again.",
+        sandboxId: sandboxExecutor.getSandboxId(),
+        diagnostics: {
+          outcome: "provider_error",
+          modelId: botConfig.modelId,
+          assistantMessageCount: 0,
+          toolCalls: [],
+          toolResultCount: 0,
+          toolErrorCount: 0,
+          usedFinalAnswer: false,
+          usedPrimaryText: false,
+          errorMessage: "AI_GATEWAY_API_KEY is missing"
+        }
+      };
+    }
+
     const generatedFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
-    const telemetryMetadata: Record<string, string> = {
-      modelId: botConfig.modelId
-    };
-
-    if (context.correlation?.threadId) telemetryMetadata.threadId = context.correlation.threadId;
-    if (context.correlation?.workflowRunId) telemetryMetadata.workflowRunId = context.correlation.workflowRunId;
-    if (context.correlation?.channelId) telemetryMetadata.channelId = context.correlation.channelId;
-    if (context.correlation?.requesterId) telemetryMetadata.requesterId = context.correlation.requesterId;
+    const toolCalls: string[] = [];
 
     setTags({
       slackThreadId: context.correlation?.threadId,
@@ -421,64 +529,6 @@ export async function generateAssistantReply(
         artifactState: context.artifactState
       }
     );
-    const repairToolCall: ToolCallRepairFunction<typeof tools> = async ({ toolCall, tools, inputSchema, error }) => {
-      if (NoSuchToolError.isInstance(error)) {
-        return null;
-      }
-
-      if (!(toolCall.toolName in tools)) {
-        return null;
-      }
-      const tool = tools[toolCall.toolName as keyof typeof tools];
-
-      try {
-        const toolJsonSchema = await inputSchema({ toolName: toolCall.toolName });
-        const { object: repairedInput } = await generateObjectWithTelemetry(
-          {
-            model: gateway(botConfig.modelId),
-            schema: tool.inputSchema,
-            prompt: [
-              `Repair the invalid tool input for tool "${toolCall.toolName}".`,
-              "Return only valid JSON arguments that match the tool schema.",
-              "",
-              "Original invalid tool input:",
-              toolCall.input,
-              "",
-              "Validation error:",
-              error.message,
-              "",
-              "Tool JSON schema:",
-              JSON.stringify(toolJsonSchema)
-            ].join("\n")
-          },
-          {
-            functionId: "generateAssistantReply.repair_tool_call",
-            metadata: {
-              ...telemetryMetadata,
-              toolName: toolCall.toolName
-            }
-          }
-        );
-
-        return {
-          ...toolCall,
-          input: JSON.stringify(repairedInput)
-        };
-      } catch (repairError) {
-        logWarn("tool_call_repair_failed", {
-          slackThreadId: context.correlation?.threadId,
-          slackUserId: context.correlation?.requesterId,
-          slackChannelId: context.correlation?.channelId,
-          workflowRunId: context.correlation?.workflowRunId,
-          assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId
-        }, {
-          "app.tool.name": toolCall.toolName,
-          "error.message": repairError instanceof Error ? repairError.message : "unknown repair error"
-        }, "Tool call repair failed");
-        return null;
-      }
-    };
 
     const baseInstructions = buildSystemPrompt({
       availableSkills,
@@ -488,101 +538,59 @@ export async function generateAssistantReply(
       requester: context.requester,
       artifactState: context.artifactState
     });
-    const allToolNames = Object.keys(tools) as Array<keyof typeof tools>;
-    const nonFinalToolNames = allToolNames.filter((toolName) => toolName !== "final_answer");
-    const finalAnswerOnlyTools = ["final_answer"] as Array<keyof typeof tools>;
-    const applySkillToolFilter = (candidateTools: Array<keyof typeof tools>): Array<keyof typeof tools> => {
-      const filteredBySkill = skillSandbox.filterToolNames(candidateTools.map((toolName) => String(toolName)));
-      if (!filteredBySkill) {
-        return candidateTools;
+
+    const userContentParts: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
+      { type: "text", text: userTurnText }
+    ];
+
+    for (const attachment of context.userAttachments ?? []) {
+      if (attachment.mediaType.startsWith("image/")) {
+        userContentParts.push({
+          type: "image",
+          data: attachment.data.toString("base64"),
+          mimeType: attachment.mediaType
+        });
+      } else {
+        userContentParts.push({
+          type: "text",
+          text: encodeNonImageAttachmentForPrompt(attachment)
+        });
       }
+    }
 
-      const allowed = new Set(filteredBySkill);
-      const narrowed = candidateTools.filter((toolName) => allowed.has(String(toolName)));
-      return narrowed.length > 0 ? narrowed : finalAnswerOnlyTools;
-    };
-    let loopGuardLogged = false;
-
-    const agent = new ToolLoopAgent({
-      model: gateway(botConfig.modelId),
-      instructions: baseInstructions,
-      tools,
-      toolChoice: "auto",
-      callOptionsSchema: z.object({
-        sandbox: z.custom<SkillSandbox>((value) => value instanceof SkillSandbox)
-      }),
-      prepareCall: ({ options, ...settings }) => ({
-        ...settings,
-        experimental_context: options.sandbox
-      }),
-      stopWhen: [stepCountIs(100)],
-      prepareStep: ({ stepNumber, steps }) => {
-        const loopState = computeLoopGuardState(steps as LoopStepLike[]);
-
-        if (!loopState.hasNonFinalToolCall && nonFinalToolNames.length > 0) {
-          return {
-            activeTools: applySkillToolFilter(nonFinalToolNames)
-          };
-        }
-
-        const shouldForceFinalAnswer =
-          loopState.repeatedToolCallStreak >= LOOP_GUARD_REPEAT_TOOL_CALL_STREAK ||
-          loopState.toolErrorStreak >= LOOP_GUARD_TOOL_ERROR_STREAK ||
-          stepNumber >= LOOP_GUARD_FORCE_FINAL_AT_STEP;
-
-        if (shouldForceFinalAnswer) {
-          if (!loopGuardLogged) {
-            loopGuardLogged = true;
-            logWarn("ai_loop_guard_forced_final_answer", {
-              slackThreadId: context.correlation?.threadId,
-              slackUserId: context.correlation?.requesterId,
-              slackChannelId: context.correlation?.channelId,
-              workflowRunId: context.correlation?.workflowRunId,
-              assistantUserName: context.assistant?.userName,
-              modelId: botConfig.modelId
-            }, {
-              "app.ai.step_number": stepNumber,
-              "app.ai.repeated_tool_call_streak": loopState.repeatedToolCallStreak,
-              "app.ai.tool_error_streak": loopState.toolErrorStreak
-            }, "Loop guard narrowed to final_answer-only mode");
+    const agent = new Agent({
+      initialState: {
+        systemPrompt: baseInstructions,
+        model: resolveGatewayModel(botConfig.modelId),
+        tools: createAgentTools(
+          tools as Record<string, ToolDefinition>,
+          skillSandbox,
+          context.onStatus,
+          sandboxExecutor,
+          {
+            onToolCall: (toolName) => {
+              toolCalls.push(toolName);
+            },
+            onGeneratedFiles: (files) => generatedFiles.push(...files),
+            onArtifactStatePatch: (patch) => Object.assign(artifactStatePatch, patch)
           }
-
-          return {
-            activeTools: finalAnswerOnlyTools
-          };
-        }
-
-        return {
-          activeTools: applySkillToolFilter(allToolNames)
-        };
-      },
-      onStepFinish: (step) => {
-        const loopStep = step as LoopStepLike;
-        if (!hasToolError(loopStep)) return;
-
-        logInfo("ai_tool_error_step", {
-          slackThreadId: context.correlation?.threadId,
-          slackUserId: context.correlation?.requesterId,
-          slackChannelId: context.correlation?.channelId,
-          workflowRunId: context.correlation?.workflowRunId,
-          assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId
-        }, {
-          "app.ai.step_tool_calls": loopStep.toolCalls.length,
-          "app.ai.step_tool_results": loopStep.toolResults.length
-        }, "Tool error encountered during agent step");
-      },
-      experimental_repairToolCall: repairToolCall,
-      experimental_telemetry: {
-        isEnabled: true,
-        recordInputs: true,
-        recordOutputs: true,
-        functionId: "generateAssistantReply",
-        metadata: telemetryMetadata
+        )
       }
     });
 
-    const result = await withSpan(
+    const beforeMessageCount = agent.state.messages.length;
+    logWarn(
+      "agent_turn_start",
+      {},
+      {
+        "gen_ai.system": "vercel-ai-gateway",
+        "gen_ai.operation.name": "agent_turn",
+        "gen_ai.request.model": botConfig.modelId
+      },
+      "Agent turn started"
+    );
+
+    await withSpan(
       "ai.generateAssistantReply",
       "ai.generate_text",
       {
@@ -593,130 +601,157 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       },
-      () =>
-        agent.generate({
-          messages: [
-            {
-              role: "user",
-              content: userContentParts
-            }
-          ],
-          options: {
-            sandbox: skillSandbox
+      async () => {
+        const promptPromise = agent.prompt({
+          role: "user",
+          content: userContentParts,
+          timestamp: Date.now()
+        });
+
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let didTimeout = false;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            didTimeout = true;
+            agent.abort();
+            reject(new Error(`Agent turn timed out after ${AGENT_TURN_TIMEOUT_MS}ms`));
+          }, AGENT_TURN_TIMEOUT_MS);
+        });
+
+        try {
+          await Promise.race([promptPromise, timeoutPromise]);
+        } catch (error) {
+          if (didTimeout) {
+            logWarn(
+              "agent_turn_timeout",
+              {},
+              {
+                "gen_ai.system": "vercel-ai-gateway",
+                "gen_ai.operation.name": "agent_turn",
+                "gen_ai.request.model": botConfig.modelId,
+                "app.ai.turn_timeout_ms": AGENT_TURN_TIMEOUT_MS
+              },
+              "Agent turn timed out and was aborted"
+            );
+            await promptPromise.catch(() => {});
           }
-        })
+          throw error;
+        } finally {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+        }
+      }
     );
 
     await context.onStatus?.("Drafting response...");
 
-    let finalResult = result;
-    let finalAnswer = extractFinalAnswer(finalResult);
-    const primaryText = finalResult.text?.trim();
-    const stepCount = Array.isArray(finalResult.steps) ? finalResult.steps.length : 0;
-    const toolCalls = Array.isArray(finalResult.toolCalls) ? finalResult.toolCalls : [];
-    const toolResults = Array.isArray(finalResult.toolResults) ? finalResult.toolResults : [];
-    const sourceCount = Array.isArray(finalResult.sources) ? finalResult.sources.length : 0;
-    const resultFileCount = Array.isArray(finalResult.files) ? finalResult.files.length : 0;
-    const responseMessageCount = Array.isArray(finalResult.response?.messages) ? finalResult.response.messages.length : 0;
+    const newMessages = agent.state.messages.slice(beforeMessageCount) as unknown[];
+    const toolResults = newMessages.filter(isToolResultMessage);
+
+    let finalAnswer: string | undefined;
+    for (const message of [...toolResults].reverse()) {
+      if (message.toolName !== "final_answer") continue;
+      finalAnswer = finalAnswerFromToolDetails(message.details);
+      if (finalAnswer) break;
+    }
+    const hadExtractedFinalAnswer = Boolean(finalAnswer);
+
+    const assistantMessages = newMessages.filter(isAssistantMessage);
+
+    const primaryText = [...assistantMessages]
+      .reverse()
+      .map((message) => extractAssistantText(message))
+      .join("\n")
+      .trim();
+
+    const toolErrorCount = toolResults.filter((result) => result.isError).length;
+    logWarn(
+      "agent_turn_activity",
+      {},
+      {
+        "gen_ai.system": "vercel-ai-gateway",
+        "gen_ai.operation.name": "agent_turn",
+        "gen_ai.request.model": botConfig.modelId,
+        "app.ai.assistant_messages": assistantMessages.length,
+        "app.ai.tool_results": toolResults.length,
+        "app.ai.tool_error_results": toolErrorCount,
+        "app.ai.tool_call_count": toolCalls.length
+      },
+      "Agent turn activity captured"
+    );
 
     if (!finalAnswer && !primaryText) {
-      const toolErrorSteps = countToolErrorSteps(finalResult as { steps: LoopStepLike[] });
-      logWarn("ai_model_response_empty", {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      }, {
-        "app.ai.finish_reason": finalResult.finishReason,
-        "app.ai.steps": stepCount,
-        "app.ai.tool_calls": toolCalls.length,
-        "app.ai.tool_results": toolResults.length,
-        "app.ai.tool_error_steps": toolErrorSteps,
-        "app.ai.generated_files": generatedFiles.length,
-        "app.ai.sources": sourceCount,
-        "app.ai.result_files": resultFileCount,
-        "app.ai.response_messages": responseMessageCount,
-        "app.ai.step_diagnostics": summarizeStepDiagnostics(finalResult)
-      }, "Model returned empty text response");
+      logWarn(
+        "ai_model_response_empty",
+        {
+          slackThreadId: context.correlation?.threadId,
+          slackUserId: context.correlation?.requesterId,
+          slackChannelId: context.correlation?.channelId,
+          workflowRunId: context.correlation?.workflowRunId,
+          assistantUserName: context.assistant?.userName,
+          modelId: botConfig.modelId
+        },
+        {
+          "app.ai.tool_results": toolResults.length,
+          "app.ai.tool_error_results": toolErrorCount,
+          "app.ai.generated_files": generatedFiles.length
+        },
+        "Model returned empty text response"
+      );
 
-      finalAnswer = buildExecutionFailureMessage({
-        finishReason: finalResult.finishReason,
-        steps: finalResult.steps as LoopStepLike[],
-        toolCalls,
-        toolResults
-      });
+      finalAnswer = buildExecutionFailureMessage(toolErrorCount);
     }
 
-    const resolvedText =
-      finalAnswer ??
-      primaryText ??
-      buildExecutionFailureMessage({
-        finishReason: finalResult.finishReason,
-        steps: finalResult.steps as LoopStepLike[],
-        toolCalls,
-        toolResults
-      });
-    if (isExecutionEscapeResponse(resolvedText)) {
-      const failureMessage = buildExecutionFailureMessage({
-        finishReason: finalResult.finishReason,
-        steps: finalResult.steps as LoopStepLike[],
-        toolCalls,
-        toolResults
-      });
-      logWarn("ai_execution_escape_response", {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      }, {
-        "app.ai.finish_reason": finalResult.finishReason,
-        "app.ai.tool_calls": toolCalls.length,
-        "app.ai.tool_results": toolResults.length,
-        "app.ai.tool_error_steps": countToolErrorSteps(finalResult as { steps: LoopStepLike[] })
-      }, "Resolved text matched execution-escape pattern");
+    const lastAssistant = assistantMessages.at(-1) as { stopReason?: unknown; errorMessage?: unknown } | undefined;
+    const stopReason = typeof lastAssistant?.stopReason === "string" ? lastAssistant.stopReason : undefined;
+    const errorMessage = typeof lastAssistant?.errorMessage === "string" ? lastAssistant.errorMessage : undefined;
+    const usedFinalAnswer = hadExtractedFinalAnswer;
+    const usedPrimaryText = Boolean(primaryText);
+    const outcome: AgentTurnDiagnostics["outcome"] =
+      finalAnswer || primaryText
+        ? (stopReason === "error" ? "provider_error" : "success")
+        : "execution_failure";
 
+    const resolvedText = finalAnswer ?? primaryText ?? buildExecutionFailureMessage(toolErrorCount);
+    if (isExecutionEscapeResponse(resolvedText) || isRawToolPayloadResponse(resolvedText)) {
       return {
-        text: failureMessage,
+        text: buildExecutionFailureMessage(toolErrorCount),
         files: generatedFiles.length > 0 ? generatedFiles : undefined,
-        artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
-      };
-    }
-
-    if (isRawToolPayloadResponse(resolvedText)) {
-      const failureMessage = buildExecutionFailureMessage({
-        finishReason: finalResult.finishReason,
-        steps: finalResult.steps as LoopStepLike[],
-        toolCalls,
-        toolResults
-      });
-      logWarn("ai_raw_tool_payload_response", {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      }, {
-        "app.ai.finish_reason": finalResult.finishReason,
-        "app.ai.tool_calls": toolCalls.length,
-        "app.ai.tool_results": toolResults.length
-      }, "Resolved text matched raw tool-payload shape");
-
-      return {
-        text: failureMessage,
-        files: generatedFiles.length > 0 ? generatedFiles : undefined,
-        artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
+        artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined,
+        sandboxId: sandboxExecutor.getSandboxId(),
+        diagnostics: {
+          outcome: "execution_failure",
+          modelId: botConfig.modelId,
+          assistantMessageCount: assistantMessages.length,
+          toolCalls,
+          toolResultCount: toolResults.length,
+          toolErrorCount,
+          usedFinalAnswer,
+          usedPrimaryText,
+          stopReason,
+          errorMessage
+        }
       };
     }
 
     return {
       text: resolvedText,
       files: generatedFiles.length > 0 ? generatedFiles : undefined,
-      artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
+      artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined,
+      sandboxId: sandboxExecutor.getSandboxId(),
+      diagnostics: {
+        outcome,
+        modelId: botConfig.modelId,
+        assistantMessageCount: assistantMessages.length,
+        toolCalls,
+        toolResultCount: toolResults.length,
+        toolErrorCount,
+        usedFinalAnswer,
+        usedPrimaryText,
+        stopReason,
+        errorMessage
+      }
     };
   } catch (error) {
     logException(error, "assistant_reply_generation_failed", {
@@ -729,7 +764,19 @@ export async function generateAssistantReply(
     }, {}, "generateAssistantReply failed");
 
     return {
-      text: "I hit an internal error while processing that request. Please try again."
+      text: "I hit an internal error while processing that request. Please try again.",
+      sandboxId: undefined,
+      diagnostics: {
+        outcome: "provider_error",
+        modelId: botConfig.modelId,
+        assistantMessageCount: 0,
+        toolCalls: [],
+        toolResultCount: 0,
+        toolErrorCount: 0,
+        usedFinalAnswer: false,
+        usedPrimaryText: false,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      }
     };
   }
 }

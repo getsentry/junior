@@ -6,24 +6,12 @@ const MAX_SKILL_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_SKILL_FILE_CHARS = 20_000;
 const DEFAULT_MAX_SKILL_LIST_ENTRIES = 200;
 
-const ALLOWED_TOOL_ALIASES: Record<string, string[]> = {
-  glob: ["list_skill_files"],
-  list_files: ["list_skill_files"],
-  ls: ["list_skill_files"],
-  read: ["read_skill_file"],
-  read_file: ["read_skill_file"]
-};
-
 function normalizePathForOutput(value: string): string {
   return value.split(path.sep).join("/");
 }
 
 function normalizeSkillName(value: string): string {
   return value.trim().toLowerCase();
-}
-
-function normalizeAllowedToolToken(value: string): string {
-  return value.trim().replace(/\(.*\)\s*$/, "").toLowerCase().replaceAll("-", "_");
 }
 
 function resolvePathWithinRoot(root: string, relativePath: string): string {
@@ -135,21 +123,13 @@ export class SkillSandbox {
     const availableSet = new Set(toolNames);
 
     for (const token of activeSkill.allowedTools) {
-      const normalizedToken = normalizeAllowedToolToken(token);
-      if (!normalizedToken) {
+      const requestedTool = token.trim();
+      if (!requestedTool) {
         continue;
       }
 
-      if (availableSet.has(normalizedToken)) {
-        resolved.add(normalizedToken);
-        continue;
-      }
-
-      const aliases = ALLOWED_TOOL_ALIASES[normalizedToken] ?? [];
-      for (const alias of aliases) {
-        if (availableSet.has(alias)) {
-          resolved.add(alias);
-        }
+      if (availableSet.has(requestedTool)) {
+        resolved.add(requestedTool);
       }
     }
 

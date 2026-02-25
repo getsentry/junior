@@ -41,6 +41,40 @@ function renderTag(tag: string, content: string): string {
   return [`<${tag}>`, content, `</${tag}>`].join("\n");
 }
 
+function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
+  if (skills.length === 0) {
+    return "<available_skills>\n</available_skills>";
+  }
+
+  const lines = ["<available_skills>"];
+  for (const skill of skills) {
+    lines.push("  <skill>");
+    lines.push(`    <name>${escapeXml(skill.name)}</name>`);
+    lines.push(`    <description>${escapeXml(skill.description)}</description>`);
+    lines.push(`    <location>${escapeXml(`${skill.skillPath}/SKILL.md`)}</location>`);
+    lines.push("  </skill>");
+  }
+  lines.push("</available_skills>");
+  return lines.join("\n");
+}
+
+function formatLoadedSkillsForPrompt(skills: Skill[]): string {
+  if (skills.length === 0) {
+    return "<loaded_skills>\n</loaded_skills>";
+  }
+
+  const lines = ["<loaded_skills>"];
+  for (const skill of skills) {
+    lines.push(`  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skill.skillPath}/SKILL.md`)}">`);
+    lines.push(`References are relative to ${escapeXml(skill.skillPath)}.`);
+    lines.push("");
+    lines.push(skill.body);
+    lines.push("  </skill>");
+  }
+  lines.push("</loaded_skills>");
+  return lines.join("\n");
+}
+
 function baseSystemPrompt(): string {
   return [
     "You are Junior, a helper assistant for Sentry (https://sentry.io) operating in Slack.",
@@ -99,28 +133,18 @@ export function buildSystemPrompt(params: {
     user_id: requester?.userId
   });
 
-  const availableSkillsSection =
-    availableSkills.length === 0
-      ? renderTag("available-skills", "- none configured")
-      : renderTag(
-          "available-skills",
-          availableSkills.map((skill) => `- /${skill.name}: ${skill.description}`).join("\n")
-        );
+  const availableSkillsSection = [
+    "The following skills provide specialized instructions for specific tasks.",
+    "Call `load_skill` when the task matches a skill description.",
+    "When a skill references a relative path, resolve it against `skill_dir` and use that path with `bash`.",
+    "",
+    formatAvailableSkillsForPrompt(availableSkills)
+  ].join("\n");
 
-  const activeSkillsSection =
-    activeSkills.length === 0
-      ? renderTag("active-skills", "- none")
-      : renderTag(
-          "active-skills",
-          activeSkills
-            .flatMap((skill) => [
-              `<active-skill name="${escapeXml(skill.name)}">`,
-              skill.body,
-              "</active-skill>",
-              ""
-            ])
-            .join("\n")
-        );
+  const activeSkillsSection = [
+    "Loaded skills for this turn:",
+    formatLoadedSkillsForPrompt(activeSkills)
+  ].join("\n");
 
   const sections = [
     baseSystemPrompt(),
@@ -162,7 +186,7 @@ export function buildSystemPrompt(params: {
         "- For factual or external questions, run tools/skills first, then answer from evidence.",
         "- Use `web_search` to discover sources.",
         "- Use `web_fetch` to inspect specific URLs.",
-        "- Use `list_skill_files` and `read_skill_file` to progressively load referenced files from active skill directories.",
+        "- Use `bash` to inspect skill files from `skill_dir` and run shell commands inside the sandbox workspace.",
         "- Use `image_generate` when the user asks for image creation.",
         "- Use `slack_canvas_create` for long-form docs/specs and `slack_canvas_update` for doc follow-ups.",
         "- Use `slack_list_create`, `slack_list_add_items`, and `slack_list_update_item` for actionable task tracking.",
@@ -176,14 +200,13 @@ export function buildSystemPrompt(params: {
       "skills",
       [
         "- For explicit slash commands, treat `/skill-name` as authoritative intent for that skill.",
-        "- If slash-invoked skill instructions are already present in <active-skills>, apply them immediately.",
+        "- If slash-invoked skill instructions are already present in <loaded_skills>, apply them immediately.",
         "- Otherwise, for slash-invoked skills, call `load_skill` for that exact skill before applying skill-specific behavior.",
         "- For non-slash requests where a skill clearly matches, call `load_skill` before applying skill-specific behavior.",
-        "- Do not claim to have used a skill unless it is present in <active-skills> or `load_skill` succeeded in this turn.",
-        "- Never apply skill-specific behavior unless the skill is present in <active-skills> or `load_skill` succeeded in this turn.",
+        "- Do not claim to have used a skill unless it is present in <loaded_skills> or `load_skill` succeeded in this turn.",
+        "- Never apply skill-specific behavior unless the skill is present in <loaded_skills> or `load_skill` succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",
-        "- After `load_skill`, resolve any relative paths in skill instructions against `skill_dir` (or SKILL.md parent).",
-        "- After `load_skill`, if `allowed_tools` is returned, stay within that allowlist.",
+        "- After `load_skill`, use `skill_dir` as the root for any referenced files you read via `bash`.",
         "- If no skill is a clear fit, continue with normal tool usage."
       ].join("\n")
     ),

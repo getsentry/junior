@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool } from "@/chat/tools/definition";
 import { z } from "zod";
 import { lookupCanvasSection, updateCanvas } from "@/chat/slack-actions/canvases";
 import { createOperationKey } from "@/chat/tools/idempotency";

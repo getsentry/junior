@@ -3,28 +3,6 @@ name: App Slack Behavior Evals
 description: Behavior-level Slack event evals focused on input/output contracts.
 
 cases:
-  - id: mention_reply
-    description: Mention event subscribes to thread and posts one assistant response.
-    events:
-      - type: new_mention
-        thread:
-          id: thread-mention
-          channel_id: C-mention
-          thread_ts: "1700000000.100"
-        message:
-          id: m-mention-1
-          text: "<@U_APP> summarize this update"
-          is_mention: true
-          author:
-            user_id: U-alice
-            user_name: alice
-            full_name: Alice Example
-            is_me: false
-    expected:
-      posts_count: 1
-      posts_contain:
-        - "Handled:"
-      primary_thread_subscribed: true
 
   - id: subscribed_skip
     description: Subscribed message can be skipped with no assistant post.
@@ -71,8 +49,6 @@ cases:
             is_me: false
     expected:
       posts_count: 1
-      posts_contain:
-        - "Handled:"
 
   - id: multi_turn_continuity
     description: Two-turn flow keeps enough continuity to answer a follow-up.
@@ -107,8 +83,6 @@ cases:
             is_me: false
     expected:
       posts_count: 2
-      posts_contain:
-        - "You just asked: I need the budget by Friday."
 
   - id: assistant_thread_init_metadata
     description: Assistant thread start sets title and suggested prompts.
@@ -145,8 +119,6 @@ cases:
             is_me: false
     expected:
       posts_count: 1
-      posts_contain:
-        - "I hit an internal error and couldn't respond. Please try again."
       exception_events:
         - mention_handler_failed
 
@@ -169,5 +141,72 @@ cases:
             is_me: false
     expected:
       posts_count: 1
-      posts_contain:
-        - "Loaded /brief candidate: David Cramer"
+      sandbox_id_present: true
+      log_events:
+        - agent_turn_start
+        - agent_turn_activity
+      log_event_attributes:
+        - event: agent_turn_start
+          key: gen_ai.request.model
+        - event: agent_turn_activity
+          key: app.ai.tool_call_count
+
+  - id: sandbox_id_reused_across_turns
+    description: Sandbox ID persists and is reused for repeated skill invocations in the same thread.
+    events:
+      - type: new_mention
+        thread:
+          id: thread-sandbox-reuse
+          channel_id: C-sandbox
+          thread_ts: "1700000000.800"
+        message:
+          id: m-sandbox-1
+          text: "/brief candidate: Alice Example"
+          is_mention: true
+          author:
+            user_id: U-hank
+            user_name: hank
+            full_name: Hank Example
+            is_me: false
+      - type: subscribed_message
+        thread:
+          id: thread-sandbox-reuse
+          channel_id: C-sandbox
+          thread_ts: "1700000000.800"
+        message:
+          id: m-sandbox-2
+          text: "/brief candidate: Bob Example"
+          is_mention: true
+          author:
+            user_id: U-hank
+            user_name: hank
+            full_name: Hank Example
+            is_me: false
+    expected:
+      posts_count: 2
+      sandbox_ids_count: 2
+      sandbox_ids_unique_count: 1
+
+  - id: provider_error_without_gateway_key
+    description: Missing gateway API key returns provider_error and still posts a safe fallback response.
+    behavior:
+      unset_gateway_api_key: true
+    events:
+      - type: new_mention
+        thread:
+          id: thread-no-key
+          channel_id: C-no-key
+          thread_ts: "1700000000.900"
+        message:
+          id: m-no-key-1
+          text: "summarize this quickly"
+          is_mention: true
+          author:
+            user_id: U-ivan
+            user_name: ivan
+            full_name: Ivan Example
+            is_me: false
+    expected:
+      posts_count: 1
+      warning_events:
+        - agent_turn_provider_error

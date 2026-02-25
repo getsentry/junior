@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool } from "@/chat/tools/definition";
 import { z } from "zod";
 import { FETCH_TIMEOUT_MS, MAX_FETCH_BYTES, MAX_REDIRECTS } from "@/chat/tools/constants";
 import { assertPublicUrl, fetchTextWithRedirects, withTimeout } from "@/chat/tools/network";
