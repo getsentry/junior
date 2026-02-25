@@ -166,7 +166,8 @@ export function buildSystemPrompt(params: {
         "- Use `image_generate` when the user asks for image creation.",
         "- Use `slack_canvas_create` for long-form docs/specs and `slack_canvas_update` for doc follow-ups.",
         "- Use `slack_list_create`, `slack_list_add_items`, and `slack_list_update_item` for actionable task tracking.",
-        "- When your work is complete, call `final_answer` with the exact user-facing markdown response.",
+        "- When your work is complete, provide the exact user-facing markdown response.",
+        "- You may call `final_answer` as an explicit terminal signal, but plain assistant markdown is also a valid completion.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
         "- Prefer `web_search` before `web_fetch` when the user gave no URL."
       ].join("\n")
@@ -196,8 +197,8 @@ export function buildSystemPrompt(params: {
         "- If depth is needed, start with a concise summary and then provide fuller detail.",
         "- Do not include process chatter, preflight confirmations, or status-only updates in the final answer.",
         "- Avoid tables unless explicitly requested.",
-        "- End every turn by calling `final_answer` with the final markdown response.",
-        "- Do not rely on plain assistant text for the final response; use `final_answer`.",
+        "- End every turn with a final user-facing markdown response.",
+        "- If you call `final_answer`, ensure its `answer` matches the final markdown response.",
         "- Optional delivery directive (only when needed) must be the first block in this exact shape:",
         "- <delivery>",
         "- mode: attachment|inline",
