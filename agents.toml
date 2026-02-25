@@ -35,3 +35,7 @@ source = "getsentry/skills"
 [[skills]]
 name = "agents-md"
 source = "getsentry/skills"
+
+[[mcp]]
+name = "sentry"
+url = "https://mcp.sentry.dev/mcp?experimental=1"
