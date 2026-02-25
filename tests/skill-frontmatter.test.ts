@@ -5,8 +5,8 @@ describe("skill frontmatter validation", () => {
   it("accepts valid frontmatter", () => {
     const raw = [
       "---",
-      "name: summarize-candidate",
-      "description: Summarize public engineering signals. Use when asked to review candidates.",
+      "name: brief",
+      "description: Create a candidate brief from public engineering signals.",
       "metadata:",
       "  owner: recruiting",
       "---",
@@ -14,7 +14,7 @@ describe("skill frontmatter validation", () => {
       "# Body"
     ].join("\n");
 
-    const result = parseAndValidateSkillFrontmatter(raw, "summarize-candidate");
+    const result = parseAndValidateSkillFrontmatter(raw, "brief");
     expect(result.ok).toBe(true);
   });
 
@@ -35,14 +35,14 @@ describe("skill frontmatter validation", () => {
   it("rejects descriptions with angle brackets", () => {
     const raw = [
       "---",
-      "name: summarize-candidate",
-      "description: Summarize <candidate> profile",
+      "name: brief",
+      "description: Brief <candidate> profile",
       "---",
       "",
       "# Body"
     ].join("\n");
 
-    const result = parseAndValidateSkillFrontmatter(raw, "summarize-candidate");
+    const result = parseAndValidateSkillFrontmatter(raw, "brief");
     expect(result.ok).toBe(false);
   });
 });

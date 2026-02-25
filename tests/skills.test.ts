@@ -10,12 +10,12 @@ import {
 describe("skills", () => {
   it("discovers valid skills from the default skills directory", async () => {
     const skills = await discoverSkills();
-    expect(skills.some((skill) => skill.name === "summarize-candidate")).toBe(true);
+    expect(skills.some((skill) => skill.name === "brief")).toBe(true);
   });
 
   it("parses skill invocation by slash command", () => {
-    expect(parseSkillInvocation("/summarize-candidate github: octocat")).toEqual({
-      skillName: "summarize-candidate",
+    expect(parseSkillInvocation("/brief github: octocat")).toEqual({
+      skillName: "brief",
       args: "github: octocat"
     });
   });
@@ -25,8 +25,8 @@ describe("skills", () => {
   });
 
   it("parses slash tokens anywhere in the message", () => {
-    expect(parseSkillInvocation("hey /summarize-candidate github: octocat")).toEqual({
-      skillName: "summarize-candidate",
+    expect(parseSkillInvocation("hey /brief github: octocat")).toEqual({
+      skillName: "brief",
       args: "github: octocat"
     });
   });
@@ -34,32 +34,32 @@ describe("skills", () => {
   it("renders available and active skill XML blocks", () => {
     const metadataXml = renderSkillMetadataXml([
       {
-        name: "summarize-candidate",
-        description: "Summarize candidate <profiles> & references",
-        skillPath: "/tmp/summarize-candidate"
+        name: "brief",
+        description: "Candidate brief <profiles> & references",
+        skillPath: "/tmp/brief"
       }
     ]);
 
     const activeXml = renderActiveSkillsXml([
       {
-        name: "summarize-candidate",
-        description: "Summarize candidate profiles",
-        skillPath: "/tmp/summarize-candidate",
+        name: "brief",
+        description: "Candidate brief profiles",
+        skillPath: "/tmp/brief",
         body: "# Instructions"
       }
     ]);
     const harnessXml = renderSkillsHarnessXml([
       {
-        name: "summarize-candidate",
-        description: "Summarize candidate profiles",
-        skillPath: "/tmp/summarize-candidate"
+        name: "brief",
+        description: "Candidate brief profiles",
+        skillPath: "/tmp/brief"
       }
     ]);
 
     expect(metadataXml).toContain("<available_skills>");
     expect(metadataXml).toContain("&lt;profiles&gt;");
     expect(metadataXml).toContain("&amp; references");
-    expect(metadataXml).toContain("<location>/tmp/summarize-candidate/SKILL.md</location>");
+    expect(metadataXml).toContain("<location>/tmp/brief/SKILL.md</location>");
     expect(activeXml).toContain("<active_skills>");
     expect(harnessXml).toContain("<skills>");
   });
