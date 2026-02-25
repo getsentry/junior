@@ -1,0 +1,8 @@
+export const botConfig = {
+  userName: process.env.BOT_USERNAME ?? "shim",
+  modelId: process.env.AI_MODEL ?? "anthropic/claude-sonnet-4.6"
+};
+
+export function hasRedisConfig(): boolean {
+  return Boolean(process.env.REDIS_URL);
+}
