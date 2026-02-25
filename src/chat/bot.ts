@@ -3,6 +3,7 @@ import { createSlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { createStateAdapter } from "@/chat/state";
 import { generateAssistantReply } from "@/chat/respond";
+import { lookupSlackUser } from "@/chat/slack-user";
 
 export const bot = new Chat({
   userName: botConfig.userName,
@@ -23,11 +24,13 @@ async function replyToThread(
     return;
   }
 
+  const fallbackIdentity = await lookupSlackUser(message.author.userId);
+
   const text = await generateAssistantReply(message.text ?? "", {
     requester: {
       userId: message.author.userId,
-      userName: message.author.userName,
-      fullName: message.author.fullName
+      userName: message.author.userName ?? fallbackIdentity?.userName,
+      fullName: message.author.fullName ?? fallbackIdentity?.fullName
     }
   });
   await thread.post(text);
