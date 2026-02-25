@@ -5,6 +5,16 @@ import { createStateAdapter } from "@/chat/state";
 import { generateAssistantReply } from "@/chat/respond";
 import { lookupSlackUser } from "@/chat/slack-user";
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripLeadingBotMention(text: string): string {
+  if (!text.trim()) return text;
+  const mentionRe = new RegExp(`^\\s*@${escapeRegExp(botConfig.userName)}\\b[\\s,:-]*`, "i");
+  return text.replace(mentionRe, "").trim();
+}
+
 export const bot = new Chat({
   userName: botConfig.userName,
   adapters: {
@@ -24,9 +34,14 @@ async function replyToThread(
     return;
   }
 
+  const userText = stripLeadingBotMention(message.text ?? "");
   const fallbackIdentity = await lookupSlackUser(message.author.userId);
 
-  const text = await generateAssistantReply(message.text ?? "", {
+  const text = await generateAssistantReply(userText, {
+    assistant: {
+      userId: botConfig.slackBotUserId,
+      userName: botConfig.userName
+    },
     requester: {
       userId: message.author.userId,
       userName: message.author.userName ?? fallbackIdentity?.userName,

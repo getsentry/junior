@@ -10,6 +10,10 @@ import {
 import { createTools } from "@/chat/tools";
 
 export interface ReplyRequestContext {
+  assistant?: {
+    userId?: string;
+    userName?: string;
+  };
   requester?: {
     userId?: string;
     userName?: string;
@@ -34,7 +38,13 @@ export async function generateAssistantReply(messageText: string, context: Reply
 
     const result = await generateText({
       model: gateway(botConfig.modelId),
-      system: buildSystemPrompt({ availableSkills, activeSkills, invocation, requester: context.requester }),
+      system: buildSystemPrompt({
+        availableSkills,
+        activeSkills,
+        invocation,
+        assistant: context.assistant,
+        requester: context.requester
+      }),
       prompt: userInput,
       stopWhen: stepCountIs(12),
       tools: createTools(availableSkills)

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { botConfig } from "@/chat/config";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
-import { renderActiveSkillsXml, renderSkillsHarnessXml } from "@/chat/skills";
 
 function loadSoul(): string {
   const soulPath = path.join(process.cwd(), "src", "chat", "SOUL.md");
@@ -23,13 +23,31 @@ function escapeXml(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
+function renderIdentityBlock(tag: "assistant" | "requester", fields: Record<string, string | undefined>): string {
+  const lines = Object.entries(fields)
+    .filter(([, value]) => Boolean(value))
+    .map(([key, value]) => `- ${key}: ${escapeXml(value as string)}`);
+
+  if (lines.length === 0) {
+    return `<${tag} />`;
+  }
+
+  return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
+}
+
 function baseSystemPrompt(): string {
   return [
-    "You are shim, a general-purpose helper assistant for Slack.",
-    "Be concise, practical, and specific.",
-    "Prefer actionable next steps over generic explanations.",
-    "If data is missing, ask for the exact identifier you need.",
-    "When active skills are provided, follow their instructions before default behavior."
+    "## Core Principles",
+    "",
+    "You are a general-purpose helper assistant for Slack.",
+    "",
+    "- Be concise, practical, and specific.",
+    "- Prefer actionable next steps over generic explanations.",
+    "- If data is missing, ask for the exact identifier you need.",
+    "- Always gather evidence from available sources (tools or skills) before answering factual questions.",
+    "- Never guess. If you cannot verify with available sources, say it is unverified.",
+    "- Never claim a lookup succeeded unless a tool result supports it.",
+    "- When active skills are present, follow their instructions before default behavior."
   ].join(" ");
 }
 
@@ -37,40 +55,82 @@ export function buildSystemPrompt(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   invocation: SkillInvocation | null;
+  assistant?: {
+    userName?: string;
+    userId?: string;
+  };
   requester?: {
     userName?: string;
     fullName?: string;
     userId?: string;
   };
 }): string {
-  const { availableSkills, activeSkills, invocation, requester } = params;
+  const { availableSkills, activeSkills, invocation, requester, assistant } = params;
 
-  const requesterSection = requester
-    ? [
-        "<requester>",
-        requester.fullName ? `  <full_name>${escapeXml(requester.fullName)}</full_name>` : "",
-        requester.userName ? `  <user_name>${escapeXml(requester.userName)}</user_name>` : "",
-        requester.userId ? `  <user_id>${escapeXml(requester.userId)}</user_id>` : "",
-        "</requester>"
-      ]
-        .filter(Boolean)
-        .join("\n")
-    : "<requester />";
+  const assistantSection = renderIdentityBlock("assistant", {
+    user_name: assistant?.userName ?? botConfig.userName,
+    user_id: assistant?.userId ?? botConfig.slackBotUserId
+  });
+
+  const requesterSection = renderIdentityBlock("requester", {
+    full_name: requester?.fullName,
+    user_name: requester?.userName,
+    user_id: requester?.userId
+  });
+
+  const availableSkillsSection =
+    availableSkills.length === 0
+      ? "## Available Skills\n\n- none configured"
+      : [
+          "## Available Skills",
+          "",
+          ...availableSkills.map((skill) => `- /${skill.name}: ${skill.description}`)
+        ].join("\n");
+
+  const activeSkillsSection =
+    activeSkills.length === 0
+      ? "## Active Skills\n\n- none"
+      : [
+          "## Active Skills",
+          "",
+          ...activeSkills.flatMap((skill) => [
+            `<active_skill name="${escapeXml(skill.name)}">`,
+            skill.body,
+            "</active_skill>",
+            ""
+          ])
+        ].join("\n");
 
   return [
     baseSystemPrompt(),
-    "Always follow the <personality> section for tone and style unless safety or policy constraints require otherwise.",
-    "If the user asks about 'my name' or identity, use the <requester> context when available instead of asking again.",
+    "## Personality",
+    "",
+    "Always follow the personality guidance for tone/style unless safety or policy constraints require otherwise.",
+    "",
     "<personality>",
-    SHIM_PERSONALITY,
+    SHIM_PERSONALITY.trim(),
     "</personality>",
+    "## Identity Context",
+    "",
+    "Use these blocks as authoritative metadata for identity questions.",
+    assistantSection,
     requesterSection,
-    "Tooling policy: use load_skill when task-specific instructions are needed; use web_search to discover sources; use web_fetch to inspect specific pages.",
-    "If the user enters /<skill-name>, that is always an explicit command to run that skill.",
-    renderSkillsHarnessXml(availableSkills),
-    renderActiveSkillsXml(activeSkills),
+    "## Tool Usage",
+    "",
+    "- For factual or external questions, run tools/skills first, then answer from evidence.",
+    "- Use `load_skill` when task-specific instructions are needed.",
+    "- Use `web_search` to discover sources.",
+    "- Use `web_fetch` to inspect specific URLs.",
+    "- Prefer `web_search` before `web_fetch` when the user gave no URL.",
+    "## Skill Invocation",
+    "",
+    "- If the full user message starts with `/<skill-name>`, treat it as an explicit skill command.",
+    "- Never reinterpret explicit slash skill commands as plain chat intent.",
+    "- If skill is unknown, return an unknown-skill error and list available skills.",
+    availableSkillsSection,
+    activeSkillsSection,
     invocation
-      ? `Slash invocation detected for /${invocation.skillName}. Treat this as an explicit skill request.`
-      : "No slash skill invocation detected."
+      ? `## Invocation Context\n\nSlash invocation detected: /${invocation.skillName}`
+      : "## Invocation Context\n\nNo slash invocation detected."
   ].join("\n\n");
 }
