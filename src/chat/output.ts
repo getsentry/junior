@@ -1,4 +1,5 @@
 import type { FileUpload, PostableMessage } from "chat";
+import { logWarn } from "@/chat/observability";
 
 const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
@@ -117,6 +118,12 @@ export function buildSlackOutputMessage(text: string, options: SlackOutputOption
   const normalized = normalizeForSlack(parsed.text);
 
   if (!normalized) {
+    logWarn("slack output normalized to empty content", {}, {
+      originalLength: text.length,
+      parsedLength: parsed.text.length,
+      directiveMode: parsed.options.forceAttachment ? "attachment" : parsed.options.forceInline ? "inline" : "default",
+      fileCount: options.files?.length ?? 0
+    });
     return {
       markdown: "I couldn't produce a response.",
       files: options.files

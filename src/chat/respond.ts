@@ -138,7 +138,7 @@ export async function generateAssistantReply(
               content: userContentParts
             }
           ],
-          stopWhen: stepCountIs(12),
+          stopWhen: stepCountIs(50),
           tools: createTools(
             availableSkills,
             {
@@ -170,6 +170,14 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId,
         skillName: invokedSkill?.name
+      }, {
+        finishReason: result.finishReason,
+        steps: result.steps.length,
+        sources: result.sources.length,
+        toolCalls: result.toolCalls.length,
+        toolResults: result.toolResults.length,
+        generatedFiles: generatedFiles.length,
+        resultFiles: result.files.length
       });
     }
 

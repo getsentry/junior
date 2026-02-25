@@ -61,6 +61,13 @@ function logWithLevel(
   message: string,
   attributes: Record<string, unknown> = {}
 ): void {
+  const consoleMethod = level === "warn" ? console.warn : level === "error" ? console.error : console.info;
+  try {
+    consoleMethod(`[junior] ${message}`, attributes);
+  } catch {
+    // best-effort console logging
+  }
+
   const loggerApi = (Sentry as unknown as { logger?: Record<string, (msg: string, attrs?: Record<string, unknown>) => void> })
     .logger;
   const fn = loggerApi?.[level];
