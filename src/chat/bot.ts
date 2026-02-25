@@ -5,7 +5,7 @@ import { gateway } from "ai";
 import { z } from "zod";
 import { generateObjectWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
-import { captureException, logError, logWarn, toOptionalString, withSpan } from "@/chat/observability";
+import { captureException, logException, logWarn, toOptionalString, withSpan } from "@/chat/observability";
 import { buildSlackOutputMessage, shouldUseAttachmentFallback } from "@/chat/output";
 import { generateAssistantReply } from "@/chat/respond";
 import { createCanvas } from "@/chat/slack-actions/canvases";
@@ -681,12 +681,7 @@ bot.onNewMention(async (thread, message) => {
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
     };
-    logError("onNewMention failed", observabilityContext, {
-      "error.message": error instanceof Error ? error.message : String(error)
-    });
-    captureException(error, {
-      ...observabilityContext
-    });
+    logException(error, "onNewMention failed", observabilityContext);
     await thread.post("I hit an internal error and couldn't respond. Please try again.");
   }
 });
@@ -753,12 +748,7 @@ bot.onSubscribedMessage(async (thread, message) => {
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
     };
-    logError("onSubscribedMessage failed", observabilityContext, {
-      "error.message": error instanceof Error ? error.message : String(error)
-    });
-    captureException(error, {
-      ...observabilityContext
-    });
+    logException(error, "onSubscribedMessage failed", observabilityContext);
     await thread.post("I hit an internal error and couldn't respond. Please try again.");
   }
 });
@@ -778,12 +768,7 @@ bot.onAssistantThreadStarted(async (event) => {
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
     };
-    logError("onAssistantThreadStarted failed", observabilityContext, {
-      "error.message": error instanceof Error ? error.message : String(error)
-    });
-    captureException(error, {
-      ...observabilityContext
-    });
+    logException(error, "onAssistantThreadStarted failed", observabilityContext);
   }
 });
 
@@ -802,11 +787,6 @@ bot.onAssistantContextChanged(async (event) => {
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
     };
-    logError("onAssistantContextChanged failed", observabilityContext, {
-      "error.message": error instanceof Error ? error.message : String(error)
-    });
-    captureException(error, {
-      ...observabilityContext
-    });
+    logException(error, "onAssistantContextChanged failed", observabilityContext);
   }
 });
