@@ -67,10 +67,7 @@ export function createImageGenerateTool(hooks: ToolHooks) {
           delivery: "Images will be attached to the Slack response as files."
         };
       } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : "image generation failed"
-        };
+        throw new Error(error instanceof Error ? error.message : "image generation failed");
       }
     }
   });

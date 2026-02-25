@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { updateListItem } from "@/chat/slack-actions/lists";
+import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 
 export function createSlackListUpdateItemTool(state: ToolState) {
@@ -36,6 +37,25 @@ export function createSlackListUpdateItemTool(state: ToolState) {
         if (!targetListId) {
           return { ok: false, error: "No list_id provided and no prior list found in thread state" };
         }
+        const operationKey = createOperationKey("slack_list_update_item", {
+          list_id: targetListId,
+          item_id,
+          completed: completed ?? null,
+          title: title ?? null
+        });
+        const cached = state.getOperationResult<{
+          ok: true;
+          list_id: string;
+          item_id: string;
+          completed?: boolean;
+          title?: string;
+        }>(operationKey);
+        if (cached) {
+          return {
+            ...cached,
+            deduplicated: true
+          };
+        }
 
         await updateListItem({
           listId: targetListId,
@@ -47,18 +67,17 @@ export function createSlackListUpdateItemTool(state: ToolState) {
 
         state.patchArtifactState({ lastListId: targetListId });
 
-        return {
+        const response = {
           ok: true,
           list_id: targetListId,
           item_id,
           completed,
           title
         };
+        state.setOperationResult(operationKey, response);
+        return response;
       } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : "list item update failed"
-        };
+        throw new Error(error instanceof Error ? error.message : "list item update failed");
       }
     }
   });

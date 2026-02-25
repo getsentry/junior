@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { createCanvas } from "@/chat/slack-actions/canvases";
+import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 
 export function createSlackCanvasCreateTool(
@@ -26,25 +27,43 @@ export function createSlackCanvasCreateTool(
         .describe("Optional Slack channel ID. Defaults to the current thread channel.")
     }),
     execute: async ({ title, markdown, channel_id }) => {
+      const targetChannelId = channel_id ?? context.channelId;
+      const operationKey = createOperationKey("slack_canvas_create", {
+        title,
+        markdown,
+        channel_id: targetChannelId ?? null
+      });
+      const cached = state.getOperationResult<{
+        ok: true;
+        canvas_id: string;
+        permalink: string;
+        summary: string;
+      }>(operationKey);
+      if (cached) {
+        return {
+          ...cached,
+          deduplicated: true
+        };
+      }
+
       try {
         const created = await createCanvas({
           title,
           markdown,
-          channelId: channel_id ?? context.channelId
+          channelId: targetChannelId
         });
         state.patchArtifactState({ lastCanvasId: created.canvasId, lastCanvasUrl: created.permalink });
 
-        return {
+        const response = {
           ok: true,
           canvas_id: created.canvasId,
           permalink: created.permalink,
           summary: `Created canvas ${created.canvasId}`
         };
+        state.setOperationResult(operationKey, response);
+        return response;
       } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : "canvas create failed"
-        };
+        throw new Error(error instanceof Error ? error.message : "canvas create failed");
       }
     }
   });

@@ -44,7 +44,7 @@ export function createWebFetchTool(hooks: ToolHooks) {
         if (response.ok && contentType.startsWith("image/")) {
           const bytes = Buffer.from(await response.arrayBuffer());
           if (bytes.byteLength > MAX_FETCH_BYTES) {
-            return { ok: false, error: "image response body too large" };
+            throw new Error("image response body too large");
           }
 
           const filename = filenameForUrl(safeUrl, contentType.split(";")[0] ?? "image/png");
@@ -67,10 +67,7 @@ export function createWebFetchTool(hooks: ToolHooks) {
 
         return await webFetch(url, max_chars);
       } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : "fetch failed"
-        };
+        throw new Error(error instanceof Error ? error.message : "fetch failed");
       }
     }
   });

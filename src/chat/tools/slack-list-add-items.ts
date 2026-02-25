@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { addListItems } from "@/chat/slack-actions/lists";
+import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 
 export function createSlackListAddItemsTool(state: ToolState) {
@@ -34,6 +35,24 @@ export function createSlackListAddItemsTool(state: ToolState) {
         if (!targetListId) {
           return { ok: false, error: "No list_id provided and no prior list found in thread state" };
         }
+        const operationKey = createOperationKey("slack_list_add_items", {
+          list_id: targetListId,
+          items,
+          assignee_user_id: assignee_user_id ?? null,
+          due_date: due_date ?? null
+        });
+        const cached = state.getOperationResult<{
+          ok: true;
+          list_id: string;
+          created_item_ids: string[];
+          created_count: number;
+        }>(operationKey);
+        if (cached) {
+          return {
+            ...cached,
+            deduplicated: true
+          };
+        }
 
         const result = await addListItems({
           listId: targetListId,
@@ -48,17 +67,16 @@ export function createSlackListAddItemsTool(state: ToolState) {
           listColumnMap: result.listColumnMap
         });
 
-        return {
+        const response = {
           ok: true,
           list_id: targetListId,
           created_item_ids: result.createdItemIds,
           created_count: result.createdItemIds.length
         };
+        state.setOperationResult(operationKey, response);
+        return response;
       } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : "list item create failed"
-        };
+        throw new Error(error instanceof Error ? error.message : "list item create failed");
       }
     }
   });

@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { lookupCanvasSection, updateCanvas } from "@/chat/slack-actions/canvases";
+import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 
 export function createSlackCanvasUpdateTool(state: ToolState) {
@@ -37,6 +38,25 @@ export function createSlackCanvasUpdateTool(state: ToolState) {
         if (!targetCanvasId) {
           return { ok: false, error: "No canvas_id provided and no prior canvas found in thread state" };
         }
+        const operationKey = createOperationKey("slack_canvas_update", {
+          canvas_id: targetCanvasId,
+          markdown,
+          operation,
+          section_id: section_id ?? null,
+          section_contains_text: section_contains_text ?? null
+        });
+        const cached = state.getOperationResult<{
+          ok: true;
+          canvas_id: string;
+          operation: "insert_at_end" | "insert_at_start" | "replace";
+          section_id?: string;
+        }>(operationKey);
+        if (cached) {
+          return {
+            ...cached,
+            deduplicated: true
+          };
+        }
 
         const sectionId =
           section_id ??
@@ -50,17 +70,16 @@ export function createSlackCanvasUpdateTool(state: ToolState) {
         });
         state.patchArtifactState({ lastCanvasId: targetCanvasId });
 
-        return {
+        const response = {
           ok: true,
           canvas_id: targetCanvasId,
           operation,
           section_id: sectionId
         };
+        state.setOperationResult(operationKey, response);
+        return response;
       } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : "canvas update failed"
-        };
+        throw new Error(error instanceof Error ? error.message : "canvas update failed");
       }
     }
   });

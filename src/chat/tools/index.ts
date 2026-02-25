@@ -17,6 +17,7 @@ function createToolState(
   hooks: ToolHooks,
   context: ToolRuntimeContext
 ): ToolState {
+  const operationResultCache = new Map<string, unknown>();
   const artifactState: ThreadArtifactsState = {
     ...(context.artifactState ?? {}),
     listColumnMap: {
@@ -39,7 +40,11 @@ function createToolState(
     artifactState,
     patchArtifactState,
     getCurrentCanvasId: () => artifactState.lastCanvasId,
-    getCurrentListId: () => artifactState.lastListId
+    getCurrentListId: () => artifactState.lastListId,
+    getOperationResult: <T>(operationKey: string): T | undefined => operationResultCache.get(operationKey) as T | undefined,
+    setOperationResult: (operationKey: string, result: unknown) => {
+      operationResultCache.set(operationKey, result);
+    }
   };
 }
 

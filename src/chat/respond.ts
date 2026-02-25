@@ -1,6 +1,5 @@
 import { gateway, hasToolCall, NoSuchToolError, stepCountIs, ToolLoopAgent, type ToolCallRepairFunction } from "ai";
 import type { FileUpload } from "chat";
-import { z } from "zod";
 import { generateObjectWithTelemetry, generateTextWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
 import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
@@ -55,22 +54,6 @@ function formatUnknownSkillMessage(requestedSkill: string, availableSkills: Arra
     available ? `Available skills: ${available}` : "No skills are currently available."
   ].join("\n");
 }
-
-const completionOutcomeClassificationSchema = z.object({
-  outcome: z.enum(["completed", "continue", "blocked"]).describe("Execution outcome classification."),
-  confidence: z.number().min(0).max(1).optional().describe("Classifier confidence from 0 to 1."),
-  reason: z.string().max(200).optional().describe("Short reason for this classification."),
-  blocking_question: z
-    .string()
-    .max(240)
-    .optional()
-    .describe("One concrete question to ask the user when outcome is blocked."),
-  missing_input: z
-    .string()
-    .max(120)
-    .optional()
-    .describe("Short name for the missing required input when outcome is blocked.")
-});
 
 function isExecutionDeferralResponse(text: string): boolean {
   return /\b(want me to proceed|do you want me to proceed|shall i proceed|can i proceed|should i proceed|let me do that now|give me a moment|tag me again|fresh invocation)\b/i.test(
@@ -199,138 +182,73 @@ function extractFinalAnswer(result: {
   return undefined;
 }
 
-type CompletionOutcome = "completed" | "continue" | "blocked";
-
-interface CompletionOutcomeDecision {
-  outcome: CompletionOutcome;
-  confidence?: number;
-  reason: string;
-  blockingQuestion?: string;
-  missingInput?: string;
+interface LoopStepLike {
+  toolCalls: Array<{ toolName: string; input: unknown }>;
+  toolResults: Array<{ type?: string; error?: unknown }>;
 }
 
-async function classifyCompletionOutcome(args: {
-  candidateText: string;
-  userTurnText: string;
-  requiredSkillName?: string;
-  telemetryMetadata: Record<string, string>;
-  context: ReplyRequestContext;
-}): Promise<CompletionOutcomeDecision> {
-  const candidate = args.candidateText.trim();
-  if (!candidate) {
-    return {
-      outcome: "continue",
-      reason: "empty response"
-    };
-  }
-  if (isExecutionEscapeResponse(candidate)) {
-    return {
-      outcome: "continue",
-      reason: "execution deferred or tool-access disclaimer"
-    };
+interface LoopGuardState {
+  hasNonFinalToolCall: boolean;
+  repeatedToolCallStreak: number;
+  toolErrorStreak: number;
+}
+
+const LOOP_GUARD_REPEAT_TOOL_CALL_STREAK = 2;
+const LOOP_GUARD_TOOL_ERROR_STREAK = 2;
+const LOOP_GUARD_FORCE_FINAL_AT_STEP = 24;
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableSerialize(entry)).join(",")}]`;
   }
 
-  try {
-    const classifierSystem = [
-      "You are classifying an assistant response outcome for an autonomous execution loop.",
-      "Use exactly one outcome:",
-      "- completed: the task was completed in this turn.",
-      "- continue: the response is incomplete and execution should continue autonomously without asking the user.",
-      "- blocked: progress is blocked by a required missing input that cannot be discovered via available tools.",
-      "Only use blocked for true hard blockers.",
-      "Return strict JSON with keys: outcome, confidence, reason, blocking_question, missing_input.",
-      "Include blocking_question only when outcome is blocked. It must be one concise, concrete question."
-    ].join("\n");
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort((a, b) => a[0].localeCompare(b[0]));
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`).join(",")}}`;
+  }
 
-    const result = await generateObjectWithTelemetry(
-      {
-        model: gateway(botConfig.routerModelId),
-        schema: completionOutcomeClassificationSchema,
-        temperature: 0,
-        maxOutputTokens: 80,
-        system: classifierSystem,
-        prompt: [
-          "<user-request>",
-          args.userTurnText,
-          "</user-request>",
-          "",
-          args.requiredSkillName ? `Active slash skill: /${args.requiredSkillName}` : "No active slash skill.",
-          "",
-          "<candidate-response>",
-          candidate,
-          "</candidate-response>"
-        ].join("\n")
-      },
-      {
-        functionId: "generateAssistantReply.classify_completion_outcome",
-        metadata: {
-          ...args.telemetryMetadata,
-          routerModelId: botConfig.routerModelId
-        },
-        isEnabled: true,
-        recordInputs: true,
-        recordOutputs: true
-      }
-    );
+  const serialized = JSON.stringify(value);
+  return serialized === undefined ? String(value) : serialized;
+}
 
-    const parsed = completionOutcomeClassificationSchema.parse(result.object);
-    const blockingQuestion = parsed.blocking_question?.trim();
-    const missingInput = parsed.missing_input?.trim();
-    if (parsed.outcome === "blocked") {
-      if (isExecutionEscapeResponse(candidate) || (blockingQuestion && isExecutionEscapeResponse(blockingQuestion))) {
-        return {
-          outcome: "continue",
-          confidence: parsed.confidence,
-          reason: "blocked classification rejected due execution-deferral pattern"
-        };
-      }
-      if (missingInput && /\b(permission|confirmation|proceed|re-invocation|tag)\b/i.test(missingInput)) {
-        return {
-          outcome: "continue",
-          confidence: parsed.confidence,
-          reason: "blocked classification rejected due non-blocking permission request"
-        };
-      }
+function toolCallSignature(call: { toolName: string; input: unknown }): string {
+  return `${call.toolName}:${stableSerialize(call.input)}`;
+}
+
+function hasToolError(step: LoopStepLike): boolean {
+  return step.toolResults.some((result) => result?.type === "tool-error" || result?.error !== undefined);
+}
+
+function computeLoopGuardState(steps: LoopStepLike[]): LoopGuardState {
+  const hasNonFinalToolCall = steps.some((step) => step.toolCalls.some((call) => call.toolName !== "final_answer"));
+
+  let repeatedToolCallStreak = 0;
+  const trailingNonFinalSignatures = [...steps]
+    .reverse()
+    .map((step) => {
+      const nonFinalCalls = step.toolCalls.filter((call) => call.toolName !== "final_answer");
+      if (nonFinalCalls.length !== 1) return null;
+      return toolCallSignature(nonFinalCalls[0]);
+    });
+  const firstSignature = trailingNonFinalSignatures[0];
+  if (firstSignature) {
+    for (const signature of trailingNonFinalSignatures) {
+      if (signature !== firstSignature) break;
+      repeatedToolCallStreak += 1;
     }
-
-    return {
-      outcome: parsed.outcome,
-      confidence: parsed.confidence,
-      reason: parsed.reason?.trim() || "llm classifier",
-      blockingQuestion,
-      missingInput
-    };
-  } catch (error) {
-    logWarn("ai_completion_classifier_failed", {
-      slackThreadId: args.context.correlation?.threadId,
-      slackUserId: args.context.correlation?.requesterId,
-      slackChannelId: args.context.correlation?.channelId,
-      workflowRunId: args.context.correlation?.workflowRunId,
-      assistantUserName: args.context.assistant?.userName,
-      modelId: botConfig.routerModelId
-    }, {
-      "error.message": error instanceof Error ? error.message : String(error)
-    }, "Completion outcome classifier failed");
-
-    return {
-      outcome: "continue",
-      reason: "classifier failed"
-    };
-  }
-}
-
-function toBlockedQuestion(decision: CompletionOutcomeDecision, fallbackText: string): string {
-  const explicit = decision.blockingQuestion?.trim();
-  if (explicit && !isExecutionEscapeResponse(explicit)) {
-    return explicit;
   }
 
-  const fallback = fallbackText.trim();
-  if (fallback.endsWith("?") && !isExecutionEscapeResponse(fallback)) {
-    return fallback;
+  let toolErrorStreak = 0;
+  for (const step of [...steps].reverse()) {
+    if (!hasToolError(step)) break;
+    toolErrorStreak += 1;
   }
 
-  return "I need one required input to continue. What should I use?";
+  return {
+    hasNonFinalToolCall,
+    repeatedToolCallStreak,
+    toolErrorStreak
+  };
 }
 
 export async function generateAssistantReply(
@@ -487,6 +405,10 @@ export async function generateAssistantReply(
       requester: context.requester,
       artifactState: context.artifactState
     });
+    const allToolNames = Object.keys(tools) as Array<keyof typeof tools>;
+    const nonFinalToolNames = allToolNames.filter((toolName) => toolName !== "final_answer");
+    const finalAnswerOnlyTools = ["final_answer"] as Array<keyof typeof tools>;
+    let loopGuardLogged = false;
 
     const agent = new ToolLoopAgent({
       model: gateway(botConfig.modelId),
@@ -494,6 +416,62 @@ export async function generateAssistantReply(
       tools,
       toolChoice: "required",
       stopWhen: [hasToolCall("final_answer"), stepCountIs(100)],
+      prepareStep: ({ stepNumber, steps }) => {
+        const loopState = computeLoopGuardState(steps as LoopStepLike[]);
+
+        if (!loopState.hasNonFinalToolCall && nonFinalToolNames.length > 0) {
+          return {
+            activeTools: nonFinalToolNames
+          };
+        }
+
+        const shouldForceFinalAnswer =
+          loopState.repeatedToolCallStreak >= LOOP_GUARD_REPEAT_TOOL_CALL_STREAK ||
+          loopState.toolErrorStreak >= LOOP_GUARD_TOOL_ERROR_STREAK ||
+          stepNumber >= LOOP_GUARD_FORCE_FINAL_AT_STEP;
+
+        if (shouldForceFinalAnswer) {
+          if (!loopGuardLogged) {
+            loopGuardLogged = true;
+            logWarn("ai_loop_guard_forced_final_answer", {
+              slackThreadId: context.correlation?.threadId,
+              slackUserId: context.correlation?.requesterId,
+              slackChannelId: context.correlation?.channelId,
+              workflowRunId: context.correlation?.workflowRunId,
+              assistantUserName: context.assistant?.userName,
+              modelId: botConfig.modelId
+            }, {
+              "app.ai.step_number": stepNumber,
+              "app.ai.repeated_tool_call_streak": loopState.repeatedToolCallStreak,
+              "app.ai.tool_error_streak": loopState.toolErrorStreak
+            }, "Loop guard forced final_answer-only mode");
+          }
+
+          return {
+            activeTools: finalAnswerOnlyTools
+          };
+        }
+
+        return {
+          activeTools: allToolNames
+        };
+      },
+      onStepFinish: (step) => {
+        const loopStep = step as LoopStepLike;
+        if (!hasToolError(loopStep)) return;
+
+        logWarn("ai_tool_error_step", {
+          slackThreadId: context.correlation?.threadId,
+          slackUserId: context.correlation?.requesterId,
+          slackChannelId: context.correlation?.channelId,
+          workflowRunId: context.correlation?.workflowRunId,
+          assistantUserName: context.assistant?.userName,
+          modelId: botConfig.modelId
+        }, {
+          "app.ai.step_tool_calls": loopStep.toolCalls.length,
+          "app.ai.step_tool_results": loopStep.toolResults.length
+        }, "Tool error encountered during agent step");
+      },
       experimental_repairToolCall: repairToolCall,
       experimental_telemetry: {
         isEnabled: true,
@@ -577,6 +555,14 @@ export async function generateAssistantReply(
             "No tool results were produced in the previous attempt.",
             "Run the required tools now before final_answer."
           ];
+      const finalizationRetryInstruction = [
+        ...finalizationRetryContext,
+        "",
+        "Do not ask the user to re-run, re-tag, or confirm to proceed.",
+        "",
+        "Call final_answer with the final user-facing markdown response.",
+        "Do not repeat earlier tool calls unless absolutely necessary."
+      ].join("\n");
 
       finalResult = await finalizationAgent.generate({
         messages: [
@@ -584,16 +570,10 @@ export async function generateAssistantReply(
             role: "user",
             content: userContentParts
           },
+          ...finalResult.response.messages,
           {
             role: "user",
-            content: [
-              ...finalizationRetryContext,
-              "",
-              "Do not ask the user to re-run, re-tag, or confirm to proceed.",
-              "",
-              "Call final_answer with the final user-facing markdown response.",
-              "Do not repeat earlier tool calls unless absolutely necessary."
-            ].join("\n")
+            content: finalizationRetryInstruction
           }
         ]
       });
@@ -698,209 +678,6 @@ export async function generateAssistantReply(
         "app.ai.response_messages": finalResult.response.messages.length,
         "app.ai.step_diagnostics": summarizeStepDiagnostics(finalResult)
       }, "Model returned empty text response");
-    }
-
-    const candidateText = finalAnswer ?? finalResult.text ?? "";
-    const initialOutcome = await classifyCompletionOutcome({
-      candidateText,
-      userTurnText,
-      requiredSkillName,
-      telemetryMetadata,
-      context
-    });
-
-    if (initialOutcome.outcome === "blocked") {
-      logWarn("ai_completion_blocked", {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      }, {
-        "app.ai.finish_reason": finalResult.finishReason,
-        "app.completion.reason": initialOutcome.reason,
-        "app.completion.confidence": initialOutcome.confidence,
-        "app.completion.missing_input": initialOutcome.missingInput ?? ""
-      }, "Completion blocked by missing required input");
-
-      return {
-        text: toBlockedQuestion(initialOutcome, candidateText),
-        files: generatedFiles.length > 0 ? generatedFiles : undefined,
-        artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
-      };
-    }
-
-    if (initialOutcome.outcome === "continue") {
-      logWarn("ai_completion_auto_continue", {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      }, {
-        "app.ai.finish_reason": finalResult.finishReason,
-        "app.completion.reason": initialOutcome.reason,
-        "app.completion.confidence": initialOutcome.confidence
-      }, "Completion incomplete; continuing autonomously");
-
-      const completionRetryAgent = new ToolLoopAgent({
-        model: gateway(botConfig.modelId),
-        instructions: [
-          buildSystemPrompt({
-            availableSkills,
-            activeSkills,
-            invocation: explicitInvocation,
-            assistant: context.assistant,
-            requester: context.requester,
-            artifactState: context.artifactState
-          }),
-          "## Runtime Completion Retry",
-          "- Complete the user's requested task in this turn using tools as needed.",
-          "- Do not ask for permission, confirmation, or more time unless there is a hard blocker.",
-          "- Never claim you lack access to tools in this turn; run available tools now.",
-          "- Never ask the user to re-tag, re-invoke, or retry for a clear request.",
-          "- Do not output status updates about intended future work.",
-          requiredSkillName
-            ? `- A slash-invoked skill is active: /${requiredSkillName}. Follow that skill's instructions first.`
-            : "- If a skill clearly applies, load it before finalizing.",
-          "- Call final_answer with the completed user-facing markdown output."
-        ].join("\n"),
-        tools,
-        toolChoice: "required",
-        stopWhen: [hasToolCall("final_answer"), stepCountIs(100)],
-        experimental_repairToolCall: repairToolCall,
-        experimental_telemetry: {
-          isEnabled: true,
-          recordInputs: true,
-          recordOutputs: true,
-          functionId: "generateAssistantReply.completion_retry",
-          metadata: telemetryMetadata
-        }
-      });
-
-      let retryResult = finalResult;
-      let retryText = candidateText;
-      let lastOutcome: CompletionOutcomeDecision = initialOutcome;
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const completionRetryToolSection = hasToolResults(retryResult)
-          ? [
-              "Tool results so far (JSON):",
-              serializeToolResultsForRetry(retryResult)
-            ]
-          : [
-              "No tool results are available yet.",
-              "Run the required tools now before final_answer."
-            ];
-
-        const completionRetry = await completionRetryAgent.generate({
-          messages: [
-            {
-              role: "user",
-              content: userContentParts
-            },
-            {
-              role: "user",
-              content: [
-                "Previous attempt was incomplete.",
-                "Complete the task now and provide the final answer directly.",
-                "Continue autonomously unless there is a true hard blocker.",
-                "Do not ask the user to proceed, re-tag, or start a fresh invocation.",
-                "",
-                ...completionRetryToolSection,
-                "",
-                "Previous assistant output that was not acceptable:",
-                retryText
-              ].join("\n")
-            }
-          ]
-        });
-
-        const completionAnswer = extractFinalAnswer(completionRetry) ?? completionRetry.text?.trim();
-        if (!completionAnswer) {
-          retryResult = completionRetry;
-          retryText = completionRetry.text?.trim() ?? "";
-          continue;
-        }
-
-        const retryOutcome = await classifyCompletionOutcome({
-          candidateText: completionAnswer,
-          userTurnText,
-          requiredSkillName,
-          telemetryMetadata,
-          context
-        });
-
-        if (retryOutcome.outcome === "completed") {
-          return {
-            text: completionAnswer,
-            files: generatedFiles.length > 0 ? generatedFiles : undefined,
-            artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
-          };
-        }
-
-        if (retryOutcome.outcome === "blocked") {
-          logWarn("ai_completion_blocked_after_retry", {
-            slackThreadId: context.correlation?.threadId,
-            slackUserId: context.correlation?.requesterId,
-            slackChannelId: context.correlation?.channelId,
-            workflowRunId: context.correlation?.workflowRunId,
-            assistantUserName: context.assistant?.userName,
-            modelId: botConfig.modelId
-          }, {
-            "app.retry.attempt": attempt,
-            "app.completion.reason": retryOutcome.reason,
-            "app.completion.confidence": retryOutcome.confidence,
-            "app.completion.missing_input": retryOutcome.missingInput ?? ""
-          }, "Completion became blocked during retry");
-
-          return {
-            text: toBlockedQuestion(retryOutcome, completionAnswer),
-            files: generatedFiles.length > 0 ? generatedFiles : undefined,
-            artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
-          };
-        }
-
-        logWarn("ai_completion_retry_still_incomplete", {
-          slackThreadId: context.correlation?.threadId,
-          slackUserId: context.correlation?.requesterId,
-          slackChannelId: context.correlation?.channelId,
-          workflowRunId: context.correlation?.workflowRunId,
-          assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId
-        }, {
-          "app.retry.attempt": attempt,
-          "app.completion.reason": retryOutcome.reason,
-          "app.completion.confidence": retryOutcome.confidence
-        }, "Completion retry remained incomplete");
-
-        lastOutcome = retryOutcome;
-        retryResult = completionRetry;
-        retryText = completionAnswer;
-      }
-
-      logWarn("ai_completion_retry_exhausted", {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      }, {
-        "app.completion.reason": lastOutcome.reason,
-        "app.completion.confidence": lastOutcome.confidence
-      }, "Completion retries exhausted without terminal completion");
-
-      const exhaustedAnswerFromRetry = extractFinalAnswer(retryResult);
-      const exhaustedAnswer = exhaustedAnswerFromRetry ?? (retryText.trim() || retryResult.text?.trim());
-      if (exhaustedAnswer && exhaustedAnswer.length > 0 && !isExecutionEscapeResponse(exhaustedAnswer)) {
-        return {
-          text: exhaustedAnswer,
-          files: generatedFiles.length > 0 ? generatedFiles : undefined,
-          artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
-        };
-      }
     }
 
     const resolvedText = finalAnswer ?? (finalResult.text || "I couldn't produce a response.");

@@ -35,10 +35,7 @@ export function createSlackListGetItemsTool(state: ToolState) {
           items: items.map((item) => ({ id: item.id, fields: item.fields }))
         };
       } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : "list fetch failed"
-        };
+        throw new Error(error instanceof Error ? error.message : "list fetch failed");
       }
     }
   });
