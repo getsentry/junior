@@ -27,3 +27,7 @@ source = "getsentry/skills"
 [[skills]]
 name = "iterate-pr"
 source = "getsentry/skills"
+
+[[skills]]
+name = "brand-guidelines"
+source = "getsentry/skills"

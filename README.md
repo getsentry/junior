@@ -77,6 +77,8 @@ oauth_config:
       - im:read
       - mpim:history
       - mpim:read
+      - users:read
+      - users:read.email
 settings:
   event_subscriptions:
     request_url: https://example.com/api/webhooks/slack
