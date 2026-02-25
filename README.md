@@ -14,7 +14,7 @@ The bot behavior is:
 - Model execution: AI SDK (`ai`) using AI Gateway model IDs
 - State: Redis in prod (`REDIS_URL`), memory fallback in dev
 - Tools: `load_skill`, `web_search`, `web_fetch`
-- `web_search` uses Brave when `BRAVE_SEARCH_API_KEY` is set; otherwise falls back to DuckDuckGo
+- `web_search` uses AI Gateway `parallelSearch` (agentic mode)
 - `web_fetch` converts HTML to markdown-like content (headings/lists/links) for better agent grounding
 - Skills: loaded from `skills/*/SKILL.md` with YAML validation
 
@@ -36,7 +36,6 @@ cp .env.example .env.local
 - `SLACK_BOT_TOKEN` (from Slack app OAuth)
 - `SLACK_SIGNING_SECRET` (from Slack app Basic Information)
 - `AI_MODEL` (optional; default `anthropic/claude-sonnet-4.6`)
-- `BRAVE_SEARCH_API_KEY` (optional; Brave Search API key for higher-quality web search)
 - `REDIS_URL` (optional for local; recommended for prod)
 - `SKILL_DIRS` (optional extra skill roots)
 
@@ -71,6 +70,7 @@ oauth_config:
   scopes:
     bot:
       - app_mentions:read
+      - assistant:write
       - channels:history
       - channels:read
       - chat:write
@@ -86,6 +86,8 @@ settings:
   event_subscriptions:
     request_url: https://example.com/api/webhooks/slack
     bot_events:
+      - assistant_thread_started
+      - assistant_thread_context_changed
       - app_mention
       - message.channels
       - message.groups
@@ -130,7 +132,6 @@ ngrok http 3000
 - `SLACK_BOT_TOKEN`
 - `SLACK_SIGNING_SECRET`
 - `AI_MODEL` (optional)
-- `BRAVE_SEARCH_API_KEY` (optional)
 - `REDIS_URL` (recommended)
 - `SKILL_DIRS` (optional)
 3. Update Slack request/interactivity URLs to:

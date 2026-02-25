@@ -1,8 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { gateway } from "@ai-sdk/gateway";
 import { findSkillByName, loadSkillsByName, type SkillMetadata } from "@/chat/skills";
 import { webFetch, MAX_FETCH_CHARS } from "@/chat/tools/web_fetch";
-import { webSearch } from "@/chat/tools/web_search";
 
 export function createTools(availableSkills: SkillMetadata[]) {
   return {
@@ -32,22 +32,8 @@ export function createTools(availableSkills: SkillMetadata[]) {
         };
       }
     }),
-    web_search: tool({
-      description: "Search the web for a query and return top results.",
-      inputSchema: z.object({
-        query: z.string().min(2),
-        limit: z.number().int().min(1).max(10).optional()
-      }),
-      execute: async ({ query, limit }) => {
-        try {
-          return await webSearch(query, limit);
-        } catch (error) {
-          return {
-            ok: false,
-            error: error instanceof Error ? error.message : "search failed"
-          };
-        }
-      }
+    web_search: gateway.tools.parallelSearch({
+      mode: "agentic"
     }),
     web_fetch: tool({
       description: "Fetch and extract readable text from a URL.",
