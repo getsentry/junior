@@ -251,7 +251,7 @@ async function resolveUserAttachments(
       if (!data) continue;
       if (data.byteLength > MAX_USER_ATTACHMENT_BYTES) {
         logWarn(
-          "skipping user attachment that exceeds size limit",
+          "attachment_skipped_size_limit",
           {
             slackThreadId: context.threadId,
             slackUserId: context.requesterId,
@@ -263,7 +263,8 @@ async function resolveUserAttachments(
           {
             "file.size": data.byteLength,
             "file.mime_type": mediaType
-          }
+          },
+          "Skipping user attachment that exceeds size limit"
         );
         continue;
       }
@@ -275,7 +276,7 @@ async function resolveUserAttachments(
       });
     } catch (error) {
       logWarn(
-        "failed to resolve user attachment",
+        "attachment_resolution_failed",
         {
           slackThreadId: context.threadId,
           slackUserId: context.requesterId,
@@ -287,7 +288,8 @@ async function resolveUserAttachments(
         {
           "error.message": error instanceof Error ? error.message : String(error),
           "file.mime_type": mediaType
-        }
+        },
+        "Failed to resolve user attachment"
       );
     }
   }
@@ -430,7 +432,7 @@ async function shouldReplyInSubscribedThread(args: {
     };
   } catch (error) {
     logWarn(
-      "subscribed-thread reply classifier failed; skipping reply",
+      "subscribed_reply_classifier_failed",
       {
         slackThreadId: args.context.threadId,
         slackUserId: args.context.requesterId,
@@ -441,7 +443,8 @@ async function shouldReplyInSubscribedThread(args: {
       },
       {
         "error.message": error instanceof Error ? error.message : String(error)
-      }
+      },
+      "Subscribed-thread reply classifier failed; skipping reply"
     );
     return {
       shouldReply: false,
@@ -697,7 +700,7 @@ bot.onNewMention(async (thread, message) => {
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
     };
-    logException(error, "onNewMention failed", observabilityContext);
+    logException(error, "mention_handler_failed", observabilityContext, {}, "onNewMention failed");
     await thread.post("I hit an internal error and couldn't respond. Please try again.");
   }
 });
@@ -727,7 +730,7 @@ bot.onSubscribedMessage(async (thread, message) => {
 
     if (!decision.shouldReply) {
       logWarn(
-        "skipping subscribed message reply",
+        "subscribed_message_reply_skipped",
         {
           slackThreadId: threadId,
           slackUserId: message.author.userId,
@@ -738,7 +741,8 @@ bot.onSubscribedMessage(async (thread, message) => {
         },
         {
           "app.decision.reason": decision.reason
-        }
+        },
+        "Skipping subscribed message reply"
       );
       return;
     }
@@ -769,7 +773,7 @@ bot.onSubscribedMessage(async (thread, message) => {
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
     };
-    logException(error, "onSubscribedMessage failed", observabilityContext);
+    logException(error, "subscribed_message_handler_failed", observabilityContext, {}, "onSubscribedMessage failed");
     await thread.post("I hit an internal error and couldn't respond. Please try again.");
   }
 });
@@ -789,7 +793,7 @@ bot.onAssistantThreadStarted(async (event) => {
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
     };
-    logException(error, "onAssistantThreadStarted failed", observabilityContext);
+    logException(error, "assistant_thread_started_handler_failed", observabilityContext, {}, "onAssistantThreadStarted failed");
   }
 });
 
@@ -808,6 +812,6 @@ bot.onAssistantContextChanged(async (event) => {
       assistantUserName: botConfig.userName,
       modelId: botConfig.modelId
     };
-    logException(error, "onAssistantContextChanged failed", observabilityContext);
+    logException(error, "assistant_context_changed_handler_failed", observabilityContext, {}, "onAssistantContextChanged failed");
   }
 });

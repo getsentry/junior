@@ -17,52 +17,69 @@ function toContextAndAttributes(
   attributes: Record<string, unknown>
 ): Record<string, unknown> {
   return {
-    ...(context as Record<string, unknown>),
+    ...toSpanAttributes(context),
     ...attributes
   };
 }
 
 export function captureException(error: unknown, context: ObservabilityContext = {}): void {
   const normalizedError = error instanceof Error ? error : new Error(String(error));
-  log.exception("exception_captured", normalizedError, context as Record<string, unknown>, "Captured exception");
+  log.exception("exception_captured", normalizedError, toContextAndAttributes(context, {}), "Captured exception");
 }
 
 function logWithLevel(
   level: "info" | "warn" | "error",
-  message: string,
-  attributes: Record<string, unknown> = {}
+  eventName: string,
+  attributes: Record<string, unknown> = {},
+  body?: string
 ): void {
   if (level === "info") {
-    log.info(message, attributes, message);
+    log.info(eventName, attributes, body);
     return;
   }
   if (level === "warn") {
-    log.warn(message, attributes, message);
+    log.warn(eventName, attributes, body);
     return;
   }
-  log.error(message, attributes, message);
+  log.error(eventName, attributes, body);
 }
 
-export function logInfo(message: string, context: ObservabilityContext = {}, attributes: Record<string, unknown> = {}): void {
-  logWithLevel("info", message, toContextAndAttributes(context, attributes));
+export function logInfo(
+  eventName: string,
+  context: ObservabilityContext = {},
+  attributes: Record<string, unknown> = {},
+  body?: string
+): void {
+  logWithLevel("info", eventName, toContextAndAttributes(context, attributes), body);
 }
 
-export function logWarn(message: string, context: ObservabilityContext = {}, attributes: Record<string, unknown> = {}): void {
-  logWithLevel("warn", message, toContextAndAttributes(context, attributes));
+export function logWarn(
+  eventName: string,
+  context: ObservabilityContext = {},
+  attributes: Record<string, unknown> = {},
+  body?: string
+): void {
+  logWithLevel("warn", eventName, toContextAndAttributes(context, attributes), body);
 }
 
-export function logError(message: string, context: ObservabilityContext = {}, attributes: Record<string, unknown> = {}): void {
-  logWithLevel("error", message, toContextAndAttributes(context, attributes));
+export function logError(
+  eventName: string,
+  context: ObservabilityContext = {},
+  attributes: Record<string, unknown> = {},
+  body?: string
+): void {
+  logWithLevel("error", eventName, toContextAndAttributes(context, attributes), body);
 }
 
 export function logException(
   error: unknown,
-  message: string,
+  eventName: string,
   context: ObservabilityContext = {},
-  attributes: Record<string, unknown> = {}
+  attributes: Record<string, unknown> = {},
+  body?: string
 ): void {
   const normalizedError = error instanceof Error ? error : new Error(String(error));
-  log.exception(message, normalizedError, toContextAndAttributes(context, attributes), message);
+  log.exception(eventName, normalizedError, toContextAndAttributes(context, attributes), body);
 }
 
 export function setTags(context: ObservabilityContext = {}): void {

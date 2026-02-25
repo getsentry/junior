@@ -228,22 +228,6 @@ function emitSentry(level: LogLevel, body: string, attributes: LogAttributes): v
   });
 }
 
-function emitConsole(level: LogLevel, body: string, attributes: LogAttributes): void {
-  const method = level === "error" ? console.error : level === "warn" ? console.warn : level === "debug" ? console.debug : console.info;
-  const payload = JSON.stringify({
-    timestamp: new Date().toISOString(),
-    severity_text: level.toUpperCase(),
-    body,
-    attributes
-  });
-
-  try {
-    method(payload);
-  } catch {
-    // best effort
-  }
-}
-
 function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown> = {}, body?: string): void {
   const contextAttributes = contextStorage.getStore() ?? {};
   const traceAttributes = getTraceCorrelationAttributes();
@@ -257,7 +241,6 @@ function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown>
     }
   );
 
-  emitConsole(level, message, attributes);
   emitSentry(level, message, attributes);
 }
 

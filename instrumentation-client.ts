@@ -24,8 +24,7 @@ Sentry.init({
   profilesSampleRate: getSampleRate(process.env.NEXT_PUBLIC_SENTRY_PROFILES_SAMPLE_RATE, 0),
   sendDefaultPii: true,
   enabled: Boolean(dsn),
-  enableLogs: getBoolean(process.env.NEXT_PUBLIC_SENTRY_ENABLE_LOGS, Boolean(dsn)),
-  integrations: [Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] })]
+  enableLogs: getBoolean(process.env.NEXT_PUBLIC_SENTRY_ENABLE_LOGS, Boolean(dsn))
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

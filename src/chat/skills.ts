@@ -45,10 +45,10 @@ async function readSkillDirectory(skillDir: string): Promise<SkillMetadata | nul
     const raw = await fs.readFile(skillFile, "utf8");
     const parsed = parseAndValidateSkillFrontmatter(raw, path.basename(skillDir));
     if (!parsed.ok) {
-      logWarn("invalid skill frontmatter", {}, {
+      logWarn("skill_frontmatter_invalid", {}, {
         "file.path": skillDir,
         "error.message": parsed.error
-      });
+      }, "Invalid skill frontmatter");
       return null;
     }
 
@@ -60,10 +60,10 @@ async function readSkillDirectory(skillDir: string): Promise<SkillMetadata | nul
       skillPath: skillDir
     };
   } catch (error) {
-    logWarn("failed to read skill directory", {}, {
+    logWarn("skill_directory_read_failed", {}, {
       "file.path": skillDir,
       "error.message": error instanceof Error ? error.message : String(error)
-    });
+    }, "Failed to read skill directory");
     return null;
   }
 }
@@ -92,10 +92,10 @@ export async function discoverSkills(): Promise<SkillMetadata[]> {
         }
       }
     } catch (error) {
-      logWarn("failed to read skill root", {}, {
+      logWarn("skill_root_read_failed", {}, {
         "file.directory": root,
         "error.message": error instanceof Error ? error.message : String(error)
-      });
+      }, "Failed to read skill root");
     }
   }
 

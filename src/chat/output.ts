@@ -118,12 +118,12 @@ export function buildSlackOutputMessage(text: string, options: SlackOutputOption
   const normalized = normalizeForSlack(parsed.text);
 
   if (!normalized) {
-    logWarn("slack output normalized to empty content", {}, {
+    logWarn("slack_output_normalized_empty", {}, {
       "app.output.original_length": text.length,
       "app.output.parsed_length": parsed.text.length,
       "app.output.directive_mode": parsed.options.forceAttachment ? "attachment" : parsed.options.forceInline ? "inline" : "default",
       "app.output.file_count": options.files?.length ?? 0
-    });
+    }, "Slack output normalized to empty content");
     return {
       markdown: "I couldn't produce a response.",
       files: options.files

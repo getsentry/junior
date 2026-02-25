@@ -37,8 +37,7 @@ export async function register(): Promise<void> {
         Sentry.vercelAIIntegration({
           recordInputs: true,
           recordOutputs: true
-        }),
-        Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] })
+        })
       ]
     });
     return;

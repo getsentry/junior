@@ -1,7 +1,17 @@
 import type { SlackListsItemsListResponse } from "@slack/web-api";
-import type { RichTextBlock } from "@slack/types";
 import { getFilePermalink, getSlackClient, withSlackRetries } from "@/chat/slack-actions/client";
 import type { ListColumnMap } from "@/chat/slack-actions/types";
+
+type RichTextBlock = {
+  type: "rich_text";
+  elements: Array<{
+    type: string;
+    elements: Array<{
+      type: string;
+      text: string;
+    }>;
+  }>;
+};
 
 interface SlackListsSchemaColumnResponse {
   id: string;
