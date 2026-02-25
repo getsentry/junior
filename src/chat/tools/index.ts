@@ -1,7 +1,8 @@
-import { generateText, tool } from "ai";
+import { tool } from "ai";
 import type { FileUpload } from "chat";
 import { z } from "zod";
 import { gateway } from "@ai-sdk/gateway";
+import { generateTextWithTelemetry } from "@/chat/ai";
 import { createCanvas, lookupCanvasSection, updateCanvas } from "@/chat/slack-actions/canvases";
 import {
   addListItems,
@@ -52,6 +53,26 @@ export function createTools(
 ) {
   const canvasesEnabled = isEnabled(process.env.SLACK_CANVASES_ENABLED);
   const listsEnabled = isEnabled(process.env.SLACK_LISTS_ENABLED);
+  const currentArtifactState: ThreadArtifactsState = {
+    ...(context.artifactState ?? {}),
+    listColumnMap: {
+      ...(context.artifactState?.listColumnMap ?? {})
+    }
+  };
+
+  const patchArtifactState = (patch: Partial<ThreadArtifactsState>) => {
+    Object.assign(currentArtifactState, patch);
+    if (patch.listColumnMap) {
+      currentArtifactState.listColumnMap = {
+        ...(currentArtifactState.listColumnMap ?? {}),
+        ...patch.listColumnMap
+      };
+    }
+    hooks.onArtifactStatePatch?.(patch);
+  };
+
+  const getCurrentCanvasId = () => getDefaultCanvasId({ artifactState: currentArtifactState });
+  const getCurrentListId = () => getDefaultListId({ artifactState: currentArtifactState });
 
   return {
     load_skill: tool({
@@ -107,9 +128,15 @@ export function createTools(
       }),
       execute: async ({ prompt }) => {
         try {
-          const result = await generateText({
+          const result = await generateTextWithTelemetry({
             model: gateway("google/gemini-3-pro-image"),
             prompt
+          }, {
+            functionId: "image_generate",
+            metadata: {
+              modelId: "google/gemini-3-pro-image",
+              toolName: "image_generate"
+            }
           });
 
           const uploads = result.files
@@ -166,7 +193,7 @@ export function createTools(
             markdown,
             channelId: channel_id ?? context.channelId
           });
-          hooks.onArtifactStatePatch?.({ lastCanvasId: created.canvasId, lastCanvasUrl: created.permalink });
+          patchArtifactState({ lastCanvasId: created.canvasId, lastCanvasUrl: created.permalink });
 
           return {
             ok: true,
@@ -197,7 +224,7 @@ export function createTools(
         }
 
         try {
-          const targetCanvasId = canvas_id ?? getDefaultCanvasId(context);
+          const targetCanvasId = canvas_id ?? getCurrentCanvasId();
           if (!targetCanvasId) {
             return { ok: false, error: "No canvas_id provided and no prior canvas found in thread state" };
           }
@@ -212,7 +239,7 @@ export function createTools(
             operation,
             sectionId
           });
-          hooks.onArtifactStatePatch?.({ lastCanvasId: targetCanvasId });
+          patchArtifactState({ lastCanvasId: targetCanvasId });
 
           return {
             ok: true,
@@ -240,7 +267,7 @@ export function createTools(
 
         try {
           const list = await createTodoList(name);
-          hooks.onArtifactStatePatch?.({
+          patchArtifactState({
             lastListId: list.listId,
             lastListUrl: list.permalink,
             listColumnMap: list.listColumnMap
@@ -274,7 +301,7 @@ export function createTools(
         }
 
         try {
-          const targetListId = list_id ?? getDefaultListId(context);
+          const targetListId = list_id ?? getCurrentListId();
           if (!targetListId) {
             return { ok: false, error: "No list_id provided and no prior list found in thread state" };
           }
@@ -282,12 +309,12 @@ export function createTools(
           const result = await addListItems({
             listId: targetListId,
             titles: items,
-            listColumnMap: context.artifactState?.listColumnMap,
+            listColumnMap: currentArtifactState.listColumnMap,
             assigneeUserId: assignee_user_id,
             dueDate: due_date
           });
 
-          hooks.onArtifactStatePatch?.({
+          patchArtifactState({
             lastListId: targetListId,
             listColumnMap: result.listColumnMap
           });
@@ -318,7 +345,7 @@ export function createTools(
         }
 
         try {
-          const targetListId = list_id ?? getDefaultListId(context);
+          const targetListId = list_id ?? getCurrentListId();
           if (!targetListId) {
             return { ok: false, error: "No list_id provided and no prior list found in thread state" };
           }
@@ -356,7 +383,7 @@ export function createTools(
         }
 
         try {
-          const targetListId = list_id ?? getDefaultListId(context);
+          const targetListId = list_id ?? getCurrentListId();
           if (!targetListId) {
             return { ok: false, error: "No list_id provided and no prior list found in thread state" };
           }
@@ -366,10 +393,10 @@ export function createTools(
             itemId: item_id,
             completed,
             title,
-            listColumnMap: context.artifactState?.listColumnMap ?? {}
+            listColumnMap: currentArtifactState.listColumnMap ?? {}
           });
 
-          hooks.onArtifactStatePatch?.({ lastListId: targetListId });
+          patchArtifactState({ lastListId: targetListId });
 
           return {
             ok: true,

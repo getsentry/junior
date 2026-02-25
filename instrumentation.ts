@@ -33,7 +33,13 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     Sentry.init({
       ...getCommonOptions(),
-      integrations: [Sentry.vercelAIIntegration(), Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] })]
+      integrations: [
+        Sentry.vercelAIIntegration({
+          recordInputs: true,
+          recordOutputs: true
+        }),
+        Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] })
+      ]
     });
     return;
   }
@@ -42,3 +48,5 @@ export async function register(): Promise<void> {
     Sentry.init(getCommonOptions());
   }
 }
+
+export const onRequestError = Sentry.captureRequestError;

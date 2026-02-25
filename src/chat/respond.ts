@@ -1,4 +1,5 @@
-import { generateText, gateway, stepCountIs } from "ai";
+import { gateway, stepCountIs } from "ai";
+import { generateTextWithTelemetry } from "@/chat/ai";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { captureException, logError, logWarn, setTags, withSpan } from "@/chat/observability";
@@ -93,7 +94,7 @@ export async function generateAssistantReply(
         skillName: invokedSkill?.name
       },
       () =>
-        generateText({
+        generateTextWithTelemetry({
           model: gateway(botConfig.modelId),
           system: buildSystemPrompt({
             availableSkills,
@@ -106,13 +107,6 @@ export async function generateAssistantReply(
           }),
           prompt: userInput,
           stopWhen: stepCountIs(12),
-          experimental_telemetry: {
-            isEnabled: true,
-            functionId: "generateAssistantReply",
-            recordInputs: true,
-            recordOutputs: true,
-            metadata: telemetryMetadata
-          },
           tools: createTools(
             availableSkills,
             {
@@ -129,6 +123,9 @@ export async function generateAssistantReply(
               artifactState: context.artifactState
             }
           )
+        }, {
+          functionId: "generateAssistantReply",
+          metadata: telemetryMetadata
         })
     );
 
