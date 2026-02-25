@@ -31,3 +31,7 @@ source = "getsentry/skills"
 [[skills]]
 name = "brand-guidelines"
 source = "getsentry/skills"
+
+[[skills]]
+name = "chat-sdk"
+source = "vercel/chat"
