@@ -1,6 +1,10 @@
 display_information:
   name: junior
 features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
   bot_user:
     display_name: junior
     always_online: true
@@ -28,6 +32,7 @@ settings:
       - assistant_thread_started
       - assistant_thread_context_changed
       - app_mention
+      - message.app_home
       - message.channels
       - message.groups
       - message.im
