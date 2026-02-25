@@ -81,9 +81,16 @@ https://<your-public-host>/api/webhooks/slack
 ```bash
 pnpm dev
 pnpm test
+pnpm evals
 pnpm typecheck
 pnpm skills:check
 ```
+
+## Behavior evals
+
+- Fixture suite: `evals/cases/slack-behaviors.yaml`
+- Run: `pnpm evals`
+- Focus: Slack input/output behavior using fixture events and a pseudo Slack adapter harness
 
 ## Notes
 

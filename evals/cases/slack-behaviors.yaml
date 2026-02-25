@@ -1,0 +1,151 @@
+schema_version: "1.0"
+name: App Slack Behavior Evals
+description: Behavior-level Slack event evals focused on input/output contracts.
+
+cases:
+  - id: mention_reply
+    description: Mention event subscribes to thread and posts one assistant response.
+    events:
+      - type: new_mention
+        thread:
+          id: thread-mention
+          channel_id: C-mention
+          thread_ts: "1700000000.100"
+        message:
+          id: m-mention-1
+          text: "<@U_APP> summarize this update"
+          is_mention: true
+          author:
+            user_id: U-alice
+            user_name: alice
+            full_name: Alice Example
+            is_me: false
+    expected:
+      posts_count: 1
+      posts_contain:
+        - "Handled:"
+      primary_thread_subscribed: true
+
+  - id: subscribed_skip
+    description: Subscribed message can be skipped with no assistant post.
+    behavior:
+      subscribed_decisions:
+        - should_reply: false
+          reason: side conversation
+    events:
+      - type: subscribed_message
+        thread:
+          id: thread-skip
+          channel_id: C-skip
+          thread_ts: "1700000000.200"
+        message:
+          id: m-skip-1
+          text: "thanks everyone"
+          is_mention: false
+          author:
+            user_id: U-bob
+            user_name: bob
+            full_name: Bob Example
+            is_me: false
+    expected:
+      posts_count: 0
+      warning_events:
+        - subscribed_message_reply_skipped
+
+  - id: subscribed_explicit_mention_reply
+    description: Explicit mention in subscribed thread forces a reply.
+    events:
+      - type: subscribed_message
+        thread:
+          id: thread-explicit
+          channel_id: C-explicit
+          thread_ts: "1700000000.300"
+        message:
+          id: m-explicit-1
+          text: "<@U_APP> can you draft a response?"
+          is_mention: true
+          author:
+            user_id: U-cara
+            user_name: cara
+            full_name: Cara Example
+            is_me: false
+    expected:
+      posts_count: 1
+      posts_contain:
+        - "Handled:"
+
+  - id: multi_turn_continuity
+    description: Two-turn flow keeps enough continuity to answer a follow-up.
+    events:
+      - type: new_mention
+        thread:
+          id: thread-continuity
+          channel_id: C-continuity
+          thread_ts: "1700000000.400"
+        message:
+          id: m-continuity-1
+          text: "I need the budget by Friday."
+          is_mention: true
+          author:
+            user_id: U-dani
+            user_name: dani
+            full_name: Dani Example
+            is_me: false
+      - type: subscribed_message
+        thread:
+          id: thread-continuity
+          channel_id: C-continuity
+          thread_ts: "1700000000.400"
+        message:
+          id: m-continuity-2
+          text: "what did i just ask?"
+          is_mention: true
+          author:
+            user_id: U-dani
+            user_name: dani
+            full_name: Dani Example
+            is_me: false
+    expected:
+      posts_count: 2
+      posts_contain:
+        - "You just asked: I need the budget by Friday."
+
+  - id: assistant_thread_init_metadata
+    description: Assistant thread start sets title and suggested prompts.
+    events:
+      - type: assistant_thread_started
+        thread:
+          id: thread-init
+          channel_id: C-init
+          thread_ts: "1700000000.500"
+        user_id: U-erin
+    expected:
+      posts_count: 0
+      adapter_title_calls: 1
+      adapter_prompt_calls: 1
+
+  - id: handler_error_fallback
+    description: Handler-level failures post a fallback message.
+    behavior:
+      fail_reply_call: 1
+    events:
+      - type: new_mention
+        thread:
+          id: thread-error
+          channel_id: C-error
+          thread_ts: "1700000000.600"
+        message:
+          id: m-error-1
+          text: "<@U_APP> run this"
+          is_mention: true
+          author:
+            user_id: U-finn
+            user_name: finn
+            full_name: Finn Example
+            is_me: false
+    expected:
+      posts_count: 1
+      posts_contain:
+        - "I hit an internal error and couldn't respond. Please try again."
+      exception_events:
+        - mention_handler_failed

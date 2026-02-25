@@ -4,6 +4,12 @@ import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { gateway } from "ai";
 import { z } from "zod";
 import { generateObjectWithTelemetry, generateTextWithTelemetry } from "@/chat/ai";
+import {
+  createAppSlackRuntime,
+  type AppRuntimeAssistantLifecycleEvent,
+  type AppRuntimeIncomingMessage,
+  type AppRuntimeThreadHandle
+} from "@/chat/app-runtime";
 import { botConfig } from "@/chat/config";
 import { buildConversationStatePatch, coerceThreadConversationState } from "@/chat/conversation-state";
 import type {
@@ -857,32 +863,14 @@ async function maybePostCanvasFallback(args: {
   return true;
 }
 
-interface ThreadTurnHandle {
-  id?: string;
+interface ThreadTurnHandle extends AppRuntimeThreadHandle {
   messages?: AsyncIterable<ThreadMessageSnapshot>;
-  post: (message: string | PostableMessage) => Promise<unknown>;
   recentMessages?: ThreadMessageSnapshot[];
-  refresh?: () => Promise<void>;
-  setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
-  startTyping?: (status?: string) => Promise<void>;
   state?: Promise<unknown | null>;
 }
 
-interface IncomingThreadMessage {
+interface IncomingThreadMessage extends AppRuntimeIncomingMessage {
   attachments?: Attachment[];
-  author: {
-    fullName?: string;
-    isBot?: boolean | "unknown";
-    isMe: boolean;
-    userId?: string;
-    userName?: string;
-  };
-  id?: string;
-  isMention?: boolean;
-  metadata?: {
-    dateSent?: Date;
-  };
-  text?: string | null;
 }
 
 interface PreparedTurnState {
@@ -1209,178 +1197,52 @@ async function initializeAssistantThread(event: {
   ]);
 }
 
-bot.onNewMention(async (thread, message) => {
-  try {
-    const threadId = getThreadId(thread, message);
-    const channelId = getChannelId(message);
-    const workflowRunId = getWorkflowRunId(thread, message);
-
-    await withSpan(
-      "workflow.chat_turn",
-      "workflow.chat_turn",
-      {
-        slackThreadId: threadId,
-        slackUserId: message.author.userId,
-        slackChannelId: channelId,
-        workflowRunId,
-        assistantUserName: botConfig.userName,
-        modelId: botConfig.modelId
-      },
-      async () => {
-        await thread.subscribe();
-        await replyToThread(thread, message, {
-          explicitMention: true
-        });
-      }
-    );
-  } catch (error) {
-    const observabilityContext = {
-      slackThreadId: getThreadId(thread, message),
-      slackUserId: message.author.userId,
-      slackChannelId: getChannelId(message),
-      workflowRunId: getWorkflowRunId(thread, message),
-      assistantUserName: botConfig.userName,
-      modelId: botConfig.modelId
-    };
-    logException(error, "mention_handler_failed", observabilityContext, {}, "onNewMention failed");
-    await thread.post("I hit an internal error and couldn't respond. Please try again.");
-  }
-});
-
-bot.onSubscribedMessage(async (thread, message) => {
-  try {
-    const threadId = getThreadId(thread, message);
-    const channelId = getChannelId(message);
-    const workflowRunId = getWorkflowRunId(thread, message);
-    const rawUserText = message.text ?? "";
-    const userText = stripLeadingBotMention(rawUserText, {
-      stripLeadingSlackMentionToken: Boolean(message.isMention)
-    });
-    const preparedState = await prepareTurnState({
-      thread,
-      message,
-      userText,
-      explicitMention: Boolean(message.isMention),
-      context: {
-        threadId,
-        requesterId: message.author.userId,
-        channelId,
-        workflowRunId
-      }
-    });
-
+export const appSlackRuntime = createAppSlackRuntime<
+  PreparedTurnState,
+  ThreadTurnHandle,
+  IncomingThreadMessage,
+  AppRuntimeAssistantLifecycleEvent
+>({
+  assistantUserName: botConfig.userName,
+  modelId: botConfig.modelId,
+  now: () => Date.now(),
+  getThreadId,
+  getChannelId,
+  getWorkflowRunId,
+  stripLeadingBotMention,
+  withSpan,
+  logWarn,
+  logException,
+  prepareTurnState,
+  persistPreparedState: async ({ thread, preparedState }) => {
     await persistThreadState(thread, {
       conversation: preparedState.conversation
     });
-
-    const decision = await shouldReplyInSubscribedThread({
-      rawText: rawUserText,
-      text: userText,
-      conversationContext: preparedState.routingContext ?? preparedState.conversationContext,
-      isExplicitMention: Boolean(message.isMention),
-      context: {
-        threadId,
-        requesterId: message.author.userId,
-        channelId,
-        workflowRunId
-      }
+  },
+  getPreparedConversationContext: (preparedState) =>
+    preparedState.routingContext ?? preparedState.conversationContext,
+  shouldReplyInSubscribedThread,
+  onSubscribedMessageSkipped: async ({ thread, preparedState, decision, completedAtMs }) => {
+    markConversationMessage(preparedState.conversation, preparedState.userMessageId, {
+      replied: false,
+      skippedReason: decision.reason
     });
-
-    if (!decision.shouldReply) {
-      logWarn(
-        "subscribed_message_reply_skipped",
-        {
-          slackThreadId: threadId,
-          slackUserId: message.author.userId,
-          slackChannelId: channelId,
-          workflowRunId,
-          assistantUserName: botConfig.userName,
-          modelId: botConfig.modelId
-        },
-        {
-          "app.decision.reason": decision.reason
-        },
-        "Skipping subscribed message reply"
-      );
-      markConversationMessage(preparedState.conversation, preparedState.userMessageId, {
-        replied: false,
-        skippedReason: decision.reason
-      });
-      preparedState.conversation.processing.activeTurnId = undefined;
-      preparedState.conversation.processing.lastCompletedAtMs = Date.now();
-      updateConversationStats(preparedState.conversation);
-      await persistThreadState(thread, {
-        conversation: preparedState.conversation
-      });
-      return;
-    }
-
-    await withSpan(
-      "workflow.chat_turn",
-      "workflow.chat_turn",
-      {
-        slackThreadId: threadId,
-        slackUserId: message.author.userId,
-        slackChannelId: channelId,
-        workflowRunId,
-        assistantUserName: botConfig.userName,
-        modelId: botConfig.modelId
-      },
-      async () => {
-        await replyToThread(thread, message, {
-          explicitMention: decision.reason === "explicit mention",
-          preparedState
-        });
-      }
-    );
-  } catch (error) {
-    const observabilityContext = {
-      slackThreadId: getThreadId(thread, message),
-      slackUserId: message.author.userId,
-      slackChannelId: getChannelId(message),
-      workflowRunId: getWorkflowRunId(thread, message),
-      assistantUserName: botConfig.userName,
-      modelId: botConfig.modelId
-    };
-    logException(error, "subscribed_message_handler_failed", observabilityContext, {}, "onSubscribedMessage failed");
-    await thread.post("I hit an internal error and couldn't respond. Please try again.");
-  }
+    preparedState.conversation.processing.activeTurnId = undefined;
+    preparedState.conversation.processing.lastCompletedAtMs = completedAtMs;
+    updateConversationStats(preparedState.conversation);
+    await persistThreadState(thread, {
+      conversation: preparedState.conversation
+    });
+  },
+  replyToThread,
+  initializeAssistantThread
 });
 
-bot.onAssistantThreadStarted(async (event) => {
-  try {
-    await initializeAssistantThread({
-      threadId: event.threadId,
-      channelId: event.channelId,
-      threadTs: event.threadTs
-    });
-  } catch (error) {
-    const observabilityContext = {
-      slackThreadId: event.threadId,
-      slackUserId: event.userId,
-      slackChannelId: event.channelId,
-      assistantUserName: botConfig.userName,
-      modelId: botConfig.modelId
-    };
-    logException(error, "assistant_thread_started_handler_failed", observabilityContext, {}, "onAssistantThreadStarted failed");
-  }
-});
-
-bot.onAssistantContextChanged(async (event) => {
-  try {
-    await initializeAssistantThread({
-      threadId: event.threadId,
-      channelId: event.channelId,
-      threadTs: event.threadTs
-    });
-  } catch (error) {
-    const observabilityContext = {
-      slackThreadId: event.threadId,
-      slackUserId: event.userId,
-      slackChannelId: event.channelId,
-      assistantUserName: botConfig.userName,
-      modelId: botConfig.modelId
-    };
-    logException(error, "assistant_context_changed_handler_failed", observabilityContext, {}, "onAssistantContextChanged failed");
-  }
-});
+bot.onNewMention(appSlackRuntime.handleNewMention);
+bot.onSubscribedMessage(appSlackRuntime.handleSubscribedMessage);
+bot.onAssistantThreadStarted((event: AppRuntimeAssistantLifecycleEvent) =>
+  appSlackRuntime.handleAssistantThreadStarted(event)
+);
+bot.onAssistantContextChanged((event: AppRuntimeAssistantLifecycleEvent) =>
+  appSlackRuntime.handleAssistantContextChanged(event)
+);

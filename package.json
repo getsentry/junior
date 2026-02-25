@@ -10,6 +10,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
+    "evals": "vitest run tests/evals/behavior-evals.test.ts --reporter=verbose",
     "typecheck": "tsc --noEmit",
     "skills:check": "node scripts/check-skills.mjs"
   },
