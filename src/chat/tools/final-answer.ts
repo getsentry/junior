@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool } from "@/chat/tools/definition";
 import { z } from "zod";
 
 export function createFinalAnswerTool() {

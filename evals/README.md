@@ -21,8 +21,8 @@ Execution uses the behavior harness (fake Slack threads/events) and then LLM-as-
         is_mention: true
   expected:
     posts_count: 1
-    posts_contain:
-      - "summary"
+    tool_calls_include:
+      - "final_answer"
 ```
 
 ## Supported Event Types
@@ -35,7 +35,7 @@ Execution uses the behavior harness (fake Slack threads/events) and then LLM-as-
 ## Common Expectations
 
 - `posts_count`
-- `posts_contain`
+- `tool_calls_include`
 - `primary_thread_subscribed`
 - `warning_events`
 - `exception_events`

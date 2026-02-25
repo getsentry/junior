@@ -1,7 +1,7 @@
 import path from "node:path";
-import { generateObject, gateway } from "ai";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { completeObject } from "@/chat/pi/client";
 import { loadBehaviorEvalSuite, runBehaviorEvalCase } from "./behavior-harness";
 
 const judgeResultSchema = z.object({
@@ -13,6 +13,7 @@ function buildJudgePrompt(
   testCase: unknown,
   result: {
     posts: string[];
+    toolCalls: string[];
     warnings: Array<{ eventName: string }>;
     exceptions: Array<{ eventName: string }>;
     primaryThread?: { subscribed: boolean };
@@ -35,6 +36,7 @@ function buildJudgePrompt(
     JSON.stringify(
       {
         posts: result.posts,
+        tool_calls: result.toolCalls,
         warnings: result.warnings.map((entry) => entry.eventName),
         exceptions: result.exceptions.map((entry) => entry.eventName),
         primary_thread_subscribed: Boolean(result.primaryThread?.subscribed),
@@ -60,8 +62,8 @@ describe("LLM judged behavior evals", () => {
 
     for (const testCase of suite.cases) {
       const result = await runBehaviorEvalCase(testCase);
-      const { object } = await generateObject({
-        model: gateway(judgeModel),
+      const { object } = await completeObject({
+        modelId: judgeModel,
         schema: judgeResultSchema,
         temperature: 0,
         prompt: buildJudgePrompt(testCase, result)

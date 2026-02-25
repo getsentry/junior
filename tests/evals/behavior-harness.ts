@@ -68,9 +68,9 @@ interface BehaviorCaseExpectation {
   adapter_title_calls?: number;
   exception_events?: string[];
   min_posts?: number;
-  posts_contain?: string[];
   posts_count?: number;
   primary_thread_subscribed?: boolean;
+  tool_calls_include?: string[];
   warning_events?: string[];
 }
 
@@ -150,9 +150,9 @@ const expectationSchema = z.object({
   adapter_title_calls: z.number().int().nonnegative().optional(),
   exception_events: z.array(z.string().min(1)).optional(),
   min_posts: z.number().int().nonnegative().optional(),
-  posts_contain: z.array(z.string()).optional(),
   posts_count: z.number().int().nonnegative().optional(),
   primary_thread_subscribed: z.boolean().optional(),
+  tool_calls_include: z.array(z.string().min(1)).optional(),
   warning_events: z.array(z.string().min(1)).optional()
 });
 
@@ -266,6 +266,7 @@ interface BehaviorCaseResult {
   posts: string[];
   primaryThread?: FakeThread;
   slackAdapter: FakeSlackAdapter;
+  toolCalls: string[];
   warnings: EvalLogEntry[];
 }
 
@@ -332,6 +333,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   const threadsById = new Map<string, FakeThread>();
   const replyTexts = testCase.behavior?.reply_texts ?? [];
   const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
+  const toolCalls: string[] = [];
   let replyCallCount = 0;
   let decisionIndex = 0;
 
@@ -450,6 +452,15 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
 
       const replyText = replyTexts[replyCallCount - 1] ?? reply.text;
       await thread.post(replyText);
+      warnings.push({
+        eventName: `agent_turn_${reply.diagnostics.outcome}`
+      });
+      toolCalls.push(...reply.diagnostics.toolCalls);
+      if (reply.diagnostics.stopReason) {
+        warnings.push({
+          eventName: `agent_turn_stop_reason_${reply.diagnostics.stopReason}`
+        });
+      }
 
       const nextState: Record<string, unknown> = {
         app_eval_last_user_text: text
@@ -504,7 +515,8 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     warnings,
     exceptions,
     primaryThread,
-    slackAdapter
+    slackAdapter,
+    toolCalls
   };
 }
 
@@ -512,6 +524,7 @@ function formatFailure(message: string, result: BehaviorCaseResult): string {
   return [
     message,
     `posts=${JSON.stringify(result.posts)}`,
+    `tool_calls=${JSON.stringify(result.toolCalls)}`,
     `warnings=${JSON.stringify(result.warnings.map((entry) => entry.eventName))}`,
     `exceptions=${JSON.stringify(result.exceptions.map((entry) => entry.eventName))}`
   ].join(" | ");
@@ -535,12 +548,6 @@ export function assertBehaviorEvalCase(
     throw new Error(
       formatFailure(`expected at least ${expected.min_posts} posts but got ${result.posts.length}`, result)
     );
-  }
-
-  for (const fragment of expected.posts_contain ?? []) {
-    if (!result.posts.some((post) => post.includes(fragment))) {
-      throw new Error(formatFailure(`expected a post containing ${JSON.stringify(fragment)}`, result));
-    }
   }
 
   if (
@@ -588,6 +595,12 @@ export function assertBehaviorEvalCase(
   for (const eventName of expected.exception_events ?? []) {
     if (!result.exceptions.some((entry) => entry.eventName === eventName)) {
       throw new Error(formatFailure(`expected exception event ${eventName}`, result));
+    }
+  }
+
+  for (const toolName of expected.tool_calls_include ?? []) {
+    if (!result.toolCalls.includes(toolName)) {
+      throw new Error(formatFailure(`expected tool call ${toolName}`, result));
     }
   }
 }

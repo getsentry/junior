@@ -1,9 +1,7 @@
 import { Chat } from "chat";
 import type { Attachment, FileUpload, PostableMessage } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
-import { gateway } from "ai";
 import { z } from "zod";
-import { generateObjectWithTelemetry, generateTextWithTelemetry } from "@/chat/ai";
 import {
   createAppSlackRuntime,
   type AppRuntimeAssistantLifecycleEvent,
@@ -28,6 +26,7 @@ import {
 } from "@/chat/slack-actions/types";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { createStateAdapter } from "@/chat/state";
+import { completeObject, completeText } from "@/chat/pi/client";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -449,33 +448,31 @@ async function summarizeConversationChunk(
   const transcript = messages.map((message) => renderConversationMessageLine(message)).join("\n");
 
   try {
-    const result = await generateTextWithTelemetry(
-      {
-        model: gateway(botConfig.routerModelId),
-        temperature: 0,
-        prompt: [
-          "Summarize the following older Slack thread transcript segment for future assistant turns.",
-          "Keep the summary factual and concise.",
-          "Preserve decisions, commitments, constraints, locations, hiring criteria, and unresolved asks.",
-          "Do not invent details.",
-          "",
-          transcript
-        ].join("\n")
-      },
-      {
-        functionId: "workflow.compact_thread_context",
-        metadata: {
-          modelId: botConfig.routerModelId,
-          threadId: context.threadId ?? "",
-          channelId: context.channelId ?? "",
-          requesterId: context.requesterId ?? "",
-          workflowRunId: context.workflowRunId ?? ""
-        },
-        isEnabled: true,
-        recordInputs: true,
-        recordOutputs: true
+    const result = await completeText({
+      modelId: botConfig.routerModelId,
+      temperature: 0,
+      messages: [
+        {
+          role: "user",
+          content: [
+            "Summarize the following older Slack thread transcript segment for future assistant turns.",
+            "Keep the summary factual and concise.",
+            "Preserve decisions, commitments, constraints, locations, hiring criteria, and unresolved asks.",
+            "Do not invent details.",
+            "",
+            transcript
+          ].join("\n"),
+          timestamp: Date.now()
+        }
+      ],
+      metadata: {
+        modelId: botConfig.routerModelId,
+        threadId: context.threadId ?? "",
+        channelId: context.channelId ?? "",
+        requesterId: context.requesterId ?? "",
+        workflowRunId: context.workflowRunId ?? ""
       }
-    );
+    });
     const summary = result.text.trim();
     if (summary.length > 0) {
       return summary.slice(0, 3500);
@@ -737,26 +734,21 @@ async function shouldReplyInSubscribedThread(args: {
       `<thread-context>${escapeXml(args.conversationContext?.trim() || "[none]")}</thread-context>`
     ].join("\n");
 
-    const result = await generateObjectWithTelemetry(
-      {
-        model: gateway(botConfig.routerModelId),
-        schema: replyDecisionSchema,
-        maxOutputTokens: 80,
-        temperature: 0,
-        system: routerSystem,
-        prompt: rawText
-      },
-      {
-        functionId: "workflow.should_reply_in_subscribed_thread",
-        metadata: {
-          modelId: botConfig.routerModelId,
-          threadId: args.context.threadId ?? "",
-          channelId: args.context.channelId ?? "",
-          requesterId: args.context.requesterId ?? "",
-          workflowRunId: args.context.workflowRunId ?? ""
-        }
+    const result = await completeObject({
+      modelId: botConfig.routerModelId,
+      schema: replyDecisionSchema,
+      maxTokens: 120,
+      temperature: 0,
+      system: routerSystem,
+      prompt: rawText,
+      metadata: {
+        modelId: botConfig.routerModelId,
+        threadId: args.context.threadId ?? "",
+        channelId: args.context.channelId ?? "",
+        requesterId: args.context.requesterId ?? "",
+        workflowRunId: args.context.workflowRunId ?? ""
       }
-    );
+    });
 
     const parsed = replyDecisionSchema.parse(result.object);
     const reason = parsed.reason?.trim() || "llm classifier";
@@ -878,6 +870,7 @@ interface PreparedTurnState {
   conversation: ThreadConversationState;
   conversationContext?: string;
   routingContext?: string;
+  sandboxId?: string;
   userMessageId?: string;
 }
 
@@ -904,6 +897,7 @@ async function persistThreadState(
   patch: {
     artifacts?: ThreadArtifactsState;
     conversation?: ThreadConversationState;
+    sandboxId?: string;
   }
 ): Promise<void> {
   if (!thread.setState) {
@@ -916,6 +910,9 @@ async function persistThreadState(
   }
   if (patch.conversation) {
     Object.assign(payload, buildConversationStatePatch(patch.conversation));
+  }
+  if (patch.sandboxId) {
+    payload.app_sandbox_id = patch.sandboxId;
   }
 
   if (Object.keys(payload).length === 0) {
@@ -937,6 +934,10 @@ async function prepareTurnState(args: {
   };
 }): Promise<PreparedTurnState> {
   const existingState = args.thread.state ? await args.thread.state : null;
+  const existingSandboxId =
+    existingState && typeof existingState === "object"
+      ? toOptionalString((existingState as { app_sandbox_id?: unknown }).app_sandbox_id)
+      : undefined;
   const artifacts = coerceThreadArtifactsState(existingState);
   const conversation = coerceThreadConversationState(existingState);
 
@@ -996,6 +997,7 @@ async function prepareTurnState(args: {
   return {
     artifacts,
     conversation,
+    sandboxId: existingSandboxId,
     conversationContext,
     routingContext,
     userMessageId
@@ -1088,8 +1090,40 @@ async function replyToThread(
             channelId,
             requesterId: message.author.userId
           },
+          sandbox: {
+            sandboxId: preparedState.sandboxId
+          },
           onStatus: (status) => progress.setStatus(status)
         });
+        logInfo(
+          "agent_turn_diagnostics",
+          {
+            slackThreadId: threadId,
+            slackUserId: message.author.userId,
+            slackChannelId: channelId,
+            workflowRunId,
+            assistantUserName: botConfig.userName,
+            modelId: botConfig.modelId
+          },
+          {
+            "gen_ai.system": "vercel-ai-gateway",
+            "gen_ai.operation.name": "agent_turn",
+            "app.ai.outcome": reply.diagnostics.outcome,
+            "app.ai.assistant_messages": reply.diagnostics.assistantMessageCount,
+            "app.ai.tool_results": reply.diagnostics.toolResultCount,
+            "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
+            "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
+            "app.ai.used_final_answer": reply.diagnostics.usedFinalAnswer,
+            "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
+            ...(reply.diagnostics.stopReason
+              ? { "app.ai.stop_reason": reply.diagnostics.stopReason }
+              : {}),
+            ...(reply.diagnostics.errorMessage
+              ? { "error.message": reply.diagnostics.errorMessage }
+              : {})
+          },
+          "Agent turn diagnostics"
+        );
 
         markConversationMessage(preparedState.conversation, preparedState.userMessageId, {
           replied: true,
@@ -1152,7 +1186,8 @@ async function replyToThread(
         updateConversationStats(preparedState.conversation);
         await persistThreadState(thread, {
           artifacts: nextArtifacts,
-          conversation: preparedState.conversation
+          conversation: preparedState.conversation,
+          sandboxId: reply.sandboxId
         });
         persistedAtLeastOnce = true;
       } finally {

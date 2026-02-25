@@ -15,13 +15,15 @@
     "skills:check": "node scripts/check-skills.mjs"
   },
   "dependencies": {
-    "@ai-sdk/gateway": "^3.0.55",
     "@chat-adapter/slack": "^4.14.0",
     "@chat-adapter/state-memory": "^4.14.0",
     "@chat-adapter/state-redis": "^4.14.0",
+    "@mariozechner/pi-agent-core": "^0.55.0",
+    "@mariozechner/pi-ai": "^0.55.0",
     "@sentry/nextjs": "^10.40.0",
+    "@sinclair/typebox": "^0.34.48",
     "@slack/web-api": "^7.14.1",
-    "ai": "^6.0.99",
+    "@vercel/sandbox": "^1.7.1",
     "chat": "^4.14.0",
     "next": "^16.1.6",
     "node-html-markdown": "^2.0.0",

@@ -26,7 +26,7 @@ describe("skill sandbox", () => {
     await expect(sandbox.readFile({ filePath: "../README.md" })).rejects.toThrow("escapes");
   });
 
-  it("maps allowed-tools aliases to runtime tool names", () => {
+  it("accepts only exact runtime tool names in allowed-tools", () => {
     const sandbox = new SkillSandbox(
       [
         {
@@ -40,20 +40,19 @@ describe("skill sandbox", () => {
           name: "demo",
           description: "Demo",
           skillPath: "/tmp/demo",
-          allowedTools: ["Read", "web_search", "Bash(git:*)"],
+          allowedTools: ["Read", "web_search", "Bash(git:*)", "bash"],
           body: "demo body"
         }
       ]
     );
 
     const filtered = sandbox.filterToolNames([
-      "read_skill_file",
-      "list_skill_files",
+      "bash",
       "web_search",
       "web_fetch",
       "final_answer"
     ]);
 
-    expect(filtered).toEqual(["read_skill_file", "web_search", "final_answer"]);
+    expect(filtered).toEqual(["bash", "web_search", "final_answer"]);
   });
 });

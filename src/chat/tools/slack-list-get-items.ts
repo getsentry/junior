@@ -1,4 +1,4 @@
-import { tool } from "ai";
+import { tool } from "@/chat/tools/definition";
 import { z } from "zod";
 import { listItems } from "@/chat/slack-actions/lists";
 import type { ToolState } from "@/chat/tools/types";

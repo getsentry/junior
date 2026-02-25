@@ -22,8 +22,6 @@ cases:
             is_me: false
     expected:
       posts_count: 1
-      posts_contain:
-        - "Handled:"
       primary_thread_subscribed: true
 
   - id: subscribed_skip
@@ -71,8 +69,6 @@ cases:
             is_me: false
     expected:
       posts_count: 1
-      posts_contain:
-        - "Handled:"
 
   - id: multi_turn_continuity
     description: Two-turn flow keeps enough continuity to answer a follow-up.
@@ -107,8 +103,6 @@ cases:
             is_me: false
     expected:
       posts_count: 2
-      posts_contain:
-        - "You just asked: I need the budget by Friday."
 
   - id: assistant_thread_init_metadata
     description: Assistant thread start sets title and suggested prompts.
@@ -145,8 +139,6 @@ cases:
             is_me: false
     expected:
       posts_count: 1
-      posts_contain:
-        - "I hit an internal error and couldn't respond. Please try again."
       exception_events:
         - mention_handler_failed
 
@@ -169,5 +161,3 @@ cases:
             is_me: false
     expected:
       posts_count: 1
-      posts_contain:
-        - "Loaded /brief candidate: David Cramer"

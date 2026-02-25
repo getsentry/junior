@@ -1,6 +1,6 @@
 # Harness Agent Spec
 
-This document defines how the Junior harness must run AI SDK v6 agents for Slack replies.
+This document defines how the Junior harness must run agent turns for Slack replies.
 
 ## Loop Model
 
@@ -24,7 +24,7 @@ This document defines how the Junior harness must run AI SDK v6 agents for Slack
 
 ## Tool Semantics
 
-- Working tools (`web_search`, `web_fetch`, `list_skill_files`, `read_skill_file`, Slack tools, skills, etc.) perform intermediate actions.
+- Working tools (`web_search`, `web_fetch`, `bash`, Slack tools, skills, etc.) perform intermediate actions.
 - `final_answer` is the only canonical completion signal for a turn.
 - Do not rely on provider/tool-only finish states (`finishReason: "tool-calls"`) as a complete user response.
 
@@ -76,5 +76,18 @@ Expected: side effects plus a clear user-visible wrap-up.
 
 ## Observability
 
-- Keep telemetry enabled with `experimental_telemetry` (`isEnabled`, `recordInputs`, `recordOutputs`, metadata).
-- Keep Sentry tags/spans and empty-response diagnostics for tool-call-only turns.
+- Every assistant turn must emit one `agent_turn_diagnostics` log event after `generateAssistantReply`.
+- The event must include:
+  - `gen_ai.request.model`
+  - `gen_ai.system`
+  - `gen_ai.operation.name`
+  - `app.ai.outcome` (`success|execution_failure|provider_error`)
+  - `app.ai.assistant_messages`
+  - `app.ai.tool_results`
+  - `app.ai.tool_error_results`
+  - `app.ai.used_final_answer`
+  - `app.ai.used_primary_text`
+  - `app.ai.stop_reason` (when available)
+  - `error.message` (when available)
+- Do not emit empty placeholder values for optional fields; omit absent optional attributes.
+- Harness/evals must be able to observe these diagnostics (directly or via mapped warning events).

@@ -25,7 +25,8 @@ describe("load_skill tool", () => {
       ok: true,
       skill_name: "brief"
     });
-    expect(Array.isArray((result as any).allowed_tools)).toBe(true);
+    expect(typeof (result as any).location).toBe("string");
+    expect(typeof (result as any).skill_dir).toBe("string");
   });
 
   it("returns unknown-skill when the name does not exist", async () => {
