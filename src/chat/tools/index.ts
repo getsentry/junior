@@ -54,7 +54,7 @@ export function createTools(
   return {
     load_skill: createLoadSkillTool(availableSkills),
     web_search: createWebSearchTool(),
-    web_fetch: createWebFetchTool(),
+    web_fetch: createWebFetchTool(hooks),
     image_generate: createImageGenerateTool(hooks),
     slack_canvas_create: createSlackCanvasCreateTool(context, state),
     slack_canvas_update: createSlackCanvasUpdateTool(state),

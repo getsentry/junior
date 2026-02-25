@@ -32,6 +32,11 @@ export interface ReplyRequestContext {
   };
   chatHistory?: string;
   artifactState?: ThreadArtifactsState;
+  userAttachments?: Array<{
+    data: Buffer;
+    mediaType: string;
+    filename?: string;
+  }>;
 }
 
 export interface AssistantReply {
@@ -59,6 +64,28 @@ export async function generateAssistantReply(
     const activeSkillNames = invokedSkill ? [invokedSkill.name] : [];
     const activeSkills = await loadSkillsByName(activeSkillNames, availableSkills);
     const userInput = invocation ? invocation.args : messageText;
+    const userContentParts: Array<
+      | { type: "text"; text: string }
+      | { type: "image"; image: Buffer; mediaType: string }
+      | { type: "file"; data: Buffer; mediaType: string; filename?: string }
+    > = [{ type: "text", text: userInput }];
+
+    for (const attachment of context.userAttachments ?? []) {
+      if (attachment.mediaType.startsWith("image/")) {
+        userContentParts.push({
+          type: "image",
+          image: attachment.data,
+          mediaType: attachment.mediaType
+        });
+      } else {
+        userContentParts.push({
+          type: "file",
+          data: attachment.data,
+          mediaType: attachment.mediaType,
+          filename: attachment.filename
+        });
+      }
+    }
     const generatedFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const telemetryMetadata: Record<string, string> = {
@@ -105,7 +132,12 @@ export async function generateAssistantReply(
             chatHistory: context.chatHistory,
             artifactState: context.artifactState
           }),
-          prompt: userInput,
+          messages: [
+            {
+              role: "user",
+              content: userContentParts
+            }
+          ],
           stopWhen: stepCountIs(12),
           tools: createTools(
             availableSkills,

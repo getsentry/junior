@@ -1,8 +1,8 @@
 import { Chat } from "chat";
-import type { FileUpload, PostableMessage } from "chat";
+import type { Attachment, FileUpload, PostableMessage } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
-import { captureException, logError, toOptionalString, withSpan } from "@/chat/observability";
+import { captureException, logError, logWarn, toOptionalString, withSpan } from "@/chat/observability";
 import { buildSlackOutputMessage, shouldUseAttachmentFallback } from "@/chat/output";
 import { generateAssistantReply } from "@/chat/respond";
 import { createCanvas } from "@/chat/slack-actions/canvases";
@@ -158,6 +158,95 @@ interface ThreadMessageSnapshot {
   };
 }
 
+interface UserInputAttachment {
+  data: Buffer;
+  mediaType: string;
+  filename?: string;
+}
+
+const MAX_USER_ATTACHMENTS = 3;
+const MAX_USER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+async function resolveUserAttachments(
+  attachments: Attachment[] | undefined,
+  context: {
+    threadId?: string;
+    requesterId?: string;
+    channelId?: string;
+    workflowRunId?: string;
+  }
+): Promise<UserInputAttachment[]> {
+  if (!attachments || attachments.length === 0) {
+    return [];
+  }
+
+  const results: UserInputAttachment[] = [];
+  for (const attachment of attachments) {
+    if (results.length >= MAX_USER_ATTACHMENTS) break;
+    if (attachment.type !== "image" && attachment.type !== "file") continue;
+
+    const mediaType = attachment.mimeType ?? "application/octet-stream";
+
+    try {
+      let data: Buffer | null = null;
+
+      if (attachment.fetchData) {
+        data = await attachment.fetchData();
+      } else if (attachment.data instanceof Buffer) {
+        data = attachment.data;
+      } else if (attachment.url) {
+        const response = await fetch(attachment.url);
+        if (!response.ok) throw new Error(`attachment fetch failed: ${response.status}`);
+        data = Buffer.from(await response.arrayBuffer());
+      }
+
+      if (!data) continue;
+      if (data.byteLength > MAX_USER_ATTACHMENT_BYTES) {
+        logWarn(
+          "skipping user attachment that exceeds size limit",
+          {
+            slackThreadId: context.threadId,
+            slackUserId: context.requesterId,
+            slackChannelId: context.channelId,
+            workflowRunId: context.workflowRunId,
+            assistantUserName: botConfig.userName,
+            modelId: botConfig.modelId
+          },
+          {
+            bytes: data.byteLength,
+            media_type: mediaType
+          }
+        );
+        continue;
+      }
+
+      results.push({
+        data,
+        mediaType,
+        filename: attachment.name
+      });
+    } catch (error) {
+      logWarn(
+        "failed to resolve user attachment",
+        {
+          slackThreadId: context.threadId,
+          slackUserId: context.requesterId,
+          slackChannelId: context.channelId,
+          workflowRunId: context.workflowRunId,
+          assistantUserName: botConfig.userName,
+          modelId: botConfig.modelId
+        },
+        {
+          error: error instanceof Error ? error.message : String(error),
+          media_type: mediaType
+        }
+      );
+    }
+  }
+
+  return results;
+}
+
 function buildChatHistory(recentMessages: ThreadMessageSnapshot[] | undefined, currentUserText: string): string | undefined {
   if (!recentMessages || recentMessages.length === 0) {
     return undefined;
@@ -266,6 +355,7 @@ async function replyToThread(
   message: {
     author: { isMe: boolean; userId?: string; userName?: string; fullName?: string };
     text?: string | null;
+    attachments?: Attachment[];
   }
 ) {
   if (message.author.isMe) {
@@ -293,6 +383,12 @@ async function replyToThread(
       const chatHistory = buildChatHistory(thread.recentMessages, userText);
       const fallbackIdentity = await lookupSlackUser(message.author.userId);
       const currentState = coerceThreadArtifactsState(await thread.state);
+      const userAttachments = await resolveUserAttachments(message.attachments, {
+        threadId,
+        requesterId: message.author.userId,
+        channelId,
+        workflowRunId
+      });
 
       await thread.startTyping?.("Thinking...");
       const progress = createProgressReporter(thread);
@@ -311,6 +407,7 @@ async function replyToThread(
           },
           chatHistory,
           artifactState: currentState,
+          userAttachments,
           correlation: {
             threadId,
             threadTs,
