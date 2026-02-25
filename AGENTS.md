@@ -1,7 +1,7 @@
 # Agent Instructions
 
 ## Package Manager
-- Use **npm**: `npm install`, `npm run dev`, `npm run test`, `npm run typecheck`, `npm run skills:check`
+- Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`
 
 ## Commit Attribution
 - AI commits MUST include:

@@ -23,7 +23,7 @@ The bot behavior is:
 1. Install deps:
 
 ```bash
-npm install
+pnpm install
 ```
 
 2. Create local env:
@@ -47,13 +47,13 @@ cp .env.example .env.local
 4. Validate skills:
 
 ```bash
-npm run skills:check
+pnpm skills:check
 ```
 
 5. Run dev server:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 ## Create and wire a Slack app
@@ -120,7 +120,7 @@ settings:
 1. Start app:
 
 ```bash
-npm run dev
+pnpm dev
 ```
 
 2. Expose local server with a tunnel (example with `ngrok`):
@@ -186,7 +186,7 @@ To finish setup:
 ## Quality checks
 
 ```bash
-npm run typecheck
-npm run test
-npm run skills:check
+pnpm typecheck
+pnpm test
+pnpm skills:check
 ```
