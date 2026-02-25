@@ -90,7 +90,7 @@ export function buildSystemPrompt(params: {
 
   const assistantSection = renderIdentityBlock("assistant", {
     user_name: assistant?.userName ?? botConfig.userName,
-    user_id: assistant?.userId ?? botConfig.slackBotUserId
+    user_id: assistant?.userId
   });
 
   const requesterSection = renderIdentityBlock("requester", {

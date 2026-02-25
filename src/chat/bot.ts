@@ -1071,7 +1071,6 @@ async function replyToThread(
       try {
         const reply = await generateAssistantReply(userText, {
           assistant: {
-            userId: botConfig.slackBotUserId,
             userName: botConfig.userName
           },
           requester: {
@@ -1103,7 +1102,6 @@ async function replyToThread(
           text: normalizeConversationText(reply.text) || "[empty response]",
           createdAtMs: Date.now(),
           author: {
-            userId: botConfig.slackBotUserId,
             userName: botConfig.userName,
             isBot: true
           },

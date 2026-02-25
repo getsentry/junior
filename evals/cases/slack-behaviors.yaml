@@ -149,3 +149,25 @@ cases:
         - "I hit an internal error and couldn't respond. Please try again."
       exception_events:
         - mention_handler_failed
+
+  - id: brief_skill_invocation
+    description: Slash-invoked /brief command is detected and routed through skill loading.
+    events:
+      - type: new_mention
+        thread:
+          id: thread-brief
+          channel_id: C-brief
+          thread_ts: "1700000000.700"
+        message:
+          id: m-brief-1
+          text: "/brief candidate: David Cramer"
+          is_mention: true
+          author:
+            user_id: U-grace
+            user_name: grace
+            full_name: Grace Example
+            is_me: false
+    expected:
+      posts_count: 1
+      posts_contain:
+        - "Loaded /brief candidate: David Cramer"

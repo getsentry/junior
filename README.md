@@ -8,89 +8,88 @@ Junior responds when mentioned in Slack and can continue replying in subscribed 
 
 - Node.js 20+
 - pnpm
-- Slack app credentials
-- AI Gateway API key
-- Redis (required for durable thread state)
+- Vercel CLI
+- Slack app credentials already configured in Vercel
+- Redis configured in Vercel (`REDIS_URL`)
 
 ## Local setup
 
-1. Install dependencies:
+1. Install dependencies.
 
 ```bash
 pnpm install
 ```
 
-2. Create local env:
+2. Link this repo to the Sentry Vercel project and pull dev env.
 
 ```bash
-cp .env.example .env.local
+pnpm dlx vercel@latest login
+pnpm dlx vercel@latest switch
+pnpm dlx vercel@latest link --yes --scope sentry
+pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
 ```
 
-3. Set required env vars in `.env.local`:
-
-- `SLACK_BOT_TOKEN`
-- `SLACK_SIGNING_SECRET`
-- `AI_GATEWAY_API_KEY`
-- `REDIS_URL`
-
-4. Optional env vars:
-
-- `AI_MODEL` and `AI_ROUTER_MODEL`
-- `BOT_USERNAME` (default: `junior`)
-- `SKILL_DIRS` (additional skill roots; use OS path delimiter)
-- `SENTRY_*` and `NEXT_PUBLIC_SENTRY_*`
-- `JUNIOR_PROGRESS_FALLBACK_ENABLED`
-
-5. Validate skills:
+If you linked to your personal org by mistake:
 
 ```bash
-pnpm skills:check
+rm -rf .vercel
+pnpm dlx vercel@latest switch
+pnpm dlx vercel@latest link --yes --scope sentry
 ```
 
-6. Start the app:
+3. Start the app.
 
 ```bash
 pnpm dev
 ```
 
-## Slack app setup
+## Ngrok for Slack
 
-1. Create a Slack app from [`slack-manifest.yml`](slack-manifest.yml).
-2. During local development, expose port `3000` with a tunnel (for example `ngrok` or `cloudflared`).
-3. Set both Event Subscriptions and Interactivity request URL to:
+1. Expose local port `3000`.
+
+```bash
+ngrok http 3000
+```
+
+2. Set Slack Event Subscriptions and Interactivity request URL to:
 
 ```text
-https://<your-public-host>/api/webhooks/slack
+https://<ngrok-host>/api/webhooks/slack
 ```
 
-4. Install the app to your workspace and invite `@junior` to a channel.
+3. Invite `@junior` to a channel and mention it.
 
-## Endpoints
+## Evals
 
-- `POST /api/webhooks/slack`
-- `GET /api/health`
-
-## Skills
-
-- Local skills live in `skills/<skill-name>/SKILL.md`
-- Additional skill roots can be configured with `SKILL_DIRS`
-- Validate all discovered skills with `pnpm skills:check`
-
-## Commands
+LLM-judged numeric scoring:
 
 ```bash
-pnpm dev
-pnpm test
 pnpm evals
-pnpm typecheck
-pnpm skills:check
 ```
 
-## Behavior evals
+Add a new eval by appending one case to [`evals/cases/slack-behaviors.yaml`](/home/dcramer/src/junior/evals/cases/slack-behaviors.yaml):
 
-- Fixture suite: `evals/cases/slack-behaviors.yaml`
-- Run: `pnpm evals`
-- Focus: Slack input/output behavior using fixture events and a pseudo Slack adapter harness
+```yaml
+- id: my_new_case
+  description: Short description of expected behavior.
+  events:
+    - type: new_mention
+      thread:
+        id: thread-my-case
+      message:
+        text: "<@U_APP> do the thing"
+        is_mention: true
+  expected:
+    posts_count: 1
+    posts_contain:
+      - "summary"
+```
+
+Then run:
+
+```bash
+pnpm evals
+```
 
 ## Notes
 

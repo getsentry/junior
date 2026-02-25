@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
+import { z } from "zod";
 import {
   createAppSlackRuntime,
   type AppRuntimeAssistantLifecycleEvent,
@@ -9,6 +10,8 @@ import {
   type AppRuntimeThreadContext,
   type AppRuntimeThreadHandle
 } from "@/chat/app-runtime";
+import { generateAssistantReply } from "@/chat/respond";
+import { buildArtifactStatePatch, coerceThreadArtifactsState } from "@/chat/slack-actions/types";
 
 interface BehaviorEventThreadFixture {
   channel_id?: string;
@@ -96,6 +99,90 @@ export interface BehaviorEvalSuite {
   name: string;
   schema_version: string;
 }
+
+const threadSchema = z.object({
+  id: z.string().min(1),
+  channel_id: z.string().min(1).optional(),
+  run_id: z.string().min(1).optional(),
+  thread_ts: z.string().min(1).optional()
+});
+
+const messageSchema = z.object({
+  author: z
+    .object({
+      full_name: z.string().min(1).optional(),
+      is_bot: z.boolean().optional(),
+      is_me: z.boolean().optional(),
+      user_id: z.string().min(1).optional(),
+      user_name: z.string().min(1).optional()
+    })
+    .optional(),
+  id: z.string().min(1).optional(),
+  is_mention: z.boolean().optional(),
+  text: z.string().optional()
+});
+
+const eventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("new_mention"),
+    thread: threadSchema,
+    message: messageSchema
+  }),
+  z.object({
+    type: z.literal("subscribed_message"),
+    thread: threadSchema,
+    message: messageSchema
+  }),
+  z.object({
+    type: z.literal("assistant_thread_started"),
+    thread: threadSchema,
+    user_id: z.string().min(1).optional()
+  }),
+  z.object({
+    type: z.literal("assistant_context_changed"),
+    thread: threadSchema,
+    user_id: z.string().min(1).optional()
+  })
+]);
+
+const expectationSchema = z.object({
+  adapter_prompt_calls: z.number().int().nonnegative().optional(),
+  adapter_title_calls: z.number().int().nonnegative().optional(),
+  exception_events: z.array(z.string().min(1)).optional(),
+  min_posts: z.number().int().nonnegative().optional(),
+  posts_contain: z.array(z.string()).optional(),
+  posts_count: z.number().int().nonnegative().optional(),
+  primary_thread_subscribed: z.boolean().optional(),
+  warning_events: z.array(z.string().min(1)).optional()
+});
+
+const caseSchema = z.object({
+  behavior: z
+    .object({
+      fail_reply_call: z.number().int().positive().optional(),
+      reply_texts: z.array(z.string()).optional(),
+      subscribed_decisions: z
+        .array(
+          z.object({
+            reason: z.string().min(1),
+            should_reply: z.boolean()
+          })
+        )
+        .optional()
+    })
+    .optional(),
+  description: z.string().min(1),
+  events: z.array(eventSchema).min(1),
+  expected: expectationSchema,
+  id: z.string().min(1)
+});
+
+const suiteSchema = z.object({
+  schema_version: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  cases: z.array(caseSchema)
+});
 
 interface EvalPreparedState {
   context: AppRuntimeThreadContext;
@@ -222,14 +309,14 @@ function toIncomingMessage(
 }
 
 function ensureSuiteShape(value: unknown): BehaviorEvalSuite {
-  if (!value || typeof value !== "object") {
-    throw new Error("Behavior eval suite must be an object.");
+  const parsed = suiteSchema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const issuePath = issue?.path.length ? issue.path.join(".") : "suite";
+    const issueMessage = issue?.message ?? "invalid schema";
+    throw new Error(`Invalid behavior eval suite at ${issuePath}: ${issueMessage}`);
   }
-  const suite = value as BehaviorEvalSuite;
-  if (!suite.name || !Array.isArray(suite.cases)) {
-    throw new Error("Behavior eval suite must include `name` and `cases`.");
-  }
-  return suite;
+  return parsed.data;
 }
 
 export function loadBehaviorEvalSuite(suitePath: string): BehaviorEvalSuite {
@@ -330,30 +417,47 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         app_eval_last_completed_at_ms: completedAtMs
       });
     },
-    replyToThread: async (thread, message) => {
+    replyToThread: async (thread, message, options) => {
       replyCallCount += 1;
       if (testCase.behavior?.fail_reply_call === replyCallCount) {
         throw new Error(`forced reply failure on call ${replyCallCount}`);
       }
 
       const text = (message.text ?? "").trim();
-      const state = (await thread.state) ?? {};
-      const lastUserText =
-        typeof state.app_eval_last_user_text === "string" ? state.app_eval_last_user_text : undefined;
+      const persisted = (await thread.state) ?? {};
+      const preparedConversationContext =
+        options?.preparedState?.routingContext ?? options?.preparedState?.conversationContext;
 
-      let replyText = replyTexts[replyCallCount - 1];
-      if (!replyText) {
-        if (/what did i just ask\??/i.test(text) && lastUserText) {
-          replyText = `You just asked: ${lastUserText}`;
-        } else {
-          replyText = `Handled: ${text || "[non-text message]"}`;
+      const reply = await generateAssistantReply(text, {
+        assistant: {
+          userName: "junior"
+        },
+        requester: {
+          userId: message.author.userId,
+          userName: message.author.userName,
+          fullName: message.author.fullName
+        },
+        conversationContext: preparedConversationContext,
+        artifactState: coerceThreadArtifactsState(persisted),
+        correlation: {
+          threadId: thread.id,
+          threadTs: message.threadTs,
+          workflowRunId: thread.runId,
+          channelId: message.channelId,
+          requesterId: message.author.userId
         }
-      }
-
-      await thread.post(replyText);
-      await thread.setState?.({
-        app_eval_last_user_text: text
       });
+
+      const replyText = replyTexts[replyCallCount - 1] ?? reply.text;
+      await thread.post(replyText);
+
+      const nextState: Record<string, unknown> = {
+        app_eval_last_user_text: text
+      };
+      if (reply.artifactStatePatch && Object.keys(reply.artifactStatePatch).length > 0) {
+        Object.assign(nextState, buildArtifactStatePatch(reply.artifactStatePatch));
+      }
+      await thread.setState?.(nextState);
     },
     initializeAssistantThread: async (event) => {
       await slackAdapter.setAssistantTitle(event.channelId, event.threadTs, "App");
