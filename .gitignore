@@ -1,3 +1,4 @@
+agents.lock
 .next
 node_modules
 .env
