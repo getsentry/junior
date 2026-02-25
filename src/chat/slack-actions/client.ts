@@ -1,5 +1,7 @@
 import { WebClient } from "@slack/web-api";
 
+// Slack canvas/list methods are not exposed by the current chat adapter public API,
+// so this module owns direct Web API calls for artifact actions.
 export type SlackActionErrorCode =
   | "missing_token"
   | "missing_scope"
@@ -31,7 +33,10 @@ function getClient(): WebClient {
 
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) {
-    throw new SlackActionError("SLACK_BOT_TOKEN is not configured", "missing_token");
+    throw new SlackActionError(
+      "SLACK_BOT_TOKEN is required for Slack canvas/list actions in this service",
+      "missing_token"
+    );
   }
 
   client = new WebClient(token);
@@ -111,4 +116,15 @@ export async function withSlackRetries<T>(task: () => Promise<T>, maxAttempts = 
 
 export function getSlackClient(): WebClient {
   return getClient();
+}
+
+export async function getFilePermalink(fileId: string): Promise<string | undefined> {
+  const client = getClient();
+  const response = await withSlackRetries(() =>
+    client.files.info({
+      file: fileId
+    })
+  );
+
+  return response.file?.permalink;
 }

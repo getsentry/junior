@@ -7,7 +7,9 @@ export interface ListColumnMap {
 
 export interface ThreadArtifactsState {
   lastCanvasId?: string;
+  lastCanvasUrl?: string;
   lastListId?: string;
+  lastListUrl?: string;
   listColumnMap?: ListColumnMap;
   updatedAt?: string;
 }
@@ -20,7 +22,9 @@ export function coerceThreadArtifactsState(value: unknown): ThreadArtifactsState
   const raw = value as {
     artifacts?: {
       lastCanvasId?: unknown;
+      lastCanvasUrl?: unknown;
       lastListId?: unknown;
+      lastListUrl?: unknown;
       listColumnMap?: {
         titleColumnId?: unknown;
         completedColumnId?: unknown;
@@ -36,7 +40,9 @@ export function coerceThreadArtifactsState(value: unknown): ThreadArtifactsState
 
   return {
     lastCanvasId: typeof artifacts.lastCanvasId === "string" ? artifacts.lastCanvasId : undefined,
+    lastCanvasUrl: typeof artifacts.lastCanvasUrl === "string" ? artifacts.lastCanvasUrl : undefined,
     lastListId: typeof artifacts.lastListId === "string" ? artifacts.lastListId : undefined,
+    lastListUrl: typeof artifacts.lastListUrl === "string" ? artifacts.lastListUrl : undefined,
     listColumnMap: {
       titleColumnId: typeof listColumnMap.titleColumnId === "string" ? listColumnMap.titleColumnId : undefined,
       completedColumnId:

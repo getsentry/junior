@@ -138,7 +138,11 @@ export function buildSystemPrompt(params: {
     artifactState
       ? [
           artifactState.lastCanvasId ? `- last_canvas_id: ${escapeXml(artifactState.lastCanvasId)}` : "- last_canvas_id: none",
-          artifactState.lastListId ? `- last_list_id: ${escapeXml(artifactState.lastListId)}` : "- last_list_id: none"
+          artifactState.lastCanvasUrl
+            ? `- last_canvas_url: ${escapeXml(artifactState.lastCanvasUrl)}`
+            : "- last_canvas_url: none",
+          artifactState.lastListId ? `- last_list_id: ${escapeXml(artifactState.lastListId)}` : "- last_list_id: none",
+          artifactState.lastListUrl ? `- last_list_url: ${escapeXml(artifactState.lastListUrl)}` : "- last_list_url: none"
         ].join("\n")
       : "- none",
     "</artifact_context>",

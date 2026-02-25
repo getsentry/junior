@@ -166,11 +166,12 @@ export function createTools(
             markdown,
             channelId: channel_id ?? context.channelId
           });
-          hooks.onArtifactStatePatch?.({ lastCanvasId: created.canvasId });
+          hooks.onArtifactStatePatch?.({ lastCanvasId: created.canvasId, lastCanvasUrl: created.permalink });
 
           return {
             ok: true,
             canvas_id: created.canvasId,
+            permalink: created.permalink,
             summary: `Created canvas ${created.canvasId}`
           };
         } catch (error) {
@@ -241,12 +242,14 @@ export function createTools(
           const list = await createTodoList(name);
           hooks.onArtifactStatePatch?.({
             lastListId: list.listId,
+            lastListUrl: list.permalink,
             listColumnMap: list.listColumnMap
           });
 
           return {
             ok: true,
             list_id: list.listId,
+            permalink: list.permalink,
             column_map: list.listColumnMap
           };
         } catch (error) {
@@ -337,12 +340,16 @@ export function createTools(
     }),
     slack_list_update_item: tool({
       description: "Update an existing Slack list item (completion state or title).",
-      inputSchema: z.object({
-        list_id: z.string().min(1).optional(),
-        item_id: z.string().min(1),
-        completed: z.boolean().optional(),
-        title: z.string().min(1).optional()
-      }),
+      inputSchema: z
+        .object({
+          list_id: z.string().min(1).optional(),
+          item_id: z.string().min(1),
+          completed: z.boolean().optional(),
+          title: z.string().min(1).optional()
+        })
+        .refine((value) => value.completed !== undefined || value.title !== undefined, {
+          message: "Provide at least one field to update: completed or title"
+        }),
       execute: async ({ list_id, item_id, completed, title }) => {
         if (!listsEnabled) {
           return { ok: false, error: "Slack list tools are disabled" };

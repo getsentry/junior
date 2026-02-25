@@ -235,14 +235,22 @@ async function maybePostCanvasFallback(args: {
     channelId
   });
 
-  artifactStatePatch && Object.assign(artifactStatePatch, { lastCanvasId: created.canvasId });
+  artifactStatePatch &&
+    Object.assign(artifactStatePatch, {
+      lastCanvasId: created.canvasId,
+      lastCanvasUrl: created.permalink
+    });
+
+  const canvasLine = created.permalink
+    ? `Created Slack canvas: <${created.permalink}|open canvas>.`
+    : `Created Slack canvas: \`${created.canvasId}\`.`;
 
   await thread.post({
     markdown: [
       "Summary:",
       summarizeForThread(text),
       "",
-      `Created Slack canvas: \`${created.canvasId}\`.`
+      canvasLine
     ].join("\n"),
     files
   });

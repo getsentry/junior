@@ -11,7 +11,9 @@ describe("coerceThreadArtifactsState", () => {
     const state = coerceThreadArtifactsState({
       artifacts: {
         lastCanvasId: "F123",
+        lastCanvasUrl: "https://example.com/canvas/F123",
         lastListId: "L123",
+        lastListUrl: "https://example.com/list/L123",
         listColumnMap: {
           titleColumnId: "c1",
           completedColumnId: "c2"
@@ -21,7 +23,9 @@ describe("coerceThreadArtifactsState", () => {
     });
 
     expect(state.lastCanvasId).toBe("F123");
+    expect(state.lastCanvasUrl).toBe("https://example.com/canvas/F123");
     expect(state.lastListId).toBe("L123");
+    expect(state.lastListUrl).toBe("https://example.com/list/L123");
     expect(state.listColumnMap?.titleColumnId).toBe("c1");
     expect(state.listColumnMap?.completedColumnId).toBe("c2");
   });

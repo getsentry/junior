@@ -1,6 +1,6 @@
 import type { SlackListsItemsListResponse } from "@slack/web-api";
 import type { RichTextBlock } from "@slack/types";
-import { getSlackClient, withSlackRetries } from "@/chat/slack-actions/client";
+import { getFilePermalink, getSlackClient, withSlackRetries } from "@/chat/slack-actions/client";
 import type { ListColumnMap } from "@/chat/slack-actions/types";
 
 interface SlackListsSchemaColumnResponse {
@@ -67,11 +67,21 @@ function richTextField(columnId: string, value: string): SlackListsItemField {
   } as SlackListsItemField;
 }
 
-export async function createTodoList(name: string): Promise<{ listId: string; listColumnMap: ListColumnMap }> {
+const DEFAULT_TODO_SCHEMA = [
+  { key: "task", name: "Task", type: "rich_text", is_primary_column: true },
+  { key: "completed", name: "Completed", type: "checkbox" },
+  { key: "assignee", name: "Assignee", type: "user" },
+  { key: "due_date", name: "Due Date", type: "date" }
+];
+
+export async function createTodoList(
+  name: string
+): Promise<{ listId: string; listColumnMap: ListColumnMap; permalink?: string }> {
   const client = getSlackClient();
   const result = await withSlackRetries(() =>
     client.slackLists.create({
       name,
+      schema: DEFAULT_TODO_SCHEMA,
       todo_mode: true
     })
   );
@@ -84,7 +94,8 @@ export async function createTodoList(name: string): Promise<{ listId: string; li
 
   return {
     listId: result.list_id,
-    listColumnMap
+    listColumnMap,
+    permalink: await getFilePermalink(result.list_id)
   };
 }
 
@@ -186,7 +197,7 @@ export async function updateListItem(input: {
   }
 
   if (cells.length === 0) {
-    return;
+    throw new Error("No updatable fields were provided or inferred for this list item");
   }
 
   await withSlackRetries(() =>

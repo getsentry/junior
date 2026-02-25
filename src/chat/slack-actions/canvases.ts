@@ -1,5 +1,5 @@
 import type { CanvasesSectionsLookupResponse } from "@slack/web-api";
-import { getSlackClient, withSlackRetries } from "@/chat/slack-actions/client";
+import { getFilePermalink, getSlackClient, withSlackRetries } from "@/chat/slack-actions/client";
 
 export interface CanvasCreateInput {
   title: string;
@@ -14,7 +14,7 @@ export interface CanvasUpdateInput {
   sectionId?: string;
 }
 
-export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string }> {
+export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
   const client = getSlackClient();
 
   const result = await withSlackRetries(async () => {
@@ -43,7 +43,8 @@ export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId
   }
 
   return {
-    canvasId: result.canvas_id
+    canvasId: result.canvas_id,
+    permalink: await getFilePermalink(result.canvas_id)
   };
 }
 
