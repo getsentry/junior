@@ -16,13 +16,19 @@ export class SlackActionError extends Error {
   code: SlackActionErrorCode;
   needed?: string;
   provided?: string;
+  retryAfterSeconds?: number;
 
-  constructor(message: string, code: SlackActionErrorCode, options: { needed?: string; provided?: string } = {}) {
+  constructor(
+    message: string,
+    code: SlackActionErrorCode,
+    options: { needed?: string; provided?: string; retryAfterSeconds?: number } = {}
+  ) {
     super(message);
     this.name = "SlackActionError";
     this.code = code;
     this.needed = options.needed;
     this.provided = options.provided;
+    this.retryAfterSeconds = options.retryAfterSeconds;
   }
 }
 
@@ -83,7 +89,9 @@ function mapSlackError(error: unknown): SlackActionError {
   }
 
   if (candidate.code === "slack_webapi_rate_limited_error" || candidate.statusCode === 429) {
-    return new SlackActionError(message, "rate_limited");
+    return new SlackActionError(message, "rate_limited", {
+      retryAfterSeconds: candidate.retryAfter
+    });
   }
 
   return new SlackActionError(message, "internal_error");
@@ -107,7 +115,12 @@ export async function withSlackRetries<T>(task: () => Promise<T>, maxAttempts = 
         throw mapped;
       }
 
-      await sleep(250 * attempt);
+      const retryAfterMs =
+        mapped.code === "rate_limited" && mapped.retryAfterSeconds && mapped.retryAfterSeconds > 0
+          ? mapped.retryAfterSeconds * 1000
+          : undefined;
+      const backoffMs = Math.min(2000, 250 * 2 ** (attempt - 1));
+      await sleep(retryAfterMs ?? backoffMs);
     }
   }
 

@@ -68,6 +68,7 @@ interface ProgressSentMessage {
 interface AssistantThreadMeta {
   channelId: string;
   threadTs: string;
+  updatedAtMs: number;
 }
 
 function getSlackAdapter(): SlackAdapter {
@@ -75,6 +76,29 @@ function getSlackAdapter(): SlackAdapter {
 }
 
 const assistantThreadMetaById = new Map<string, AssistantThreadMeta>();
+const ASSISTANT_THREAD_META_MAX = 500;
+const ASSISTANT_THREAD_META_TTL_MS = 1000 * 60 * 60 * 24;
+
+function pruneAssistantThreadMeta(nowMs: number): void {
+  for (const [threadId, meta] of assistantThreadMetaById) {
+    if (nowMs - meta.updatedAtMs > ASSISTANT_THREAD_META_TTL_MS) {
+      assistantThreadMetaById.delete(threadId);
+    }
+  }
+
+  if (assistantThreadMetaById.size <= ASSISTANT_THREAD_META_MAX) {
+    return;
+  }
+
+  const overflow = assistantThreadMetaById.size - ASSISTANT_THREAD_META_MAX;
+  const oldest = [...assistantThreadMetaById.entries()]
+    .sort((a, b) => a[1].updatedAtMs - b[1].updatedAtMs)
+    .slice(0, overflow);
+
+  for (const [threadId] of oldest) {
+    assistantThreadMetaById.delete(threadId);
+  }
+}
 
 function createProgressReporter(thread: {
   post: (message: string | PostableMessage) => Promise<unknown>;
@@ -111,6 +135,7 @@ function createProgressReporter(thread: {
       await postFallbackStatus();
       return;
     }
+    assistantThread.updatedAtMs = Date.now();
 
     try {
       await getSlackAdapter().setAssistantStatus(
@@ -214,7 +239,7 @@ async function maybePostCanvasFallback(args: {
 }): Promise<boolean> {
   const { text, files, userText, thread, channelId, artifactStatePatch } = args;
 
-  if (!botConfig.slackCanvasesEnabled || !channelId) {
+  if (!channelId) {
     return false;
   }
 
@@ -378,10 +403,13 @@ async function initializeAssistantThread(event: {
   channelId: string;
   threadTs: string;
 }): Promise<void> {
+  const nowMs = Date.now();
   assistantThreadMetaById.set(event.threadId, {
     channelId: event.channelId,
-    threadTs: event.threadTs
+    threadTs: event.threadTs,
+    updatedAtMs: nowMs
   });
+  pruneAssistantThreadMeta(nowMs);
 
   const slack = getSlackAdapter();
   await slack.setAssistantTitle(event.channelId, event.threadTs, "Junior");

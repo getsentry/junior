@@ -92,10 +92,17 @@ export async function createTodoList(
 
   const listColumnMap = inferListColumnMap(result.list_metadata?.schema ?? []);
 
+  let permalink: string | undefined;
+  try {
+    permalink = await getFilePermalink(result.list_id);
+  } catch {
+    // List creation succeeded; permalink lookup is best-effort.
+  }
+
   return {
     listId: result.list_id,
     listColumnMap,
-    permalink: await getFilePermalink(result.list_id)
+    permalink
   };
 }
 

@@ -42,9 +42,16 @@ export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId
     throw new Error("Slack canvas was created without canvas_id");
   }
 
+  let permalink: string | undefined;
+  try {
+    permalink = await getFilePermalink(result.canvas_id);
+  } catch {
+    // Canvas creation succeeded; permalink lookup is best-effort.
+  }
+
   return {
     canvasId: result.canvas_id,
-    permalink: await getFilePermalink(result.canvas_id)
+    permalink
   };
 }
 

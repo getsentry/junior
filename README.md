@@ -42,8 +42,6 @@ cp .env.example .env.local
 - `NEXT_PUBLIC_SENTRY_DSN` (for browser-side error capture)
 - `SENTRY_TRACES_SAMPLE_RATE` (default `1.0`)
 - `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` (default `1.0`)
-- `SLACK_CANVASES_ENABLED` (default `true`)
-- `SLACK_LISTS_ENABLED` (default `true`)
 - `JUNIOR_PROGRESS_FALLBACK_ENABLED` (default `false`)
 
 4. Validate skills:
