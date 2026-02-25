@@ -1,85 +1,101 @@
 # Candidate Rubric
 
-Use this rubric to turn public technical evidence into a profile grade and hiring recommendation that non-technical stakeholders can trust.
+Use this rubric to convert public technical evidence into a candidate brief.
 
-## Review depth requirements
+## Public-only contract
 
-- Review 5-8 technical artifacts before final grading.
-- Include both candidate-owned and collaborative project evidence when available.
-- Require at least 12 concrete evidence points for `high` confidence.
-- Capture at least 2 location/hub evidence points when available.
+- Use only directly observable public artifacts.
+- Separate `observed facts` from `inference`.
+- Treat self-claims as unverified until corroborated.
+- Do not use private/internal signals.
 
-## Scoring dimensions
+## Allowed source types
 
-Score each dimension on a 1-5 scale, then apply weighting:
+- GitHub/GitLab/Bitbucket repositories, commits, PRs, issues, releases, and CI results.
+- Public CV/resume and public profile statements.
+- Public technical talks, recordings, slide decks, and engineering articles.
+- Public package registry pages and changelogs.
+- Public speaking/event pages.
+- Public social posts only when technically substantive.
 
-- Code quality and architecture: 25%
-- Testing and reliability discipline: 20%
-- Ownership and delivery follow-through: 20%
-- Maintenance and operational maturity: 15%
-- Collaboration and communication quality: 10%
-- Scope and complexity handling: 10%
+## Out of scope (do not assess)
 
-Convert the weighted score to a 0-100 profile score.
+- Internal team collaboration behavior not visible publicly.
+- Internal design discussions, incident response, on-call quality, or manager feedback.
+- Internal throughput metrics or performance reviews.
+
+## Required components
+
+- GitHub/code evaluation
+- CV and claim verification
+- Public speaking and technical content evaluation
+- Public presence evaluation
+- Maintenance and operations evaluation (public repo history only)
+- Location and hub evaluation
+
+## Evidence sufficiency states
+
+Each component must declare one state:
+
+- `assessed`: enough public evidence for a reliable assessment.
+- `limited`: partial public evidence; assessment possible with confidence penalty.
+- `not-assessed`: insufficient public evidence.
+
+Never assign a low score just because evidence is private/unavailable.
+
+## Scored dimensions and weights
+
+Score each assessed/limited dimension on 1-5:
+
+- GitHub/code quality and complexity handling: 35%
+- Maintenance and reliability from public repo history: 25%
+- Public technical content quality (talks/articles/docs): 15%
+- Public presence credibility and consistency: 10%
+- CV claim verification coverage: 15%
+
+Scoring rules:
+
+- Calculate weighted score using only assessed/limited dimensions, then normalize to 100.
+- If less than 60% of weight is assessable, cap recommendation at `mixed`.
+- If GitHub/code evaluation is `not-assessed`, cap recommendation at `mixed`.
+
+## CV claim verification score guidance
+
+- `5`: most key claims are corroborated by independent public evidence.
+- `4`: several key claims verified; minor gaps.
+- `3`: mixed verification; meaningful unknowns.
+- `2`: many key claims unverified or inconsistent.
+- `1`: claims mostly unverified or contradicted.
 
 ## Location and hub alignment
 
-- Infer likely location only from explicit public signals.
-- Preferred evidence includes:
-  - profile or resume location fields
-  - employer/location statements from public profiles
-  - explicit time-zone or region declarations in public bios/docs
-- Classify as:
-  - `in-hub`
-  - `near-hub`
-  - `outside-hub`
-  - `unknown`
-- Add location confidence:
-  - `high`: direct profile location plus supporting signals
-  - `medium`: indirect but consistent signals
-  - `low`: sparse or conflicting signals
-
-Use location/hub alignment as a recommendation modifier:
-
-- If hub policy is strict and candidate is `outside-hub`, downgrade recommendation by one level unless relocation intent is explicit.
-- If hub list is missing, do not force a downgrade; mark hub fit as provisional.
-- If location is `unknown`, cap confidence at `medium` and request clarification.
+- Infer location only from explicit public signals.
+- Classify as `in-hub`, `near-hub`, `outside-hub`, or `unknown`.
+- If location is `unknown`, cap confidence at `medium`.
 
 ## Grade mapping
 
-- `A` (90-100): exceptional profile, usually `strong yes`
-- `B` (80-89): strong profile, usually `yes`
-- `C` (70-79): mixed profile, usually `mixed`
-- `D` (60-69): weak profile, usually `no`
-- `F` (0-59): high risk profile, `no`
+- `A` (90-100)
+- `B` (80-89)
+- `C` (70-79)
+- `D` (60-69)
+- `F` (0-59)
 
-## Positive signals
+## Recommendation calibration
 
-- Clear architecture boundaries and readable module structure.
-- Tests cover critical paths and CI validates changes.
-- Good docs for setup, architecture, and operational workflows.
-- Healthy maintenance cadence (dependency hygiene, release notes, follow-up fixes).
-- Constructive PR/review behavior and thoughtful issue triage.
-- Evident ownership over non-trivial scope (design plus execution).
-
-## Negative signals
-
-- Large complexity with no tests or quality gates.
-- Stale dependencies, broken CI, or repeated build failures left unresolved.
-- Minimal docs that block onboarding or operational confidence.
-- Generated/copied code with little evidence of understanding.
-- Abandoned repositories without follow-through on defects.
-- Poor collaboration signals (dismissive reviews, unresolved blocking threads).
+- `strong yes`: exceptional, well-corroborated public evidence with low execution risk.
+- `yes`: strong public evidence with manageable risks.
+- `mixed`: upside exists but key unknowns or limited assessable evidence remain.
+- `no`: verified public evidence shows high risk or weak capability.
 
 ## Confidence scoring
 
-- `high`: consistent evidence across multiple artifacts and collaboration surfaces.
-- `medium`: mixed signals or good depth in only one or two artifacts.
-- `low`: sparse, stale, or ambiguous public evidence.
+- `high`: broad, consistent, corroborated public evidence across components.
+- `medium`: partial corroboration or multiple limited components.
+- `low`: sparse, stale, conflicting, or mostly not-assessed evidence.
 
 ## Evidence style
 
-- Prefer concrete evidence over generic claims.
-- For each major signal, include source and artifact proof (file path, PR, issue, commit, article, talk, package, or public profile field).
-- For location and hub fit, include the explicit public signal used for inference.
-- Translate technical evidence into plain-language impact (delivery speed, defect risk, maintainability).
+- Every major component must include `References`.
+- Every critical claim must cite a concrete source artifact.
+- If evidence is missing, explicitly state `insufficient public evidence`.

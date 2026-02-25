@@ -72,6 +72,24 @@ const completionOutcomeClassificationSchema = z.object({
     .describe("Short name for the missing required input when outcome is blocked.")
 });
 
+function isExecutionDeferralResponse(text: string): boolean {
+  return /\b(want me to proceed|do you want me to proceed|shall i proceed|can i proceed|should i proceed|let me do that now|give me a moment|tag me again|fresh invocation)\b/i.test(
+    text
+  );
+}
+
+function isToolAccessDisclaimerResponse(text: string): boolean {
+  return /\b(i (don't|do not) have access to (active )?tool|tool results came back empty|prior results .* empty|cannot access .*tool|need to (run|load) .*tool .* first)\b/i.test(
+    text
+  );
+}
+
+function isExecutionEscapeResponse(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return isExecutionDeferralResponse(trimmed) || isToolAccessDisclaimerResponse(trimmed);
+}
+
 function buildUserTurnText(userInput: string, conversationContext?: string): string {
   const trimmedContext = conversationContext?.trim();
   if (!trimmedContext) {
@@ -127,6 +145,10 @@ function serializeToolResultsForRetry(result: { toolResults: unknown[] }): strin
   return `${raw.slice(0, maxChars)}...[truncated]`;
 }
 
+function hasToolResults(result: { toolResults: unknown[] }): boolean {
+  return Array.isArray(result.toolResults) && result.toolResults.length > 0;
+}
+
 function extractFinalAnswer(result: {
   staticToolCalls: Array<{ toolName: string; input: unknown }>;
   steps: Array<{
@@ -179,6 +201,12 @@ async function classifyCompletionOutcome(args: {
       reason: "empty response"
     };
   }
+  if (isExecutionEscapeResponse(candidate)) {
+    return {
+      outcome: "continue",
+      reason: "execution deferred or tool-access disclaimer"
+    };
+  }
 
   try {
     const classifierSystem = [
@@ -224,12 +252,31 @@ async function classifyCompletionOutcome(args: {
     );
 
     const parsed = completionOutcomeClassificationSchema.parse(result.object);
+    const blockingQuestion = parsed.blocking_question?.trim();
+    const missingInput = parsed.missing_input?.trim();
+    if (parsed.outcome === "blocked") {
+      if (isExecutionEscapeResponse(candidate) || (blockingQuestion && isExecutionEscapeResponse(blockingQuestion))) {
+        return {
+          outcome: "continue",
+          confidence: parsed.confidence,
+          reason: "blocked classification rejected due execution-deferral pattern"
+        };
+      }
+      if (missingInput && /\b(permission|confirmation|proceed|re-invocation|tag)\b/i.test(missingInput)) {
+        return {
+          outcome: "continue",
+          confidence: parsed.confidence,
+          reason: "blocked classification rejected due non-blocking permission request"
+        };
+      }
+    }
+
     return {
       outcome: parsed.outcome,
       confidence: parsed.confidence,
       reason: parsed.reason?.trim() || "llm classifier",
-      blockingQuestion: parsed.blocking_question?.trim(),
-      missingInput: parsed.missing_input?.trim()
+      blockingQuestion,
+      missingInput
     };
   } catch (error) {
     logWarn("ai_completion_classifier_failed", {
@@ -252,12 +299,12 @@ async function classifyCompletionOutcome(args: {
 
 function toBlockedQuestion(decision: CompletionOutcomeDecision, fallbackText: string): string {
   const explicit = decision.blockingQuestion?.trim();
-  if (explicit) {
+  if (explicit && !isExecutionEscapeResponse(explicit)) {
     return explicit;
   }
 
   const fallback = fallbackText.trim();
-  if (fallback.endsWith("?")) {
+  if (fallback.endsWith("?") && !isExecutionEscapeResponse(fallback)) {
     return fallback;
   }
 
@@ -497,6 +544,18 @@ export async function generateAssistantReply(
         "app.ai.tool_results": finalResult.toolResults.length
       }, "Empty text after tool calls; requesting finalization");
 
+      const finalizationRetryContext = hasToolResults(finalResult)
+        ? [
+            "Tool results from the previous attempt (JSON):",
+            serializeToolResultsForRetry(finalResult),
+            "",
+            "Use these results to produce the final answer."
+          ]
+        : [
+            "No tool results were produced in the previous attempt.",
+            "Run the required tools now before final_answer."
+          ];
+
       finalResult = await finalizationAgent.generate({
         messages: [
           {
@@ -506,10 +565,11 @@ export async function generateAssistantReply(
           {
             role: "user",
             content: [
-              "Prior tool results from the previous attempt (JSON):",
-              serializeToolResultsForRetry(finalResult),
+              ...finalizationRetryContext,
               "",
-              "Using these results, call final_answer with the final user-facing markdown response.",
+              "Do not ask the user to re-run, re-tag, or confirm to proceed.",
+              "",
+              "Call final_answer with the final user-facing markdown response.",
               "Do not repeat earlier tool calls unless absolutely necessary."
             ].join("\n")
           }
@@ -535,6 +595,16 @@ export async function generateAssistantReply(
       }, "Empty text after retries; forcing no-tool finalization");
 
       try {
+        const forcedFinalizationToolSection = hasToolResults(finalResult)
+          ? [
+              "Tool results from the previous attempt (JSON):",
+              serializeToolResultsForRetry(finalResult)
+            ]
+          : [
+              "No tool results were produced in the previous attempt.",
+              "If required, reason from available thread context only."
+            ];
+
         const forcedFinalization = await withSpan(
           "ai.generateAssistantReply.forced_finalization",
           "ai.generate_text",
@@ -558,8 +628,7 @@ export async function generateAssistantReply(
                   "Original user turn content:",
                   userTurnText,
                   "",
-                  "Tool results from the previous attempt (JSON):",
-                  serializeToolResultsForRetry(finalResult)
+                  ...forcedFinalizationToolSection
                 ].join("\n")
               },
               {
@@ -668,6 +737,8 @@ export async function generateAssistantReply(
           "## Runtime Completion Retry",
           "- Complete the user's requested task in this turn using tools as needed.",
           "- Do not ask for permission, confirmation, or more time unless there is a hard blocker.",
+          "- Never claim you lack access to tools in this turn; run available tools now.",
+          "- Never ask the user to re-tag, re-invoke, or retry for a clear request.",
           "- Do not output status updates about intended future work.",
           requiredSkillName
             ? `- A slash-invoked skill is active: /${requiredSkillName}. Follow that skill's instructions first.`
@@ -691,6 +762,16 @@ export async function generateAssistantReply(
       let retryText = candidateText;
       let lastOutcome: CompletionOutcomeDecision = initialOutcome;
       for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const completionRetryToolSection = hasToolResults(retryResult)
+          ? [
+              "Tool results so far (JSON):",
+              serializeToolResultsForRetry(retryResult)
+            ]
+          : [
+              "No tool results are available yet.",
+              "Run the required tools now before final_answer."
+            ];
+
         const completionRetry = await completionRetryAgent.generate({
           messages: [
             {
@@ -703,9 +784,9 @@ export async function generateAssistantReply(
                 "Previous attempt was incomplete.",
                 "Complete the task now and provide the final answer directly.",
                 "Continue autonomously unless there is a true hard blocker.",
+                "Do not ask the user to proceed, re-tag, or start a fresh invocation.",
                 "",
-                "Prior tool results from previous attempt (JSON):",
-                serializeToolResultsForRetry(retryResult),
+                ...completionRetryToolSection,
                 "",
                 "Previous assistant output that was not acceptable:",
                 retryText
@@ -791,7 +872,7 @@ export async function generateAssistantReply(
 
       const exhaustedAnswerFromRetry = extractFinalAnswer(retryResult);
       const exhaustedAnswer = exhaustedAnswerFromRetry ?? (retryText.trim() || retryResult.text?.trim());
-      if (exhaustedAnswer && exhaustedAnswer.length > 0) {
+      if (exhaustedAnswer && exhaustedAnswer.length > 0 && !isExecutionEscapeResponse(exhaustedAnswer)) {
         return {
           text: exhaustedAnswer,
           files: generatedFiles.length > 0 ? generatedFiles : undefined,
@@ -800,8 +881,17 @@ export async function generateAssistantReply(
       }
     }
 
+    const resolvedText = finalAnswer ?? (finalResult.text || "I couldn't produce a response.");
+    if (isExecutionEscapeResponse(resolvedText)) {
+      return {
+        text: "I hit an internal issue while executing that request and could not complete it in this turn. Please retry the same request.",
+        files: generatedFiles.length > 0 ? generatedFiles : undefined,
+        artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
+      };
+    }
+
     return {
-      text: finalAnswer ?? (finalResult.text || "I couldn't produce a response."),
+      text: resolvedText,
       files: generatedFiles.length > 0 ? generatedFiles : undefined,
       artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
     };
