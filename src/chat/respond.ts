@@ -27,6 +27,7 @@ export interface ReplyRequestContext {
     channelId?: string;
     requesterId?: string;
   };
+  chatHistory?: string;
 }
 
 export interface AssistantReply {
@@ -94,7 +95,8 @@ export async function generateAssistantReply(
             activeSkills,
             invocation,
             assistant: context.assistant,
-            requester: context.requester
+            requester: context.requester,
+            chatHistory: context.chatHistory
           }),
           prompt: userInput,
           stopWhen: stepCountIs(12),

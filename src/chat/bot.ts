@@ -37,6 +37,95 @@ function getChannelId(message: unknown): string | undefined {
   return toOptionalString((message as { channelId?: unknown }).channelId);
 }
 
+interface ProgressSentMessage {
+  edit?: (message: string | PostableMessage) => Promise<unknown>;
+  delete?: () => Promise<unknown>;
+}
+
+function createProgressReporter(thread: {
+  post: (message: string | PostableMessage) => Promise<unknown>;
+  startTyping?: (status?: string) => Promise<void>;
+}) {
+  const status = "Still working on it...";
+  const startDelayMs = 6000;
+  let active = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let statusMessage: ProgressSentMessage | null = null;
+
+  const postStatus = async (): Promise<void> => {
+    try {
+      await thread.startTyping?.(status);
+      statusMessage = (await thread.post(status)) as ProgressSentMessage;
+    } catch {
+      // Best effort only.
+    }
+  };
+
+  return {
+    start() {
+      active = true;
+      timeoutId = setTimeout(async () => {
+        if (!active) return;
+        await postStatus();
+      }, startDelayMs);
+    },
+    async stop() {
+      active = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      if (statusMessage?.delete) {
+        try {
+          await statusMessage.delete();
+        } catch {
+          // Best effort only.
+        }
+      }
+    }
+  };
+}
+
+interface ThreadMessageSnapshot {
+  text?: string | null;
+  author?: {
+    isMe?: boolean;
+    userName?: string;
+    fullName?: string;
+  };
+}
+
+function buildChatHistory(recentMessages: ThreadMessageSnapshot[] | undefined, currentUserText: string): string | undefined {
+  if (!recentMessages || recentMessages.length === 0) {
+    return undefined;
+  }
+
+  const items = recentMessages
+    .filter((entry) => typeof entry.text === "string" && entry.text.trim().length > 0)
+    .map((entry) => {
+      const role = entry.author?.isMe ? "assistant" : "user";
+      const displayName = entry.author?.fullName || entry.author?.userName || role;
+      return {
+        role,
+        displayName,
+        text: (entry.text ?? "").trim()
+      };
+    });
+
+  if (items.length === 0) {
+    return undefined;
+  }
+
+  const last = items[items.length - 1];
+  if (last && last.role === "user" && last.text === currentUserText.trim()) {
+    items.pop();
+  }
+
+  const window = items.slice(-12);
+  if (window.length === 0) {
+    return undefined;
+  }
+
+  return window.map((item) => `[${item.role}] ${item.displayName}: ${item.text}`).join("\n");
+}
+
 export const bot = new Chat({
   userName: botConfig.userName,
   adapters: {
@@ -49,6 +138,7 @@ async function replyToThread(
   thread: {
     post: (message: string | PostableMessage) => Promise<unknown>;
     startTyping?: (status?: string) => Promise<void>;
+    recentMessages?: ThreadMessageSnapshot[];
   },
   message: {
     author: { isMe: boolean; userId?: string; userName?: string; fullName?: string };
@@ -76,32 +166,40 @@ async function replyToThread(
     },
     async () => {
       const userText = stripLeadingBotMention(message.text ?? "");
+      const chatHistory = buildChatHistory(thread.recentMessages, userText);
       const fallbackIdentity = await lookupSlackUser(message.author.userId);
       await thread.startTyping?.("Thinking...");
+      const progress = createProgressReporter(thread);
+      progress.start();
 
-      const reply = await generateAssistantReply(userText, {
-        assistant: {
-          userId: botConfig.slackBotUserId,
-          userName: botConfig.userName
-        },
-        requester: {
-          userId: message.author.userId,
-          userName: message.author.userName ?? fallbackIdentity?.userName,
-          fullName: message.author.fullName ?? fallbackIdentity?.fullName
-        },
-        correlation: {
-          threadId,
-          workflowRunId,
-          channelId,
-          requesterId: message.author.userId
-        }
-      });
+      try {
+        const reply = await generateAssistantReply(userText, {
+          assistant: {
+            userId: botConfig.slackBotUserId,
+            userName: botConfig.userName
+          },
+          requester: {
+            userId: message.author.userId,
+            userName: message.author.userName ?? fallbackIdentity?.userName,
+            fullName: message.author.fullName ?? fallbackIdentity?.fullName
+          },
+          chatHistory,
+          correlation: {
+            threadId,
+            workflowRunId,
+            channelId,
+            requesterId: message.author.userId
+          }
+        });
 
-      await thread.post(
-        buildSlackOutputMessage(reply.text, {
-          files: reply.files
-        })
-      );
+        await thread.post(
+          buildSlackOutputMessage(reply.text, {
+            files: reply.files
+          })
+        );
+      } finally {
+        await progress.stop();
+      }
     }
   );
 }

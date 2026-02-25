@@ -66,8 +66,9 @@ export function buildSystemPrompt(params: {
     fullName?: string;
     userId?: string;
   };
+  chatHistory?: string;
 }): string {
-  const { availableSkills, activeSkills, invocation, requester, assistant } = params;
+  const { availableSkills, activeSkills, invocation, requester, assistant, chatHistory } = params;
   // Core harness contract:
   // - Keep this prompt generic and platform-level (tone, evidence, output constraints).
   // - Do not encode per-skill behavior here.
@@ -122,6 +123,12 @@ export function buildSystemPrompt(params: {
     "Use these blocks as authoritative metadata for identity questions.",
     assistantSection,
     requesterSection,
+    "## Chat History",
+    "",
+    "Use this as recent thread context when answering follow-up questions.",
+    "<chat_history>",
+    chatHistory?.trim() || "none",
+    "</chat_history>",
     "## Tool Usage",
     "",
     "- For factual or external questions, run tools/skills first, then answer from evidence.",
