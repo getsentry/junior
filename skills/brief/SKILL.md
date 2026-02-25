@@ -14,6 +14,7 @@ description: Grade engineering candidates from public technical evidence for non
    - Include collaborative and solo evidence when possible.
    - Include at least one maintenance-heavy artifact when available.
    - If code artifacts are sparse, include non-code technical evidence.
+   - Use artifact-level evidence (repo/file/PR/issue/commit/talk/page) instead of platform-level summaries.
 4. Run each major review component using the matching references file, including authenticity checks.
 5. Synthesize component results into grade, recommendation, confidence, and interview focus.
 
@@ -47,6 +48,15 @@ Use [candidate rubric](references/candidate-rubric.md) as the baseline scoring c
 
 Main output must begin with the profile grade.
 
+Slack rendering constraints (strict):
+
+- Use only headings and bullets.
+- Never use markdown tables.
+- Never use horizontal rules (`---`) between sections.
+- Never use emoji-prefixed section headers.
+- Never collapse key/value data onto one dense line. Use one bullet per field: `- Field: value`.
+- Keep the first 12 lines clean and readable because Slack previews them inline.
+
 After the delivery block, write two parts in this order:
 
 1. `Brief summary` (3-5 bullets, max 8 lines total, non-technical language). This must appear before detailed sections.
@@ -65,6 +75,14 @@ After the delivery block, write two parts in this order:
    - `Evidence reviewed` (5-8 bullets, each naming source/artifact and evidence scope).
    - `Interview focus areas` (3-6 bullets).
    - `Confidence` (`high`, `medium`, or `low`) with one sentence on unknowns.
+
+Depth minimums:
+
+- `GitHub/code evaluation`: cite at least 3 artifact-level references when available, including one file-level code read and one test/CI signal.
+- `Maintenance and operations evaluation`: cite at least 2 artifact-level references when available.
+- `CV and claim verification`: assess at least 5 high-impact claims when available.
+- `Public speaking and technical content` plus `Public presence`: cite at least 2 independent artifacts combined when available.
+- If a minimum cannot be met, explicitly mark `limited` or `not-assessed` and lower confidence.
 
 Delivery guidance:
 
