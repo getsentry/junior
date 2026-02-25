@@ -97,6 +97,20 @@ export function logError(message: string, context: ObservabilityContext = {}, at
   logWithLevel("error", message, { ...contextToAttributes(context), ...attributes });
 }
 
+export function logException(
+  error: unknown,
+  message: string,
+  context: ObservabilityContext = {},
+  attributes: Record<string, unknown> = {}
+): void {
+  const normalizedError = error instanceof Error ? error : new Error(String(error));
+  logError(message, context, {
+    ...attributes,
+    error: normalizedError.message
+  });
+  captureException(normalizedError, context);
+}
+
 export function setTags(context: ObservabilityContext = {}): void {
   if (context.platform) Sentry.setTag("platform", context.platform);
   if (context.requestId) Sentry.setTag("request.id", context.requestId);
