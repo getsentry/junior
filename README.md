@@ -38,6 +38,10 @@ cp .env.example .env.local
 - `AI_MODEL` (optional; default `anthropic/claude-sonnet-4.6`)
 - `REDIS_URL` (optional for local; recommended for prod)
 - `SKILL_DIRS` (optional extra skill roots)
+- `SENTRY_DSN` (optional locally; required for Sentry event capture)
+- `NEXT_PUBLIC_SENTRY_DSN` (for browser-side error capture)
+- `SENTRY_TRACES_SAMPLE_RATE` (default `1.0`)
+- `NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE` (default `1.0`)
 
 4. Validate skills:
 
@@ -134,8 +138,31 @@ ngrok http 3000
 - `AI_MODEL` (optional)
 - `REDIS_URL` (recommended)
 - `SKILL_DIRS` (optional)
+- `SENTRY_DSN`
+- `NEXT_PUBLIC_SENTRY_DSN`
+- `SENTRY_ORG`
+- `SENTRY_PROJECT`
+- `SENTRY_AUTH_TOKEN`
+- `SENTRY_ENVIRONMENT` (for example `production`)
+- `NEXT_PUBLIC_SENTRY_ENVIRONMENT` (for example `production`)
+- `SENTRY_RELEASE` (optional; defaults to commit SHA in Vercel)
+- `NEXT_PUBLIC_SENTRY_RELEASE` (optional)
 3. Update Slack request/interactivity URLs to:
 - `https://<vercel-domain>/api/webhooks/slack`
+
+## Sentry setup
+
+This project uses `@sentry/nextjs` with:
+- Next.js browser + server runtime initialization
+- AI SDK tracing integration (`Sentry.vercelAIIntegration`)
+- Error capture in webhook and chat workflow handlers
+- Correlation tags for Slack thread/user and workflow run IDs
+
+To finish setup:
+1. Create a Sentry project and copy its DSN.
+2. Set the Vercel env vars listed above.
+3. Deploy once so source maps upload during `next build`.
+4. Trigger a test error and confirm stack traces resolve in Sentry.
 
 ## Skills
 
