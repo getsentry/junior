@@ -255,52 +255,112 @@ function createAgentTools(
     parameters: Type.Any(),
     execute: async (_toolCallId, params) => {
       hooks?.onToolCall?.(toolName);
+      const toolStartedAt = Date.now();
+      logWarn(
+        "agent_tool_call_start",
+        {},
+        {
+          "gen_ai.system": "vercel-ai-gateway",
+          "gen_ai.operation.name": "tool_call",
+          "app.ai.tool_name": toolName
+        },
+        "Agent tool call started"
+      );
       await onStatus?.(`${formatToolStatus(toolName)}...`);
       const parsed = toolDef.inputSchema.safeParse(params);
       if (!parsed.success) {
+        logWarn(
+          "agent_tool_call_invalid_input",
+          {},
+          {
+            "gen_ai.system": "vercel-ai-gateway",
+            "gen_ai.operation.name": "tool_call",
+            "app.ai.tool_name": toolName,
+            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
+          },
+          "Agent tool call input validation failed"
+        );
         throw new Error(parsed.error.message);
       }
 
-      if (typeof toolDef.execute !== "function") {
-        const answer = toolName === "final_answer" ? String((parsed.data as { answer?: string }).answer ?? "") : "";
+      try {
+        if (typeof toolDef.execute !== "function") {
+          const answer = toolName === "final_answer" ? String((parsed.data as { answer?: string }).answer ?? "") : "";
+          await onStatus?.("Reviewing tool results...");
+          logWarn(
+            "agent_tool_call_end",
+            {},
+            {
+              "gen_ai.system": "vercel-ai-gateway",
+              "gen_ai.operation.name": "tool_call",
+              "app.ai.tool_name": toolName,
+              "app.ai.tool_duration_ms": Date.now() - toolStartedAt
+            },
+            "Agent tool call finished"
+          );
+          return {
+            content: answer ? [{ type: "text", text: answer }] : [{ type: "text", text: "ok" }],
+            details: toolName === "final_answer" ? { answer } : { ok: true }
+          };
+        }
+
+        const result = sandboxExecutor?.canExecute(toolName)
+          ? await sandboxExecutor.execute({
+              toolName,
+              input: parsed.data
+            })
+          : await toolDef.execute(parsed.data, {
+              experimental_context: sandbox
+            });
+
+        const normalizedResult =
+          sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
+            ? (result as { result: unknown; generatedFiles?: Array<{ dataBase64: string; filename: string; mimeType: string }>; artifactStatePatch?: Partial<ThreadArtifactsState> })
+            : null;
+        if (normalizedResult?.generatedFiles && normalizedResult.generatedFiles.length > 0) {
+          hooks?.onGeneratedFiles?.(
+            normalizedResult.generatedFiles.map((file) => ({
+              data: Buffer.from(file.dataBase64, "base64"),
+              filename: file.filename,
+              mimeType: file.mimeType
+            }))
+          );
+        }
+        if (normalizedResult?.artifactStatePatch && Object.keys(normalizedResult.artifactStatePatch).length > 0) {
+          hooks?.onArtifactStatePatch?.(normalizedResult.artifactStatePatch);
+        }
+
         await onStatus?.("Reviewing tool results...");
-        return {
-          content: answer ? [{ type: "text", text: answer }] : [{ type: "text", text: "ok" }],
-          details: toolName === "final_answer" ? { answer } : { ok: true }
-        };
-      }
-
-      const result = sandboxExecutor?.canExecute(toolName)
-        ? await sandboxExecutor.execute({
-            toolName,
-            input: parsed.data
-          })
-        : await toolDef.execute(parsed.data, {
-            experimental_context: sandbox
-          });
-
-      const normalizedResult =
-        sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
-          ? (result as { result: unknown; generatedFiles?: Array<{ dataBase64: string; filename: string; mimeType: string }>; artifactStatePatch?: Partial<ThreadArtifactsState> })
-          : null;
-      if (normalizedResult?.generatedFiles && normalizedResult.generatedFiles.length > 0) {
-        hooks?.onGeneratedFiles?.(
-          normalizedResult.generatedFiles.map((file) => ({
-            data: Buffer.from(file.dataBase64, "base64"),
-            filename: file.filename,
-            mimeType: file.mimeType
-          }))
+        logWarn(
+          "agent_tool_call_end",
+          {},
+          {
+            "gen_ai.system": "vercel-ai-gateway",
+            "gen_ai.operation.name": "tool_call",
+            "app.ai.tool_name": toolName,
+            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
+          },
+          "Agent tool call finished"
         );
+        return {
+          content: [{ type: "text", text: toToolContentText(normalizedResult ? normalizedResult.result : result) }],
+          details: normalizedResult ? normalizedResult.result : result
+        };
+      } catch (error) {
+        logException(
+          error,
+          "agent_tool_call_failed",
+          {},
+          {
+            "gen_ai.system": "vercel-ai-gateway",
+            "gen_ai.operation.name": "tool_call",
+            "app.ai.tool_name": toolName,
+            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
+          },
+          "Agent tool call failed"
+        );
+        throw error;
       }
-      if (normalizedResult?.artifactStatePatch && Object.keys(normalizedResult.artifactStatePatch).length > 0) {
-        hooks?.onArtifactStatePatch?.(normalizedResult.artifactStatePatch);
-      }
-
-      await onStatus?.("Reviewing tool results...");
-      return {
-        content: [{ type: "text", text: toToolContentText(normalizedResult ? normalizedResult.result : result) }],
-        details: normalizedResult ? normalizedResult.result : result
-      };
     }
   }));
 }
@@ -494,6 +554,16 @@ export async function generateAssistantReply(
     });
 
     const beforeMessageCount = agent.state.messages.length;
+    logWarn(
+      "agent_turn_start",
+      {},
+      {
+        "gen_ai.system": "vercel-ai-gateway",
+        "gen_ai.operation.name": "agent_turn",
+        "gen_ai.request.model": botConfig.modelId
+      },
+      "Agent turn started"
+    );
 
     await withSpan(
       "ai.generateAssistantReply",
@@ -536,6 +606,20 @@ export async function generateAssistantReply(
       .trim();
 
     const toolErrorCount = toolResults.filter((result) => result.isError).length;
+    logWarn(
+      "agent_turn_activity",
+      {},
+      {
+        "gen_ai.system": "vercel-ai-gateway",
+        "gen_ai.operation.name": "agent_turn",
+        "gen_ai.request.model": botConfig.modelId,
+        "app.ai.assistant_messages": assistantMessages.length,
+        "app.ai.tool_results": toolResults.length,
+        "app.ai.tool_error_results": toolErrorCount,
+        "app.ai.tool_call_count": toolCalls.length
+      },
+      "Agent turn activity captured"
+    );
 
     if (!finalAnswer && !primaryText) {
       logWarn(

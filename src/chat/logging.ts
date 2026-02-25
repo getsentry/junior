@@ -4,6 +4,12 @@ import * as Sentry from "@sentry/nextjs";
 type Primitive = string | number | boolean;
 export type LogAttributes = Record<string, Primitive>;
 export type LogLevel = "debug" | "info" | "warn" | "error";
+export interface EmittedLogRecord {
+  attributes: LogAttributes;
+  body: string;
+  eventName: string;
+  level: LogLevel;
+}
 
 export interface LogContext {
   platform?: string;
@@ -68,6 +74,7 @@ const LEGACY_KEY_MAP: Record<string, string> = {
 };
 
 const contextStorage = new AsyncLocalStorage<LogAttributes>();
+const logRecordSinks = new Set<(record: EmittedLogRecord) => void>();
 
 function getSentryEnvironment(): string {
   return (
@@ -261,6 +268,19 @@ function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown>
     }
   );
 
+  for (const sink of logRecordSinks) {
+    try {
+      sink({
+        level,
+        eventName: toSnakeCase(eventName),
+        body: message,
+        attributes
+      });
+    } catch {
+      // Test-only sink failures must not break runtime logging.
+    }
+  }
+
   emitSentry(level, message, attributes);
 }
 
@@ -307,6 +327,13 @@ export function setLogContext(context: LogContext): void {
 
 export function getLogContextAttributes(): LogAttributes {
   return contextStorage.getStore() ?? {};
+}
+
+export function registerLogRecordSink(sink: (record: EmittedLogRecord) => void): () => void {
+  logRecordSinks.add(sink);
+  return () => {
+    logRecordSinks.delete(sink);
+  };
 }
 
 export function createLogContextFromRequest(request: Request, context: Partial<LogContext> = {}): LogContext {

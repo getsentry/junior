@@ -1,5 +1,6 @@
 import { completeSimple, getEnvApiKey, getModels, type Message, type Model } from "@mariozechner/pi-ai";
 import type { ZodTypeAny, z } from "zod";
+import { logException, logInfo, logWarn } from "@/chat/observability";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 
@@ -96,11 +97,32 @@ export async function completeText(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }) {
+  const startedAt = Date.now();
   const model = resolveGatewayModel(params.modelId);
   const apiKey = getGatewayApiKey();
   if (!apiKey) {
+    logWarn(
+      "ai_completion_missing_api_key",
+      {},
+      {
+        "gen_ai.system": GATEWAY_PROVIDER,
+        "gen_ai.operation.name": "complete_text",
+        "gen_ai.request.model": params.modelId
+      },
+      "AI completion aborted because API key is missing"
+    );
     throw new Error("AI_GATEWAY_API_KEY is required for model completion");
   }
+  logInfo(
+    "ai_completion_start",
+    {},
+    {
+      "gen_ai.system": GATEWAY_PROVIDER,
+      "gen_ai.operation.name": "complete_text",
+      "gen_ai.request.model": params.modelId
+    },
+    "AI completion started"
+  );
   const message = await completeSimple(
     model,
     {
@@ -115,6 +137,33 @@ export async function completeText(params: {
       metadata: params.metadata
     }
   );
+  logInfo(
+    "ai_completion_end",
+    {},
+    {
+      "gen_ai.system": GATEWAY_PROVIDER,
+      "gen_ai.operation.name": "complete_text",
+      "gen_ai.request.model": params.modelId,
+      "app.ai.duration_ms": Date.now() - startedAt,
+      "app.ai.stop_reason": message.stopReason ?? "unknown"
+    },
+    "AI completion finished"
+  );
+  if (message.stopReason === "error") {
+    const providerMessage = message.errorMessage?.trim() || "Unknown provider error";
+    logWarn(
+      "ai_completion_provider_error",
+      {},
+      {
+        "gen_ai.system": GATEWAY_PROVIDER,
+        "gen_ai.operation.name": "complete_text",
+        "gen_ai.request.model": params.modelId,
+        "error.message": providerMessage
+      },
+      "AI completion returned provider error"
+    );
+    throw new Error(`AI provider error: ${providerMessage}`);
+  }
 
   return {
     message,
@@ -132,28 +181,70 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }): Promise<{ object: z.infer<TSchema>; text: string }> {
-  const { text } = await completeText({
-    modelId: params.modelId,
-    system: params.system,
-    temperature: params.temperature,
-    maxTokens: params.maxTokens,
-    signal: params.signal,
-    metadata: params.metadata,
-    messages: [
+  const startedAt = Date.now();
+  let text = "";
+  try {
+    ({ text } = await completeText({
+      modelId: params.modelId,
+      system: params.system,
+      temperature: params.temperature,
+      maxTokens: params.maxTokens,
+      signal: params.signal,
+      metadata: params.metadata,
+      messages: [
+        {
+          role: "user",
+          content: params.prompt,
+          timestamp: Date.now()
+        }
+      ]
+    }));
+  } catch (error) {
+    logException(
+      error,
+      "ai_completion_failed",
+      {},
       {
-        role: "user",
-        content: params.prompt,
-        timestamp: Date.now()
-      }
-    ]
-  });
+        "gen_ai.system": GATEWAY_PROVIDER,
+        "gen_ai.operation.name": "complete_object",
+        "gen_ai.request.model": params.modelId,
+        "app.ai.duration_ms": Date.now() - startedAt
+      },
+      "AI object completion failed"
+    );
+    throw error;
+  }
 
   const candidate = parseJsonCandidate(text);
   const parsed = params.schema.safeParse(candidate);
   if (!parsed.success) {
     const preview = text.length > 400 ? `${text.slice(0, 400)}...` : text;
+    logWarn(
+      "ai_completion_schema_parse_failed",
+      {},
+      {
+        "gen_ai.system": GATEWAY_PROVIDER,
+        "gen_ai.operation.name": "complete_object",
+        "gen_ai.request.model": params.modelId,
+        "app.ai.duration_ms": Date.now() - startedAt,
+        "app.ai.response_preview": preview
+      },
+      "AI object completion schema parse failed"
+    );
     throw new Error(`Model did not return valid JSON for schema: ${parsed.error.message}. Raw response: ${preview}`);
   }
+
+  logInfo(
+    "ai_completion_object_end",
+    {},
+    {
+      "gen_ai.system": GATEWAY_PROVIDER,
+      "gen_ai.operation.name": "complete_object",
+      "gen_ai.request.model": params.modelId,
+      "app.ai.duration_ms": Date.now() - startedAt
+    },
+    "AI object completion finished"
+  );
 
   return {
     object: parsed.data,
