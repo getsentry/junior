@@ -172,6 +172,7 @@ export function buildSystemPrompt(params: {
     "- When a request matches an available skill, call `load_skill` and follow that skill instead of doing the work from memory.",
     "- Never apply skill-specific behavior until `load_skill` has succeeded in this turn.",
     "- Load only the best matching skill first; do not load multiple skills upfront.",
+    "- After `load_skill`, resolve any relative paths in skill instructions against `skill_dir` (or SKILL.md parent).",
     "- If no skill is a clear fit, continue with normal tool usage.",
     "## Output Contract",
     "",

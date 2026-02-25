@@ -45,6 +45,72 @@ export interface AssistantReply {
   artifactStatePatch?: Partial<ThreadArtifactsState>;
 }
 
+function tokenize(value: string): Set<string> {
+  return new Set(
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, " ")
+      .split(/[\s-]+/)
+      .filter((token) => token.length >= 3)
+  );
+}
+
+function inferLikelySkill(
+  userInput: string,
+  availableSkills: Array<{ name: string; description: string }>
+): { name: string; score: number } | null {
+  const queryTokens = tokenize(userInput);
+  if (queryTokens.size === 0) {
+    return null;
+  }
+
+  let best: { name: string; score: number; overlap: number } | null = null;
+  for (const skill of availableSkills) {
+    const skillTokens = tokenize(`${skill.name} ${skill.description}`);
+    if (skillTokens.size === 0) continue;
+
+    let overlap = 0;
+    for (const token of queryTokens) {
+      if (skillTokens.has(token)) overlap += 1;
+    }
+    const score = overlap / queryTokens.size;
+    if (!best || score > best.score) {
+      best = { name: skill.name, score, overlap };
+    }
+  }
+
+  if (!best) return null;
+  if (best.overlap < 2 || best.score < 0.2) return null;
+  return { name: best.name, score: best.score };
+}
+
+function collectToolNames(result: {
+  toolCalls: Array<{ toolName?: string; tool_name?: string; name?: string }>;
+  steps: Array<{
+    toolCalls: Array<{ toolName?: string; tool_name?: string; name?: string }>;
+    toolResults: Array<{ toolName?: string; tool_name?: string; name?: string }>;
+  }>;
+}): Set<string> {
+  const names = new Set<string>();
+  const addName = (value?: string) => {
+    if (!value) return;
+    names.add(value.toLowerCase());
+  };
+
+  for (const call of result.toolCalls) {
+    addName(call.toolName ?? call.tool_name ?? call.name);
+  }
+  for (const step of result.steps) {
+    for (const call of step.toolCalls) {
+      addName(call.toolName ?? call.tool_name ?? call.name);
+    }
+    for (const toolResult of step.toolResults) {
+      addName(toolResult.toolName ?? toolResult.tool_name ?? toolResult.name);
+    }
+  }
+  return names;
+}
+
 function summarizeStepDiagnostics(result: {
   steps: Array<{
     finishReason: string;
@@ -88,6 +154,7 @@ export async function generateAssistantReply(
     const activeSkillNames = invokedSkill ? [invokedSkill.name] : [];
     const activeSkills = await loadSkillsByName(activeSkillNames, availableSkills);
     const userInput = invocation ? invocation.args : messageText;
+    const inferredSkill = !invocation ? inferLikelySkill(userInput, availableSkills) : null;
     const userContentParts: Array<
       | { type: "text"; text: string }
       | { type: "image"; image: Buffer; mediaType: string }
@@ -205,6 +272,77 @@ export async function generateAssistantReply(
         responseMessages: result.response.messages.length,
         stepDiagnostics: summarizeStepDiagnostics(result)
       });
+    }
+
+    const toolNames = collectToolNames(result);
+    const loadedSkillDuringTurn = toolNames.has("load_skill");
+    if (!invocation && inferredSkill && !loadedSkillDuringTurn) {
+      logWarn("matched skill without load_skill; running enforced retry", {
+        slackThreadId: context.correlation?.threadId,
+        slackUserId: context.correlation?.requesterId,
+        slackChannelId: context.correlation?.channelId,
+        workflowRunId: context.correlation?.workflowRunId,
+        assistantUserName: context.assistant?.userName,
+        modelId: botConfig.modelId
+      }, {
+        inferredSkill: inferredSkill.name,
+        inferredScore: inferredSkill.score
+      });
+
+      const retry = await generateTextWithTelemetry({
+        model: gateway(botConfig.modelId),
+        system: [
+          buildSystemPrompt({
+            availableSkills,
+            activeSkills: [],
+            invocation: null,
+            assistant: context.assistant,
+            requester: context.requester,
+            chatHistory: context.chatHistory,
+            artifactState: context.artifactState
+          }),
+          "## Runtime Skill Enforcement",
+          `You must call load_skill with skill_name='${inferredSkill.name}' before answering.`,
+          "After loading, follow only that skill's instructions and then provide a final user-visible markdown response."
+        ].join("\n\n"),
+        messages: [
+          {
+            role: "user",
+            content: userContentParts
+          }
+        ],
+        stopWhen: stepCountIs(50),
+        tools: createTools(
+          availableSkills,
+          {
+            onGeneratedFiles: (files) => {
+              generatedFiles.push(...files);
+            },
+            onArtifactStatePatch: (patch) => {
+              Object.assign(artifactStatePatch, patch);
+            }
+          },
+          {
+            channelId: context.correlation?.channelId,
+            threadTs: context.correlation?.threadTs,
+            artifactState: context.artifactState
+          }
+        )
+      }, {
+        functionId: "generateAssistantReply.enforced_skill_retry",
+        metadata: {
+          ...telemetryMetadata,
+          enforcedSkill: inferredSkill.name
+        }
+      });
+
+      if (retry.text && retry.text.trim().length > 0) {
+        return {
+          text: retry.text,
+          files: generatedFiles.length > 0 ? generatedFiles : undefined,
+          artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
+        };
+      }
     }
 
     return {

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { logWarn } from "@/chat/observability";
 import { parseAndValidateSkillFrontmatter, stripFrontmatter } from "@/chat/skill-frontmatter";
 
 const SKILL_CACHE_TTL_MS = 5000;
@@ -44,6 +45,10 @@ async function readSkillDirectory(skillDir: string): Promise<SkillMetadata | nul
     const raw = await fs.readFile(skillFile, "utf8");
     const parsed = parseAndValidateSkillFrontmatter(raw, path.basename(skillDir));
     if (!parsed.ok) {
+      logWarn("invalid skill frontmatter", {}, {
+        skillDir,
+        error: parsed.error
+      });
       return null;
     }
 
@@ -54,7 +59,11 @@ async function readSkillDirectory(skillDir: string): Promise<SkillMetadata | nul
       description,
       skillPath: skillDir
     };
-  } catch {
+  } catch (error) {
+    logWarn("failed to read skill directory", {}, {
+      skillDir,
+      error: error instanceof Error ? error.message : String(error)
+    });
     return null;
   }
 }
@@ -82,8 +91,11 @@ export async function discoverSkills(): Promise<SkillMetadata[]> {
           discovered.push(skill);
         }
       }
-    } catch {
-      // Skill roots are optional.
+    } catch (error) {
+      logWarn("failed to read skill root", {}, {
+        root,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 
