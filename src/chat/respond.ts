@@ -1,16 +1,13 @@
-import { gateway, stepCountIs } from "ai";
-import { generateTextWithTelemetry } from "@/chat/ai";
+import { gateway, stepCountIs, ToolLoopAgent } from "ai";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
-  discoverSkills,
-  findSkillByName,
-  loadSkillsByName,
-  parseSkillInvocation
+  discoverSkills
 } from "@/chat/skills";
+import type { Skill } from "@/chat/skills";
 import { createTools } from "@/chat/tools";
 
 export interface ReplyRequestContext {
@@ -141,20 +138,9 @@ export async function generateAssistantReply(
 ): Promise<AssistantReply> {
   try {
     const availableSkills = await discoverSkills();
-    const invocation = parseSkillInvocation(messageText);
-    const invokedSkill = invocation ? findSkillByName(invocation.skillName, availableSkills) : null;
-
-    if (invocation && !invokedSkill) {
-      const skills = availableSkills.map((skill) => `/${skill.name}`).join(", ") || "(none configured)";
-      return {
-        text: `Unknown skill: /${invocation.skillName}\nAvailable skills: ${skills}`
-      };
-    }
-
-    const activeSkillNames = invokedSkill ? [invokedSkill.name] : [];
-    const activeSkills = await loadSkillsByName(activeSkillNames, availableSkills);
-    const userInput = invocation ? invocation.args : messageText;
-    const inferredSkill = !invocation ? inferLikelySkill(userInput, availableSkills) : null;
+    const activeSkills: Skill[] = [];
+    const userInput = messageText;
+    const inferredSkill = inferLikelySkill(userInput, availableSkills);
     const userContentParts: Array<
       | { type: "text"; text: string }
       | { type: "image"; image: Buffer; mediaType: string }
@@ -183,7 +169,6 @@ export async function generateAssistantReply(
       modelId: botConfig.modelId
     };
 
-    if (invokedSkill?.name) telemetryMetadata.skillName = invokedSkill.name;
     if (context.correlation?.threadId) telemetryMetadata.threadId = context.correlation.threadId;
     if (context.correlation?.workflowRunId) telemetryMetadata.workflowRunId = context.correlation.workflowRunId;
     if (context.correlation?.channelId) telemetryMetadata.channelId = context.correlation.channelId;
@@ -195,8 +180,46 @@ export async function generateAssistantReply(
       slackChannelId: context.correlation?.channelId,
       workflowRunId: context.correlation?.workflowRunId,
       assistantUserName: context.assistant?.userName,
-      modelId: botConfig.modelId,
-      skillName: invokedSkill?.name
+      modelId: botConfig.modelId
+    });
+
+    const tools = createTools(
+      availableSkills,
+      {
+        onGeneratedFiles: (files) => {
+          generatedFiles.push(...files);
+        },
+        onArtifactStatePatch: (patch) => {
+          Object.assign(artifactStatePatch, patch);
+        }
+      },
+      {
+        channelId: context.correlation?.channelId,
+        threadTs: context.correlation?.threadTs,
+        artifactState: context.artifactState
+      }
+    );
+
+    const agent = new ToolLoopAgent({
+      model: gateway(botConfig.modelId),
+      instructions: buildSystemPrompt({
+        availableSkills,
+        activeSkills,
+        invocation: null,
+        assistant: context.assistant,
+        requester: context.requester,
+        chatHistory: context.chatHistory,
+        artifactState: context.artifactState
+      }),
+      tools,
+      stopWhen: stepCountIs(100),
+      experimental_telemetry: {
+        isEnabled: true,
+        recordInputs: true,
+        recordOutputs: true,
+        functionId: "generateAssistantReply",
+        metadata: telemetryMetadata
+      }
     });
 
     const result = await withSpan(
@@ -208,47 +231,16 @@ export async function generateAssistantReply(
         slackChannelId: context.correlation?.channelId,
         workflowRunId: context.correlation?.workflowRunId,
         assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId,
-        skillName: invokedSkill?.name
+        modelId: botConfig.modelId
       },
       () =>
-        generateTextWithTelemetry({
-          model: gateway(botConfig.modelId),
-          system: buildSystemPrompt({
-            availableSkills,
-            activeSkills,
-            invocation,
-            assistant: context.assistant,
-            requester: context.requester,
-            chatHistory: context.chatHistory,
-            artifactState: context.artifactState
-          }),
+        agent.generate({
           messages: [
             {
               role: "user",
               content: userContentParts
             }
-          ],
-          stopWhen: stepCountIs(50),
-          tools: createTools(
-            availableSkills,
-            {
-              onGeneratedFiles: (files) => {
-                generatedFiles.push(...files);
-              },
-              onArtifactStatePatch: (patch) => {
-                Object.assign(artifactStatePatch, patch);
-              }
-            },
-            {
-              channelId: context.correlation?.channelId,
-              threadTs: context.correlation?.threadTs,
-              artifactState: context.artifactState
-            }
-          )
-        }, {
-          functionId: "generateAssistantReply",
-          metadata: telemetryMetadata
+          ]
         })
     );
 
@@ -259,8 +251,7 @@ export async function generateAssistantReply(
         slackChannelId: context.correlation?.channelId,
         workflowRunId: context.correlation?.workflowRunId,
         assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId,
-        skillName: invokedSkill?.name
+        modelId: botConfig.modelId
       }, {
         finishReason: result.finishReason,
         steps: result.steps.length,
@@ -276,7 +267,7 @@ export async function generateAssistantReply(
 
     const toolNames = collectToolNames(result);
     const loadedSkillDuringTurn = toolNames.has("load_skill");
-    if (!invocation && inferredSkill && !loadedSkillDuringTurn) {
+    if (inferredSkill && !loadedSkillDuringTurn) {
       logWarn("matched skill without load_skill; running enforced retry", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
@@ -289,9 +280,9 @@ export async function generateAssistantReply(
         inferredScore: inferredSkill.score
       });
 
-      const retry = await generateTextWithTelemetry({
+      const retryAgent = new ToolLoopAgent({
         model: gateway(botConfig.modelId),
-        system: [
+        instructions: [
           buildSystemPrompt({
             availableSkills,
             activeSkills: [],
@@ -305,35 +296,27 @@ export async function generateAssistantReply(
           `You must call load_skill with skill_name='${inferredSkill.name}' before answering.`,
           "After loading, follow only that skill's instructions and then provide a final user-visible markdown response."
         ].join("\n\n"),
+        tools,
+        stopWhen: stepCountIs(100),
+        experimental_telemetry: {
+          isEnabled: true,
+          recordInputs: true,
+          recordOutputs: true,
+          functionId: "generateAssistantReply.enforced_skill_retry",
+          metadata: {
+            ...telemetryMetadata,
+            enforcedSkill: inferredSkill.name
+          }
+        }
+      });
+
+      const retry = await retryAgent.generate({
         messages: [
           {
             role: "user",
             content: userContentParts
           }
-        ],
-        stopWhen: stepCountIs(50),
-        tools: createTools(
-          availableSkills,
-          {
-            onGeneratedFiles: (files) => {
-              generatedFiles.push(...files);
-            },
-            onArtifactStatePatch: (patch) => {
-              Object.assign(artifactStatePatch, patch);
-            }
-          },
-          {
-            channelId: context.correlation?.channelId,
-            threadTs: context.correlation?.threadTs,
-            artifactState: context.artifactState
-          }
-        )
-      }, {
-        functionId: "generateAssistantReply.enforced_skill_retry",
-        metadata: {
-          ...telemetryMetadata,
-          enforcedSkill: inferredSkill.name
-        }
+        ]
       });
 
       if (retry.text && retry.text.trim().length > 0) {
