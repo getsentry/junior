@@ -2,7 +2,10 @@
 
 ## Scope
 
-How Slack event payloads represent mentions and message text for bot routing decisions.
+How raw Slack Events API payloads represent mentions and message text.
+
+Use this file for raw Slack payload behavior. For Chat SDK handler field contracts, use:
+`${CLAUDE_SKILL_ROOT}/references/chat-sdk-payload-contract.md`.
 
 ## Event selection
 
@@ -10,22 +13,23 @@ How Slack event payloads represent mentions and message text for bot routing dec
 2. Use `message.*` events (for example, `message.channels`) for general thread/channel traffic.
 3. Expect message events to include additional optional fields depending on subtype/context.
 
-## Mention format in text
+## Mention/entity format in text
 
 1. Slack represents user mentions in text as entity tokens such as `<@U012AB3CD>`.
-2. Routing logic should parse mention entity tokens and compare IDs, not display names.
-3. Display names can vary; IDs are stable routing keys.
+2. IDs are the stable target for mention matching; names are presentation-level.
+3. In raw payload handling, avoid display-name routing logic.
 
 ## Event envelope notes
 
 1. Events are delivered in the Events API wrapper and can include `authorizations`/`event_context`.
 2. Do not build new logic on deprecated wrapper fields like `authed_users` and `authed_teams`.
 
-## Practical implementation checks
+## Practical checks when handling raw events
 
-1. Explicit bot mention in thread message should be a deterministic reply path.
-2. Passive classifiers should run only after deterministic mention checks.
-3. Log the routing reason (`explicit mention`, `classifier false`, `classifier error`) for each no-reply decision.
+1. Use `app_mention` as an explicit-mention trigger event.
+2. Treat `message.*` events as broader message flow and thread traffic.
+3. Do not rely on deprecated envelope fields (`authed_users`, `authed_teams`) for routing.
+4. If routing through Chat SDK, prefer normalized fields (for example `message.isMention`) instead of re-parsing raw event JSON.
 
 ## Source links
 

@@ -12,7 +12,8 @@ Determine which category applies before writing code:
 | Category | Typical request | Primary reference |
 | --- | --- | --- |
 | Output formatting | "Fix markdown", "why does Slack render this weirdly?" | `${CLAUDE_SKILL_ROOT}/references/slack-output-formatting.md` |
-| Inbound message format | "Why did mention detection fail?", "What does thread payload text look like?" | `${CLAUDE_SKILL_ROOT}/references/slack-inbound-message-formats.md` |
+| Slack event payloads | "What does Slack send?", "why did raw event parsing fail?" | `${CLAUDE_SKILL_ROOT}/references/slack-inbound-message-formats.md` |
+| Chat SDK payload contract | "What fields do handlers actually receive?", "which fields are reliable in `onSubscribedMessage`?" | `${CLAUDE_SKILL_ROOT}/references/chat-sdk-payload-contract.md` |
 | Thread routing | "Passive detector skips thread replies", "reply/no-reply logic is wrong" | `${CLAUDE_SKILL_ROOT}/references/slack-thread-routing.md` |
 | Long-running behavior | "No feedback while it runs", "show progress", "stream output" | `${CLAUDE_SKILL_ROOT}/references/chat-sdk-patterns.md` |
 | Multiple categories | Change touches formatting, routing, and/or runtime UX | Read only the needed references above |
@@ -36,7 +37,7 @@ When modifying this repository:
 Use this checklist:
 
 - Rendering: message examples render correctly in Slack (`mrkdwn` expectations, escapes, mentions/links).
-- Inbound formats: mention parsing matches documented Slack event text/entity formats.
+- Inbound formats: routing uses documented Chat SDK payload fields first; raw Slack parsing only when necessary.
 - Thread routing: explicit bot mention paths bypass passive no-reply classification.
 - Accessibility: block messages include an adequate top-level fallback `text` strategy.
 - Latency UX: user sees immediate feedback for long-running tasks.
