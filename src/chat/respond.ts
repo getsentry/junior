@@ -1,5 +1,6 @@
 import { gateway, hasToolCall, stepCountIs, ToolLoopAgent } from "ai";
 import type { FileUpload } from "chat";
+import { generateTextWithTelemetry } from "@/chat/ai";
 import { botConfig } from "@/chat/config";
 import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -34,6 +35,7 @@ export interface ReplyRequestContext {
     mediaType: string;
     filename?: string;
   }>;
+  onStatus?: (status: string) => void | Promise<void>;
 }
 
 export interface AssistantReply {
@@ -55,7 +57,7 @@ function tokenize(value: string): Set<string> {
 function inferLikelySkill(
   userInput: string,
   availableSkills: Array<{ name: string; description: string }>
-): { name: string; score: number } | null {
+): { name: string; score: number; overlap: number } | null {
   const queryTokens = tokenize(userInput);
   if (queryTokens.size === 0) {
     return null;
@@ -78,7 +80,7 @@ function inferLikelySkill(
 
   if (!best) return null;
   if (best.overlap < 2 || best.score < 0.2) return null;
-  return { name: best.name, score: best.score };
+  return { name: best.name, score: best.score, overlap: best.overlap };
 }
 
 function collectToolNames(result: {
@@ -232,6 +234,12 @@ export async function generateAssistantReply(
         },
         onArtifactStatePatch: (patch) => {
           Object.assign(artifactStatePatch, patch);
+        },
+        onToolCallStart: async (toolName) => {
+          await context.onStatus?.(`Running ${toolName}...`);
+        },
+        onToolCallEnd: async () => {
+          await context.onStatus?.("Analyzing tool results...");
         }
       },
       {
@@ -241,17 +249,19 @@ export async function generateAssistantReply(
       }
     );
 
+    const baseInstructions = buildSystemPrompt({
+      availableSkills,
+      activeSkills,
+      invocation: null,
+      assistant: context.assistant,
+      requester: context.requester,
+      chatHistory: context.chatHistory,
+      artifactState: context.artifactState
+    });
+
     const agent = new ToolLoopAgent({
       model: gateway(botConfig.modelId),
-      instructions: buildSystemPrompt({
-        availableSkills,
-        activeSkills,
-        invocation: null,
-        assistant: context.assistant,
-        requester: context.requester,
-        chatHistory: context.chatHistory,
-        artifactState: context.artifactState
-      }),
+      instructions: baseInstructions,
       tools,
       toolChoice: "required",
       stopWhen: [hasToolCall("final_answer"), stepCountIs(100)],
@@ -260,6 +270,22 @@ export async function generateAssistantReply(
         recordInputs: true,
         recordOutputs: true,
         functionId: "generateAssistantReply",
+        metadata: telemetryMetadata
+      }
+    });
+
+    const finalizationAgent = new ToolLoopAgent({
+      model: gateway(botConfig.modelId),
+      instructions: baseInstructions,
+      tools,
+      toolChoice: "required",
+      activeTools: ["final_answer"],
+      stopWhen: [hasToolCall("final_answer"), stepCountIs(5)],
+      experimental_telemetry: {
+        isEnabled: true,
+        recordInputs: true,
+        recordOutputs: true,
+        functionId: "generateAssistantReply.finalization_agent",
         metadata: telemetryMetadata
       }
     });
@@ -286,6 +312,8 @@ export async function generateAssistantReply(
         })
     );
 
+    await context.onStatus?.("Drafting response...");
+
     let finalResult = result;
     let finalAnswer = extractFinalAnswer(finalResult);
     for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -307,7 +335,7 @@ export async function generateAssistantReply(
         toolResults: finalResult.toolResults.length
       });
 
-      finalResult = await agent.generate({
+      finalResult = await finalizationAgent.generate({
         messages: [
           {
             role: "user",
@@ -325,7 +353,77 @@ export async function generateAssistantReply(
           }
         ]
       });
+      await context.onStatus?.("Drafting response...");
       finalAnswer = extractFinalAnswer(finalResult);
+    }
+
+    if ((!finalAnswer && !finalResult.text) || (!finalAnswer && finalResult.text.trim().length === 0)) {
+      logWarn("empty text after retries; forcing no-tool finalization", {
+        slackThreadId: context.correlation?.threadId,
+        slackUserId: context.correlation?.requesterId,
+        slackChannelId: context.correlation?.channelId,
+        workflowRunId: context.correlation?.workflowRunId,
+        assistantUserName: context.assistant?.userName,
+        modelId: botConfig.modelId
+      }, {
+        finishReason: finalResult.finishReason,
+        steps: finalResult.steps.length,
+        toolCalls: finalResult.toolCalls.length,
+        toolResults: finalResult.toolResults.length
+      });
+
+      try {
+        const forcedFinalization = await withSpan(
+          "ai.generateAssistantReply.forced_finalization",
+          "ai.generate_text",
+          {
+            slackThreadId: context.correlation?.threadId,
+            slackUserId: context.correlation?.requesterId,
+            slackChannelId: context.correlation?.channelId,
+            workflowRunId: context.correlation?.workflowRunId,
+            assistantUserName: context.assistant?.userName,
+            modelId: botConfig.modelId
+          },
+          () =>
+            generateTextWithTelemetry(
+              {
+                model: gateway(botConfig.modelId),
+                prompt: [
+                  "You are generating the final user-facing reply for a Slack assistant turn.",
+                  "Do not call tools. Do not describe internal reasoning.",
+                  "Return only markdown text intended for the user.",
+                  "",
+                  `Original user message:`,
+                  messageText,
+                  "",
+                  "Tool results from the previous attempt (JSON):",
+                  serializeToolResultsForRetry(finalResult)
+                ].join("\n")
+              },
+              {
+                functionId: "generateAssistantReply.forced_finalization",
+                metadata: telemetryMetadata,
+                isEnabled: true,
+                recordInputs: true,
+                recordOutputs: true
+              }
+            )
+        );
+
+        const forcedText = forcedFinalization.text?.trim();
+        if (forcedText && forcedText.length > 0) {
+          finalAnswer = forcedText;
+        }
+      } catch (error) {
+        logException(error, "forced no-tool finalization failed", {
+          slackThreadId: context.correlation?.threadId,
+          slackUserId: context.correlation?.requesterId,
+          slackChannelId: context.correlation?.channelId,
+          workflowRunId: context.correlation?.workflowRunId,
+          assistantUserName: context.assistant?.userName,
+          modelId: botConfig.modelId
+        });
+      }
     }
 
     if ((!finalAnswer && !finalResult.text) || (!finalAnswer && finalResult.text.trim().length === 0)) {
@@ -351,7 +449,13 @@ export async function generateAssistantReply(
 
     const toolNames = collectToolNames(finalResult);
     const loadedSkillDuringTurn = toolNames.has("load_skill");
-    if (inferredSkill && !loadedSkillDuringTurn) {
+    const shouldEnforceSkillRetry =
+      inferredSkill &&
+      inferredSkill.overlap >= 3 &&
+      inferredSkill.score >= 0.45 &&
+      !loadedSkillDuringTurn;
+
+    if (shouldEnforceSkillRetry) {
       logWarn("matched skill without load_skill; running enforced retry", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
@@ -403,6 +507,7 @@ export async function generateAssistantReply(
           }
         ]
       });
+      await context.onStatus?.("Drafting response...");
 
       const retryAnswer = extractFinalAnswer(retry);
       if (retryAnswer) {

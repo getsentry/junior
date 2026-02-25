@@ -45,6 +45,32 @@ function createToolState(
 
 export type { ToolHooks, ToolRuntimeContext };
 
+function wrapToolExecution<T>(
+  toolName: string,
+  toolDef: T,
+  hooks: ToolHooks
+): T {
+  const maybeExecutable = toolDef as T & {
+    execute?: (...args: any[]) => Promise<unknown> | unknown;
+  };
+
+  if (!maybeExecutable.execute) {
+    return toolDef;
+  }
+
+  const originalExecute = maybeExecutable.execute.bind(toolDef);
+  maybeExecutable.execute = async (...args: any[]) => {
+    await hooks.onToolCallStart?.(toolName);
+    try {
+      return await originalExecute(...args);
+    } finally {
+      await hooks.onToolCallEnd?.(toolName);
+    }
+  };
+
+  return toolDef;
+}
+
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
@@ -54,15 +80,23 @@ export function createTools(
 
   return {
     final_answer: createFinalAnswerTool(),
-    load_skill: createLoadSkillTool(availableSkills),
-    web_search: createWebSearchTool(),
-    web_fetch: createWebFetchTool(hooks),
-    image_generate: createImageGenerateTool(hooks),
-    slack_canvas_create: createSlackCanvasCreateTool(context, state),
-    slack_canvas_update: createSlackCanvasUpdateTool(state),
-    slack_list_create: createSlackListCreateTool(state),
-    slack_list_add_items: createSlackListAddItemsTool(state),
-    slack_list_get_items: createSlackListGetItemsTool(state),
-    slack_list_update_item: createSlackListUpdateItemTool(state)
+    load_skill: wrapToolExecution("load_skill", createLoadSkillTool(availableSkills), hooks),
+    web_search: wrapToolExecution("web_search", createWebSearchTool(), hooks),
+    web_fetch: wrapToolExecution("web_fetch", createWebFetchTool(hooks), hooks),
+    image_generate: wrapToolExecution("image_generate", createImageGenerateTool(hooks), hooks),
+    slack_canvas_create: wrapToolExecution(
+      "slack_canvas_create",
+      createSlackCanvasCreateTool(context, state),
+      hooks
+    ),
+    slack_canvas_update: wrapToolExecution("slack_canvas_update", createSlackCanvasUpdateTool(state), hooks),
+    slack_list_create: wrapToolExecution("slack_list_create", createSlackListCreateTool(state), hooks),
+    slack_list_add_items: wrapToolExecution("slack_list_add_items", createSlackListAddItemsTool(state), hooks),
+    slack_list_get_items: wrapToolExecution("slack_list_get_items", createSlackListGetItemsTool(state), hooks),
+    slack_list_update_item: wrapToolExecution(
+      "slack_list_update_item",
+      createSlackListUpdateItemTool(state),
+      hooks
+    )
   };
 }

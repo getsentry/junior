@@ -194,10 +194,9 @@ export function buildSystemPrompt(params: {
     "</output>",
     "## Skill Invocation",
     "",
-    "- If the user message contains `/<skill-name>` anywhere, treat it as an explicit skill command.",
-    "- For slash invocations, the skill is already active and you do not need to call `load_skill` again.",
-    "- Never reinterpret explicit slash skill commands as plain chat intent.",
-    "- If skill is unknown, return an unknown-skill error and list available skills.",
+    "- Do not assume slash syntax is authoritative by itself; resolve skill use through `load_skill` and evidence from this turn.",
+    "- If a skill appears relevant, call `load_skill` before applying any skill-specific behavior.",
+    "- If no skill is clearly applicable, continue with normal tool-assisted behavior.",
     availableSkillsSection,
     activeSkillsSection,
     invocation

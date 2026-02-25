@@ -98,16 +98,25 @@ function pruneAssistantThreadMeta(nowMs: number): void {
 
 function createProgressReporter(thread: {
   id?: string;
+  startTyping?: (status?: string) => Promise<void>;
 }) {
   const assistantStatuses = ["Analyzing context...", "Running tools...", "Drafting response..."];
   const startDelayMs = 3500;
   const assistantTickMs = 7000;
   let active = false;
   let assistantIndex = 0;
+  let currentStatus = "Thinking...";
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let intervalId: ReturnType<typeof setInterval> | undefined;
 
   const postAssistantStatus = async (text: string): Promise<void> => {
+    currentStatus = text;
+    try {
+      await thread.startTyping?.(text);
+    } catch {
+      // Best effort only.
+    }
+
     const threadId = toOptionalString(thread.id);
     const assistantThread = threadId ? assistantThreadMetaById.get(threadId) : undefined;
     if (!assistantThread || !threadId) {
@@ -128,8 +137,10 @@ function createProgressReporter(thread: {
   };
 
   return {
-    start() {
+    async start() {
       active = true;
+      await postAssistantStatus("Analyzing context...");
+
       timeoutId = setTimeout(async () => {
         if (!active) return;
         await postAssistantStatus(assistantStatuses[assistantIndex]);
@@ -145,6 +156,12 @@ function createProgressReporter(thread: {
       active = false;
       if (timeoutId) clearTimeout(timeoutId);
       if (intervalId) clearInterval(intervalId);
+    },
+    async setStatus(text: string) {
+      if (!active || !text || text === currentStatus) {
+        return;
+      }
+      await postAssistantStatus(text);
     }
   };
 }
@@ -390,9 +407,8 @@ async function replyToThread(
         workflowRunId
       });
 
-      await thread.startTyping?.("Thinking...");
       const progress = createProgressReporter(thread);
-      progress.start();
+      await progress.start();
 
       try {
         const reply = await generateAssistantReply(userText, {
@@ -414,7 +430,8 @@ async function replyToThread(
             workflowRunId,
             channelId,
             requesterId: message.author.userId
-          }
+          },
+          onStatus: (status) => progress.setStatus(status)
         });
 
         const artifactStatePatch = reply.artifactStatePatch ? { ...reply.artifactStatePatch } : undefined;
