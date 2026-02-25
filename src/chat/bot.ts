@@ -1,6 +1,6 @@
 import { Chat } from "chat";
 import type { PostableMessage } from "chat";
-import { createSlackAdapter } from "@chat-adapter/slack";
+import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { captureException, toOptionalString, withSpan } from "@/chat/observability";
 import { buildSlackOutputMessage } from "@/chat/output";
@@ -38,26 +38,61 @@ function getChannelId(message: unknown): string | undefined {
 }
 
 interface ProgressSentMessage {
-  edit?: (message: string | PostableMessage) => Promise<unknown>;
   delete?: () => Promise<unknown>;
 }
+
+interface AssistantThreadMeta {
+  channelId: string;
+  threadTs: string;
+}
+
+function getSlackAdapter(): SlackAdapter {
+  return bot.getAdapter("slack") as SlackAdapter;
+}
+
+const assistantThreadMetaById = new Map<string, AssistantThreadMeta>();
 
 function createProgressReporter(thread: {
   post: (message: string | PostableMessage) => Promise<unknown>;
   startTyping?: (status?: string) => Promise<void>;
+  id?: string;
 }) {
-  const status = "Still working on it...";
-  const startDelayMs = 6000;
+  const fallbackStatus = "Still working on it...";
+  const assistantStatuses = ["Analyzing context...", "Running tools...", "Drafting response..."];
+  const startDelayMs = 3500;
+  const assistantTickMs = 7000;
   let active = false;
+  let assistantIndex = 0;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let intervalId: ReturnType<typeof setInterval> | undefined;
   let statusMessage: ProgressSentMessage | null = null;
 
-  const postStatus = async (): Promise<void> => {
+  const postFallbackStatus = async (): Promise<void> => {
     try {
-      await thread.startTyping?.(status);
-      statusMessage = (await thread.post(status)) as ProgressSentMessage;
+      await thread.startTyping?.(fallbackStatus);
+      statusMessage = (await thread.post(fallbackStatus)) as ProgressSentMessage;
     } catch {
       // Best effort only.
+    }
+  };
+
+  const postAssistantStatus = async (text: string): Promise<void> => {
+    const threadId = toOptionalString(thread.id);
+    const assistantThread = threadId ? assistantThreadMetaById.get(threadId) : undefined;
+    if (!assistantThread || !threadId) {
+      await postFallbackStatus();
+      return;
+    }
+
+    try {
+      await getSlackAdapter().setAssistantStatus(
+        assistantThread.channelId,
+        assistantThread.threadTs,
+        text,
+        assistantStatuses
+      );
+    } catch {
+      await postFallbackStatus();
     }
   };
 
@@ -66,12 +101,19 @@ function createProgressReporter(thread: {
       active = true;
       timeoutId = setTimeout(async () => {
         if (!active) return;
-        await postStatus();
+        await postAssistantStatus(assistantStatuses[assistantIndex]);
+
+        intervalId = setInterval(async () => {
+          if (!active) return;
+          assistantIndex = (assistantIndex + 1) % assistantStatuses.length;
+          await postAssistantStatus(assistantStatuses[assistantIndex]);
+        }, assistantTickMs);
       }, startDelayMs);
     },
     async stop() {
       active = false;
       if (timeoutId) clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
       if (statusMessage?.delete) {
         try {
           await statusMessage.delete();
@@ -139,6 +181,7 @@ async function replyToThread(
     post: (message: string | PostableMessage) => Promise<unknown>;
     startTyping?: (status?: string) => Promise<void>;
     recentMessages?: ThreadMessageSnapshot[];
+    id?: string;
   },
   message: {
     author: { isMe: boolean; userId?: string; userName?: string; fullName?: string };
@@ -202,6 +245,25 @@ async function replyToThread(
       }
     }
   );
+}
+
+async function initializeAssistantThread(event: {
+  threadId: string;
+  channelId: string;
+  threadTs: string;
+}): Promise<void> {
+  assistantThreadMetaById.set(event.threadId, {
+    channelId: event.channelId,
+    threadTs: event.threadTs
+  });
+
+  const slack = getSlackAdapter();
+  await slack.setAssistantTitle(event.channelId, event.threadTs, "Junior");
+  await slack.setSuggestedPrompts(event.channelId, event.threadTs, [
+    { title: "Summarize thread", message: "Summarize the latest discussion in this thread." },
+    { title: "Draft a reply", message: "Draft a concise reply I can send." },
+    { title: "Generate image", message: "Generate an image based on this conversation." }
+  ]);
 }
 
 bot.onNewMention(async (thread, message) => {
@@ -278,5 +340,49 @@ bot.onSubscribedMessage(async (thread, message) => {
       error: error instanceof Error ? error.message : String(error)
     });
     await thread.post("I hit an internal error and couldn't respond. Please try again.");
+  }
+});
+
+bot.onAssistantThreadStarted(async (event) => {
+  try {
+    await initializeAssistantThread({
+      threadId: event.threadId,
+      channelId: event.channelId,
+      threadTs: event.threadTs
+    });
+  } catch (error) {
+    captureException(error, {
+      slackThreadId: event.threadId,
+      slackUserId: event.userId,
+      slackChannelId: event.channelId,
+      assistantUserName: botConfig.userName,
+      modelId: botConfig.modelId
+    });
+
+    console.error("[junior] onAssistantThreadStarted failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+bot.onAssistantContextChanged(async (event) => {
+  try {
+    await initializeAssistantThread({
+      threadId: event.threadId,
+      channelId: event.channelId,
+      threadTs: event.threadTs
+    });
+  } catch (error) {
+    captureException(error, {
+      slackThreadId: event.threadId,
+      slackUserId: event.userId,
+      slackChannelId: event.channelId,
+      assistantUserName: botConfig.userName,
+      modelId: botConfig.modelId
+    });
+
+    console.error("[junior] onAssistantContextChanged failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
 });
