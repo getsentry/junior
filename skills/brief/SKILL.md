@@ -69,7 +69,8 @@ Delivery guidance:
 - If data is sparse, stale, narrow, or lacks code evidence, explicitly say so and request more sources.
 - Infer location only from explicit public evidence. Do not guess from name, photo, ethnicity, or nationality.
 - Report location at city/region level only; never provide precise address data.
-- If target hubs are not provided, state that hub fit is provisional and ask for the hub list.
+- If target hubs are not provided, still complete the full brief and mark hub fit as provisional.
+- Do not ask for permission to continue. Deliver the brief first, then optionally add one follow-up question for missing constraints.
 - Keep language directly useful for non-technical hiring decisions.
 
 See [candidate rubric](references/candidate-rubric.md) for scoring guidance.

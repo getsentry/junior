@@ -6,7 +6,9 @@ import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
-  discoverSkills
+  discoverSkills,
+  findSkillByName,
+  parseSkillInvocation
 } from "@/chat/skills";
 import type { Skill } from "@/chat/skills";
 import { createTools } from "@/chat/tools";
@@ -44,70 +46,36 @@ export interface AssistantReply {
   artifactStatePatch?: Partial<ThreadArtifactsState>;
 }
 
-function tokenize(value: string): Set<string> {
-  return new Set(
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, " ")
-      .split(/[\s-]+/)
-      .filter((token) => token.length >= 3)
+function formatUnknownSkillMessage(requestedSkill: string, availableSkills: Array<{ name: string }>): string {
+  const available = availableSkills.map((skill) => `/${skill.name}`).join(", ");
+  return [
+    `Unknown skill: /${requestedSkill}`,
+    available ? `Available skills: ${available}` : "No skills are currently available."
+  ].join("\n");
+}
+
+function isExecutionDeferralResponse(text: string): boolean {
+  return /\b(want me to proceed|do you want me to proceed|shall i proceed|give me a moment|let me do that now|i need to run|i need to gather|i need to load|can i proceed|should i proceed)\b/i.test(
+    text
   );
 }
 
-function inferLikelySkill(
-  userInput: string,
-  availableSkills: Array<{ name: string; description: string }>
-): { name: string; score: number; overlap: number } | null {
-  const queryTokens = tokenize(userInput);
-  if (queryTokens.size === 0) {
-    return null;
+function buildUserTurnText(userInput: string, chatHistory?: string): string {
+  const trimmedHistory = chatHistory?.trim();
+  if (!trimmedHistory) {
+    return userInput;
   }
 
-  let best: { name: string; score: number; overlap: number } | null = null;
-  for (const skill of availableSkills) {
-    const skillTokens = tokenize(`${skill.name} ${skill.description}`);
-    if (skillTokens.size === 0) continue;
-
-    let overlap = 0;
-    for (const token of queryTokens) {
-      if (skillTokens.has(token)) overlap += 1;
-    }
-    const score = overlap / queryTokens.size;
-    if (!best || score > best.score) {
-      best = { name: skill.name, score, overlap };
-    }
-  }
-
-  if (!best) return null;
-  if (best.overlap < 2 || best.score < 0.2) return null;
-  return { name: best.name, score: best.score, overlap: best.overlap };
-}
-
-function collectToolNames(result: {
-  toolCalls: Array<{ toolName?: string; tool_name?: string; name?: string }>;
-  steps: Array<{
-    toolCalls: Array<{ toolName?: string; tool_name?: string; name?: string }>;
-    toolResults: Array<{ toolName?: string; tool_name?: string; name?: string }>;
-  }>;
-}): Set<string> {
-  const names = new Set<string>();
-  const addName = (value?: string) => {
-    if (!value) return;
-    names.add(value.toLowerCase());
-  };
-
-  for (const call of result.toolCalls) {
-    addName(call.toolName ?? call.tool_name ?? call.name);
-  }
-  for (const step of result.steps) {
-    for (const call of step.toolCalls) {
-      addName(call.toolName ?? call.tool_name ?? call.name);
-    }
-    for (const toolResult of step.toolResults) {
-      addName(toolResult.toolName ?? toolResult.tool_name ?? toolResult.name);
-    }
-  }
-  return names;
+  return [
+    "<current-message>",
+    userInput,
+    "</current-message>",
+    "",
+    "<recent-thread-context>",
+    "Use this as context for follow-up continuity when relevant.",
+    trimmedHistory,
+    "</recent-thread-context>"
+  ].join("\n");
 }
 
 function summarizeStepDiagnostics(result: {
@@ -183,12 +151,23 @@ export async function generateAssistantReply(
     const availableSkills = await discoverSkills();
     const activeSkills: Skill[] = [];
     const userInput = messageText;
-    const inferredSkill = inferLikelySkill(userInput, availableSkills);
+    const userTurnText = buildUserTurnText(userInput, context.chatHistory);
+    const explicitInvocation = parseSkillInvocation(userInput);
+    const explicitSkill = explicitInvocation
+      ? findSkillByName(explicitInvocation.skillName, availableSkills)
+      : null;
+
+    if (explicitInvocation && !explicitSkill) {
+      return {
+        text: formatUnknownSkillMessage(explicitInvocation.skillName, availableSkills)
+      };
+    }
+
     const userContentParts: Array<
       | { type: "text"; text: string }
       | { type: "image"; image: Buffer; mediaType: string }
       | { type: "file"; data: Buffer; mediaType: string; filename?: string }
-    > = [{ type: "text", text: userInput }];
+    > = [{ type: "text", text: userTurnText }];
 
     for (const attachment of context.userAttachments ?? []) {
       if (attachment.mediaType.startsWith("image/")) {
@@ -292,7 +271,7 @@ export async function generateAssistantReply(
           input: JSON.stringify(repairedInput)
         };
       } catch (repairError) {
-        logWarn("tool call repair failed; proceeding without repair", {
+        logWarn("tool_call_repair_failed", {
           slackThreadId: context.correlation?.threadId,
           slackUserId: context.correlation?.requesterId,
           slackChannelId: context.correlation?.channelId,
@@ -302,7 +281,7 @@ export async function generateAssistantReply(
         }, {
           "app.tool.name": toolCall.toolName,
           "error.message": repairError instanceof Error ? repairError.message : "unknown repair error"
-        });
+        }, "Tool call repair failed");
         return null;
       }
     };
@@ -310,10 +289,9 @@ export async function generateAssistantReply(
     const baseInstructions = buildSystemPrompt({
       availableSkills,
       activeSkills,
-      invocation: null,
+      invocation: explicitInvocation,
       assistant: context.assistant,
       requester: context.requester,
-      chatHistory: context.chatHistory,
       artifactState: context.artifactState
     });
 
@@ -381,7 +359,7 @@ export async function generateAssistantReply(
       if (finalResult.text && finalResult.text.trim().length > 0) break;
       if (finalResult.finishReason !== "tool-calls") break;
 
-      logWarn("empty text after tool-calls; requesting finalization step", {
+      logWarn("ai_finalization_retry_requested", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
         slackChannelId: context.correlation?.channelId,
@@ -393,7 +371,7 @@ export async function generateAssistantReply(
         "app.ai.steps": finalResult.steps.length,
         "app.ai.tool_calls": finalResult.toolCalls.length,
         "app.ai.tool_results": finalResult.toolResults.length
-      });
+      }, "Empty text after tool calls; requesting finalization");
 
       finalResult = await finalizationAgent.generate({
         messages: [
@@ -418,7 +396,7 @@ export async function generateAssistantReply(
     }
 
     if ((!finalAnswer && !finalResult.text) || (!finalAnswer && finalResult.text.trim().length === 0)) {
-      logWarn("empty text after retries; forcing no-tool finalization", {
+      logWarn("ai_finalization_forced", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
         slackChannelId: context.correlation?.channelId,
@@ -430,7 +408,7 @@ export async function generateAssistantReply(
         "app.ai.steps": finalResult.steps.length,
         "app.ai.tool_calls": finalResult.toolCalls.length,
         "app.ai.tool_results": finalResult.toolResults.length
-      });
+      }, "Empty text after retries; forcing no-tool finalization");
 
       try {
         const forcedFinalization = await withSpan(
@@ -453,8 +431,8 @@ export async function generateAssistantReply(
                   "Do not call tools. Do not describe internal reasoning.",
                   "Return only markdown text intended for the user.",
                   "",
-                  `Original user message:`,
-                  messageText,
+                  "Original user turn content:",
+                  userTurnText,
                   "",
                   "Tool results from the previous attempt (JSON):",
                   serializeToolResultsForRetry(finalResult)
@@ -475,19 +453,19 @@ export async function generateAssistantReply(
           finalAnswer = forcedText;
         }
       } catch (error) {
-        logException(error, "forced no-tool finalization failed", {
+        logException(error, "ai_finalization_forced_failed", {
           slackThreadId: context.correlation?.threadId,
           slackUserId: context.correlation?.requesterId,
           slackChannelId: context.correlation?.channelId,
           workflowRunId: context.correlation?.workflowRunId,
           assistantUserName: context.assistant?.userName,
           modelId: botConfig.modelId
-        });
+        }, {}, "Forced no-tool finalization failed");
       }
     }
 
     if ((!finalAnswer && !finalResult.text) || (!finalAnswer && finalResult.text.trim().length === 0)) {
-      logWarn("model returned empty text response", {
+      logWarn("ai_model_response_empty", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
         slackChannelId: context.correlation?.channelId,
@@ -504,19 +482,12 @@ export async function generateAssistantReply(
         "app.ai.result_files": finalResult.files.length,
         "app.ai.response_messages": finalResult.response.messages.length,
         "app.ai.step_diagnostics": summarizeStepDiagnostics(finalResult)
-      });
+      }, "Model returned empty text response");
     }
 
-    const toolNames = collectToolNames(finalResult);
-    const loadedSkillDuringTurn = toolNames.has("load_skill");
-    const shouldEnforceSkillRetry =
-      inferredSkill &&
-      inferredSkill.overlap >= 3 &&
-      inferredSkill.score >= 0.45 &&
-      !loadedSkillDuringTurn;
-
-    if (shouldEnforceSkillRetry) {
-      logWarn("matched skill without load_skill; running enforced retry", {
+    const candidateText = finalAnswer ?? finalResult.text ?? "";
+    if (candidateText.trim().length > 0 && isExecutionDeferralResponse(candidateText)) {
+      logWarn("ai_completion_retry_enforced", {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
         slackChannelId: context.correlation?.channelId,
@@ -524,26 +495,26 @@ export async function generateAssistantReply(
         assistantUserName: context.assistant?.userName,
         modelId: botConfig.modelId
       }, {
-        "app.skill.name": inferredSkill.name,
-        "app.skill.score": inferredSkill.score
-      });
+        "app.ai.finish_reason": finalResult.finishReason
+      }, "Model attempted to defer execution; running completion retry");
 
-      const retryAgent = new ToolLoopAgent({
+      const completionRetryAgent = new ToolLoopAgent({
         model: gateway(botConfig.modelId),
         instructions: [
           buildSystemPrompt({
             availableSkills,
             activeSkills: [],
-            invocation: null,
+            invocation: explicitInvocation,
             assistant: context.assistant,
             requester: context.requester,
-            chatHistory: context.chatHistory,
             artifactState: context.artifactState
           }),
-          "## Runtime Skill Enforcement",
-          `You must call load_skill with skill_name='${inferredSkill.name}' before answering.`,
-          "After loading, follow only that skill's instructions and then provide a final user-visible markdown response."
-        ].join("\n\n"),
+          "## Runtime Completion Retry",
+          "- Complete the user's requested task in this turn using tools as needed.",
+          "- Do not ask for permission, confirmation, or more time unless there is a hard blocker.",
+          "- Do not output status updates about intended future work.",
+          "- Call final_answer with the completed user-facing markdown output."
+        ].join("\n"),
         tools,
         toolChoice: "required",
         stopWhen: [hasToolCall("final_answer"), stepCountIs(100)],
@@ -552,36 +523,33 @@ export async function generateAssistantReply(
           isEnabled: true,
           recordInputs: true,
           recordOutputs: true,
-          functionId: "generateAssistantReply.enforced_skill_retry",
-          metadata: {
-            ...telemetryMetadata,
-            enforcedSkill: inferredSkill.name
-          }
+          functionId: "generateAssistantReply.completion_retry",
+          metadata: telemetryMetadata
         }
       });
 
-      const retry = await retryAgent.generate({
+      const completionRetry = await completionRetryAgent.generate({
         messages: [
           {
             role: "user",
             content: userContentParts
+          },
+          {
+            role: "user",
+            content: [
+              "Previous attempt deferred execution. Complete the task now.",
+              "",
+              "Prior tool results from previous attempt (JSON):",
+              serializeToolResultsForRetry(finalResult)
+            ].join("\n")
           }
         ]
       });
-      await context.onStatus?.("Drafting response...");
 
-      const retryAnswer = extractFinalAnswer(retry);
-      if (retryAnswer) {
+      const completionAnswer = extractFinalAnswer(completionRetry) ?? completionRetry.text?.trim();
+      if (completionAnswer) {
         return {
-          text: retryAnswer,
-          files: generatedFiles.length > 0 ? generatedFiles : undefined,
-          artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
-        };
-      }
-
-      if (retry.text && retry.text.trim().length > 0) {
-        return {
-          text: retry.text,
+          text: completionAnswer,
           files: generatedFiles.length > 0 ? generatedFiles : undefined,
           artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
         };
@@ -594,14 +562,14 @@ export async function generateAssistantReply(
       artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined
     };
   } catch (error) {
-    logException(error, "generateAssistantReply failed", {
+    logException(error, "assistant_reply_generation_failed", {
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
       workflowRunId: context.correlation?.workflowRunId,
       assistantUserName: context.assistant?.userName,
       modelId: botConfig.modelId
-    });
+    }, {}, "generateAssistantReply failed");
 
     return {
       text: "I hit an internal error while processing that request. Please try again."

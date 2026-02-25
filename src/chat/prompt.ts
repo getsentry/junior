@@ -51,7 +51,10 @@ function baseSystemPrompt(): string {
     "",
     "- Be concise, practical, and specific.",
     "- Prefer actionable next steps over generic explanations.",
-    "- If data is missing, ask for the exact identifier you need.",
+    "- When the user gives a clear task, execute it immediately in this turn.",
+    "- Do not ask for permission to proceed when the request is already clear.",
+    "- Do not provide progress promises like 'give me a moment' or 'want me to proceed'.",
+    "- If critical input is missing and cannot be discovered with tools, ask one direct clarifying question.",
     "- Always gather evidence from available sources (tools or skills) before answering factual questions.",
     "- Never guess. If you cannot verify with available sources, say it is unverified.",
     "- Never claim a lookup succeeded unless a tool result supports it.",
@@ -73,10 +76,9 @@ export function buildSystemPrompt(params: {
     fullName?: string;
     userId?: string;
   };
-  chatHistory?: string;
   artifactState?: ThreadArtifactsState;
 }): string {
-  const { availableSkills, activeSkills, invocation, requester, assistant, chatHistory, artifactState } = params;
+  const { availableSkills, activeSkills, invocation, requester, assistant, artifactState } = params;
   // Core harness contract:
   // - See docs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
   // - Keep this prompt generic and platform-level (tone, evidence, output constraints).
@@ -118,17 +120,6 @@ export function buildSystemPrompt(params: {
             .join("\n")
         );
 
-  const normalizedChatHistory = chatHistory?.trim();
-  const chatHistorySection = normalizedChatHistory
-    ? renderTag(
-        "chat-history-context",
-        [
-          "Use this as recent thread context when answering follow-up questions.",
-          renderTag("chat-history", normalizedChatHistory)
-        ].join("\n")
-      )
-    : null;
-
   const sections = [
     baseSystemPrompt(),
     renderTag(
@@ -147,7 +138,6 @@ export function buildSystemPrompt(params: {
         requesterSection
       ].join("\n")
     ),
-    ...(chatHistorySection ? [chatHistorySection] : []),
     renderTag(
       "artifact-context",
       [
@@ -168,9 +158,6 @@ export function buildSystemPrompt(params: {
       "tool-usage",
       [
         "- For factual or external questions, run tools/skills first, then answer from evidence.",
-        "- Before applying any skill behavior for a non-slash request, you MUST call `load_skill` first and follow the returned instructions.",
-        "- Do not claim to have used a skill unless `load_skill` succeeded in this turn.",
-        "- If no skill applies, continue with normal tool-assisted behavior.",
         "- Use `web_search` to discover sources.",
         "- Use `web_fetch` to inspect specific URLs.",
         "- Use `image_generate` when the user asks for image creation.",
@@ -184,7 +171,10 @@ export function buildSystemPrompt(params: {
     renderTag(
       "skills",
       [
-        "- When a request matches an available skill, call `load_skill` and follow that skill instead of doing the work from memory.",
+        "- For explicit slash commands, treat `/skill-name` as authoritative intent for that skill.",
+        "- For slash-invoked skills, call `load_skill` for that exact skill before applying skill-specific behavior.",
+        "- For non-slash requests where a skill clearly matches, call `load_skill` before applying skill-specific behavior.",
+        "- Do not claim to have used a skill unless `load_skill` succeeded in this turn.",
         "- Never apply skill-specific behavior until `load_skill` has succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",
         "- After `load_skill`, resolve any relative paths in skill instructions against `skill_dir` (or SKILL.md parent).",
@@ -199,6 +189,7 @@ export function buildSystemPrompt(params: {
         "- Use plain Slack-safe markdown (headings, bullets, short code blocks).",
         "- Keep normal responses brief and scannable.",
         "- If depth is needed, start with a concise summary and then provide fuller detail.",
+        "- Do not include process chatter, preflight confirmations, or status-only updates in the final answer.",
         "- Avoid tables unless explicitly requested.",
         "- End every turn by calling `final_answer` with the final markdown response.",
         "- Do not rely on plain assistant text for the final response; use `final_answer`.",
@@ -208,14 +199,6 @@ export function buildSystemPrompt(params: {
         "- attachment_prefix: <short-kebab-or-snake-prefix>",
         "- </delivery>",
         "</output>"
-      ].join("\n")
-    ),
-    renderTag(
-      "skill-invocation",
-      [
-        "- Do not assume slash syntax is authoritative by itself; resolve skill use through `load_skill` and evidence from this turn.",
-        "- If a skill appears relevant, call `load_skill` before applying any skill-specific behavior.",
-        "- If no skill is clearly applicable, continue with normal tool-assisted behavior."
       ].join("\n")
     ),
     availableSkillsSection,
