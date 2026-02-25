@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { botConfig } from "@/chat/config";
+import { slackOutputPolicy } from "@/chat/output";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 
 function loadSoul(): string {
@@ -47,6 +48,7 @@ function baseSystemPrompt(): string {
     "- Always gather evidence from available sources (tools or skills) before answering factual questions.",
     "- Never guess. If you cannot verify with available sources, say it is unverified.",
     "- Never claim a lookup succeeded unless a tool result supports it.",
+    "- Do not give up when unsure how to do something; find a viable path, gather evidence, and provide the best actionable way forward.",
     "- When active skills are present, follow their instructions before default behavior."
   ].join(" ");
 }
@@ -66,6 +68,11 @@ export function buildSystemPrompt(params: {
   };
 }): string {
   const { availableSkills, activeSkills, invocation, requester, assistant } = params;
+  // Core harness contract:
+  // - Keep this prompt generic and platform-level (tone, evidence, output constraints).
+  // - Do not encode per-skill behavior here.
+  // - Skill-specific instructions belong in skills/*/SKILL.md and are injected via active skill context.
+  // - Delivery/runtime policies (for example forced attachments) belong in output/runtime code paths.
 
   const assistantSection = renderIdentityBlock("assistant", {
     user_name: assistant?.userName ?? botConfig.userName,
@@ -123,6 +130,20 @@ export function buildSystemPrompt(params: {
     "- Use `web_fetch` to inspect specific URLs.",
     "- Use `image_generate` when the user asks for image creation.",
     "- Prefer `web_search` before `web_fetch` when the user gave no URL.",
+    "## Output Contract",
+    "",
+    "Always produce output that follows this contract:",
+    `<output format=\"slack-mrkdwn\" max_inline_chars=\"${slackOutputPolicy.maxInlineChars}\" max_inline_lines=\"${slackOutputPolicy.maxInlineLines}\">`,
+    "- Use plain Slack-safe markdown (headings, bullets, short code blocks).",
+    "- Keep normal responses brief and scannable.",
+    "- If depth is needed, start with a concise summary and then provide fuller detail.",
+    "- Avoid tables unless explicitly requested.",
+    "- Optional delivery directive (only when needed) must be the first block in this exact shape:",
+    "- <delivery>",
+    "- mode: attachment|inline",
+    "- attachment_prefix: <short-kebab-or-snake-prefix>",
+    "- </delivery>",
+    "</output>",
     "## Skill Invocation",
     "",
     "- If the full user message starts with `/<skill-name>`, treat it as an explicit skill command.",

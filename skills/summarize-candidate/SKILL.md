@@ -29,6 +29,18 @@ Respond with these sections:
 4. `Interview focus areas` (3-6 bullet points)
 5. `Recommendation` (`strong yes`, `yes`, `mixed`, or `no`) with one-sentence rationale
 
+Delivery guidance:
+
+- Start with a concise 4-8 line synopsis suitable for inline chat.
+- Then provide a full detailed report body suitable for a markdown attachment.
+- Use plain markdown with bullets and short sections (no tables unless asked).
+- Use this explicit return format so the harness attaches the report:
+  `<delivery>`
+  `mode: attachment`
+  `attachment_prefix: candidate-summary`
+  `</delivery>`
+  Then include the synopsis + full report markdown body after the block.
+
 ## Guardrails
 
 - Do not infer sensitive personal attributes.

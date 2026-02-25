@@ -1,9 +1,11 @@
 import { Chat } from "chat";
+import type { PostableMessage } from "chat";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { createStateAdapter } from "@/chat/state";
 import { generateAssistantReply } from "@/chat/respond";
 import { lookupSlackUser } from "@/chat/slack-user";
+import { buildSlackOutputMessage } from "@/chat/output";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -24,7 +26,10 @@ export const bot = new Chat({
 });
 
 async function replyToThread(
-  thread: { post: (text: string) => Promise<unknown> },
+  thread: {
+    post: (message: string | PostableMessage) => Promise<unknown>;
+    startTyping?: (status?: string) => Promise<void>;
+  },
   message: {
     author: { isMe: boolean; userId?: string; userName?: string; fullName?: string };
     text?: string | null;
@@ -36,6 +41,7 @@ async function replyToThread(
 
   const userText = stripLeadingBotMention(message.text ?? "");
   const fallbackIdentity = await lookupSlackUser(message.author.userId);
+  await thread.startTyping?.("Thinking...");
 
   const text = await generateAssistantReply(userText, {
     assistant: {
@@ -48,7 +54,7 @@ async function replyToThread(
       fullName: message.author.fullName ?? fallbackIdentity?.fullName
     }
   });
-  await thread.post(text);
+  await thread.post(buildSlackOutputMessage(text));
 }
 
 bot.onNewMention(async (thread, message) => {
