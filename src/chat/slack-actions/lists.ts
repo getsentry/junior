@@ -161,17 +161,25 @@ export async function listItems(listId: string, limit = 100): Promise<SlackLists
   const client = getSlackClient();
   const items: SlackListsItem[] = [];
   let cursor: string | undefined;
+  const cappedLimit = Math.max(1, Math.min(limit, 200));
 
   do {
     const response: SlackListsItemsListResponse = await withSlackRetries(() =>
       client.slackLists.items.list({
         list_id: listId,
-        limit,
+        limit: cappedLimit,
         cursor
       })
     );
 
-    items.push(...(response.items ?? []));
+    const remaining = cappedLimit - items.length;
+    if (remaining <= 0) {
+      break;
+    }
+    items.push(...(response.items ?? []).slice(0, remaining));
+    if (items.length >= cappedLimit) {
+      break;
+    }
     cursor = response.response_metadata?.next_cursor || undefined;
   } while (cursor);
 

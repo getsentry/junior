@@ -61,10 +61,6 @@ function summarizeForThread(text: string): string {
   return lines.join("\n") || "Prepared a longer response.";
 }
 
-interface ProgressSentMessage {
-  delete?: () => Promise<unknown>;
-}
-
 interface AssistantThreadMeta {
   channelId: string;
   threadTs: string;
@@ -101,11 +97,8 @@ function pruneAssistantThreadMeta(nowMs: number): void {
 }
 
 function createProgressReporter(thread: {
-  post: (message: string | PostableMessage) => Promise<unknown>;
-  startTyping?: (status?: string) => Promise<void>;
   id?: string;
 }) {
-  const fallbackStatus = "Still working on it...";
   const assistantStatuses = ["Analyzing context...", "Running tools...", "Drafting response..."];
   const startDelayMs = 3500;
   const assistantTickMs = 7000;
@@ -113,26 +106,11 @@ function createProgressReporter(thread: {
   let assistantIndex = 0;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let intervalId: ReturnType<typeof setInterval> | undefined;
-  let statusMessage: ProgressSentMessage | null = null;
-
-  const postFallbackStatus = async (): Promise<void> => {
-    if (!botConfig.progressFallbackEnabled) {
-      return;
-    }
-
-    try {
-      await thread.startTyping?.(fallbackStatus);
-      statusMessage = (await thread.post(fallbackStatus)) as ProgressSentMessage;
-    } catch {
-      // Best effort only.
-    }
-  };
 
   const postAssistantStatus = async (text: string): Promise<void> => {
     const threadId = toOptionalString(thread.id);
     const assistantThread = threadId ? assistantThreadMetaById.get(threadId) : undefined;
     if (!assistantThread || !threadId) {
-      await postFallbackStatus();
       return;
     }
     assistantThread.updatedAtMs = Date.now();
@@ -145,7 +123,7 @@ function createProgressReporter(thread: {
         assistantStatuses
       );
     } catch {
-      await postFallbackStatus();
+      // Best effort only.
     }
   };
 
@@ -167,13 +145,6 @@ function createProgressReporter(thread: {
       active = false;
       if (timeoutId) clearTimeout(timeoutId);
       if (intervalId) clearInterval(intervalId);
-      if (statusMessage?.delete) {
-        try {
-          await statusMessage.delete();
-        } catch {
-          // Best effort only.
-        }
-      }
     }
   };
 }
@@ -381,11 +352,12 @@ async function replyToThread(
         }
 
         if (artifactStatePatch && thread.setState) {
+          const latestState = coerceThreadArtifactsState(await thread.state);
           const nextArtifacts: ThreadArtifactsState = {
-            ...currentState,
+            ...latestState,
             ...artifactStatePatch,
             listColumnMap: {
-              ...currentState.listColumnMap,
+              ...latestState.listColumnMap,
               ...artifactStatePatch.listColumnMap
             }
           };
