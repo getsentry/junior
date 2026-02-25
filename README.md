@@ -74,17 +74,25 @@ features:
 oauth_config:
   scopes:
     bot:
-      - app_mentions:read
       - assistant:write
+      - app_mentions:read
+      - canvases:read
+      - canvases:write
       - channels:history
       - channels:read
       - chat:write
+      - files:read
+      - files:write
       - groups:history
       - groups:read
       - im:history
       - im:read
+      - lists:read
+      - lists:write
       - mpim:history
       - mpim:read
+      - reactions:read
+      - reactions:write
       - users:read
       - users:read.email
 settings:

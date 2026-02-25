@@ -13,16 +13,23 @@ oauth_config:
     bot:
       - assistant:write
       - app_mentions:read
+      - canvases:read
+      - canvases:write
       - channels:history
       - channels:read
       - chat:write
+      - files:read
       - files:write
       - groups:history
       - groups:read
       - im:history
       - im:read
+      - lists:read
+      - lists:write
       - mpim:history
       - mpim:read
+      - reactions:read
+      - reactions:write
       - users:read
       - users:read.email
 settings:
@@ -32,7 +39,6 @@ settings:
       - assistant_thread_started
       - assistant_thread_context_changed
       - app_mention
-      - message.app_home
       - message.channels
       - message.groups
       - message.im
