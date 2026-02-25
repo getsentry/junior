@@ -137,14 +137,8 @@ function createProgressReporter(thread: {
   id?: string;
   startTyping?: (status?: string) => Promise<void>;
 }) {
-  const assistantStatuses = ["Analyzing context...", "Running tools...", "Drafting response..."];
-  const startDelayMs = 3500;
-  const assistantTickMs = 7000;
   let active = false;
-  let assistantIndex = 0;
-  let currentStatus = "Thinking...";
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  let intervalId: ReturnType<typeof setInterval> | undefined;
+  let currentStatus = "Working...";
 
   const postAssistantStatus = async (text: string): Promise<void> => {
     currentStatus = text;
@@ -166,7 +160,7 @@ function createProgressReporter(thread: {
         assistantThread.channelId,
         assistantThread.threadTs,
         text,
-        assistantStatuses
+        [text]
       );
     } catch {
       // Best effort only.
@@ -176,23 +170,10 @@ function createProgressReporter(thread: {
   return {
     async start() {
       active = true;
-      await postAssistantStatus("Analyzing context...");
-
-      timeoutId = setTimeout(async () => {
-        if (!active) return;
-        await postAssistantStatus(assistantStatuses[assistantIndex]);
-
-        intervalId = setInterval(async () => {
-          if (!active) return;
-          assistantIndex = (assistantIndex + 1) % assistantStatuses.length;
-          await postAssistantStatus(assistantStatuses[assistantIndex]);
-        }, assistantTickMs);
-      }, startDelayMs);
+      await postAssistantStatus("Analyzing request...");
     },
     async stop() {
       active = false;
-      if (timeoutId) clearTimeout(timeoutId);
-      if (intervalId) clearInterval(intervalId);
     },
     async setStatus(text: string) {
       if (!active || !text || text === currentStatus) {

@@ -90,6 +90,28 @@ function isExecutionEscapeResponse(text: string): boolean {
   return isExecutionDeferralResponse(trimmed) || isToolAccessDisclaimerResponse(trimmed);
 }
 
+function formatToolStatus(toolName: string): string {
+  const known: Record<string, string> = {
+    load_skill: "Loading skill instructions",
+    web_search: "Searching public sources",
+    web_fetch: "Reading source pages",
+    slack_canvas_create: "Creating detailed brief",
+    slack_canvas_update: "Updating detailed brief",
+    slack_list_create: "Creating tracking list",
+    slack_list_add_items: "Updating tracking list",
+    slack_list_update_item: "Updating tracking list",
+    image_generate: "Generating image",
+    final_answer: "Drafting response"
+  };
+
+  if (known[toolName]) {
+    return known[toolName];
+  }
+
+  const readable = toolName.replaceAll("_", " ").trim();
+  return readable.length > 0 ? `Running ${readable}` : "Running tool";
+}
+
 function buildUserTurnText(userInput: string, conversationContext?: string): string {
   const trimmedContext = conversationContext?.trim();
   if (!trimmedContext) {
@@ -386,10 +408,10 @@ export async function generateAssistantReply(
           Object.assign(artifactStatePatch, patch);
         },
         onToolCallStart: async (toolName) => {
-          await context.onStatus?.(`Running ${toolName}...`);
+          await context.onStatus?.(`${formatToolStatus(toolName)}...`);
         },
         onToolCallEnd: async () => {
-          await context.onStatus?.("Analyzing tool results...");
+          await context.onStatus?.("Reviewing tool results...");
         }
       },
       {
