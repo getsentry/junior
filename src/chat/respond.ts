@@ -193,6 +193,17 @@ interface LoopGuardState {
   toolErrorStreak: number;
 }
 
+type RetryHistoryMessage = {
+  role: "assistant" | "tool" | "user" | "system";
+  content: any;
+  [key: string]: unknown;
+};
+
+interface RetryHistorySanitizeResult {
+  messages: RetryHistoryMessage[];
+  removedToolCallCount: number;
+}
+
 const LOOP_GUARD_REPEAT_TOOL_CALL_STREAK = 2;
 const LOOP_GUARD_TOOL_ERROR_STREAK = 2;
 const LOOP_GUARD_FORCE_FINAL_AT_STEP = 24;
@@ -248,6 +259,72 @@ function computeLoopGuardState(steps: LoopStepLike[]): LoopGuardState {
     hasNonFinalToolCall,
     repeatedToolCallStreak,
     toolErrorStreak
+  };
+}
+
+function sanitizeRetryHistoryMessages(messages: RetryHistoryMessage[]): RetryHistorySanitizeResult {
+  const resolvedToolCallIds = new Set<string>();
+
+  for (const message of messages) {
+    if (message.role !== "tool" || !Array.isArray(message.content)) {
+      continue;
+    }
+
+    for (const part of message.content) {
+      if (!part || typeof part !== "object") continue;
+      const type = (part as { type?: unknown }).type;
+      const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
+      if (type === "tool-result" && typeof toolCallId === "string") {
+        resolvedToolCallIds.add(toolCallId);
+      }
+    }
+  }
+
+  let removedToolCallCount = 0;
+  const sanitizedMessages: RetryHistoryMessage[] = [];
+
+  for (const message of messages) {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) {
+      sanitizedMessages.push(message);
+      continue;
+    }
+
+    const filteredParts = message.content.filter((part) => {
+      if (!part || typeof part !== "object") return true;
+      const type = (part as { type?: unknown }).type;
+      if (type !== "tool-call") return true;
+
+      const providerExecuted = (part as { providerExecuted?: unknown }).providerExecuted;
+      if (providerExecuted === true) {
+        return true;
+      }
+
+      const toolCallId = (part as { toolCallId?: unknown }).toolCallId;
+      if (typeof toolCallId !== "string") {
+        removedToolCallCount += 1;
+        return false;
+      }
+      if (resolvedToolCallIds.has(toolCallId)) {
+        return true;
+      }
+
+      removedToolCallCount += 1;
+      return false;
+    });
+
+    if (filteredParts.length === 0) {
+      continue;
+    }
+
+    sanitizedMessages.push({
+      ...message,
+      content: filteredParts
+    });
+  }
+
+  return {
+    messages: sanitizedMessages,
+    removedToolCallCount
   };
 }
 
@@ -563,6 +640,19 @@ export async function generateAssistantReply(
         "Call final_answer with the final user-facing markdown response.",
         "Do not repeat earlier tool calls unless absolutely necessary."
       ].join("\n");
+      const retryHistory = sanitizeRetryHistoryMessages(finalResult.response.messages);
+      if (retryHistory.removedToolCallCount > 0) {
+        logWarn("ai_retry_history_sanitized", {
+          slackThreadId: context.correlation?.threadId,
+          slackUserId: context.correlation?.requesterId,
+          slackChannelId: context.correlation?.channelId,
+          workflowRunId: context.correlation?.workflowRunId,
+          assistantUserName: context.assistant?.userName,
+          modelId: botConfig.modelId
+        }, {
+          "app.ai.removed_tool_call_count": retryHistory.removedToolCallCount
+        }, "Sanitized unresolved tool calls from retry history");
+      }
 
       finalResult = await finalizationAgent.generate({
         messages: [
@@ -570,7 +660,7 @@ export async function generateAssistantReply(
             role: "user",
             content: userContentParts
           },
-          ...finalResult.response.messages,
+          ...retryHistory.messages,
           {
             role: "user",
             content: finalizationRetryInstruction

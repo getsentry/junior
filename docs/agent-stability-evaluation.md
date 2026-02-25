@@ -36,6 +36,13 @@ This document tracks stability risks in the Slack agent loop, concrete mitigatio
 - Validation run:
   - `pnpm test` passed (8 files, 25 tests)
   - `pnpm typecheck` passed
+- Post-merge regression (2026-02-25):
+  - Symptom: `AI_MissingToolResultsError` during finalization retries.
+  - Cause: Retry history reused `response.messages` that could contain unresolved non-provider `tool-call` parts before appending a new user message.
+  - Mitigation: sanitize retry history and strip unresolved non-provider tool calls before finalization retry generation (`src/chat/respond.ts`).
+- Validation run after mitigation:
+  - `pnpm typecheck` passed
+  - `pnpm test` passed (8 files, 25 tests)
 - Residual risks:
   - Loop guard behavior is covered by unit-level logic and compile checks, but not by a full mocked `generateAssistantReply` integration test.
   - Tool idempotency cache is per turn (intended) and does not dedupe across separate Slack invocations.
