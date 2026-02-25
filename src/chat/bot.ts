@@ -43,7 +43,7 @@ async function replyToThread(
   const fallbackIdentity = await lookupSlackUser(message.author.userId);
   await thread.startTyping?.("Thinking...");
 
-  const text = await generateAssistantReply(userText, {
+  const reply = await generateAssistantReply(userText, {
     assistant: {
       userId: botConfig.slackBotUserId,
       userName: botConfig.userName
@@ -54,7 +54,11 @@ async function replyToThread(
       fullName: message.author.fullName ?? fallbackIdentity?.fullName
     }
   });
-  await thread.post(buildSlackOutputMessage(text));
+  await thread.post(
+    buildSlackOutputMessage(reply.text, {
+      files: reply.files
+    })
+  );
 }
 
 bot.onNewMention(async (thread, message) => {

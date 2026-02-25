@@ -1,10 +1,23 @@
 import { generateText, tool } from "ai";
+import type { FileUpload } from "chat";
 import { z } from "zod";
 import { gateway } from "@ai-sdk/gateway";
 import { findSkillByName, loadSkillsByName, type SkillMetadata } from "@/chat/skills";
 import { webFetch, MAX_FETCH_CHARS } from "@/chat/tools/web_fetch";
 
-export function createTools(availableSkills: SkillMetadata[]) {
+export interface ToolHooks {
+  onGeneratedFiles?: (files: FileUpload[]) => void;
+}
+
+function extensionForMediaType(mediaType: string): string {
+  if (mediaType === "image/png") return "png";
+  if (mediaType === "image/jpeg") return "jpg";
+  if (mediaType === "image/webp") return "webp";
+  if (mediaType === "image/gif") return "gif";
+  return "bin";
+}
+
+export function createTools(availableSkills: SkillMetadata[], hooks: ToolHooks = {}) {
   return {
     load_skill: tool({
       description: "Load a named skill and return its instructions to the reasoning context.",
@@ -64,24 +77,33 @@ export function createTools(availableSkills: SkillMetadata[]) {
             prompt
           });
 
-          const images = result.files
+          const uploads = result.files
             .filter((file) => file.mediaType.startsWith("image/"))
-            .map((file) => {
-              const base64 = Buffer.from(file.uint8Array).toString("base64");
-
+            .map((file, index) => {
+              const extension = extensionForMediaType(file.mediaType);
+              const filename = `generated-image-${Date.now()}-${index + 1}.${extension}`;
               return {
-                media_type: file.mediaType,
-                bytes: file.uint8Array.byteLength,
-                data_url: `data:${file.mediaType};base64,${base64}`
+                data: Buffer.from(file.uint8Array),
+                filename,
+                mimeType: file.mediaType
               };
             });
+
+          if (uploads.length > 0) {
+            hooks.onGeneratedFiles?.(uploads);
+          }
 
           return {
             ok: true,
             model: "google/gemini-3-pro-image",
             prompt,
-            image_count: images.length,
-            images
+            image_count: uploads.length,
+            images: uploads.map((upload) => ({
+              filename: upload.filename,
+              media_type: upload.mimeType,
+              bytes: Buffer.isBuffer(upload.data) ? upload.data.byteLength : 0
+            })),
+            delivery: "Images will be attached to the Slack response as files."
           };
         } catch (error) {
           return {

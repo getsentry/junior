@@ -1,4 +1,4 @@
-import type { PostableMessage } from "chat";
+import type { FileUpload, PostableMessage } from "chat";
 
 const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
@@ -7,6 +7,7 @@ export interface SlackOutputOptions {
   forceAttachment?: boolean;
   attachmentPrefix?: string;
   forceInline?: boolean;
+  files?: FileUpload[];
 }
 
 interface ParsedDeliveryDirectives {
@@ -102,13 +103,19 @@ export function buildSlackOutputMessage(text: string, options: SlackOutputOption
   const normalized = normalizeForSlack(parsed.text);
 
   if (!normalized) {
-    return { markdown: "I couldn't produce a response." };
+    return {
+      markdown: "I couldn't produce a response.",
+      files: options.files
+    };
   }
 
   const shouldUploadFile = mergedOptions.forceInline ? false : mergedOptions.forceAttachment || shouldAttach(normalized);
 
   if (!shouldUploadFile) {
-    return { markdown: normalized };
+    return {
+      markdown: normalized,
+      files: options.files
+    };
   }
 
   const inlineSummary = summarizeForInline(normalized) || "Response was longer than expected.";
@@ -123,6 +130,7 @@ export function buildSlackOutputMessage(text: string, options: SlackOutputOption
       `_Full response attached as ${filename}._`
     ].join("\n"),
     files: [
+      ...(options.files ?? []),
       {
         data: Buffer.from(normalized, "utf8"),
         filename,

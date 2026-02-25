@@ -63,6 +63,26 @@ describe("buildSlackOutputMessage", () => {
     expect(message.markdown).not.toContain("<delivery>");
   });
 
+  it("includes provided files on inline responses", () => {
+    const message = buildSlackOutputMessage("Image generated.", {
+      files: [
+        {
+          data: Buffer.from("img-bytes"),
+          filename: "generated-image-1.png",
+          mimeType: "image/png"
+        }
+      ]
+    }) as {
+      markdown: string;
+      files?: Array<{ data: Buffer; filename: string; mimeType?: string }>;
+    };
+
+    expect(message.markdown).toBe("Image generated.");
+    expect(message.files?.length).toBe(1);
+    expect(message.files?.[0].filename).toBe("generated-image-1.png");
+    expect(message.files?.[0].mimeType).toBe("image/png");
+  });
+
   it("normalizes whitespace and line endings", () => {
     const message = buildSlackOutputMessage("one\r\n\r\n\r\n\r\ntwo   \n") as { markdown: string };
 
