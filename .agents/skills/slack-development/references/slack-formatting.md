@@ -1,10 +1,16 @@
-# Slack Formatting Reference
+# Slack Formatting Reference (Legacy)
 
 ## Scope
 
-Practical rules for formatting Slack bot output reliably.
+Legacy compatibility reference. Prefer the split guides below for implementation work.
 
-## Canonical rules
+## Use these references instead
+
+1. Output formatting rules: `${CLAUDE_SKILL_ROOT}/references/slack-output-formatting.md`
+2. Inbound event/message formats: `${CLAUDE_SKILL_ROOT}/references/slack-inbound-message-formats.md`
+3. Thread reply routing rules: `${CLAUDE_SKILL_ROOT}/references/slack-thread-routing.md`
+
+## Previous consolidated notes
 
 1. Slack uses `mrkdwn`, not full CommonMark.
 2. Escape only `&`, `<`, and `>` in text that can contain user content.
@@ -34,4 +40,3 @@ Practical rules for formatting Slack bot output reliably.
 - Slack `chat.postMessage`: https://docs.slack.dev/reference/methods/chat.postMessage
 - Slack mrkdwn text object: https://docs.slack.dev/reference/block-kit/composition-objects/text-object/
 - Slack date formatting: https://docs.slack.dev/messaging/formatting-message-text/#date-formatting
-

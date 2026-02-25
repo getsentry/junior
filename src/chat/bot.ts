@@ -14,30 +14,14 @@ import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState
 } from "@/chat/slack-actions/types";
+import {
+  messageExplicitlyMentionsBot,
+  registerKnownBotMention,
+  resolveSlackBotUserId,
+  stripLeadingBotMention
+} from "@/chat/slack-mentions";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { createStateAdapter } from "@/chat/state";
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function stripLeadingBotMention(text: string): string {
-  if (!text.trim()) return text;
-  const mentionRe = new RegExp(`^\\s*@${escapeRegExp(botConfig.userName)}\\b[\\s,:-]*`, "i");
-  return text.replace(mentionRe, "").trim();
-}
-
-function messageExplicitlyMentionsBot(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-
-  const byName = new RegExp(`\\b@?${escapeRegExp(botConfig.userName)}\\b`, "i").test(trimmed);
-  if (byName) return true;
-
-  const botUserId = botConfig.slackBotUserId?.trim();
-  if (!botUserId) return false;
-  return new RegExp(`<@${escapeRegExp(botUserId)}>`, "i").test(trimmed);
-}
 
 function escapeXml(value: string): string {
   return value
@@ -342,6 +326,7 @@ async function shouldReplyInSubscribedThread(args: {
   rawText: string;
   text: string;
   chatHistory?: string;
+  botUserId?: string;
   context: {
     threadId?: string;
     requesterId?: string;
@@ -355,7 +340,7 @@ async function shouldReplyInSubscribedThread(args: {
     return { shouldReply: false, reason: "empty message" };
   }
 
-  if (messageExplicitlyMentionsBot(rawText)) {
+  if (messageExplicitlyMentionsBot(rawText, { userName: botConfig.userName, botUserId: args.botUserId })) {
     return { shouldReply: true, reason: "explicit mention" };
   }
 
@@ -540,7 +525,11 @@ async function replyToThread(
       modelId: botConfig.modelId
     },
     async () => {
-      const userText = stripLeadingBotMention(message.text ?? "");
+      const botUserId = await resolveSlackBotUserId();
+      const userText = stripLeadingBotMention(message.text ?? "", {
+        userName: botConfig.userName,
+        botUserId
+      });
       const chatHistory = buildChatHistory(thread.recentMessages, userText);
       const fallbackIdentity = await lookupSlackUser(message.author.userId);
       const currentState = coerceThreadArtifactsState(await thread.state);
@@ -652,6 +641,8 @@ async function initializeAssistantThread(event: {
 
 bot.onNewMention(async (thread, message) => {
   try {
+    registerKnownBotMention(message.text ?? "", botConfig.userName);
+
     const threadId = getThreadId(thread, message);
     const channelId = getChannelId(message);
     const workflowRunId = getWorkflowRunId(thread, message);
@@ -691,13 +682,18 @@ bot.onSubscribedMessage(async (thread, message) => {
     const threadId = getThreadId(thread, message);
     const channelId = getChannelId(message);
     const workflowRunId = getWorkflowRunId(thread, message);
+    const botUserId = await resolveSlackBotUserId();
     const rawUserText = message.text ?? "";
-    const userText = stripLeadingBotMention(rawUserText);
+    const userText = stripLeadingBotMention(rawUserText, {
+      userName: botConfig.userName,
+      botUserId
+    });
     const chatHistory = buildChatHistory(thread.recentMessages, userText);
     const decision = await shouldReplyInSubscribedThread({
       rawText: rawUserText,
       text: userText,
       chatHistory,
+      botUserId,
       context: {
         threadId,
         requesterId: message.author.userId,
