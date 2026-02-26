@@ -1,7 +1,7 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import type { Sandbox } from "@vercel/sandbox";
-import type { SkillMetadata } from "@/chat/skills";
+import type { Skill, SkillMetadata } from "@/chat/skills";
 
 export type LoadSkillResult = {
   ok?: boolean;
@@ -13,6 +13,25 @@ export type LoadSkillResult = {
   location?: string;
   instructions?: string;
 };
+
+function toLoadedSkill(result: LoadSkillResult): Skill | null {
+  if (
+    result.ok !== true ||
+    typeof result.skill_name !== "string" ||
+    typeof result.description !== "string" ||
+    typeof result.skill_dir !== "string" ||
+    typeof result.instructions !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    name: result.skill_name,
+    description: result.description,
+    skillPath: result.skill_dir,
+    body: result.instructions
+  };
+}
 
 function stripFrontmatter(raw: string): string {
   if (!raw.startsWith("---")) {
@@ -57,7 +76,13 @@ export async function loadSkillFromSandbox(
   };
 }
 
-export function createLoadSkillTool(sandbox: Sandbox, availableSkills: SkillMetadata[]) {
+export function createLoadSkillTool(
+  sandbox: Sandbox,
+  availableSkills: SkillMetadata[],
+  options?: {
+    onSkillLoaded?: (skill: Skill) => void | Promise<void>;
+  }
+) {
   return tool({
     description: "Load a named skill and return its instructions to the reasoning context.",
     inputSchema: Type.Object({
@@ -67,7 +92,12 @@ export function createLoadSkillTool(sandbox: Sandbox, availableSkills: SkillMeta
       })
     }),
     execute: async ({ skill_name }) => {
-      return await loadSkillFromSandbox(sandbox, availableSkills, skill_name);
+      const result = await loadSkillFromSandbox(sandbox, availableSkills, skill_name);
+      const loadedSkill = toLoadedSkill(result);
+      if (loadedSkill) {
+        await options?.onSkillLoaded?.(loadedSkill);
+      }
+      return result;
     }
   });
 }

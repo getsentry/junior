@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { discoverSkills } from "@/chat/skills";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
+import type { Skill } from "@/chat/skills";
 
 describe("load_skill tool", () => {
   it("loads a skill from sandbox and returns instructions", async () => {
@@ -16,7 +17,12 @@ describe("load_skill tool", () => {
           ? Buffer.from("---\nname: test\n---\nInstruction body", "utf8")
           : null
     } as any;
-    const tool = createLoadSkillTool(sandbox, availableSkills);
+    const loaded: Skill[] = [];
+    const tool = createLoadSkillTool(sandbox, availableSkills, {
+      onSkillLoaded: (skill) => {
+        loaded.push(skill);
+      }
+    });
     if (typeof tool.execute !== "function") {
       throw new Error("load_skill execute function missing");
     }
@@ -36,6 +42,12 @@ describe("load_skill tool", () => {
     expect((result as any).location).toBe(`/workspace/skills/${firstSkill.name}/SKILL.md`);
     expect((result as any).skill_dir).toBe(`/workspace/skills/${firstSkill.name}`);
     expect((result as any).instructions).toBe("Instruction body");
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]).toMatchObject({
+      name: firstSkill.name,
+      skillPath: `/workspace/skills/${firstSkill.name}`,
+      body: "Instruction body"
+    });
   });
 
   it("returns unknown-skill when the name does not exist", async () => {

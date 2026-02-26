@@ -88,7 +88,9 @@ export function createTools(
     final_answer: createFinalAnswerTool(),
     load_skill: wrapToolExecution(
       "load_skill",
-      createLoadSkillTool(context.sandbox, availableSkills),
+      createLoadSkillTool(context.sandbox, availableSkills, {
+        onSkillLoaded: hooks.onSkillLoaded
+      }),
       hooks
     ),
     system_time: wrapToolExecution("system_time", createSystemTimeTool(), hooks),

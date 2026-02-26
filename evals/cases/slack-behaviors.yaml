@@ -145,6 +145,7 @@ cases:
     expected:
       posts_count: 1
       tool_calls_include:
+        - load_skill
         - system_time
 
   - id: time_brief_repeated_invocations
@@ -184,6 +185,7 @@ cases:
     expected:
       posts_count: 2
       tool_calls_include:
+        - load_skill
         - system_time
 
   - id: list_working_directory_skill_invocation
@@ -209,6 +211,7 @@ cases:
     expected:
       posts_count: 1
       tool_calls_include:
+        - load_skill
         - bash
       sandbox_id_present: true
       post_contains:

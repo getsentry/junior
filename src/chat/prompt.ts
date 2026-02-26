@@ -25,6 +25,10 @@ function escapeXml(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
+function workspaceSkillDir(skillName: string): string {
+  return `/workspace/skills/${skillName}`;
+}
+
 function renderIdentityBlock(tag: "assistant" | "requester", fields: Record<string, string | undefined>): string {
   const lines = Object.entries(fields)
     .filter(([, value]) => Boolean(value))
@@ -48,10 +52,11 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
 
   const lines = ["<available_skills>"];
   for (const skill of skills) {
+    const skillLocation = `${workspaceSkillDir(skill.name)}/SKILL.md`;
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
     lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-    lines.push(`    <location>${escapeXml(`${skill.skillPath}/SKILL.md`)}</location>`);
+    lines.push(`    <location>${escapeXml(skillLocation)}</location>`);
     lines.push("  </skill>");
   }
   lines.push("</available_skills>");
@@ -65,8 +70,9 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
 
   const lines = ["<loaded_skills>"];
   for (const skill of skills) {
-    lines.push(`  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skill.skillPath}/SKILL.md`)}">`);
-    lines.push(`References are relative to ${escapeXml(skill.skillPath)}.`);
+    const skillDir = workspaceSkillDir(skill.name);
+    lines.push(`  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skillDir}/SKILL.md`)}">`);
+    lines.push(`References are relative to ${escapeXml(skillDir)}.`);
     lines.push("");
     lines.push(skill.body);
     lines.push("  </skill>");

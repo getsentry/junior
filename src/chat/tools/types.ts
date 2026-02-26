@@ -1,12 +1,14 @@
 import type { FileUpload } from "chat";
 import type { Sandbox } from "@vercel/sandbox";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import type { Skill } from "@/chat/skills";
 
 export interface ToolHooks {
   onGeneratedFiles?: (files: FileUpload[]) => void;
   onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
   onToolCallStart?: (toolName: string) => void | Promise<void>;
   onToolCallEnd?: (toolName: string) => void | Promise<void>;
+  onSkillLoaded?: (skill: Skill) => void | Promise<void>;
 }
 
 export interface ToolRuntimeContext {

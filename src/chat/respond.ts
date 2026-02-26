@@ -10,7 +10,6 @@ import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } fro
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
-import { loadSkillFromSandbox } from "@/chat/tools/load-skill";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { VercelSandboxToolExecutor } from "@/chat/sandbox/vercel";
 
@@ -63,13 +62,6 @@ export interface AgentTurnDiagnostics {
   toolResultCount: number;
   usedFinalAnswer: boolean;
   usedPrimaryText: boolean;
-}
-
-interface LoadedSkillForSteering {
-  instructions: string;
-  location: string;
-  name: string;
-  skillDir: string;
 }
 
 const AGENT_TURN_TIMEOUT_MS = 120_000;
@@ -209,19 +201,6 @@ function encodeNonImageAttachmentForPrompt(attachment: {
     "</data_base64>",
     "</attachment>"
   ].join("\n");
-}
-
-function buildSkillSteeringBlock(skill: LoadedSkillForSteering, args?: string): string {
-  const skillBlock = [
-    `<skill name="${skill.name}" location="${skill.location}">`,
-    `References are relative to ${skill.skillDir}.`,
-    "",
-    skill.instructions.trim(),
-    "</skill>"
-  ].join("\n");
-
-  const trimmedArgs = args?.trim();
-  return trimmedArgs ? `${skillBlock}\n\n${trimmedArgs}` : skillBlock;
 }
 
 function buildExecutionFailureMessage(toolErrorCount: number): string {
@@ -406,7 +385,7 @@ export async function generateAssistantReply(
     const availableSkills = await discoverSkills();
     sandboxExecutor.configureSkills(availableSkills);
     const sandbox = await sandboxExecutor.createSandbox();
-    let userInput = messageText;
+    const userInput = messageText;
     const explicitInvocation = parseSkillInvocation(userInput);
     const explicitSkill = explicitInvocation
       ? findSkillByName(explicitInvocation.skillName, availableSkills)
@@ -429,31 +408,6 @@ export async function generateAssistantReply(
           usedPrimaryText: false
         }
       };
-    }
-
-    if (explicitInvocation && explicitSkill) {
-      let loadedForSteering: LoadedSkillForSteering | null = null;
-      const result = await loadSkillFromSandbox(sandbox, availableSkills, explicitSkill.name);
-      if (
-        result &&
-        typeof result === "object" &&
-        (result as { ok?: unknown }).ok === true &&
-        typeof (result as { skill_name?: unknown }).skill_name === "string" &&
-        typeof (result as { location?: unknown }).location === "string" &&
-        typeof (result as { skill_dir?: unknown }).skill_dir === "string" &&
-        typeof (result as { instructions?: unknown }).instructions === "string"
-      ) {
-        loadedForSteering = {
-          name: (result as { skill_name: string }).skill_name,
-          location: (result as { location: string }).location,
-          skillDir: (result as { skill_dir: string }).skill_dir,
-          instructions: (result as { instructions: string }).instructions
-        };
-      }
-
-      if (loadedForSteering) {
-        userInput = buildSkillSteeringBlock(loadedForSteering, explicitInvocation.args);
-      }
     }
 
     const userTurnText = buildUserTurnText(userInput, context.conversationContext);
@@ -504,6 +458,17 @@ export async function generateAssistantReply(
         },
         onToolCallEnd: async () => {
           await context.onStatus?.("Reviewing tool results...");
+        },
+        onSkillLoaded: (loadedSkill) => {
+          const existing = activeSkills.find((skill) => skill.name === loadedSkill.name);
+          if (existing) {
+            existing.body = loadedSkill.body;
+            existing.description = loadedSkill.description;
+            existing.skillPath = loadedSkill.skillPath;
+            existing.allowedTools = loadedSkill.allowedTools;
+            return;
+          }
+          activeSkills.push(loadedSkill);
         }
       },
       {
