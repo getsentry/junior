@@ -38,7 +38,7 @@ function escapeXml(value: string): string {
 
 function resolveSkillRoots(): string[] {
   const envRoots = process.env.SKILL_DIRS?.split(path.delimiter).filter(Boolean) ?? [];
-  const defaults = [path.join(process.cwd(), ".agents", "skills"), path.join(process.cwd(), "skills")];
+  const defaults = [path.join(process.cwd(), "src", "junior", "skills")];
 
   return [...envRoots, ...defaults];
 }

@@ -10,7 +10,12 @@ import {
 describe("skills", () => {
   it("discovers valid skills from the default skills directory", async () => {
     const skills = await discoverSkills();
-    expect(skills.some((skill) => skill.name === "brief")).toBe(true);
+    const names = skills.map((skill) => skill.name);
+
+    expect(names).toContain("brief");
+    expect(names).toContain("sum");
+    expect(names).not.toContain("slack-development");
+    expect(names).not.toContain("use-ai-sdk");
   });
 
   it("parses skill invocation by slash command", () => {
