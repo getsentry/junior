@@ -203,7 +203,7 @@ function createProgressReporter(thread: {
     async start() {
       active = true;
       clearPending();
-      await postAssistantStatus("Analyzing request...");
+      await postAssistantStatus("Thinking...");
     },
     async stop() {
       active = false;
