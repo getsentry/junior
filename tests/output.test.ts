@@ -63,6 +63,30 @@ describe("buildSlackOutputMessage", () => {
     expect(message.markdown).not.toContain("<delivery>");
   });
 
+  it("respects trailing delivery directives in model output", () => {
+    const response = [
+      "Good, skill loaded. Now let me gather evidence on Sunil Pai at Cloudflare.",
+      "",
+      "Found him - GitHub handle threepointone. Let me now gather deeper evidence.",
+      "",
+      "I have enough evidence to write a comprehensive brief. Let me create the canvas now.",
+      "<delivery>",
+      "mode: attachment",
+      "attachment_prefix: candidate-brief",
+      "</delivery>"
+    ].join("\n");
+
+    const message = buildSlackOutputMessage(response) as {
+      markdown: string;
+      files?: Array<{ data: Buffer; filename: string; mimeType?: string }>;
+    };
+
+    expect(message.files?.length).toBe(1);
+    expect(message.files?.[0].filename.startsWith("candidate-brief-")).toBe(true);
+    expect(message.markdown).not.toContain("<delivery>");
+    expect(message.files?.[0].data.toString("utf8")).not.toContain("<delivery>");
+  });
+
   it("includes provided files on inline responses", () => {
     const message = buildSlackOutputMessage("Image generated.", {
       files: [
@@ -103,5 +127,18 @@ describe("stripDeliveryDirectives", () => {
     ].join("\n");
 
     expect(stripDeliveryDirectives(response)).toBe(["Snapshot", "- strong OSS track record"].join("\n"));
+  });
+
+  it("removes a trailing delivery directive block", () => {
+    const response = [
+      "Brief summary",
+      "- signal 1",
+      "<delivery>",
+      "mode: attachment",
+      "attachment_prefix: candidate-summary",
+      "</delivery>"
+    ].join("\n");
+
+    expect(stripDeliveryDirectives(response)).toBe(["Brief summary", "- signal 1"].join("\n"));
   });
 });

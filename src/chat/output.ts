@@ -16,6 +16,8 @@ interface ParsedDeliveryDirectives {
   options: SlackOutputOptions;
 }
 
+const DELIVERY_DIRECTIVE_PATTERN = /(?:^|\n)\s*<delivery>\s*([\s\S]*?)\s*<\/delivery>\s*(?=\n|$)/i;
+
 function normalizeForSlack(text: string): string {
   return text
     .replace(/\r\n?/g, "\n")
@@ -72,12 +74,13 @@ function sanitizePrefix(value: string): string {
 }
 
 function parseDeliveryDirectives(text: string): ParsedDeliveryDirectives {
-  const match = text.match(/^\s*<delivery>\s*([\s\S]*?)\s*<\/delivery>\s*/i);
+  const match = DELIVERY_DIRECTIVE_PATTERN.exec(text);
   if (!match) {
     return { text, options: {} };
   }
 
   const options: SlackOutputOptions = {};
+  let parsedKnownDirective = false;
 
   for (const rawLine of match[1].split("\n")) {
     const line = rawLine.trim();
@@ -92,19 +95,37 @@ function parseDeliveryDirectives(text: string): ParsedDeliveryDirectives {
     if (key === "mode") {
       if (value.toLowerCase() === "attachment") {
         options.forceAttachment = true;
+        parsedKnownDirective = true;
       }
       if (value.toLowerCase() === "inline") {
         options.forceInline = true;
+        parsedKnownDirective = true;
       }
     }
 
     if (key === "attachment_prefix") {
       options.attachmentPrefix = sanitizePrefix(value);
+      parsedKnownDirective = true;
     }
   }
 
+  if (!parsedKnownDirective) {
+    return { text, options: {} };
+  }
+
+  const start = match.index ?? 0;
+  const end = start + match[0].length;
+  let strippedText = `${text.slice(0, start)}${text.slice(end)}`;
+
+  if (start === 0) {
+    strippedText = strippedText.replace(/^(?:[ \t]*\n)+/, "");
+  }
+  if (end === text.length) {
+    strippedText = strippedText.replace(/(?:\n[ \t]*)+$/, "");
+  }
+
   return {
-    text: text.slice(match[0].length),
+    text: strippedText,
     options
   };
 }
