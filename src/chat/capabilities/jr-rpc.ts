@@ -16,86 +16,62 @@ type JrRpcExecCommand = {
 };
 
 export type JrRpcCommand = JrRpcIssueCommand | JrRpcExecCommand;
+export type JrRpcToolInput = {
+  action: "issue" | "exec";
+  capability: string;
+  repo: string;
+  format?: "token" | "env" | "json";
+  command?: string;
+};
 
-function tokenizeShell(input: string): string[] {
-  const tokens: string[] = [];
-  const re = /"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|(\S+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(input)) !== null) {
-    const raw = match[1] ?? match[2] ?? match[3] ?? "";
-    tokens.push(raw.replace(/\\(["'\\])/g, "$1"));
-  }
-  return tokens;
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
-function parseFlagValue(tokens: string[], index: number): { value: string; nextIndex: number } {
-  const value = tokens[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`Missing value for ${tokens[index]}`);
+function hintForCredentialError(detail: string): string | undefined {
+  if (/error:1E08010C|DECODER routines::unsupported/i.test(detail)) {
+    return "Host signer could not decode GITHUB_APP_PRIVATE_KEY. Ensure it is an RSA PEM key (raw PEM, escaped newlines, or base64-encoded PEM) and that host Node/OpenSSL versions are compatible.";
   }
-  return { value, nextIndex: index + 2 };
+  if (/Missing GITHUB_APP_PRIVATE_KEY/i.test(detail)) {
+    return "Set GITHUB_APP_PRIVATE_KEY for the host runtime credential broker.";
+  }
+  if (/Missing GITHUB_APP_ID/i.test(detail)) {
+    return "Set GITHUB_APP_ID for the host runtime credential broker.";
+  }
+  return undefined;
 }
 
-export function parseJrRpcCommand(command: string): JrRpcCommand | null {
-  const trimmed = command.trim();
-  const delimiterMatch = /\s--\s/.exec(trimmed);
-  const delimiterIndex = delimiterMatch?.index ?? -1;
-  const delimiterLength = delimiterMatch?.[0].length ?? 0;
-  const hasExecDelimiter = delimiterIndex >= 0;
-  const prefix = hasExecDelimiter ? trimmed.slice(0, delimiterIndex).trim() : trimmed;
-  const execTail = hasExecDelimiter ? trimmed.slice(delimiterIndex + delimiterLength) : "";
+function buildCredentialIssueError(command: JrRpcCommand, error: unknown): Error {
+  const detail = getErrorMessage(error);
+  const hint = hintForCredentialError(detail);
+  const context = `jrRpc ${command.kind} failed (capability=${command.capability}, repo=${command.repo})`;
+  const message = hint ? `${context}: ${detail}\nHint: ${hint}` : `${context}: ${detail}`;
+  return new Error(message, { cause: error });
+}
 
-  const tokens = tokenizeShell(prefix);
-  if (tokens.length < 3 || tokens[0] !== "jr-rpc" || tokens[1] !== "credential") {
-    return null;
-  }
+function buildExecError(command: JrRpcExecCommand, error: unknown): Error {
+  const detail = getErrorMessage(error);
+  return new Error(
+    `jrRpc exec failed while running nested command (capability=${command.capability}, repo=${command.repo}): ${detail}`,
+    { cause: error }
+  );
+}
 
-  const action = tokens[2];
-  if (action !== "issue" && action !== "exec") {
-    throw new Error(`Unsupported jr-rpc credential action: ${action}`);
-  }
-
-  let capability: string | undefined;
-  let repo: string | undefined;
-  let format: "token" | "env" | "json" = "token";
-  let index = 3;
-  while (index < tokens.length) {
-    const token = tokens[index];
-    if (token === "--cap") {
-      const parsed = parseFlagValue(tokens, index);
-      capability = parsed.value;
-      index = parsed.nextIndex;
-      continue;
-    }
-    if (token === "--repo") {
-      const parsed = parseFlagValue(tokens, index);
-      repo = parsed.value;
-      index = parsed.nextIndex;
-      continue;
-    }
-    if (token === "--format") {
-      const parsed = parseFlagValue(tokens, index);
-      if (parsed.value !== "token" && parsed.value !== "env" && parsed.value !== "json") {
-        throw new Error(`Unsupported jr-rpc format: ${parsed.value}`);
-      }
-      format = parsed.value;
-      index = parsed.nextIndex;
-      continue;
-    }
-    throw new Error(`Unknown jr-rpc option: ${token}`);
-  }
-
+export function mapJrRpcToolInputToCommand(input: JrRpcToolInput): JrRpcCommand {
+  const capability = input.capability.trim();
   if (!capability) {
-    throw new Error("jr-rpc credential command requires --cap");
-  }
-  if (!repo) {
-    throw new Error("jr-rpc credential command requires --repo");
+    throw new Error("jrRpc requires a non-empty capability");
   }
 
-  if (action === "exec") {
-    const execCommand = execTail.trim();
-    if (!hasExecDelimiter || execCommand.length === 0) {
-      throw new Error("jr-rpc credential exec requires a command after --");
+  const repo = input.repo.trim();
+  if (!repo) {
+    throw new Error("jrRpc requires a non-empty repo");
+  }
+
+  if (input.action === "exec") {
+    const execCommand = input.command?.trim();
+    if (!execCommand) {
+      throw new Error("jrRpc exec requires a non-empty command");
     }
     return {
       kind: "exec",
@@ -109,7 +85,7 @@ export function parseJrRpcCommand(command: string): JrRpcCommand | null {
     kind: "issue",
     capability,
     repo,
-    format
+    format: input.format ?? "token"
   };
 }
 
@@ -144,20 +120,29 @@ export async function executeJrRpcCommand(params: {
   executeBashWithEnv: (command: string, env: Record<string, string>) => Promise<unknown>;
 }): Promise<unknown> {
   const { command, activeSkill, capabilityRuntime } = params;
-  const lease = await capabilityRuntime.issueCapabilityLease({
-    activeSkill,
-    capability: command.capability,
-    repoRef: command.repo,
-    reason: `skill:${activeSkill?.name ?? "unknown"}:jr-rpc:${command.kind}`
-  });
+  let lease: Awaited<ReturnType<SkillCapabilityRuntime["issueCapabilityLease"]>>;
+  try {
+    lease = await capabilityRuntime.issueCapabilityLease({
+      activeSkill,
+      capability: command.capability,
+      repoRef: command.repo,
+      reason: `skill:${activeSkill?.name ?? "unknown"}:jrRpc:${command.kind}`
+    });
+  } catch (error) {
+    throw buildCredentialIssueError(command, error);
+  }
 
   if (command.kind === "exec") {
-    return await params.executeBashWithEnv(command.execCommand, lease.env);
+    try {
+      return await params.executeBashWithEnv(command.execCommand, lease.env);
+    } catch (error) {
+      throw buildExecError(command, error);
+    }
   }
 
   return {
     ok: true,
-    command: "jr-rpc credential issue",
+    command: "jrRpc issue",
     cwd: "/",
     exit_code: 0,
     signal: null,

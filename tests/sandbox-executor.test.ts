@@ -120,11 +120,7 @@ describe("createSandboxExecutor", () => {
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(stoppedSandbox.mkDir).toHaveBeenCalled();
     expect(freshSandbox.mkDir).toHaveBeenCalled();
-    expect(freshSandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "bash",
-      args: ["-c", 'chmod +x "/vercel/sandbox/.junior/bin/jr-rpc"'],
-      cwd: "/vercel/sandbox"
-    });
+    expect(freshSandbox.runCommand).not.toHaveBeenCalled();
     expect(executor.getSandboxId()).toBe("sbx_fresh");
   });
 

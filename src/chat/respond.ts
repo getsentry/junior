@@ -17,7 +17,7 @@ import {
 import { buildSystemPrompt } from "@/chat/prompt";
 import { createSkillCapabilityRuntime } from "@/chat/capabilities/factory";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
-import { executeJrRpcCommand, parseJrRpcCommand } from "@/chat/capabilities/jr-rpc";
+import { executeJrRpcCommand, mapJrRpcToolInputToCommand } from "@/chat/capabilities/jr-rpc";
 import { SkillSandbox } from "@/chat/skill-sandbox";
 import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -157,6 +157,7 @@ function formatToolStatus(toolName: string): string {
     loadSkill: "Loading skill instructions",
     systemTime: "Reading current system time",
     bash: "Running shell command in sandbox",
+    jrRpc: "Issuing scoped credentials via runtime",
     readFile: "Reading file in sandbox",
     writeFile: "Writing file in sandbox",
     webSearch: "Searching public sources",
@@ -233,6 +234,9 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
   const query = obj ? compactTextForStatus(obj.query, 70) : undefined;
   const domain = obj ? extractDomainForStatus(obj.url) : undefined;
   const skillName = obj ? compactTextForStatus(obj.skill_name ?? obj.skillName, 40) : undefined;
+  const capability = obj ? compactTextForStatus(obj.capability, 60) : undefined;
+  const repo = obj ? compactTextForStatus(obj.repo, 60) : undefined;
+  const action = obj ? compactTextForStatus(obj.action, 20) : undefined;
 
   if (path && toolName === "readFile") {
     return `Reading file ${path}`;
@@ -249,6 +253,9 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
   if (domain && toolName === "webFetch") {
     return `Fetching page from ${domain}`;
   }
+  if (toolName === "jrRpc" && capability && repo) {
+    return action ? `Issuing ${action} credential for ${capability} on ${repo}` : `Issuing credential for ${capability} on ${repo}`;
+  }
 
   return formatToolStatus(toolName);
 }
@@ -258,6 +265,7 @@ function formatToolResultStatus(toolName: string): string {
     loadSkill: "Integrating loaded skill guidance",
     systemTime: "Applying current time context",
     bash: "Analyzing command output",
+    jrRpc: "Analyzing credential runtime result",
     readFile: "Analyzing file contents",
     writeFile: "Saving file update",
     webSearch: "Reviewing search results",
@@ -287,6 +295,9 @@ function formatToolResultStatusWithInput(toolName: string, input: unknown): stri
   const query = obj ? compactTextForStatus(obj.query, 70) : undefined;
   const domain = obj ? extractDomainForStatus(obj.url) : undefined;
   const skillName = obj ? compactTextForStatus(obj.skill_name ?? obj.skillName, 40) : undefined;
+  const capability = obj ? compactTextForStatus(obj.capability, 60) : undefined;
+  const repo = obj ? compactTextForStatus(obj.repo, 60) : undefined;
+  const action = obj ? compactTextForStatus(obj.action, 20) : undefined;
 
   if (path && toolName === "readFile") {
     return `Reviewed file ${path}`;
@@ -302,6 +313,11 @@ function formatToolResultStatusWithInput(toolName: string, input: unknown): stri
   }
   if (domain && toolName === "webFetch") {
     return `Reviewed page from ${domain}`;
+  }
+  if (toolName === "jrRpc" && capability && repo) {
+    return action
+      ? `Issued ${action} credential result for ${capability} on ${repo}`
+      : `Issued credential result for ${capability} on ${repo}`;
   }
 
   return formatToolResultStatus(toolName);
@@ -486,7 +502,9 @@ function createAgentTools(
             }
 
             const maybeRpcCommand =
-              toolName === "bash" ? parseJrRpcCommand(String(parsed.command ?? "").trim()) : null;
+              toolName === "jrRpc"
+                ? mapJrRpcToolInputToCommand(parsed as Parameters<typeof mapJrRpcToolInputToCommand>[0])
+                : null;
             const injectedEnv =
               toolName === "bash" && !maybeRpcCommand
                 ? await capabilityRuntime?.resolveBashEnv({
@@ -507,17 +525,34 @@ function createAgentTools(
             }
 
             const result =
-              maybeRpcCommand && capabilityRuntime && sandboxExecutor?.canExecute("bash")
+                  maybeRpcCommand && capabilityRuntime && sandboxExecutor?.canExecute("bash")
                 ? await executeJrRpcCommand({
                     command: maybeRpcCommand,
                     activeSkill: sandbox.getActiveSkill(),
                     capabilityRuntime,
                     executeBashWithEnv: async (command, env) => {
+                      const commandEnv = { ...env };
+                      const githubToken = commandEnv.GITHUB_TOKEN?.trim();
+                      if (githubToken) {
+                        delete commandEnv.GITHUB_TOKEN;
+                      }
                       const nested = await sandboxExecutor.execute({
                         toolName: "bash",
                         input: {
                           command,
-                          env
+                          ...(Object.keys(commandEnv).length > 0 ? { env: commandEnv } : {}),
+                          ...(githubToken
+                            ? {
+                                headerTransforms: [
+                                  {
+                                    domain: "api.github.com",
+                                    headers: {
+                                      Authorization: `Bearer ${githubToken}`
+                                    }
+                                  }
+                                ]
+                              }
+                            : {})
                         }
                       });
                       return nested.result;

@@ -1,39 +1,27 @@
 ---
 name: jr-rpc
-description: Use host-mediated credential issuance for sandbox commands via jr-rpc. Use when a task needs short-lived provider credentials (for example GitHub) to run a command safely.
-allowed-tools: bash
+description: Use host-mediated credential issuance for sandbox commands via the jrRpc tool. Use when a task needs short-lived provider credentials (for example GitHub) to run a command safely.
+allowed-tools: bash jrRpc
 ---
 
-# jr-rpc Credential Usage
+# Credential Usage
 
 Use this skill when a command needs temporary credentials injected by the harness.
 
-## Primary pattern
+## Preferred tool path
 
-Use `credential exec` so credentials are injected only for the nested command:
+Use the `jrRpc` tool for credential operations:
 
-`jr-rpc credential exec --cap <capability> --repo <owner/repo> -- <command>`
-
-Example:
-
-`jr-rpc credential exec --cap github.issues.write --repo getsentry/junior -- node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create --repo getsentry/junior --title "..." --body-file /tmp/body.md`
-
-## Secondary pattern
-
-`credential issue` is for diagnostics/metadata only:
-
-`jr-rpc credential issue --cap <capability> --repo <owner/repo> --format token|env|json`
-
-Notes:
+- `action=exec` with `capability`, `repo`, and nested `command` for real work.
+- `action=issue` with `capability`, `repo`, and optional `format` for diagnostics/metadata.
 - Output is redacted metadata (no raw token values).
-- Prefer `credential exec` for real work.
 
 ## Guardrails
 
 - Never print, echo, or log credential values.
 - Do not write credentials to files.
 - Avoid shell debug tracing (`set -x`) when running credentialed commands.
-- Keep repo target explicit via `--repo owner/repo`.
+- Keep repo target explicit via `repo=owner/repo`.
 
 ## Capability examples
 
@@ -42,8 +30,6 @@ Notes:
 - `github.issues.comment`
 - `github.labels.write`
 
-## References
+## Reference note
 
-- [references/commands.md](references/commands.md) (overview)
-- [references/credential-exec.md](references/credential-exec.md) (`jr-rpc credential exec`)
-- [references/credential-issue.md](references/credential-issue.md) (`jr-rpc credential issue`)
+- Legacy `jr-rpc credential ...` shell syntax is deprecated in this runtime. Use the `jrRpc` tool directly.

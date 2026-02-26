@@ -1,6 +1,6 @@
 # gh-issue setup
 
-This skill uses host-issued GitHub App installation tokens and only accepts `GITHUB_TOKEN` in the sandbox.
+This skill uses host-issued GitHub App installation tokens.
 
 ## 1) Create/install GitHub App
 
@@ -27,22 +27,19 @@ Set on the harness host (never in skill files):
 ## 3) Runtime behavior
 
 - Capability runtime issues a short-lived installation token per command lease.
-- Sandbox receives only `GITHUB_TOKEN` for command scope.
-- `jr-rpc credential issue` does not print token values.
+- Sandbox requests can authenticate either via scoped `GITHUB_TOKEN` env injection or via jrRpc-managed header transforms to `api.github.com`.
+- `jrRpc` issue mode does not print token values.
 
 ## 4) Script usage
 
-Run via `jr-rpc credential exec`:
+Run via `jrRpc` tool (`action=exec`):
 
 ```bash
-jr-rpc credential exec --cap github.issues.write --repo owner/repo -- \
-  node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create \
-    --repo owner/repo \
-    --title "Example issue" \
-    --body-file /vercel/sandbox/tmp/issue.md
+jrRpc action=exec capability=github.issues.write repo=owner/repo \
+  command='node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create --repo owner/repo --title "Example issue" --body-file /vercel/sandbox/tmp/issue.md'
 ```
 
-`gh_issue_api.mjs` fails fast if `GITHUB_TOKEN` is missing.
+`gh_issue_api.mjs` supports either `GITHUB_TOKEN` env auth or network-layer Authorization header injection.
 
 ## 5) Quick verification
 
@@ -62,8 +59,8 @@ jr-rpc credential exec --cap github.issues.write --repo owner/repo -- \
 5. Verify the issue is authored by the GitHub App identity.
 6. Run `/gh-issue` to update title/body, add/remove labels, and add a comment.
 7. Verify all mutations succeed and are attributed to the app.
-8. Verify `jr-rpc credential issue` output is metadata/redacted only (no raw token).
-9. Verify `jr-rpc credential exec` can run a command that requires `GITHUB_TOKEN`.
+8. Verify `jrRpc` issue output is metadata/redacted only (no raw token).
+9. Verify `jrRpc` exec can run a command that requires `GITHUB_TOKEN`.
 10. Check logs for:
    - `credential_issue_request`
    - `credential_issue_success`

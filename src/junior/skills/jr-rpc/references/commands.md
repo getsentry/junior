@@ -1,32 +1,32 @@
-# jr-rpc command reference
+# jrRpc tool reference
 
 ## Syntax
 
 ### Execute with injected credentials
 
-`jr-rpc credential exec --cap <capability> --repo <owner/repo> -- <command>`
+`jrRpc action=exec capability=<capability> repo=<owner/repo> command='<command>'`
 
 ### Issue metadata for debugging
 
-`jr-rpc credential issue --cap <capability> --repo <owner/repo> --format token|env|json`
+`jrRpc action=issue capability=<capability> repo=<owner/repo> format=token|env|json`
 
 ## Behavior
 
-- `credential exec`:
+- `action=exec`:
   - Issues a short-lived credential lease.
   - Injects env vars only for the nested command.
   - Returns nested command output.
 
-- `credential issue`:
+- `action=issue`:
   - Issues a short-lived credential lease.
   - Returns metadata/redacted env key info only.
   - Does not expose token values.
 
 ## Common errors
 
-- `jr-rpc credential command requires --cap`
-- `jr-rpc credential command requires --repo`
-- `jr-rpc credential exec requires a command after --`
+- `jrRpc requires a non-empty capability`
+- `jrRpc requires a non-empty repo`
+- `jrRpc exec requires a non-empty command`
 - Provider auth/config errors (for example missing host app credentials).
 
 ## Practical tips

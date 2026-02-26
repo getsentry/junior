@@ -1,4 +1,4 @@
-# `jr-rpc credential exec`
+# `jrRpc` action=exec
 
 ## Purpose
 
@@ -6,17 +6,18 @@ Run a nested command with short-lived credential env vars injected for that comm
 
 ## Syntax
 
-`jr-rpc credential exec --cap <capability> --repo <owner/repo> -- <command>`
+`jrRpc action=exec capability=<capability> repo=<owner/repo> command='<command>'`
 
-## Required flags
+## Required fields
 
-- `--cap`
-- `--repo`
-- `-- <command>`
+- `action=exec`
+- `capability`
+- `repo`
+- `command`
 
 ## Example
 
-`jr-rpc credential exec --cap github.issues.write --repo getsentry/junior -- node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create --repo getsentry/junior --title "Smoke test" --body-file /tmp/body.md`
+`jrRpc action=exec capability=github.issues.write repo=getsentry/junior command='node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create --repo getsentry/junior --title "Smoke test" --body-file /tmp/body.md'`
 
 ## Behavior
 
@@ -26,6 +27,6 @@ Run a nested command with short-lived credential env vars injected for that comm
 
 ## Failure modes
 
-- Missing flags: parser errors for required options.
+- Missing required fields: validation errors for capability/repo/command.
 - Provider setup/auth failures: host credential broker errors.
 - Nested command failure: non-zero exit from nested command.

@@ -31,6 +31,10 @@ interface ToolExecutors {
   bash: (input: {
     command: string;
     env?: Record<string, string>;
+    headerTransforms?: Array<{
+      domain: string;
+      headers: Record<string, string>;
+    }>;
   }) => Promise<{ stdout: string; stderr: string; exitCode: number; stdoutTruncated: boolean; stderrTruncated: boolean }>;
   readFile: (input: { path: string }) => Promise<{ content: string }>;
   writeFile: (input: { path: string; content: string }) => Promise<{ success: boolean }>;
@@ -39,7 +43,6 @@ interface ToolExecutors {
 const SANDBOX_TOOL_NAMES = new Set(["bash", "readFile", "writeFile"]);
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
-const SANDBOX_JR_RPC_PATH = `${SANDBOX_RUNTIME_BIN_DIR}/jr-rpc`;
 const SANDBOX_ERROR_FIELDS = [{ sourceKey: "sandboxId", attributeKey: "sandbox_id", summaryKey: "sandboxId" }] as const;
 
 function truncateOutput(output: string, maxLength: number): { value: string; truncated: boolean } {
@@ -112,17 +115,6 @@ async function buildSkillSyncFiles(availableSkills: SkillMetadata[]): Promise<Ar
   filesToWrite.push({
     path: `${SANDBOX_SKILLS_ROOT}/index.json`,
     content: Buffer.from(JSON.stringify(index), "utf8")
-  });
-  filesToWrite.push({
-    path: SANDBOX_JR_RPC_PATH,
-    content: Buffer.from(
-      `#!/usr/bin/env bash
-set -euo pipefail
-echo "jr-rpc is host-mediated in this runtime. Use: jr-rpc credential issue|exec ..." >&2
-exit 64
-`,
-      "utf8"
-    )
   });
 
   return filesToWrite;
@@ -266,14 +258,6 @@ export function createSandboxExecutor(options?: {
               }
 
               await targetSandbox.writeFiles(filesToWrite);
-              const chmod = await targetSandbox.runCommand({
-                cmd: "bash",
-                args: ["-c", `chmod +x "${SANDBOX_JR_RPC_PATH}"`],
-                cwd: SANDBOX_WORKSPACE_ROOT
-              });
-              if (chmod.exitCode !== 0) {
-                throw new Error(`failed to set executable bit for ${SANDBOX_JR_RPC_PATH}`);
-              }
             } catch (error) {
               throwSandboxOperationError("sandbox writeFiles", error, true);
             }
@@ -431,27 +415,44 @@ export function createSandboxExecutor(options?: {
 
     toolExecutors = {
       bash: async (input) => {
+        const restoreNetworkPolicy = activeSandbox.networkPolicy ?? "allow-all";
+        if (input.headerTransforms && input.headerTransforms.length > 0) {
+          const allow: Record<string, Array<{ transform: Array<{ headers: Record<string, string> }> }>> = {
+            "*": []
+          };
+          for (const transform of input.headerTransforms) {
+            allow[transform.domain] = [{ transform: [{ headers: transform.headers }] }];
+          }
+          await activeSandbox.updateNetworkPolicy({ allow });
+        }
+
         const pathPrefix = `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`;
-        const commandResult = await activeSandbox.runCommand({
-          cmd: "bash",
-          args: ["-c", `export PATH="${pathPrefix}" && ${input.command}`],
-          cwd: SANDBOX_WORKSPACE_ROOT,
-          ...(input.env ? { env: input.env } : {})
-        });
-        const maxOutputLength = Number.parseInt(process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "", 10);
-        const boundedOutputLength =
-          Number.isFinite(maxOutputLength) && maxOutputLength > 0 ? maxOutputLength : DEFAULT_MAX_OUTPUT_LENGTH;
-        const stdoutRaw = await commandResult.stdout();
-        const stderrRaw = await commandResult.stderr();
-        const stdout = truncateOutput(stdoutRaw, boundedOutputLength);
-        const stderr = truncateOutput(stderrRaw, boundedOutputLength);
-        return {
-          stdout: stdout.value,
-          stderr: stderr.value,
-          exitCode: commandResult.exitCode,
-          stdoutTruncated: stdout.truncated,
-          stderrTruncated: stderr.truncated
-        };
+        try {
+          const commandResult = await activeSandbox.runCommand({
+            cmd: "bash",
+            args: ["-c", `export PATH="${pathPrefix}" && ${input.command}`],
+            cwd: SANDBOX_WORKSPACE_ROOT,
+            ...(input.env ? { env: input.env } : {})
+          });
+          const maxOutputLength = Number.parseInt(process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "", 10);
+          const boundedOutputLength =
+            Number.isFinite(maxOutputLength) && maxOutputLength > 0 ? maxOutputLength : DEFAULT_MAX_OUTPUT_LENGTH;
+          const stdoutRaw = await commandResult.stdout();
+          const stderrRaw = await commandResult.stderr();
+          const stdout = truncateOutput(stdoutRaw, boundedOutputLength);
+          const stderr = truncateOutput(stderrRaw, boundedOutputLength);
+          return {
+            stdout: stdout.value,
+            stderr: stderr.value,
+            exitCode: commandResult.exitCode,
+            stdoutTruncated: stdout.truncated,
+            stderrTruncated: stderr.truncated
+          };
+        } finally {
+          if (input.headerTransforms && input.headerTransforms.length > 0) {
+            await activeSandbox.updateNetworkPolicy(restoreNetworkPolicy);
+          }
+        }
       },
       readFile: async (input) =>
         (await executeReadFile(input, {

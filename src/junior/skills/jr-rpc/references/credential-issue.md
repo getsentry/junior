@@ -1,4 +1,4 @@
-# `jr-rpc credential issue`
+# `jrRpc` action=issue
 
 ## Purpose
 
@@ -6,25 +6,26 @@ Issue a short-lived credential lease and return metadata for diagnostics.
 
 ## Syntax
 
-`jr-rpc credential issue --cap <capability> --repo <owner/repo> --format token|env|json`
+`jrRpc action=issue capability=<capability> repo=<owner/repo> format=token|env|json`
 
-## Required flags
+## Required fields
 
-- `--cap`
-- `--repo`
+- `action=issue`
+- `capability`
+- `repo`
 
 ## Formats
 
-- `--format token`: one-line metadata summary (no secret value)
-- `--format env`: redacted env key output (`KEY=[REDACTED]`)
-- `--format json`: structured metadata with `envKeys`
+- `format=token`: one-line metadata summary (no secret value)
+- `format=env`: redacted env key output (`KEY=[REDACTED]`)
+- `format=json`: structured metadata with `envKeys`
 
 ## Behavior
 
 - Never returns raw token values.
 - Useful for validating capability/target wiring.
-- Prefer `credential exec` for real operations.
+- Prefer `action=exec` for real operations.
 
 ## Example
 
-`jr-rpc credential issue --cap github.issues.read --repo getsentry/junior --format json`
+`jrRpc action=issue capability=github.issues.read repo=getsentry/junior format=json`

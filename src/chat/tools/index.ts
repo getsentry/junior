@@ -1,6 +1,7 @@
 import { createBashTool } from "@/chat/tools/bash";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
+import { createJrRpcTool } from "@/chat/tools/jr-rpc";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
 import { createReadFileTool } from "@/chat/tools/read-file";
 import { createSlackChannelListMembersTool } from "@/chat/tools/slack-channel-list-members";
@@ -99,6 +100,7 @@ export function createTools(
     ),
     systemTime: wrapToolExecution("systemTime", createSystemTimeTool(), hooks),
     bash: wrapToolExecution("bash", createBashTool(), hooks),
+    jrRpc: wrapToolExecution("jrRpc", createJrRpcTool(), hooks),
     readFile: wrapToolExecution("readFile", createReadFileTool(), hooks),
     writeFile: wrapToolExecution("writeFile", createWriteFileTool(), hooks),
     webSearch: wrapToolExecution("webSearch", createWebSearchTool(), hooks),

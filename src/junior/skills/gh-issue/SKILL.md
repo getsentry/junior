@@ -32,9 +32,9 @@ Use this skill for `/gh-issue` workflows in the harness.
 
 5. Call GitHub API helper script:
 - Use `scripts/gh_issue_api.mjs` for all issue API mutations.
-- Obtain short-lived credentials via `jr-rpc` before running the script.
-- Preferred pattern:
-  - `jr-rpc credential exec --cap github.issues.write --repo owner/repo -- node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs ...`
+- Obtain short-lived credentials via `jrRpc` before running the script.
+- Required pattern:
+  - `jrRpc` with `action=exec`, `capability=github.issues.write`, `repo=owner/repo`, and `command=node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs ...`
 - Read [references/github-issue-api.md](references/github-issue-api.md) for command shapes.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
 
