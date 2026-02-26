@@ -116,4 +116,30 @@ describe("jr-rpc command execution", () => {
     expect(executeBashWithEnv).toHaveBeenCalledWith("node script.mjs create", { GITHUB_TOKEN: "token-1" });
     expect(result).toEqual({ ok: true, exit_code: 0 });
   });
+
+  it("supports exec mode with no active skill context", async () => {
+    const runtime = {
+      issueCapabilityLease: vi.fn(async () => ({
+        id: "lease-1",
+        provider: "github",
+        capability: "github.issues.write",
+        env: { GITHUB_TOKEN: "token-1" },
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      }))
+    } as unknown as SkillCapabilityRuntime;
+
+    const executeBashWithEnv = vi.fn(async () => ({ ok: true, exit_code: 0 }));
+    const command = parseJrRpcCommand(
+      "jr-rpc credential exec --cap github.issues.write --repo getsentry/junior -- node script.mjs create"
+    );
+
+    const result = await executeJrRpcCommand({
+      command: command!,
+      activeSkill: null,
+      capabilityRuntime: runtime,
+      executeBashWithEnv
+    });
+
+    expect(result).toEqual({ ok: true, exit_code: 0 });
+  });
 });

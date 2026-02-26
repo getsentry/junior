@@ -194,6 +194,7 @@ export function buildSystemPrompt(params: {
         "- Use `imageGenerate` when the user asks for image creation.",
         "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
+        "- When a command needs short-lived credentials, load `jr-rpc` skill for exact command/safety guidance before running `jr-rpc`.",
         "- When your work is complete, provide the exact user-facing markdown response.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
         "- Prefer `webSearch` before `webFetch` when the user gave no URL."

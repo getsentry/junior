@@ -23,19 +23,12 @@ export class SkillCapabilityRuntime {
     reason: string;
   }): Promise<CredentialLease> {
     const activeSkill = input.activeSkill;
-    if (!activeSkill) {
-      throw new Error("No active skill; cannot issue capability credentials");
-    }
-    const allowed = activeSkill.requiresCapabilities ?? [];
-    if (!allowed.includes(input.capability)) {
-      throw new Error(`Capability ${input.capability} is not declared by skill ${activeSkill.name}`);
-    }
 
     const explicitTarget = input.repoRef ? parseRepoTarget(input.repoRef) : undefined;
     const target = explicitTarget
       ? explicitTarget
       : extractCapabilityTarget({
-          skillName: activeSkill.name,
+          skillName: activeSkill?.name ?? "unknown",
           commandText: "",
           invocationArgs: this.invocationArgs
         });

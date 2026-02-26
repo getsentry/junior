@@ -23,11 +23,12 @@ Use this skill for `/gh-issue` workflows in the harness.
 - Follow [references/research-rules.md](references/research-rules.md).
 - Prefer first-party evidence (repo code, issues, docs, changelogs).
 - Mark uncertain statements as unknown instead of presenting guesses as facts.
+- For writing quality and structure, use [references/issue-examples.md](references/issue-examples.md).
 
-4. Preview changes before mutating GitHub:
-- For create: preview title/body and sources.
-- For update: preview exact field diffs.
-- For close/reopen or broad body rewrites: require explicit confirmation.
+4. Mutate by default (no preview gate):
+- Execute create/update/comment/labels as soon as required fields are available.
+- Do not pause for confirmation unless the user explicitly asks for preview/dry-run.
+- Require explicit confirmation only for close/reopen or destructive broad rewrites.
 
 5. Call GitHub API helper script:
 - Use `scripts/gh_issue_api.mjs` for all issue API mutations.

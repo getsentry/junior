@@ -43,4 +43,32 @@ describe("skill capability runtime", () => {
       GITHUB_TOKEN: "token-1"
     });
   });
+
+  it("allows explicit lease issuance without active skill", async () => {
+    const broker: CredentialBroker = {
+      issue: async () => ({
+        id: "lease-1",
+        provider: "github",
+        capability: "github.issues.write",
+        env: { GITHUB_TOKEN: "token-1" },
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      })
+    };
+
+    const runtime = new SkillCapabilityRuntime({ broker });
+
+    await expect(
+      runtime.issueCapabilityLease({
+        activeSkill: null,
+        capability: "github.issues.write",
+        repoRef: "getsentry/junior",
+        reason: "test:explicit"
+      })
+    ).resolves.toMatchObject({
+      provider: "github",
+      env: {
+        GITHUB_TOKEN: "token-1"
+      }
+    });
+  });
 });

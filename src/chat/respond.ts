@@ -642,6 +642,13 @@ export async function generateAssistantReply(
       };
     }
 
+    if (explicitSkill) {
+      const preloaded = await skillSandbox.loadSkill(explicitSkill.name);
+      if (preloaded) {
+        activeSkills.push(preloaded);
+      }
+    }
+
     const userTurnText = buildUserTurnText(userInput, context.conversationContext);
 
     if (!getGatewayApiKey()) {
@@ -690,17 +697,19 @@ export async function generateAssistantReply(
         onToolCallEnd: async (toolName, input) => {
           await context.onStatus?.(`${formatToolResultStatusWithInput(toolName, input)}...`);
         },
-        onSkillLoaded: (loadedSkill) => {
-          const existing = activeSkills.find((skill) => skill.name === loadedSkill.name);
+        onSkillLoaded: async (loadedSkill) => {
+          const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
+          const effective = resolvedSkill ?? loadedSkill;
+          const existing = activeSkills.find((skill) => skill.name === effective.name);
           if (existing) {
-            existing.body = loadedSkill.body;
-            existing.description = loadedSkill.description;
-            existing.skillPath = loadedSkill.skillPath;
-            existing.allowedTools = loadedSkill.allowedTools;
-            existing.requiresCapabilities = loadedSkill.requiresCapabilities;
+            existing.body = effective.body;
+            existing.description = effective.description;
+            existing.skillPath = effective.skillPath;
+            existing.allowedTools = effective.allowedTools;
+            existing.requiresCapabilities = effective.requiresCapabilities;
             return;
           }
-          activeSkills.push(loadedSkill);
+          activeSkills.push(effective);
         }
       },
       {
