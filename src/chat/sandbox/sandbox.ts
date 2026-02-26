@@ -7,6 +7,8 @@ import { setSpanAttributes, setSpanStatus, withSpan, type ObservabilityContext }
 import { SANDBOX_SKILLS_ROOT, SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SkillMetadata } from "@/chat/skills";
 
+// Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
+// Spec: specs/logging/tracing-spec.md (required sandbox span semantics)
 interface SandboxExecutionInput {
   toolName: string;
   input: unknown;
@@ -26,13 +28,30 @@ export interface SandboxExecutor {
 }
 
 interface ToolExecutors {
-  bash: (input: { command: string }) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  bash: (input: {
+    command: string;
+    env?: Record<string, string>;
+  }) => Promise<{ stdout: string; stderr: string; exitCode: number; stdoutTruncated: boolean; stderrTruncated: boolean }>;
   readFile: (input: { path: string }) => Promise<{ content: string }>;
   writeFile: (input: { path: string; content: string }) => Promise<{ success: boolean }>;
 }
 
 const SANDBOX_TOOL_NAMES = new Set(["bash", "readFile", "writeFile"]);
+const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
+const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
+const SANDBOX_JR_RPC_PATH = `${SANDBOX_RUNTIME_BIN_DIR}/jr-rpc`;
 const SANDBOX_ERROR_FIELDS = [{ sourceKey: "sandboxId", attributeKey: "sandbox_id", summaryKey: "sandboxId" }] as const;
+
+function truncateOutput(output: string, maxLength: number): { value: string; truncated: boolean } {
+  if (output.length <= maxLength) {
+    return { value: output, truncated: false };
+  }
+  const truncatedLength = output.length - maxLength;
+  return {
+    value: `${output.slice(0, maxLength)}\n\n[output truncated: ${truncatedLength} characters removed]`,
+    truncated: true
+  };
+}
 
 function toPosixRelative(base: string, absolute: string): string {
   return path.relative(base, absolute).split(path.sep).join("/");
@@ -94,6 +113,17 @@ async function buildSkillSyncFiles(availableSkills: SkillMetadata[]): Promise<Ar
     path: `${SANDBOX_SKILLS_ROOT}/index.json`,
     content: Buffer.from(JSON.stringify(index), "utf8")
   });
+  filesToWrite.push({
+    path: SANDBOX_JR_RPC_PATH,
+    content: Buffer.from(
+      `#!/usr/bin/env bash
+set -euo pipefail
+echo "jr-rpc is host-mediated in this runtime. Use: jr-rpc credential issue|exec ..." >&2
+exit 64
+`,
+      "utf8"
+    )
+  });
 
   return filesToWrite;
 }
@@ -111,7 +141,7 @@ function collectDirectories(filesToWrite: Array<{ path: string; content: Buffer 
   }
 
   return Array.from(directoriesToEnsure)
-    .filter((directory) => directory === SANDBOX_SKILLS_ROOT || directory.startsWith(`${SANDBOX_SKILLS_ROOT}/`))
+    .filter((directory) => directory === SANDBOX_WORKSPACE_ROOT || directory.startsWith(`${SANDBOX_WORKSPACE_ROOT}/`))
     .sort((a, b) => a.length - b.length);
 }
 
@@ -236,6 +266,14 @@ export function createSandboxExecutor(options?: {
               }
 
               await targetSandbox.writeFiles(filesToWrite);
+              const chmod = await targetSandbox.runCommand({
+                cmd: "bash",
+                args: ["-c", `chmod +x "${SANDBOX_JR_RPC_PATH}"`],
+                cwd: SANDBOX_WORKSPACE_ROOT
+              });
+              if (chmod.exitCode !== 0) {
+                throw new Error(`failed to set executable bit for ${SANDBOX_JR_RPC_PATH}`);
+              }
             } catch (error) {
               throwSandboxOperationError("sandbox writeFiles", error, true);
             }
@@ -385,19 +423,36 @@ export function createSandboxExecutor(options?: {
         })
     );
 
-    const executeBash = toolkit.tools.bash.execute;
     const executeReadFile = toolkit.tools.readFile.execute;
     const executeWriteFile = toolkit.tools.writeFile.execute;
-    if (!executeBash || !executeReadFile || !executeWriteFile) {
+    if (!executeReadFile || !executeWriteFile) {
       throw new Error("bash-tool did not return executable tool handlers");
     }
 
     toolExecutors = {
-      bash: async (input) =>
-        (await executeBash(input, {
-          toolCallId: "sandbox-bash",
-          messages: []
-        })) as { stdout: string; stderr: string; exitCode: number },
+      bash: async (input) => {
+        const pathPrefix = `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`;
+        const commandResult = await activeSandbox.runCommand({
+          cmd: "bash",
+          args: ["-c", `export PATH="${pathPrefix}" && ${input.command}`],
+          cwd: SANDBOX_WORKSPACE_ROOT,
+          ...(input.env ? { env: input.env } : {})
+        });
+        const maxOutputLength = Number.parseInt(process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "", 10);
+        const boundedOutputLength =
+          Number.isFinite(maxOutputLength) && maxOutputLength > 0 ? maxOutputLength : DEFAULT_MAX_OUTPUT_LENGTH;
+        const stdoutRaw = await commandResult.stdout();
+        const stderrRaw = await commandResult.stderr();
+        const stdout = truncateOutput(stdoutRaw, boundedOutputLength);
+        const stderr = truncateOutput(stderrRaw, boundedOutputLength);
+        return {
+          stdout: stdout.value,
+          stderr: stderr.value,
+          exitCode: commandResult.exitCode,
+          stdoutTruncated: stdout.truncated,
+          stderrTruncated: stderr.truncated
+        };
+      },
       readFile: async (input) =>
         (await executeReadFile(input, {
           toolCallId: "sandbox-read-file",
@@ -440,6 +495,15 @@ export function createSandboxExecutor(options?: {
       if (!command) {
         throw new Error("command is required");
       }
+      const envInput = rawInput.env;
+      const env =
+        envInput && typeof envInput === "object" && !Array.isArray(envInput)
+          ? Object.fromEntries(
+              Object.entries(envInput as Record<string, unknown>)
+                .filter(([, value]) => typeof value === "string")
+                .map(([key, value]) => [key, value as string])
+            )
+          : undefined;
 
       const executeBash = (await getToolExecutors()).bash;
       const result = await withSandboxSpan(
@@ -448,12 +512,12 @@ export function createSandboxExecutor(options?: {
         {
           "process.executable.name": "bash"
         },
-        async () => {
-          try {
-            const response = await executeBash({ command });
-            setSpanAttributes({
-              "process.exit.code": response.exitCode,
-              "app.sandbox.stdout_bytes": Buffer.byteLength(response.stdout ?? "", "utf8"),
+          async () => {
+            try {
+              const response = await executeBash({ command, ...(env ? { env } : {}) });
+              setSpanAttributes({
+                "process.exit.code": response.exitCode,
+                "app.sandbox.stdout_bytes": Buffer.byteLength(response.stdout ?? "", "utf8"),
               "app.sandbox.stderr_bytes": Buffer.byteLength(response.stderr ?? "", "utf8"),
               ...(response.exitCode !== 0 ? { "error.type": "nonzero_exit" } : {})
             });
@@ -479,8 +543,8 @@ export function createSandboxExecutor(options?: {
           timed_out: false,
           stdout: result.stdout,
           stderr: result.stderr,
-          stdout_truncated: false,
-          stderr_truncated: false
+          stdout_truncated: result.stdoutTruncated,
+          stderr_truncated: result.stderrTruncated
         } as T
       };
     }

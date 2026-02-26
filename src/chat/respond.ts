@@ -6,6 +6,7 @@ import { botConfig } from "@/chat/config";
 import { extractGenAiUsageAttributes, serializeGenAiAttribute } from "@/chat/gen-ai-attributes";
 import {
   logException,
+  logInfo,
   logWarn,
   setSpanAttributes,
   setSpanStatus,
@@ -14,6 +15,9 @@ import {
   type ObservabilityContext
 } from "@/chat/observability";
 import { buildSystemPrompt } from "@/chat/prompt";
+import { createSkillCapabilityRuntime } from "@/chat/capabilities/factory";
+import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
+import { executeJrRpcCommand, parseJrRpcCommand } from "@/chat/capabilities/jr-rpc";
 import { SkillSandbox } from "@/chat/skill-sandbox";
 import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -393,6 +397,7 @@ function createAgentTools(
   spanContext: ObservabilityContext,
   onStatus?: (status: string) => void | Promise<void>,
   sandboxExecutor?: SandboxExecutor,
+  capabilityRuntime?: SkillCapabilityRuntime,
   hooks?: {
     onGeneratedFiles?: (files: FileUpload[]) => void;
     onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
@@ -474,18 +479,72 @@ function createAgentTools(
               };
             }
 
-            const result = sandboxExecutor?.canExecute(toolName)
-              ? await sandboxExecutor.execute({
-                  toolName,
-                  input: parsed
-                })
-              : await toolDef.execute(parsed as never, {
-                  experimental_context: sandbox
-                });
+            const maybeRpcCommand =
+              toolName === "bash" ? parseJrRpcCommand(String(parsed.command ?? "").trim()) : null;
+            const injectedEnv =
+              toolName === "bash" && !maybeRpcCommand
+                ? await capabilityRuntime?.resolveBashEnv({
+                    command: String(parsed.command ?? ""),
+                    activeSkill: sandbox.getActiveSkill()
+                  })
+                : undefined;
+            if (toolName === "bash" && injectedEnv && Object.keys(injectedEnv).length > 0) {
+              logInfo(
+                "credential_inject_start",
+                {},
+                {
+                  "app.skill.name": sandbox.getActiveSkill()?.name,
+                  "app.credential.env_keys": Object.keys(injectedEnv)
+                },
+                "Injecting scoped credential env for sandbox command"
+              );
+            }
+
+            const result =
+              maybeRpcCommand && capabilityRuntime && sandboxExecutor?.canExecute("bash")
+                ? await executeJrRpcCommand({
+                    command: maybeRpcCommand,
+                    activeSkill: sandbox.getActiveSkill(),
+                    capabilityRuntime,
+                    executeBashWithEnv: async (command, env) => {
+                      const nested = await sandboxExecutor.execute({
+                        toolName: "bash",
+                        input: {
+                          command,
+                          env
+                        }
+                      });
+                      return nested.result;
+                    }
+                  })
+                : sandboxExecutor?.canExecute(toolName)
+                  ? await sandboxExecutor.execute({
+                      toolName,
+                      input:
+                        toolName === "bash" && injectedEnv
+                          ? {
+                              ...parsed,
+                              env: injectedEnv
+                            }
+                          : parsed
+                    })
+                  : await toolDef.execute(parsed as never, {
+                      experimental_context: sandbox
+                    });
             const resultDetails =
               sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
                 ? (result as { result: unknown }).result
                 : result;
+            if (toolName === "bash" && injectedEnv && Object.keys(injectedEnv).length > 0) {
+              logInfo(
+                "credential_inject_cleanup",
+                {},
+                {
+                  "app.skill.name": sandbox.getActiveSkill()?.name
+                },
+                "Scoped credential env injection completed"
+              );
+            }
 
             const durationMs = Date.now() - toolStartedAt;
             const toolResultAttribute = serializeGenAiAttribute(resultDetails);
@@ -565,6 +624,7 @@ export async function generateAssistantReply(
       : null;
     const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
+    const capabilityRuntime = createSkillCapabilityRuntime(explicitInvocation?.args);
 
     if (explicitInvocation && !explicitSkill) {
       return {
@@ -637,6 +697,7 @@ export async function generateAssistantReply(
             existing.description = loadedSkill.description;
             existing.skillPath = loadedSkill.skillPath;
             existing.allowedTools = loadedSkill.allowedTools;
+            existing.requiresCapabilities = loadedSkill.requiresCapabilities;
             return;
           }
           activeSkills.push(loadedSkill);
@@ -690,6 +751,7 @@ export async function generateAssistantReply(
     ]);
 
     const agent = new Agent({
+      getApiKey: () => getGatewayApiKey(),
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),
@@ -699,6 +761,7 @@ export async function generateAssistantReply(
           spanContext,
           context.onStatus,
           sandboxExecutor,
+          capabilityRuntime,
           {
             onToolCall: (toolName) => {
               toolCalls.push(toolName);

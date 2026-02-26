@@ -1,0 +1,49 @@
+---
+name: gh-issue
+description: Create and update GitHub issues via GitHub App identity with evidence-backed issue content. Use when users ask to open, edit, label, comment on, or close/reopen GitHub issues and want accurate, source-verified writeups.
+requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write
+---
+
+# GitHub Issue Operations
+
+Use this skill for `/gh-issue` workflows in the harness.
+
+## Workflow
+
+1. Confirm operation and target:
+- Determine `create`, `update`, `comment`, `labels`, or `state` action.
+- Resolve repository (`owner/repo`) and issue number for non-create operations.
+
+2. Build issue content from the template:
+- Start from [references/issue-template.md](references/issue-template.md).
+- Keep sections concise and remove empty sections.
+- Preserve explicit user wording for user-provided facts.
+
+3. Research and verify before writing factual claims:
+- Follow [references/research-rules.md](references/research-rules.md).
+- Prefer first-party evidence (repo code, issues, docs, changelogs).
+- Mark uncertain statements as unknown instead of presenting guesses as facts.
+
+4. Preview changes before mutating GitHub:
+- For create: preview title/body and sources.
+- For update: preview exact field diffs.
+- For close/reopen or broad body rewrites: require explicit confirmation.
+
+5. Call GitHub API helper script:
+- Use `scripts/gh_issue_api.mjs` for all issue API mutations.
+- Obtain short-lived credentials via `jr-rpc` before running the script.
+- Preferred pattern:
+  - `jr-rpc credential exec --cap github.issues.write --repo owner/repo -- node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs ...`
+- Read [references/github-issue-api.md](references/github-issue-api.md) for command shapes.
+- Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
+
+6. Report result:
+- Return canonical issue URL, issue number, applied changes, and confidence.
+- Include references used for verified claims.
+
+## Guardrails
+
+- Never claim verification without citing sources.
+- Do not overwrite issue fields unless explicitly requested.
+- Prefer partial updates over full body replacement.
+- If repository or installation access is missing, stop and return a concrete remediation message.

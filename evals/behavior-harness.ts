@@ -91,8 +91,10 @@ interface SubscribedDecisionFixture {
 }
 
 interface BehaviorCaseConfig {
+  enable_test_credentials?: boolean;
   fail_reply_call?: number;
   skill_dirs?: string[];
+  test_credential_token?: string;
   unset_gateway_api_key?: boolean;
   reply_texts?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
@@ -186,7 +188,9 @@ const caseSchema = z.object({
   behavior: z
     .object({
       fail_reply_call: z.number().int().positive().optional(),
+      enable_test_credentials: z.boolean().optional(),
       skill_dirs: z.array(z.string().min(1)).optional(),
+      test_credential_token: z.string().min(1).optional(),
       unset_gateway_api_key: z.boolean().optional(),
       reply_texts: z.array(z.string()).optional(),
       subscribed_decisions: z
@@ -377,11 +381,19 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   let replyCallCount = 0;
   let decisionIndex = 0;
   const originalSkillDirs = process.env.SKILL_DIRS;
+  const originalEnableTestCredentials = process.env.EVAL_ENABLE_TEST_CREDENTIALS;
+  const originalTestCredentialToken = process.env.EVAL_TEST_CREDENTIAL_TOKEN;
   const configuredSkillDirs =
     testCase.behavior?.skill_dirs?.map((entry) => path.resolve(process.cwd(), entry)) ?? [];
   if (configuredSkillDirs.length > 0) {
     process.env.SKILL_DIRS = configuredSkillDirs.join(path.delimiter);
     resetSkillDiscoveryCache();
+  }
+  if (testCase.behavior?.enable_test_credentials) {
+    process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
+    if (testCase.behavior?.test_credential_token) {
+      process.env.EVAL_TEST_CREDENTIAL_TOKEN = testCase.behavior.test_credential_token;
+    }
   }
 
   const getThread = (fixture: BehaviorEventThreadFixture): FakeThread => {
@@ -610,6 +622,18 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         process.env.SKILL_DIRS = originalSkillDirs;
       }
       resetSkillDiscoveryCache();
+    }
+    if (testCase.behavior?.enable_test_credentials) {
+      if (originalEnableTestCredentials === undefined) {
+        delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
+      } else {
+        process.env.EVAL_ENABLE_TEST_CREDENTIALS = originalEnableTestCredentials;
+      }
+      if (originalTestCredentialToken === undefined) {
+        delete process.env.EVAL_TEST_CREDENTIAL_TOKEN;
+      } else {
+        process.env.EVAL_TEST_CREDENTIAL_TOKEN = originalTestCredentialToken;
+      }
     }
   }
 

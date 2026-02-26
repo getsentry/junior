@@ -120,7 +120,7 @@ export function buildSystemPrompt(params: {
 }): string {
   const { availableSkills, activeSkills, invocation, requester, assistant, artifactState } = params;
   // Core harness contract:
-  // - See docs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
+  // - See specs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
   // - Keep this prompt generic and platform-level (tone, evidence, output constraints).
   // - Do not encode per-skill behavior here.
   // - Skill-specific instructions belong in skills/*/SKILL.md and are injected via active skill context.

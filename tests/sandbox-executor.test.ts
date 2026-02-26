@@ -33,6 +33,7 @@ interface MockSandbox {
   sandboxId: string;
   mkDir: ReturnType<typeof vi.fn>;
   writeFiles: ReturnType<typeof vi.fn>;
+  runCommand: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   extendTimeout: ReturnType<typeof vi.fn>;
 }
@@ -56,6 +57,11 @@ function makeSandbox(
         throw options.writeFilesError;
       }
     }),
+    runCommand: vi.fn(async () => ({
+      exitCode: 0,
+      stdout: async () => "",
+      stderr: async () => ""
+    })),
     stop: vi.fn(async () => {}),
     extendTimeout: vi.fn(async () => {})
   };
@@ -112,8 +118,13 @@ describe("createSandboxExecutor", () => {
     expect(sandbox).toBe(freshSandbox);
     expect(sandboxGetMock).toHaveBeenCalledWith({ sandboxId: "sbx_stopped" });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-    expect(stoppedSandbox.mkDir).toHaveBeenCalledTimes(1);
-    expect(freshSandbox.mkDir).toHaveBeenCalledTimes(1);
+    expect(stoppedSandbox.mkDir).toHaveBeenCalled();
+    expect(freshSandbox.mkDir).toHaveBeenCalled();
+    expect(freshSandbox.runCommand).toHaveBeenCalledWith({
+      cmd: "bash",
+      args: ["-c", 'chmod +x "/vercel/sandbox/.junior/bin/jr-rpc"'],
+      cwd: "/vercel/sandbox"
+    });
     expect(executor.getSandboxId()).toBe("sbx_fresh");
   });
 

@@ -4,7 +4,7 @@
 - Make span instrumentation consistent, queryable, and low-noise.
 - Define stable span names and operations for workflow and sandbox lifecycle visibility.
 - Preserve end-to-end correlation between spans, logs, and request/workflow context.
-- Keep semantic key selection centralized in `docs/logging/semantics.md`.
+- Keep semantic key selection centralized in `specs/logging/semantics.md`.
 
 ## Non-goals
 - Replacing existing Sentry SDK setup.

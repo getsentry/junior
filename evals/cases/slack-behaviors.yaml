@@ -240,3 +240,33 @@ cases:
       posts_count: 1
       warning_events:
         - agent_turn_provider_error
+
+  - id: jr_rpc_credential_exec_env_smoke
+    description: Eval skill can run a command with an env-gated test credential via jr-rpc.
+    behavior:
+      skill_dirs:
+        - evals/skills
+      enable_test_credentials: true
+      test_credential_token: eval-smoke-token
+    events:
+      - type: new_mention
+        thread:
+          id: thread-jr-rpc-credential
+          channel_id: C-jr-rpc
+          thread_ts: "1700000001.100"
+        message:
+          id: m-jr-rpc-1
+          text: "/jr-rpc-credential-smoke"
+          is_mention: true
+          author:
+            user_id: U-kai
+            user_name: kai
+            full_name: Kai Example
+            is_me: false
+    expected:
+      posts_count: 1
+      tool_calls_include:
+        - load_skill
+        - bash
+      post_contains:
+        - "CREDENTIAL_OK"

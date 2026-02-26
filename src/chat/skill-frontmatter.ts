@@ -2,6 +2,7 @@ import { parse as parseYaml } from "yaml";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const SKILL_NAME_RE = /^[a-z0-9-]+$/;
+const CAPABILITY_TOKEN_RE = /^[a-z0-9]+(?:\.[a-z0-9-]+)+$/;
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
@@ -13,6 +14,7 @@ export interface SkillFrontmatter {
   compatibility?: string;
   license?: string;
   "allowed-tools"?: string;
+  "requires-capabilities"?: string;
   [key: string]: unknown;
 }
 
@@ -100,6 +102,27 @@ export function parseAndValidateSkillFrontmatter(
   }
   if ("allowed-tools" in frontmatter && typeof frontmatter["allowed-tools"] !== "string") {
     return { ok: false, error: 'Frontmatter field "allowed-tools" must be a string when present' };
+  }
+  if ("requires-capabilities" in frontmatter) {
+    if (typeof frontmatter["requires-capabilities"] !== "string") {
+      return { ok: false, error: 'Frontmatter field "requires-capabilities" must be a string when present' };
+    }
+
+    const tokens = frontmatter["requires-capabilities"]
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+
+    for (const token of tokens) {
+      if (!CAPABILITY_TOKEN_RE.test(token)) {
+        return {
+          ok: false,
+          error:
+            `requires-capabilities token "${token}" is invalid; expected dotted lowercase tokens ` +
+            `(for example "github.issues.write")`
+        };
+      }
+    }
   }
 
   return {

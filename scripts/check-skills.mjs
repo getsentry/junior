@@ -4,6 +4,7 @@ import { parse as parseYaml } from "yaml";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const SKILL_NAME_RE = /^[a-z0-9-]+$/;
+const CAPABILITY_TOKEN_RE = /^[a-z0-9]+(?:\.[a-z0-9-]+)+$/;
 const MAX_NAME_LENGTH = 64;
 const SKILL_DESCRIPTION_MAX = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
@@ -120,6 +121,24 @@ async function validateSkillDirectory(skillDir, duplicateNames) {
   }
   if ("allowed-tools" in frontmatter.data && typeof frontmatter.data["allowed-tools"] !== "string") {
     errors.push(`${skillFile}: frontmatter field "allowed-tools" must be a string when present`);
+  }
+  if ("requires-capabilities" in frontmatter.data) {
+    const capabilities = frontmatter.data["requires-capabilities"];
+    if (typeof capabilities !== "string") {
+      errors.push(`${skillFile}: frontmatter field "requires-capabilities" must be a string when present`);
+    } else {
+      const tokens = capabilities
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter(Boolean);
+      for (const token of tokens) {
+        if (!CAPABILITY_TOKEN_RE.test(token)) {
+          errors.push(
+            `${skillFile}: invalid requires-capabilities token "${token}" (expected dotted lowercase token such as github.issues.write)`
+          );
+        }
+      }
+    }
   }
 
   if (!raw.replace(FRONTMATTER_RE, "").trim()) {

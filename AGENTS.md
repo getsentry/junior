@@ -15,8 +15,15 @@ Co-Authored-By: (agent model name) <email>
 - Use `/create-pr` skill for any PR creation operation.
 - Use `/skill-creator` skill when creating or updating skills.
 - Use evals for end-to-end behavior testing (excluding live Slack transport/integration). See `evals/README.md`.
-- Use instrumentation conventions from `docs/logging/index.md`.
+- Use instrumentation conventions from `specs/logging/index.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
+
+## Known Specs
+- `specs/security-policy.md` (global runtime/container/token security policy)
+- `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
+- `specs/harness-agent-spec.md` (agent loop and output contract)
+- `specs/logging/index.md` (logging/tracing spec index)
+- `specs/agent-stability-evaluation.md` (known stability risks and mitigations)
 
 ## Local Skills
 - Use `agents-md` for `AGENTS.md`/`CLAUDE.md` maintenance. See `.agents/skills/agents-md/SKILL.md`
