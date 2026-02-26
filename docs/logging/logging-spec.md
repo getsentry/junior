@@ -95,18 +95,22 @@ All existing helpers in `observability.ts` remain as compatibility shims initial
 - `messaging.system` = `slack`
 - `messaging.destination.name` (channel identifier)
 - `messaging.message.id` (message ts/id when available)
-- `messaging.conversation.id` (thread id)
+- `messaging.message.conversation_id` (thread id)
 - `enduser.id` (requester user id)
 
 ### GenAI
 - `gen_ai.request.model`
-- `gen_ai.system` (provider/gateway)
-- `gen_ai.operation.name` (e.g. `generate_text`)
+- `gen_ai.provider.name` (provider/gateway)
+- `gen_ai.operation.name` (e.g. `chat`, `invoke_agent`, `execute_tool`)
+- `gen_ai.input.messages` (serialized request messages when captured)
+- `gen_ai.output.messages` (serialized model output messages when captured)
+- `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` (when available)
+- `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` (for tool-call spans when captured)
 
 ### Error
 - `error.type`
 - `error.message`
-- `error.stack` (only on error-level logs/events; truncated)
+- `exception.stacktrace` (only on error-level logs/events; truncated)
 
 ### Workflow / App-specific (namespaced)
 Only when no semantic key exists:
@@ -117,9 +121,9 @@ Only when no semantic key exists:
 
 ## Attribute Rules
 - Flat map only; no nested objects.
-- Value types: string | number | boolean.
+- Value types: string | number | boolean | array of strings.
 - `undefined`, `null`, empty string dropped.
-- Arrays converted to compact summaries unless explicitly allowed.
+- Arrays should be used only when a semantic convention explicitly expects repeated values (for example HTTP headers).
 - Large strings truncated with suffix `...`.
 
 ## Redaction Rules

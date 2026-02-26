@@ -3,6 +3,7 @@ import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
 import { Value } from "@sinclair/typebox/value";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
+import { extractGenAiUsageAttributes, serializeGenAiAttribute } from "@/chat/gen-ai-attributes";
 import {
   logException,
   logWarn,
@@ -18,7 +19,7 @@ import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } fro
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
-import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
+import { GEN_AI_PROVIDER_NAME, getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { createSandboxExecutor, type SandboxExecutor } from "@/chat/sandbox/sandbox";
 
 export interface ReplyRequestContext {
@@ -299,6 +300,23 @@ function formatToolResultStatusWithInput(toolName: string, input: unknown): stri
   return formatToolResultStatus(toolName);
 }
 
+function toObservablePromptPart(
+  part: { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+): Record<string, unknown> {
+  if (part.type === "text") {
+    return {
+      type: "text",
+      text: part.text
+    };
+  }
+
+  return {
+    type: "image",
+    mimeType: part.mimeType,
+    data: `[omitted:${part.data.length}]`
+  };
+}
+
 function buildUserTurnText(userInput: string, conversationContext?: string): string {
   const trimmedContext = conversationContext?.trim();
   if (!trimmedContext) {
@@ -373,8 +391,9 @@ function isAssistantMessage(value: unknown): value is AssistantMessage {
 }
 
 function extractAssistantText(message: AssistantMessage): string {
-  return message.content
-    .filter((part): part is { type: "text"; text: string } => part.type === "text")
+  const content = (message as { content?: Array<{ type?: unknown; text?: unknown }> }).content ?? [];
+  return content
+    .filter((part): part is { type: "text"; text: string } => part.type === "text" && typeof part.text === "string")
     .map((part) => part.text)
     .join("\n");
 }
@@ -396,13 +415,15 @@ function createAgentTools(
     label: toolName,
     description: toolDef.description,
     parameters: toolDef.inputSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (toolCallId: unknown, params: unknown) => {
+      const normalizedToolCallId = typeof toolCallId === "string" && toolCallId.length > 0 ? toolCallId : undefined;
+      const toolArgumentsAttribute = serializeGenAiAttribute(params);
       hooks?.onToolCall?.(toolName);
       const toolStartedAt = Date.now();
       await onStatus?.(`${formatToolStatusWithInput(toolName, params)}...`);
       return withSpan(
-        "gen_ai.tool_call",
-        "gen_ai.tool_call",
+        `execute_tool ${toolName}`,
+        "gen_ai.execute_tool",
         spanContext,
         async () => {
           if (!Value.Check(toolDef.inputSchema, params)) {
@@ -413,16 +434,18 @@ function createAgentTools(
             const validationMessage = details.length > 0 ? details : "Invalid tool input";
             const durationMs = Date.now() - toolStartedAt;
             setSpanAttributes({
-              "app.ai.tool_duration_ms": durationMs
+              "app.ai.tool_duration_ms": durationMs,
+              "error.type": "tool_input_validation_error"
             });
             setSpanStatus("error");
             logWarn(
               "agent_tool_call_invalid_input",
               {},
               {
-                "gen_ai.system": "vercel-ai-gateway",
-                "gen_ai.operation.name": "tool_call",
-                "app.ai.tool_name": toolName,
+                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                "gen_ai.operation.name": "execute_tool",
+                "gen_ai.tool.name": toolName,
+                ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
                 "app.ai.tool_duration_ms": durationMs
               },
               "Agent tool call input validation failed"
@@ -432,9 +455,10 @@ function createAgentTools(
               "agent_tool_call_invalid_input_exception",
               {},
               {
-                "gen_ai.system": "vercel-ai-gateway",
-                "gen_ai.operation.name": "tool_call",
-                "app.ai.tool_name": toolName,
+                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                "gen_ai.operation.name": "execute_tool",
+                "gen_ai.tool.name": toolName,
+                ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
                 "app.ai.tool_duration_ms": durationMs
               },
               "Agent tool call input validation failed with exception"
@@ -447,9 +471,13 @@ function createAgentTools(
             if (typeof toolDef.execute !== "function") {
               const answer = toolName === "finalAnswer" ? String((parsed.answer as string | undefined) ?? "") : "";
               const durationMs = Date.now() - toolStartedAt;
+              const toolResultAttribute = serializeGenAiAttribute(
+                toolName === "finalAnswer" ? { answer } : { ok: true }
+              );
               setSpanAttributes({
                 "app.ai.tool_duration_ms": durationMs,
-                "app.ai.tool_outcome": "success"
+                "app.ai.tool_outcome": "success",
+                ...(toolResultAttribute ? { "gen_ai.tool.call.result": toolResultAttribute } : {})
               });
               setSpanStatus("ok");
               await onStatus?.(`${formatToolResultStatusWithInput(toolName, parsed)}...`);
@@ -473,9 +501,11 @@ function createAgentTools(
                 : result;
 
             const durationMs = Date.now() - toolStartedAt;
+            const toolResultAttribute = serializeGenAiAttribute(resultDetails);
             setSpanAttributes({
               "app.ai.tool_duration_ms": durationMs,
-              "app.ai.tool_outcome": "success"
+              "app.ai.tool_outcome": "success",
+              ...(toolResultAttribute ? { "gen_ai.tool.call.result": toolResultAttribute } : {})
             });
             setSpanStatus("ok");
             await onStatus?.(`${formatToolResultStatusWithInput(toolName, parsed)}...`);
@@ -487,7 +517,8 @@ function createAgentTools(
             const durationMs = Date.now() - toolStartedAt;
             setSpanAttributes({
               "app.ai.tool_duration_ms": durationMs,
-              "app.ai.tool_outcome": "error"
+              "app.ai.tool_outcome": "error",
+              "error.type": error instanceof Error ? error.name : "tool_execution_error"
             });
             setSpanStatus("error");
             logException(
@@ -495,9 +526,10 @@ function createAgentTools(
               "agent_tool_call_failed",
               {},
               {
-                "gen_ai.system": "vercel-ai-gateway",
-                "gen_ai.operation.name": "tool_call",
-                "app.ai.tool_name": toolName,
+                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                "gen_ai.operation.name": "execute_tool",
+                "gen_ai.tool.name": toolName,
+                ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
                 "app.ai.tool_duration_ms": durationMs
               },
               "Agent tool call failed"
@@ -506,9 +538,11 @@ function createAgentTools(
           }
         },
         {
-          "gen_ai.system": "vercel-ai-gateway",
-          "gen_ai.operation.name": "tool_call",
-          "app.ai.tool_name": toolName
+          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+          "gen_ai.operation.name": "execute_tool",
+          "gen_ai.tool.name": toolName,
+          ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
+          ...(toolArgumentsAttribute ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute } : {})
         }
       );
     }
@@ -659,6 +693,17 @@ export async function generateAssistantReply(
       }
     }
 
+    const inputMessagesAttribute = serializeGenAiAttribute([
+      {
+        role: "system",
+        content: [{ type: "text", text: baseInstructions }]
+      },
+      {
+        role: "user",
+        content: userContentParts.map((part) => toObservablePromptPart(part))
+      }
+    ]);
+
     const agent = new Agent({
       initialState: {
         systemPrompt: baseInstructions,
@@ -681,12 +726,14 @@ export async function generateAssistantReply(
     });
 
     const beforeMessageCount = agent.state.messages.length;
+    let newMessages: unknown[] = [];
 
     await withSpan(
       "ai.generate_assistant_reply",
-      "gen_ai.generate_text",
+      "gen_ai.invoke_agent",
       spanContext,
       async () => {
+        let promptResult: unknown;
         const promptPromise = agent.prompt({
           role: "user",
           content: userContentParts,
@@ -704,15 +751,15 @@ export async function generateAssistantReply(
         });
 
         try {
-          await Promise.race([promptPromise, timeoutPromise]);
+          promptResult = await Promise.race([promptPromise, timeoutPromise]);
         } catch (error) {
           if (didTimeout) {
             logWarn(
               "agent_turn_timeout",
               {},
               {
-                "gen_ai.system": "vercel-ai-gateway",
-                "gen_ai.operation.name": "agent_turn",
+                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                "gen_ai.operation.name": "invoke_agent",
                 "gen_ai.request.model": botConfig.modelId,
                 "app.ai.turn_timeout_ms": AGENT_TURN_TIMEOUT_MS
               },
@@ -726,12 +773,25 @@ export async function generateAssistantReply(
             clearTimeout(timeoutId);
           }
         }
+
+        newMessages = agent.state.messages.slice(beforeMessageCount) as unknown[];
+        const outputMessages = newMessages.filter(isAssistantMessage);
+        const outputMessagesAttribute = serializeGenAiAttribute(outputMessages);
+        const usageAttributes = extractGenAiUsageAttributes(promptResult, agent.state, ...outputMessages);
+        setSpanAttributes({
+          ...(outputMessagesAttribute ? { "gen_ai.output.messages": outputMessagesAttribute } : {}),
+          ...usageAttributes
+        });
+      },
+      {
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": "invoke_agent",
+        "gen_ai.request.model": botConfig.modelId,
+        ...(inputMessagesAttribute ? { "gen_ai.input.messages": inputMessagesAttribute } : {})
       }
     );
 
     await context.onStatus?.("Drafting response...");
-
-    const newMessages = agent.state.messages.slice(beforeMessageCount) as unknown[];
     const toolResults = newMessages.filter(isToolResultMessage);
 
     let finalAnswer: string | undefined;

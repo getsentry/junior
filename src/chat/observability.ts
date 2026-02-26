@@ -12,6 +12,22 @@ import {
 
 export interface ObservabilityContext extends LogContext {}
 
+type SpanAttributePrimitive = string | number | boolean;
+type SpanAttributeValue = SpanAttributePrimitive | string[];
+
+function toSpanAttributeValue(value: unknown): SpanAttributeValue | undefined {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const sanitized = value.filter((entry): entry is string => typeof entry === "string");
+  return sanitized.length > 0 ? sanitized : undefined;
+}
+
 function toContextAndAttributes(
   context: ObservabilityContext,
   attributes: Record<string, unknown>
@@ -102,10 +118,11 @@ export async function withSpan<T>(
   callback: () => Promise<T>,
   attributes: Record<string, unknown> = {}
 ): Promise<T> {
-  const normalizedAttributes: Record<string, string | number | boolean> = {};
+  const normalizedAttributes: Record<string, SpanAttributeValue> = {};
   for (const [key, value] of Object.entries(attributes)) {
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      normalizedAttributes[key] = value;
+    const normalizedValue = toSpanAttributeValue(value);
+    if (normalizedValue !== undefined) {
+      normalizedAttributes[key] = normalizedValue;
     }
   }
 
@@ -131,14 +148,15 @@ export function setSpanAttributes(attributes: Record<string, unknown>): void {
     return;
   }
 
-  const setAttribute = (span as { setAttribute?: (key: string, value: string | number | boolean) => void }).setAttribute;
+  const setAttribute = (span as { setAttribute?: (key: string, value: SpanAttributeValue) => void }).setAttribute;
   if (typeof setAttribute !== "function") {
     return;
   }
 
   for (const [key, value] of Object.entries(attributes)) {
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      setAttribute.call(span, key, value);
+    const normalizedValue = toSpanAttributeValue(value);
+    if (normalizedValue !== undefined) {
+      setAttribute.call(span, key, normalizedValue);
     }
   }
 }

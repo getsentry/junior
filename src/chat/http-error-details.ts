@@ -29,7 +29,7 @@ export interface ExtractHttpErrorDetailsOptions {
 }
 
 export interface ExtractedHttpErrorDetails {
-  attributes: Record<string, string | number | boolean>;
+  attributes: Record<string, string | number | boolean | string[]>;
   summary: string;
   searchableText: string;
 }
@@ -54,7 +54,7 @@ export function extractHttpErrorDetails(
   const normalizedError = error instanceof Error ? error : new Error(String(error));
   const err = (error ?? {}) as HttpErrorLike;
 
-  const attributes: Record<string, string | number | boolean> = {
+  const attributes: Record<string, string | number | boolean | string[]> = {
     "error.type": normalizedError.name || "Error",
     "error.message": toTrimmedString(normalizedError.message, previewLimit) ?? "HTTP error"
   };
@@ -69,24 +69,27 @@ export function extractHttpErrorDetails(
     previewLimit
   );
   const contentType = toTrimmedString(response?.headers?.get?.("content-type"), previewLimit);
-  const requestId =
-    toTrimmedString(response?.headers?.get?.("x-request-id"), previewLimit) ??
-    toTrimmedString(response?.headers?.get?.("x-vercel-id"), previewLimit);
+  const requestIdHeader = toTrimmedString(response?.headers?.get?.("x-request-id"), previewLimit);
+  const vercelIdHeader = toTrimmedString(response?.headers?.get?.("x-vercel-id"), previewLimit);
+  const requestId = requestIdHeader ?? vercelIdHeader;
 
   if (statusCode !== undefined) {
     attributes["http.response.status_code"] = statusCode;
   }
   if (statusText) {
-    attributes["http.response.status_text"] = statusText;
+    attributes[`${prefix}.status_text`] = statusText;
   }
   if (responseUrl) {
     attributes["url.full"] = responseUrl;
   }
   if (contentType) {
-    attributes["http.response.header.content_type"] = contentType;
+    attributes["http.response.header.content-type"] = [contentType];
   }
-  if (requestId) {
-    attributes["http.response.header.request_id"] = requestId;
+  if (requestIdHeader) {
+    attributes["http.response.header.x-request-id"] = [requestIdHeader];
+  }
+  if (vercelIdHeader) {
+    attributes["http.response.header.x-vercel-id"] = [vercelIdHeader];
   }
   if (responseText) {
     attributes[`${prefix}.response_text_preview`] = responseText;

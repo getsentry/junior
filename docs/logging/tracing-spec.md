@@ -20,7 +20,7 @@
 - `op` values use dotted operation categories.
 - Examples:
   - name: `workflow.reply`, op: `workflow.reply`
-  - name: `ai.generate_assistant_reply`, op: `gen_ai.generate_text`
+  - name: `ai.generate_assistant_reply`, op: `gen_ai.invoke_agent`
   - name: `sandbox.create`, op: `sandbox.create`
 
 ## Required Attributes
@@ -31,15 +31,18 @@
 - `deployment.environment.name` (when available)
 
 ### Correlation Context
-- `messaging.conversation.id` / `app.workflow.run_id` / `enduser.id` when available.
+- `messaging.message.conversation_id` / `app.workflow.run_id` / `enduser.id` when available.
 - `messaging.destination.name` for channel context when available.
 - `gen_ai.request.model` for model-level tracing.
+- `gen_ai.input.messages` / `gen_ai.output.messages` when safely captured.
+- `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` when available from provider responses.
+- `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` on tool execution spans when captured.
 - Keep existing context keys aligned with `src/chat/logging.ts` and `src/chat/observability.ts`.
 
 ### Error Attributes
 - `error.type`
 - `error.message`
-- `error.stack` (when captured and safe)
+- `exception.stacktrace` (when captured and safe)
 
 ## Attribute Policy
 - Use OTel semantic keys first.

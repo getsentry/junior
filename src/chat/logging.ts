@@ -2,7 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import * as Sentry from "@sentry/nextjs";
 
 type Primitive = string | number | boolean;
-export type LogAttributes = Record<string, Primitive>;
+type AttributeValue = Primitive | string[];
+export type LogAttributes = Record<string, AttributeValue>;
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export interface EmittedLogRecord {
   attributes: LogAttributes;
@@ -51,6 +52,11 @@ const SECRETS_RE = [
 
 const LEGACY_KEY_MAP: Record<string, string> = {
   error: "error.message",
+  "error.stack": "exception.stacktrace",
+  "gen_ai.system": "gen_ai.provider.name",
+  "gen_ai.request.messages": "gen_ai.input.messages",
+  "gen_ai.response.text": "gen_ai.output.messages",
+  "messaging.conversation.id": "messaging.message.conversation_id",
   bytes: "file.size",
   media_type: "file.mime_type",
   skillDir: "file.path",
@@ -121,7 +127,7 @@ function toSnakeCase(value: string): string {
 }
 
 function isSemanticKey(key: string): boolean {
-  return /^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/.test(key);
+  return /^[a-z][a-z0-9_]*(\.[a-z0-9_][a-z0-9_-]*)+$/.test(key);
 }
 
 function normalizeAttributeKey(key: string): string {
@@ -144,7 +150,7 @@ function normalizeAttributeKey(key: string): string {
   return `app.${snake}`;
 }
 
-function sanitizeValue(value: unknown): Primitive | undefined {
+function sanitizePrimitive(value: unknown): Primitive | undefined {
   if (value === null || value === undefined) return undefined;
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -156,10 +162,6 @@ function sanitizeValue(value: unknown): Primitive | undefined {
     return Number.isFinite(value) ? value : undefined;
   }
   if (typeof value === "boolean") return value;
-  if (Array.isArray(value)) {
-    if (value.length === 0) return undefined;
-    return `array(${value.length})`;
-  }
   if (value instanceof Error) {
     return redactSecrets(value.message);
   }
@@ -174,12 +176,23 @@ function sanitizeValue(value: unknown): Primitive | undefined {
   }
 }
 
+function sanitizeValue(value: unknown): AttributeValue | undefined {
+  if (Array.isArray(value)) {
+    const sanitized = value
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => sanitizePrimitive(entry))
+      .filter((entry): entry is string => typeof entry === "string");
+    return sanitized.length > 0 ? sanitized : undefined;
+  }
+  return sanitizePrimitive(value);
+}
+
 function contextToAttributes(context: LogContext): LogAttributes {
   const attributes: Record<string, unknown> = {
     "app.platform": context.platform,
     "app.request.id": context.requestId,
     "messaging.system": context.platform === "slack" ? "slack" : context.platform,
-    "messaging.conversation.id": context.slackThreadId,
+    "messaging.message.conversation_id": context.slackThreadId,
     "messaging.destination.name": context.slackChannelId,
     "enduser.id": context.slackUserId,
     "app.workflow.run_id": context.workflowRunId,
@@ -303,7 +316,9 @@ export const log = {
       ...attrs,
       "error.type": normalizedError.name,
       "error.message": normalizedError.message,
-      "error.stack": normalizedError.stack
+      "exception.type": normalizedError.name,
+      "exception.message": normalizedError.message,
+      "exception.stacktrace": normalizedError.stack
     }, body ?? normalizedError.message);
 
     Sentry.withScope((scope) => {

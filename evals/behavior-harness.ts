@@ -224,7 +224,7 @@ interface EvalLogEntry {
 }
 
 interface EvalLogRecord {
-  attributes: Record<string, string | number | boolean>;
+  attributes: Record<string, string | number | boolean | string[]>;
   body: string;
   eventName: string;
   level: string;

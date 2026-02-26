@@ -25,14 +25,23 @@ This file is the canonical attribute and naming map for instrumentation in this 
 ## Messaging / Slack
 - `messaging.system`
 - `messaging.destination.name`
-- `messaging.conversation.id`
+- `messaging.message.conversation_id`
 - `messaging.message.id` (when available)
 - `enduser.id`
 
 ## GenAI
-- `gen_ai.system`
+- `gen_ai.provider.name`
 - `gen_ai.operation.name`
 - `gen_ai.request.model`
+- `gen_ai.input.messages` (when captured)
+- `gen_ai.output.messages` (when captured)
+- `gen_ai.usage.input_tokens` (when available)
+- `gen_ai.usage.output_tokens` (when available)
+- `gen_ai.tool.name` (for `execute_tool`)
+- `gen_ai.tool.call.id` (when available)
+- `gen_ai.tool.call.arguments` (when captured)
+- `gen_ai.tool.call.result` (when captured)
+- Prefer `gen_ai.input.messages` / `gen_ai.output.messages` over legacy names like `gen_ai.request.messages` / `gen_ai.response.text`.
 
 ## Process / CLI Execution
 - Span name SHOULD be executable name when possible (for example `bash`).
@@ -58,9 +67,9 @@ Use `app.*` only for data with no current semantic key:
 
 ## Error Semantics
 - `error.type` for low-cardinality error class.
-- `error.message` and `error.stack` only when needed and safe.
+- `error.message` and `exception.stacktrace` only when needed and safe.
 
 ## Naming Rules
 - Span names: low-cardinality.
 - Event names: `snake_case`.
-- `op` values: dotted domain categories (for example `http.server`, `gen_ai.generate_text`, `sandbox.sync`).
+- `op` values: dotted domain categories (for example `http.server`, `gen_ai.invoke_agent`, `sandbox.sync`).

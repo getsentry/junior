@@ -14,7 +14,7 @@ function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
       "thread_lock_acquired",
       {},
       {
-        "messaging.conversation.id": threadId
+        "messaging.message.conversation_id": threadId
       },
       "Acquired thread lock"
     );

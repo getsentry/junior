@@ -1,8 +1,11 @@
 import { completeSimple, getEnvApiKey, getModels, type Message, type Model } from "@mariozechner/pi-ai";
 import type { ZodTypeAny, z } from "zod";
-import { logException, logInfo, logWarn } from "@/chat/observability";
+import { extractGenAiUsageAttributes, serializeGenAiAttribute } from "@/chat/gen-ai-attributes";
+import { logException, logInfo, logWarn, setSpanAttributes } from "@/chat/observability";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
+export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
+const GEN_AI_OPERATION_CHAT = "chat" as const;
 
 export function getGatewayApiKey(): string | undefined {
   return getEnvApiKey("vercel-ai-gateway") || process.env.VERCEL_OIDC_TOKEN;
@@ -100,15 +103,19 @@ export async function completeText(params: {
   const startedAt = Date.now();
   const model = resolveGatewayModel(params.modelId);
   const apiKey = getGatewayApiKey();
+  const requestMessagesAttribute = serializeGenAiAttribute(params.messages);
+  const startAttributes = {
+    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+    "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
+    "gen_ai.request.model": params.modelId,
+    ...(requestMessagesAttribute ? { "gen_ai.input.messages": requestMessagesAttribute } : {}),
+    "app.ai.auth_mode": apiKey ? "api_key" : "ambient"
+  };
+  setSpanAttributes(startAttributes);
   logInfo(
     "ai_completion_start",
     {},
-    {
-      "gen_ai.system": GATEWAY_PROVIDER,
-      "gen_ai.operation.name": "complete_text",
-      "gen_ai.request.model": params.modelId,
-      "app.ai.auth_mode": apiKey ? "api_key" : "ambient"
-    },
+    startAttributes,
     "AI completion started"
   );
   const message = await completeSimple(model, {
@@ -121,16 +128,28 @@ export async function completeText(params: {
     signal: params.signal,
     metadata: params.metadata
   });
+  const outputText = extractText(message);
+  const outputMessagesAttribute = serializeGenAiAttribute([
+    {
+      role: "assistant",
+      content: outputText ? [{ type: "text", text: outputText }] : []
+    }
+  ]);
+  const usageAttributes = extractGenAiUsageAttributes(message);
+  const endAttributes = {
+    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+    "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
+    "gen_ai.request.model": params.modelId,
+    ...(outputMessagesAttribute ? { "gen_ai.output.messages": outputMessagesAttribute } : {}),
+    ...usageAttributes,
+    "app.ai.duration_ms": Date.now() - startedAt,
+    "app.ai.stop_reason": message.stopReason ?? "unknown"
+  };
+  setSpanAttributes(endAttributes);
   logInfo(
     "ai_completion_end",
     {},
-    {
-      "gen_ai.system": GATEWAY_PROVIDER,
-      "gen_ai.operation.name": "complete_text",
-      "gen_ai.request.model": params.modelId,
-      "app.ai.duration_ms": Date.now() - startedAt,
-      "app.ai.stop_reason": message.stopReason ?? "unknown"
-    },
+    endAttributes,
     "AI completion finished"
   );
   if (message.stopReason === "error") {
@@ -139,8 +158,8 @@ export async function completeText(params: {
       "ai_completion_provider_error",
       {},
       {
-        "gen_ai.system": GATEWAY_PROVIDER,
-        "gen_ai.operation.name": "complete_text",
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
         "error.message": providerMessage
       },
@@ -151,7 +170,7 @@ export async function completeText(params: {
 
   return {
     message,
-    text: extractText(message)
+    text: outputText
   };
 }
 
@@ -189,8 +208,8 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
       "ai_completion_failed",
       {},
       {
-        "gen_ai.system": GATEWAY_PROVIDER,
-        "gen_ai.operation.name": "complete_object",
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
         "app.ai.duration_ms": Date.now() - startedAt
       },
@@ -207,8 +226,8 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
       "ai_completion_schema_parse_failed",
       {},
       {
-        "gen_ai.system": GATEWAY_PROVIDER,
-        "gen_ai.operation.name": "complete_object",
+        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+        "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
         "app.ai.duration_ms": Date.now() - startedAt,
         "app.ai.response_preview": preview
@@ -222,8 +241,8 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     "ai_completion_object_end",
     {},
     {
-      "gen_ai.system": GATEWAY_PROVIDER,
-      "gen_ai.operation.name": "complete_object",
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
       "gen_ai.request.model": params.modelId,
       "app.ai.duration_ms": Date.now() - startedAt
     },

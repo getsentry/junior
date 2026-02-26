@@ -27,7 +27,7 @@ import {
 } from "@/chat/slack-actions/types";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { createStateAdapter } from "@/chat/state";
-import { completeObject, completeText } from "@/chat/pi/client";
+import { completeObject, completeText, GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1151,8 +1151,8 @@ async function replyToThread(
           modelId: botConfig.modelId
         };
         const diagnosticsAttributes = {
-          "gen_ai.system": "vercel-ai-gateway",
-          "gen_ai.operation.name": "agent_turn",
+          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+          "gen_ai.operation.name": "invoke_agent",
           "app.ai.outcome": reply.diagnostics.outcome,
           "app.ai.assistant_messages": reply.diagnostics.assistantMessageCount,
           "app.ai.tool_results": reply.diagnostics.toolResultCount,

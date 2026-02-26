@@ -79,8 +79,11 @@ Expected: side effects plus a clear user-visible wrap-up.
 - Every assistant turn must emit one `agent_turn_diagnostics` log event after `generateAssistantReply`.
 - The event must include:
   - `gen_ai.request.model`
-  - `gen_ai.system`
+  - `gen_ai.provider.name`
   - `gen_ai.operation.name`
+  - `gen_ai.input.messages` (when captured)
+  - `gen_ai.output.messages` (when captured)
+  - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` (when available)
   - `app.ai.outcome` (`success|execution_failure|provider_error`)
   - `app.ai.assistant_messages`
   - `app.ai.tool_results`
