@@ -1,6 +1,6 @@
 import { Agent, type AgentTool } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
@@ -263,7 +263,7 @@ function extractAssistantText(message: AssistantMessage): string {
 }
 
 function createAgentTools(
-  tools: Record<string, ToolDefinition>,
+  tools: Record<string, ToolDefinition<any>>,
   sandbox: SkillSandbox,
   onStatus?: (status: string) => void | Promise<void>,
   sandboxExecutor?: VercelSandboxToolExecutor,
@@ -277,7 +277,7 @@ function createAgentTools(
     name: toolName,
     label: toolName,
     description: toolDef.description,
-    parameters: Type.Any(),
+    parameters: toolDef.inputSchema,
     execute: async (_toolCallId, params) => {
       hooks?.onToolCall?.(toolName);
       const toolStartedAt = Date.now();
@@ -292,8 +292,12 @@ function createAgentTools(
         "Agent tool call started"
       );
       await onStatus?.(`${formatToolStatus(toolName)}...`);
-      const parsed = toolDef.inputSchema.safeParse(params);
-      if (!parsed.success) {
+      if (!Value.Check(toolDef.inputSchema, params)) {
+        const details = [...Value.Errors(toolDef.inputSchema, params)]
+          .slice(0, 3)
+          .map((entry) => `${entry.path || "/"}: ${entry.message}`)
+          .join("; ");
+        const validationMessage = details.length > 0 ? details : "Invalid tool input";
         logWarn(
           "agent_tool_call_invalid_input",
           {},
@@ -305,12 +309,25 @@ function createAgentTools(
           },
           "Agent tool call input validation failed"
         );
-        throw new Error(parsed.error.message);
+        logException(
+          new Error(validationMessage),
+          "agent_tool_call_invalid_input_exception",
+          {},
+          {
+            "gen_ai.system": "vercel-ai-gateway",
+            "gen_ai.operation.name": "tool_call",
+            "app.ai.tool_name": toolName,
+            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
+          },
+          "Agent tool call input validation failed with exception"
+        );
+        throw new Error(validationMessage);
       }
+      const parsed = params as Record<string, unknown>;
 
       try {
         if (typeof toolDef.execute !== "function") {
-          const answer = toolName === "final_answer" ? String((parsed.data as { answer?: string }).answer ?? "") : "";
+          const answer = toolName === "final_answer" ? String((parsed.answer as string | undefined) ?? "") : "";
           await onStatus?.("Reviewing tool results...");
           logWarn(
             "agent_tool_call_end",
@@ -332,9 +349,9 @@ function createAgentTools(
         const result = sandboxExecutor?.canExecute(toolName)
           ? await sandboxExecutor.execute({
               toolName,
-              input: parsed.data
+              input: parsed
             })
-          : await toolDef.execute(parsed.data, {
+          : await toolDef.execute(parsed as never, {
               experimental_context: sandbox
             });
 
@@ -563,7 +580,7 @@ export async function generateAssistantReply(
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),
         tools: createAgentTools(
-          tools as Record<string, ToolDefinition>,
+          tools as Record<string, ToolDefinition<any>>,
           skillSandbox,
           context.onStatus,
           sandboxExecutor,
@@ -659,8 +676,7 @@ export async function generateAssistantReply(
 
     const assistantMessages = newMessages.filter(isAssistantMessage);
 
-    const primaryText = [...assistantMessages]
-      .reverse()
+    const primaryText = assistantMessages
       .map((message) => extractAssistantText(message))
       .join("\n")
       .trim();

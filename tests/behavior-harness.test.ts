@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertBehaviorEvalCase, loadBehaviorEvalSuite, runBehaviorEvalCase } from "./behavior-harness";
+import { assertBehaviorEvalCase, loadBehaviorEvalSuite, runBehaviorEvalCase } from "../evals/behavior-harness";
 
 describe("behavior harness", () => {
   it("rejects invalid suite schema with a precise path", () => {

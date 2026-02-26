@@ -1,5 +1,5 @@
 import { tool } from "@/chat/tools/definition";
-import { z } from "zod";
+import { Type } from "@sinclair/typebox";
 import { lookupCanvasSection, updateCanvas } from "@/chat/slack-actions/canvases";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
@@ -7,41 +7,47 @@ import type { ToolState } from "@/chat/tools/types";
 export function createSlackCanvasUpdateTool(state: ToolState) {
   return tool({
     description: "Update a Slack canvas using insert or replace operations.",
-    inputSchema: z.object({
-      canvas_id: z
-        .string()
-        .min(1)
-        .optional()
-        .describe("Optional canvas ID. Defaults to the last canvas used in this thread."),
-      markdown: z
-        .string()
-        .min(1)
-        .describe("Markdown content to insert or use as replacement text."),
-      operation: z
-        .enum(["insert_at_end", "insert_at_start", "replace"])
-        .default("insert_at_end")
-        .describe("Canvas update mode."),
-      section_id: z
-        .string()
-        .min(1)
-        .optional()
-        .describe("Optional section ID required for targeted replace operations."),
-      section_contains_text: z
-        .string()
-        .min(1)
-        .optional()
-        .describe("Optional helper text used to find the target section when section_id is not provided.")
+    inputSchema: Type.Object({
+      canvas_id: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: "Optional canvas ID. Defaults to the last canvas used in this thread."
+        })
+      ),
+      markdown: Type.String({
+        minLength: 1,
+        description: "Markdown content to insert or use as replacement text."
+      }),
+      operation: Type.Optional(
+        Type.Union(
+          [Type.Literal("insert_at_end"), Type.Literal("insert_at_start"), Type.Literal("replace")],
+          { description: "Canvas update mode." }
+        )
+      ),
+      section_id: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: "Optional section ID required for targeted replace operations."
+        })
+      ),
+      section_contains_text: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: "Optional helper text used to find the target section when section_id is not provided."
+        })
+      )
     }),
     execute: async ({ canvas_id, markdown, operation, section_id, section_contains_text }) => {
       try {
         const targetCanvasId = canvas_id ?? state.getCurrentCanvasId();
+        const resolvedOperation = operation ?? "insert_at_end";
         if (!targetCanvasId) {
           return { ok: false, error: "No canvas_id provided and no prior canvas found in thread state" };
         }
         const operationKey = createOperationKey("slack_canvas_update", {
           canvas_id: targetCanvasId,
           markdown,
-          operation,
+          operation: resolvedOperation,
           section_id: section_id ?? null,
           section_contains_text: section_contains_text ?? null
         });
@@ -65,7 +71,7 @@ export function createSlackCanvasUpdateTool(state: ToolState) {
         await updateCanvas({
           canvasId: targetCanvasId,
           markdown,
-          operation,
+          operation: resolvedOperation,
           sectionId
         });
         state.patchArtifactState({ lastCanvasId: targetCanvasId });
@@ -73,7 +79,7 @@ export function createSlackCanvasUpdateTool(state: ToolState) {
         const response = {
           ok: true,
           canvas_id: targetCanvasId,
-          operation,
+          operation: resolvedOperation,
           section_id: sectionId
         };
         state.setOperationResult(operationKey, response);

@@ -1,7 +1,8 @@
 import path from "node:path";
+import dns from "node:dns/promises";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { completeObject } from "@/chat/pi/client";
+import { completeObject, getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { logException, logWarn } from "@/chat/observability";
 import { DEFAULT_EVAL_JUDGE_MODEL } from "./constants";
 import { loadBehaviorEvalSuite, runBehaviorEvalCase } from "./behavior-harness";
@@ -57,12 +58,18 @@ function buildJudgePrompt(
 
 describe("LLM judged behavior evals", () => {
   it("produces per-case numeric scores", async () => {
-    const judgeModel = DEFAULT_EVAL_JUDGE_MODEL;
+    const judgeModel = process.env.EVAL_JUDGE_MODEL?.trim() || DEFAULT_EVAL_JUDGE_MODEL;
     const perCaseTimeoutMs = Number.parseInt(process.env.EVAL_JUDGE_TIMEOUT_MS ?? "45000", 10);
     const harnessTimeoutMs = Number.parseInt(process.env.EVAL_HARNESS_TIMEOUT_MS ?? "120000", 10);
 
     // Preflight once so connectivity/provider failures fail fast and do not look like case-loop hangs.
     try {
+      if (!getGatewayApiKey()) {
+        throw new Error("AI_GATEWAY_API_KEY is missing");
+      }
+      resolveGatewayModel(judgeModel);
+      await dns.lookup("ai-gateway.vercel.sh");
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
       await completeObject({
@@ -76,7 +83,7 @@ describe("LLM judged behavior evals", () => {
       clearTimeout(timeout);
     } catch (error) {
       throw new Error(
-        `Judge preflight failed for model ${judgeModel}: ${error instanceof Error ? error.message : String(error)}`
+        `Judge preflight failed for model ${judgeModel} (provider=vercel-ai-gateway, host=ai-gateway.vercel.sh): ${error instanceof Error ? error.message : String(error)}`
       );
     }
 
@@ -203,6 +210,11 @@ describe("LLM judged behavior evals", () => {
     }
 
     const average = rows.reduce((sum, row) => sum + row.score, 0) / Math.max(rows.length, 1);
+    console.log("[eval-suite:scores]");
+    for (const row of rows) {
+      console.log(`- ${row.id}: ${row.score.toFixed(1)} | ${row.reasoning}`);
+    }
+    console.log(`[eval-suite:average] ${average.toFixed(1)}`);
     logWarn(
       "eval_suite_completed",
       {},

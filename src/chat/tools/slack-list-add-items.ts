@@ -1,5 +1,5 @@
 import { tool } from "@/chat/tools/definition";
-import { z } from "zod";
+import { Type } from "@sinclair/typebox";
 import { addListItems } from "@/chat/slack-actions/lists";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
@@ -7,27 +7,30 @@ import type { ToolState } from "@/chat/tools/types";
 export function createSlackListAddItemsTool(state: ToolState) {
   return tool({
     description: "Add one or more todo items to a Slack list.",
-    inputSchema: z.object({
-      list_id: z
-        .string()
-        .min(1)
-        .optional()
-        .describe("Optional list ID. Defaults to the last list used in this thread."),
-      items: z
-        .array(z.string().min(1))
-        .min(1)
-        .max(25)
-        .describe("List item titles to create."),
-      assignee_user_id: z
-        .string()
-        .min(1)
-        .optional()
-        .describe("Optional Slack user ID assigned to all created items."),
-      due_date: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .optional()
-        .describe("Optional due date in YYYY-MM-DD format.")
+    inputSchema: Type.Object({
+      list_id: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: "Optional list ID. Defaults to the last list used in this thread."
+        })
+      ),
+      items: Type.Array(Type.String({ minLength: 1 }), {
+        minItems: 1,
+        maxItems: 25,
+        description: "List item titles to create."
+      }),
+      assignee_user_id: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: "Optional Slack user ID assigned to all created items."
+        })
+      ),
+      due_date: Type.Optional(
+        Type.String({
+          pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+          description: "Optional due date in YYYY-MM-DD format."
+        })
+      )
     }),
     execute: async ({ list_id, items, assignee_user_id, due_date }) => {
       try {

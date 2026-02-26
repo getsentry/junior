@@ -10,7 +10,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "evals": "vitest run tests/evals/llm-judge.evals.test.ts --reporter=verbose",
+    "evals": "vitest run -c vitest.evals.config.ts evals/llm-judge.eval.ts --reporter=verbose",
     "typecheck": "tsc --noEmit",
     "skills:check": "node scripts/check-skills.mjs"
   },

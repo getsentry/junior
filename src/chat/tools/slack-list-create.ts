@@ -1,5 +1,5 @@
 import { tool } from "@/chat/tools/definition";
-import { z } from "zod";
+import { Type } from "@sinclair/typebox";
 import { createTodoList } from "@/chat/slack-actions/lists";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
@@ -7,12 +7,12 @@ import type { ToolState } from "@/chat/tools/types";
 export function createSlackListCreateTool(state: ToolState) {
   return tool({
     description: "Create a Slack todo list for action tracking.",
-    inputSchema: z.object({
-      name: z
-        .string()
-        .min(1)
-        .max(160)
-        .describe("Name for the new Slack list.")
+    inputSchema: Type.Object({
+      name: Type.String({
+        minLength: 1,
+        maxLength: 160,
+        description: "Name for the new Slack list."
+      })
     }),
     execute: async ({ name }) => {
       const operationKey = createOperationKey("slack_list_create", { name });

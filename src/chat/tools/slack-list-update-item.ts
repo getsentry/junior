@@ -1,5 +1,5 @@
 import { tool } from "@/chat/tools/definition";
-import { z } from "zod";
+import { Type } from "@sinclair/typebox";
 import { updateListItem } from "@/chat/slack-actions/lists";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
@@ -7,30 +7,34 @@ import type { ToolState } from "@/chat/tools/types";
 export function createSlackListUpdateItemTool(state: ToolState) {
   return tool({
     description: "Update an existing Slack list item (completion state or title).",
-    inputSchema: z
-      .object({
-        list_id: z
-          .string()
-          .min(1)
-          .optional()
-          .describe("Optional list ID. Defaults to the last list used in this thread."),
-        item_id: z
-          .string()
-          .min(1)
-          .describe("ID of the Slack list item to update."),
-        completed: z
-          .boolean()
-          .optional()
-          .describe("Optional completion status update."),
-        title: z
-          .string()
-          .min(1)
-          .optional()
-          .describe("Optional new item title.")
-      })
-      .refine((value) => value.completed !== undefined || value.title !== undefined, {
-        message: "Provide at least one field to update: completed or title"
-      }),
+    inputSchema: Type.Object(
+      {
+        list_id: Type.Optional(
+          Type.String({
+            minLength: 1,
+            description: "Optional list ID. Defaults to the last list used in this thread."
+          })
+        ),
+        item_id: Type.String({
+          minLength: 1,
+          description: "ID of the Slack list item to update."
+        }),
+        completed: Type.Optional(
+          Type.Boolean({
+            description: "Optional completion status update."
+          })
+        ),
+        title: Type.Optional(
+          Type.String({
+            minLength: 1,
+            description: "Optional new item title."
+          })
+        )
+      },
+      {
+        anyOf: [{ required: ["completed"] }, { required: ["title"] }]
+      }
+    ),
     execute: async ({ list_id, item_id, completed, title }) => {
       try {
         const targetListId = list_id ?? state.getCurrentListId();

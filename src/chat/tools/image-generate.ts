@@ -1,5 +1,5 @@
 import { tool } from "@/chat/tools/definition";
-import { z } from "zod";
+import { Type } from "@sinclair/typebox";
 import { getGatewayApiKey } from "@/chat/pi/client";
 import type { ToolHooks } from "@/chat/tools/types";
 
@@ -14,8 +14,12 @@ function extensionForMediaType(mediaType: string): string {
 export function createImageGenerateTool(hooks: ToolHooks) {
   return tool({
     description: "Generate an image from a prompt.",
-    inputSchema: z.object({
-      prompt: z.string().min(1).max(4000).describe("Image generation prompt.")
+    inputSchema: Type.Object({
+      prompt: Type.String({
+        minLength: 1,
+        maxLength: 4000,
+        description: "Image generation prompt."
+      })
     }),
     execute: async ({ prompt }) => {
       const apiKey = getGatewayApiKey();

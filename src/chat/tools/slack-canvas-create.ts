@@ -1,5 +1,5 @@
 import { tool } from "@/chat/tools/definition";
-import { z } from "zod";
+import { Type } from "@sinclair/typebox";
 import { createCanvas } from "@/chat/slack-actions/canvases";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
@@ -10,21 +10,22 @@ export function createSlackCanvasCreateTool(
 ) {
   return tool({
     description: "Create a Slack canvas for long-form output in the current channel.",
-    inputSchema: z.object({
-      title: z
-        .string()
-        .min(1)
-        .max(160)
-        .describe("Canvas title."),
-      markdown: z
-        .string()
-        .min(1)
-        .describe("Canvas markdown body content."),
-      channel_id: z
-        .string()
-        .min(1)
-        .optional()
-        .describe("Optional Slack channel ID. Defaults to the current thread channel.")
+    inputSchema: Type.Object({
+      title: Type.String({
+        minLength: 1,
+        maxLength: 160,
+        description: "Canvas title."
+      }),
+      markdown: Type.String({
+        minLength: 1,
+        description: "Canvas markdown body content."
+      }),
+      channel_id: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: "Optional Slack channel ID. Defaults to the current thread channel."
+        })
+      )
     }),
     execute: async ({ title, markdown, channel_id }) => {
       const targetChannelId = channel_id ?? context.channelId;

@@ -1,15 +1,15 @@
-import type { z, ZodTypeAny } from "zod";
+import type { Static, TSchema } from "@sinclair/typebox";
 
 export interface ToolCallOptions {
   experimental_context?: unknown;
 }
 
-export interface ToolDefinition<TSchema extends ZodTypeAny = ZodTypeAny> {
+export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
   description: string;
-  inputSchema: TSchema;
-  execute?: (input: z.infer<TSchema>, options: ToolCallOptions) => Promise<unknown> | unknown;
+  inputSchema: TInputSchema;
+  execute?: (input: Static<TInputSchema>, options: ToolCallOptions) => Promise<unknown> | unknown;
 }
 
-export function tool<TSchema extends ZodTypeAny>(definition: ToolDefinition<TSchema>): ToolDefinition<TSchema> {
+export function tool<TInputSchema extends TSchema>(definition: ToolDefinition<TInputSchema>): ToolDefinition<TInputSchema> {
   return definition;
 }

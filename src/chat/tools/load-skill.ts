@@ -1,16 +1,16 @@
 import { tool } from "@/chat/tools/definition";
-import { z } from "zod";
+import { Type } from "@sinclair/typebox";
 import { loadSkillsByName, type SkillMetadata } from "@/chat/skills";
 import { getSkillSandbox } from "@/chat/skill-sandbox";
 
 export function createLoadSkillTool(availableSkills: SkillMetadata[]) {
   return tool({
     description: "Load a named skill and return its instructions to the reasoning context.",
-    inputSchema: z.object({
-      skill_name: z
-        .string()
-        .min(1)
-        .describe("Skill name to load, without the leading slash.")
+    inputSchema: Type.Object({
+      skill_name: Type.String({
+        minLength: 1,
+        description: "Skill name to load, without the leading slash."
+      })
     }),
     execute: async ({ skill_name }, options) => {
       const sandboxResult = getSkillSandbox(options.experimental_context);

@@ -1,5 +1,5 @@
 import { tool } from "@/chat/tools/definition";
-import { z } from "zod";
+import { Type } from "@sinclair/typebox";
 import { FETCH_TIMEOUT_MS, MAX_FETCH_BYTES, MAX_REDIRECTS } from "@/chat/tools/constants";
 import { assertPublicUrl, fetchTextWithRedirects, withTimeout } from "@/chat/tools/network";
 import type { ToolHooks } from "@/chat/tools/types";
@@ -22,18 +22,18 @@ function filenameForUrl(url: URL, mediaType: string): string {
 export function createWebFetchTool(hooks: ToolHooks) {
   return tool({
     description: "Fetch and extract readable text from a URL.",
-    inputSchema: z.object({
-      url: z
-        .string()
-        .url()
-        .describe("HTTP(S) URL to fetch."),
-      max_chars: z
-        .number()
-        .int()
-        .min(500)
-        .max(MAX_FETCH_CHARS)
-        .optional()
-        .describe("Optional maximum number of extracted characters to return.")
+    inputSchema: Type.Object({
+      url: Type.String({
+        minLength: 1,
+        description: "HTTP(S) URL to fetch."
+      }),
+      max_chars: Type.Optional(
+        Type.Integer({
+          minimum: 500,
+          maximum: MAX_FETCH_CHARS,
+          description: "Optional maximum number of extracted characters to return."
+        })
+      )
     }),
     execute: async ({ url, max_chars }) => {
       try {

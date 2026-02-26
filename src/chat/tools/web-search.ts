@@ -1,5 +1,5 @@
 import { tool } from "@/chat/tools/definition";
-import { z } from "zod";
+import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/network";
 
 const SEARCH_TIMEOUT_MS = 10_000;
@@ -17,9 +17,19 @@ function decodeHtml(value: string): string {
 export function createWebSearchTool() {
   return tool({
     description: "Search public web sources and return top result snippets.",
-    inputSchema: z.object({
-      query: z.string().min(1).max(500).describe("Search query."),
-      max_results: z.number().int().min(1).max(MAX_RESULTS).optional().describe("Max results to return.")
+    inputSchema: Type.Object({
+      query: Type.String({
+        minLength: 1,
+        maxLength: 500,
+        description: "Search query."
+      }),
+      max_results: Type.Optional(
+        Type.Integer({
+          minimum: 1,
+          maximum: MAX_RESULTS,
+          description: "Max results to return."
+        })
+      )
     }),
     execute: async ({ query, max_results }) => {
       const maxResults = max_results ?? 3;
