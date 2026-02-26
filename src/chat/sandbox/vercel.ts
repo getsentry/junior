@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
-import { withSpan, type ObservabilityContext } from "@/chat/observability";
+import { setSpanAttributes, setSpanStatus, withSpan, type ObservabilityContext } from "@/chat/observability";
 import type { SkillMetadata } from "@/chat/skills";
 
 interface SandboxExecutionInput {
@@ -292,7 +292,25 @@ export class VercelSandboxToolExecutor {
         "app.sandbox.tool_name": "bash",
         "app.sandbox.command.length": command.length
       },
-      async () => executeBash({ command })
+      async () => {
+        try {
+          const response = await executeBash({ command });
+          setSpanAttributes({
+            "app.sandbox.exit_code": response.exitCode,
+            "app.sandbox.success": response.exitCode === 0,
+            "app.sandbox.stdout_bytes": Buffer.byteLength(response.stdout ?? "", "utf8"),
+            "app.sandbox.stderr_bytes": Buffer.byteLength(response.stderr ?? "", "utf8")
+          });
+          setSpanStatus(response.exitCode === 0 ? "ok" : "error");
+          return response;
+        } catch (error) {
+          setSpanAttributes({
+            "app.sandbox.success": false
+          });
+          setSpanStatus("error");
+          throw error;
+        }
+      }
     );
     return {
       result: {

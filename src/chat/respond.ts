@@ -3,7 +3,15 @@ import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
 import { Value } from "@sinclair/typebox/value";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
-import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
+import {
+  logException,
+  logWarn,
+  setSpanAttributes,
+  setSpanStatus,
+  setTags,
+  withSpan,
+  type ObservabilityContext
+} from "@/chat/observability";
 import { buildSystemPrompt } from "@/chat/prompt";
 import { SkillSandbox } from "@/chat/skill-sandbox";
 import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
@@ -247,6 +255,7 @@ function extractAssistantText(message: AssistantMessage): string {
 function createAgentTools(
   tools: Record<string, ToolDefinition<any>>,
   sandbox: SkillSandbox,
+  spanContext: ObservabilityContext,
   onStatus?: (status: string) => void | Promise<void>,
   sandboxExecutor?: VercelSandboxToolExecutor,
   hooks?: {
@@ -274,104 +283,136 @@ function createAgentTools(
         "Agent tool call started"
       );
       await onStatus?.(`${formatToolStatus(toolName)}...`);
-      if (!Value.Check(toolDef.inputSchema, params)) {
-        const details = [...Value.Errors(toolDef.inputSchema, params)]
-          .slice(0, 3)
-          .map((entry) => `${entry.path || "/"}: ${entry.message}`)
-          .join("; ");
-        const validationMessage = details.length > 0 ? details : "Invalid tool input";
-        logWarn(
-          "agent_tool_call_invalid_input",
-          {},
-          {
-            "gen_ai.system": "vercel-ai-gateway",
-            "gen_ai.operation.name": "tool_call",
-            "app.ai.tool_name": toolName,
-            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
-          },
-          "Agent tool call input validation failed"
-        );
-        logException(
-          new Error(validationMessage),
-          "agent_tool_call_invalid_input_exception",
-          {},
-          {
-            "gen_ai.system": "vercel-ai-gateway",
-            "gen_ai.operation.name": "tool_call",
-            "app.ai.tool_name": toolName,
-            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
-          },
-          "Agent tool call input validation failed with exception"
-        );
-        throw new Error(validationMessage);
-      }
-      const parsed = params as Record<string, unknown>;
-
-      try {
-        if (typeof toolDef.execute !== "function") {
-          const answer = toolName === "final_answer" ? String((parsed.answer as string | undefined) ?? "") : "";
-          await onStatus?.("Reviewing tool results...");
-          logWarn(
-            "agent_tool_call_end",
-            {},
-            {
-              "gen_ai.system": "vercel-ai-gateway",
-              "gen_ai.operation.name": "tool_call",
-              "app.ai.tool_name": toolName,
-              "app.ai.tool_duration_ms": Date.now() - toolStartedAt
-            },
-            "Agent tool call finished"
-          );
-          return {
-            content: answer ? [{ type: "text", text: answer }] : [{ type: "text", text: "ok" }],
-            details: toolName === "final_answer" ? { answer } : { ok: true }
-          };
-        }
-
-        const result = sandboxExecutor?.canExecute(toolName)
-          ? await sandboxExecutor.execute({
-              toolName,
-              input: parsed
-            })
-          : await toolDef.execute(parsed as never, {
-              experimental_context: sandbox
+      return withSpan(
+        "gen_ai.tool_call",
+        "gen_ai.tool_call",
+        spanContext,
+        async () => {
+          if (!Value.Check(toolDef.inputSchema, params)) {
+            const details = [...Value.Errors(toolDef.inputSchema, params)]
+              .slice(0, 3)
+              .map((entry) => `${entry.path || "/"}: ${entry.message}`)
+              .join("; ");
+            const validationMessage = details.length > 0 ? details : "Invalid tool input";
+            const durationMs = Date.now() - toolStartedAt;
+            setSpanAttributes({
+              "app.ai.tool_duration_ms": durationMs
             });
-        const resultDetails =
-          sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
-            ? (result as { result: unknown }).result
-            : result;
+            setSpanStatus("error");
+            logWarn(
+              "agent_tool_call_invalid_input",
+              {},
+              {
+                "gen_ai.system": "vercel-ai-gateway",
+                "gen_ai.operation.name": "tool_call",
+                "app.ai.tool_name": toolName,
+                "app.ai.tool_duration_ms": durationMs
+              },
+              "Agent tool call input validation failed"
+            );
+            logException(
+              new Error(validationMessage),
+              "agent_tool_call_invalid_input_exception",
+              {},
+              {
+                "gen_ai.system": "vercel-ai-gateway",
+                "gen_ai.operation.name": "tool_call",
+                "app.ai.tool_name": toolName,
+                "app.ai.tool_duration_ms": durationMs
+              },
+              "Agent tool call input validation failed with exception"
+            );
+            throw new Error(validationMessage);
+          }
+          const parsed = params as Record<string, unknown>;
 
-        await onStatus?.("Reviewing tool results...");
-        logWarn(
-          "agent_tool_call_end",
-          {},
-          {
-            "gen_ai.system": "vercel-ai-gateway",
-            "gen_ai.operation.name": "tool_call",
-            "app.ai.tool_name": toolName,
-            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
-          },
-          "Agent tool call finished"
-        );
-        return {
-          content: [{ type: "text", text: toToolContentText(resultDetails) }],
-          details: resultDetails
-        };
-      } catch (error) {
-        logException(
-          error,
-          "agent_tool_call_failed",
-          {},
-          {
-            "gen_ai.system": "vercel-ai-gateway",
-            "gen_ai.operation.name": "tool_call",
-            "app.ai.tool_name": toolName,
-            "app.ai.tool_duration_ms": Date.now() - toolStartedAt
-          },
-          "Agent tool call failed"
-        );
-        throw error;
-      }
+          try {
+            if (typeof toolDef.execute !== "function") {
+              const answer = toolName === "final_answer" ? String((parsed.answer as string | undefined) ?? "") : "";
+              const durationMs = Date.now() - toolStartedAt;
+              setSpanAttributes({
+                "app.ai.tool_duration_ms": durationMs
+              });
+              setSpanStatus("ok");
+              await onStatus?.("Reviewing tool results...");
+              logWarn(
+                "agent_tool_call_end",
+                {},
+                {
+                  "gen_ai.system": "vercel-ai-gateway",
+                  "gen_ai.operation.name": "tool_call",
+                  "app.ai.tool_name": toolName,
+                  "app.ai.tool_duration_ms": durationMs
+                },
+                "Agent tool call finished"
+              );
+              return {
+                content: answer ? [{ type: "text", text: answer }] : [{ type: "text", text: "ok" }],
+                details: toolName === "final_answer" ? { answer } : { ok: true }
+              };
+            }
+
+            const result = sandboxExecutor?.canExecute(toolName)
+              ? await sandboxExecutor.execute({
+                  toolName,
+                  input: parsed
+                })
+              : await toolDef.execute(parsed as never, {
+                  experimental_context: sandbox
+                });
+            const resultDetails =
+              sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
+                ? (result as { result: unknown }).result
+                : result;
+
+            const durationMs = Date.now() - toolStartedAt;
+            setSpanAttributes({
+              "app.ai.tool_duration_ms": durationMs
+            });
+            setSpanStatus("ok");
+            await onStatus?.("Reviewing tool results...");
+            logWarn(
+              "agent_tool_call_end",
+              {},
+              {
+                "gen_ai.system": "vercel-ai-gateway",
+                "gen_ai.operation.name": "tool_call",
+                "app.ai.tool_name": toolName,
+                "app.ai.tool_duration_ms": durationMs
+              },
+              "Agent tool call finished"
+            );
+            return {
+              content: [{ type: "text", text: toToolContentText(resultDetails) }],
+              details: resultDetails
+            };
+          } catch (error) {
+            const durationMs = Date.now() - toolStartedAt;
+            setSpanAttributes({
+              "app.ai.tool_duration_ms": durationMs
+            });
+            setSpanStatus("error");
+            logException(
+              error,
+              "agent_tool_call_failed",
+              {},
+              {
+                "gen_ai.system": "vercel-ai-gateway",
+                "gen_ai.operation.name": "tool_call",
+                "app.ai.tool_name": toolName,
+                "app.ai.tool_duration_ms": durationMs
+              },
+              "Agent tool call failed"
+            );
+            throw error;
+          }
+        },
+        {
+          "gen_ai.system": "vercel-ai-gateway",
+          "gen_ai.operation.name": "tool_call",
+          "app.ai.tool_name": toolName
+        }
+      );
     }
   }));
 }
@@ -381,16 +422,18 @@ export async function generateAssistantReply(
   context: ReplyRequestContext = {}
 ): Promise<AssistantReply> {
   try {
+    const spanContext: ObservabilityContext = {
+      slackThreadId: context.correlation?.threadId,
+      slackUserId: context.correlation?.requesterId,
+      slackChannelId: context.correlation?.channelId,
+      workflowRunId: context.correlation?.workflowRunId,
+      assistantUserName: context.assistant?.userName,
+      modelId: botConfig.modelId
+    };
+
     const sandboxExecutor = new VercelSandboxToolExecutor({
       sandboxId: context.sandbox?.sandboxId,
-      traceContext: {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      }
+      traceContext: spanContext
     });
 
     const availableSkills = await discoverSkills();
@@ -525,6 +568,7 @@ export async function generateAssistantReply(
         tools: createAgentTools(
           tools as Record<string, ToolDefinition<any>>,
           skillSandbox,
+          spanContext,
           context.onStatus,
           sandboxExecutor,
           {
@@ -553,14 +597,7 @@ export async function generateAssistantReply(
     await withSpan(
       "ai.generate_assistant_reply",
       "gen_ai.generate_text",
-      {
-        slackThreadId: context.correlation?.threadId,
-        slackUserId: context.correlation?.requesterId,
-        slackChannelId: context.correlation?.channelId,
-        workflowRunId: context.correlation?.workflowRunId,
-        assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId
-      },
+      spanContext,
       async () => {
         const promptPromise = agent.prompt({
           role: "user",

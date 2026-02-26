@@ -124,6 +124,40 @@ export async function withSpan<T>(
   );
 }
 
+export function setSpanAttributes(attributes: Record<string, unknown>): void {
+  const sentry = Sentry as unknown as { getActiveSpan?: () => unknown };
+  const span = sentry.getActiveSpan?.();
+  if (!span) {
+    return;
+  }
+
+  const setAttribute = (span as { setAttribute?: (key: string, value: string | number | boolean) => void }).setAttribute;
+  if (typeof setAttribute !== "function") {
+    return;
+  }
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      setAttribute.call(span, key, value);
+    }
+  }
+}
+
+export function setSpanStatus(status: "ok" | "error"): void {
+  const sentry = Sentry as unknown as { getActiveSpan?: () => unknown };
+  const span = sentry.getActiveSpan?.();
+  if (!span) {
+    return;
+  }
+
+  const setStatus = (span as { setStatus?: (value: string) => void }).setStatus;
+  if (typeof setStatus !== "function") {
+    return;
+  }
+
+  setStatus.call(span, status === "ok" ? "ok" : "internal_error");
+}
+
 export function captureExceptionInScope(error: unknown, context: ObservabilityContext = {}): void {
   Sentry.withScope((scope) => {
     setSentryScopeContext(scope, context);
