@@ -226,12 +226,16 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
   const path = obj ? compactPathForStatus(obj.path) : undefined;
   const query = obj ? compactTextForStatus(obj.query, 70) : undefined;
   const domain = obj ? extractDomainForStatus(obj.url) : undefined;
+  const skillName = obj ? compactTextForStatus(obj.skill_name ?? obj.skillName, 40) : undefined;
 
   if (path && toolName === "readFile") {
     return `Reading file ${path}`;
   }
   if (path && toolName === "writeFile") {
     return `Writing file ${path}`;
+  }
+  if (skillName && toolName === "loadSkill") {
+    return `Loading skill ${skillName}`;
   }
   if (query && toolName === "webSearch") {
     return `Searching web for "${query}"`;
@@ -274,12 +278,16 @@ function formatToolResultStatusWithInput(toolName: string, input: unknown): stri
   const path = obj ? compactPathForStatus(obj.path) : undefined;
   const query = obj ? compactTextForStatus(obj.query, 70) : undefined;
   const domain = obj ? extractDomainForStatus(obj.url) : undefined;
+  const skillName = obj ? compactTextForStatus(obj.skill_name ?? obj.skillName, 40) : undefined;
 
   if (path && toolName === "readFile") {
     return `Reviewed file ${path}`;
   }
   if (path && toolName === "writeFile") {
     return `Saved file ${path}`;
+  }
+  if (skillName && toolName === "loadSkill") {
+    return `Loaded skill ${skillName}`;
   }
   if (query && toolName === "webSearch") {
     return `Reviewed web results for "${query}"`;
