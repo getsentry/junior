@@ -1,6 +1,7 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import type { Sandbox } from "@vercel/sandbox";
+import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 
 export type LoadSkillResult = {
@@ -59,7 +60,7 @@ export async function loadSkillFromSandbox(
     };
   }
 
-  const skillDir = `/workspace/skills/${skill.name}`;
+  const skillDir = sandboxSkillDir(skill.name);
   const skillFilePath = `${skillDir}/SKILL.md`;
   const file = await sandbox.readFileToBuffer({ path: skillFilePath });
   if (!file) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { discoverSkills } from "@/chat/skills";
+import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
 import type { Skill } from "@/chat/skills";
 
@@ -13,7 +14,7 @@ describe("load_skill tool", () => {
 
     const sandbox = {
       readFileToBuffer: async ({ path }: { path: string }) =>
-        path === `/workspace/skills/${firstSkill.name}/SKILL.md`
+        path === sandboxSkillFile(firstSkill.name)
           ? Buffer.from("---\nname: test\n---\nInstruction body", "utf8")
           : null
     } as any;
@@ -39,13 +40,13 @@ describe("load_skill tool", () => {
       ok: true,
       skill_name: firstSkill.name
     });
-    expect((result as any).location).toBe(`/workspace/skills/${firstSkill.name}/SKILL.md`);
-    expect((result as any).skill_dir).toBe(`/workspace/skills/${firstSkill.name}`);
+    expect((result as any).location).toBe(sandboxSkillFile(firstSkill.name));
+    expect((result as any).skill_dir).toBe(sandboxSkillDir(firstSkill.name));
     expect((result as any).instructions).toBe("Instruction body");
     expect(loaded).toHaveLength(1);
     expect(loaded[0]).toMatchObject({
       name: firstSkill.name,
-      skillPath: `/workspace/skills/${firstSkill.name}`,
+      skillPath: sandboxSkillDir(firstSkill.name),
       body: "Instruction body"
     });
   });

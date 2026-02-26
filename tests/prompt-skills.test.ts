@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "@/chat/prompt";
+import { sandboxSkillFile, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 
 describe("buildSystemPrompt skill paths", () => {
@@ -25,9 +26,9 @@ describe("buildSystemPrompt skill paths", () => {
       invocation: null
     });
 
-    expect(prompt).toContain("<location>/workspace/skills/brief/SKILL.md</location>");
-    expect(prompt).toContain('<skill name="brief" location="/workspace/skills/brief/SKILL.md">');
-    expect(prompt).toContain("References are relative to /workspace/skills/brief.");
+    expect(prompt).toContain(`<location>${sandboxSkillFile("brief")}</location>`);
+    expect(prompt).toContain(`<skill name="brief" location="${sandboxSkillFile("brief")}">`);
+    expect(prompt).toContain(`References are relative to ${sandboxSkillDir("brief")}.`);
     expect(prompt).not.toContain("/host/path/skills/brief/SKILL.md");
   });
 });

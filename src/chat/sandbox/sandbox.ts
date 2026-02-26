@@ -4,6 +4,7 @@ import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
 import { extractHttpErrorDetails } from "@/chat/http-error-details";
 import { setSpanAttributes, setSpanStatus, withSpan, type ObservabilityContext } from "@/chat/observability";
+import { SANDBOX_SKILLS_ROOT, SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SkillMetadata } from "@/chat/skills";
 
 interface SandboxExecutionInput {
@@ -77,7 +78,7 @@ async function buildSkillSyncFiles(availableSkills: SkillMetadata[]): Promise<Ar
         continue;
       }
       filesToWrite.push({
-        path: `/workspace/skills/${skill.name}/${relative}`,
+        path: `${sandboxSkillDir(skill.name)}/${relative}`,
         content: await fs.readFile(absoluteFile)
       });
     }
@@ -85,12 +86,12 @@ async function buildSkillSyncFiles(availableSkills: SkillMetadata[]): Promise<Ar
     index.skills.push({
       name: skill.name,
       description: skill.description,
-      root: `/workspace/skills/${skill.name}`
+      root: sandboxSkillDir(skill.name)
     });
   }
 
   filesToWrite.push({
-    path: "/workspace/skills/index.json",
+    path: `${SANDBOX_SKILLS_ROOT}/index.json`,
     content: Buffer.from(JSON.stringify(index), "utf8")
   });
 
@@ -292,12 +293,12 @@ export function createSandboxExecutor(options?: {
       "sandbox.tool.init",
       {
         "app.sandbox.tool_name": "bash",
-        "app.sandbox.destination": "/workspace"
+        "app.sandbox.destination": SANDBOX_WORKSPACE_ROOT
       },
       async () =>
         createBashTool({
           sandbox: activeSandbox,
-          destination: "/workspace"
+          destination: SANDBOX_WORKSPACE_ROOT
         })
     );
 
@@ -389,7 +390,7 @@ export function createSandboxExecutor(options?: {
         result: {
           ok: result.exitCode === 0,
           command,
-          cwd: "/workspace",
+          cwd: SANDBOX_WORKSPACE_ROOT,
           exit_code: result.exitCode,
           signal: null,
           timed_out: false,

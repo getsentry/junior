@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { botConfig } from "@/chat/config";
 import { slackOutputPolicy } from "@/chat/output";
+import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 
@@ -26,7 +27,7 @@ function escapeXml(value: string): string {
 }
 
 function workspaceSkillDir(skillName: string): string {
-  return `/workspace/skills/${skillName}`;
+  return sandboxSkillDir(skillName);
 }
 
 function renderIdentityBlock(tag: "assistant" | "requester", fields: Record<string, string | undefined>): string {
