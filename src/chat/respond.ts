@@ -681,16 +681,6 @@ export async function generateAssistantReply(
     });
 
     const beforeMessageCount = agent.state.messages.length;
-    logWarn(
-      "agent_turn_start",
-      {},
-      {
-        "gen_ai.system": "vercel-ai-gateway",
-        "gen_ai.operation.name": "agent_turn",
-        "gen_ai.request.model": botConfig.modelId
-      },
-      "Agent turn started"
-    );
 
     await withSpan(
       "ai.generate_assistant_reply",
@@ -760,20 +750,6 @@ export async function generateAssistantReply(
       .trim();
 
     const toolErrorCount = toolResults.filter((result) => result.isError).length;
-    logWarn(
-      "agent_turn_activity",
-      {},
-      {
-        "gen_ai.system": "vercel-ai-gateway",
-        "gen_ai.operation.name": "agent_turn",
-        "gen_ai.request.model": botConfig.modelId,
-        "app.ai.assistant_messages": assistantMessages.length,
-        "app.ai.tool_results": toolResults.length,
-        "app.ai.tool_error_results": toolErrorCount,
-        "app.ai.tool_call_count": toolCalls.length
-      },
-      "Agent turn activity captured"
-    );
 
     if (!finalAnswer && !primaryText) {
       logWarn(
