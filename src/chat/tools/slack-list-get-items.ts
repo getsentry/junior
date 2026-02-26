@@ -22,23 +22,19 @@ export function createSlackListGetItemsTool(state: ToolState) {
       )
     }),
     execute: async ({ list_id, limit }) => {
-      try {
-        const targetListId = list_id ?? state.getCurrentListId();
-        const resolvedLimit = limit ?? 100;
-        if (!targetListId) {
-          return { ok: false, error: "No list_id provided and no prior list found in thread state" };
-        }
-
-        const items = await listItems(targetListId, resolvedLimit);
-
-        return {
-          ok: true,
-          list_id: targetListId,
-          items: items.map((item) => ({ id: item.id, fields: item.fields }))
-        };
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "list fetch failed");
+      const targetListId = list_id ?? state.getCurrentListId();
+      const resolvedLimit = limit ?? 100;
+      if (!targetListId) {
+        return { ok: false, error: "No list_id provided and no prior list found in thread state" };
       }
+
+      const items = await listItems(targetListId, resolvedLimit);
+
+      return {
+        ok: true,
+        list_id: targetListId,
+        items: items.map((item) => ({ id: item.id, fields: item.fields }))
+      };
     }
   });
 }

@@ -33,54 +33,50 @@ export function createSlackListAddItemsTool(state: ToolState) {
       )
     }),
     execute: async ({ list_id, items, assignee_user_id, due_date }) => {
-      try {
-        const targetListId = list_id ?? state.getCurrentListId();
-        if (!targetListId) {
-          return { ok: false, error: "No list_id provided and no prior list found in thread state" };
-        }
-        const operationKey = createOperationKey("slack_list_add_items", {
-          list_id: targetListId,
-          items,
-          assignee_user_id: assignee_user_id ?? null,
-          due_date: due_date ?? null
-        });
-        const cached = state.getOperationResult<{
-          ok: true;
-          list_id: string;
-          created_item_ids: string[];
-          created_count: number;
-        }>(operationKey);
-        if (cached) {
-          return {
-            ...cached,
-            deduplicated: true
-          };
-        }
-
-        const result = await addListItems({
-          listId: targetListId,
-          titles: items,
-          listColumnMap: state.artifactState.listColumnMap,
-          assigneeUserId: assignee_user_id,
-          dueDate: due_date
-        });
-
-        state.patchArtifactState({
-          lastListId: targetListId,
-          listColumnMap: result.listColumnMap
-        });
-
-        const response = {
-          ok: true,
-          list_id: targetListId,
-          created_item_ids: result.createdItemIds,
-          created_count: result.createdItemIds.length
-        };
-        state.setOperationResult(operationKey, response);
-        return response;
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "list item create failed");
+      const targetListId = list_id ?? state.getCurrentListId();
+      if (!targetListId) {
+        return { ok: false, error: "No list_id provided and no prior list found in thread state" };
       }
+      const operationKey = createOperationKey("slack_list_add_items", {
+        list_id: targetListId,
+        items,
+        assignee_user_id: assignee_user_id ?? null,
+        due_date: due_date ?? null
+      });
+      const cached = state.getOperationResult<{
+        ok: true;
+        list_id: string;
+        created_item_ids: string[];
+        created_count: number;
+      }>(operationKey);
+      if (cached) {
+        return {
+          ...cached,
+          deduplicated: true
+        };
+      }
+
+      const result = await addListItems({
+        listId: targetListId,
+        titles: items,
+        listColumnMap: state.artifactState.listColumnMap,
+        assigneeUserId: assignee_user_id,
+        dueDate: due_date
+      });
+
+      state.patchArtifactState({
+        lastListId: targetListId,
+        listColumnMap: result.listColumnMap
+      });
+
+      const response = {
+        ok: true,
+        list_id: targetListId,
+        created_item_ids: result.createdItemIds,
+        created_count: result.createdItemIds.length
+      };
+      state.setOperationResult(operationKey, response);
+      return response;
     }
   });
 }

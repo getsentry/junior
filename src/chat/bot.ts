@@ -1123,8 +1123,11 @@ async function replyToThread(
         if (reply.diagnostics.outcome === "success") {
           logInfo("agent_turn_diagnostics", diagnosticsContext, diagnosticsAttributes, "Agent turn diagnostics");
         } else if (reply.diagnostics.outcome === "provider_error") {
+          const providerError =
+            reply.diagnostics.providerError ??
+            new Error(reply.diagnostics.errorMessage ?? "Provider error without explicit message");
           logException(
-            new Error(reply.diagnostics.errorMessage ?? "Provider error without explicit message"),
+            providerError,
             "agent_turn_provider_error",
             diagnosticsContext,
             diagnosticsAttributes,

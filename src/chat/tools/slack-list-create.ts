@@ -29,25 +29,21 @@ export function createSlackListCreateTool(state: ToolState) {
         };
       }
 
-      try {
-        const list = await createTodoList(name);
-        state.patchArtifactState({
-          lastListId: list.listId,
-          lastListUrl: list.permalink,
-          listColumnMap: list.listColumnMap
-        });
+      const list = await createTodoList(name);
+      state.patchArtifactState({
+        lastListId: list.listId,
+        lastListUrl: list.permalink,
+        listColumnMap: list.listColumnMap
+      });
 
-        const response = {
-          ok: true,
-          list_id: list.listId,
-          permalink: list.permalink,
-          column_map: list.listColumnMap
-        };
-        state.setOperationResult(operationKey, response);
-        return response;
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "list create failed");
-      }
+      const response = {
+        ok: true,
+        list_id: list.listId,
+        permalink: list.permalink,
+        column_map: list.listColumnMap
+      };
+      state.setOperationResult(operationKey, response);
+      return response;
     }
   });
 }

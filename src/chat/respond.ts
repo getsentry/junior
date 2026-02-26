@@ -54,6 +54,7 @@ export interface AssistantReply {
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
   errorMessage?: string;
+  providerError?: unknown;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
   stopReason?: string;
@@ -678,7 +679,8 @@ export async function generateAssistantReply(
           usedFinalAnswer,
           usedPrimaryText,
           stopReason,
-          errorMessage
+          errorMessage,
+          providerError: undefined
         }
       };
     }
@@ -698,7 +700,8 @@ export async function generateAssistantReply(
         usedFinalAnswer,
         usedPrimaryText,
         stopReason,
-        errorMessage
+        errorMessage,
+        providerError: undefined
       }
     };
   } catch (error) {
@@ -724,7 +727,8 @@ export async function generateAssistantReply(
         toolErrorCount: 0,
         usedFinalAnswer: false,
         usedPrimaryText: false,
-        errorMessage: message
+        errorMessage: message,
+        providerError: error
       }
     };
   }

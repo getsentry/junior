@@ -38,55 +38,50 @@ export function createSlackCanvasUpdateTool(state: ToolState) {
       )
     }),
     execute: async ({ canvas_id, markdown, operation, section_id, section_contains_text }) => {
-      try {
-        const targetCanvasId = canvas_id ?? state.getCurrentCanvasId();
-        const resolvedOperation = operation ?? "insert_at_end";
-        if (!targetCanvasId) {
-          return { ok: false, error: "No canvas_id provided and no prior canvas found in thread state" };
-        }
-        const operationKey = createOperationKey("slack_canvas_update", {
-          canvas_id: targetCanvasId,
-          markdown,
-          operation: resolvedOperation,
-          section_id: section_id ?? null,
-          section_contains_text: section_contains_text ?? null
-        });
-        const cached = state.getOperationResult<{
-          ok: true;
-          canvas_id: string;
-          operation: "insert_at_end" | "insert_at_start" | "replace";
-          section_id?: string;
-        }>(operationKey);
-        if (cached) {
-          return {
-            ...cached,
-            deduplicated: true
-          };
-        }
-
-        const sectionId =
-          section_id ??
-          (section_contains_text ? await lookupCanvasSection(targetCanvasId, section_contains_text) : undefined);
-
-        await updateCanvas({
-          canvasId: targetCanvasId,
-          markdown,
-          operation: resolvedOperation,
-          sectionId
-        });
-        state.patchArtifactState({ lastCanvasId: targetCanvasId });
-
-        const response = {
-          ok: true,
-          canvas_id: targetCanvasId,
-          operation: resolvedOperation,
-          section_id: sectionId
-        };
-        state.setOperationResult(operationKey, response);
-        return response;
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "canvas update failed");
+      const targetCanvasId = canvas_id ?? state.getCurrentCanvasId();
+      const resolvedOperation = operation ?? "insert_at_end";
+      if (!targetCanvasId) {
+        return { ok: false, error: "No canvas_id provided and no prior canvas found in thread state" };
       }
+      const operationKey = createOperationKey("slack_canvas_update", {
+        canvas_id: targetCanvasId,
+        markdown,
+        operation: resolvedOperation,
+        section_id: section_id ?? null,
+        section_contains_text: section_contains_text ?? null
+      });
+      const cached = state.getOperationResult<{
+        ok: true;
+        canvas_id: string;
+        operation: "insert_at_end" | "insert_at_start" | "replace";
+        section_id?: string;
+      }>(operationKey);
+      if (cached) {
+        return {
+          ...cached,
+          deduplicated: true
+        };
+      }
+
+      const sectionId =
+        section_id ?? (section_contains_text ? await lookupCanvasSection(targetCanvasId, section_contains_text) : undefined);
+
+      await updateCanvas({
+        canvasId: targetCanvasId,
+        markdown,
+        operation: resolvedOperation,
+        sectionId
+      });
+      state.patchArtifactState({ lastCanvasId: targetCanvasId });
+
+      const response = {
+        ok: true,
+        canvas_id: targetCanvasId,
+        operation: resolvedOperation,
+        section_id: sectionId
+      };
+      state.setOperationResult(operationKey, response);
+      return response;
     }
   });
 }

@@ -36,53 +36,49 @@ export function createSlackListUpdateItemTool(state: ToolState) {
       }
     ),
     execute: async ({ list_id, item_id, completed, title }) => {
-      try {
-        const targetListId = list_id ?? state.getCurrentListId();
-        if (!targetListId) {
-          return { ok: false, error: "No list_id provided and no prior list found in thread state" };
-        }
-        const operationKey = createOperationKey("slack_list_update_item", {
-          list_id: targetListId,
-          item_id,
-          completed: completed ?? null,
-          title: title ?? null
-        });
-        const cached = state.getOperationResult<{
-          ok: true;
-          list_id: string;
-          item_id: string;
-          completed?: boolean;
-          title?: string;
-        }>(operationKey);
-        if (cached) {
-          return {
-            ...cached,
-            deduplicated: true
-          };
-        }
-
-        await updateListItem({
-          listId: targetListId,
-          itemId: item_id,
-          completed,
-          title,
-          listColumnMap: state.artifactState.listColumnMap ?? {}
-        });
-
-        state.patchArtifactState({ lastListId: targetListId });
-
-        const response = {
-          ok: true,
-          list_id: targetListId,
-          item_id,
-          completed,
-          title
-        };
-        state.setOperationResult(operationKey, response);
-        return response;
-      } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "list item update failed");
+      const targetListId = list_id ?? state.getCurrentListId();
+      if (!targetListId) {
+        return { ok: false, error: "No list_id provided and no prior list found in thread state" };
       }
+      const operationKey = createOperationKey("slack_list_update_item", {
+        list_id: targetListId,
+        item_id,
+        completed: completed ?? null,
+        title: title ?? null
+      });
+      const cached = state.getOperationResult<{
+        ok: true;
+        list_id: string;
+        item_id: string;
+        completed?: boolean;
+        title?: string;
+      }>(operationKey);
+      if (cached) {
+        return {
+          ...cached,
+          deduplicated: true
+        };
+      }
+
+      await updateListItem({
+        listId: targetListId,
+        itemId: item_id,
+        completed,
+        title,
+        listColumnMap: state.artifactState.listColumnMap ?? {}
+      });
+
+      state.patchArtifactState({ lastListId: targetListId });
+
+      const response = {
+        ok: true,
+        list_id: targetListId,
+        item_id,
+        completed,
+        title
+      };
+      state.setOperationResult(operationKey, response);
+      return response;
     }
   });
 }
