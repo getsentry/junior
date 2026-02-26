@@ -1,4 +1,4 @@
-import { createSign, randomUUID } from "node:crypto";
+import { createPrivateKey, createSign, randomUUID } from "node:crypto";
 import type { CapabilityTarget } from "@/chat/capabilities/types";
 import type { CredentialBroker, CredentialLease } from "@/chat/credentials/broker";
 
@@ -21,13 +21,55 @@ function base64Url(input: string): string {
     .replace(/\//g, "_");
 }
 
-function getPrivateKey(): string {
+function normalizePrivateKey(raw: string): string {
+  let normalized = raw.trim();
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1);
+  }
+
+  normalized = normalized.replace(/\r\n/g, "\n");
+  if (normalized.includes("\\n")) {
+    normalized = normalized.replace(/\\n/g, "\n");
+  }
+
+  if (!normalized.includes("-----BEGIN")) {
+    try {
+      const decoded = Buffer.from(normalized, "base64").toString("utf8").trim();
+      if (decoded.includes("-----BEGIN")) {
+        normalized = decoded;
+      }
+    } catch {
+      // Intentionally ignore decode errors and let crypto validation fail with a clearer message.
+    }
+  }
+
+  return normalized;
+}
+
+function getPrivateKey() {
   const raw = process.env.GITHUB_APP_PRIVATE_KEY;
   if (!raw) {
     throw new Error("Missing GITHUB_APP_PRIVATE_KEY");
   }
 
-  return raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw;
+  const normalized = normalizePrivateKey(raw);
+  let key;
+  try {
+    key = createPrivateKey({ key: normalized, format: "pem" });
+  } catch {
+    throw new Error(
+      "Invalid GITHUB_APP_PRIVATE_KEY: expected a PEM-encoded RSA private key (raw PEM, escaped newlines, or base64-encoded PEM)"
+    );
+  }
+
+  if (key.asymmetricKeyType !== "rsa") {
+    throw new Error("Invalid GITHUB_APP_PRIVATE_KEY: GitHub App signing requires an RSA private key");
+  }
+
+  return key;
 }
 
 function createAppJwt(appId: string): string {
@@ -119,12 +161,13 @@ export class GitHubCredentialBroker implements CredentialBroker {
     target?: CapabilityTarget;
     reason: string;
   }): Promise<CredentialLease> {
+    const permissions = capabilityToPermissions(input.capability);
     const appId = process.env.GITHUB_APP_ID;
+    const { owner, repo } = parseTarget(input.target);
     if (!appId) {
       throw new Error("Missing GITHUB_APP_ID");
     }
 
-    const { owner, repo } = parseTarget(input.target);
     const cacheKey = `${owner}/${repo}:${input.capability}`;
     const cached = this.tokenCache.get(cacheKey);
     const now = Date.now();
@@ -156,7 +199,6 @@ export class GitHubCredentialBroker implements CredentialBroker {
           ).id
         );
 
-    const permissions = capabilityToPermissions(input.capability);
     const accessTokenResponse = await githubRequest<{ token: string; expires_at: string }>(
       `/app/installations/${installationId}/access_tokens`,
       {
