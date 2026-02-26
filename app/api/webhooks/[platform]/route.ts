@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { bot } from "@/chat/bot";
 import { createRequestContext, logException, setSpanAttributes, setSpanStatus, withContext, withSpan } from "@/chat/observability";
 
@@ -33,9 +34,17 @@ export async function POST(request: Request, context: WebhookRouteContext): Prom
         requestContext,
         async () => {
           try {
+            const activeSpan = Sentry.getActiveSpan();
             const response = await handler(request, {
-              waitUntil: (task) => after(() => task)
-            });
+              waitUntil: (task) => after(() => task),
+              runInBackground: (run: () => Promise<unknown>) =>
+                after(() => {
+                  if (activeSpan) {
+                    return Sentry.withActiveSpan(activeSpan, run);
+                  }
+                  return run();
+                })
+            } as Parameters<typeof handler>[1]);
             setSpanAttributes({
               "http.response.status_code": response.status
             });

@@ -2,6 +2,7 @@ import { Chat } from "chat";
 import type { Attachment, FileUpload, PostableMessage } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { z } from "zod";
+import "@/chat/chat-background-patch";
 import {
   createAppSlackRuntime,
   type AppRuntimeAssistantLifecycleEvent,
