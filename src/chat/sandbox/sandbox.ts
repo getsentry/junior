@@ -110,7 +110,9 @@ function collectDirectories(filesToWrite: Array<{ path: string; content: Buffer 
     }
   }
 
-  return Array.from(directoriesToEnsure).sort((a, b) => a.length - b.length);
+  return Array.from(directoriesToEnsure)
+    .filter((directory) => directory === SANDBOX_SKILLS_ROOT || directory.startsWith(`${SANDBOX_SKILLS_ROOT}/`))
+    .sort((a, b) => a.length - b.length);
 }
 
 function getSandboxErrorDetails(error: unknown) {
@@ -122,7 +124,11 @@ function getSandboxErrorDetails(error: unknown) {
 
 function isAlreadyExistsError(error: unknown): boolean {
   const details = getSandboxErrorDetails(error);
-  return details.searchableText.includes("already exists") || details.searchableText.includes("eexist");
+  return (
+    details.searchableText.includes("already exists") ||
+    details.searchableText.includes("file exists") ||
+    details.searchableText.includes("eexist")
+  );
 }
 
 function throwSandboxOperationError(action: string, error: unknown, includeMissingPath = false): never {
