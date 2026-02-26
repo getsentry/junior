@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
+import { extractHttpErrorDetails } from "@/chat/http-error-details";
 import { setSpanAttributes, setSpanStatus, withSpan, type ObservabilityContext } from "@/chat/observability";
 import type { SkillMetadata } from "@/chat/skills";
 
@@ -124,15 +125,67 @@ export class VercelSandboxToolExecutor {
         });
 
         const bytesWritten = filesToWrite.reduce((total, file) => total + file.content.length, 0);
+        const directoriesToEnsure = new Set<string>();
+        for (const file of filesToWrite) {
+          const normalizedPath = path.posix.normalize(file.path);
+          const parts = normalizedPath.split("/").filter(Boolean);
+          let current = "";
+          for (let index = 0; index < parts.length - 1; index += 1) {
+            current = `${current}/${parts[index]}`;
+            directoriesToEnsure.add(current);
+          }
+        }
+
         await this.withSandboxSpan(
           "sandbox.sync_write_files",
           "sandbox.sync.write",
           {
             "app.sandbox.sync.files_written": filesToWrite.length,
-            "app.sandbox.sync.bytes_written": bytesWritten
+            "app.sandbox.sync.bytes_written": bytesWritten,
+            "app.sandbox.sync.directories_ensured": directoriesToEnsure.size
           },
           async () => {
-            await sandbox.writeFiles(filesToWrite);
+            try {
+              for (const directory of Array.from(directoriesToEnsure).sort((a, b) => a.length - b.length)) {
+                try {
+                  await sandbox.mkDir(directory);
+                } catch (error) {
+                  const details = extractHttpErrorDetails(error, {
+                    attributePrefix: "app.sandbox.api_error",
+                    extraFields: [
+                      { sourceKey: "sandboxId", attributeKey: "sandbox_id", summaryKey: "sandboxId" }
+                    ]
+                  });
+                  if (
+                    details.searchableText.includes("already exists") ||
+                    details.searchableText.includes("eexist")
+                  ) {
+                    continue;
+                  }
+                  throw error;
+                }
+              }
+
+              await sandbox.writeFiles(filesToWrite);
+            } catch (error) {
+              const details = extractHttpErrorDetails(error, {
+                attributePrefix: "app.sandbox.api_error",
+                extraFields: [{ sourceKey: "sandboxId", attributeKey: "sandbox_id", summaryKey: "sandboxId" }]
+              });
+              setSpanAttributes({
+                ...details.attributes,
+                "app.sandbox.api_error.missing_path":
+                  details.searchableText.includes("no such file") || details.searchableText.includes("enoent"),
+                "app.sandbox.success": false
+              });
+              setSpanStatus("error");
+              throw new Error(
+                details.summary
+                  ? `sandbox writeFiles failed (${details.summary})`
+                  : "sandbox writeFiles failed",
+                { cause: error }
+              );
+            }
           }
         );
       }
@@ -286,26 +339,25 @@ export class VercelSandboxToolExecutor {
 
     const executeBash = await this.getBashToolExecute();
     const result = await this.withSandboxSpan(
-      "sandbox.bash.execute",
-      "sandbox.tool.execute",
+      "bash",
+      "process.exec",
       {
-        "app.sandbox.tool_name": "bash",
-        "app.sandbox.command.length": command.length
+        "process.executable.name": "bash"
       },
       async () => {
         try {
           const response = await executeBash({ command });
           setSpanAttributes({
-            "app.sandbox.exit_code": response.exitCode,
-            "app.sandbox.success": response.exitCode === 0,
+            "process.exit.code": response.exitCode,
             "app.sandbox.stdout_bytes": Buffer.byteLength(response.stdout ?? "", "utf8"),
-            "app.sandbox.stderr_bytes": Buffer.byteLength(response.stderr ?? "", "utf8")
+            "app.sandbox.stderr_bytes": Buffer.byteLength(response.stderr ?? "", "utf8"),
+            ...(response.exitCode !== 0 ? { "error.type": "nonzero_exit" } : {})
           });
           setSpanStatus(response.exitCode === 0 ? "ok" : "error");
           return response;
         } catch (error) {
           setSpanAttributes({
-            "app.sandbox.success": false
+            "error.type": error instanceof Error ? error.name : "sandbox_execute_error"
           });
           setSpanStatus("error");
           throw error;

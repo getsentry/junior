@@ -17,3 +17,4 @@ This directory is the source of truth for application instrumentation.
 ## Specs
 - [Structured Logging Spec](./logging-spec.md)
 - [Tracing Spec](./tracing-spec.md)
+- [Semantics Map](./semantics.md)

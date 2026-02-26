@@ -4,6 +4,7 @@
 - Make span instrumentation consistent, queryable, and low-noise.
 - Define stable span names and operations for workflow and sandbox lifecycle visibility.
 - Preserve end-to-end correlation between spans, logs, and request/workflow context.
+- Keep semantic key selection centralized in `docs/logging/semantics.md`.
 
 ## Non-goals
 - Replacing existing Sentry SDK setup.
@@ -67,7 +68,7 @@
 - `sandbox.create` with `op: sandbox.create` when provisioning
 - `sandbox.sync_skills` with `op: sandbox.sync`
 - `sandbox.bash_tool.init` with `op: sandbox.tool.init`
-- `sandbox.bash.execute` with `op: sandbox.tool.execute`
+- `bash` with `op: process.exec` for sandbox command execution
 - `sandbox.keepalive.extend` with `op: sandbox.keepalive` when keepalive is configured
 - `sandbox.stop` with `op: sandbox.stop` during disposal
 
@@ -79,10 +80,11 @@
 - `app.sandbox.skills_count` (number)
 - `app.sandbox.sync.files_written` (number)
 - `app.sandbox.sync.bytes_written` (number)
-- `app.sandbox.tool_name` (string)
-- `app.sandbox.command.length` (number)
-- `app.sandbox.exit_code` (number)
-- `app.sandbox.success` (boolean)
+- `process.executable.name` (string)
+- `process.exit.code` (number)
+- `process.pid` (number) when available
+- `process.command_args` (string array) when safe and non-sensitive
+- `error.type` when command exits non-zero
 - `app.sandbox.stdout_bytes` (number)
 - `app.sandbox.stderr_bytes` (number)
 

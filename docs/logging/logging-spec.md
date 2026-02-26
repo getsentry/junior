@@ -29,6 +29,7 @@
 - Semantic-first attributes: use OTel keys first; app keys are namespaced as `app.*`.
 - Context propagation: request and workflow context auto-attached to child logs.
 - Safe by default: redact sensitive values, drop oversized payloads, and keep logs JSON-safe.
+- Canonical semantic key choices are documented in `docs/logging/semantics.md`.
 
 ## Logging Contract
 
