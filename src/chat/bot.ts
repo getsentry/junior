@@ -116,6 +116,7 @@ function getSlackAdapter(): SlackAdapter {
 const assistantThreadMetaById = new Map<string, AssistantThreadMeta>();
 const ASSISTANT_THREAD_META_MAX = 500;
 const ASSISTANT_THREAD_META_TTL_MS = 1000 * 60 * 60 * 24;
+const STATUS_UPDATE_DEBOUNCE_MS = 1000;
 
 function pruneAssistantThreadMeta(nowMs: number): void {
   for (const [threadId, meta] of assistantThreadMetaById) {
@@ -144,9 +145,13 @@ function createProgressReporter(thread: {
 }) {
   let active = false;
   let currentStatus = "Working...";
+  let lastStatusAt = 0;
+  let pendingStatus: string | null = null;
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 
   const postAssistantStatus = async (text: string): Promise<void> => {
     currentStatus = text;
+    lastStatusAt = Date.now();
     try {
       await thread.startTyping?.(text);
     } catch {
@@ -172,19 +177,59 @@ function createProgressReporter(thread: {
     }
   };
 
+  const clearPending = () => {
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+    pendingStatus = null;
+  };
+
+  const flushPending = async () => {
+    if (!active || !pendingStatus) {
+      clearPending();
+      return;
+    }
+
+    const next = pendingStatus;
+    clearPending();
+    if (next !== currentStatus) {
+      await postAssistantStatus(next);
+    }
+  };
+
   return {
     async start() {
       active = true;
+      clearPending();
       await postAssistantStatus("Analyzing request...");
     },
     async stop() {
       active = false;
+      clearPending();
     },
     async setStatus(text: string) {
       if (!active || !text || text === currentStatus) {
         return;
       }
-      await postAssistantStatus(text);
+
+      const now = Date.now();
+      const elapsed = now - lastStatusAt;
+      if (elapsed >= STATUS_UPDATE_DEBOUNCE_MS) {
+        clearPending();
+        await postAssistantStatus(text);
+        return;
+      }
+
+      pendingStatus = text;
+      if (pendingTimer) {
+        return;
+      }
+
+      pendingTimer = setTimeout(() => {
+        pendingTimer = null;
+        void flushPending();
+      }, Math.max(1, STATUS_UPDATE_DEBOUNCE_MS - elapsed));
     }
   };
 }
