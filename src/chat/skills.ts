@@ -23,6 +23,10 @@ export interface SkillInvocation {
 
 let skillCache: { expiresAt: number; skills: SkillMetadata[] } | null = null;
 
+export function resetSkillDiscoveryCache(): void {
+  skillCache = null;
+}
+
 function escapeXml(value: string): string {
   return value
     .replaceAll("&", "&amp;")

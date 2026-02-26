@@ -12,6 +12,7 @@ import {
 } from "@/chat/app-runtime";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { generateAssistantReply } from "@/chat/respond";
+import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { buildArtifactStatePatch, coerceThreadArtifactsState } from "@/chat/slack-actions/types";
 
 interface BehaviorEventThreadFixture {
@@ -90,6 +91,7 @@ interface SubscribedDecisionFixture {
 
 interface BehaviorCaseConfig {
   fail_reply_call?: number;
+  skill_dirs?: string[];
   unset_gateway_api_key?: boolean;
   reply_texts?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
@@ -182,6 +184,7 @@ const caseSchema = z.object({
   behavior: z
     .object({
       fail_reply_call: z.number().int().positive().optional(),
+      skill_dirs: z.array(z.string().min(1)).optional(),
       unset_gateway_api_key: z.boolean().optional(),
       reply_texts: z.array(z.string()).optional(),
       subscribed_decisions: z
@@ -371,6 +374,13 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   const toolCalls: string[] = [];
   let replyCallCount = 0;
   let decisionIndex = 0;
+  const originalSkillDirs = process.env.SKILL_DIRS;
+  const configuredSkillDirs =
+    testCase.behavior?.skill_dirs?.map((entry) => path.resolve(process.cwd(), entry)) ?? [];
+  if (configuredSkillDirs.length > 0) {
+    process.env.SKILL_DIRS = configuredSkillDirs.join(path.delimiter);
+    resetSkillDiscoveryCache();
+  }
 
   const getThread = (fixture: BehaviorEventThreadFixture): FakeThread => {
     const existing = threadsById.get(fixture.id);
@@ -584,6 +594,14 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     }
   } finally {
     unregisterLogSink();
+    if (configuredSkillDirs.length > 0) {
+      if (originalSkillDirs === undefined) {
+        delete process.env.SKILL_DIRS;
+      } else {
+        process.env.SKILL_DIRS = originalSkillDirs;
+      }
+      resetSkillDiscoveryCache();
+    }
   }
 
   const primaryThreadId = testCase.events[0]?.thread.id;

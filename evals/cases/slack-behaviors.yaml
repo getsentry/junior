@@ -122,8 +122,11 @@ cases:
       exception_events:
         - mention_handler_failed
 
-  - id: brief_skill_invocation
-    description: Slash-invoked /brief command is detected and routed through skill loading.
+  - id: time_brief_skill_invocation
+    description: Slash-invoked /time-brief uses the lightweight eval skill and returns current time.
+    behavior:
+      skill_dirs:
+        - evals/skills
     events:
       - type: new_mention
         thread:
@@ -132,7 +135,7 @@ cases:
           thread_ts: "1700000000.700"
         message:
           id: m-brief-1
-          text: "/brief candidate: David Cramer"
+          text: "/time-brief candidate: David Cramer"
           is_mention: true
           author:
             user_id: U-grace
@@ -141,18 +144,14 @@ cases:
             is_me: false
     expected:
       posts_count: 1
-      sandbox_id_present: true
-      log_events:
-        - agent_turn_start
-        - agent_turn_activity
-      log_event_attributes:
-        - event: agent_turn_start
-          key: gen_ai.request.model
-        - event: agent_turn_activity
-          key: app.ai.tool_call_count
+      tool_calls_include:
+        - system_time
 
-  - id: sandbox_id_reused_across_turns
-    description: Sandbox ID persists and is reused for repeated skill invocations in the same thread.
+  - id: time_brief_repeated_invocations
+    description: Repeated /time-brief invocations in the same thread use the lightweight eval skill.
+    behavior:
+      skill_dirs:
+        - evals/skills
     events:
       - type: new_mention
         thread:
@@ -161,7 +160,7 @@ cases:
           thread_ts: "1700000000.800"
         message:
           id: m-sandbox-1
-          text: "/brief candidate: Alice Example"
+          text: "/time-brief candidate: Alice Example"
           is_mention: true
           author:
             user_id: U-hank
@@ -175,7 +174,7 @@ cases:
           thread_ts: "1700000000.800"
         message:
           id: m-sandbox-2
-          text: "/brief candidate: Bob Example"
+          text: "/time-brief candidate: Bob Example"
           is_mention: true
           author:
             user_id: U-hank
@@ -184,8 +183,8 @@ cases:
             is_me: false
     expected:
       posts_count: 2
-      sandbox_ids_count: 2
-      sandbox_ids_unique_count: 1
+      tool_calls_include:
+        - system_time
 
   - id: provider_error_without_gateway_key
     description: Missing gateway API key returns provider_error and still posts a safe fallback response.

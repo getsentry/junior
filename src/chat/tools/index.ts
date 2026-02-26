@@ -9,6 +9,8 @@ import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
 import { createSlackListCreateTool } from "@/chat/tools/slack-list-create";
 import { createSlackListGetItemsTool } from "@/chat/tools/slack-list-get-items";
 import { createSlackListUpdateItemTool } from "@/chat/tools/slack-list-update-item";
+import { createSystemTimeTool } from "@/chat/tools/system-time";
+import type { ToolDefinition } from "@/chat/tools/definition";
 import type { ToolHooks, ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 import { createWebFetchTool } from "@/chat/tools/web-fetch";
 import { createWebSearchTool } from "@/chat/tools/web-search";
@@ -51,6 +53,10 @@ function createToolState(
 
 export type { ToolHooks, ToolRuntimeContext };
 
+interface ToolAvailability {
+  bash?: boolean;
+}
+
 function wrapToolExecution<T>(
   toolName: string,
   toolDef: T,
@@ -80,14 +86,15 @@ function wrapToolExecution<T>(
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
-  context: ToolRuntimeContext = {}
-) {
+  context: ToolRuntimeContext = {},
+  availability: ToolAvailability = {}
+): Record<string, ToolDefinition<any>> {
   const state = createToolState(hooks, context);
-
-  return {
+  const includeBash = availability.bash ?? true;
+  const tools: Record<string, ToolDefinition<any>> = {
     final_answer: createFinalAnswerTool(),
     load_skill: wrapToolExecution("load_skill", createLoadSkillTool(availableSkills), hooks),
-    bash: wrapToolExecution("bash", createBashTool(), hooks),
+    system_time: wrapToolExecution("system_time", createSystemTimeTool(), hooks),
     web_search: wrapToolExecution("web_search", createWebSearchTool(), hooks),
     web_fetch: wrapToolExecution("web_fetch", createWebFetchTool(hooks), hooks),
     image_generate: wrapToolExecution("image_generate", createImageGenerateTool(hooks), hooks),
@@ -106,4 +113,10 @@ export function createTools(
       hooks
     )
   };
+
+  if (includeBash) {
+    tools.bash = wrapToolExecution("bash", createBashTool(), hooks);
+  }
+
+  return tools;
 }

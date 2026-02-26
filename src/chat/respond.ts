@@ -149,6 +149,7 @@ function isRawToolPayloadResponse(text: string): boolean {
 function formatToolStatus(toolName: string): string {
   const known: Record<string, string> = {
     load_skill: "Loading skill instructions",
+    system_time: "Reading current system time",
     bash: "Running shell command in sandbox",
     web_search: "Searching public sources",
     web_fetch: "Reading source pages",
@@ -544,6 +545,9 @@ export async function generateAssistantReply(
         channelId: context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
         artifactState: context.artifactState
+      },
+      {
+        bash: sandboxExecutor.canExecute("bash")
       }
     );
 
