@@ -1,4 +1,5 @@
 import type { FileUpload } from "chat";
+import type { Sandbox } from "@vercel/sandbox";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 
 export interface ToolHooks {
@@ -12,6 +13,7 @@ export interface ToolRuntimeContext {
   channelId?: string;
   threadTs?: string;
   artifactState?: ThreadArtifactsState;
+  sandbox?: Sandbox;
 }
 
 export interface ToolState {

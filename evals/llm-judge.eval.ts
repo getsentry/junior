@@ -2,7 +2,7 @@ import path from "node:path";
 import dns from "node:dns/promises";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { completeObject, getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
+import { completeObject, resolveGatewayModel } from "@/chat/pi/client";
 import { logException, logWarn } from "@/chat/observability";
 import { DEFAULT_EVAL_JUDGE_MODEL } from "./constants";
 import { loadBehaviorEvalSuite, runBehaviorEvalCase } from "./behavior-harness";
@@ -64,9 +64,6 @@ describe("LLM judged behavior evals", () => {
 
     // Preflight once so connectivity/provider failures fail fast and do not look like case-loop hangs.
     try {
-      if (!getGatewayApiKey()) {
-        throw new Error("AI_GATEWAY_API_KEY is missing");
-      }
       resolveGatewayModel(judgeModel);
       await dns.lookup("ai-gateway.vercel.sh");
 
@@ -88,9 +85,17 @@ describe("LLM judged behavior evals", () => {
     }
 
     const suite = loadBehaviorEvalSuite(path.resolve(process.cwd(), "evals/cases/slack-behaviors.yaml"));
+    const caseFilterRaw = process.env.EVAL_CASE_FILTER?.trim();
+    const filteredCases =
+      caseFilterRaw && caseFilterRaw.length > 0
+        ? suite.cases.filter((testCase) => testCase.id.includes(caseFilterRaw))
+        : suite.cases;
+    if (caseFilterRaw && filteredCases.length === 0) {
+      throw new Error(`No eval cases matched EVAL_CASE_FILTER="${caseFilterRaw}"`);
+    }
     const rows: Array<{ id: string; score: number; reasoning: string }> = [];
 
-    for (const testCase of suite.cases) {
+    for (const testCase of filteredCases) {
       const startedAt = Date.now();
       logWarn(
         "eval_case_start",
@@ -226,6 +231,6 @@ describe("LLM judged behavior evals", () => {
       "Eval suite completed"
     );
 
-    expect(rows.length).toBe(suite.cases.length);
+    expect(rows.length).toBe(filteredCases.length);
   }, 360000);
 });

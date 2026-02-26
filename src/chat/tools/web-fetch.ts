@@ -19,6 +19,13 @@ function filenameForUrl(url: URL, mediaType: string): string {
   return `fetched-file.${extensionForMediaType(mediaType)}`;
 }
 
+function extractHttpStatusFromMessage(message: string): number | null {
+  const match = message.match(/fetch failed:\s*(\d{3})/i);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function createWebFetchTool(hooks: ToolHooks) {
   return tool({
     description: "Fetch and extract readable text from a URL.",
@@ -67,7 +74,16 @@ export function createWebFetchTool(hooks: ToolHooks) {
 
         return await webFetch(url, max_chars);
       } catch (error) {
-        throw new Error(error instanceof Error ? error.message : "fetch failed");
+        const message = error instanceof Error ? error.message : "fetch failed";
+        const status = extractHttpStatusFromMessage(message);
+        const isClientError = status !== null && status >= 400 && status < 500;
+        return {
+          ok: false,
+          url,
+          error: message,
+          status,
+          retryable: !isClientError
+        };
       }
     }
   });

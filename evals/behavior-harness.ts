@@ -76,6 +76,7 @@ interface BehaviorCaseExpectation {
   }>;
   min_posts?: number;
   posts_count?: number;
+  post_contains?: string[];
   primary_thread_subscribed?: boolean;
   sandbox_id_present?: boolean;
   sandbox_ids_count?: number;
@@ -172,6 +173,7 @@ const expectationSchema = z.object({
     .optional(),
   min_posts: z.number().int().nonnegative().optional(),
   posts_count: z.number().int().nonnegative().optional(),
+  post_contains: z.array(z.string().min(1)).optional(),
   primary_thread_subscribed: z.boolean().optional(),
   sandbox_id_present: z.boolean().optional(),
   sandbox_ids_count: z.number().int().nonnegative().optional(),
@@ -487,8 +489,10 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         typeof persisted.app_sandbox_id === "string" ? persisted.app_sandbox_id : undefined;
 
       const originalGatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+      const originalOidcToken = process.env.VERCEL_OIDC_TOKEN;
       if (testCase.behavior?.unset_gateway_api_key) {
         delete process.env.AI_GATEWAY_API_KEY;
+        delete process.env.VERCEL_OIDC_TOKEN;
       }
       let reply: Awaited<ReturnType<typeof generateAssistantReply>>;
       try {
@@ -528,6 +532,11 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
             delete process.env.AI_GATEWAY_API_KEY;
           } else {
             process.env.AI_GATEWAY_API_KEY = originalGatewayApiKey;
+          }
+          if (originalOidcToken === undefined) {
+            delete process.env.VERCEL_OIDC_TOKEN;
+          } else {
+            process.env.VERCEL_OIDC_TOKEN = originalOidcToken;
           }
         }
       }
@@ -650,6 +659,13 @@ export function assertBehaviorEvalCase(
     throw new Error(
       formatFailure(`expected at least ${expected.min_posts} posts but got ${result.posts.length}`, result)
     );
+  }
+
+  for (const snippet of expected.post_contains ?? []) {
+    const found = result.posts.some((post) => post.includes(snippet));
+    if (!found) {
+      throw new Error(formatFailure(`expected post containing ${JSON.stringify(snippet)}`, result));
+    }
   }
 
   if (

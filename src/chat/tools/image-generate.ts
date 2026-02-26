@@ -1,6 +1,5 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
-import { getGatewayApiKey } from "@/chat/pi/client";
 import type { ToolHooks } from "@/chat/tools/types";
 
 function extensionForMediaType(mediaType: string): string {
@@ -22,11 +21,10 @@ export function createImageGenerateTool(hooks: ToolHooks) {
       })
     }),
     execute: async ({ prompt }) => {
-      const apiKey = getGatewayApiKey();
+      const apiKey = process.env.AI_GATEWAY_API_KEY;
       if (!apiKey) {
         throw new Error("AI_GATEWAY_API_KEY is required for image generation");
       }
-
       const response = await fetch("https://ai-gateway.vercel.sh/v1/images/generations", {
         method: "POST",
         headers: {

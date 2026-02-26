@@ -6,12 +6,13 @@ import { botConfig } from "@/chat/config";
 import { logException, logWarn, setTags, withSpan } from "@/chat/observability";
 import { buildSystemPrompt } from "@/chat/prompt";
 import { SkillSandbox } from "@/chat/skill-sandbox";
-import { discoverSkills, findSkillByName, loadSkillsByName, parseSkillInvocation, type Skill } from "@/chat/skills";
+import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
+import { loadSkillFromSandbox } from "@/chat/tools/load-skill";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
-import { isVercelSandboxEnabled, VercelSandboxToolExecutor } from "@/chat/sandbox/vercel";
+import { VercelSandboxToolExecutor } from "@/chat/sandbox/vercel";
 
 export interface ReplyRequestContext {
   assistant?: {
@@ -413,12 +414,11 @@ export async function generateAssistantReply(
   context: ReplyRequestContext = {}
 ): Promise<AssistantReply> {
   try {
-    const sandboxExecutor: VercelSandboxToolExecutor = isVercelSandboxEnabled()
-      ? new VercelSandboxToolExecutor({ sandboxId: context.sandbox?.sandboxId })
-      : new VercelSandboxToolExecutor();
+    const sandboxExecutor = new VercelSandboxToolExecutor({ sandboxId: context.sandbox?.sandboxId });
 
     const availableSkills = await discoverSkills();
     sandboxExecutor.configureSkills(availableSkills);
+    const sandbox = await sandboxExecutor.createSandbox();
     let userInput = messageText;
     const explicitInvocation = parseSkillInvocation(userInput);
     const explicitSkill = explicitInvocation
@@ -446,45 +446,22 @@ export async function generateAssistantReply(
 
     if (explicitInvocation && explicitSkill) {
       let loadedForSteering: LoadedSkillForSteering | null = null;
-
-      if (sandboxExecutor.canExecute("load_skill")) {
-        const envelope = await sandboxExecutor.execute<{
-          ok?: boolean;
-          skill_name?: string;
-          location?: string;
-          skill_dir?: string;
-          instructions?: string;
-        }>({
-          toolName: "load_skill",
-          input: { skill_name: explicitSkill.name }
-        });
-        const result = envelope.result;
-        if (
-          result &&
-          typeof result === "object" &&
-          (result as { ok?: unknown }).ok === true &&
-          typeof (result as { skill_name?: unknown }).skill_name === "string" &&
-          typeof (result as { location?: unknown }).location === "string" &&
-          typeof (result as { skill_dir?: unknown }).skill_dir === "string" &&
-          typeof (result as { instructions?: unknown }).instructions === "string"
-        ) {
-          loadedForSteering = {
-            name: (result as { skill_name: string }).skill_name,
-            location: (result as { location: string }).location,
-            skillDir: (result as { skill_dir: string }).skill_dir,
-            instructions: (result as { instructions: string }).instructions
-          };
-        }
-      } else {
-        const [skill] = await loadSkillsByName([explicitSkill.name], availableSkills);
-        if (skill) {
-          loadedForSteering = {
-            name: skill.name,
-            location: `${skill.skillPath}/SKILL.md`,
-            skillDir: skill.skillPath,
-            instructions: skill.body
-          };
-        }
+      const result = await loadSkillFromSandbox(sandbox, availableSkills, explicitSkill.name);
+      if (
+        result &&
+        typeof result === "object" &&
+        (result as { ok?: unknown }).ok === true &&
+        typeof (result as { skill_name?: unknown }).skill_name === "string" &&
+        typeof (result as { location?: unknown }).location === "string" &&
+        typeof (result as { skill_dir?: unknown }).skill_dir === "string" &&
+        typeof (result as { instructions?: unknown }).instructions === "string"
+      ) {
+        loadedForSteering = {
+          name: (result as { skill_name: string }).skill_name,
+          location: (result as { location: string }).location,
+          skillDir: (result as { skill_dir: string }).skill_dir,
+          instructions: (result as { instructions: string }).instructions
+        };
       }
 
       if (loadedForSteering) {
@@ -495,8 +472,9 @@ export async function generateAssistantReply(
     const userTurnText = buildUserTurnText(userInput, context.conversationContext);
 
     if (!getGatewayApiKey()) {
+      const providerError = "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
       return {
-        text: "I hit an internal error while processing that request. Please try again.",
+        text: `Error: ${providerError}`,
         sandboxId: sandboxExecutor.getSandboxId(),
         diagnostics: {
           outcome: "provider_error",
@@ -507,7 +485,7 @@ export async function generateAssistantReply(
           toolErrorCount: 0,
           usedFinalAnswer: false,
           usedPrimaryText: false,
-          errorMessage: "AI_GATEWAY_API_KEY is missing"
+          errorMessage: providerError
         }
       };
     }
@@ -544,10 +522,8 @@ export async function generateAssistantReply(
       {
         channelId: context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
-        artifactState: context.artifactState
-      },
-      {
-        bash: sandboxExecutor.canExecute("bash")
+        artifactState: context.artifactState,
+        sandbox
       }
     );
 
@@ -783,8 +759,9 @@ export async function generateAssistantReply(
       modelId: botConfig.modelId
     }, {}, "generateAssistantReply failed");
 
+    const message = error instanceof Error ? error.message : String(error);
     return {
-      text: "I hit an internal error while processing that request. Please try again.",
+      text: `Error: ${message}`,
       sandboxId: undefined,
       diagnostics: {
         outcome: "provider_error",
@@ -795,7 +772,7 @@ export async function generateAssistantReply(
         toolErrorCount: 0,
         usedFinalAnswer: false,
         usedPrimaryText: false,
-        errorMessage: error instanceof Error ? error.message : String(error)
+        errorMessage: message
       }
     };
   }

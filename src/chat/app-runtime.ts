@@ -227,7 +227,8 @@ export function createAppSlackRuntime<
           {},
           "onNewMention failed"
         );
-        await thread.post("I hit an internal error and couldn't respond. Please try again.");
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        await thread.post(`Error: ${errorMessage}`);
       }
     },
 
@@ -321,7 +322,8 @@ export function createAppSlackRuntime<
           {},
           "onSubscribedMessage failed"
         );
-        await thread.post("I hit an internal error and couldn't respond. Please try again.");
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        await thread.post(`Error: ${errorMessage}`);
       }
     },
 

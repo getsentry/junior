@@ -186,6 +186,34 @@ cases:
       tool_calls_include:
         - system_time
 
+  - id: list_working_directory_skill_invocation
+    description: Slash-invoked /list-working-directory uses bash in sandbox and returns working directory files.
+    behavior:
+      skill_dirs:
+        - evals/skills
+    events:
+      - type: new_mention
+        thread:
+          id: thread-list-working-dir
+          channel_id: C-list-working-dir
+          thread_ts: "1700000001.000"
+        message:
+          id: m-list-working-dir-1
+          text: "/list-working-directory"
+          is_mention: true
+          author:
+            user_id: U-jules
+            user_name: jules
+            full_name: Jules Example
+            is_me: false
+    expected:
+      posts_count: 1
+      tool_calls_include:
+        - bash
+      sandbox_id_present: true
+      post_contains:
+        - "Working directory files:"
+
   - id: provider_error_without_gateway_key
     description: Missing gateway API key returns provider_error and still posts a safe fallback response.
     behavior:

@@ -5,7 +5,7 @@ import { logException, logInfo, logWarn } from "@/chat/observability";
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 
 export function getGatewayApiKey(): string | undefined {
-  return getEnvApiKey("vercel-ai-gateway");
+  return getEnvApiKey("vercel-ai-gateway") || process.env.VERCEL_OIDC_TOKEN;
 }
 
 function extractText(message: { content?: Array<{ type: string; text?: string }> }): string {
@@ -100,43 +100,27 @@ export async function completeText(params: {
   const startedAt = Date.now();
   const model = resolveGatewayModel(params.modelId);
   const apiKey = getGatewayApiKey();
-  if (!apiKey) {
-    logWarn(
-      "ai_completion_missing_api_key",
-      {},
-      {
-        "gen_ai.system": GATEWAY_PROVIDER,
-        "gen_ai.operation.name": "complete_text",
-        "gen_ai.request.model": params.modelId
-      },
-      "AI completion aborted because API key is missing"
-    );
-    throw new Error("AI_GATEWAY_API_KEY is required for model completion");
-  }
   logInfo(
     "ai_completion_start",
     {},
     {
       "gen_ai.system": GATEWAY_PROVIDER,
       "gen_ai.operation.name": "complete_text",
-      "gen_ai.request.model": params.modelId
+      "gen_ai.request.model": params.modelId,
+      "app.ai.auth_mode": apiKey ? "api_key" : "ambient"
     },
     "AI completion started"
   );
-  const message = await completeSimple(
-    model,
-    {
-      systemPrompt: params.system,
-      messages: params.messages
-    },
-    {
-      apiKey,
-      temperature: params.temperature,
-      maxTokens: params.maxTokens,
-      signal: params.signal,
-      metadata: params.metadata
-    }
-  );
+  const message = await completeSimple(model, {
+    systemPrompt: params.system,
+    messages: params.messages
+  }, {
+    ...(apiKey ? { apiKey } : {}),
+    temperature: params.temperature,
+    maxTokens: params.maxTokens,
+    signal: params.signal,
+    metadata: params.metadata
+  });
   logInfo(
     "ai_completion_end",
     {},

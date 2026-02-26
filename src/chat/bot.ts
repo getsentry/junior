@@ -1095,35 +1095,49 @@ async function replyToThread(
           },
           onStatus: (status) => progress.setStatus(status)
         });
-        logInfo(
-          "agent_turn_diagnostics",
-          {
-            slackThreadId: threadId,
-            slackUserId: message.author.userId,
-            slackChannelId: channelId,
-            workflowRunId,
-            assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId
-          },
-          {
-            "gen_ai.system": "vercel-ai-gateway",
-            "gen_ai.operation.name": "agent_turn",
-            "app.ai.outcome": reply.diagnostics.outcome,
-            "app.ai.assistant_messages": reply.diagnostics.assistantMessageCount,
-            "app.ai.tool_results": reply.diagnostics.toolResultCount,
-            "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
-            "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
-            "app.ai.used_final_answer": reply.diagnostics.usedFinalAnswer,
-            "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
-            ...(reply.diagnostics.stopReason
-              ? { "app.ai.stop_reason": reply.diagnostics.stopReason }
-              : {}),
-            ...(reply.diagnostics.errorMessage
-              ? { "error.message": reply.diagnostics.errorMessage }
-              : {})
-          },
-          "Agent turn diagnostics"
-        );
+        const diagnosticsContext = {
+          slackThreadId: threadId,
+          slackUserId: message.author.userId,
+          slackChannelId: channelId,
+          workflowRunId,
+          assistantUserName: botConfig.userName,
+          modelId: botConfig.modelId
+        };
+        const diagnosticsAttributes = {
+          "gen_ai.system": "vercel-ai-gateway",
+          "gen_ai.operation.name": "agent_turn",
+          "app.ai.outcome": reply.diagnostics.outcome,
+          "app.ai.assistant_messages": reply.diagnostics.assistantMessageCount,
+          "app.ai.tool_results": reply.diagnostics.toolResultCount,
+          "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
+          "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
+          "app.ai.used_final_answer": reply.diagnostics.usedFinalAnswer,
+          "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
+          ...(reply.diagnostics.stopReason
+            ? { "app.ai.stop_reason": reply.diagnostics.stopReason }
+            : {}),
+          ...(reply.diagnostics.errorMessage
+            ? { "error.message": reply.diagnostics.errorMessage }
+            : {})
+        };
+        if (reply.diagnostics.outcome === "success") {
+          logInfo("agent_turn_diagnostics", diagnosticsContext, diagnosticsAttributes, "Agent turn diagnostics");
+        } else if (reply.diagnostics.outcome === "provider_error") {
+          logException(
+            new Error(reply.diagnostics.errorMessage ?? "Provider error without explicit message"),
+            "agent_turn_provider_error",
+            diagnosticsContext,
+            diagnosticsAttributes,
+            "Agent turn failed with provider error"
+          );
+        } else {
+          logWarn(
+            "agent_turn_diagnostics",
+            diagnosticsContext,
+            diagnosticsAttributes,
+            "Agent turn completed with execution failure"
+          );
+        }
 
         markConversationMessage(preparedState.conversation, preparedState.userMessageId, {
           replied: true,

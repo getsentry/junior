@@ -2,7 +2,7 @@ import { createBashTool } from "@/chat/tools/bash";
 import type { SkillMetadata } from "@/chat/skills";
 import { createFinalAnswerTool } from "@/chat/tools/final-answer";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
-import { createLoadSkillTool } from "@/chat/tools/load-skill";
+import { createLoadSkillTool, createUnavailableLoadSkillTool } from "@/chat/tools/load-skill";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
 import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-update";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
@@ -10,7 +10,6 @@ import { createSlackListCreateTool } from "@/chat/tools/slack-list-create";
 import { createSlackListGetItemsTool } from "@/chat/tools/slack-list-get-items";
 import { createSlackListUpdateItemTool } from "@/chat/tools/slack-list-update-item";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
-import type { ToolDefinition } from "@/chat/tools/definition";
 import type { ToolHooks, ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 import { createWebFetchTool } from "@/chat/tools/web-fetch";
 import { createWebSearchTool } from "@/chat/tools/web-search";
@@ -53,10 +52,6 @@ function createToolState(
 
 export type { ToolHooks, ToolRuntimeContext };
 
-interface ToolAvailability {
-  bash?: boolean;
-}
-
 function wrapToolExecution<T>(
   toolName: string,
   toolDef: T,
@@ -86,15 +81,18 @@ function wrapToolExecution<T>(
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
-  context: ToolRuntimeContext = {},
-  availability: ToolAvailability = {}
-): Record<string, ToolDefinition<any>> {
+  context: ToolRuntimeContext
+) {
   const state = createToolState(hooks, context);
-  const includeBash = availability.bash ?? true;
-  const tools: Record<string, ToolDefinition<any>> = {
+  return {
     final_answer: createFinalAnswerTool(),
-    load_skill: wrapToolExecution("load_skill", createLoadSkillTool(availableSkills), hooks),
+    load_skill: wrapToolExecution(
+      "load_skill",
+      context.sandbox ? createLoadSkillTool(context.sandbox, availableSkills) : createUnavailableLoadSkillTool(),
+      hooks
+    ),
     system_time: wrapToolExecution("system_time", createSystemTimeTool(), hooks),
+    bash: wrapToolExecution("bash", createBashTool(), hooks),
     web_search: wrapToolExecution("web_search", createWebSearchTool(), hooks),
     web_fetch: wrapToolExecution("web_fetch", createWebFetchTool(hooks), hooks),
     image_generate: wrapToolExecution("image_generate", createImageGenerateTool(hooks), hooks),
@@ -113,10 +111,4 @@ export function createTools(
       hooks
     )
   };
-
-  if (includeBash) {
-    tools.bash = wrapToolExecution("bash", createBashTool(), hooks);
-  }
-
-  return tools;
 }
