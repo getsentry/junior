@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSlackOutputMessage, slackOutputPolicy } from "@/chat/output";
+import { buildSlackOutputMessage, slackOutputPolicy, stripDeliveryDirectives } from "@/chat/output";
 
 describe("buildSlackOutputMessage", () => {
   it("returns inline markdown for short content", () => {
@@ -87,5 +87,21 @@ describe("buildSlackOutputMessage", () => {
     const message = buildSlackOutputMessage("one\r\n\r\n\r\n\r\ntwo   \n") as { markdown: string };
 
     expect(message.markdown).toBe("one\n\ntwo");
+  });
+});
+
+describe("stripDeliveryDirectives", () => {
+  it("removes a leading delivery directive block", () => {
+    const response = [
+      "<delivery>",
+      "mode: attachment",
+      "attachment_prefix: candidate-summary",
+      "</delivery>",
+      "",
+      "Snapshot",
+      "- strong OSS track record"
+    ].join("\n");
+
+    expect(stripDeliveryDirectives(response)).toBe(["Snapshot", "- strong OSS track record"].join("\n"));
   });
 });

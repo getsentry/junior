@@ -16,7 +16,7 @@ import type {
   ThreadConversationState
 } from "@/chat/conversation-state";
 import { captureException, logException, logInfo, logWarn, toOptionalString, withSpan } from "@/chat/observability";
-import { buildSlackOutputMessage, shouldUseAttachmentFallback } from "@/chat/output";
+import { buildSlackOutputMessage, shouldUseAttachmentFallback, stripDeliveryDirectives } from "@/chat/output";
 import { generateAssistantReply } from "@/chat/respond";
 import { createCanvas } from "@/chat/slack-actions/canvases";
 import {
@@ -855,6 +855,7 @@ async function maybePostCanvasFallback(args: {
   artifactStatePatch?: Partial<ThreadArtifactsState>;
 }): Promise<boolean> {
   const { text, files, userText, thread, channelId, artifactStatePatch } = args;
+  const contentText = stripDeliveryDirectives(text);
 
   if (!channelId) {
     return false;
@@ -873,7 +874,7 @@ async function maybePostCanvasFallback(args: {
 
   const created = await createCanvas({
     title,
-    markdown: text,
+    markdown: contentText,
     channelId
   });
 
@@ -890,7 +891,7 @@ async function maybePostCanvasFallback(args: {
   await thread.post({
     markdown: [
       "Summary:",
-      summarizeForThread(text),
+      summarizeForThread(contentText),
       "",
       canvasLine
     ].join("\n"),

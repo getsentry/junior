@@ -109,6 +109,10 @@ function parseDeliveryDirectives(text: string): ParsedDeliveryDirectives {
   };
 }
 
+export function stripDeliveryDirectives(text: string): string {
+  return parseDeliveryDirectives(text).text;
+}
+
 export function buildSlackOutputMessage(text: string, options: SlackOutputOptions = {}): PostableMessage {
   const parsed = parseDeliveryDirectives(text);
   const mergedOptions: SlackOutputOptions = {
