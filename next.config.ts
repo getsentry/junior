@@ -3,6 +3,7 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   typedRoutes: true,
+  serverExternalPackages: ["@vercel/sandbox", "bash-tool", "just-bash"],
   turbopack: {
     root: process.cwd()
   }
