@@ -15,7 +15,7 @@ export function createSlackListCreateTool(state: ToolState) {
       })
     }),
     execute: async ({ name }) => {
-      const operationKey = createOperationKey("slack_list_create", { name });
+      const operationKey = createOperationKey("slackListCreate", { name });
       const cached = state.getOperationResult<{
         ok: true;
         list_id: string;

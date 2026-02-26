@@ -40,7 +40,7 @@ export function createSlackListUpdateItemTool(state: ToolState) {
       if (!targetListId) {
         return { ok: false, error: "No list_id provided and no prior list found in thread state" };
       }
-      const operationKey = createOperationKey("slack_list_update_item", {
+      const operationKey = createOperationKey("slackListUpdateItem", {
         list_id: targetListId,
         item_id,
         completed: completed ?? null,

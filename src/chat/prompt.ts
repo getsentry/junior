@@ -141,7 +141,7 @@ export function buildSystemPrompt(params: {
 
   const availableSkillsSection = [
     "The following skills provide specialized instructions for specific tasks.",
-    "Call `load_skill` when the task matches a skill description.",
+    "Call `loadSkill` when the task matches a skill description.",
     "When a skill references a relative path, resolve it against `skill_dir` and use that path with `bash`.",
     "",
     formatAvailableSkillsForPrompt(availableSkills)
@@ -190,16 +190,16 @@ export function buildSystemPrompt(params: {
       "tool-usage",
       [
         "- For factual or external questions, run tools/skills first, then answer from evidence.",
-        "- Use `web_search` to discover sources.",
-        "- Use `web_fetch` to inspect specific URLs.",
+        "- Use `webSearch` to discover sources.",
+        "- Use `webFetch` to inspect specific URLs.",
         "- Use `bash` to inspect skill files from `skill_dir` and run shell commands inside the sandbox workspace.",
-        "- Use `image_generate` when the user asks for image creation.",
-        "- Use `slack_canvas_create` for long-form docs/specs and `slack_canvas_update` for doc follow-ups.",
-        "- Use `slack_list_create`, `slack_list_add_items`, and `slack_list_update_item` for actionable task tracking.",
+        "- Use `imageGenerate` when the user asks for image creation.",
+        "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
+        "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- When your work is complete, provide the exact user-facing markdown response.",
-        "- You may call `final_answer` as an explicit terminal signal, but plain assistant markdown is also a valid completion.",
+        "- You may call `finalAnswer` as an explicit terminal signal, but plain assistant markdown is also a valid completion.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
-        "- Prefer `web_search` before `web_fetch` when the user gave no URL."
+        "- Prefer `webSearch` before `webFetch` when the user gave no URL."
       ].join("\n")
     ),
     renderTag(
@@ -207,12 +207,12 @@ export function buildSystemPrompt(params: {
       [
         "- For explicit slash commands, treat `/skill-name` as authoritative intent for that skill.",
         "- If slash-invoked skill instructions are already present in <loaded_skills>, apply them immediately.",
-        "- Otherwise, for slash-invoked skills, call `load_skill` for that exact skill before applying skill-specific behavior.",
-        "- For non-slash requests where a skill clearly matches, call `load_skill` before applying skill-specific behavior.",
-        "- Do not claim to have used a skill unless it is present in <loaded_skills> or `load_skill` succeeded in this turn.",
-        "- Never apply skill-specific behavior unless the skill is present in <loaded_skills> or `load_skill` succeeded in this turn.",
+        "- Otherwise, for slash-invoked skills, call `loadSkill` for that exact skill before applying skill-specific behavior.",
+        "- For non-slash requests where a skill clearly matches, call `loadSkill` before applying skill-specific behavior.",
+        "- Do not claim to have used a skill unless it is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
+        "- Never apply skill-specific behavior unless the skill is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",
-        "- After `load_skill`, use `skill_dir` as the root for any referenced files you read via `bash`.",
+        "- After `loadSkill`, use `skill_dir` as the root for any referenced files you read via `bash`.",
         "- If no skill is a clear fit, continue with normal tool usage."
       ].join("\n")
     ),
@@ -227,7 +227,7 @@ export function buildSystemPrompt(params: {
         "- Do not include process chatter, preflight confirmations, or status-only updates in the final answer.",
         "- Avoid tables unless explicitly requested.",
         "- End every turn with a final user-facing markdown response.",
-        "- If you call `final_answer`, ensure its `answer` matches the final markdown response.",
+        "- If you call `finalAnswer`, ensure its `answer` matches the final markdown response.",
         "- Optional delivery directive (only when needed) must be the first block in this exact shape:",
         "- <delivery>",
         "- mode: attachment|inline",

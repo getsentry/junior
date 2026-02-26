@@ -3,6 +3,7 @@ import type { SkillMetadata } from "@/chat/skills";
 import { createFinalAnswerTool } from "@/chat/tools/final-answer";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
+import { createReadFileTool } from "@/chat/tools/read-file";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
 import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-update";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
@@ -13,6 +14,7 @@ import { createSystemTimeTool } from "@/chat/tools/system-time";
 import type { ToolHooks, ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 import { createWebFetchTool } from "@/chat/tools/web-fetch";
 import { createWebSearchTool } from "@/chat/tools/web-search";
+import { createWriteFileTool } from "@/chat/tools/write-file";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 
 function createToolState(
@@ -85,30 +87,32 @@ export function createTools(
 ) {
   const state = createToolState(hooks, context);
   return {
-    final_answer: createFinalAnswerTool(),
-    load_skill: wrapToolExecution(
-      "load_skill",
+    finalAnswer: createFinalAnswerTool(),
+    loadSkill: wrapToolExecution(
+      "loadSkill",
       createLoadSkillTool(context.sandbox, availableSkills, {
         onSkillLoaded: hooks.onSkillLoaded
       }),
       hooks
     ),
-    system_time: wrapToolExecution("system_time", createSystemTimeTool(), hooks),
+    systemTime: wrapToolExecution("systemTime", createSystemTimeTool(), hooks),
     bash: wrapToolExecution("bash", createBashTool(), hooks),
-    web_search: wrapToolExecution("web_search", createWebSearchTool(), hooks),
-    web_fetch: wrapToolExecution("web_fetch", createWebFetchTool(hooks), hooks),
-    image_generate: wrapToolExecution("image_generate", createImageGenerateTool(hooks), hooks),
-    slack_canvas_create: wrapToolExecution(
-      "slack_canvas_create",
+    readFile: wrapToolExecution("readFile", createReadFileTool(), hooks),
+    writeFile: wrapToolExecution("writeFile", createWriteFileTool(), hooks),
+    webSearch: wrapToolExecution("webSearch", createWebSearchTool(), hooks),
+    webFetch: wrapToolExecution("webFetch", createWebFetchTool(hooks), hooks),
+    imageGenerate: wrapToolExecution("imageGenerate", createImageGenerateTool(hooks), hooks),
+    slackCanvasCreate: wrapToolExecution(
+      "slackCanvasCreate",
       createSlackCanvasCreateTool(context, state),
       hooks
     ),
-    slack_canvas_update: wrapToolExecution("slack_canvas_update", createSlackCanvasUpdateTool(state), hooks),
-    slack_list_create: wrapToolExecution("slack_list_create", createSlackListCreateTool(state), hooks),
-    slack_list_add_items: wrapToolExecution("slack_list_add_items", createSlackListAddItemsTool(state), hooks),
-    slack_list_get_items: wrapToolExecution("slack_list_get_items", createSlackListGetItemsTool(state), hooks),
-    slack_list_update_item: wrapToolExecution(
-      "slack_list_update_item",
+    slackCanvasUpdate: wrapToolExecution("slackCanvasUpdate", createSlackCanvasUpdateTool(state), hooks),
+    slackListCreate: wrapToolExecution("slackListCreate", createSlackListCreateTool(state), hooks),
+    slackListAddItems: wrapToolExecution("slackListAddItems", createSlackListAddItemsTool(state), hooks),
+    slackListGetItems: wrapToolExecution("slackListGetItems", createSlackListGetItemsTool(state), hooks),
+    slackListUpdateItem: wrapToolExecution(
+      "slackListUpdateItem",
       createSlackListUpdateItemTool(state),
       hooks
     )

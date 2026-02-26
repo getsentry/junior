@@ -29,7 +29,7 @@ export function createSlackCanvasCreateTool(
     }),
     execute: async ({ title, markdown, channel_id }) => {
       const targetChannelId = channel_id ?? context.channelId;
-      const operationKey = createOperationKey("slack_canvas_create", {
+      const operationKey = createOperationKey("slackCanvasCreate", {
         title,
         markdown,
         channel_id: targetChannelId ?? null

@@ -129,8 +129,8 @@ export class SkillSandbox {
       }
     }
 
-    if (availableSet.has("final_answer")) {
-      resolved.add("final_answer");
+    if (availableSet.has("finalAnswer")) {
+      resolved.add("finalAnswer");
     }
 
     return toolNames.filter((toolName) => resolved.has(toolName));
@@ -248,6 +248,6 @@ export class SkillSandbox {
       return [...this.loadedSkills.values()][0];
     }
 
-    throw new Error("No active skill is loaded. Call load_skill first or pass skill_name explicitly.");
+    throw new Error("No active skill is loaded. Call loadSkill first or pass skill_name explicitly.");
   }
 }

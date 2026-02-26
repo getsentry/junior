@@ -43,7 +43,7 @@ export function createSlackCanvasUpdateTool(state: ToolState) {
       if (!targetCanvasId) {
         return { ok: false, error: "No canvas_id provided and no prior canvas found in thread state" };
       }
-      const operationKey = createOperationKey("slack_canvas_update", {
+      const operationKey = createOperationKey("slackCanvasUpdate", {
         canvas_id: targetCanvasId,
         markdown,
         operation: resolvedOperation,

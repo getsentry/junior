@@ -37,7 +37,7 @@ export function createWebSearchTool() {
       const html = await withTimeout(
         fetch(url, { headers: { "user-agent": "junior-bot/1.0" } }).then((response) => response.text()),
         SEARCH_TIMEOUT_MS,
-        "web_search"
+        "webSearch"
       );
 
       const results: Array<{ title: string; url: string; snippet: string }> = [];

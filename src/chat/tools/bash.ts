@@ -9,21 +9,7 @@ export function createBashTool() {
       command: Type.String({
         minLength: 1,
         description: "Bash command to run inside the sandbox."
-      }),
-      timeout_ms: Type.Optional(
-        Type.Integer({
-          minimum: 100,
-          maximum: 300000,
-          description: "Optional command timeout in milliseconds."
-        })
-      ),
-      max_output_chars: Type.Optional(
-        Type.Integer({
-          minimum: 200,
-          maximum: 200000,
-          description: "Maximum characters retained for stdout/stderr."
-        })
-      )
+      })
     }),
     execute: async () => {
       throw new Error("bash can only run when sandbox execution is enabled.");

@@ -19,7 +19,7 @@ import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
-import { VercelSandboxToolExecutor } from "@/chat/sandbox/vercel";
+import { createSandboxExecutor, type SandboxExecutor } from "@/chat/sandbox/sandbox";
 
 export interface ReplyRequestContext {
   assistant?: {
@@ -150,18 +150,20 @@ function isRawToolPayloadResponse(text: string): boolean {
 
 function formatToolStatus(toolName: string): string {
   const known: Record<string, string> = {
-    load_skill: "Loading skill instructions",
-    system_time: "Reading current system time",
+    loadSkill: "Loading skill instructions",
+    systemTime: "Reading current system time",
     bash: "Running shell command in sandbox",
-    web_search: "Searching public sources",
-    web_fetch: "Reading source pages",
-    slack_canvas_create: "Creating detailed brief",
-    slack_canvas_update: "Updating detailed brief",
-    slack_list_create: "Creating tracking list",
-    slack_list_add_items: "Updating tracking list",
-    slack_list_update_item: "Updating tracking list",
-    image_generate: "Generating image",
-    final_answer: "Drafting response"
+    readFile: "Reading file in sandbox",
+    writeFile: "Writing file in sandbox",
+    webSearch: "Searching public sources",
+    webFetch: "Reading source pages",
+    slackCanvasCreate: "Creating detailed brief",
+    slackCanvasUpdate: "Updating detailed brief",
+    slackListCreate: "Creating tracking list",
+    slackListAddItems: "Updating tracking list",
+    slackListUpdateItem: "Updating tracking list",
+    imageGenerate: "Generating image",
+    finalAnswer: "Drafting response"
   };
 
   if (known[toolName]) {
@@ -257,7 +259,7 @@ function createAgentTools(
   sandbox: SkillSandbox,
   spanContext: ObservabilityContext,
   onStatus?: (status: string) => void | Promise<void>,
-  sandboxExecutor?: VercelSandboxToolExecutor,
+  sandboxExecutor?: SandboxExecutor,
   hooks?: {
     onGeneratedFiles?: (files: FileUpload[]) => void;
     onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
@@ -328,7 +330,7 @@ function createAgentTools(
 
           try {
             if (typeof toolDef.execute !== "function") {
-              const answer = toolName === "final_answer" ? String((parsed.answer as string | undefined) ?? "") : "";
+              const answer = toolName === "finalAnswer" ? String((parsed.answer as string | undefined) ?? "") : "";
               const durationMs = Date.now() - toolStartedAt;
               setSpanAttributes({
                 "app.ai.tool_duration_ms": durationMs
@@ -348,7 +350,7 @@ function createAgentTools(
               );
               return {
                 content: answer ? [{ type: "text", text: answer }] : [{ type: "text", text: "ok" }],
-                details: toolName === "final_answer" ? { answer } : { ok: true }
+                details: toolName === "finalAnswer" ? { answer } : { ok: true }
               };
             }
 
@@ -431,7 +433,7 @@ export async function generateAssistantReply(
       modelId: botConfig.modelId
     };
 
-    const sandboxExecutor = new VercelSandboxToolExecutor({
+    const sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       traceContext: spanContext
     });
@@ -648,7 +650,7 @@ export async function generateAssistantReply(
 
     let finalAnswer: string | undefined;
     for (const message of [...toolResults].reverse()) {
-      if (message.toolName !== "final_answer") continue;
+      if (message.toolName !== "finalAnswer") continue;
       finalAnswer = finalAnswerFromToolDetails(message.details);
       if (finalAnswer) break;
     }
