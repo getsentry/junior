@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
+import { withSpan, type ObservabilityContext } from "@/chat/observability";
 import type { SkillMetadata } from "@/chat/skills";
 
 interface SandboxExecutionInput {
@@ -43,6 +44,7 @@ export class VercelSandboxToolExecutor {
   private sandbox: Sandbox | null = null;
   private sandboxIdHint?: string;
   private readonly timeoutMs: number;
+  private readonly traceContext: ObservabilityContext;
   private availableSkills: SkillMetadata[] = [];
   private bashToolExecute?:
     | ((input: { command: string }) => Promise<{ stdout: string; stderr: string; exitCode: number }>)
@@ -51,9 +53,11 @@ export class VercelSandboxToolExecutor {
   constructor(options?: {
     sandboxId?: string;
     timeoutMs?: number;
+    traceContext?: ObservabilityContext;
   }) {
     this.sandboxIdHint = options?.sandboxId;
     this.timeoutMs = options?.timeoutMs ?? 1000 * 60 * 30;
+    this.traceContext = options?.traceContext ?? {};
   }
 
   configureSkills(skills: SkillMetadata[]): void {
@@ -68,81 +72,151 @@ export class VercelSandboxToolExecutor {
     return toolName === "bash";
   }
 
+  private withSandboxSpan<T>(
+    name: string,
+    op: string,
+    attributes: Record<string, unknown>,
+    callback: () => Promise<T>
+  ): Promise<T> {
+    return withSpan(name, op, this.traceContext, callback, attributes);
+  }
+
   private async upsertSkillsToSandbox(sandbox: Sandbox): Promise<void> {
-    const filesToWrite: Array<{ path: string; content: Buffer }> = [];
-    const index = {
-      skills: [] as Array<{
-        name: string;
-        description: string;
-        root: string;
-      }>
-    };
+    await this.withSandboxSpan(
+      "sandbox.sync_skills",
+      "sandbox.sync",
+      {
+        "app.sandbox.skills_count": this.availableSkills.length
+      },
+      async () => {
+        const filesToWrite: Array<{ path: string; content: Buffer }> = [];
+        const index = {
+          skills: [] as Array<{
+            name: string;
+            description: string;
+            root: string;
+          }>
+        };
 
-    for (const skill of this.availableSkills) {
-      const skillFiles = await listFilesRecursive(skill.skillPath);
-      for (const absoluteFile of skillFiles) {
-        const relative = toPosixRelative(skill.skillPath, absoluteFile);
-        if (!relative || relative.startsWith("..")) {
-          continue;
+        for (const skill of this.availableSkills) {
+          const skillFiles = await listFilesRecursive(skill.skillPath);
+          for (const absoluteFile of skillFiles) {
+            const relative = toPosixRelative(skill.skillPath, absoluteFile);
+            if (!relative || relative.startsWith("..")) {
+              continue;
+            }
+            filesToWrite.push({
+              path: `/workspace/skills/${skill.name}/${relative}`,
+              content: await fs.readFile(absoluteFile)
+            });
+          }
+
+          index.skills.push({
+            name: skill.name,
+            description: skill.description,
+            root: `/workspace/skills/${skill.name}`
+          });
         }
+
         filesToWrite.push({
-          path: `/workspace/skills/${skill.name}/${relative}`,
-          content: await fs.readFile(absoluteFile)
+          path: "/workspace/skills/index.json",
+          content: Buffer.from(JSON.stringify(index), "utf8")
         });
+
+        const bytesWritten = filesToWrite.reduce((total, file) => total + file.content.length, 0);
+        await this.withSandboxSpan(
+          "sandbox.sync_write_files",
+          "sandbox.sync.write",
+          {
+            "app.sandbox.sync.files_written": filesToWrite.length,
+            "app.sandbox.sync.bytes_written": bytesWritten
+          },
+          async () => {
+            await sandbox.writeFiles(filesToWrite);
+          }
+        );
       }
-
-      index.skills.push({
-        name: skill.name,
-        description: skill.description,
-        root: `/workspace/skills/${skill.name}`
-      });
-    }
-
-    filesToWrite.push({
-      path: "/workspace/skills/index.json",
-      content: Buffer.from(JSON.stringify(index), "utf8")
-    });
-
-    await sandbox.writeFiles(filesToWrite);
+    );
   }
 
   async createSandbox(): Promise<Sandbox> {
     // Intentional: sandbox is a hard requirement for this runtime path.
     // We currently upsert skills on each acquisition to guarantee latest skill content.
     // TODO: optimize by detecting unchanged skill trees (e.g. content hash) and skip writes.
-    if (this.sandbox) {
-      await this.upsertSkillsToSandbox(this.sandbox);
-      return this.sandbox;
-    }
+    return this.withSandboxSpan(
+      "sandbox.acquire",
+      "sandbox.acquire",
+      {
+        "app.sandbox.id_hint_present": Boolean(this.sandboxIdHint),
+        "app.sandbox.timeout_ms": this.timeoutMs,
+        "app.sandbox.runtime": "node22",
+        "app.sandbox.skills_count": this.availableSkills.length
+      },
+      async () => {
+        if (this.sandbox) {
+          await this.withSandboxSpan(
+            "sandbox.reuse_cached",
+            "sandbox.acquire.cached",
+            {
+              "app.sandbox.reused": true,
+              "app.sandbox.source": "memory"
+            },
+            async () => {
+              await this.upsertSkillsToSandbox(this.sandbox as Sandbox);
+            }
+          );
+          return this.sandbox;
+        }
 
-    let sandbox: Sandbox | null = null;
-    if (this.sandboxIdHint) {
-      try {
-        sandbox = await Sandbox.get({ sandboxId: this.sandboxIdHint });
-      } catch {
-        sandbox = null;
+        let sandbox: Sandbox | null = null;
+        if (this.sandboxIdHint) {
+          try {
+            sandbox = await this.withSandboxSpan(
+              "sandbox.get",
+              "sandbox.get",
+              {
+                "app.sandbox.reused": true,
+                "app.sandbox.source": "id_hint"
+              },
+              async () => Sandbox.get({ sandboxId: this.sandboxIdHint as string })
+            );
+          } catch {
+            sandbox = null;
+          }
+        }
+
+        if (!sandbox) {
+          try {
+            sandbox = await this.withSandboxSpan(
+              "sandbox.create",
+              "sandbox.create",
+              {
+                "app.sandbox.reused": false,
+                "app.sandbox.source": "created",
+                "app.sandbox.timeout_ms": this.timeoutMs,
+                "app.sandbox.runtime": "node22"
+              },
+              async () =>
+                Sandbox.create({
+                  timeout: this.timeoutMs,
+                  runtime: "node22"
+                })
+            );
+          } catch (error) {
+            throw new Error("sandbox creation failed", { cause: error });
+          }
+        }
+
+        try {
+          await this.upsertSkillsToSandbox(sandbox);
+        } catch (error) {
+          throw new Error("sandbox skill sync failed", { cause: error });
+        }
+        this.sandbox = sandbox;
+        this.sandboxIdHint = sandbox.sandboxId;
+        return this.sandbox;
       }
-    }
-
-    if (!sandbox) {
-      try {
-        sandbox = await Sandbox.create({
-          timeout: this.timeoutMs,
-          runtime: "node22"
-        });
-      } catch (error) {
-        throw new Error("sandbox creation failed", { cause: error });
-      }
-    }
-
-    try {
-      await this.upsertSkillsToSandbox(sandbox);
-    } catch (error) {
-      throw new Error("sandbox skill sync failed", { cause: error });
-    }
-    this.sandbox = sandbox;
-    this.sandboxIdHint = sandbox.sandboxId;
-    return this.sandbox;
+    );
   }
 
   private async getBashToolExecute(): Promise<
@@ -153,10 +227,19 @@ export class VercelSandboxToolExecutor {
     }
 
     const sandbox = await this.createSandbox();
-    const toolkit = await createBashTool({
-      sandbox,
-      destination: "/workspace"
-    });
+    const toolkit = await this.withSandboxSpan(
+      "sandbox.bash_tool.init",
+      "sandbox.tool.init",
+      {
+        "app.sandbox.tool_name": "bash",
+        "app.sandbox.destination": "/workspace"
+      },
+      async () =>
+        createBashTool({
+          sandbox,
+          destination: "/workspace"
+        })
+    );
     const execute = toolkit.tools.bash.execute;
     if (!execute) {
       throw new Error("bash-tool did not return an executable bash tool");
@@ -176,7 +259,16 @@ export class VercelSandboxToolExecutor {
     const keepAliveMs = Number.parseInt(process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0", 10);
     if (Number.isFinite(keepAliveMs) && keepAliveMs > 0) {
       try {
-        await sandbox.extendTimeout(keepAliveMs);
+        await this.withSandboxSpan(
+          "sandbox.keepalive.extend",
+          "sandbox.keepalive",
+          {
+            "app.sandbox.keepalive_ms": keepAliveMs
+          },
+          async () => {
+            await sandbox.extendTimeout(keepAliveMs);
+          }
+        );
       } catch {
         // Best effort keepalive.
       }
@@ -193,7 +285,15 @@ export class VercelSandboxToolExecutor {
     }
 
     const executeBash = await this.getBashToolExecute();
-    const result = await executeBash({ command });
+    const result = await this.withSandboxSpan(
+      "sandbox.bash.execute",
+      "sandbox.tool.execute",
+      {
+        "app.sandbox.tool_name": "bash",
+        "app.sandbox.command.length": command.length
+      },
+      async () => executeBash({ command })
+    );
     return {
       result: {
         ok: result.exitCode === 0,
@@ -212,7 +312,16 @@ export class VercelSandboxToolExecutor {
 
   async dispose(): Promise<void> {
     if (!this.sandbox) return;
-    await this.sandbox.stop({ blocking: true });
+    await this.withSandboxSpan(
+      "sandbox.stop",
+      "sandbox.stop",
+      {
+        "app.sandbox.stop.blocking": true
+      },
+      async () => {
+        await (this.sandbox as Sandbox).stop({ blocking: true });
+      }
+    );
     this.sandbox = null;
     this.bashToolExecute = undefined;
   }

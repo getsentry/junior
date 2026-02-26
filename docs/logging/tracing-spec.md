@@ -11,7 +11,7 @@
 
 ## Trace Model
 - Prefer meaningful lifecycle boundaries over granular implementation spans.
-- Root spans should represent user-visible workflows (for example `workflow.chat_turn`, `workflow.reply`, `ai.generateAssistantReply`).
+- Root spans should represent user-visible workflows (for example `workflow.chat_turn`, `workflow.reply`, `ai.generate_assistant_reply`).
 - Child spans should represent major sub-operations with distinct latency/failure characteristics.
 
 ## Naming Conventions
@@ -19,7 +19,7 @@
 - `op` values use dotted operation categories.
 - Examples:
   - name: `workflow.reply`, op: `workflow.reply`
-  - name: `ai.generateAssistantReply`, op: `ai.generate_text`
+  - name: `ai.generate_assistant_reply`, op: `gen_ai.generate_text`
   - name: `sandbox.create`, op: `sandbox.create`
 
 ## Required Attributes
@@ -92,7 +92,7 @@
 - Unbounded high-cardinality per-file path attributes on spans.
 
 ## Parent/Child Relationships
-- Sandbox spans should be nested under `ai.generateAssistantReply` when invoked during reply generation.
+- Sandbox spans should be nested under `ai.generate_assistant_reply` when invoked during reply generation.
 - Sandbox execution spans should be nested under the active tool-call/request span context.
 
 ## Rollout Guidance

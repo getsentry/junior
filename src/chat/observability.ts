@@ -99,14 +99,25 @@ export async function withSpan<T>(
   name: string,
   op: string,
   context: ObservabilityContext,
-  callback: () => Promise<T>
+  callback: () => Promise<T>,
+  attributes: Record<string, unknown> = {}
 ): Promise<T> {
+  const normalizedAttributes: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(attributes)) {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      normalizedAttributes[key] = value;
+    }
+  }
+
   return withLogContext(context, () =>
     Sentry.startSpan(
       {
         name,
         op,
-        attributes: toSpanAttributes(context)
+        attributes: {
+          ...toSpanAttributes(context),
+          ...normalizedAttributes
+        }
       },
       callback
     )

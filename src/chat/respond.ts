@@ -381,7 +381,17 @@ export async function generateAssistantReply(
   context: ReplyRequestContext = {}
 ): Promise<AssistantReply> {
   try {
-    const sandboxExecutor = new VercelSandboxToolExecutor({ sandboxId: context.sandbox?.sandboxId });
+    const sandboxExecutor = new VercelSandboxToolExecutor({
+      sandboxId: context.sandbox?.sandboxId,
+      traceContext: {
+        slackThreadId: context.correlation?.threadId,
+        slackUserId: context.correlation?.requesterId,
+        slackChannelId: context.correlation?.channelId,
+        workflowRunId: context.correlation?.workflowRunId,
+        assistantUserName: context.assistant?.userName,
+        modelId: botConfig.modelId
+      }
+    });
 
     const availableSkills = await discoverSkills();
     sandboxExecutor.configureSkills(availableSkills);
@@ -541,8 +551,8 @@ export async function generateAssistantReply(
     );
 
     await withSpan(
-      "ai.generateAssistantReply",
-      "ai.generate_text",
+      "ai.generate_assistant_reply",
+      "gen_ai.generate_text",
       {
         slackThreadId: context.correlation?.threadId,
         slackUserId: context.correlation?.requesterId,
