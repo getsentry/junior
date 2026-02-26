@@ -5,6 +5,7 @@ import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
   logException,
+  logWarn,
   setSpanAttributes,
   setSpanStatus,
   setTags,
@@ -72,7 +73,7 @@ export interface AgentTurnDiagnostics {
   usedPrimaryText: boolean;
 }
 
-const AGENT_TURN_TIMEOUT_MS = 120_000;
+const AGENT_TURN_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 
 function formatUnknownSkillMessage(requestedSkill: string, availableSkills: Array<{ name: string }>): string {
@@ -171,6 +172,123 @@ function formatToolStatus(toolName: string): string {
 
   const readable = toolName.replaceAll("_", " ").trim();
   return readable.length > 0 ? `Running ${readable}` : "Running tool";
+}
+
+function compactPathForStatus(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (trimmed.length <= 80) {
+    return trimmed;
+  }
+
+  return `...${trimmed.slice(-77)}`;
+}
+
+function compactTextForStatus(value: unknown, maxLength = 80): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, Math.max(1, maxLength - 3))}...`;
+}
+
+function extractDomainForStatus(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.hostname || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function formatToolStatusWithInput(toolName: string, input: unknown): string {
+  const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : undefined;
+  const path = obj ? compactPathForStatus(obj.path) : undefined;
+  const query = obj ? compactTextForStatus(obj.query, 70) : undefined;
+  const domain = obj ? extractDomainForStatus(obj.url) : undefined;
+
+  if (path && toolName === "readFile") {
+    return `Reading file ${path}`;
+  }
+  if (path && toolName === "writeFile") {
+    return `Writing file ${path}`;
+  }
+  if (query && toolName === "webSearch") {
+    return `Searching web for "${query}"`;
+  }
+  if (domain && toolName === "webFetch") {
+    return `Fetching page from ${domain}`;
+  }
+
+  return formatToolStatus(toolName);
+}
+
+function formatToolResultStatus(toolName: string): string {
+  const known: Record<string, string> = {
+    loadSkill: "Integrating loaded skill guidance",
+    systemTime: "Applying current time context",
+    bash: "Analyzing command output",
+    readFile: "Analyzing file contents",
+    writeFile: "Saving file update",
+    webSearch: "Reviewing search results",
+    webFetch: "Reviewing page content",
+    slackCanvasCreate: "Preparing canvas response",
+    slackCanvasUpdate: "Preparing canvas update",
+    slackListCreate: "Preparing list update",
+    slackListAddItems: "Preparing list update",
+    slackListUpdateItem: "Preparing list update",
+    imageGenerate: "Preparing generated image",
+    finalAnswer: "Finalizing response"
+  };
+
+  if (known[toolName]) {
+    return known[toolName];
+  }
+
+  const readable = toolName.replaceAll("_", " ").trim();
+  return readable.length > 0 ? `Reviewing ${readable} result` : "Reviewing tool result";
+}
+
+function formatToolResultStatusWithInput(toolName: string, input: unknown): string {
+  const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : undefined;
+  const path = obj ? compactPathForStatus(obj.path) : undefined;
+  const query = obj ? compactTextForStatus(obj.query, 70) : undefined;
+  const domain = obj ? extractDomainForStatus(obj.url) : undefined;
+
+  if (path && toolName === "readFile") {
+    return `Reviewed file ${path}`;
+  }
+  if (path && toolName === "writeFile") {
+    return `Saved file ${path}`;
+  }
+  if (query && toolName === "webSearch") {
+    return `Reviewed web results for "${query}"`;
+  }
+  if (domain && toolName === "webFetch") {
+    return `Reviewed page from ${domain}`;
+  }
+
+  return formatToolResultStatus(toolName);
 }
 
 function buildUserTurnText(userInput: string, conversationContext?: string): string {
@@ -273,7 +391,7 @@ function createAgentTools(
     execute: async (_toolCallId, params) => {
       hooks?.onToolCall?.(toolName);
       const toolStartedAt = Date.now();
-      await onStatus?.(`${formatToolStatus(toolName)}...`);
+      await onStatus?.(`${formatToolStatusWithInput(toolName, params)}...`);
       return withSpan(
         "gen_ai.tool_call",
         "gen_ai.tool_call",
@@ -326,7 +444,7 @@ function createAgentTools(
                 "app.ai.tool_outcome": "success"
               });
               setSpanStatus("ok");
-              await onStatus?.("Reviewing tool results...");
+              await onStatus?.(`${formatToolResultStatusWithInput(toolName, parsed)}...`);
               return {
                 content: answer ? [{ type: "text", text: answer }] : [{ type: "text", text: "ok" }],
                 details: toolName === "finalAnswer" ? { answer } : { ok: true }
@@ -352,7 +470,7 @@ function createAgentTools(
               "app.ai.tool_outcome": "success"
             });
             setSpanStatus("ok");
-            await onStatus?.("Reviewing tool results...");
+            await onStatus?.(`${formatToolResultStatusWithInput(toolName, parsed)}...`);
             return {
               content: [{ type: "text", text: toToolContentText(resultDetails) }],
               details: resultDetails
@@ -479,11 +597,11 @@ export async function generateAssistantReply(
         onArtifactStatePatch: (patch) => {
           Object.assign(artifactStatePatch, patch);
         },
-        onToolCallStart: async (toolName) => {
-          await context.onStatus?.(`${formatToolStatus(toolName)}...`);
+        onToolCallStart: async (toolName, input) => {
+          await context.onStatus?.(`${formatToolStatusWithInput(toolName, input)}...`);
         },
-        onToolCallEnd: async () => {
-          await context.onStatus?.("Reviewing tool results...");
+        onToolCallEnd: async (toolName, input) => {
+          await context.onStatus?.(`${formatToolResultStatusWithInput(toolName, input)}...`);
         },
         onSkillLoaded: (loadedSkill) => {
           const existing = activeSkills.find((skill) => skill.name === loadedSkill.name);
