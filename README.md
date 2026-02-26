@@ -29,14 +29,6 @@ pnpm dlx vercel@latest link --yes --scope sentry
 pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
 ```
 
-If you linked to your personal org by mistake:
-
-```bash
-rm -rf .vercel
-pnpm dlx vercel@latest switch
-pnpm dlx vercel@latest link --yes --scope sentry
-```
-
 3. Start the app.
 
 ```bash
@@ -61,7 +53,9 @@ https://<ngrok-host>/api/webhooks/slack
 
 ## Evals
 
-LLM-judged numeric scoring:
+Use evals for end-to-end behavior testing of Junior's reply pipeline (prompting, tools, and expected outputs) with LLM-judged numeric scoring.
+
+Evals intentionally exclude live Slack integration concerns (Slack transport, app permissions, and webhook delivery).
 
 ```bash
 pnpm evals
@@ -90,8 +84,3 @@ Then run:
 ```bash
 pnpm evals
 ```
-
-## Notes
-
-- `REDIS_URL` is required; there is no in-memory fallback for state.
-- If Sentry env vars are set, server/client instrumentation is enabled automatically.

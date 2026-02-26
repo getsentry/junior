@@ -14,6 +14,7 @@ Co-Authored-By: (agent model name) <email>
 - Use `/commit` skill for any commit operation.
 - Use `/create-pr` skill for any PR creation operation.
 - Use `/skill-creator` skill when creating or updating skills.
+- Use evals for end-to-end behavior testing (excluding live Slack transport/integration). See `evals/README.md`.
 - Use instrumentation conventions from `docs/logging/index.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
 
