@@ -43,10 +43,13 @@ describe("createImageGenerateTool", () => {
 
     const uploads: Array<{ filename: string }> = [];
     const tool = createImageGenerateTool({
-      onGeneratedFiles: (files) => {
+      onGeneratedFiles: (files: Array<{ filename: string }>) => {
         uploads.push(...files.map((file) => ({ filename: file.filename })));
       }
     } as any);
+    if (typeof tool.execute !== "function") {
+      throw new Error("imageGenerate execute function missing");
+    }
 
     const result = await tool.execute({ prompt: "test prompt" }, {} as any);
 
@@ -85,6 +88,9 @@ describe("createImageGenerateTool", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({} as any);
+    if (typeof tool.execute !== "function") {
+      throw new Error("imageGenerate execute function missing");
+    }
     const result = await tool.execute({ prompt: "a cat" }, {} as any);
 
     const request = fetchMock.mock.calls[0];
@@ -114,6 +120,9 @@ describe("createImageGenerateTool", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({} as any);
+    if (typeof tool.execute !== "function") {
+      throw new Error("imageGenerate execute function missing");
+    }
     await expect(tool.execute({ prompt: "person in a forest" }, {} as any)).rejects.toThrow(
       'configured model "google/gemini-3-pro-image" is not an image generation model'
     );
