@@ -71,18 +71,3 @@ export function createLoadSkillTool(sandbox: Sandbox, availableSkills: SkillMeta
     }
   });
 }
-
-export function createUnavailableLoadSkillTool() {
-  return tool({
-    description: "Load a named skill and return its instructions to the reasoning context.",
-    inputSchema: Type.Object({
-      skill_name: Type.String({
-        minLength: 1,
-        description: "Skill name to load, without the leading slash."
-      })
-    }),
-    execute: async () => {
-      throw new Error("sandbox is required for load_skill");
-    }
-  });
-}

@@ -13,7 +13,7 @@ export interface ToolRuntimeContext {
   channelId?: string;
   threadTs?: string;
   artifactState?: ThreadArtifactsState;
-  sandbox?: Sandbox;
+  sandbox: Sandbox;
 }
 
 export interface ToolState {

@@ -36,6 +36,8 @@ function createToolState(options: {
   };
 }
 
+const noopSandbox = {} as any;
+
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
@@ -70,7 +72,7 @@ describe("tool idempotency", () => {
       permalink: "https://example.invalid/canvas-1"
     });
     const state = createToolState();
-    const tool = createSlackCanvasCreateTool({ channelId: "C123" }, state);
+    const tool = createSlackCanvasCreateTool({ channelId: "C123", sandbox: noopSandbox }, state);
 
     const first = await executeTool(tool, {
       title: "Weekly plan",
@@ -126,7 +128,7 @@ describe("tool idempotency", () => {
   it("throws operational errors for slack_canvas_create execution failures", async () => {
     createCanvasMock.mockRejectedValue(new Error("slack api unavailable"));
     const state = createToolState();
-    const tool = createSlackCanvasCreateTool({ channelId: "C123" }, state);
+    const tool = createSlackCanvasCreateTool({ channelId: "C123", sandbox: noopSandbox }, state);
 
     await expect(
       executeTool(tool, {

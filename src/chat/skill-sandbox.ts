@@ -33,10 +33,6 @@ function resolvePathWithinRoot(root: string, relativePath: string): string {
   return resolvedPath;
 }
 
-function toPublicErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export interface SkillSandboxFileEntry {
   path: string;
   type: "file" | "directory";
@@ -254,24 +250,4 @@ export class SkillSandbox {
 
     throw new Error("No active skill is loaded. Call load_skill first or pass skill_name explicitly.");
   }
-}
-
-export function getSkillSandbox(
-  context: unknown
-): { ok: true; sandbox: SkillSandbox } | { ok: false; error: string } {
-  if (context instanceof SkillSandbox) {
-    return { ok: true, sandbox: context };
-  }
-
-  return {
-    ok: false,
-    error: "Skill sandbox is unavailable in this tool execution context."
-  };
-}
-
-export function toSkillSandboxToolError(error: unknown): { ok: false; error: string } {
-  return {
-    ok: false,
-    error: toPublicErrorMessage(error)
-  };
 }

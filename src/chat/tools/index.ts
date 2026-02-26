@@ -2,7 +2,7 @@ import { createBashTool } from "@/chat/tools/bash";
 import type { SkillMetadata } from "@/chat/skills";
 import { createFinalAnswerTool } from "@/chat/tools/final-answer";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
-import { createLoadSkillTool, createUnavailableLoadSkillTool } from "@/chat/tools/load-skill";
+import { createLoadSkillTool } from "@/chat/tools/load-skill";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
 import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-update";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
@@ -88,7 +88,7 @@ export function createTools(
     final_answer: createFinalAnswerTool(),
     load_skill: wrapToolExecution(
       "load_skill",
-      context.sandbox ? createLoadSkillTool(context.sandbox, availableSkills) : createUnavailableLoadSkillTool(),
+      createLoadSkillTool(context.sandbox, availableSkills),
       hooks
     ),
     system_time: wrapToolExecution("system_time", createSystemTimeTool(), hooks),

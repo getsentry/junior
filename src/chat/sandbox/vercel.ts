@@ -107,6 +107,9 @@ export class VercelSandboxToolExecutor {
   }
 
   async createSandbox(): Promise<Sandbox> {
+    // Intentional: sandbox is a hard requirement for this runtime path.
+    // We currently upsert skills on each acquisition to guarantee latest skill content.
+    // TODO: optimize by detecting unchanged skill trees (e.g. content hash) and skip writes.
     if (this.sandbox) {
       await this.upsertSkillsToSandbox(this.sandbox);
       return this.sandbox;

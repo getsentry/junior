@@ -356,23 +356,10 @@ function createAgentTools(
           : await toolDef.execute(parsed as never, {
               experimental_context: sandbox
             });
-
-        const normalizedResult =
+        const resultDetails =
           sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
-            ? (result as { result: unknown; generatedFiles?: Array<{ dataBase64: string; filename: string; mimeType: string }>; artifactStatePatch?: Partial<ThreadArtifactsState> })
-            : null;
-        if (normalizedResult?.generatedFiles && normalizedResult.generatedFiles.length > 0) {
-          hooks?.onGeneratedFiles?.(
-            normalizedResult.generatedFiles.map((file) => ({
-              data: Buffer.from(file.dataBase64, "base64"),
-              filename: file.filename,
-              mimeType: file.mimeType
-            }))
-          );
-        }
-        if (normalizedResult?.artifactStatePatch && Object.keys(normalizedResult.artifactStatePatch).length > 0) {
-          hooks?.onArtifactStatePatch?.(normalizedResult.artifactStatePatch);
-        }
+            ? (result as { result: unknown }).result
+            : result;
 
         await onStatus?.("Reviewing tool results...");
         logWarn(
@@ -387,8 +374,8 @@ function createAgentTools(
           "Agent tool call finished"
         );
         return {
-          content: [{ type: "text", text: toToolContentText(normalizedResult ? normalizedResult.result : result) }],
-          details: normalizedResult ? normalizedResult.result : result
+          content: [{ type: "text", text: toToolContentText(resultDetails) }],
+          details: resultDetails
         };
       } catch (error) {
         logException(
