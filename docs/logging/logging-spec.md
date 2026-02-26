@@ -126,6 +126,15 @@ Only when no semantic key exists:
 - Never log raw auth headers, API keys, or attachment bytes.
 - For user content, log size/metadata by default; content only when explicitly needed and safe.
 
+## Metrics Derivation Policy
+- Default: derive metrics from log events and their attributes.
+- `event.name` is the primary metric grouping key.
+- Avoid direct metric emission when equivalent counters/histograms can be computed from existing logs.
+- Introduce direct metrics only when log/span derivation is insufficient due to:
+  - very high-frequency signals and storage/query cost limits,
+  - missing attributes that cannot be safely added to logs/spans,
+  - or strict low-latency alert requirements.
+
 ## Rollout Plan
 
 ### Phase 1: Foundation
@@ -187,4 +196,3 @@ Only when no semantic key exists:
 ## Open Questions
 - Should we emit logs to local JSONL in addition to Sentry in dev (ash-style local inspectability)?
 - Do we want strict compile-time enums for event names from day 1, or a soft migration with runtime validation first?
-- Which genAI semantic keys should be mandatory in every AI span/log pair for dashboards?
