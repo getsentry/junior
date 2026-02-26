@@ -198,7 +198,6 @@ export function buildSystemPrompt(params: {
         "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- When your work is complete, provide the exact user-facing markdown response.",
-        "- You may call `finalAnswer` as an explicit terminal signal, but plain assistant markdown is also a valid completion.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
         "- Prefer `webSearch` before `webFetch` when the user gave no URL."
       ].join("\n")
@@ -228,7 +227,6 @@ export function buildSystemPrompt(params: {
         "- Do not include process chatter, preflight confirmations, or status-only updates in the final answer.",
         "- Avoid tables unless explicitly requested.",
         "- End every turn with a final user-facing markdown response.",
-        "- If you call `finalAnswer`, ensure its `answer` matches the final markdown response.",
         "- Optional delivery directive (only when needed) must be the first block in this exact shape:",
         "- <delivery>",
         "- mode: attachment|inline",

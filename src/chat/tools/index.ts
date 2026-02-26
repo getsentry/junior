@@ -1,6 +1,5 @@
 import { createBashTool } from "@/chat/tools/bash";
 import type { SkillMetadata } from "@/chat/skills";
-import { createFinalAnswerTool } from "@/chat/tools/final-answer";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
 import { createReadFileTool } from "@/chat/tools/read-file";
@@ -88,7 +87,6 @@ export function createTools(
 ) {
   const state = createToolState(hooks, context);
   return {
-    finalAnswer: createFinalAnswerTool(),
     loadSkill: wrapToolExecution(
       "loadSkill",
       createLoadSkillTool(context.sandbox, availableSkills, {

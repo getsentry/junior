@@ -49,10 +49,9 @@ describe("skill sandbox", () => {
     const filtered = sandbox.filterToolNames([
       "bash",
       "web_search",
-      "web_fetch",
-      "final_answer"
+      "web_fetch"
     ]);
 
-    expect(filtered).toEqual(["bash", "web_search", "final_answer"]);
+    expect(filtered).toEqual(["bash", "web_search"]);
   });
 });

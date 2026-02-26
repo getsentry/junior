@@ -129,10 +129,6 @@ export class SkillSandbox {
       }
     }
 
-    if (availableSet.has("finalAnswer")) {
-      resolved.add("finalAnswer");
-    }
-
     return toolNames.filter((toolName) => resolved.has(toolName));
   }
 

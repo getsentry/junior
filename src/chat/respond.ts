@@ -70,7 +70,6 @@ export interface AgentTurnDiagnostics {
   toolCalls: string[];
   toolErrorCount: number;
   toolResultCount: number;
-  usedFinalAnswer: boolean;
   usedPrimaryText: boolean;
 }
 
@@ -163,8 +162,7 @@ function formatToolStatus(toolName: string): string {
     slackListCreate: "Creating tracking list",
     slackListAddItems: "Updating tracking list",
     slackListUpdateItem: "Updating tracking list",
-    imageGenerate: "Generating image",
-    finalAnswer: "Drafting response"
+    imageGenerate: "Generating image"
   };
 
   if (known[toolName]) {
@@ -262,8 +260,7 @@ function formatToolResultStatus(toolName: string): string {
     slackListCreate: "Preparing list update",
     slackListAddItems: "Preparing list update",
     slackListUpdateItem: "Preparing list update",
-    imageGenerate: "Preparing generated image",
-    finalAnswer: "Finalizing response"
+    imageGenerate: "Preparing generated image"
   };
 
   if (known[toolName]) {
@@ -365,14 +362,6 @@ function buildExecutionFailureMessage(toolErrorCount: number): string {
   return "I couldn’t complete this request in this turn due to an execution failure. I’ve logged the details for debugging.";
 }
 
-function finalAnswerFromToolDetails(details: unknown): string | undefined {
-  if (!details || typeof details !== "object") return undefined;
-  const answer = (details as { answer?: unknown }).answer;
-  if (typeof answer !== "string") return undefined;
-  const trimmed = answer.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
 function toToolContentText(value: unknown): string {
   if (typeof value === "string") return value;
   try {
@@ -469,11 +458,9 @@ function createAgentTools(
 
           try {
             if (typeof toolDef.execute !== "function") {
-              const answer = toolName === "finalAnswer" ? String((parsed.answer as string | undefined) ?? "") : "";
+              const resultDetails = { ok: true };
               const durationMs = Date.now() - toolStartedAt;
-              const toolResultAttribute = serializeGenAiAttribute(
-                toolName === "finalAnswer" ? { answer } : { ok: true }
-              );
+              const toolResultAttribute = serializeGenAiAttribute(resultDetails);
               setSpanAttributes({
                 "app.ai.tool_duration_ms": durationMs,
                 "app.ai.tool_outcome": "success",
@@ -482,8 +469,8 @@ function createAgentTools(
               setSpanStatus("ok");
               await onStatus?.(`${formatToolResultStatusWithInput(toolName, parsed)}...`);
               return {
-                content: answer ? [{ type: "text", text: answer }] : [{ type: "text", text: "ok" }],
-                details: toolName === "finalAnswer" ? { answer } : { ok: true }
+                content: [{ type: "text", text: "ok" }],
+                details: resultDetails
               };
             }
 
@@ -590,7 +577,6 @@ export async function generateAssistantReply(
           toolCalls: [],
           toolResultCount: 0,
           toolErrorCount: 0,
-          usedFinalAnswer: false,
           usedPrimaryText: false
         }
       };
@@ -610,7 +596,6 @@ export async function generateAssistantReply(
           toolCalls: [],
           toolResultCount: 0,
           toolErrorCount: 0,
-          usedFinalAnswer: false,
           usedPrimaryText: false,
           errorMessage: providerError
         }
@@ -794,14 +779,6 @@ export async function generateAssistantReply(
     await context.onStatus?.("Drafting response...");
     const toolResults = newMessages.filter(isToolResultMessage);
 
-    let finalAnswer: string | undefined;
-    for (const message of [...toolResults].reverse()) {
-      if (message.toolName !== "finalAnswer") continue;
-      finalAnswer = finalAnswerFromToolDetails(message.details);
-      if (finalAnswer) break;
-    }
-    const hadExtractedFinalAnswer = Boolean(finalAnswer);
-
     const assistantMessages = newMessages.filter(isAssistantMessage);
 
     const primaryText = assistantMessages
@@ -811,7 +788,7 @@ export async function generateAssistantReply(
 
     const toolErrorCount = toolResults.filter((result) => result.isError).length;
 
-    if (!finalAnswer && !primaryText) {
+    if (!primaryText) {
       logWarn(
         "ai_model_response_empty",
         {
@@ -829,21 +806,16 @@ export async function generateAssistantReply(
         },
         "Model returned empty text response"
       );
-
-      finalAnswer = buildExecutionFailureMessage(toolErrorCount);
     }
 
     const lastAssistant = assistantMessages.at(-1) as { stopReason?: unknown; errorMessage?: unknown } | undefined;
     const stopReason = typeof lastAssistant?.stopReason === "string" ? lastAssistant.stopReason : undefined;
     const errorMessage = typeof lastAssistant?.errorMessage === "string" ? lastAssistant.errorMessage : undefined;
-    const usedFinalAnswer = hadExtractedFinalAnswer;
     const usedPrimaryText = Boolean(primaryText);
     const outcome: AgentTurnDiagnostics["outcome"] =
-      finalAnswer || primaryText
-        ? (stopReason === "error" ? "provider_error" : "success")
-        : "execution_failure";
+      primaryText ? (stopReason === "error" ? "provider_error" : "success") : "execution_failure";
 
-    const resolvedText = finalAnswer ?? primaryText ?? buildExecutionFailureMessage(toolErrorCount);
+    const resolvedText = primaryText || buildExecutionFailureMessage(toolErrorCount);
     if (isExecutionEscapeResponse(resolvedText) || isRawToolPayloadResponse(resolvedText)) {
       return {
         text: buildExecutionFailureMessage(toolErrorCount),
@@ -857,7 +829,6 @@ export async function generateAssistantReply(
           toolCalls,
           toolResultCount: toolResults.length,
           toolErrorCount,
-          usedFinalAnswer,
           usedPrimaryText,
           stopReason,
           errorMessage,
@@ -878,7 +849,6 @@ export async function generateAssistantReply(
         toolCalls,
         toolResultCount: toolResults.length,
         toolErrorCount,
-        usedFinalAnswer,
         usedPrimaryText,
         stopReason,
         errorMessage,
@@ -906,7 +876,6 @@ export async function generateAssistantReply(
         toolCalls: [],
         toolResultCount: 0,
         toolErrorCount: 0,
-        usedFinalAnswer: false,
         usedPrimaryText: false,
         errorMessage: message,
         providerError: error

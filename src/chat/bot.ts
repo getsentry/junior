@@ -1158,7 +1158,6 @@ async function replyToThread(
           "app.ai.tool_results": reply.diagnostics.toolResultCount,
           "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
           "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
-          "app.ai.used_final_answer": reply.diagnostics.usedFinalAnswer,
           "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
           ...(reply.diagnostics.stopReason
             ? { "app.ai.stop_reason": reply.diagnostics.stopReason }
