@@ -9,11 +9,12 @@ Use this rubric to convert public technical evidence into a candidate brief.
 - Treat self-claims as unverified until corroborated.
 - Do not use private/internal signals.
 - Personal references/endorsements are secondary context only, not primary evidence.
+- Do not rely on `linkedin.com` scraping or LinkedIn profile caches/mirrors as required evidence inputs.
 
 ## Allowed source types
 
 - GitHub/GitLab/Bitbucket repositories, commits, PRs, issues, releases, and CI results.
-- Public CV/resume and public profile statements.
+- Public CV/resume and public profile statements from independently accessible non-LinkedIn sources.
 - Public technical talks, recordings, slide decks, and engineering articles.
 - Public package registry pages and changelogs.
 - Public speaking/event pages.

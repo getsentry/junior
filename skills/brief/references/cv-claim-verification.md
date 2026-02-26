@@ -6,6 +6,7 @@ Use this reference to validate public resume/profile claims against public evide
 
 - Extract key claims from CV/resume/public profiles.
 - Corroborate each high-impact claim using independent public artifacts.
+- Skip `linkedin.com` and LinkedIn cache/mirror hunting in normal workflow; this source is often inaccessible or scraper-blocked and should not consume analysis time.
 
 ## What counts as evidence
 
@@ -13,6 +14,7 @@ Use this reference to validate public resume/profile claims against public evide
 - Public talks or published technical writing that aligns with claims.
 - Public package ownership or maintainer history.
 - Public employment/project records when explicitly stated.
+- Public resume/CV pages on candidate-owned domains, employer/team bios, and conference speaker bios.
 
 ## What does not count by itself
 
@@ -30,4 +32,3 @@ These may be noted, but must not drive scoring without artifact-level corroborat
 ## Scoring input
 
 Use this component for `CV claim verification coverage` in the rubric.
-

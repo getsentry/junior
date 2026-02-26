@@ -7,7 +7,9 @@ description: Grade engineering candidates from public technical evidence for non
 
 ## Workflow
 
-1. Identify public technical sources first: GitHub/GitLab/Bitbucket contributions, public CV/resume, public speaking artifacts, portfolio sites, package registries, and public profile links (including X when technically relevant).
+1. Identify public technical sources first: GitHub/GitLab/Bitbucket contributions, public CV/resume, public speaking artifacts, portfolio sites, package registries, and non-LinkedIn public profile links (including X when technically relevant).
+   - Do not spend workflow time on `linkedin.com` or LinkedIn profile caches/mirrors. Treat LinkedIn scraping/cached profile recovery as unreliable and out of scope for this skill.
+   - Use alternate CV evidence sources first: personal sites/resumes, GitHub profile metadata, employer/team bios, conference speaker pages, technical articles, and package maintainer pages.
 2. Identify hiring constraints before analysis, especially target hubs or preferred locations.
 3. Build an evidence set targeting 5-8 technical artifacts for deep review.
    - Prioritize recent, candidate-owned repositories when available.
@@ -37,6 +39,7 @@ Use [candidate rubric](references/candidate-rubric.md) as the baseline scoring c
 - Every major component section in the final report must include a `References` subsection.
 - Each `References` subsection must contain concrete artifact-level citations (repo path, PR, issue, commit, article, talk, package page, or profile field).
 - Preferred evidence surfaces: GitHub contributions, CV/resume claims (with corroboration), public speaking artifacts, and technically substantive public posts.
+- Avoid `linkedin.com` and scraped LinkedIn mirrors as primary evidence surfaces; use independently accessible public artifacts instead.
 - Prefer evidence from the last 12-24 months when available.
 - If evidence is sparse, stale, or conflicting, state that explicitly and lower confidence.
 - Do not make unverified claims; tie every material claim to cited evidence.
