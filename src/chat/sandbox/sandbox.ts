@@ -131,6 +131,40 @@ function isAlreadyExistsError(error: unknown): boolean {
   );
 }
 
+function findInErrorChain(error: unknown, predicate: (candidate: unknown) => boolean): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && !seen.has(current)) {
+    if (predicate(current)) {
+      return true;
+    }
+    seen.add(current);
+    if (typeof current === "object") {
+      current = (current as { cause?: unknown }).cause;
+    } else {
+      current = undefined;
+    }
+  }
+  return false;
+}
+
+function isSandboxUnavailableError(error: unknown): boolean {
+  return findInErrorChain(error, (candidate) => {
+    const details = getSandboxErrorDetails(candidate);
+    const searchable = `${details.searchableText} ${details.summary}`.toLowerCase();
+    return (
+      searchable.includes("sandbox_stopped") ||
+      searchable.includes("status=410") ||
+      searchable.includes("status code 410") ||
+      searchable.includes("no longer available")
+    );
+  });
+}
+
+function wrapSandboxSetupError(error: unknown): Error {
+  return new Error("sandbox setup failed", { cause: error });
+}
+
 function throwSandboxOperationError(action: string, error: unknown, includeMissingPath = false): never {
   const details = getSandboxErrorDetails(error);
   setSpanAttributes({
@@ -222,19 +256,79 @@ export function createSandboxExecutor(options?: {
         "app.sandbox.skills_count": availableSkills.length
       },
       async () => {
+        const assignSandbox = (nextSandbox: Sandbox): Sandbox => {
+          sandbox = nextSandbox;
+          sandboxIdHint = nextSandbox.sandboxId;
+          toolExecutors = undefined;
+          return nextSandbox;
+        };
+
+        const createFreshSandbox = async (): Promise<Sandbox> => {
+          let createdSandbox: Sandbox;
+          try {
+            createdSandbox = await withSandboxSpan(
+              "sandbox.create",
+              "sandbox.create",
+              {
+                "app.sandbox.reused": false,
+                "app.sandbox.source": "created",
+                "app.sandbox.timeout_ms": timeoutMs,
+                "app.sandbox.runtime": "node22"
+              },
+              async () =>
+                Sandbox.create({
+                  timeout: timeoutMs,
+                  runtime: "node22"
+                })
+            );
+          } catch (error) {
+            throw wrapSandboxSetupError(error);
+          }
+
+          try {
+            await upsertSkillsToSandbox(createdSandbox);
+          } catch (error) {
+            throw wrapSandboxSetupError(error);
+          }
+          return assignSandbox(createdSandbox);
+        };
+
+        const recoverUnavailableSandbox = async (source: "memory" | "id_hint"): Promise<Sandbox> => {
+          setSpanAttributes({
+            "app.sandbox.recovery.attempted": true,
+            "app.sandbox.recovery.source": source
+          });
+          sandbox = null;
+          sandboxIdHint = undefined;
+          toolExecutors = undefined;
+          const replacement = await createFreshSandbox();
+          setSpanAttributes({
+            "app.sandbox.recovery.succeeded": true
+          });
+          return replacement;
+        };
+
         if (sandbox) {
-          await withSandboxSpan(
-            "sandbox.reuse_cached",
-            "sandbox.acquire.cached",
-            {
-              "app.sandbox.reused": true,
-              "app.sandbox.source": "memory"
-            },
-            async () => {
-              await upsertSkillsToSandbox(sandbox as Sandbox);
+          const cachedSandbox = sandbox;
+          try {
+            await withSandboxSpan(
+              "sandbox.reuse_cached",
+              "sandbox.acquire.cached",
+              {
+                "app.sandbox.reused": true,
+                "app.sandbox.source": "memory"
+              },
+              async () => {
+                await upsertSkillsToSandbox(cachedSandbox);
+              }
+            );
+            return cachedSandbox;
+          } catch (error) {
+            if (isSandboxUnavailableError(error)) {
+              return recoverUnavailableSandbox("memory");
             }
-          );
-          return sandbox;
+            throw wrapSandboxSetupError(error);
+          }
         }
 
         let acquiredSandbox: Sandbox | null = null;
@@ -254,36 +348,19 @@ export function createSandboxExecutor(options?: {
           }
         }
 
-        if (!acquiredSandbox) {
+        if (acquiredSandbox) {
           try {
-            acquiredSandbox = await withSandboxSpan(
-              "sandbox.create",
-              "sandbox.create",
-              {
-                "app.sandbox.reused": false,
-                "app.sandbox.source": "created",
-                "app.sandbox.timeout_ms": timeoutMs,
-                "app.sandbox.runtime": "node22"
-              },
-              async () =>
-                Sandbox.create({
-                  timeout: timeoutMs,
-                  runtime: "node22"
-                })
-            );
+            await upsertSkillsToSandbox(acquiredSandbox);
+            return assignSandbox(acquiredSandbox);
           } catch (error) {
-            throw new Error("sandbox creation failed", { cause: error });
+            if (isSandboxUnavailableError(error)) {
+              return recoverUnavailableSandbox("id_hint");
+            }
+            throw wrapSandboxSetupError(error);
           }
         }
 
-        try {
-          await upsertSkillsToSandbox(acquiredSandbox);
-        } catch (error) {
-          throw new Error("sandbox skill sync failed", { cause: error });
-        }
-        sandbox = acquiredSandbox;
-        sandboxIdHint = acquiredSandbox.sandboxId;
-        return sandbox;
+        return createFreshSandbox();
       }
     );
   };
