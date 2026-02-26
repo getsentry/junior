@@ -17,6 +17,7 @@ Co-Authored-By: (agent model name) <email>
 - Use evals for end-to-end behavior testing (excluding live Slack transport/integration). See `evals/README.md`.
 - Use instrumentation conventions from `specs/logging/index.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
+- Minimize defensive programming — no fallbacks when systems are expected to work. Ensure errors are captured correctly. Use retries for expected network failures, nothing more.
 
 ## Known Specs
 - `specs/security-policy.md` (global runtime/container/token security policy)
