@@ -5,7 +5,6 @@ import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
   logException,
-  logWarn,
   setSpanAttributes,
   setSpanStatus,
   setTags,
@@ -274,16 +273,6 @@ function createAgentTools(
     execute: async (_toolCallId, params) => {
       hooks?.onToolCall?.(toolName);
       const toolStartedAt = Date.now();
-      logWarn(
-        "agent_tool_call_start",
-        {},
-        {
-          "gen_ai.system": "vercel-ai-gateway",
-          "gen_ai.operation.name": "tool_call",
-          "app.ai.tool_name": toolName
-        },
-        "Agent tool call started"
-      );
       await onStatus?.(`${formatToolStatus(toolName)}...`);
       return withSpan(
         "gen_ai.tool_call",
@@ -333,21 +322,11 @@ function createAgentTools(
               const answer = toolName === "finalAnswer" ? String((parsed.answer as string | undefined) ?? "") : "";
               const durationMs = Date.now() - toolStartedAt;
               setSpanAttributes({
-                "app.ai.tool_duration_ms": durationMs
+                "app.ai.tool_duration_ms": durationMs,
+                "app.ai.tool_outcome": "success"
               });
               setSpanStatus("ok");
               await onStatus?.("Reviewing tool results...");
-              logWarn(
-                "agent_tool_call_end",
-                {},
-                {
-                  "gen_ai.system": "vercel-ai-gateway",
-                  "gen_ai.operation.name": "tool_call",
-                  "app.ai.tool_name": toolName,
-                  "app.ai.tool_duration_ms": durationMs
-                },
-                "Agent tool call finished"
-              );
               return {
                 content: answer ? [{ type: "text", text: answer }] : [{ type: "text", text: "ok" }],
                 details: toolName === "finalAnswer" ? { answer } : { ok: true }
@@ -369,21 +348,11 @@ function createAgentTools(
 
             const durationMs = Date.now() - toolStartedAt;
             setSpanAttributes({
-              "app.ai.tool_duration_ms": durationMs
+              "app.ai.tool_duration_ms": durationMs,
+              "app.ai.tool_outcome": "success"
             });
             setSpanStatus("ok");
             await onStatus?.("Reviewing tool results...");
-            logWarn(
-              "agent_tool_call_end",
-              {},
-              {
-                "gen_ai.system": "vercel-ai-gateway",
-                "gen_ai.operation.name": "tool_call",
-                "app.ai.tool_name": toolName,
-                "app.ai.tool_duration_ms": durationMs
-              },
-              "Agent tool call finished"
-            );
             return {
               content: [{ type: "text", text: toToolContentText(resultDetails) }],
               details: resultDetails
@@ -391,7 +360,8 @@ function createAgentTools(
           } catch (error) {
             const durationMs = Date.now() - toolStartedAt;
             setSpanAttributes({
-              "app.ai.tool_duration_ms": durationMs
+              "app.ai.tool_duration_ms": durationMs,
+              "app.ai.tool_outcome": "error"
             });
             setSpanStatus("error");
             logException(
