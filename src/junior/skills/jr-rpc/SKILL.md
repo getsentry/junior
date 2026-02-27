@@ -1,49 +1,34 @@
 ---
 name: jr-rpc
-description: Use host-mediated credential issuance for sandbox commands via jr-rpc. Use when a task needs short-lived provider credentials (for example GitHub) to run a command safely.
+description: Lazily enable capability credentials for this turn via `jr-rpc issue-credential <capability>`.
+requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write
 allowed-tools: bash
 ---
 
-# jr-rpc Credential Usage
+# jr-rpc Capability Command
 
-Use this skill when a command needs temporary credentials injected by the harness.
+Use this skill when a task needs authenticated API calls and credentials are not enabled yet.
 
-## Primary pattern
+## Required command form
 
-Use `credential exec` so credentials are injected only for the nested command:
-
-`jr-rpc credential exec --cap <capability> --repo <owner/repo> -- <command>`
+`jr-rpc issue-credential <capability> [--repo <owner/repo>]`
 
 Example:
 
-`jr-rpc credential exec --cap github.issues.write --repo getsentry/junior -- node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create --repo getsentry/junior --title "..." --body-file /tmp/body.md`
+`jr-rpc issue-credential github.issues.write --repo getsentry/junior`
 
-## Secondary pattern
+## Behavior
 
-`credential issue` is for diagnostics/metadata only:
-
-`jr-rpc credential issue --cap <capability> --repo <owner/repo> --format token|env|json`
-
-Notes:
-- Output is redacted metadata (no raw token values).
-- Prefer `credential exec` for real work.
+- `jr-rpc` runs as a bash runtime custom command.
+- Runtime lazily issues a short-lived lease for this turn and applies sandbox header transforms.
+- Raw tokens are never written into sandbox env/files.
 
 ## Guardrails
 
-- Never print, echo, or log credential values.
-- Do not write credentials to files.
-- Avoid shell debug tracing (`set -x`) when running credentialed commands.
-- Keep repo target explicit via `--repo owner/repo`.
-
-## Capability examples
-
-- `github.issues.read`
-- `github.issues.write`
-- `github.issues.comment`
-- `github.labels.write`
+- Use provider-qualified capabilities (for example `github.issues.write`).
+- Do not print credential values.
 
 ## References
 
-- [references/commands.md](references/commands.md) (overview)
-- [references/credential-exec.md](references/credential-exec.md) (`jr-rpc credential exec`)
-- [references/credential-issue.md](references/credential-issue.md) (`jr-rpc credential issue`)
+- [references/commands.md](references/commands.md)
+- [references/capabilities.md](references/capabilities.md)

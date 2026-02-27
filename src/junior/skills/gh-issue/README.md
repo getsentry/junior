@@ -1,6 +1,6 @@
 # gh-issue setup
 
-This skill uses host-issued GitHub App installation tokens and only accepts `GITHUB_TOKEN` in the sandbox.
+This skill uses host-issued GitHub App installation tokens.
 
 ## 1) Create/install GitHub App
 
@@ -22,27 +22,27 @@ Install the app on target repos/orgs and collect:
 Set on the harness host (never in skill files):
 - `GITHUB_APP_ID`
 - `GITHUB_APP_PRIVATE_KEY`
-- optional `GITHUB_INSTALLATION_ID` (pin installation instead of repo lookup)
+- `GITHUB_INSTALLATION_ID`
 
 ## 3) Runtime behavior
 
-- Capability runtime issues a short-lived installation token per command lease.
-- Sandbox receives only `GITHUB_TOKEN` for command scope.
-- `jr-rpc credential issue` does not print token values.
+- Credentials are issued lazily when `jr-rpc issue-credential <capability>` is run.
+- Issued credentials are reused for the rest of the current turn.
+- Sandbox does not receive raw tokens via env; host applies scoped Authorization header transforms for GitHub API calls.
 
 ## 4) Script usage
 
-Run via `jr-rpc credential exec`:
+Run as a regular sandbox `bash` command while this skill is active:
 
 ```bash
-jr-rpc credential exec --cap github.issues.write --repo owner/repo -- \
-  node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create \
-    --repo owner/repo \
-    --title "Example issue" \
-    --body-file /vercel/sandbox/tmp/issue.md
+jr-rpc issue-credential github.issues.write
+node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create \
+  --repo owner/repo \
+  --title "Example issue" \
+  --body-file /vercel/sandbox/tmp/issue.md
 ```
 
-`gh_issue_api.mjs` fails fast if `GITHUB_TOKEN` is missing.
+`gh_issue_api.mjs` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
 
 ## 5) Quick verification
 
@@ -55,15 +55,15 @@ jr-rpc credential exec --cap github.issues.write --repo owner/repo -- \
 1. Confirm host env vars are present in prod:
    - `GITHUB_APP_ID`
    - `GITHUB_APP_PRIVATE_KEY`
-   - optional `GITHUB_INSTALLATION_ID`
+   - `GITHUB_INSTALLATION_ID`
 2. Confirm the GitHub App is installed on your test repo with the permissions above.
 3. Deploy `main` to prod.
 4. Run `/gh-issue` to create an issue in a safe test repo.
 5. Verify the issue is authored by the GitHub App identity.
 6. Run `/gh-issue` to update title/body, add/remove labels, and add a comment.
 7. Verify all mutations succeed and are attributed to the app.
-8. Verify `jr-rpc credential issue` output is metadata/redacted only (no raw token).
-9. Verify `jr-rpc credential exec` can run a command that requires `GITHUB_TOKEN`.
+8. Verify GitHub API calls succeed while this skill is active without writing tokens into sandbox env/files.
+9. Verify raw token values are never printed in output or logs.
 10. Check logs for:
    - `credential_issue_request`
    - `credential_issue_success`

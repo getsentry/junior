@@ -4,9 +4,10 @@ All issue mutations should go through:
 
 `node src/junior/skills/gh-issue/scripts/gh_issue_api.mjs <command> [options]`
 
-## Required Environment Variables
+## Authentication
 
-- `GITHUB_TOKEN` (short-lived GitHub App installation token)
+- Preferred: sandbox network policy injects Authorization headers for `api.github.com`.
+- Optional local fallback: `GITHUB_TOKEN` (short-lived GitHub App installation token).
 
 ## Commands
 
@@ -35,4 +36,4 @@ All issue mutations should go through:
 - Outputs JSON for machine-friendly consumption.
 - Uses GitHub App installation tokens, so actions are attributed to the app identity.
 - Returns actionable errors for auth, permission, not-found, and validation failures.
-- Requires per-command `GITHUB_TOKEN` injection.
+- In harness runtime, auth should come from scoped header transforms, not raw token env injection.

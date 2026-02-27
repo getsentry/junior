@@ -12,7 +12,8 @@ function usage() {
   gh_issue_api.mjs remove-labels --repo owner/repo --number 123 --labels triage
 
 Environment:
-  GITHUB_TOKEN=<installation token>
+  Optional GITHUB_TOKEN=<installation token>
+  (sandbox network policy may inject Authorization headers automatically)
 `);
 }
 
@@ -49,11 +50,12 @@ function splitRepo(repo) {
 }
 
 async function ghRequest(path, { method = "GET", token, body } = {}) {
+  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers: {
       Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
+      ...authHeader,
       "X-GitHub-Api-Version": "2022-11-28",
       ...(body ? { "Content-Type": "application/json" } : {})
     },
@@ -110,7 +112,6 @@ async function run() {
   const { owner, repo } = splitRepo(options.repo);
 
   const installationToken = process.env.GITHUB_TOKEN?.trim();
-  if (!installationToken) throw new Error("Missing GITHUB_TOKEN");
 
   let result;
 

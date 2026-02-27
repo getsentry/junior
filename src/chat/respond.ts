@@ -17,7 +17,7 @@ import {
 import { buildSystemPrompt } from "@/chat/prompt";
 import { createSkillCapabilityRuntime } from "@/chat/capabilities/factory";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
-import { executeJrRpcCommand, parseJrRpcCommand } from "@/chat/capabilities/jr-rpc";
+import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { SkillSandbox } from "@/chat/skill-sandbox";
 import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -249,7 +249,6 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
   if (domain && toolName === "webFetch") {
     return `Fetching page from ${domain}`;
   }
-
   return formatToolStatus(toolName);
 }
 
@@ -303,7 +302,6 @@ function formatToolResultStatusWithInput(toolName: string, input: unknown): stri
   if (domain && toolName === "webFetch") {
     return `Reviewed page from ${domain}`;
   }
-
   return formatToolResultStatus(toolName);
 }
 
@@ -485,70 +483,54 @@ function createAgentTools(
               };
             }
 
-            const maybeRpcCommand =
-              toolName === "bash" ? parseJrRpcCommand(String(parsed.command ?? "").trim()) : null;
-            const injectedEnv =
-              toolName === "bash" && !maybeRpcCommand
-                ? await capabilityRuntime?.resolveBashEnv({
-                    command: String(parsed.command ?? ""),
-                    activeSkill: sandbox.getActiveSkill()
-                  })
-                : undefined;
-            if (toolName === "bash" && injectedEnv && Object.keys(injectedEnv).length > 0) {
+            const injectedHeaders =
+              toolName === "bash" ? capabilityRuntime?.getTurnHeaderTransforms() : undefined;
+            const bashCommand =
+              toolName === "bash" && typeof parsed.command === "string" ? parsed.command.trim() : "";
+            const isCustomBashCommand = toolName === "bash" && /^jr-rpc(?:\s|$)/.test(bashCommand);
+            const shouldLogCredentialInjection =
+              toolName === "bash" && !isCustomBashCommand && Boolean(injectedHeaders && injectedHeaders.length > 0);
+            if (shouldLogCredentialInjection) {
+              const headerDomains = (injectedHeaders ?? []).map((transform) => transform.domain);
               logInfo(
                 "credential_inject_start",
                 {},
                 {
                   "app.skill.name": sandbox.getActiveSkill()?.name,
-                  "app.credential.env_keys": Object.keys(injectedEnv)
+                  "app.credential.delivery": "header_transform",
+                  "app.credential.header_domains": headerDomains
                 },
-                "Injecting scoped credential env for sandbox command"
+                "Injecting scoped credential headers for sandbox command"
               );
             }
 
             const result =
-              maybeRpcCommand && capabilityRuntime && sandboxExecutor?.canExecute("bash")
-                ? await executeJrRpcCommand({
-                    command: maybeRpcCommand,
-                    activeSkill: sandbox.getActiveSkill(),
-                    capabilityRuntime,
-                    executeBashWithEnv: async (command, env) => {
-                      const nested = await sandboxExecutor.execute({
-                        toolName: "bash",
-                        input: {
-                          command,
-                          env
-                        }
-                      });
-                      return nested.result;
-                    }
+              sandboxExecutor?.canExecute(toolName)
+                ? await sandboxExecutor.execute({
+                    toolName,
+                    input:
+                      toolName === "bash" && injectedHeaders
+                        ? {
+                            ...parsed,
+                            headerTransforms: injectedHeaders
+                          }
+                        : parsed
                   })
-                : sandboxExecutor?.canExecute(toolName)
-                  ? await sandboxExecutor.execute({
-                      toolName,
-                      input:
-                        toolName === "bash" && injectedEnv
-                          ? {
-                              ...parsed,
-                              env: injectedEnv
-                            }
-                          : parsed
-                    })
-                  : await toolDef.execute(parsed as never, {
-                      experimental_context: sandbox
-                    });
+                : await toolDef.execute(parsed as never, {
+                    experimental_context: sandbox
+                  });
             const resultDetails =
               sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
                 ? (result as { result: unknown }).result
                 : result;
-            if (toolName === "bash" && injectedEnv && Object.keys(injectedEnv).length > 0) {
+            if (shouldLogCredentialInjection) {
               logInfo(
                 "credential_inject_cleanup",
                 {},
                 {
                   "app.skill.name": sandbox.getActiveSkill()?.name
                 },
-                "Scoped credential env injection completed"
+                "Scoped credential header injection completed"
               );
             }
 
@@ -615,14 +597,7 @@ export async function generateAssistantReply(
       modelId: botConfig.modelId
     };
 
-    const sandboxExecutor = createSandboxExecutor({
-      sandboxId: context.sandbox?.sandboxId,
-      traceContext: spanContext
-    });
-
     const availableSkills = await discoverSkills();
-    sandboxExecutor.configureSkills(availableSkills);
-    const sandbox = await sandboxExecutor.createSandbox();
     const userInput = messageText;
     const explicitInvocation = parseSkillInvocation(userInput);
     const explicitSkill = explicitInvocation
@@ -631,6 +606,21 @@ export async function generateAssistantReply(
     const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
     const capabilityRuntime = createSkillCapabilityRuntime(explicitInvocation?.args);
+    const sandboxExecutor = createSandboxExecutor({
+      sandboxId: context.sandbox?.sandboxId,
+      traceContext: spanContext,
+      runBashCustomCommand: async (command) => {
+        const result = await maybeExecuteJrRpcCustomCommand(command, {
+          capabilityRuntime,
+          activeSkill: skillSandbox.getActiveSkill()
+        });
+        return result.handled
+          ? { handled: true, result: result.result }
+          : { handled: false };
+      }
+    });
+    sandboxExecutor.configureSkills(availableSkills);
+    const sandbox = await sandboxExecutor.createSandbox();
 
     if (explicitInvocation && !explicitSkill) {
       return {

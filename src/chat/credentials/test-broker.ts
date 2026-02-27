@@ -8,7 +8,7 @@ export class TestCredentialBroker implements CredentialBroker {
     target?: CapabilityTarget;
     reason: string;
   }): Promise<CredentialLease> {
-    if (!input.capability.startsWith("app.test.")) {
+    if (!input.capability.startsWith("github.") && !input.capability.startsWith("app.test.")) {
       throw new Error(`Unsupported test capability: ${input.capability}`);
     }
 
@@ -22,6 +22,14 @@ export class TestCredentialBroker implements CredentialBroker {
       env: {
         GITHUB_TOKEN: token
       },
+      headerTransforms: [
+        {
+          domain: "api.github.com",
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      ],
       expiresAt,
       metadata: {
         reason: input.reason,

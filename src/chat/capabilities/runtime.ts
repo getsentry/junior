@@ -1,7 +1,7 @@
 import type { CapabilityTarget } from "@/chat/capabilities/types";
 import { logInfo, logWarn } from "@/chat/observability";
 import { extractCapabilityTarget, parseRepoTarget } from "@/chat/capabilities/target";
-import type { CredentialBroker, CredentialLease } from "@/chat/credentials/broker";
+import type { CredentialBroker, CredentialHeaderTransform, CredentialLease } from "@/chat/credentials/broker";
 import type { Skill } from "@/chat/skills";
 
 // Spec: specs/skill-capabilities-spec.md (runtime capability resolution + injection)
@@ -10,10 +10,30 @@ import type { Skill } from "@/chat/skills";
 export class SkillCapabilityRuntime {
   private readonly broker: CredentialBroker;
   private readonly invocationArgs?: string;
+  private readonly enabledByCapability = new Map<string, { expiresAtMs: number; transforms: CredentialHeaderTransform[] }>();
 
   constructor(params: { broker: CredentialBroker; invocationArgs?: string }) {
     this.broker = params.broker;
     this.invocationArgs = params.invocationArgs;
+  }
+
+  private resolveCapabilityTarget(activeSkill: Skill | null, repoRef?: string): CapabilityTarget | undefined {
+    const explicitTarget = repoRef ? parseRepoTarget(repoRef) : undefined;
+    if (explicitTarget) {
+      return explicitTarget;
+    }
+    return extractCapabilityTarget({
+      skillName: activeSkill?.name ?? "unknown",
+      commandText: "",
+      invocationArgs: this.invocationArgs
+    });
+  }
+
+  private capabilityCacheKey(capability: string, target?: CapabilityTarget): string {
+    const owner = target?.owner?.trim().toLowerCase();
+    const repo = target?.repo?.trim().toLowerCase();
+    const scope = owner && repo ? `${owner}/${repo}` : "none";
+    return `${capability}:${scope}`;
   }
 
   async issueCapabilityLease(input: {
@@ -23,15 +43,7 @@ export class SkillCapabilityRuntime {
     reason: string;
   }): Promise<CredentialLease> {
     const activeSkill = input.activeSkill;
-
-    const explicitTarget = input.repoRef ? parseRepoTarget(input.repoRef) : undefined;
-    const target = explicitTarget
-      ? explicitTarget
-      : extractCapabilityTarget({
-          skillName: activeSkill?.name ?? "unknown",
-          commandText: "",
-          invocationArgs: this.invocationArgs
-        });
+    const target = this.resolveCapabilityTarget(activeSkill, input.repoRef);
 
     return await this.broker.issue({
       capability: input.capability,
@@ -40,87 +52,141 @@ export class SkillCapabilityRuntime {
     });
   }
 
-  async resolveBashEnv(input: { command: string; activeSkill: Skill | null }): Promise<Record<string, string> | undefined> {
-    const activeSkill = input.activeSkill;
-    const required = activeSkill?.requiresCapabilities ?? [];
-    if (!activeSkill || required.length === 0) {
-      return undefined;
+  private toHeaderTransforms(lease: CredentialLease): CredentialHeaderTransform[] {
+    if (Array.isArray(lease.headerTransforms) && lease.headerTransforms.length > 0) {
+      return lease.headerTransforms
+        .filter(
+          (transform) =>
+            Boolean(transform?.domain?.trim()) &&
+            transform.headers &&
+            typeof transform.headers === "object" &&
+            Object.keys(transform.headers).length > 0
+        )
+        .map((transform) => ({
+          domain: transform.domain.trim(),
+          headers: transform.headers
+        }));
     }
 
-    const target = extractCapabilityTarget({
-      skillName: activeSkill.name,
-      commandText: input.command,
-      invocationArgs: this.invocationArgs
-    });
-    const targetRef = target?.owner && target?.repo ? `${target.owner}/${target.repo}` : "unknown";
+    // Backwards-compatible fallback while brokers migrate to explicit header transforms.
+    const githubToken = lease.env.GITHUB_TOKEN?.trim();
+    if (lease.provider === "github" && githubToken) {
+      return [
+        {
+          domain: "api.github.com",
+          headers: {
+            Authorization: `Bearer ${githubToken}`
+          }
+        }
+      ];
+    }
 
+    return [];
+  }
+
+  async enableCapabilityForTurn(input: {
+    activeSkill: Skill | null;
+    capability: string;
+    repoRef?: string;
+    reason: string;
+  }): Promise<{ reused: boolean; expiresAt: string }> {
+    const capability = input.capability.trim();
+    if (!capability) {
+      throw new Error("jr-rpc issue-credential requires a capability argument");
+    }
+    if (!capability.startsWith("github.")) {
+      throw new Error(`Unsupported capability provider for jr-rpc issue-credential: ${capability}`);
+    }
+    const activeSkill = input.activeSkill;
+    const capabilityTarget = this.resolveCapabilityTarget(activeSkill, input.repoRef);
+    if (!capabilityTarget?.owner || !capabilityTarget?.repo) {
+      throw new Error("jr-rpc issue-credential requires repository context; use --repo <owner/repo>");
+    }
+    const declared = activeSkill?.requiresCapabilities ?? [];
+    if (activeSkill && !declared.includes(capability)) {
+      logWarn(
+        "capability_not_declared_for_skill",
+        {},
+        {
+          "app.skill.name": activeSkill.name,
+          "app.capability.name": capability
+        },
+        "Capability issued even though it is not declared in the active skill (soft enforcement)"
+      );
+    }
+    const cacheKey = this.capabilityCacheKey(capability, capabilityTarget);
+    const existing = this.enabledByCapability.get(cacheKey);
+    const now = Date.now();
+    if (existing && existing.expiresAtMs - now > 10_000) {
+      return { reused: true, expiresAt: new Date(existing.expiresAtMs).toISOString() };
+    }
     logInfo(
       "credential_issue_request",
       {},
       {
-        "app.skill.name": activeSkill.name,
-        "app.capability.count": required.length,
-        "app.capability.target": targetRef
+        "app.skill.name": activeSkill?.name,
+        "app.capability.name": capability
       },
-      "Resolving capability-based credentials"
+      "Issuing capability credential for current turn"
     );
 
     try {
-      const allowedCapabilities = required;
-      const githubCapabilities = allowedCapabilities.filter((capability) => capability.startsWith("github."));
-
-      const env: Record<string, string> = {};
-      if (githubCapabilities.length > 0) {
-        // Issue one GitHub token per command by collapsing to the highest required permission.
-        const capability = githubCapabilities.some((candidate) => candidate !== "github.issues.read")
-          ? "github.issues.write"
-          : "github.issues.read";
-        const lease = await this.issueCapabilityLease({
-          activeSkill,
-          capability,
-          repoRef: target?.owner && target?.repo ? `${target.owner}/${target.repo}` : undefined,
-          reason: `skill:${activeSkill.name}:bash`
-        });
-        logInfo(
-          "credential_issue_success",
-          {},
-          {
-            "app.skill.name": activeSkill.name,
-            "app.capability.name": capability,
-            "app.capability.target": targetRef,
-            "app.credential.provider": lease.provider,
-            "app.credential.expires_at": lease.expiresAt
-          },
-          "Issued capability credential lease"
-        );
-        Object.assign(env, lease.env);
+      const lease = await this.issueCapabilityLease({
+        activeSkill,
+        capability,
+        repoRef: input.repoRef,
+        reason: input.reason
+      });
+      const transforms = this.toHeaderTransforms(lease);
+      if (transforms.length === 0) {
+        throw new Error(`Credential lease for ${capability} did not include header transforms`);
       }
-
-      if (allowedCapabilities.length > 0 && Object.keys(env).length === 0) {
-        logWarn(
-          "credential_issue_no_supported_provider",
-          {},
-          {
-            "app.skill.name": activeSkill.name,
-            "app.capability.count": allowedCapabilities.length
-          },
-          "No provider-specific credential injector matched allowed capabilities"
-        );
+      const expiresAtMs = Date.parse(lease.expiresAt);
+      if (!Number.isFinite(expiresAtMs)) {
+        throw new Error(`Credential lease for ${capability} returned invalid expiresAt`);
       }
-
-      return Object.keys(env).length > 0 ? env : undefined;
+      this.enabledByCapability.set(cacheKey, {
+        expiresAtMs,
+        transforms
+      });
+      logInfo(
+        "credential_issue_success",
+        {},
+        {
+          "app.skill.name": activeSkill?.name,
+          "app.capability.name": capability,
+          "app.credential.provider": lease.provider,
+          "app.credential.expires_at": lease.expiresAt,
+          "app.credential.delivery": "header_transform"
+        },
+        "Issued capability credential lease"
+      );
+      return { reused: false, expiresAt: lease.expiresAt };
     } catch (error) {
       logWarn(
         "credential_issue_failed",
         {},
         {
-          "app.skill.name": activeSkill.name,
-          "app.capability.target": targetRef,
+          "app.skill.name": activeSkill?.name,
+          "app.capability.name": capability,
           "error.message": error instanceof Error ? error.message : String(error)
         },
         "Capability credential resolution failed"
       );
       throw error;
     }
+  }
+
+  getTurnHeaderTransforms(): CredentialHeaderTransform[] | undefined {
+    const now = Date.now();
+    const headerTransforms: CredentialHeaderTransform[] = [];
+    for (const [capability, entry] of this.enabledByCapability.entries()) {
+      if (!Number.isFinite(entry.expiresAtMs) || entry.expiresAtMs <= now) {
+        this.enabledByCapability.delete(capability);
+        continue;
+      }
+      headerTransforms.push(...entry.transforms);
+    }
+    return headerTransforms.length > 0 ? headerTransforms : undefined;
   }
 }
