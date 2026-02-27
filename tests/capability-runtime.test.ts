@@ -61,6 +61,49 @@ describe("skill capability runtime", () => {
     expect(issueCalls).toBe(1);
   });
 
+  it("does not reuse cached credentials across different repository scopes", async () => {
+    let issueCalls = 0;
+    const broker: CredentialBroker = {
+      issue: async () => {
+        issueCalls += 1;
+        return {
+          id: `lease-${issueCalls}`,
+          provider: "github",
+          capability: "github.issues.write",
+          env: { GITHUB_TOKEN: `token-${issueCalls}` },
+          headerTransforms: [
+            {
+              domain: "api.github.com",
+              headers: {
+                Authorization: `Bearer token-${issueCalls}`
+              }
+            }
+          ],
+          expiresAt: new Date(Date.now() + 60_000).toISOString()
+        };
+      }
+    };
+
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/junior" });
+    await expect(
+      runtime.enableCapabilityForTurn({
+        activeSkill: fakeSkill,
+        capability: "github.issues.write",
+        repoRef: "getsentry/junior",
+        reason: "test:repo-one"
+      })
+    ).resolves.toMatchObject({ reused: false });
+    await expect(
+      runtime.enableCapabilityForTurn({
+        activeSkill: fakeSkill,
+        capability: "github.issues.write",
+        repoRef: "getsentry/sentry",
+        reason: "test:repo-two"
+      })
+    ).resolves.toMatchObject({ reused: false });
+    expect(issueCalls).toBe(2);
+  });
+
   it("allows explicit lease issuance without active skill", async () => {
     const broker: CredentialBroker = {
       issue: async () => ({

@@ -29,6 +29,13 @@ export class SkillCapabilityRuntime {
     });
   }
 
+  private capabilityCacheKey(capability: string, target?: CapabilityTarget): string {
+    const owner = target?.owner?.trim().toLowerCase();
+    const repo = target?.repo?.trim().toLowerCase();
+    const scope = owner && repo ? `${owner}/${repo}` : "none";
+    return `${capability}:${scope}`;
+  }
+
   async issueCapabilityLease(input: {
     activeSkill: Skill | null;
     capability: string;
@@ -107,7 +114,8 @@ export class SkillCapabilityRuntime {
         "Capability issued even though it is not declared in the active skill (soft enforcement)"
       );
     }
-    const existing = this.enabledByCapability.get(capability);
+    const cacheKey = this.capabilityCacheKey(capability, capabilityTarget);
+    const existing = this.enabledByCapability.get(cacheKey);
     const now = Date.now();
     if (existing && existing.expiresAtMs - now > 10_000) {
       return { reused: true, expiresAt: new Date(existing.expiresAtMs).toISOString() };
@@ -137,7 +145,7 @@ export class SkillCapabilityRuntime {
       if (!Number.isFinite(expiresAtMs)) {
         throw new Error(`Credential lease for ${capability} returned invalid expiresAt`);
       }
-      this.enabledByCapability.set(capability, {
+      this.enabledByCapability.set(cacheKey, {
         expiresAtMs,
         transforms
       });
