@@ -32,7 +32,7 @@ import { lookupSlackUser } from "@/chat/slack-user";
 import { createStateAdapter } from "@/chat/state";
 import { completeObject, completeText, GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { listThreadReplies } from "@/chat/slack-actions/channel";
-import { downloadPrivateSlackFile } from "@/chat/slack-actions/client";
+import { downloadPrivateSlackFile, uploadFilesToThread } from "@/chat/slack-actions/client";
 
 interface BotDeps {
   completeObject: typeof completeObject;
@@ -41,6 +41,7 @@ interface BotDeps {
   generateAssistantReply: typeof generateAssistantReplyImpl;
   listThreadReplies: typeof listThreadReplies;
   lookupSlackUser: typeof lookupSlackUser;
+  uploadFilesToThread: typeof uploadFilesToThread;
 }
 
 const defaultBotDeps: BotDeps = {
@@ -49,7 +50,8 @@ const defaultBotDeps: BotDeps = {
   downloadPrivateSlackFile,
   generateAssistantReply: generateAssistantReplyImpl,
   listThreadReplies,
-  lookupSlackUser
+  lookupSlackUser,
+  uploadFilesToThread
 };
 
 let botDeps: BotDeps = defaultBotDeps;
@@ -1645,27 +1647,46 @@ async function replyToThread(
           : {};
 
         if (!streamedReplyPromise) {
-          await thread.post(
-            buildSlackOutputMessage(reply.text, {
-              files: reply.files
-            })
-          );
+          await thread.post(buildSlackOutputMessage(reply.text));
         } else {
-          const streamedReply = await streamedReplyPromise;
-          if (reply.files && reply.files.length > 0) {
-            if (isEditableSentMessage(streamedReply)) {
-              await streamedReply.edit(
-                buildSlackOutputMessage(reply.text, {
-                  files: reply.files
-                })
-              );
-            } else {
-              await thread.post(
-                buildSlackOutputMessage(reply.text, {
-                  files: reply.files
-                })
-              );
-            }
+          await streamedReplyPromise;
+        }
+
+        if (reply.files && reply.files.length > 0 && (!channelId || !threadTs)) {
+          logWarn(
+            "file_upload_skipped_missing_context",
+            { slackThreadId: threadId },
+            { "app.file_count": reply.files.length },
+            "Generated files could not be uploaded: missing channelId or threadTs"
+          );
+        }
+
+        if (reply.files && reply.files.length > 0 && channelId && threadTs) {
+          try {
+            await botDeps.uploadFilesToThread({
+              channelId,
+              threadTs,
+              files: reply.files.map((f) => ({
+                data: Buffer.isBuffer(f.data) ? f.data : Buffer.from(f.data as ArrayBuffer),
+                filename: f.filename
+              }))
+            });
+          } catch (uploadError) {
+            logException(
+              uploadError instanceof Error ? uploadError : new Error(String(uploadError)),
+              "file_upload_failed",
+              {
+                slackThreadId: threadId,
+                slackChannelId: channelId
+              },
+              {},
+              "Failed to upload generated files to Slack thread"
+            );
+            await thread.post(
+              buildSlackOutputMessage(
+                "I generated the image but failed to upload it to this thread."
+              )
+            );
           }
         }
 

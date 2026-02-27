@@ -152,6 +152,24 @@ export async function getFilePermalink(fileId: string): Promise<string | undefin
   return response.file?.permalink;
 }
 
+export async function uploadFilesToThread(args: {
+  channelId: string;
+  threadTs: string;
+  files: Array<{ data: Buffer; filename: string }>;
+}): Promise<void> {
+  const client = getClient();
+  await withSlackRetries(() =>
+    client.filesUploadV2({
+      channel_id: args.channelId,
+      thread_ts: args.threadTs,
+      file_uploads: args.files.map((f) => ({
+        file: f.data,
+        filename: f.filename
+      }))
+    })
+  );
+}
+
 export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) {
