@@ -12,7 +12,7 @@ const activeSkill: Skill = {
   requiresCapabilities: ["github.issues.write"]
 };
 
-function makeRuntime(options: { failIssue?: boolean } = {}) {
+function makeRuntime(options: { failIssue?: boolean; invocationArgs?: string } = {}) {
   const broker: CredentialBroker = {
     issue: async () => {
       if (options.failIssue) {
@@ -35,7 +35,7 @@ function makeRuntime(options: { failIssue?: boolean } = {}) {
       };
     }
   };
-  return new SkillCapabilityRuntime({ broker });
+  return new SkillCapabilityRuntime({ broker, invocationArgs: options.invocationArgs ?? "--repo getsentry/junior" });
 }
 
 describe("jr-rpc custom command", () => {
@@ -140,6 +140,18 @@ describe("jr-rpc custom command", () => {
     if (result.handled) {
       expect(result.result.exit_code).toBe(1);
       expect(result.result.stderr).toContain("credential broker unavailable");
+    }
+  });
+
+  it("returns structured runtime errors when repo context is missing", async () => {
+    const result = await maybeExecuteJrRpcCustomCommand("jr-rpc issue-credential github.issues.write", {
+      capabilityRuntime: makeRuntime({ invocationArgs: "" }),
+      activeSkill
+    });
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.result.exit_code).toBe(1);
+      expect(result.result.stderr).toContain("requires repository context");
     }
   });
 });

@@ -35,7 +35,7 @@ describe("skill capability runtime", () => {
       }
     };
 
-    const runtime = new SkillCapabilityRuntime({ broker });
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/junior" });
     await expect(
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
@@ -72,7 +72,7 @@ describe("skill capability runtime", () => {
       })
     };
 
-    const runtime = new SkillCapabilityRuntime({ broker });
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/junior" });
 
     await expect(
       runtime.issueCapabilityLease({
@@ -129,7 +129,7 @@ describe("skill capability runtime", () => {
       }
     };
 
-    const runtime = new SkillCapabilityRuntime({ broker });
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/ignored" });
     await expect(
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
@@ -140,5 +140,22 @@ describe("skill capability runtime", () => {
     ).resolves.toMatchObject({ reused: false });
 
     expect(seenTarget).toEqual({ owner: "getsentry", repo: "junior" });
+  });
+
+  it("requires repo context for github capabilities", async () => {
+    const broker: CredentialBroker = {
+      issue: async () => {
+        throw new Error("should not be called");
+      }
+    };
+
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "" });
+    await expect(
+      runtime.enableCapabilityForTurn({
+        activeSkill: fakeSkill,
+        capability: "github.issues.write",
+        reason: "test:missing-repo"
+      })
+    ).rejects.toThrow("requires repository context");
   });
 });

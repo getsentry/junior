@@ -17,6 +17,18 @@ export class SkillCapabilityRuntime {
     this.invocationArgs = params.invocationArgs;
   }
 
+  private resolveCapabilityTarget(activeSkill: Skill | null, repoRef?: string): CapabilityTarget | undefined {
+    const explicitTarget = repoRef ? parseRepoTarget(repoRef) : undefined;
+    if (explicitTarget) {
+      return explicitTarget;
+    }
+    return extractCapabilityTarget({
+      skillName: activeSkill?.name ?? "unknown",
+      commandText: "",
+      invocationArgs: this.invocationArgs
+    });
+  }
+
   async issueCapabilityLease(input: {
     activeSkill: Skill | null;
     capability: string;
@@ -24,15 +36,7 @@ export class SkillCapabilityRuntime {
     reason: string;
   }): Promise<CredentialLease> {
     const activeSkill = input.activeSkill;
-
-    const explicitTarget = input.repoRef ? parseRepoTarget(input.repoRef) : undefined;
-    const target = explicitTarget
-      ? explicitTarget
-      : extractCapabilityTarget({
-          skillName: activeSkill?.name ?? "unknown",
-          commandText: "",
-          invocationArgs: this.invocationArgs
-        });
+    const target = this.resolveCapabilityTarget(activeSkill, input.repoRef);
 
     return await this.broker.issue({
       capability: input.capability,
@@ -87,6 +91,10 @@ export class SkillCapabilityRuntime {
       throw new Error(`Unsupported capability provider for jr-rpc issue-credential: ${capability}`);
     }
     const activeSkill = input.activeSkill;
+    const capabilityTarget = this.resolveCapabilityTarget(activeSkill, input.repoRef);
+    if (!capabilityTarget?.owner || !capabilityTarget?.repo) {
+      throw new Error("jr-rpc issue-credential requires repository context; use --repo <owner/repo>");
+    }
     const declared = activeSkill?.requiresCapabilities ?? [];
     if (activeSkill && !declared.includes(capability)) {
       logWarn(
