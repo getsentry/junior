@@ -1,4 +1,6 @@
 import type { CapabilityTarget } from "@/chat/capabilities/types";
+import { getCapabilityProvider } from "@/chat/capabilities/catalog";
+import type { CapabilityCredentialRouter } from "@/chat/capabilities/router";
 import { logInfo, logWarn } from "@/chat/observability";
 import { extractCapabilityTarget, parseRepoTarget } from "@/chat/capabilities/target";
 import type { CredentialBroker, CredentialHeaderTransform, CredentialLease } from "@/chat/credentials/broker";
@@ -8,25 +10,86 @@ import type { Skill } from "@/chat/skills";
 // Spec: specs/security-policy.md (credential scope and lifecycle requirements)
 
 export class SkillCapabilityRuntime {
-  private readonly broker: CredentialBroker;
+  private readonly router: CapabilityCredentialRouter;
   private readonly invocationArgs?: string;
+  private readonly resolveConfiguration?: (key: string) => Promise<unknown>;
   private readonly enabledByCapability = new Map<string, { expiresAtMs: number; transforms: CredentialHeaderTransform[] }>();
 
-  constructor(params: { broker: CredentialBroker; invocationArgs?: string }) {
-    this.broker = params.broker;
+  constructor(params: {
+    broker?: CredentialBroker;
+    router?: CapabilityCredentialRouter;
+    invocationArgs?: string;
+    resolveConfiguration?: (key: string) => Promise<unknown>;
+  }) {
+    if (params.router) {
+      this.router = params.router;
+    } else if (params.broker) {
+      this.router = {
+        issue: async (input) => await params.broker!.issue(input)
+      };
+    } else {
+      throw new Error("SkillCapabilityRuntime requires either router or broker");
+    }
     this.invocationArgs = params.invocationArgs;
+    this.resolveConfiguration = params.resolveConfiguration;
   }
 
-  private resolveCapabilityTarget(activeSkill: Skill | null, repoRef?: string): CapabilityTarget | undefined {
-    const explicitTarget = repoRef ? parseRepoTarget(repoRef) : undefined;
+  private async resolveCapabilityTarget(input: {
+    activeSkill: Skill | null;
+    repoRef?: string;
+    configKey?: string;
+  }): Promise<CapabilityTarget | undefined> {
+    const activeSkill = input.activeSkill;
+    const explicitTarget = input.repoRef ? parseRepoTarget(input.repoRef) : undefined;
     if (explicitTarget) {
       return explicitTarget;
     }
-    return extractCapabilityTarget({
+    const inferredTarget = extractCapabilityTarget({
       skillName: activeSkill?.name ?? "unknown",
       commandText: "",
       invocationArgs: this.invocationArgs
     });
+    if (inferredTarget) {
+      return inferredTarget;
+    }
+
+    if (!input.configKey || !this.resolveConfiguration) {
+      return undefined;
+    }
+
+    const configuredRepo = await this.resolveConfiguration(input.configKey);
+    if (typeof configuredRepo !== "string" || configuredRepo.trim().length === 0) {
+      return undefined;
+    }
+
+    const configuredTarget = parseRepoTarget(configuredRepo);
+    if (!configuredTarget) {
+      logWarn(
+        "config_value_invalid_for_capability_target",
+        {},
+        {
+          "app.skill.name": activeSkill?.name,
+          "app.config.key": input.configKey
+        },
+        `Configured ${input.configKey} is invalid for capability target resolution`
+      );
+      return undefined;
+    }
+
+    const declaredConfig = activeSkill?.usesConfig ?? [];
+    if (activeSkill && !declaredConfig.includes(input.configKey)) {
+      logWarn(
+        "config_key_not_declared_for_skill",
+        {},
+        {
+          "app.skill.name": activeSkill.name,
+          "app.config.key": input.configKey
+        },
+        "Configuration key used by runtime is not declared in active skill frontmatter (soft enforcement)"
+      );
+    }
+
+    return configuredTarget;
   }
 
   private capabilityCacheKey(capability: string, target?: CapabilityTarget): string {
@@ -42,10 +105,22 @@ export class SkillCapabilityRuntime {
     repoRef?: string;
     reason: string;
   }): Promise<CredentialLease> {
-    const activeSkill = input.activeSkill;
-    const target = this.resolveCapabilityTarget(activeSkill, input.repoRef);
+    const capabilityProvider = getCapabilityProvider(input.capability);
+    if (!capabilityProvider) {
+      throw new Error(`Unsupported capability for lease issuance: ${input.capability}`);
+    }
 
-    return await this.broker.issue({
+    const activeSkill = input.activeSkill;
+    const target =
+      capabilityProvider.target?.type === "repo"
+        ? await this.resolveCapabilityTarget({
+            activeSkill,
+            repoRef: input.repoRef,
+            configKey: capabilityProvider.target.configKey
+          })
+        : undefined;
+
+    return await this.router.issue({
       capability: input.capability,
       target,
       reason: input.reason
@@ -94,12 +169,23 @@ export class SkillCapabilityRuntime {
     if (!capability) {
       throw new Error("jr-rpc issue-credential requires a capability argument");
     }
-    if (!capability.startsWith("github.")) {
-      throw new Error(`Unsupported capability provider for jr-rpc issue-credential: ${capability}`);
+    const capabilityProvider = getCapabilityProvider(capability);
+    if (!capabilityProvider) {
+      throw new Error(`Unsupported capability for jr-rpc issue-credential: ${capability}`);
     }
     const activeSkill = input.activeSkill;
-    const capabilityTarget = this.resolveCapabilityTarget(activeSkill, input.repoRef);
-    if (!capabilityTarget?.owner || !capabilityTarget?.repo) {
+    const capabilityTarget =
+      capabilityProvider.target?.type === "repo"
+        ? await this.resolveCapabilityTarget({
+            activeSkill,
+            repoRef: input.repoRef,
+            configKey: capabilityProvider.target.configKey
+          })
+        : undefined;
+    if (
+      capabilityProvider.target?.type === "repo" &&
+      (!capabilityTarget?.owner || !capabilityTarget?.repo)
+    ) {
       throw new Error("jr-rpc issue-credential requires repository context; use --repo <owner/repo>");
     }
     const declared = activeSkill?.requiresCapabilities ?? [];

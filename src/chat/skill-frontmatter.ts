@@ -15,6 +15,7 @@ export interface SkillFrontmatter {
   license?: string;
   "allowed-tools"?: string;
   "requires-capabilities"?: string;
+  "uses-config"?: string;
   [key: string]: unknown;
 }
 
@@ -120,6 +121,27 @@ export function parseAndValidateSkillFrontmatter(
           error:
             `requires-capabilities token "${token}" is invalid; expected dotted lowercase tokens ` +
             `(for example "github.issues.write")`
+        };
+      }
+    }
+  }
+  if ("uses-config" in frontmatter) {
+    if (typeof frontmatter["uses-config"] !== "string") {
+      return { ok: false, error: 'Frontmatter field "uses-config" must be a string when present' };
+    }
+
+    const tokens = frontmatter["uses-config"]
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+
+    for (const token of tokens) {
+      if (!CAPABILITY_TOKEN_RE.test(token)) {
+        return {
+          ok: false,
+          error:
+            `uses-config token "${token}" is invalid; expected dotted lowercase tokens ` +
+            `(for example "github.repo")`
         };
       }
     }

@@ -18,6 +18,7 @@ import { buildSystemPrompt } from "@/chat/prompt";
 import { createSkillCapabilityRuntime } from "@/chat/capabilities/factory";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
+import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { SkillSandbox } from "@/chat/skill-sandbox";
 import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -51,6 +52,8 @@ export interface ReplyRequestContext {
   };
   conversationContext?: string;
   artifactState?: ThreadArtifactsState;
+  configuration?: Record<string, unknown>;
+  channelConfiguration?: ChannelConfigurationService;
   userAttachments?: Array<{
     data: Buffer;
     mediaType: string;
@@ -356,6 +359,19 @@ function extractAssistantText(message: AssistantMessage): string {
     .join("\n");
 }
 
+function collectRelevantConfigurationKeys(
+  activeSkills: Array<{ usesConfig?: string[] }>,
+  explicitSkill?: { usesConfig?: string[] } | null
+): string[] {
+  const keys = new Set<string>();
+  for (const skill of [...activeSkills, ...(explicitSkill ? [explicitSkill] : [])]) {
+    for (const key of skill.usesConfig ?? []) {
+      keys.add(key);
+    }
+  }
+  return [...keys].sort((a, b) => a.localeCompare(b));
+}
+
 function createAgentTools(
   tools: Record<string, ToolDefinition<any>>,
   sandbox: SkillSandbox,
@@ -559,6 +575,9 @@ export async function generateAssistantReply(
     };
 
     const availableSkills = await discoverSkills();
+    const configurationValues: Record<string, unknown> = {
+      ...(context.configuration ?? {})
+    };
     const userInput = messageText;
     const explicitInvocation = parseSkillInvocation(userInput);
     const explicitSkill = explicitInvocation
@@ -566,14 +585,26 @@ export async function generateAssistantReply(
       : null;
     const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
-    const capabilityRuntime = createSkillCapabilityRuntime(explicitInvocation?.args);
+    const capabilityRuntime = createSkillCapabilityRuntime({
+      invocationArgs: explicitInvocation?.args,
+      resolveConfiguration: async (key) => configurationValues[key]
+    });
     const sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       traceContext: spanContext,
       runBashCustomCommand: async (command) => {
         const result = await maybeExecuteJrRpcCustomCommand(command, {
           capabilityRuntime,
-          activeSkill: skillSandbox.getActiveSkill()
+          activeSkill: skillSandbox.getActiveSkill(),
+          channelConfiguration: context.channelConfiguration,
+          requesterId: context.requester?.userId,
+          onConfigurationValueChanged: (key, value) => {
+            if (value === undefined) {
+              delete configurationValues[key];
+              return;
+            }
+            configurationValues[key] = value;
+          }
         });
         return result.handled
           ? { handled: true, result: result.result }
@@ -664,6 +695,7 @@ export async function generateAssistantReply(
             existing.skillPath = effective.skillPath;
             existing.allowedTools = effective.allowedTools;
             existing.requiresCapabilities = effective.requiresCapabilities;
+            existing.usesConfig = effective.usesConfig;
             return;
           }
           activeSkills.push(effective);
@@ -674,6 +706,7 @@ export async function generateAssistantReply(
         threadTs: context.correlation?.threadTs,
         userText: userInput,
         artifactState: context.artifactState,
+        configuration: configurationValues,
         sandbox
       }
     );
@@ -684,7 +717,9 @@ export async function generateAssistantReply(
       invocation: explicitInvocation,
       assistant: context.assistant,
       requester: context.requester,
-      artifactState: context.artifactState
+      artifactState: context.artifactState,
+      configuration: configurationValues,
+      relevantConfigurationKeys: collectRelevantConfigurationKeys(activeSkills, explicitSkill)
     });
 
     const userContentParts: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [

@@ -269,3 +269,45 @@ cases:
         - bash
       post_contains:
         - "CREDENTIAL_OK"
+
+  - id: set_default_repo_natural_language
+    description: Natural language request sets provider default repo and later credential enablement succeeds without --repo.
+    behavior:
+      enable_test_credentials: true
+      test_credential_token: eval-default-repo-token
+    events:
+      - type: new_mention
+        thread:
+          id: thread-default-repo
+          channel_id: C-default-repo
+          thread_ts: "1700000001.200"
+        message:
+          id: m-default-repo-1
+          text: "Set the default repo to getsentry/junior for this channel."
+          is_mention: true
+          author:
+            user_id: U-lara
+            user_name: lara
+            full_name: Lara Example
+            is_me: false
+      - type: subscribed_message
+        thread:
+          id: thread-default-repo
+          channel_id: C-default-repo
+          thread_ts: "1700000001.200"
+        message:
+          id: m-default-repo-2
+          text: "Now enable github issues read credentials without passing --repo."
+          is_mention: true
+          author:
+            user_id: U-lara
+            user_name: lara
+            full_name: Lara Example
+            is_me: false
+    expected:
+      posts_count: 2
+      tool_calls_include:
+        - bash
+      log_events:
+        - jr_rpc_config_set
+        - credential_issue_success

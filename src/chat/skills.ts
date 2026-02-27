@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isKnownCapability, isKnownConfigKey } from "@/chat/capabilities/catalog";
 import { logWarn } from "@/chat/observability";
 import { parseAndValidateSkillFrontmatter, stripFrontmatter } from "@/chat/skill-frontmatter";
 
@@ -11,6 +12,7 @@ export interface SkillMetadata {
   skillPath: string;
   allowedTools?: string[];
   requiresCapabilities?: string[];
+  usesConfig?: string[];
 }
 
 export interface Skill extends SkillMetadata {
@@ -52,6 +54,10 @@ function parseRequiresCapabilities(value: unknown): string[] | undefined {
   return parseTokenList(value);
 }
 
+function parseUsesConfig(value: unknown): string[] | undefined {
+  return parseTokenList(value);
+}
+
 function parseTokenList(value: unknown): string[] | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -63,6 +69,25 @@ function parseTokenList(value: unknown): string[] | undefined {
     .filter((token) => token.length > 0);
 
   return parsed.length > 0 ? parsed : undefined;
+}
+
+function validateSkillMetadata(input: {
+  requiresCapabilities?: string[];
+  usesConfig?: string[];
+}): string | undefined {
+  const unknownCapabilities = (input.requiresCapabilities ?? []).filter(
+    (capability) => !isKnownCapability(capability)
+  );
+  if (unknownCapabilities.length > 0) {
+    return `Unknown requires-capabilities values: ${unknownCapabilities.join(", ")}`;
+  }
+
+  const unknownConfigKeys = (input.usesConfig ?? []).filter((configKey) => !isKnownConfigKey(configKey));
+  if (unknownConfigKeys.length > 0) {
+    return `Unknown uses-config values: ${unknownConfigKeys.join(", ")}`;
+  }
+
+  return undefined;
 }
 
 async function readSkillDirectory(skillDir: string): Promise<SkillMetadata | null> {
@@ -80,13 +105,25 @@ async function readSkillDirectory(skillDir: string): Promise<SkillMetadata | nul
     }
 
     const { name, description } = parsed.frontmatter;
+    const allowedTools = parseAllowedTools(parsed.frontmatter["allowed-tools"]);
+    const requiresCapabilities = parseRequiresCapabilities(parsed.frontmatter["requires-capabilities"]);
+    const usesConfig = parseUsesConfig(parsed.frontmatter["uses-config"]);
+    const metadataError = validateSkillMetadata({ requiresCapabilities, usesConfig });
+    if (metadataError) {
+      logWarn("skill_frontmatter_invalid", {}, {
+        "file.path": skillDir,
+        "error.message": metadataError
+      }, "Invalid skill frontmatter");
+      return null;
+    }
 
     return {
       name,
       description,
       skillPath: skillDir,
-      allowedTools: parseAllowedTools(parsed.frontmatter["allowed-tools"]),
-      requiresCapabilities: parseRequiresCapabilities(parsed.frontmatter["requires-capabilities"])
+      allowedTools,
+      requiresCapabilities,
+      usesConfig
     };
   } catch (error) {
     logWarn("skill_directory_read_failed", {}, {
@@ -185,6 +222,9 @@ export function renderSkillMetadataXml(skills: SkillMetadata[]): string {
         `    <name>${escapeXml(skill.name)}</name>`,
         `    <description>${escapeXml(skill.description)}</description>`,
         `    <location>${escapeXml(path.join(skill.skillPath, "SKILL.md"))}</location>`,
+        ...(skill.usesConfig && skill.usesConfig.length > 0
+          ? [`    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`]
+          : []),
         "  </skill>"
       ].join("\n");
     })
@@ -225,6 +265,9 @@ export function renderActiveSkillsXml(skills: Skill[]): string {
         `    <name>${escapeXml(skill.name)}</name>`,
         `    <description>${escapeXml(skill.description)}</description>`,
         `    <location>${escapeXml(path.join(skill.skillPath, "SKILL.md"))}</location>`,
+        ...(skill.usesConfig && skill.usesConfig.length > 0
+          ? [`    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`]
+          : []),
         "    <instructions>",
         skill.body
           .split("\n")

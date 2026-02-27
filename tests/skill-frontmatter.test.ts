@@ -75,4 +75,34 @@ describe("skill frontmatter validation", () => {
     const result = parseAndValidateSkillFrontmatter(raw, "brief");
     expect(result.ok).toBe(false);
   });
+
+  it("accepts valid uses-config tokens", () => {
+    const raw = [
+      "---",
+      "name: brief",
+      "description: Create a candidate brief from public engineering signals.",
+      "uses-config: github.repo jira.project",
+      "---",
+      "",
+      "# Body"
+    ].join("\n");
+
+    const result = parseAndValidateSkillFrontmatter(raw, "brief");
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects invalid uses-config tokens", () => {
+    const raw = [
+      "---",
+      "name: brief",
+      "description: Create a candidate brief from public engineering signals.",
+      "uses-config: GITHUB_REPO",
+      "---",
+      "",
+      "# Body"
+    ].join("\n");
+
+    const result = parseAndValidateSkillFrontmatter(raw, "brief");
+    expect(result.ok).toBe(false);
+  });
 });

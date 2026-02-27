@@ -24,6 +24,8 @@ import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState
 } from "@/chat/slack-actions/types";
+import { createChannelConfigurationService } from "@/chat/configuration/service";
+import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { truncateStatusText } from "@/chat/status-format";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { createStateAdapter } from "@/chat/state";
@@ -847,6 +849,10 @@ interface ThreadTurnHandle extends AppRuntimeThreadHandle {
   messages?: AsyncIterable<ThreadMessageSnapshot>;
   recentMessages?: ThreadMessageSnapshot[];
   state?: Promise<unknown | null>;
+  channel?: {
+    state?: Promise<unknown | null>;
+    setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
+  };
 }
 
 interface IncomingThreadMessage extends AppRuntimeIncomingMessage {
@@ -855,6 +861,8 @@ interface IncomingThreadMessage extends AppRuntimeIncomingMessage {
 
 interface PreparedTurnState {
   artifacts: ThreadArtifactsState;
+  configuration?: Record<string, unknown>;
+  channelConfiguration?: ChannelConfigurationService;
   conversation: ThreadConversationState;
   conversationContext?: string;
   routingContext?: string;
@@ -909,6 +917,23 @@ async function persistThreadState(
   await thread.setState(payload);
 }
 
+function getChannelConfigurationService(thread: ThreadTurnHandle): ChannelConfigurationService | undefined {
+  const channel = thread.channel;
+  if (!channel?.state || !channel.setState) {
+    return undefined;
+  }
+  const setChannelState = channel.setState.bind(channel);
+
+  return createChannelConfigurationService({
+    load: async () => channel.state ?? null,
+    save: async (state) => {
+      await setChannelState({
+        configuration: state
+      });
+    }
+  });
+}
+
 async function prepareTurnState(args: {
   explicitMention: boolean;
   message: IncomingThreadMessage;
@@ -928,6 +953,8 @@ async function prepareTurnState(args: {
       : undefined;
   const artifacts = coerceThreadArtifactsState(existingState);
   const conversation = coerceThreadConversationState(existingState);
+  const channelConfiguration = getChannelConfigurationService(args.thread);
+  const configuration = channelConfiguration ? await channelConfiguration.resolveValues() : {};
 
   await seedConversationBackfill(args.thread, conversation);
 
@@ -984,6 +1011,8 @@ async function prepareTurnState(args: {
 
   return {
     artifacts,
+    configuration,
+    channelConfiguration,
     conversation,
     sandboxId: existingSandboxId,
     conversationContext,
@@ -1070,6 +1099,8 @@ async function replyToThread(
           },
           conversationContext: preparedState.routingContext ?? preparedState.conversationContext,
           artifactState: preparedState.artifacts,
+          configuration: preparedState.configuration,
+          channelConfiguration: preparedState.channelConfiguration,
           userAttachments,
           correlation: {
             threadId,

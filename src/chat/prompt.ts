@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import { botConfig } from "@/chat/config";
 import { slackOutputPolicy } from "@/chat/output";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
@@ -30,6 +31,18 @@ function workspaceSkillDir(skillName: string): string {
   return sandboxSkillDir(skillName);
 }
 
+function formatConfigurationValue(value: unknown): string {
+  if (typeof value === "string") {
+    return escapeXml(value);
+  }
+
+  try {
+    return escapeXml(JSON.stringify(value));
+  } catch {
+    return escapeXml(String(value));
+  }
+}
+
 function renderIdentityBlock(tag: "assistant" | "requester", fields: Record<string, string | undefined>): string {
   const lines = Object.entries(fields)
     .filter(([, value]) => Boolean(value))
@@ -58,6 +71,9 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
     lines.push(`    <description>${escapeXml(skill.description)}</description>`);
     lines.push(`    <location>${escapeXml(skillLocation)}</location>`);
+    if (skill.usesConfig && skill.usesConfig.length > 0) {
+      lines.push(`    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`);
+    }
     lines.push("  </skill>");
   }
   lines.push("</available_skills>");
@@ -74,11 +90,41 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
     const skillDir = workspaceSkillDir(skill.name);
     lines.push(`  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skillDir}/SKILL.md`)}">`);
     lines.push(`References are relative to ${escapeXml(skillDir)}.`);
+    if (skill.usesConfig && skill.usesConfig.length > 0) {
+      lines.push(`Uses config keys: ${escapeXml(skill.usesConfig.join(", "))}.`);
+    }
     lines.push("");
     lines.push(skill.body);
     lines.push("  </skill>");
   }
   lines.push("</loaded_skills>");
+  return lines.join("\n");
+}
+
+function formatProviderCatalogForPrompt(): string {
+  const providers = listCapabilityProviders();
+  if (providers.length === 0) {
+    return "- none";
+  }
+
+  const lines: string[] = [];
+  for (const provider of providers) {
+    lines.push(`- provider: ${escapeXml(provider.provider)}`);
+    lines.push(
+      `  - config_keys: ${
+        provider.configKeys.length > 0
+          ? escapeXml(provider.configKeys.join(", "))
+          : "none"
+      }`
+    );
+    lines.push(
+      `  - capabilities: ${
+        provider.capabilities.length > 0
+          ? escapeXml(provider.capabilities.join(", "))
+          : "none"
+      }`
+    );
+  }
   return lines.join("\n");
 }
 
@@ -117,8 +163,19 @@ export function buildSystemPrompt(params: {
     userId?: string;
   };
   artifactState?: ThreadArtifactsState;
+  configuration?: Record<string, unknown>;
+  relevantConfigurationKeys?: string[];
 }): string {
-  const { availableSkills, activeSkills, invocation, requester, assistant, artifactState } = params;
+  const {
+    availableSkills,
+    activeSkills,
+    invocation,
+    requester,
+    assistant,
+    artifactState,
+    configuration,
+    relevantConfigurationKeys
+  } = params;
   // Core harness contract:
   // - See specs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
   // - Keep this prompt generic and platform-level (tone, evidence, output constraints).
@@ -148,6 +205,28 @@ export function buildSystemPrompt(params: {
   const activeSkillsSection = [
     "Loaded skills for this turn:",
     formatLoadedSkillsForPrompt(activeSkills)
+  ].join("\n");
+
+  const configurationKeys = Object.keys(configuration ?? {}).sort((a, b) => a.localeCompare(b));
+  const relevantConfigSet = new Set(
+    (relevantConfigurationKeys ?? []).filter((key) => Object.prototype.hasOwnProperty.call(configuration ?? {}, key))
+  );
+  const relevantConfigLines = configurationKeys
+    .filter((key) => relevantConfigSet.has(key))
+    .map((key) => `  - ${escapeXml(key)}: ${formatConfigurationValue(configuration?.[key])}`);
+  const otherConfigLines = configurationKeys
+    .filter((key) => !relevantConfigSet.has(key))
+    .map((key) => `  - ${escapeXml(key)}: ${formatConfigurationValue(configuration?.[key])}`);
+
+  const configurationSection = [
+    "Use these channel-scoped defaults when the user has not provided explicit values in this turn.",
+    "If explicit user input conflicts with configuration, follow explicit user input.",
+    configurationKeys.length === 0
+      ? "- none"
+      : [
+          ...(relevantConfigLines.length > 0 ? ["- relevant_for_active_skills:", ...relevantConfigLines] : []),
+          ...(otherConfigLines.length > 0 ? ["- other_available_keys:", ...otherConfigLines] : [])
+        ].join("\n")
   ].join("\n");
 
   const sections = [
@@ -197,6 +276,15 @@ export function buildSystemPrompt(params: {
           : "- none"
       ].join("\n")
     ),
+    renderTag("configuration-context", configurationSection),
+    renderTag(
+      "provider-capabilities",
+      [
+        "Use this catalog to map provider intents to valid config keys and capability names.",
+        "When user intent is to set a provider default, choose a config key from this catalog and use jr-rpc config set.",
+        formatProviderCatalogForPrompt()
+      ].join("\n")
+    ),
     renderTag(
       "tool-usage",
       [
@@ -208,6 +296,7 @@ export function buildSystemPrompt(params: {
         "- Use explicit `canvas_id` for `slackCanvasUpdate` unless updating a canvas created earlier in this same turn.",
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- To enable provider credentials for this turn, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before commands that need authenticated API calls.",
+        "- To persist or read channel defaults (for example `github.repo`), run `jr-rpc config get|set|unset|list ...` as a bash command.",
         "- Capabilities are provider-qualified (for example `github.issues.write`).",
         "- When your work is complete, provide the exact user-facing markdown response.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",

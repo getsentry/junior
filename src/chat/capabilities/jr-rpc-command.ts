@@ -1,74 +1,323 @@
 import { Bash, defineCommand } from "just-bash";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { parseRepoTarget } from "@/chat/capabilities/target";
+import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { logInfo } from "@/chat/observability";
 import type { Skill } from "@/chat/skills";
 
 type JrRpcDeps = {
   capabilityRuntime: SkillCapabilityRuntime;
   activeSkill: Skill | null;
+  channelConfiguration?: ChannelConfigurationService;
+  requesterId?: string;
+  onConfigurationValueChanged?: (key: string, value: unknown | undefined) => void;
 };
+
+function commandResult(input: { stdout?: unknown; stderr?: string; exitCode: number }) {
+  const stdout =
+    input.stdout === undefined
+      ? ""
+      : typeof input.stdout === "string"
+        ? input.stdout
+        : `${JSON.stringify(input.stdout, null, 2)}\n`;
+  return {
+    stdout,
+    stderr: input.stderr ?? "",
+    exitCode: input.exitCode
+  };
+}
+
+function requireChannelConfiguration(
+  deps: JrRpcDeps
+): { ok: true; configuration: ChannelConfigurationService } | { ok: false; result: ReturnType<typeof commandResult> } {
+  if (deps.channelConfiguration) {
+    return { ok: true, configuration: deps.channelConfiguration };
+  }
+  return {
+    ok: false,
+    result: commandResult({
+      stderr: "jr-rpc config commands require active channel context\n",
+      exitCode: 1
+    })
+  };
+}
+
+function parsePrefixFlag(extras: string[]): { ok: true; prefix?: string } | { ok: false; error: string } {
+  if (extras.length === 0) {
+    return { ok: true };
+  }
+  if (extras.length === 2 && extras[0] === "--prefix") {
+    const prefix = extras[1]?.trim();
+    return { ok: true, ...(prefix ? { prefix } : {}) };
+  }
+  if (extras.length === 1 && extras[0].startsWith("--prefix=")) {
+    const prefix = extras[0].slice("--prefix=".length).trim();
+    return { ok: true, ...(prefix ? { prefix } : {}) };
+  }
+  return {
+    ok: false,
+    error: "jr-rpc config list accepts optional --prefix <value>\n"
+  };
+}
+
+async function handleIssueCredentialCommand(
+  args: string[],
+  deps: JrRpcDeps
+): Promise<ReturnType<typeof commandResult>> {
+  const capability = (args[0] ?? "").trim();
+  if (!capability) {
+    return commandResult({
+      stderr: "jr-rpc issue-credential requires a capability argument\n",
+      exitCode: 2
+    });
+  }
+
+  let repoRef: string | undefined;
+  const extras = args.slice(1);
+  if (extras.length > 0) {
+    if (extras.length === 2 && extras[0] === "--repo") {
+      repoRef = extras[1];
+    } else if (extras.length === 1 && extras[0].startsWith("--repo=")) {
+      repoRef = extras[0].slice("--repo=".length);
+    } else {
+      return {
+        stdout: "",
+        stderr: "jr-rpc issue-credential requires exactly one capability argument and optional --repo <owner/repo>\n",
+        exitCode: 2
+      };
+    }
+    if (!parseRepoTarget(repoRef ?? "")) {
+      return {
+        stdout: "",
+        stderr: "jr-rpc issue-credential --repo must be in owner/repo format\n",
+        exitCode: 2
+      };
+    }
+  }
+
+  let outcome: { reused: boolean; expiresAt: string };
+  try {
+    outcome = await deps.capabilityRuntime.enableCapabilityForTurn({
+      activeSkill: deps.activeSkill,
+      capability,
+      ...(repoRef ? { repoRef } : {}),
+      reason: `skill:${deps.activeSkill?.name ?? "unknown"}:jr-rpc:issue-credential`
+    });
+  } catch (error) {
+    return {
+      stdout: "",
+      stderr: `${error instanceof Error ? error.message : String(error)}\n`,
+      exitCode: 1
+    };
+  }
+
+  return commandResult({
+    stdout: `${outcome.reused ? "credential_reused" : "credential_enabled"} capability=${capability} expiresAt=${outcome.expiresAt}\n`,
+    exitCode: 0
+  });
+}
+
+async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<ReturnType<typeof commandResult>> {
+  const usage = [
+    "jr-rpc config get <key>",
+    "jr-rpc config set <key> <value> [--json]",
+    "jr-rpc config unset <key>",
+    "jr-rpc config list [--prefix <value>]"
+  ].join("\n");
+  const subverb = (args[0] ?? "").trim();
+  const configurationResult = requireChannelConfiguration(deps);
+  if (!configurationResult.ok) {
+    return configurationResult.result;
+  }
+  const configuration = configurationResult.configuration;
+
+  if (subverb === "get") {
+    const key = (args[1] ?? "").trim();
+    if (!key || args.length !== 2) {
+      return commandResult({
+        stderr: `Usage:\n${usage}\n`,
+        exitCode: 2
+      });
+    }
+    const entry = await configuration.get(key);
+    return commandResult({
+      stdout: entry
+        ? {
+            ok: true,
+            key: entry.key,
+            scope: entry.scope,
+            value: entry.value,
+            updatedAt: entry.updatedAt,
+            updatedBy: entry.updatedBy,
+            source: entry.source
+          }
+        : {
+            ok: true,
+            key,
+            found: false
+          },
+      exitCode: 0
+    });
+  }
+
+  if (subverb === "set") {
+    const key = (args[1] ?? "").trim();
+    const valueArg = args[2];
+    const extras = args.slice(3);
+    if (!key || valueArg === undefined) {
+      return commandResult({
+        stderr: `Usage:\n${usage}\n`,
+        exitCode: 2
+      });
+    }
+
+    let parseAsJson = false;
+    if (extras.length > 0) {
+      if (extras.length === 1 && extras[0] === "--json") {
+        parseAsJson = true;
+      } else {
+        return commandResult({
+          stderr: `Usage:\n${usage}\n`,
+          exitCode: 2
+        });
+      }
+    }
+
+    let value: unknown = valueArg;
+    if (parseAsJson) {
+      try {
+        value = JSON.parse(valueArg);
+      } catch (error) {
+        return commandResult({
+          stderr: `Invalid JSON value for jr-rpc config set --json: ${error instanceof Error ? error.message : String(error)}\n`,
+          exitCode: 2
+        });
+      }
+    }
+
+    try {
+      const entry = await configuration.set({
+        key,
+        value,
+        updatedBy: deps.requesterId,
+        source: "jr-rpc"
+      });
+      logInfo(
+        "jr_rpc_config_set",
+        {},
+        {
+          "app.config.key": entry.key,
+          "app.config.scope": entry.scope,
+          "app.config.source": entry.source ?? "jr-rpc",
+          ...(deps.activeSkill?.name ? { "app.skill.name": deps.activeSkill.name } : {})
+        },
+        "Set channel configuration via jr-rpc"
+      );
+      deps.onConfigurationValueChanged?.(entry.key, entry.value);
+      return commandResult({
+        stdout: {
+          ok: true,
+          key: entry.key,
+          scope: entry.scope,
+          value: entry.value,
+          updatedAt: entry.updatedAt,
+          updatedBy: entry.updatedBy,
+          source: entry.source
+        },
+        exitCode: 0
+      });
+    } catch (error) {
+      return commandResult({
+        stderr: `${error instanceof Error ? error.message : String(error)}\n`,
+        exitCode: 1
+      });
+    }
+  }
+
+  if (subverb === "unset") {
+    const key = (args[1] ?? "").trim();
+    if (!key || args.length !== 2) {
+      return commandResult({
+        stderr: `Usage:\n${usage}\n`,
+        exitCode: 2
+      });
+    }
+    const deleted = await configuration.unset(key);
+    if (deleted) {
+      logInfo(
+        "jr_rpc_config_unset",
+        {},
+        {
+          "app.config.key": key,
+          ...(deps.activeSkill?.name ? { "app.skill.name": deps.activeSkill.name } : {})
+        },
+        "Unset channel configuration via jr-rpc"
+      );
+      deps.onConfigurationValueChanged?.(key, undefined);
+    }
+    return commandResult({
+      stdout: {
+        ok: true,
+        key,
+        deleted
+      },
+      exitCode: 0
+    });
+  }
+
+  if (subverb === "list") {
+    const prefixResult = parsePrefixFlag(args.slice(1));
+    if (!prefixResult.ok) {
+      return commandResult({
+        stderr: prefixResult.error,
+        exitCode: 2
+      });
+    }
+    const entries = await configuration.list({
+      ...(prefixResult.prefix ? { prefix: prefixResult.prefix } : {})
+    });
+    return commandResult({
+      stdout: {
+        ok: true,
+        entries: entries.map((entry) => ({
+          key: entry.key,
+          scope: entry.scope,
+          value: entry.value,
+          updatedAt: entry.updatedAt,
+          updatedBy: entry.updatedBy,
+          source: entry.source
+        }))
+      },
+      exitCode: 0
+    });
+  }
+
+  return commandResult({
+    stderr: `Usage:\n${usage}\n`,
+    exitCode: 2
+  });
+}
 
 function createJrRpcCommand(deps: JrRpcDeps) {
   return defineCommand("jr-rpc", async (args) => {
-    const usage = "jr-rpc issue-credential <capability> [--repo <owner/repo>]\n";
-    const verb = args[0];
-    if (verb !== "issue-credential") {
-      return {
-        stdout: "",
-        stderr: `Unsupported jr-rpc command. Use: ${usage}`,
-        exitCode: 2
-      };
+    const usage = [
+      "jr-rpc issue-credential <capability> [--repo <owner/repo>]",
+      "jr-rpc config get <key>",
+      "jr-rpc config set <key> <value> [--json]",
+      "jr-rpc config unset <key>",
+      "jr-rpc config list [--prefix <value>]"
+    ].join("\n");
+    const verb = (args[0] ?? "").trim();
+    if (verb === "issue-credential") {
+      return handleIssueCredentialCommand(args.slice(1), deps);
     }
-    const capability = (args[1] ?? "").trim();
-    if (!capability) {
-      return {
-        stdout: "",
-        stderr: "jr-rpc issue-credential requires a capability argument\n",
-        exitCode: 2
-      };
+    if (verb === "config") {
+      return handleConfigCommand(args.slice(1), deps);
     }
-    let repoRef: string | undefined;
-    const extras = args.slice(2);
-    if (extras.length > 0) {
-      if (extras.length === 2 && extras[0] === "--repo") {
-        repoRef = extras[1];
-      } else if (extras.length === 1 && extras[0].startsWith("--repo=")) {
-        repoRef = extras[0].slice("--repo=".length);
-      } else {
-        return {
-          stdout: "",
-          stderr: `jr-rpc issue-credential requires exactly one capability argument and optional --repo <owner/repo>\n`,
-          exitCode: 2
-        };
-      }
-      if (!parseRepoTarget(repoRef ?? "")) {
-        return {
-          stdout: "",
-          stderr: "jr-rpc issue-credential --repo must be in owner/repo format\n",
-          exitCode: 2
-        };
-      }
-    }
-    let outcome: { reused: boolean; expiresAt: string };
-    try {
-      outcome = await deps.capabilityRuntime.enableCapabilityForTurn({
-        activeSkill: deps.activeSkill,
-        capability,
-        ...(repoRef ? { repoRef } : {}),
-        reason: `skill:${deps.activeSkill?.name ?? "unknown"}:jr-rpc:issue-credential`
-      });
-    } catch (error) {
-      return {
-        stdout: "",
-        stderr: `${error instanceof Error ? error.message : String(error)}\n`,
-        exitCode: 1
-      };
-    }
-    return {
-      stdout: `${outcome.reused ? "credential_reused" : "credential_enabled"} capability=${capability} expiresAt=${outcome.expiresAt}\n`,
-      stderr: "",
-      exitCode: 0
-    };
+    return commandResult({
+      stderr: `Unsupported jr-rpc command. Use:\n${usage}\n`,
+      exitCode: 2
+    });
   });
 }
 

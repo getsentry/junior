@@ -16,6 +16,7 @@ export interface ToolRuntimeContext {
   threadTs?: string;
   userText?: string;
   artifactState?: ThreadArtifactsState;
+  configuration?: Record<string, unknown>;
   sandbox: Sandbox;
 }
 

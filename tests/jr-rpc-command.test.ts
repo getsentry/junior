@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
+import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { Skill } from "@/chat/skills";
 
@@ -9,8 +10,22 @@ const activeSkill: Skill = {
   description: "Issue helper",
   skillPath: "/tmp/gh-issue",
   body: "instructions",
-  requiresCapabilities: ["github.issues.write"]
+  requiresCapabilities: ["github.issues.write"],
+  usesConfig: ["github.repo"]
 };
+
+function makeChannelConfiguration() {
+  let state: Record<string, unknown> | null = null;
+  return createChannelConfigurationService({
+    load: async () => state,
+    save: async (next) => {
+      state = {
+        ...(state ?? {}),
+        configuration: next
+      };
+    }
+  });
+}
 
 function makeRuntime(options: { failIssue?: boolean; invocationArgs?: string } = {}) {
   const broker: CredentialBroker = {
@@ -152,6 +167,104 @@ describe("jr-rpc custom command", () => {
     if (result.handled) {
       expect(result.result.exit_code).toBe(1);
       expect(result.result.stderr).toContain("requires repository context");
+    }
+  });
+
+  it("handles config set/get/list/unset commands with inferred channel configuration context", async () => {
+    const configuration = makeChannelConfiguration();
+    const resultSet = await maybeExecuteJrRpcCustomCommand('jr-rpc config set github.repo getsentry/junior', {
+      capabilityRuntime: makeRuntime(),
+      activeSkill,
+      channelConfiguration: configuration,
+      requesterId: "U123"
+    });
+    expect(resultSet.handled).toBe(true);
+    if (resultSet.handled) {
+      expect(resultSet.result.exit_code).toBe(0);
+      const payload = JSON.parse(resultSet.result.stdout) as { ok: boolean; key: string; value: string };
+      expect(payload).toMatchObject({
+        ok: true,
+        key: "github.repo",
+        value: "getsentry/junior"
+      });
+    }
+
+    const resultGet = await maybeExecuteJrRpcCustomCommand("jr-rpc config get github.repo", {
+      capabilityRuntime: makeRuntime(),
+      activeSkill,
+      channelConfiguration: configuration
+    });
+    expect(resultGet.handled).toBe(true);
+    if (resultGet.handled) {
+      expect(resultGet.result.exit_code).toBe(0);
+      const payload = JSON.parse(resultGet.result.stdout) as { ok: boolean; key: string; value: string };
+      expect(payload).toMatchObject({
+        ok: true,
+        key: "github.repo",
+        value: "getsentry/junior"
+      });
+    }
+
+    const resultList = await maybeExecuteJrRpcCustomCommand("jr-rpc config list --prefix github.", {
+      capabilityRuntime: makeRuntime(),
+      activeSkill,
+      channelConfiguration: configuration
+    });
+    expect(resultList.handled).toBe(true);
+    if (resultList.handled) {
+      expect(resultList.result.exit_code).toBe(0);
+      const payload = JSON.parse(resultList.result.stdout) as {
+        ok: boolean;
+        entries: Array<{ key: string; value: string }>;
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.entries).toHaveLength(1);
+      expect(payload.entries[0]).toMatchObject({
+        key: "github.repo",
+        value: "getsentry/junior"
+      });
+    }
+
+    const resultUnset = await maybeExecuteJrRpcCustomCommand("jr-rpc config unset github.repo", {
+      capabilityRuntime: makeRuntime(),
+      activeSkill,
+      channelConfiguration: configuration
+    });
+    expect(resultUnset.handled).toBe(true);
+    if (resultUnset.handled) {
+      expect(resultUnset.result.exit_code).toBe(0);
+      const payload = JSON.parse(resultUnset.result.stdout) as { ok: boolean; deleted: boolean };
+      expect(payload).toMatchObject({
+        ok: true,
+        deleted: true
+      });
+    }
+  });
+
+  it("returns runtime error for config commands without inferred channel context", async () => {
+    const result = await maybeExecuteJrRpcCustomCommand("jr-rpc config get github.repo", {
+      capabilityRuntime: makeRuntime(),
+      activeSkill
+    });
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.result.exit_code).toBe(1);
+      expect(result.result.stderr).toContain("require active channel context");
+    }
+  });
+
+  it("parses json values for config set --json", async () => {
+    const configuration = makeChannelConfiguration();
+    const result = await maybeExecuteJrRpcCustomCommand("jr-rpc config set app.flags 123 --json", {
+      capabilityRuntime: makeRuntime(),
+      activeSkill,
+      channelConfiguration: configuration
+    });
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.result.exit_code).toBe(0);
+      const payload = JSON.parse(result.result.stdout) as { value: number };
+      expect(payload.value).toEqual(123);
     }
   });
 });

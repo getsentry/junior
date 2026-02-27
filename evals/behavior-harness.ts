@@ -10,6 +10,8 @@ import {
   type AppRuntimeThreadContext,
   type AppRuntimeThreadHandle
 } from "@/chat/app-runtime";
+import { createChannelConfigurationService } from "@/chat/configuration/service";
+import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { generateAssistantReply } from "@/chat/respond";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
@@ -373,6 +375,8 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   const exceptions: EvalLogEntry[] = [];
   const logs: EvalLogRecord[] = [];
   const threadsById = new Map<string, FakeThread>();
+  const channelStateById = new Map<string, Record<string, unknown>>();
+  const channelConfigurationById = new Map<string, ChannelConfigurationService>();
   const replyTexts = testCase.behavior?.reply_texts ?? [];
   const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
   const replyTimeoutMs = Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000", 10);
@@ -406,6 +410,29 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       runId: fixture.run_id
     });
     threadsById.set(fixture.id, created);
+    return created;
+  };
+
+  const getChannelConfiguration = (channelId: string | undefined): ChannelConfigurationService | undefined => {
+    const normalizedChannelId = channelId?.trim();
+    if (!normalizedChannelId) {
+      return undefined;
+    }
+
+    const existing = channelConfigurationById.get(normalizedChannelId);
+    if (existing) {
+      return existing;
+    }
+
+    const created = createChannelConfigurationService({
+      load: async () => channelStateById.get(normalizedChannelId) ?? null,
+      save: async (state) => {
+        channelStateById.set(normalizedChannelId, {
+          configuration: state
+        });
+      }
+    });
+    channelConfigurationById.set(normalizedChannelId, created);
     return created;
   };
 
@@ -499,6 +526,8 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         options?.preparedState?.routingContext ?? options?.preparedState?.conversationContext;
       const persistedSandboxId =
         typeof persisted.app_sandbox_id === "string" ? persisted.app_sandbox_id : undefined;
+      const channelConfiguration = getChannelConfiguration(message.channelId);
+      const configuration = channelConfiguration ? await channelConfiguration.resolveValues() : {};
 
       const originalGatewayApiKey = process.env.AI_GATEWAY_API_KEY;
       const originalOidcToken = process.env.VERCEL_OIDC_TOKEN;
@@ -520,6 +549,8 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
             },
             conversationContext: preparedConversationContext,
             artifactState: coerceThreadArtifactsState(persisted),
+            configuration,
+            channelConfiguration,
             correlation: {
               threadId: thread.id,
               threadTs: message.threadTs,

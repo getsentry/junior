@@ -132,7 +132,7 @@ describe("skill capability runtime", () => {
     });
   });
 
-  it("rejects unsupported provider prefixes for issue-credential", async () => {
+  it("rejects unsupported capabilities for issue-credential", async () => {
     const broker: CredentialBroker = {
       issue: async () => {
         throw new Error("should not be called");
@@ -146,7 +146,7 @@ describe("skill capability runtime", () => {
         capability: "app.test.read",
         reason: "test:unsupported-provider"
       })
-    ).rejects.toThrow("Unsupported capability provider");
+    ).rejects.toThrow("Unsupported capability");
   });
 
   it("forwards explicit repoRef through enableCapabilityForTurn", async () => {
@@ -200,5 +200,91 @@ describe("skill capability runtime", () => {
         reason: "test:missing-repo"
       })
     ).rejects.toThrow("requires repository context");
+  });
+
+  it("falls back to configured github.repo when invocation args do not include --repo", async () => {
+    let seenTarget: { owner?: string; repo?: string } | undefined;
+    const broker: CredentialBroker = {
+      issue: async (input) => {
+        seenTarget = input.target;
+        return {
+          id: "lease-1",
+          provider: "github",
+          capability: "github.issues.write",
+          env: { GITHUB_TOKEN: "token-1" },
+          headerTransforms: [
+            {
+              domain: "api.github.com",
+              headers: {
+                Authorization: "Bearer token-1"
+              }
+            }
+          ],
+          expiresAt: new Date(Date.now() + 60_000).toISOString()
+        };
+      }
+    };
+
+    const runtime = new SkillCapabilityRuntime({
+      broker,
+      invocationArgs: "",
+      resolveConfiguration: async (key) => (key === "github.repo" ? "getsentry/junior" : undefined)
+    });
+
+    await expect(
+      runtime.enableCapabilityForTurn({
+        activeSkill: {
+          ...fakeSkill,
+          usesConfig: ["github.repo"]
+        },
+        capability: "github.issues.write",
+        reason: "test:configured-repo"
+      })
+    ).resolves.toMatchObject({ reused: false });
+
+    expect(seenTarget).toEqual({ owner: "getsentry", repo: "junior" });
+  });
+
+  it("still uses explicit repoRef when config value exists", async () => {
+    let seenTarget: { owner?: string; repo?: string } | undefined;
+    const broker: CredentialBroker = {
+      issue: async (input) => {
+        seenTarget = input.target;
+        return {
+          id: "lease-1",
+          provider: "github",
+          capability: "github.issues.write",
+          env: { GITHUB_TOKEN: "token-1" },
+          headerTransforms: [
+            {
+              domain: "api.github.com",
+              headers: {
+                Authorization: "Bearer token-1"
+              }
+            }
+          ],
+          expiresAt: new Date(Date.now() + 60_000).toISOString()
+        };
+      }
+    };
+    const runtime = new SkillCapabilityRuntime({
+      broker,
+      invocationArgs: "",
+      resolveConfiguration: async () => "getsentry/junior"
+    });
+
+    await expect(
+      runtime.enableCapabilityForTurn({
+        activeSkill: {
+          ...fakeSkill,
+          usesConfig: ["github.repo"]
+        },
+        capability: "github.issues.write",
+        repoRef: "getsentry/sentry",
+        reason: "test:explicit-overrides-config"
+      })
+    ).resolves.toMatchObject({ reused: false });
+
+    expect(seenTarget).toEqual({ owner: "getsentry", repo: "sentry" });
   });
 });

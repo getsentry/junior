@@ -2,6 +2,7 @@
 name: gh-issue
 description: Create and update GitHub issues via GitHub App identity with evidence-backed issue content. Use when users ask to open, edit, label, comment on, or close/reopen GitHub issues and want accurate, source-verified writeups.
 requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write
+uses-config: github.repo
 ---
 
 # GitHub Issue Operations
