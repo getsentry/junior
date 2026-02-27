@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const listThreadRepliesMock = vi.fn();
+const uploadFilesToThreadMock = vi.fn();
 
 vi.mock("chat", () => {
   class MockChat {
@@ -174,5 +175,132 @@ describe("bot image hydration", () => {
     });
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("uploads generated files to Slack thread via uploadFilesToThread", async () => {
+    const generatedFile = {
+      data: Buffer.from("fake-png"),
+      filename: "generated.png",
+      mimeType: "image/png"
+    };
+
+    uploadFilesToThreadMock.mockReset();
+    uploadFilesToThreadMock.mockResolvedValue(undefined);
+
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    setBotDepsForTests({
+      listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
+      uploadFilesToThread: uploadFilesToThreadMock,
+      generateAssistantReply: async () => ({
+        text: "Here is your image",
+        files: [generatedFile],
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true
+        }
+      })
+    });
+
+    const thread = createThread({
+      id: "thread-file-upload",
+      state: {}
+    });
+
+    await appSlackRuntime.handleNewMention(thread as any, {
+      id: "1700000000.200",
+      text: "generate an image",
+      isMention: true,
+      threadId: "thread-file-upload",
+      threadTs: "1700000000.000",
+      channelId: "C-upload",
+      author: {
+        userId: "U-user",
+        userName: "user",
+        fullName: "User Example",
+        isMe: false
+      }
+    });
+
+    expect(uploadFilesToThreadMock).toHaveBeenCalledTimes(1);
+    expect(uploadFilesToThreadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: "C-upload",
+        threadTs: "1700000000.000",
+        files: [
+          expect.objectContaining({
+            filename: "generated.png",
+            mimeType: "image/png"
+          })
+        ]
+      })
+    );
+  });
+
+  it("posts error message when file upload fails", async () => {
+    uploadFilesToThreadMock.mockReset();
+    uploadFilesToThreadMock.mockRejectedValue(new Error("upload failed"));
+
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    setBotDepsForTests({
+      listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
+      uploadFilesToThread: uploadFilesToThreadMock,
+      generateAssistantReply: async () => ({
+        text: "Here is your image",
+        files: [
+          {
+            data: Buffer.from("fake-png"),
+            filename: "generated.png",
+            mimeType: "image/png"
+          }
+        ],
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true
+        }
+      })
+    });
+
+    const postSpy = vi.fn().mockResolvedValue(undefined);
+    const thread = createThread({
+      id: "thread-upload-fail",
+      state: {}
+    });
+    thread.post = postSpy;
+
+    await appSlackRuntime.handleNewMention(thread as any, {
+      id: "1700000000.200",
+      text: "generate an image",
+      isMention: true,
+      threadId: "thread-upload-fail",
+      threadTs: "1700000000.000",
+      channelId: "C-upload-fail",
+      author: {
+        userId: "U-user",
+        userName: "user",
+        fullName: "User Example",
+        isMe: false
+      }
+    });
+
+    expect(uploadFilesToThreadMock).toHaveBeenCalledTimes(1);
+
+    const errorPost = postSpy.mock.calls.find(
+      (call: unknown[]) =>
+        typeof call[0] === "object" &&
+        call[0] !== null &&
+        "markdown" in (call[0] as Record<string, unknown>) &&
+        String((call[0] as { markdown: string }).markdown).includes("failed to upload")
+    );
+    expect(errorPost).toBeDefined();
   });
 });
