@@ -22,6 +22,14 @@ export class TestCredentialBroker implements CredentialBroker {
       env: {
         GITHUB_TOKEN: token
       },
+      headerTransforms: [
+        {
+          domain: "api.github.com",
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      ],
       expiresAt,
       metadata: {
         reason: input.reason,

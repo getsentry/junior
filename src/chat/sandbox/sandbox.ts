@@ -18,6 +18,19 @@ export interface SandboxExecutionEnvelope<T = unknown> {
   result: T;
 }
 
+export interface BashCustomCommandResult {
+  ok: boolean;
+  command: string;
+  cwd: string;
+  exit_code: number;
+  signal: null;
+  timed_out: boolean;
+  stdout: string;
+  stderr: string;
+  stdout_truncated: boolean;
+  stderr_truncated: boolean;
+}
+
 export interface SandboxExecutor {
   configureSkills(skills: SkillMetadata[]): void;
   getSandboxId(): string | undefined;
@@ -30,7 +43,6 @@ export interface SandboxExecutor {
 interface ToolExecutors {
   bash: (input: {
     command: string;
-    env?: Record<string, string>;
     headerTransforms?: Array<{
       domain: string;
       headers: Record<string, string>;
@@ -44,6 +56,39 @@ const SANDBOX_TOOL_NAMES = new Set(["bash", "readFile", "writeFile"]);
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
 const SANDBOX_ERROR_FIELDS = [{ sourceKey: "sandboxId", attributeKey: "sandbox_id", summaryKey: "sandboxId" }] as const;
+
+type NetworkPolicyAllowEntry = Array<{ transform?: Array<{ headers: Record<string, string> }> }>;
+
+function mergeNetworkPolicyWithHeaderTransforms(
+  networkPolicy: unknown,
+  headerTransforms: Array<{ domain: string; headers: Record<string, string> }>
+): { allow: Record<string, NetworkPolicyAllowEntry> } & Record<string, unknown> {
+  const basePolicy =
+    networkPolicy && typeof networkPolicy === "object" && !Array.isArray(networkPolicy)
+      ? ({ ...(networkPolicy as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+
+  const existingAllowRaw = basePolicy.allow;
+  const existingAllow: Record<string, NetworkPolicyAllowEntry> =
+    existingAllowRaw && typeof existingAllowRaw === "object" && !Array.isArray(existingAllowRaw)
+      ? Object.fromEntries(
+          Object.entries(existingAllowRaw as Record<string, unknown>).map(([domain, rules]) => [
+            domain,
+            Array.isArray(rules) ? ([...rules] as NetworkPolicyAllowEntry) : []
+          ])
+        )
+      : { "*": [] };
+
+  for (const transform of headerTransforms) {
+    const currentRules = existingAllow[transform.domain] ?? [];
+    existingAllow[transform.domain] = [...currentRules, { transform: [{ headers: transform.headers }] }];
+  }
+
+  return {
+    ...basePolicy,
+    allow: existingAllow
+  };
+}
 
 function truncateOutput(output: string, maxLength: number): { value: string; truncated: boolean } {
   if (output.length <= maxLength) {
@@ -209,6 +254,7 @@ export function createSandboxExecutor(options?: {
   sandboxId?: string;
   timeoutMs?: number;
   traceContext?: ObservabilityContext;
+  runBashCustomCommand?: (command: string) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
 }): SandboxExecutor {
   let sandbox: Sandbox | null = null;
   let sandboxIdHint = options?.sandboxId;
@@ -417,13 +463,8 @@ export function createSandboxExecutor(options?: {
       bash: async (input) => {
         const restoreNetworkPolicy = activeSandbox.networkPolicy ?? "allow-all";
         if (input.headerTransforms && input.headerTransforms.length > 0) {
-          const allow: Record<string, Array<{ transform: Array<{ headers: Record<string, string> }> }>> = {
-            "*": []
-          };
-          for (const transform of input.headerTransforms) {
-            allow[transform.domain] = [{ transform: [{ headers: transform.headers }] }];
-          }
-          await activeSandbox.updateNetworkPolicy({ allow });
+          const policy = mergeNetworkPolicyWithHeaderTransforms(restoreNetworkPolicy, input.headerTransforms);
+          await activeSandbox.updateNetworkPolicy(policy);
         }
 
         const pathPrefix = `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`;
@@ -431,8 +472,7 @@ export function createSandboxExecutor(options?: {
           const commandResult = await activeSandbox.runCommand({
             cmd: "bash",
             args: ["-c", `export PATH="${pathPrefix}" && ${input.command}`],
-            cwd: SANDBOX_WORKSPACE_ROOT,
-            ...(input.env ? { env: input.env } : {})
+            cwd: SANDBOX_WORKSPACE_ROOT
           });
           const maxOutputLength = Number.parseInt(process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "", 10);
           const boundedOutputLength =
@@ -470,6 +510,21 @@ export function createSandboxExecutor(options?: {
   };
 
   const execute = async <T>(params: SandboxExecutionInput): Promise<SandboxExecutionEnvelope<T>> => {
+    const rawInput = (params.input ?? {}) as Record<string, unknown>;
+
+    if (params.toolName === "bash") {
+      const command = String(rawInput.command ?? "").trim();
+      if (!command) {
+        throw new Error("command is required");
+      }
+      if (options?.runBashCustomCommand) {
+        const custom = await options.runBashCustomCommand(command);
+        if (custom.handled) {
+          return { result: custom.result as T };
+        }
+      }
+    }
+
     const activeSandbox = await createSandbox();
     const keepAliveMs = Number.parseInt(process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0", 10);
     if (Number.isFinite(keepAliveMs) && keepAliveMs > 0) {
@@ -489,22 +544,28 @@ export function createSandboxExecutor(options?: {
       }
     }
 
-    const rawInput = (params.input ?? {}) as Record<string, unknown>;
-
     if (params.toolName === "bash") {
       const command = String(rawInput.command ?? "").trim();
       if (!command) {
         throw new Error("command is required");
       }
-      const envInput = rawInput.env;
-      const env =
-        envInput && typeof envInput === "object" && !Array.isArray(envInput)
-          ? Object.fromEntries(
-              Object.entries(envInput as Record<string, unknown>)
-                .filter(([, value]) => typeof value === "string")
-                .map(([key, value]) => [key, value as string])
-            )
-          : undefined;
+      const headerTransformsInput = rawInput.headerTransforms;
+      const headerTransforms = Array.isArray(headerTransformsInput)
+        ? headerTransformsInput
+            .filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object"))
+            .map((transform) => ({
+              domain: String(transform.domain ?? "").trim(),
+              headers:
+                transform.headers && typeof transform.headers === "object" && !Array.isArray(transform.headers)
+                  ? Object.fromEntries(
+                      Object.entries(transform.headers as Record<string, unknown>)
+                        .filter(([, value]) => typeof value === "string")
+                        .map(([key, value]) => [key, value as string])
+                    )
+                  : {}
+            }))
+            .filter((transform) => transform.domain.length > 0 && Object.keys(transform.headers).length > 0)
+        : undefined;
 
       const executeBash = (await getToolExecutors()).bash;
       const result = await withSandboxSpan(
@@ -515,7 +576,7 @@ export function createSandboxExecutor(options?: {
         },
           async () => {
             try {
-              const response = await executeBash({ command, ...(env ? { env } : {}) });
+              const response = await executeBash({ command, ...(headerTransforms ? { headerTransforms } : {}) });
               setSpanAttributes({
                 "process.exit.code": response.exitCode,
                 "app.sandbox.stdout_bytes": Buffer.byteLength(response.stdout ?? "", "utf8"),

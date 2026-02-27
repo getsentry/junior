@@ -43,14 +43,16 @@ This policy applies to:
 ### Issuance and injection
 
 - Runtime issues short-lived, scoped credentials for skill-declared capabilities.
-- Preferred injection is per-command env vars (for example `GITHUB_TOKEN`).
-- Do not globally export privileged env vars across unrelated command execution.
+- Credential enablement is explicit via bash custom command `jr-rpc issue-credential <capability>`.
+- Preferred delivery is sandbox network-policy header transforms (for example Authorization on `api.github.com`).
+- Do not inject privileged tokens into sandbox command env or files.
 
 ### GitHub baseline
 
 - Use GitHub App installation auth.
 - Keep `GITHUB_APP_PRIVATE_KEY` on host only.
 - Sign App JWT on host, then exchange for installation token.
+- Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
 
 ## Logging and redaction policy
 

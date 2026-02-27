@@ -15,12 +15,12 @@ Credentials should only be injected per command execution scope. Do not rely on 
 
 Practical implication:
 - Do not assume app credentials are automatically available inside the sandbox.
-- Prefer short-lived installation token injection via `GITHUB_TOKEN` per command.
+- Prefer short-lived installation token delivery via sandbox header transforms.
 
 ## Preferred credential strategy
 
 1. Host/runtime obtains a short-lived GitHub installation token.
-2. Inject token as `GITHUB_TOKEN` for the specific command execution.
+2. Apply Authorization header transforms for required API domains on the specific command execution.
 3. Run the script command.
 4. Ensure no long-lived token persistence in sandbox files.
 
@@ -32,4 +32,4 @@ Fallback:
 
 - Keep command env passthrough behind an explicit allowlist for secret names.
 - Add configurable sandbox network policy and restrict to required domains by default.
-- Optionally inject auth headers via network policy transforms for specific APIs.
+- Inject auth headers via network policy transforms for specific APIs by default.

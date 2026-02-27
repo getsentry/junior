@@ -10,15 +10,15 @@ Draft
 
 ## Purpose
 
-Define a simple capability model where skills declare required capabilities and runtime injects short-lived provider credentials as env vars for sandbox command execution.
+Define a capability model where skills declare required capabilities and runtime enables short-lived provider credentials on demand via `jr-rpc issue-credential <capability>`, delivered through sandbox header transforms.
 
 ## Core model
 
 1. Skill loads normally.
 2. Runtime reads `requires-capabilities` from active skill.
-3. For privileged command execution, runtime issues short-lived credentials for required capabilities.
-4. Runtime injects credentials as env vars for that command (for example `GITHUB_TOKEN`).
-5. Runtime does not persist long-lived secrets in sandbox or skill files.
+3. Agent enables credential with bash custom command `jr-rpc issue-credential <capability>`.
+4. Runtime issues short-lived credentials and applies sandbox header transforms.
+5. Runtime does not persist long-lived secrets in sandbox env/files or skill files.
 
 ## Skill contract
 
@@ -43,8 +43,8 @@ Rules:
 
 ### Capability resolution
 
-- Resolve capabilities from active skill only.
-- Resolve target context (for GitHub: `owner/repo`) from invocation/command context when available.
+- Resolve capabilities from active skill context for guidance and observability.
+- Declarations are currently soft-enforced (warn-only) when missing/mismatched.
 
 ### Credential issuance
 
@@ -54,14 +54,14 @@ Rules:
 
 ### Injection behavior
 
-- Injection happens at command execution time, not at skill-load time.
-- Inject env vars only for that command execution scope.
+- Enablement happens on explicit `jr-rpc issue-credential` bash custom command, not at skill-load time.
+- Delivery uses sandbox header transforms for matching domains.
+- Do not inject privileged credentials into sandbox env vars.
 - Do not write long-lived credentials into sandbox files.
-- `jr-rpc credential issue` must return metadata only; never include raw token values.
 
-### Capability coalescing
+### Capability caching
 
-- When multiple GitHub capabilities are required in one command, runtime should issue one GitHub token lease at the highest required level and inject a single `GITHUB_TOKEN`.
+- Runtime may reuse in-memory lease state for repeated issue-credential calls in the same active context.
 
 ## GitHub profile
 
@@ -75,8 +75,8 @@ Rules:
 ### Issuance flow
 
 1. Host runtime signs a GitHub App JWT using `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY`.
-2. Runtime exchanges JWT for installation token.
-3. Runtime injects `GITHUB_TOKEN` for sandbox command execution.
+2. Runtime exchanges JWT for installation token using required `GITHUB_INSTALLATION_ID`.
+3. Runtime applies `Authorization` header transform for `api.github.com`.
 
 ### Lease behavior
 
@@ -91,6 +91,7 @@ Emit events without secret material:
 - `credential_issue_request`
 - `credential_issue_success`
 - `credential_issue_failed`
+- `capability_not_declared_for_skill` (warn-only)
 - `credential_inject_start`
 - `credential_inject_cleanup`
 

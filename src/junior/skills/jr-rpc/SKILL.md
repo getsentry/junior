@@ -1,35 +1,34 @@
 ---
 name: jr-rpc
-description: Use host-mediated credential issuance for sandbox commands via the jrRpc tool. Use when a task needs short-lived provider credentials (for example GitHub) to run a command safely.
-allowed-tools: bash jrRpc
+description: Lazily enable capability credentials for this turn via `jr-rpc issue-credential <capability>`.
+requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write
+allowed-tools: bash
 ---
 
-# Credential Usage
+# jr-rpc Capability Command
 
-Use this skill when a command needs temporary credentials injected by the harness.
+Use this skill when a task needs authenticated API calls and credentials are not enabled yet.
 
-## Preferred tool path
+## Required command form
 
-Use the `jrRpc` tool for credential operations:
+`jr-rpc issue-credential <capability>`
 
-- `action=exec` with `capability`, `repo`, and nested `command` for real work.
-- `action=issue` with `capability`, `repo`, and optional `format` for diagnostics/metadata.
-- Output is redacted metadata (no raw token values).
+Example:
+
+`jr-rpc issue-credential github.issues.write`
+
+## Behavior
+
+- `jr-rpc` runs as a bash runtime custom command.
+- Runtime lazily issues a short-lived lease for this turn and applies sandbox header transforms.
+- Raw tokens are never written into sandbox env/files.
 
 ## Guardrails
 
-- Never print, echo, or log credential values.
-- Do not write credentials to files.
-- Avoid shell debug tracing (`set -x`) when running credentialed commands.
-- Keep repo target explicit via `repo=owner/repo`.
+- Use provider-qualified capabilities (for example `github.issues.write`).
+- Do not print credential values.
 
-## Capability examples
+## References
 
-- `github.issues.read`
-- `github.issues.write`
-- `github.issues.comment`
-- `github.labels.write`
-
-## Reference note
-
-- Legacy `jr-rpc credential ...` shell syntax is deprecated in this runtime. Use the `jrRpc` tool directly.
+- [references/commands.md](references/commands.md)
+- [references/capabilities.md](references/capabilities.md)

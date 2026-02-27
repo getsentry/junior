@@ -28,14 +28,17 @@ vi.mock("@/chat/observability", () => ({
 }));
 
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
+import { createBashTool } from "bash-tool";
 
 interface MockSandbox {
   sandboxId: string;
   mkDir: ReturnType<typeof vi.fn>;
   writeFiles: ReturnType<typeof vi.fn>;
   runCommand: ReturnType<typeof vi.fn>;
+  updateNetworkPolicy: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   extendTimeout: ReturnType<typeof vi.fn>;
+  networkPolicy?: unknown;
 }
 
 function makeSandbox(
@@ -62,8 +65,10 @@ function makeSandbox(
       stdout: async () => "",
       stderr: async () => ""
     })),
+    updateNetworkPolicy: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
-    extendTimeout: vi.fn(async () => {})
+    extendTimeout: vi.fn(async () => {}),
+    networkPolicy: "allow-all"
   };
 }
 
@@ -91,6 +96,7 @@ describe("createSandboxExecutor", () => {
   beforeEach(() => {
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
+    vi.mocked(createBashTool).mockReset();
   });
 
   it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
@@ -144,5 +150,159 @@ describe("createSandboxExecutor", () => {
 
     await expect(executor.createSandbox()).rejects.toThrow("sandbox setup failed");
     expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("applies and restores header transforms for bash commands", async () => {
+    const sandbox = makeSandbox("sbx_headers");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) }
+      }
+    } as never);
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_headers" });
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo ok",
+        headerTransforms: [
+          {
+            domain: "api.github.com",
+            headers: {
+              Authorization: "Bearer token-1"
+            }
+          }
+        ]
+      }
+    });
+
+    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(1, {
+      allow: {
+        "*": [],
+        "api.github.com": [
+          {
+            transform: [
+              {
+                headers: {
+                  Authorization: "Bearer token-1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    });
+    expect(sandbox.runCommand).toHaveBeenCalledWith({
+      cmd: "bash",
+      args: ["-c", 'export PATH="/vercel/sandbox/.junior/bin:$PATH" && echo ok'],
+      cwd: "/vercel/sandbox"
+    });
+    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(2, "allow-all");
+  });
+
+  it("merges header transforms into existing network policy allow rules", async () => {
+    const sandbox = makeSandbox("sbx_policy_merge");
+    sandbox.networkPolicy = {
+      allow: {
+        "example.com": [{ transform: [{ headers: { "X-Existing": "1" } }] }]
+      }
+    };
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) }
+      }
+    } as never);
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_policy_merge" });
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo ok",
+        headerTransforms: [
+          {
+            domain: "api.github.com",
+            headers: {
+              Authorization: "Bearer token-1"
+            }
+          }
+        ]
+      }
+    });
+
+    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(1, {
+      allow: {
+        "example.com": [{ transform: [{ headers: { "X-Existing": "1" } }] }],
+        "api.github.com": [
+          {
+            transform: [
+              {
+                headers: {
+                  Authorization: "Bearer token-1"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    });
+    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(2, sandbox.networkPolicy);
+  });
+
+  it("routes matching bash commands through custom command handler", async () => {
+    const sandbox = makeSandbox("sbx_custom");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) }
+      }
+    } as never);
+    const runBashCustomCommand = vi.fn(async (command: string) =>
+      command === "jr-rpc issue-credential github.issues.write"
+        ? {
+            handled: true,
+            result: {
+              ok: true,
+              command,
+              cwd: "/",
+              exit_code: 0,
+              signal: null,
+              timed_out: false,
+              stdout: "credential_enabled\n",
+              stderr: "",
+              stdout_truncated: false,
+              stderr_truncated: false
+            }
+          }
+        : { handled: false }
+    );
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_custom",
+      runBashCustomCommand
+    });
+    executor.configureSkills([]);
+
+    const response = await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "jr-rpc issue-credential github.issues.write"
+      }
+    });
+
+    expect(runBashCustomCommand).toHaveBeenCalledWith("jr-rpc issue-credential github.issues.write");
+    expect(sandbox.runCommand).not.toHaveBeenCalled();
+    expect(response.result).toMatchObject({
+      ok: true,
+      exit_code: 0
+    });
   });
 });

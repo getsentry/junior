@@ -132,15 +132,6 @@ async function githubRequest<T>(path: string, params: {
   return parsed as T;
 }
 
-function parseTarget(target?: CapabilityTarget): { owner: string; repo: string } {
-  const owner = target?.owner?.trim();
-  const repo = target?.repo?.trim();
-  if (!owner || !repo) {
-    throw new Error("GitHub capability requests require target owner and repo");
-  }
-  return { owner, repo };
-}
-
 function capabilityToPermissions(capability: string): Record<string, "read" | "write"> {
   if (capability === "github.issues.read") {
     return { issues: "read" };
@@ -163,12 +154,19 @@ export class GitHubCredentialBroker implements CredentialBroker {
   }): Promise<CredentialLease> {
     const permissions = capabilityToPermissions(input.capability);
     const appId = process.env.GITHUB_APP_ID;
-    const { owner, repo } = parseTarget(input.target);
     if (!appId) {
       throw new Error("Missing GITHUB_APP_ID");
     }
+    const installationIdRaw = process.env.GITHUB_INSTALLATION_ID?.trim();
+    if (!installationIdRaw) {
+      throw new Error("Missing GITHUB_INSTALLATION_ID");
+    }
+    const installationId = Number(installationIdRaw);
+    if (!Number.isFinite(installationId)) {
+      throw new Error("Invalid GITHUB_INSTALLATION_ID");
+    }
 
-    const cacheKey = `${owner}/${repo}:${input.capability}`;
+    const cacheKey = `${installationId}:${input.capability}`;
     const cached = this.tokenCache.get(cacheKey);
     const now = Date.now();
     if (cached && cached.expiresAt - now > 2 * 60 * 1000) {
@@ -177,10 +175,16 @@ export class GitHubCredentialBroker implements CredentialBroker {
         provider: "github",
         capability: input.capability,
         env: { GITHUB_TOKEN: cached.token },
+        headerTransforms: [
+          {
+            domain: "api.github.com",
+            headers: {
+              Authorization: `Bearer ${cached.token}`
+            }
+          }
+        ],
         expiresAt: new Date(cached.expiresAt).toISOString(),
         metadata: {
-          owner,
-          repo,
           installationId: String(cached.installationId),
           reason: input.reason
         }
@@ -189,22 +193,14 @@ export class GitHubCredentialBroker implements CredentialBroker {
 
     const appJwt = createAppJwt(appId);
 
-    const installationId = process.env.GITHUB_INSTALLATION_ID
-      ? Number(process.env.GITHUB_INSTALLATION_ID)
-      : Number(
-          (
-            await githubRequest<{ id: number }>(`/repos/${owner}/${repo}/installation`, {
-              token: appJwt
-            })
-          ).id
-        );
-
     const accessTokenResponse = await githubRequest<{ token: string; expires_at: string }>(
       `/app/installations/${installationId}/access_tokens`,
       {
         method: "POST",
         token: appJwt,
-        body: { permissions }
+        body: {
+          permissions
+        }
       }
     );
 
@@ -221,10 +217,16 @@ export class GitHubCredentialBroker implements CredentialBroker {
       provider: "github",
       capability: input.capability,
       env: { GITHUB_TOKEN: accessTokenResponse.token },
+      headerTransforms: [
+        {
+          domain: "api.github.com",
+          headers: {
+            Authorization: `Bearer ${accessTokenResponse.token}`
+          }
+        }
+      ],
       expiresAt: new Date(expiresAtMs).toISOString(),
       metadata: {
-        owner,
-        repo,
         installationId: String(installationId),
         reason: input.reason
       }

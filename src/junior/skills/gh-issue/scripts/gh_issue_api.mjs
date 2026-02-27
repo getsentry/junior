@@ -13,7 +13,7 @@ function usage() {
 
 Environment:
   Optional GITHUB_TOKEN=<installation token>
-  (jrRpc can also inject Authorization headers at the sandbox network layer)
+  (sandbox network policy may inject Authorization headers automatically)
 `);
 }
 
