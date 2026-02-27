@@ -462,12 +462,14 @@ export function createSandboxExecutor(options?: {
     toolExecutors = {
       bash: async (input) => {
         const restoreNetworkPolicy = activeSandbox.networkPolicy ?? "allow-all";
-        if (input.headerTransforms && input.headerTransforms.length > 0) {
+        const hasHeaderTransforms = Boolean(input.headerTransforms && input.headerTransforms.length > 0);
+        if (hasHeaderTransforms) {
           const policy = mergeNetworkPolicyWithHeaderTransforms(restoreNetworkPolicy, input.headerTransforms);
           await activeSandbox.updateNetworkPolicy(policy);
         }
 
         const pathPrefix = `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`;
+        let commandError: unknown;
         try {
           const commandResult = await activeSandbox.runCommand({
             cmd: "bash",
@@ -488,9 +490,18 @@ export function createSandboxExecutor(options?: {
             stdoutTruncated: stdout.truncated,
             stderrTruncated: stderr.truncated
           };
+        } catch (error) {
+          commandError = error;
+          throw error;
         } finally {
-          if (input.headerTransforms && input.headerTransforms.length > 0) {
-            await activeSandbox.updateNetworkPolicy(restoreNetworkPolicy);
+          if (hasHeaderTransforms) {
+            try {
+              await activeSandbox.updateNetworkPolicy(restoreNetworkPolicy);
+            } catch (restoreError) {
+              if (!commandError) {
+                throw restoreError;
+              }
+            }
           }
         }
       },
@@ -511,14 +522,14 @@ export function createSandboxExecutor(options?: {
 
   const execute = async <T>(params: SandboxExecutionInput): Promise<SandboxExecutionEnvelope<T>> => {
     const rawInput = (params.input ?? {}) as Record<string, unknown>;
+    const bashCommand = params.toolName === "bash" ? String(rawInput.command ?? "").trim() : undefined;
 
     if (params.toolName === "bash") {
-      const command = String(rawInput.command ?? "").trim();
-      if (!command) {
+      if (!bashCommand) {
         throw new Error("command is required");
       }
       if (options?.runBashCustomCommand) {
-        const custom = await options.runBashCustomCommand(command);
+        const custom = await options.runBashCustomCommand(bashCommand);
         if (custom.handled) {
           return { result: custom.result as T };
         }
@@ -545,10 +556,7 @@ export function createSandboxExecutor(options?: {
     }
 
     if (params.toolName === "bash") {
-      const command = String(rawInput.command ?? "").trim();
-      if (!command) {
-        throw new Error("command is required");
-      }
+      const command = bashCommand as string;
       const headerTransformsInput = rawInput.headerTransforms;
       const headerTransforms = Array.isArray(headerTransformsInput)
         ? headerTransformsInput

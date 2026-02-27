@@ -256,6 +256,44 @@ describe("createSandboxExecutor", () => {
     expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(2, sandbox.networkPolicy);
   });
 
+  it("preserves command errors when network policy restore fails", async () => {
+    const sandbox = makeSandbox("sbx_restore_failure");
+    sandbox.runCommand.mockRejectedValueOnce(new Error("command failed"));
+    sandbox.updateNetworkPolicy
+      .mockImplementationOnce(async () => {})
+      .mockImplementationOnce(async () => {
+        throw new Error("restore failed");
+      });
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) }
+      }
+    } as never);
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_restore_failure" });
+    executor.configureSkills([]);
+
+    await expect(
+      executor.execute({
+        toolName: "bash",
+        input: {
+          command: "echo ok",
+          headerTransforms: [
+            {
+              domain: "api.github.com",
+              headers: {
+                Authorization: "Bearer token-1"
+              }
+            }
+          ]
+        }
+      })
+    ).rejects.toThrow("command failed");
+    expect(sandbox.updateNetworkPolicy).toHaveBeenCalledTimes(2);
+  });
+
   it("routes matching bash commands through custom command handler", async () => {
     const sandbox = makeSandbox("sbx_custom");
     sandboxGetMock.mockResolvedValue(sandbox);
