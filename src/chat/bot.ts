@@ -145,7 +145,7 @@ const assistantThreadMetaById = new Map<string, AssistantThreadMeta>();
 const ASSISTANT_THREAD_META_MAX = 500;
 const ASSISTANT_THREAD_META_TTL_MS = 1000 * 60 * 60 * 24;
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
-const SLACK_LOADING_STATUS_MAX_LENGTH = 50;
+const SLACK_LOADING_STATUS_MAX_LENGTH = 100;
 
 function pruneAssistantThreadMeta(nowMs: number): void {
   for (const [threadId, meta] of assistantThreadMetaById) {
