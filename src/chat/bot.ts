@@ -1652,7 +1652,7 @@ async function replyToThread(
           await streamedReplyPromise;
         }
 
-        if (reply.files && reply.files.length > 0 && !channelId) {
+        if (reply.files && reply.files.length > 0 && (!channelId || !threadTs)) {
           logWarn(
             "file_upload_skipped_missing_context",
             { slackThreadId: threadId },
