@@ -193,7 +193,7 @@ export function buildSystemPrompt(params: {
         "- Use `imageGenerate` when the user asks for image creation.",
         "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
-        "- To enable provider credentials for this turn, run `jr-rpc issue-credential <capability>` as a bash command before commands that need authenticated API calls.",
+        "- To enable provider credentials for this turn, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before commands that need authenticated API calls.",
         "- Capabilities are provider-qualified (for example `github.issues.write`).",
         "- When your work is complete, provide the exact user-facing markdown response.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",

@@ -11,11 +11,11 @@ Use this skill when a task needs authenticated API calls and credentials are not
 
 ## Required command form
 
-`jr-rpc issue-credential <capability>`
+`jr-rpc issue-credential <capability> [--repo <owner/repo>]`
 
 Example:
 
-`jr-rpc issue-credential github.issues.write`
+`jr-rpc issue-credential github.issues.write --repo getsentry/junior`
 
 ## Behavior
 

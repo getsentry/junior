@@ -59,6 +59,42 @@ describe("jr-rpc custom command", () => {
     }
   });
 
+  it("handles valid issue-credential command with --repo", async () => {
+    const broker: CredentialBroker = {
+      issue: async (input) => {
+        expect(input.target).toEqual({ owner: "getsentry", repo: "junior" });
+        return {
+          id: "lease-1",
+          provider: "github",
+          capability: "github.issues.write",
+          env: { GITHUB_TOKEN: "token-1" },
+          headerTransforms: [
+            {
+              domain: "api.github.com",
+              headers: {
+                Authorization: "Bearer token-1"
+              }
+            }
+          ],
+          expiresAt: new Date(Date.now() + 60_000).toISOString()
+        };
+      }
+    };
+    const runtime = new SkillCapabilityRuntime({ broker });
+    const result = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential github.issues.write --repo getsentry/junior",
+      {
+        capabilityRuntime: runtime,
+        activeSkill
+      }
+    );
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.result.exit_code).toBe(0);
+      expect(result.result.stdout).toContain("credential_enabled");
+    }
+  });
+
   it("returns usage error for missing capability", async () => {
     const result = await maybeExecuteJrRpcCustomCommand("jr-rpc issue-credential", {
       capabilityRuntime: makeRuntime(),
@@ -80,6 +116,18 @@ describe("jr-rpc custom command", () => {
     if (result.handled) {
       expect(result.result.exit_code).toBe(2);
       expect(result.result.stderr).toContain("Unsupported jr-rpc command");
+    }
+  });
+
+  it("returns usage error for invalid --repo format", async () => {
+    const result = await maybeExecuteJrRpcCustomCommand("jr-rpc issue-credential github.issues.write --repo invalid", {
+      capabilityRuntime: makeRuntime(),
+      activeSkill
+    });
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.result.exit_code).toBe(2);
+      expect(result.result.stderr).toContain("--repo must be in owner/repo format");
     }
   });
 

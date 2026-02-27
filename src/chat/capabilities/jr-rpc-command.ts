@@ -1,5 +1,6 @@
 import { Bash, defineCommand } from "just-bash";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
+import { parseRepoTarget } from "@/chat/capabilities/target";
 import type { Skill } from "@/chat/skills";
 
 type JrRpcDeps = {
@@ -9,11 +10,12 @@ type JrRpcDeps = {
 
 function createJrRpcCommand(deps: JrRpcDeps) {
   return defineCommand("jr-rpc", async (args) => {
+    const usage = "jr-rpc issue-credential <capability> [--repo <owner/repo>]\n";
     const verb = args[0];
     if (verb !== "issue-credential") {
       return {
         stdout: "",
-        stderr: "Unsupported jr-rpc command. Use: jr-rpc issue-credential <capability>\n",
+        stderr: `Unsupported jr-rpc command. Use: ${usage}`,
         exitCode: 2
       };
     }
@@ -25,10 +27,32 @@ function createJrRpcCommand(deps: JrRpcDeps) {
         exitCode: 2
       };
     }
-    if (args.length > 2) {
+    let repoRef: string | undefined;
+    const extras = args.slice(2);
+    if (extras.length > 0) {
+      if (extras.length === 2 && extras[0] === "--repo") {
+        repoRef = extras[1];
+      } else if (extras.length === 1 && extras[0].startsWith("--repo=")) {
+        repoRef = extras[0].slice("--repo=".length);
+      } else {
+        return {
+          stdout: "",
+          stderr: `jr-rpc issue-credential requires exactly one capability argument and optional --repo <owner/repo>\n`,
+          exitCode: 2
+        };
+      }
+      if (!parseRepoTarget(repoRef ?? "")) {
+        return {
+          stdout: "",
+          stderr: "jr-rpc issue-credential --repo must be in owner/repo format\n",
+          exitCode: 2
+        };
+      }
+    }
+    if (args.length > 4) {
       return {
         stdout: "",
-        stderr: "jr-rpc issue-credential requires exactly one capability argument\n",
+        stderr: `jr-rpc issue-credential requires exactly one capability argument and optional --repo <owner/repo>\n`,
         exitCode: 2
       };
     }
@@ -37,6 +61,7 @@ function createJrRpcCommand(deps: JrRpcDeps) {
       outcome = await deps.capabilityRuntime.enableCapabilityForTurn({
         activeSkill: deps.activeSkill,
         capability,
+        ...(repoRef ? { repoRef } : {}),
         reason: `skill:${deps.activeSkill?.name ?? "unknown"}:jr-rpc:issue-credential`
       });
     } catch (error) {

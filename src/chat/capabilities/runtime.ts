@@ -76,6 +76,7 @@ export class SkillCapabilityRuntime {
   async enableCapabilityForTurn(input: {
     activeSkill: Skill | null;
     capability: string;
+    repoRef?: string;
     reason: string;
   }): Promise<{ reused: boolean; expiresAt: string }> {
     const capability = input.capability.trim();
@@ -117,6 +118,7 @@ export class SkillCapabilityRuntime {
       const lease = await this.issueCapabilityLease({
         activeSkill,
         capability,
+        repoRef: input.repoRef,
         reason: input.reason
       });
       const transforms = this.toHeaderTransforms(lease);

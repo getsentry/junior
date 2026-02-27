@@ -105,4 +105,40 @@ describe("skill capability runtime", () => {
       })
     ).rejects.toThrow("Unsupported capability provider");
   });
+
+  it("forwards explicit repoRef through enableCapabilityForTurn", async () => {
+    let seenTarget: { owner?: string; repo?: string } | undefined;
+    const broker: CredentialBroker = {
+      issue: async (input) => {
+        seenTarget = input.target;
+        return {
+          id: "lease-1",
+          provider: "github",
+          capability: "github.issues.write",
+          env: { GITHUB_TOKEN: "token-1" },
+          headerTransforms: [
+            {
+              domain: "api.github.com",
+              headers: {
+                Authorization: "Bearer token-1"
+              }
+            }
+          ],
+          expiresAt: new Date(Date.now() + 60_000).toISOString()
+        };
+      }
+    };
+
+    const runtime = new SkillCapabilityRuntime({ broker });
+    await expect(
+      runtime.enableCapabilityForTurn({
+        activeSkill: fakeSkill,
+        capability: "github.issues.write",
+        repoRef: "getsentry/junior",
+        reason: "test:repo-ref"
+      })
+    ).resolves.toMatchObject({ reused: false });
+
+    expect(seenTarget).toEqual({ owner: "getsentry", repo: "junior" });
+  });
 });

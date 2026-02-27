@@ -2,11 +2,12 @@
 
 ## Syntax
 
-`jr-rpc issue-credential <capability>`
+`jr-rpc issue-credential <capability> [--repo <owner/repo>]`
 
 ## Required args
 
 - `<capability>` (provider-qualified, for example `github.issues.write`)
+- optional `--repo <owner/repo>` to scope credentials to one repository
 
 ## Common errors
 

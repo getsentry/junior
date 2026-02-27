@@ -1,7 +1,7 @@
 ---
 name: capability-credential-smoke
 description: Smoke-test automatic capability credential injection with an eval-only token. Use only in eval scenarios.
-requires-capabilities: app.test.read
+requires-capabilities: github.issues.read
 allowed-tools: bash
 ---
 
@@ -9,7 +9,7 @@ allowed-tools: bash
 
 Run exactly this command:
 
-`bash -lc 'echo CREDENTIAL_OK'`
+`bash -lc 'jr-rpc issue-credential github.issues.read --repo getsentry/junior && echo CREDENTIAL_OK'`
 
 Then return one line:
 
