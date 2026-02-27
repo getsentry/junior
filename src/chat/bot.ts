@@ -170,7 +170,6 @@ function pruneAssistantThreadMeta(nowMs: number): void {
 
 function createProgressReporter(thread: {
   id?: string;
-  startTyping?: (status?: string) => Promise<void>;
 }) {
   let active = false;
   let currentStatus = "Working...";
@@ -186,11 +185,6 @@ function createProgressReporter(thread: {
     }
     currentStatus = safeText;
     lastStatusAt = Date.now();
-    try {
-      await thread.startTyping?.(safeText);
-    } catch {
-      // Best effort only.
-    }
 
     const threadId = toOptionalString(thread.id);
     const assistantThread = threadId ? assistantThreadMetaById.get(threadId) : undefined;
@@ -1488,6 +1482,15 @@ async function replyToThread(
   const threadTs = getThreadTs(thread, message);
   const channelId = getChannelId(message);
   const workflowRunId = getWorkflowRunId(thread, message);
+
+  if (threadId && channelId && threadTs && !assistantThreadMetaById.has(threadId)) {
+    assistantThreadMetaById.set(threadId, {
+      channelId,
+      threadTs,
+      updatedAtMs: Date.now()
+    });
+    pruneAssistantThreadMeta(Date.now());
+  }
 
   await withSpan(
     "workflow.reply",
