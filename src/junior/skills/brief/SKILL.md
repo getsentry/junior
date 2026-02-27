@@ -51,16 +51,16 @@ Use [candidate rubric](references/candidate-rubric.md) as the baseline scoring c
 
 Main output must begin with the profile grade.
 
-Slack rendering constraints (strict):
+Rendering constraints (strict):
 
 - Use only headings and bullets.
 - Never use markdown tables.
 - Never use horizontal rules (`---`) between sections.
 - Never use emoji-prefixed section headers.
 - Never collapse key/value data onto one dense line. Use one bullet per field: `- Field: value`.
-- Keep the first 12 lines clean and readable because Slack previews them inline.
+- Keep the opening section clean and readable.
 
-After the delivery block, write two parts in this order:
+Write two parts in this order:
 
 1. `Brief summary` (3-5 bullets, max 8 lines total, non-technical language). This must appear before detailed sections.
 2. `Detailed report` with these sections:
@@ -87,15 +87,18 @@ Depth minimums:
 - `Public speaking and technical content` plus `Public presence`: cite at least 2 independent artifacts combined when available.
 - If a minimum cannot be met, explicitly mark `limited` or `not-assessed` and lower confidence.
 
-Delivery guidance:
+Completion gate (must pass before final answer):
 
-- Always include this block first:
-  `<delivery>`
-  `mode: attachment`
-  `attachment_prefix: candidate-brief`
-  `</delivery>`
-- Never use `mode: inline`.
-- The response body after the block is written as attachment content.
+- Do not finalize until every required `Detailed report` section is present.
+- Do not finalize until each evaluated component includes a `References` subsection.
+- Do not finalize if depth minimums are missed without an explicit `limited`/`not-assessed` note and confidence downgrade.
+- If evidence quality is too weak to grade reliably, still deliver the full structure and clearly mark insufficiency.
+
+Artifact and delivery guidance:
+
+- Treat the full brief as a document deliverable, not an inline-only chat reply.
+- Use the environment's document primitives to deliver the full brief artifact (for example canvas/file/document tools when available).
+- Post a short TL;DR in-thread that links or points to the full artifact.
 - Keep plain markdown with short sections and bullets.
 
 ## Guardrails

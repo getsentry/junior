@@ -3,6 +3,9 @@ import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
 import { createReadFileTool } from "@/chat/tools/read-file";
+import { createSlackChannelListMembersTool } from "@/chat/tools/slack-channel-list-members";
+import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
+import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
 import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-update";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
@@ -101,6 +104,21 @@ export function createTools(
     webSearch: wrapToolExecution("webSearch", createWebSearchTool(), hooks),
     webFetch: wrapToolExecution("webFetch", createWebFetchTool(hooks), hooks),
     imageGenerate: wrapToolExecution("imageGenerate", createImageGenerateTool(hooks), hooks),
+    slackChannelPostMessage: wrapToolExecution(
+      "slackChannelPostMessage",
+      createSlackChannelPostMessageTool(context, state),
+      hooks
+    ),
+    slackChannelListMembers: wrapToolExecution(
+      "slackChannelListMembers",
+      createSlackChannelListMembersTool(context),
+      hooks
+    ),
+    slackChannelListMessages: wrapToolExecution(
+      "slackChannelListMessages",
+      createSlackChannelListMessagesTool(context),
+      hooks
+    ),
     slackCanvasCreate: wrapToolExecution(
       "slackCanvasCreate",
       createSlackCanvasCreateTool(context, state),

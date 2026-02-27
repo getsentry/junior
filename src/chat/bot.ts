@@ -1,5 +1,5 @@
 import { Chat } from "chat";
-import type { Attachment, FileUpload, PostableMessage } from "chat";
+import type { Attachment } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { z } from "zod";
 import "@/chat/chat-background-patch";
@@ -16,10 +16,9 @@ import type {
   ConversationMessage,
   ThreadConversationState
 } from "@/chat/conversation-state";
-import { captureException, logException, logInfo, logWarn, toOptionalString, withSpan } from "@/chat/observability";
-import { buildSlackOutputMessage, shouldUseAttachmentFallback, stripDeliveryDirectives } from "@/chat/output";
+import { logException, logInfo, logWarn, toOptionalString, withSpan } from "@/chat/observability";
+import { buildSlackOutputMessage } from "@/chat/output";
 import { generateAssistantReply } from "@/chat/respond";
-import { createCanvas } from "@/chat/slack-actions/canvases";
 import {
   buildArtifactStatePatch,
   coerceThreadArtifactsState,
@@ -91,17 +90,6 @@ function getWorkflowRunId(thread: unknown, message: unknown): string | undefined
 
 function getChannelId(message: unknown): string | undefined {
   return toOptionalString((message as { channelId?: unknown }).channelId);
-}
-
-function summarizeForThread(text: string): string {
-  const lines = text
-    .trim()
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 8);
-
-  return lines.join("\n") || "Prepared a longer response.";
 }
 
 interface AssistantThreadMeta {
@@ -847,61 +835,6 @@ export const bot = new Chat({
   state: createStateAdapter()
 });
 
-async function maybePostCanvasFallback(args: {
-  text: string;
-  files?: FileUpload[];
-  userText: string;
-  thread: { post: (message: string | PostableMessage) => Promise<unknown> };
-  channelId?: string;
-  artifactStatePatch?: Partial<ThreadArtifactsState>;
-}): Promise<boolean> {
-  const { text, files, userText, thread, channelId, artifactStatePatch } = args;
-  const contentText = stripDeliveryDirectives(text);
-
-  if (!channelId) {
-    return false;
-  }
-
-  if (artifactStatePatch?.lastCanvasId) {
-    return false;
-  }
-
-  if (!shouldUseAttachmentFallback(text)) {
-    return false;
-  }
-
-  const heading = userText.split("\n")[0]?.trim();
-  const title = (heading && heading.length > 0 ? heading : "Junior response").slice(0, 120);
-
-  const created = await createCanvas({
-    title,
-    markdown: contentText,
-    channelId
-  });
-
-  artifactStatePatch &&
-    Object.assign(artifactStatePatch, {
-      lastCanvasId: created.canvasId,
-      lastCanvasUrl: created.permalink
-    });
-
-  const canvasLine = created.permalink
-    ? `Created Slack canvas: <${created.permalink}|open canvas>.`
-    : `Created Slack canvas: \`${created.canvasId}\`.`;
-
-  await thread.post({
-    markdown: [
-      "Summary:",
-      summarizeForThread(contentText),
-      "",
-      canvasLine
-    ].join("\n"),
-    files
-  });
-
-  return true;
-}
-
 interface ThreadTurnHandle extends AppRuntimeThreadHandle {
   messages?: AsyncIterable<ThreadMessageSnapshot>;
   recentMessages?: ThreadMessageSnapshot[];
@@ -1211,34 +1144,11 @@ async function replyToThread(
           ? { ...reply.artifactStatePatch }
           : {};
 
-        let usedCanvasFallback = false;
-        try {
-          usedCanvasFallback = await maybePostCanvasFallback({
-            text: reply.text,
-            files: reply.files,
-            userText,
-            thread,
-            channelId,
-            artifactStatePatch
-          });
-        } catch (error) {
-          captureException(error, {
-            slackThreadId: threadId,
-            slackUserId: message.author.userId,
-            slackChannelId: channelId,
-            workflowRunId,
-            assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId
-          });
-        }
-
-        if (!usedCanvasFallback) {
-          await thread.post(
-            buildSlackOutputMessage(reply.text, {
-              files: reply.files
-            })
-          );
-        }
+        await thread.post(
+          buildSlackOutputMessage(reply.text, {
+            files: reply.files
+          })
+        );
 
         const shouldPersistArtifacts = Object.keys(artifactStatePatch).length > 0;
         const nextArtifacts = shouldPersistArtifacts

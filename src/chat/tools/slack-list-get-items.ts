@@ -5,7 +5,8 @@ import type { ToolState } from "@/chat/tools/types";
 
 export function createSlackListGetItemsTool(state: ToolState) {
   return tool({
-    description: "List items from a Slack list.",
+    description:
+      "Read items from a Slack list. Use when the user asks for task status, open items, or list contents. Do not use when list state is already known from the immediately prior result.",
     inputSchema: Type.Object({
       list_id: Type.Optional(
         Type.String({

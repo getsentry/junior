@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertBehaviorEvalCase, loadBehaviorEvalSuite, runBehaviorEvalCase } from "../evals/behavior-harness";
+import { assertBehaviorEvalCase, loadBehaviorEvalSuite } from "../evals/behavior-harness";
 
 describe("behavior harness", () => {
   it("rejects invalid suite schema with a precise path", () => {
@@ -30,36 +30,32 @@ describe("behavior harness", () => {
     );
   });
 
-  it("assertions fail with diagnostics when expectations are wrong", async () => {
+  it("assertions fail with diagnostics when expectations are wrong", () => {
     const testCase = {
       id: "bad_expectation_case",
       description: "Produces one post but expects two",
-      events: [
-        {
-          type: "new_mention" as const,
-          thread: {
-            id: "thread-1",
-            channel_id: "C-1",
-            thread_ts: "1700000000.100"
-          },
-          message: {
-            id: "msg-1",
-            text: "<@U_APP> summarize this",
-            is_mention: true,
-            author: {
-              user_id: "U-1",
-              user_name: "alice",
-              is_me: false
-            }
-          }
-        }
-      ],
+      events: [],
       expected: {
         posts_count: 2
       }
     };
 
-    const result = await runBehaviorEvalCase(testCase);
+    const result = {
+      logs: [],
+      posts: ["one reply"],
+      sandboxIds: [],
+      warnings: [],
+      exceptions: [],
+      primaryThread: undefined,
+      slackAdapter: {
+        titleCalls: [],
+        promptCalls: [],
+        setAssistantTitle: async () => undefined,
+        setSuggestedPrompts: async () => undefined
+      },
+      toolCalls: []
+    };
+
     expect(() => assertBehaviorEvalCase(testCase, result)).toThrowError(
       /expected posts_count=2 but got 1.*posts=.*warnings=.*exceptions=/
     );

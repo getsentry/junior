@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSlackOutputMessage, slackOutputPolicy, stripDeliveryDirectives } from "@/chat/output";
+import { buildSlackOutputMessage, slackOutputPolicy } from "@/chat/output";
 
 describe("buildSlackOutputMessage", () => {
   it("returns inline markdown for short content", () => {
@@ -11,80 +11,15 @@ describe("buildSlackOutputMessage", () => {
     expect((message as { files?: unknown[] }).files).toBeUndefined();
   });
 
-  it("attaches markdown file for long content", () => {
+  it("keeps long content inline by default", () => {
     const longText = Array.from({ length: slackOutputPolicy.maxInlineLines + 8 }, (_, i) => `line ${i + 1}`).join("\n");
     const message = buildSlackOutputMessage(longText) as {
       markdown: string;
       files?: Array<{ data: Buffer; filename: string; mimeType?: string }>;
     };
 
-    expect(message.markdown).toContain("Summary:");
-    expect(message.markdown).toContain("Full response attached as");
-    expect(message.files?.length).toBe(1);
-    expect(message.files?.[0].mimeType).toBe("text/markdown");
-    expect(message.files?.[0].filename.endsWith(".md")).toBe(true);
-    expect(message.files?.[0].data.toString("utf8")).toBe(longText);
-  });
-
-  it("can force attachment even for short content", () => {
-    const message = buildSlackOutputMessage("short summary", {
-      forceAttachment: true,
-      attachmentPrefix: "candidate-summary"
-    }) as {
-      markdown: string;
-      files?: Array<{ data: Buffer; filename: string; mimeType?: string }>;
-    };
-
-    expect(message.markdown).toContain("Summary:");
-    expect(message.files?.length).toBe(1);
-    expect(message.files?.[0].filename.startsWith("candidate-summary-")).toBe(true);
-    expect(message.files?.[0].data.toString("utf8")).toBe("short summary");
-  });
-
-  it("respects inline delivery directives embedded in model output", () => {
-    const response = [
-      "<delivery>",
-      "mode: attachment",
-      "attachment_prefix: candidate-summary",
-      "</delivery>",
-      "",
-      "Snapshot",
-      "- strong OSS track record"
-    ].join("\n");
-
-    const message = buildSlackOutputMessage(response) as {
-      markdown: string;
-      files?: Array<{ data: Buffer; filename: string; mimeType?: string }>;
-    };
-
-    expect(message.files?.length).toBe(1);
-    expect(message.files?.[0].filename.startsWith("candidate-summary-")).toBe(true);
-    expect(message.files?.[0].data.toString("utf8")).toContain("Snapshot");
-    expect(message.markdown).not.toContain("<delivery>");
-  });
-
-  it("respects trailing delivery directives in model output", () => {
-    const response = [
-      "Good, skill loaded. Now let me gather evidence on Sunil Pai at Cloudflare.",
-      "",
-      "Found him - GitHub handle threepointone. Let me now gather deeper evidence.",
-      "",
-      "I have enough evidence to write a comprehensive brief. Let me create the canvas now.",
-      "<delivery>",
-      "mode: attachment",
-      "attachment_prefix: candidate-brief",
-      "</delivery>"
-    ].join("\n");
-
-    const message = buildSlackOutputMessage(response) as {
-      markdown: string;
-      files?: Array<{ data: Buffer; filename: string; mimeType?: string }>;
-    };
-
-    expect(message.files?.length).toBe(1);
-    expect(message.files?.[0].filename.startsWith("candidate-brief-")).toBe(true);
-    expect(message.markdown).not.toContain("<delivery>");
-    expect(message.files?.[0].data.toString("utf8")).not.toContain("<delivery>");
+    expect(message.markdown).toBe(longText);
+    expect(message.files).toBeUndefined();
   });
 
   it("includes provided files on inline responses", () => {
@@ -111,34 +46,5 @@ describe("buildSlackOutputMessage", () => {
     const message = buildSlackOutputMessage("one\r\n\r\n\r\n\r\ntwo   \n") as { markdown: string };
 
     expect(message.markdown).toBe("one\n\ntwo");
-  });
-});
-
-describe("stripDeliveryDirectives", () => {
-  it("removes a leading delivery directive block", () => {
-    const response = [
-      "<delivery>",
-      "mode: attachment",
-      "attachment_prefix: candidate-summary",
-      "</delivery>",
-      "",
-      "Snapshot",
-      "- strong OSS track record"
-    ].join("\n");
-
-    expect(stripDeliveryDirectives(response)).toBe(["Snapshot", "- strong OSS track record"].join("\n"));
-  });
-
-  it("removes a trailing delivery directive block", () => {
-    const response = [
-      "Brief summary",
-      "- signal 1",
-      "<delivery>",
-      "mode: attachment",
-      "attachment_prefix: candidate-summary",
-      "</delivery>"
-    ].join("\n");
-
-    expect(stripDeliveryDirectives(response)).toBe(["Brief summary", "- signal 1"].join("\n"));
   });
 });

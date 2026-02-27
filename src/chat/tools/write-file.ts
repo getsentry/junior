@@ -4,7 +4,7 @@ import { tool } from "@/chat/tools/definition";
 export function createWriteFileTool() {
   return tool({
     description:
-      "Write content to a file in the sandbox.",
+      "Write UTF-8 content to a file in the sandbox workspace. Use for intentional file creation or replacement after validation. Do not use for exploratory analysis-only turns.",
     inputSchema: Type.Object({
       path: Type.String({
         minLength: 1,

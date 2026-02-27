@@ -6,7 +6,8 @@ import type { ToolState } from "@/chat/tools/types";
 
 export function createSlackListUpdateItemTool(state: ToolState) {
   return tool({
-    description: "Update an existing Slack list item (completion state or title).",
+    description:
+      "Update an existing Slack list item (title/completion). Use when the user asks to mark progress or rename a tracked task. Do not use to add new tasks.",
     inputSchema: Type.Object(
       {
         list_id: Type.Optional(

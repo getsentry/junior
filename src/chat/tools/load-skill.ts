@@ -85,7 +85,8 @@ export function createLoadSkillTool(
   }
 ) {
   return tool({
-    description: "Load a named skill and return its instructions to the reasoning context.",
+    description:
+      "Load a skill by name so its instructions are available for this turn. Use when a request clearly matches a known skill or a slash command references one. Do not use when no skill is relevant.",
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,

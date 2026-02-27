@@ -9,7 +9,8 @@ export function createSlackCanvasCreateTool(
   state: ToolState
 ) {
   return tool({
-    description: "Create a Slack canvas for long-form output in the current channel.",
+    description:
+      "Create a Slack canvas for long-form output in a channel. Use when content is too long for a thread reply or needs a persistent document. Do not use for short answers that fit in-thread.",
     inputSchema: Type.Object({
       title: Type.String({
         minLength: 1,

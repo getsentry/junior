@@ -161,6 +161,9 @@ function formatToolStatus(toolName: string): string {
     writeFile: "Writing file in sandbox",
     webSearch: "Searching public sources",
     webFetch: "Reading source pages",
+    slackChannelPostMessage: "Posting message to channel",
+    slackChannelListMembers: "Listing channel members",
+    slackChannelListMessages: "Listing channel messages",
     slackCanvasCreate: "Creating detailed brief",
     slackCanvasUpdate: "Updating detailed brief",
     slackListCreate: "Creating tracking list",
@@ -259,6 +262,9 @@ function formatToolResultStatus(toolName: string): string {
     writeFile: "Saving file update",
     webSearch: "Reviewing search results",
     webFetch: "Reviewing page content",
+    slackChannelPostMessage: "Posted message to channel",
+    slackChannelListMembers: "Reviewed channel members",
+    slackChannelListMessages: "Reviewed channel messages",
     slackCanvasCreate: "Preparing canvas response",
     slackCanvasUpdate: "Preparing canvas update",
     slackListCreate: "Preparing list update",
@@ -715,6 +721,7 @@ export async function generateAssistantReply(
       {
         channelId: context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
+        userText: userInput,
         artifactState: context.artifactState,
         sandbox
       }

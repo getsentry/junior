@@ -188,16 +188,13 @@ export function buildSystemPrompt(params: {
       "tool-usage",
       [
         "- For factual or external questions, run tools/skills first, then answer from evidence.",
-        "- Use `webSearch` to discover sources.",
-        "- Use `webFetch` to inspect specific URLs.",
+        "- Use tool descriptions as the source of truth for when each tool should or should not be called.",
         "- Use `bash` to inspect skill files from `skill_dir` and run shell commands inside the sandbox workspace.",
-        "- Use `imageGenerate` when the user asks for image creation.",
-        "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
-        "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- When a command needs short-lived credentials, load `jr-rpc` skill for exact command/safety guidance before running `jr-rpc`.",
         "- When your work is complete, provide the exact user-facing markdown response.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
-        "- Prefer `webSearch` before `webFetch` when the user gave no URL."
+        "- Prefer `webSearch` before `webFetch` when the user gave no URL.",
+        "- Never call side-effecting tools when the user only asked for analysis or options."
       ].join("\n")
     ),
     renderTag(
@@ -225,11 +222,6 @@ export function buildSystemPrompt(params: {
         "- Do not include process chatter, preflight confirmations, or status-only updates in the final answer.",
         "- Avoid tables unless explicitly requested.",
         "- End every turn with a final user-facing markdown response.",
-        "- Optional delivery directive (only when needed) must be the first block in this exact shape:",
-        "- <delivery>",
-        "- mode: attachment|inline",
-        "- attachment_prefix: <short-kebab-or-snake-prefix>",
-        "- </delivery>",
         "</output>"
       ].join("\n")
     ),

@@ -28,7 +28,8 @@ function extractHttpStatusFromMessage(message: string): number | null {
 
 export function createWebFetchTool(hooks: ToolHooks) {
   return tool({
-    description: "Fetch and extract readable text from a URL.",
+    description:
+      "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
     inputSchema: Type.Object({
       url: Type.String({
         minLength: 1,

@@ -6,7 +6,8 @@ import type { ToolState } from "@/chat/tools/types";
 
 export function createSlackListAddItemsTool(state: ToolState) {
   return tool({
-    description: "Add one or more todo items to a Slack list.",
+    description:
+      "Add tasks to a Slack list. Use when the user wants actionable items recorded in an existing or current thread list. Do not use when no list exists and list creation was not requested.",
     inputSchema: Type.Object({
       list_id: Type.Optional(
         Type.String({

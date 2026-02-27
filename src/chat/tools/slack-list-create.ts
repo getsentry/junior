@@ -6,7 +6,8 @@ import type { ToolState } from "@/chat/tools/types";
 
 export function createSlackListCreateTool(state: ToolState) {
   return tool({
-    description: "Create a Slack todo list for action tracking.",
+    description:
+      "Create a Slack todo list for action tracking. Use when the user needs structured tasks with ownership/completion tracking. Do not use for one-off notes without task management needs.",
     inputSchema: Type.Object({
       name: Type.String({
         minLength: 1,

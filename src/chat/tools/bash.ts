@@ -4,7 +4,7 @@ import { Type } from "@sinclair/typebox";
 export function createBashTool() {
   return tool({
     description:
-      "Run a bash command inside the isolated sandbox workspace. Use this to inspect skill files and execute repository-safe shell tasks.",
+      "Run a bash command inside the isolated sandbox workspace. Use this for repository inspection/execution tasks that need shell access. Do not use for network-sensitive or destructive actions unless explicitly required.",
     inputSchema: Type.Object({
       command: Type.String({
         minLength: 1,

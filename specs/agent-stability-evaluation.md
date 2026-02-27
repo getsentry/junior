@@ -1,6 +1,6 @@
 # Agent Stability Evaluation
 
-Last updated: 2026-02-25
+Last updated: 2026-02-27
 
 ## Scope
 
@@ -16,6 +16,7 @@ This document tracks stability risks in the Slack agent loop, concrete mitigatio
 6. Side-effect tools can repeat writes on retries without idempotency protections.
 7. Loop observability is rich, but control-plane guards for "no progress" are limited.
 8. The "continue loop" logic (ported from PI) likely contributes to instability via repeated autonomous retries.
+9. Channel-member enrichment currently fans out one `users.info` call per member concurrently, which can trigger rate limiting and partial results.
 
 ## Evaluation Checklist
 
@@ -29,6 +30,7 @@ This document tracks stability risks in the Slack agent loop, concrete mitigatio
 | Side-effect idempotency | Add per-turn dedupe keys for create/update Slack artifact tools | Completed | Added operation cache in `ToolState` + dedupe keys in side-effect tools |
 | PI continue-loop diagnosis | Remove/replace auto-continue branch and document behavior change | Completed | Removed PI-style auto-continue retry loop from `respond.ts` |
 | Test coverage | Add focused tests for idempotency + regression-prone loop helpers | Completed | Added `tests/tool-idempotency.test.ts` |
+| Channel member enrichment rate limits | Refactor member profile lookup to bounded concurrency (or staged hydration) | Pending | `src/chat/slack-actions/channel.ts` currently uses broad `Promise.all` fan-out |
 
 ## Notes
 

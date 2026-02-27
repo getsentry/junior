@@ -6,7 +6,8 @@ import type { ToolState } from "@/chat/tools/types";
 
 export function createSlackCanvasUpdateTool(state: ToolState) {
   return tool({
-    description: "Update a Slack canvas using insert or replace operations.",
+    description:
+      "Update an existing Slack canvas. Use when continuing or correcting a document already tracked in this thread. Do not use to create a brand-new long-form artifact.",
     inputSchema: Type.Object({
       canvas_id: Type.Optional(
         Type.String({
