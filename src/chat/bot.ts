@@ -105,12 +105,8 @@ function escapeXml(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
-function getThreadId(thread: unknown, message: unknown): string | undefined {
-  return (
-    toOptionalString((thread as { id?: unknown }).id) ??
-    toOptionalString((message as { threadId?: unknown }).threadId) ??
-    toOptionalString((message as { threadTs?: unknown }).threadTs)
-  );
+function getThreadId(thread: unknown, _message: unknown): string | undefined {
+  return toOptionalString((thread as { id?: unknown }).id);
 }
 
 function getThreadTs(thread: unknown, message: unknown): string | undefined {
@@ -145,7 +141,7 @@ const assistantThreadMetaById = new Map<string, AssistantThreadMeta>();
 const ASSISTANT_THREAD_META_MAX = 500;
 const ASSISTANT_THREAD_META_TTL_MS = 1000 * 60 * 60 * 24;
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
-const SLACK_LOADING_STATUS_MAX_LENGTH = 50;
+const SLACK_LOADING_STATUS_MAX_LENGTH = 100;
 
 function pruneAssistantThreadMeta(nowMs: number): void {
   for (const [threadId, meta] of assistantThreadMetaById) {
@@ -169,8 +165,7 @@ function pruneAssistantThreadMeta(nowMs: number): void {
 }
 
 function createProgressReporter(thread: {
-  id?: string;
-  startTyping?: (status?: string) => Promise<void>;
+  id: string;
 }) {
   let active = false;
   let currentStatus = "Working...";
@@ -186,15 +181,9 @@ function createProgressReporter(thread: {
     }
     currentStatus = safeText;
     lastStatusAt = Date.now();
-    try {
-      await thread.startTyping?.(safeText);
-    } catch {
-      // Best effort only.
-    }
 
-    const threadId = toOptionalString(thread.id);
-    const assistantThread = threadId ? assistantThreadMetaById.get(threadId) : undefined;
-    if (!assistantThread || !threadId) {
+    const assistantThread = assistantThreadMetaById.get(thread.id);
+    if (!assistantThread) {
       return;
     }
     assistantThread.updatedAtMs = Date.now();
@@ -1488,6 +1477,15 @@ async function replyToThread(
   const threadTs = getThreadTs(thread, message);
   const channelId = getChannelId(message);
   const workflowRunId = getWorkflowRunId(thread, message);
+
+  if (threadId && channelId && threadTs && !assistantThreadMetaById.has(threadId)) {
+    assistantThreadMetaById.set(threadId, {
+      channelId,
+      threadTs,
+      updatedAtMs: Date.now()
+    });
+    pruneAssistantThreadMeta(Date.now());
+  }
 
   await withSpan(
     "workflow.reply",

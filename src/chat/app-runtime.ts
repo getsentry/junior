@@ -24,13 +24,12 @@ export interface AppRuntimeIncomingMessage {
 }
 
 export interface AppRuntimeThreadHandle {
-  id?: string;
+  id: string;
   runId?: string;
   post: (message: any) => Promise<unknown>;
   refresh?: () => Promise<void>;
   recentMessages?: unknown[];
   setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
-  startTyping?: (status?: string) => Promise<void>;
   state?: Promise<unknown | null>;
   subscribe?: () => Promise<void>;
 }
