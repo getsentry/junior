@@ -24,6 +24,7 @@ import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState
 } from "@/chat/slack-actions/types";
+import { resolveSlackChannelIdFromMessage } from "@/chat/slack-context";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { truncateStatusText } from "@/chat/status-format";
@@ -92,7 +93,7 @@ function getWorkflowRunId(thread: unknown, message: unknown): string | undefined
 }
 
 function getChannelId(message: unknown): string | undefined {
-  return toOptionalString((message as { channelId?: unknown }).channelId);
+  return resolveSlackChannelIdFromMessage(message);
 }
 
 interface AssistantThreadMeta {
