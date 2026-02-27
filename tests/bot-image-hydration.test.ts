@@ -233,8 +233,7 @@ describe("bot image hydration", () => {
         threadTs: "1700000000.000",
         files: [
           expect.objectContaining({
-            filename: "generated.png",
-            mimeType: "image/png"
+            filename: "generated.png"
           })
         ]
       })

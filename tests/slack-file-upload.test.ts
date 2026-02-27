@@ -20,8 +20,7 @@ describe("uploadFilesToThread", () => {
 
     const testFile = {
       data: Buffer.from("image-data"),
-      filename: "image.png",
-      mimeType: "image/png"
+      filename: "image.png"
     };
 
     await uploadFilesToThread({
@@ -47,7 +46,7 @@ describe("uploadFilesToThread", () => {
     const { uploadFilesToThread } = await import("@/chat/slack-actions/client");
 
     const files = [
-      { data: Buffer.from("img1"), filename: "a.png", mimeType: "image/png" },
+      { data: Buffer.from("img1"), filename: "a.png" },
       { data: Buffer.from("img2"), filename: "b.jpg" }
     ];
 

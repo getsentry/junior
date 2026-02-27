@@ -155,7 +155,7 @@ export async function getFilePermalink(fileId: string): Promise<string | undefin
 export async function uploadFilesToThread(args: {
   channelId: string;
   threadTs: string;
-  files: Array<{ data: Buffer; filename: string; mimeType?: string }>;
+  files: Array<{ data: Buffer; filename: string }>;
 }): Promise<void> {
   const client = getClient();
   await withSlackRetries(() =>

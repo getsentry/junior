@@ -1659,8 +1659,7 @@ async function replyToThread(
               threadTs,
               files: reply.files.map((f) => ({
                 data: Buffer.isBuffer(f.data) ? f.data : Buffer.from(f.data as ArrayBuffer),
-                filename: f.filename,
-                mimeType: f.mimeType
+                filename: f.filename
               }))
             });
           } catch (uploadError) {
