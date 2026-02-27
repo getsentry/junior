@@ -30,7 +30,6 @@ export interface AppRuntimeThreadHandle {
   refresh?: () => Promise<void>;
   recentMessages?: unknown[];
   setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
-  startTyping?: (status?: string) => Promise<void>;
   state?: Promise<unknown | null>;
   subscribe?: () => Promise<void>;
 }
