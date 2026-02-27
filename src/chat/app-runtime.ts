@@ -24,7 +24,7 @@ export interface AppRuntimeIncomingMessage {
 }
 
 export interface AppRuntimeThreadHandle {
-  id?: string;
+  id: string;
   runId?: string;
   post: (message: any) => Promise<unknown>;
   refresh?: () => Promise<void>;

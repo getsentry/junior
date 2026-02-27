@@ -105,12 +105,8 @@ function escapeXml(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
-function getThreadId(thread: unknown, message: unknown): string | undefined {
-  return (
-    toOptionalString((thread as { id?: unknown }).id) ??
-    toOptionalString((message as { threadId?: unknown }).threadId) ??
-    toOptionalString((message as { threadTs?: unknown }).threadTs)
-  );
+function getThreadId(thread: unknown, _message: unknown): string | undefined {
+  return toOptionalString((thread as { id?: unknown }).id);
 }
 
 function getThreadTs(thread: unknown, message: unknown): string | undefined {
@@ -169,7 +165,7 @@ function pruneAssistantThreadMeta(nowMs: number): void {
 }
 
 function createProgressReporter(thread: {
-  id?: string;
+  id: string;
 }) {
   let active = false;
   let currentStatus = "Working...";
@@ -186,9 +182,8 @@ function createProgressReporter(thread: {
     currentStatus = safeText;
     lastStatusAt = Date.now();
 
-    const threadId = toOptionalString(thread.id);
-    const assistantThread = threadId ? assistantThreadMetaById.get(threadId) : undefined;
-    if (!assistantThread || !threadId) {
+    const assistantThread = assistantThreadMetaById.get(thread.id);
+    if (!assistantThread) {
       return;
     }
     assistantThread.updatedAtMs = Date.now();
