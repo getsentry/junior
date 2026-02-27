@@ -24,6 +24,7 @@ function createToolState(
   context: ToolRuntimeContext
 ): ToolState {
   const operationResultCache = new Map<string, unknown>();
+  let turnCreatedCanvasId: string | undefined;
   const artifactState: ThreadArtifactsState = {
     ...(context.artifactState ?? {}),
     listColumnMap: {
@@ -46,6 +47,10 @@ function createToolState(
     artifactState,
     patchArtifactState,
     getCurrentCanvasId: () => artifactState.lastCanvasId,
+    getTurnCreatedCanvasId: () => turnCreatedCanvasId,
+    setTurnCreatedCanvasId: (canvasId: string) => {
+      turnCreatedCanvasId = canvasId;
+    },
     getCurrentListId: () => artifactState.lastListId,
     getOperationResult: <T>(operationKey: string): T | undefined => operationResultCache.get(operationKey) as T | undefined,
     setOperationResult: (operationKey: string, result: unknown) => {
@@ -124,7 +129,7 @@ export function createTools(
       createSlackCanvasCreateTool(context, state),
       hooks
     ),
-    slackCanvasUpdate: wrapToolExecution("slackCanvasUpdate", createSlackCanvasUpdateTool(state), hooks),
+    slackCanvasUpdate: wrapToolExecution("slackCanvasUpdate", createSlackCanvasUpdateTool(state, context), hooks),
     slackListCreate: wrapToolExecution("slackListCreate", createSlackListCreateTool(state), hooks),
     slackListAddItems: wrapToolExecution("slackListAddItems", createSlackListAddItemsTool(state), hooks),
     slackListGetItems: wrapToolExecution("slackListGetItems", createSlackListGetItemsTool(state), hooks),

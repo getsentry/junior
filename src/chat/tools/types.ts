@@ -23,6 +23,8 @@ export interface ToolState {
   artifactState: ThreadArtifactsState;
   patchArtifactState: (patch: Partial<ThreadArtifactsState>) => void;
   getCurrentCanvasId: () => string | undefined;
+  getTurnCreatedCanvasId: () => string | undefined;
+  setTurnCreatedCanvasId: (canvasId: string) => void;
   getCurrentListId: () => string | undefined;
   getOperationResult: <T>(operationKey: string) => T | undefined;
   setOperationResult: (operationKey: string, result: unknown) => void;

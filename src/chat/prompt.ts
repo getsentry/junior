@@ -178,6 +178,19 @@ export function buildSystemPrompt(params: {
               artifactState.lastCanvasUrl
                 ? `- last_canvas_url: ${escapeXml(artifactState.lastCanvasUrl)}`
                 : "- last_canvas_url: none",
+              artifactState.recentCanvases && artifactState.recentCanvases.length > 0
+                ? [
+                    "- recent_canvases:",
+                    ...artifactState.recentCanvases.map((canvas) =>
+                      [
+                        `  - id: ${escapeXml(canvas.id)}`,
+                        canvas.title ? `    title: ${escapeXml(canvas.title)}` : "    title: [unknown]",
+                        canvas.url ? `    url: ${escapeXml(canvas.url)}` : "    url: [unknown]",
+                        canvas.createdAt ? `    created_at: ${escapeXml(canvas.createdAt)}` : "    created_at: [unknown]"
+                      ].join("\n")
+                    )
+                  ].join("\n")
+                : "- recent_canvases: none",
               artifactState.lastListId ? `- last_list_id: ${escapeXml(artifactState.lastListId)}` : "- last_list_id: none",
               artifactState.lastListUrl ? `- last_list_url: ${escapeXml(artifactState.lastListUrl)}` : "- last_list_url: none"
             ].join("\n")
@@ -192,6 +205,7 @@ export function buildSystemPrompt(params: {
         "- Use `bash` to inspect skill files from `skill_dir` and run shell commands inside the sandbox workspace.",
         "- Use `imageGenerate` when the user asks for image creation.",
         "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
+        "- Use explicit `canvas_id` for `slackCanvasUpdate` unless updating a canvas created earlier in this same turn.",
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- To enable provider credentials for this turn, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before commands that need authenticated API calls.",
         "- Capabilities are provider-qualified (for example `github.issues.write`).",

@@ -2,9 +2,10 @@ import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import { lookupCanvasSection, updateCanvas } from "@/chat/slack-actions/canvases";
 import { createOperationKey } from "@/chat/tools/idempotency";
-import type { ToolState } from "@/chat/tools/types";
+import { logWarn } from "@/chat/observability";
+import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 
-export function createSlackCanvasUpdateTool(state: ToolState) {
+export function createSlackCanvasUpdateTool(state: ToolState, _context: ToolRuntimeContext) {
   return tool({
     description:
       "Update an existing Slack canvas. Use when continuing or correcting a document already tracked in this thread. Do not use to create a brand-new long-form artifact.",
@@ -39,10 +40,24 @@ export function createSlackCanvasUpdateTool(state: ToolState) {
       )
     }),
     execute: async ({ canvas_id, markdown, operation, section_id, section_contains_text }) => {
-      const targetCanvasId = canvas_id ?? state.getCurrentCanvasId();
+      const targetCanvasId = canvas_id ?? state.getTurnCreatedCanvasId();
       const resolvedOperation = operation ?? "insert_at_end";
       if (!targetCanvasId) {
-        return { ok: false, error: "No canvas_id provided and no prior canvas found in thread state" };
+        logWarn(
+          "slack_canvas_update_missing_target",
+          {},
+          {
+            "gen_ai.tool.name": "slackCanvasUpdate",
+            "app.artifacts.last_canvas_id": state.artifactState.lastCanvasId ?? "none",
+            "app.artifacts.turn_created_canvas_id": state.getTurnCreatedCanvasId() ?? "none"
+          },
+          "Canvas update rejected because no explicit target canvas was provided"
+        );
+        return {
+          ok: false,
+          error:
+            "No canvas_id provided. For cross-turn updates, provide explicit canvas_id."
+        };
       }
       const operationKey = createOperationKey("slackCanvasUpdate", {
         canvas_id: targetCanvasId,

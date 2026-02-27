@@ -98,6 +98,9 @@ Artifact and delivery guidance:
 
 - Treat the full brief as a document deliverable, not an inline-only chat reply.
 - Use the environment's document primitives to deliver the full brief artifact (for example canvas/file/document tools when available).
+- For each new `/brief <candidate>` request, create a new artifact rather than updating the prior thread canvas by default.
+- Use canvas update only when the user explicitly asks to revise an existing brief and the target canvas is unambiguous.
+- When updating, pass explicit `canvas_id`; do not rely on implicit thread fallback.
 - Post a short TL;DR in-thread that links or points to the full artifact.
 - Keep plain markdown with short sections and bullets.
 

@@ -20,6 +20,7 @@ function createToolState(options: {
   currentListId?: string;
 } = {}): ToolState {
   const operationResultCache = new Map<string, unknown>();
+  let turnCreatedCanvasId: string | undefined;
   const artifactState: Record<string, unknown> = {
     listColumnMap: {}
   };
@@ -28,6 +29,10 @@ function createToolState(options: {
     artifactState: artifactState as ToolState["artifactState"],
     patchArtifactState: (patch) => Object.assign(artifactState, patch),
     getCurrentCanvasId: () => options.currentCanvasId,
+    getTurnCreatedCanvasId: () => turnCreatedCanvasId,
+    setTurnCreatedCanvasId: (canvasId: string) => {
+      turnCreatedCanvasId = canvasId;
+    },
     getCurrentListId: () => options.currentListId,
     getOperationResult: <T>(operationKey: string): T | undefined => operationResultCache.get(operationKey) as T | undefined,
     setOperationResult: (operationKey, result) => {
@@ -92,6 +97,12 @@ describe("tool idempotency", () => {
       ok: true,
       canvas_id: "canvas-1",
       deduplicated: true
+    });
+    expect(state.artifactState.lastCanvasId).toBe("canvas-1");
+    expect(state.artifactState.recentCanvases?.[0]).toMatchObject({
+      id: "canvas-1",
+      title: "Weekly plan",
+      url: "https://example.invalid/canvas-1"
     });
   });
 

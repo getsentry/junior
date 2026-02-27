@@ -2,7 +2,25 @@ import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import { createCanvas } from "@/chat/slack-actions/canvases";
 import { createOperationKey } from "@/chat/tools/idempotency";
+import type { CanvasArtifactSummary } from "@/chat/slack-actions/types";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
+
+const MAX_RECENT_CANVASES = 5;
+
+function mergeRecentCanvases(
+  existing: CanvasArtifactSummary[] | undefined,
+  created: { id: string; title: string; url?: string }
+): CanvasArtifactSummary[] {
+  const nextEntry: CanvasArtifactSummary = {
+    id: created.id,
+    title: created.title,
+    url: created.url,
+    createdAt: new Date().toISOString()
+  };
+  const prior = existing ?? [];
+  const deduped = prior.filter((entry) => entry.id !== created.id);
+  return [nextEntry, ...deduped].slice(0, MAX_RECENT_CANVASES);
+}
 
 export function createSlackCanvasCreateTool(
   context: ToolRuntimeContext,
@@ -53,7 +71,16 @@ export function createSlackCanvasCreateTool(
         markdown,
         channelId: targetChannelId
       });
-      state.patchArtifactState({ lastCanvasId: created.canvasId, lastCanvasUrl: created.permalink });
+      state.setTurnCreatedCanvasId(created.canvasId);
+      state.patchArtifactState({
+        lastCanvasId: created.canvasId,
+        lastCanvasUrl: created.permalink,
+        recentCanvases: mergeRecentCanvases(state.artifactState.recentCanvases, {
+          id: created.canvasId,
+          title,
+          url: created.permalink
+        })
+      });
 
       const response = {
         ok: true,
