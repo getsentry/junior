@@ -24,6 +24,29 @@ Set on the harness host (never in skill files):
 - `GITHUB_APP_PRIVATE_KEY`
 - `GITHUB_INSTALLATION_ID`
 
+### Vercel env setup (multiline-safe)
+
+`GITHUB_APP_PRIVATE_KEY` is accepted as:
+- Raw PEM (multiline)
+- Escaped-newline PEM (single-line with `\n`)
+- Base64-encoded PEM
+
+For Vercel, prefer CLI file input so newlines are preserved exactly:
+
+```bash
+vercel env add GITHUB_APP_ID production
+vercel env add GITHUB_INSTALLATION_ID production
+vercel env add GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-private-key.pem
+```
+
+If variables already exist, use `vercel env update` instead of `vercel env add`:
+
+```bash
+vercel env update GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-private-key.pem
+```
+
+Repeat for `preview` and `development` as needed. After env changes, redeploy so the new deployment picks up updated values.
+
 ## 3) Runtime behavior
 
 - Credentials are issued lazily when `jr-rpc issue-credential <capability>` is run.
