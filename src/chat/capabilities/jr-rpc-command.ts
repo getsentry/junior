@@ -49,13 +49,6 @@ function createJrRpcCommand(deps: JrRpcDeps) {
         };
       }
     }
-    if (args.length > 4) {
-      return {
-        stdout: "",
-        stderr: `jr-rpc issue-credential requires exactly one capability argument and optional --repo <owner/repo>\n`,
-        exitCode: 2
-      };
-    }
     let outcome: { reused: boolean; expiresAt: string };
     try {
       outcome = await deps.capabilityRuntime.enableCapabilityForTurn({

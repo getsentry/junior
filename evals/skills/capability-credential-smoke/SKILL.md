@@ -9,7 +9,7 @@ allowed-tools: bash
 
 Run exactly this command:
 
-`bash -lc 'jr-rpc issue-credential github.issues.read --repo getsentry/junior && echo CREDENTIAL_OK'`
+`jr-rpc issue-credential github.issues.read --repo getsentry/junior`
 
 Then return one line:
 
