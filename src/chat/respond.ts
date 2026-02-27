@@ -485,14 +485,20 @@ function createAgentTools(
 
             const injectedHeaders =
               toolName === "bash" ? capabilityRuntime?.getTurnHeaderTransforms() : undefined;
-            if (toolName === "bash" && injectedHeaders && injectedHeaders.length > 0) {
+            const bashCommand =
+              toolName === "bash" && typeof parsed.command === "string" ? parsed.command.trim() : "";
+            const isCustomBashCommand = toolName === "bash" && /^jr-rpc(?:\s|$)/.test(bashCommand);
+            const shouldLogCredentialInjection =
+              toolName === "bash" && !isCustomBashCommand && Boolean(injectedHeaders && injectedHeaders.length > 0);
+            if (shouldLogCredentialInjection) {
+              const headerDomains = (injectedHeaders ?? []).map((transform) => transform.domain);
               logInfo(
                 "credential_inject_start",
                 {},
                 {
                   "app.skill.name": sandbox.getActiveSkill()?.name,
                   "app.credential.delivery": "header_transform",
-                  "app.credential.header_domains": injectedHeaders.map((transform) => transform.domain)
+                  "app.credential.header_domains": headerDomains
                 },
                 "Injecting scoped credential headers for sandbox command"
               );
@@ -517,7 +523,7 @@ function createAgentTools(
               sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
                 ? (result as { result: unknown }).result
                 : result;
-            if (toolName === "bash" && injectedHeaders && injectedHeaders.length > 0) {
+            if (shouldLogCredentialInjection) {
               logInfo(
                 "credential_inject_cleanup",
                 {},
