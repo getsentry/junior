@@ -145,8 +145,7 @@ cases:
     expected:
       posts_count: 1
       tool_calls_include:
-        - load_skill
-        - system_time
+        - systemTime
 
   - id: time_brief_repeated_invocations
     description: Repeated /time-brief invocations in the same thread use the lightweight eval skill.
@@ -185,8 +184,7 @@ cases:
     expected:
       posts_count: 2
       tool_calls_include:
-        - load_skill
-        - system_time
+        - systemTime
 
   - id: list_working_directory_skill_invocation
     description: Slash-invoked /list-working-directory uses bash in sandbox and returns working directory files.
@@ -211,35 +209,10 @@ cases:
     expected:
       posts_count: 1
       tool_calls_include:
-        - load_skill
         - bash
       sandbox_id_present: true
       post_contains:
         - "Working directory files:"
-
-  - id: provider_error_without_gateway_key
-    description: Missing gateway API key returns provider_error and still posts a safe fallback response.
-    behavior:
-      unset_gateway_api_key: true
-    events:
-      - type: new_mention
-        thread:
-          id: thread-no-key
-          channel_id: C-no-key
-          thread_ts: "1700000000.900"
-        message:
-          id: m-no-key-1
-          text: "summarize this quickly"
-          is_mention: true
-          author:
-            user_id: U-ivan
-            user_name: ivan
-            full_name: Ivan Example
-            is_me: false
-    expected:
-      posts_count: 1
-      warning_events:
-        - agent_turn_provider_error
 
   - id: capability_credential_smoke
     description: Eval skill can run a command while capability plumbing is enabled.

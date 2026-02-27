@@ -9,7 +9,10 @@ export interface ConversationAuthor {
 
 export interface ConversationMessageMeta {
   explicitMention?: boolean;
+  imageFileIds?: string[];
+  imagesHydrated?: boolean;
   replied?: boolean;
+  slackTs?: string;
   skippedReason?: string;
 }
 
@@ -46,6 +49,16 @@ export interface ConversationStats {
   updatedAtMs: number;
 }
 
+export interface ConversationVisionSummary {
+  analyzedAtMs: number;
+  summary: string;
+}
+
+export interface ConversationVisionState {
+  backfillCompletedAtMs?: number;
+  byFileId: Record<string, ConversationVisionSummary>;
+}
+
 export interface ThreadConversationState {
   backfill: ConversationBackfillState;
   compactions: ConversationCompaction[];
@@ -53,6 +66,7 @@ export interface ThreadConversationState {
   processing: ConversationProcessingState;
   schemaVersion: 1;
   stats: ConversationStats;
+  vision: ConversationVisionState;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -101,10 +115,27 @@ function coerceMessageMeta(value: unknown): ConversationMessageMeta | undefined 
   if (typeof value.skippedReason === "string" && value.skippedReason.trim().length > 0) {
     meta.skippedReason = value.skippedReason;
   }
+  if (typeof value.slackTs === "string" && value.slackTs.trim().length > 0) {
+    meta.slackTs = value.slackTs;
+  }
+  if (Array.isArray(value.imageFileIds)) {
+    const imageFileIds = value.imageFileIds.filter(
+      (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+    );
+    if (imageFileIds.length > 0) {
+      meta.imageFileIds = imageFileIds;
+    }
+  }
+  if (typeof value.imagesHydrated === "boolean") {
+    meta.imagesHydrated = value.imagesHydrated;
+  }
   if (
     meta.explicitMention === undefined &&
     meta.replied === undefined &&
-    meta.skippedReason === undefined
+    meta.skippedReason === undefined &&
+    meta.slackTs === undefined &&
+    meta.imageFileIds === undefined &&
+    meta.imagesHydrated === undefined
   ) {
     return undefined;
   }
@@ -124,6 +155,9 @@ function defaultConversationState(): ThreadConversationState {
       totalMessageCount: 0,
       compactedMessageCount: 0,
       updatedAtMs: nowMs
+    },
+    vision: {
+      byFileId: {}
     }
   };
 }
@@ -199,6 +233,20 @@ export function coerceThreadConversationState(value: unknown): ThreadConversatio
     compactedMessageCount: toOptionalNumber(rawStats.compactedMessageCount) ?? 0,
     updatedAtMs: toOptionalNumber(rawStats.updatedAtMs) ?? base.stats.updatedAtMs
   };
+  const rawVision = isRecord(rawConversation.vision) ? rawConversation.vision : {};
+  const rawVisionByFileId = isRecord(rawVision.byFileId) ? rawVision.byFileId : {};
+  const byFileId: Record<string, ConversationVisionSummary> = {};
+  for (const [fileId, value] of Object.entries(rawVisionByFileId)) {
+    if (typeof fileId !== "string" || fileId.trim().length === 0) continue;
+    if (!isRecord(value)) continue;
+    const summary = toOptionalString(value.summary);
+    const analyzedAtMs = toOptionalNumber(value.analyzedAtMs);
+    if (!summary || !analyzedAtMs) continue;
+    byFileId[fileId] = {
+      summary,
+      analyzedAtMs
+    };
+  }
 
   return {
     schemaVersion: 1,
@@ -206,7 +254,11 @@ export function coerceThreadConversationState(value: unknown): ThreadConversatio
     compactions,
     backfill,
     processing,
-    stats
+    stats,
+    vision: {
+      backfillCompletedAtMs: toOptionalNumber(rawVision.backfillCompletedAtMs),
+      byFileId
+    }
   };
 }
 

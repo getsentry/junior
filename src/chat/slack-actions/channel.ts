@@ -10,6 +10,26 @@ export interface SlackChannelMessage {
   type?: string;
 }
 
+export interface SlackFileRef {
+  id?: string;
+  mimetype?: string;
+  name?: string;
+  size?: number;
+  url_private?: string;
+  url_private_download?: string;
+}
+
+export interface SlackThreadReply {
+  ts?: string;
+  user?: string;
+  text?: string;
+  thread_ts?: string;
+  subtype?: string;
+  bot_id?: string;
+  type?: string;
+  files?: SlackFileRef[];
+}
+
 export interface SlackChannelMemberProfile {
   user_id: string;
 }
@@ -115,4 +135,49 @@ export async function listChannelMembers(input: {
     members: members.map((userId) => ({ user_id: userId })),
     nextCursor: response.response_metadata?.next_cursor || undefined
   };
+}
+
+export async function listThreadReplies(input: {
+  channelId: string;
+  threadTs: string;
+  limit?: number;
+  maxPages?: number;
+  targetMessageTs?: string[];
+}): Promise<SlackThreadReply[]> {
+  const client = getSlackClient();
+  const targetLimit = Math.max(1, Math.min(input.limit ?? 1000, 1000));
+  const maxPages = Math.max(1, Math.min(input.maxPages ?? 10, 10));
+  const pendingTargets = new Set(
+    (input.targetMessageTs ?? []).filter((value): value is string => typeof value === "string" && value.length > 0)
+  );
+  const replies: SlackThreadReply[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+
+  while (replies.length < targetLimit && pages < maxPages) {
+    pages += 1;
+    const pageLimit = Math.max(1, Math.min(200, targetLimit - replies.length));
+    const response = await withSlackRetries(() =>
+      client.conversations.replies({
+        channel: input.channelId,
+        ts: input.threadTs,
+        limit: pageLimit,
+        cursor
+      })
+    );
+
+    const batch = (response.messages ?? []) as SlackThreadReply[];
+    replies.push(...batch);
+    for (const reply of batch) {
+      if (typeof reply.ts === "string" && pendingTargets.size > 0) {
+        pendingTargets.delete(reply.ts);
+      }
+    }
+    cursor = response.response_metadata?.next_cursor || undefined;
+    if (!cursor || pendingTargets.size === 0) {
+      break;
+    }
+  }
+
+  return replies.slice(0, targetLimit);
 }

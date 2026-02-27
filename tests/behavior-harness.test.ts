@@ -51,7 +51,8 @@ describe("behavior harness", () => {
         titleCalls: [],
         promptCalls: [],
         setAssistantTitle: async () => undefined,
-        setSuggestedPrompts: async () => undefined
+        setSuggestedPrompts: async () => undefined,
+        setAssistantStatus: async () => undefined
       },
       toolCalls: []
     };

@@ -151,3 +151,24 @@ export async function getFilePermalink(fileId: string): Promise<string | undefin
 
   return response.file?.permalink;
 }
+
+export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) {
+    throw new SlackActionError(
+      "SLACK_BOT_TOKEN is required for Slack file downloads in this service",
+      "missing_token"
+    );
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`Slack file download failed: ${response.status}`);
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}

@@ -3,19 +3,13 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import {
-  createAppSlackRuntime,
   type AppRuntimeAssistantLifecycleEvent,
-  type AppRuntimeIncomingMessage,
-  type AppRuntimeReplyDecision,
-  type AppRuntimeThreadContext,
   type AppRuntimeThreadHandle
 } from "@/chat/app-runtime";
-import { createChannelConfigurationService } from "@/chat/configuration/service";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { generateAssistantReply } from "@/chat/respond";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
-import { buildArtifactStatePatch, coerceThreadArtifactsState } from "@/chat/slack-actions/types";
 
 interface BehaviorEventThreadFixture {
   channel_id?: string;
@@ -218,13 +212,6 @@ const suiteSchema = z.object({
   cases: z.array(caseSchema)
 });
 
-interface EvalPreparedState {
-  context: AppRuntimeThreadContext;
-  conversationContext?: string;
-  routingContext?: string;
-  userText: string;
-}
-
 interface EvalLogEntry {
   eventName: string;
 }
@@ -259,24 +246,50 @@ class FakeSlackAdapter {
   ): Promise<void> {
     this.promptCalls.push({ channelId, threadTs, prompts });
   }
+
+  async setAssistantStatus(): Promise<void> {
+    // No-op for eval harness.
+  }
 }
 
 class FakeThread implements AppRuntimeThreadHandle {
+  readonly channel?: {
+    state: Promise<Record<string, unknown>>;
+    setState: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
+  };
   readonly id: string;
   readonly posts: unknown[] = [];
   readonly runId?: string;
+  readonly threadTs?: string;
   subscribeCalls = 0;
   subscribed = false;
   private stateData: Record<string, unknown> = {};
 
   constructor(args: {
+    channelStateRef?: { value: Record<string, unknown> };
     id: string;
     runId?: string;
     state?: Record<string, unknown>;
+    threadTs?: string;
   }) {
     this.id = args.id;
     this.runId = args.runId;
+    this.threadTs = args.threadTs;
     this.stateData = { ...(args.state ?? {}) };
+    if (args.channelStateRef) {
+      this.channel = {
+        get state() {
+          return Promise.resolve(args.channelStateRef?.value ?? {});
+        },
+        async setState(nextState: Record<string, unknown>, options?: { replace?: boolean }) {
+          if (options?.replace) {
+            args.channelStateRef!.value = { ...nextState };
+            return;
+          }
+          args.channelStateRef!.value = { ...args.channelStateRef!.value, ...nextState };
+        }
+      };
+    }
   }
 
   get state(): Promise<Record<string, unknown>> {
@@ -284,8 +297,31 @@ class FakeThread implements AppRuntimeThreadHandle {
   }
 
   async post(message: unknown): Promise<unknown> {
+    if (
+      message &&
+      typeof message === "object" &&
+      Symbol.asyncIterator in (message as Record<PropertyKey, unknown>)
+    ) {
+      let text = "";
+      for await (const chunk of message as AsyncIterable<string>) {
+        text += chunk;
+      }
+      this.posts.push(text);
+      const self = this;
+      return {
+        async edit(newContent: unknown): Promise<unknown> {
+          self.posts.push(newContent);
+          return newContent;
+        }
+      };
+    }
+
     this.posts.push(message);
-    return message;
+    return {
+      async edit(newContent: unknown): Promise<unknown> {
+        return newContent;
+      }
+    };
   }
 
   async subscribe(): Promise<void> {
@@ -331,9 +367,7 @@ function toPostedText(value: unknown): string {
   return String(value);
 }
 
-function toIncomingMessage(
-  event: MentionEvent | SubscribedMessageEvent
-): AppRuntimeIncomingMessage {
+function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
   return {
     id: event.message.id,
     text: event.message.text ?? "",
@@ -375,8 +409,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   const exceptions: EvalLogEntry[] = [];
   const logs: EvalLogRecord[] = [];
   const threadsById = new Map<string, FakeThread>();
-  const channelStateById = new Map<string, Record<string, unknown>>();
-  const channelConfigurationById = new Map<string, ChannelConfigurationService>();
+  const channelStateById = new Map<string, { value: Record<string, unknown> }>();
   const replyTexts = testCase.behavior?.reply_texts ?? [];
   const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
   const replyTimeoutMs = Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000", 10);
@@ -400,6 +433,16 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     }
   }
 
+  const getChannelStateRef = (channelId: string | undefined): { value: Record<string, unknown> } | undefined => {
+    const normalized = channelId?.trim();
+    if (!normalized) return undefined;
+    const existing = channelStateById.get(normalized);
+    if (existing) return existing;
+    const created = { value: {} };
+    channelStateById.set(normalized, created);
+    return created;
+  };
+
   const getThread = (fixture: BehaviorEventThreadFixture): FakeThread => {
     const existing = threadsById.get(fixture.id);
     if (existing) {
@@ -407,32 +450,11 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     }
     const created = new FakeThread({
       id: fixture.id,
-      runId: fixture.run_id
+      runId: fixture.run_id,
+      threadTs: fixture.thread_ts,
+      channelStateRef: getChannelStateRef(fixture.channel_id)
     });
     threadsById.set(fixture.id, created);
-    return created;
-  };
-
-  const getChannelConfiguration = (channelId: string | undefined): ChannelConfigurationService | undefined => {
-    const normalizedChannelId = channelId?.trim();
-    if (!normalizedChannelId) {
-      return undefined;
-    }
-
-    const existing = channelConfigurationById.get(normalizedChannelId);
-    if (existing) {
-      return existing;
-    }
-
-    const created = createChannelConfigurationService({
-      load: async () => channelStateById.get(normalizedChannelId) ?? null,
-      save: async (state) => {
-        channelStateById.set(normalizedChannelId, {
-          configuration: state
-        });
-      }
-    });
-    channelConfigurationById.set(normalizedChannelId, created);
     return created;
   };
 
@@ -444,90 +466,42 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       attributes: record.attributes
     });
   });
+  const originalGetAdapter = (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter?.bind(bot);
+  (bot as unknown as { getAdapter: (name: string) => unknown }).getAdapter = (name: string): unknown => {
+    if (name === "slack") {
+      return slackAdapter;
+    }
+    return originalGetAdapter ? originalGetAdapter(name) : undefined;
+  };
 
-  const runtime = createAppSlackRuntime<EvalPreparedState, FakeThread, AppRuntimeIncomingMessage>({
-    assistantUserName: "app",
-    modelId: "eval-model",
-    now: () => Date.now(),
-    getThreadId: (thread, message) => thread.id ?? message.threadId ?? message.threadTs,
-    getChannelId: (message) => message.channelId,
-    getWorkflowRunId: (thread, message) => thread.runId ?? message.runId,
-    stripLeadingBotMention: (text, options) => {
-      let next = text;
-      if (options.stripLeadingSlackMentionToken) {
-        next = next.replace(/^\s*<@[^>]+>[\s,:-]*/, "");
+  setBotDepsForTests({
+    completeObject: async () => {
+      if (subscribedDecisions.length === 0) {
+        return {
+          object: { should_reply: false, confidence: 0, reason: "passive conversation" },
+          text: "{\"should_reply\":false,\"confidence\":0,\"reason\":\"passive conversation\"}"
+        } as any;
       }
-      next = next.replace(/^\s*@app\b[\s,:-]*/i, "");
-      return next.trim();
-    },
-    withSpan: async (_name, _op, _context, callback) => {
-      await callback();
-    },
-    logWarn: (eventName) => {
-      warnings.push({ eventName });
-    },
-    logException: (_error, eventName) => {
-      exceptions.push({ eventName });
-    },
-    prepareTurnState: async ({ thread, userText, context }) => {
-      const state = (await thread.state) ?? {};
-      const priorUserText =
-        typeof state.app_eval_last_user_text === "string" ? state.app_eval_last_user_text : undefined;
-
+      const next = subscribedDecisions[Math.min(decisionIndex, subscribedDecisions.length - 1)];
+      decisionIndex += 1;
       return {
-        context,
-        userText,
-        conversationContext: priorUserText ? `Previous user message: ${priorUserText}` : undefined,
-        routingContext: priorUserText ? `Previous user message: ${priorUserText}` : undefined
-      };
-    },
-    persistPreparedState: async ({ thread, preparedState }) => {
-      await thread.setState?.({
-        app_eval_last_prepared_user_text: preparedState.userText
-      });
-    },
-    getPreparedConversationContext: (preparedState) =>
-      preparedState.routingContext ?? preparedState.conversationContext,
-    shouldReplyInSubscribedThread: async (args): Promise<AppRuntimeReplyDecision> => {
-      if (args.isExplicitMention) {
-        return {
-          shouldReply: true,
-          reason: "explicit mention"
-        };
-      }
-      if (decisionIndex < subscribedDecisions.length) {
-        const next = subscribedDecisions[decisionIndex];
-        decisionIndex += 1;
-        return {
-          shouldReply: next.should_reply,
+        object: {
+          should_reply: next.should_reply,
+          confidence: next.should_reply ? 1 : 0,
           reason: next.reason
-        };
-      }
-      return {
-        shouldReply: false,
-        reason: "passive conversation"
-      };
+        },
+        text: JSON.stringify({
+          should_reply: next.should_reply,
+          confidence: next.should_reply ? 1 : 0,
+          reason: next.reason
+        })
+      } as any;
     },
-    onSubscribedMessageSkipped: async ({ thread, decision, completedAtMs }) => {
-      await thread.setState?.({
-        app_eval_last_skip_reason: decision.reason,
-        app_eval_last_completed_at_ms: completedAtMs
-      });
-    },
-    replyToThread: async (thread, message, options) => {
+    generateAssistantReply: async (text, context) => {
       replyCallCount += 1;
       if (testCase.behavior?.fail_reply_call === replyCallCount) {
         throw new Error(`forced reply failure on call ${replyCallCount}`);
       }
-
-      const text = (message.text ?? "").trim();
-      const persisted = (await thread.state) ?? {};
-      const preparedConversationContext =
-        options?.preparedState?.routingContext ?? options?.preparedState?.conversationContext;
-      const persistedSandboxId =
-        typeof persisted.app_sandbox_id === "string" ? persisted.app_sandbox_id : undefined;
-      const channelConfiguration = getChannelConfiguration(message.channelId);
-      const configuration = channelConfiguration ? await channelConfiguration.resolveValues() : {};
 
       const originalGatewayApiKey = process.env.AI_GATEWAY_API_KEY;
       const originalOidcToken = process.env.VERCEL_OIDC_TOKEN;
@@ -538,30 +512,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       let reply: Awaited<ReturnType<typeof generateAssistantReply>>;
       try {
         reply = await Promise.race([
-          generateAssistantReply(text, {
-            assistant: {
-              userName: "junior"
-            },
-            requester: {
-              userId: message.author.userId,
-              userName: message.author.userName,
-              fullName: message.author.fullName
-            },
-            conversationContext: preparedConversationContext,
-            artifactState: coerceThreadArtifactsState(persisted),
-            configuration,
-            channelConfiguration,
-            correlation: {
-              threadId: thread.id,
-              threadTs: message.threadTs,
-              workflowRunId: thread.runId,
-              channelId: message.channelId,
-              requesterId: message.author.userId
-            },
-            sandbox: {
-              sandboxId: persistedSandboxId
-            }
-          }),
+          generateAssistantReply(text, context),
           new Promise<never>((_, reject) =>
             setTimeout(
               () => reject(new Error(`generateAssistantReply timed out after ${replyTimeoutMs}ms`)),
@@ -584,36 +535,23 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         }
       }
 
-      const replyText = replyTexts[replyCallCount - 1] ?? reply.text;
-      await thread.post(replyText);
-      warnings.push({
-        eventName: `agent_turn_${reply.diagnostics.outcome}`
-      });
       toolCalls.push(...reply.diagnostics.toolCalls);
-      if (reply.diagnostics.stopReason) {
-        warnings.push({
-          eventName: `agent_turn_stop_reason_${reply.diagnostics.stopReason}`
-        });
-      }
-
-      const nextState: Record<string, unknown> = {
-        app_eval_last_user_text: text
-      };
       if (reply.sandboxId) {
-        nextState.app_sandbox_id = reply.sandboxId;
         sandboxIds.push(reply.sandboxId);
       }
-      if (reply.artifactStatePatch && Object.keys(reply.artifactStatePatch).length > 0) {
-        Object.assign(nextState, buildArtifactStatePatch(reply.artifactStatePatch));
+      warnings.push({ eventName: `agent_turn_${reply.diagnostics.outcome}` });
+      if (reply.diagnostics.stopReason) {
+        warnings.push({ eventName: `agent_turn_stop_reason_${reply.diagnostics.stopReason}` });
       }
-      await thread.setState?.(nextState);
-    },
-    initializeAssistantThread: async (event) => {
-      await slackAdapter.setAssistantTitle(event.channelId, event.threadTs, "App");
-      await slackAdapter.setSuggestedPrompts(event.channelId, event.threadTs, [
-        { title: "Summarize thread", message: "Summarize this thread." },
-        { title: "Draft a reply", message: "Draft a reply to this thread." }
-      ]);
+
+      const replyText = replyTexts[replyCallCount - 1];
+      if (typeof replyText === "string") {
+        return {
+          ...reply,
+          text: replyText
+        };
+      }
+      return reply;
     }
   });
 
@@ -621,13 +559,13 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     for (const event of testCase.events) {
       if (event.type === "new_mention") {
         const thread = getThread(event.thread);
-        await runtime.handleNewMention(thread, toIncomingMessage(event));
+        await appSlackRuntime.handleNewMention(thread as any, toIncomingMessage(event) as any);
         continue;
       }
 
       if (event.type === "subscribed_message") {
         const thread = getThread(event.thread);
-        await runtime.handleSubscribedMessage(thread, toIncomingMessage(event));
+        await appSlackRuntime.handleSubscribedMessage(thread as any, toIncomingMessage(event) as any);
         continue;
       }
 
@@ -638,14 +576,16 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         userId: event.user_id
       };
       if (event.type === "assistant_thread_started") {
-        await runtime.handleAssistantThreadStarted(lifecycleEvent);
+        await appSlackRuntime.handleAssistantThreadStarted(lifecycleEvent);
         continue;
       }
 
-      await runtime.handleAssistantContextChanged(lifecycleEvent);
+      await appSlackRuntime.handleAssistantContextChanged(lifecycleEvent);
     }
   } finally {
     unregisterLogSink();
+    resetBotDepsForTests();
+    (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
     if (configuredSkillDirs.length > 0) {
       if (originalSkillDirs === undefined) {
         delete process.env.SKILL_DIRS;
@@ -665,6 +605,14 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       } else {
         process.env.EVAL_TEST_CREDENTIAL_TOKEN = originalTestCredentialToken;
       }
+    }
+  }
+
+  for (const log of logs) {
+    if (log.level === "warn") {
+      warnings.push({ eventName: log.eventName });
+    } else if (log.level === "error") {
+      exceptions.push({ eventName: log.eventName });
     }
   }
 
