@@ -24,6 +24,7 @@ import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState
 } from "@/chat/slack-actions/types";
+import { truncateStatusText } from "@/chat/status-format";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { createStateAdapter } from "@/chat/state";
 import { completeObject, completeText, GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
@@ -138,7 +139,7 @@ function createProgressReporter(thread: {
   let lastStatusAt = 0;
   let pendingStatus: string | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-  const sanitizeStatus = (text: string): string => text.trim().slice(0, SLACK_LOADING_STATUS_MAX_LENGTH);
+  const sanitizeStatus = (text: string): string => truncateStatusText(text, SLACK_LOADING_STATUS_MAX_LENGTH);
 
   const postAssistantStatus = async (text: string): Promise<void> => {
     const safeText = sanitizeStatus(text);

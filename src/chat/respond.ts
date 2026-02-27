@@ -25,6 +25,12 @@ import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { GEN_AI_PROVIDER_NAME, getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { createSandboxExecutor, type SandboxExecutor } from "@/chat/sandbox/sandbox";
+import {
+  compactStatusFilename,
+  compactStatusPath,
+  compactStatusText,
+  extractStatusUrlDomain
+} from "@/chat/status-format";
 
 export interface ReplyRequestContext {
   assistant?: {
@@ -180,62 +186,16 @@ function formatToolStatus(toolName: string): string {
   return readable.length > 0 ? `Running ${readable}` : "Running tool";
 }
 
-function compactPathForStatus(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (trimmed.length <= 80) {
-    return trimmed;
-  }
-
-  return `...${trimmed.slice(-77)}`;
-}
-
-function compactTextForStatus(value: unknown, maxLength = 80): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  if (trimmed.length <= maxLength) {
-    return trimmed;
-  }
-  return `${trimmed.slice(0, Math.max(1, maxLength - 3))}...`;
-}
-
-function extractDomainForStatus(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.hostname || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function formatToolStatusWithInput(toolName: string, input: unknown): string {
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : undefined;
-  const path = obj ? compactPathForStatus(obj.path) : undefined;
-  const query = obj ? compactTextForStatus(obj.query, 70) : undefined;
-  const domain = obj ? extractDomainForStatus(obj.url) : undefined;
-  const skillName = obj ? compactTextForStatus(obj.skill_name ?? obj.skillName, 40) : undefined;
+  const path = obj ? compactStatusPath(obj.path) : undefined;
+  const filename = obj ? compactStatusFilename(obj.path) : undefined;
+  const query = obj ? compactStatusText(obj.query, 70) : undefined;
+  const domain = obj ? extractStatusUrlDomain(obj.url) : undefined;
+  const skillName = obj ? compactStatusText(obj.skill_name ?? obj.skillName, 40) : undefined;
 
-  if (path && toolName === "readFile") {
-    return `Reading file ${path}`;
+  if (filename && toolName === "readFile") {
+    return `Reading file ${filename}`;
   }
   if (path && toolName === "writeFile") {
     return `Writing file ${path}`;
@@ -282,13 +242,14 @@ function formatToolResultStatus(toolName: string): string {
 
 function formatToolResultStatusWithInput(toolName: string, input: unknown): string {
   const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : undefined;
-  const path = obj ? compactPathForStatus(obj.path) : undefined;
-  const query = obj ? compactTextForStatus(obj.query, 70) : undefined;
-  const domain = obj ? extractDomainForStatus(obj.url) : undefined;
-  const skillName = obj ? compactTextForStatus(obj.skill_name ?? obj.skillName, 40) : undefined;
+  const path = obj ? compactStatusPath(obj.path) : undefined;
+  const filename = obj ? compactStatusFilename(obj.path) : undefined;
+  const query = obj ? compactStatusText(obj.query, 70) : undefined;
+  const domain = obj ? extractStatusUrlDomain(obj.url) : undefined;
+  const skillName = obj ? compactStatusText(obj.skill_name ?? obj.skillName, 40) : undefined;
 
-  if (path && toolName === "readFile") {
-    return `Reviewed file ${path}`;
+  if (filename && toolName === "readFile") {
+    return `Reviewed file ${filename}`;
   }
   if (path && toolName === "writeFile") {
     return `Saved file ${path}`;
