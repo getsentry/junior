@@ -1,5 +1,10 @@
 # Research and Verification Rules
 
+Use this file for cross-type rules. Then apply the matching type-specific file:
+- `bug`: [issue-type-bug.md](issue-type-bug.md)
+- `feature`: [issue-type-feature.md](issue-type-feature.md)
+- `task`: [issue-type-task.md](issue-type-task.md)
+
 ## Source Priority
 
 1. First-party repository evidence:
@@ -25,3 +30,4 @@
 - Include source links/paths for each verified fact.
 - Use exact dates for timeline claims.
 - Avoid absolute language when confidence is low.
+- For `feature` issues, target a couple prior-art examples when available; if not found, explicitly say none were found.

@@ -15,9 +15,15 @@ Use examples to shape structure and clarity, not to copy wording.
 - Unknowns are called out instead of guessed.
 - Acceptance criteria are testable and check-boxed.
 
+## Negative calibration
+
+- `getsentry/sentry-mcp#817` is a calibration anti-pattern only.
+- Do not mirror overlong issue bodies.
+- Do not present speculative fixes as certain.
+
 ## How to apply in `/gh-issue`
 
-1. Build content from `issue-template.md`.
-2. Compare draft against this checklist before posting.
-3. If important sections are missing (impact, evidence, acceptance criteria), add them before create/update.
-4. Keep it concise; remove empty sections.
+1. Build content from the type-specific template selected by `issue-template.md`.
+2. Run `issue-quality-checklist.md` before posting.
+3. If important sections are missing, add them before create/update.
+4. Keep it concise and within title/body caps.
