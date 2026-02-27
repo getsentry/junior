@@ -8,7 +8,7 @@ export class TestCredentialBroker implements CredentialBroker {
     target?: CapabilityTarget;
     reason: string;
   }): Promise<CredentialLease> {
-    if (!input.capability.startsWith("app.test.")) {
+    if (!input.capability.startsWith("github.") && !input.capability.startsWith("app.test.")) {
       throw new Error(`Unsupported test capability: ${input.capability}`);
     }
 

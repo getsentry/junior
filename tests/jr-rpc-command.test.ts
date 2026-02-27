@@ -12,23 +12,28 @@ const activeSkill: Skill = {
   requiresCapabilities: ["github.issues.write"]
 };
 
-function makeRuntime() {
+function makeRuntime(options: { failIssue?: boolean } = {}) {
   const broker: CredentialBroker = {
-    issue: async () => ({
-      id: "lease-1",
-      provider: "github",
-      capability: "github.issues.write",
-      env: { GITHUB_TOKEN: "token-1" },
-      headerTransforms: [
-        {
-          domain: "api.github.com",
-          headers: {
-            Authorization: "Bearer token-1"
+    issue: async () => {
+      if (options.failIssue) {
+        throw new Error("credential broker unavailable");
+      }
+      return {
+        id: "lease-1",
+        provider: "github",
+        capability: "github.issues.write",
+        env: { GITHUB_TOKEN: "token-1" },
+        headerTransforms: [
+          {
+            domain: "api.github.com",
+            headers: {
+              Authorization: "Bearer token-1"
+            }
           }
-        }
-      ],
-      expiresAt: new Date(Date.now() + 60_000).toISOString()
-    })
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      };
+    }
   };
   return new SkillCapabilityRuntime({ broker });
 }
@@ -75,6 +80,18 @@ describe("jr-rpc custom command", () => {
     if (result.handled) {
       expect(result.result.exit_code).toBe(2);
       expect(result.result.stderr).toContain("Unsupported jr-rpc command");
+    }
+  });
+
+  it("returns structured runtime errors for credential issuance failures", async () => {
+    const result = await maybeExecuteJrRpcCustomCommand("jr-rpc issue-credential github.issues.write", {
+      capabilityRuntime: makeRuntime({ failIssue: true }),
+      activeSkill
+    });
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.result.exit_code).toBe(1);
+      expect(result.result.stderr).toContain("credential broker unavailable");
     }
   });
 });

@@ -32,11 +32,20 @@ function createJrRpcCommand(deps: JrRpcDeps) {
         exitCode: 2
       };
     }
-    const outcome = await deps.capabilityRuntime.enableCapabilityForTurn({
-      activeSkill: deps.activeSkill,
-      capability,
-      reason: `skill:${deps.activeSkill?.name ?? "unknown"}:jr-rpc:issue-credential`
-    });
+    let outcome: { reused: boolean; expiresAt: string };
+    try {
+      outcome = await deps.capabilityRuntime.enableCapabilityForTurn({
+        activeSkill: deps.activeSkill,
+        capability,
+        reason: `skill:${deps.activeSkill?.name ?? "unknown"}:jr-rpc:issue-credential`
+      });
+    } catch (error) {
+      return {
+        stdout: "",
+        stderr: `${error instanceof Error ? error.message : String(error)}\n`,
+        exitCode: 1
+      };
+    }
     return {
       stdout: `${outcome.reused ? "credential_reused" : "credential_enabled"} capability=${capability} expiresAt=${outcome.expiresAt}\n`,
       stderr: "",
