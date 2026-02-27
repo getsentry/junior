@@ -14,13 +14,20 @@ export interface CanvasUpdateInput {
   sectionId?: string;
 }
 
+function shouldCreateCanvasInConversation(channelId: string | undefined): boolean {
+  if (!channelId) {
+    return false;
+  }
+  return channelId.startsWith("C") || channelId.startsWith("G");
+}
+
 export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
   const client = getSlackClient();
 
   const result = await withSlackRetries(async () => {
-    if (input.channelId) {
+    if (shouldCreateCanvasInConversation(input.channelId)) {
       return client.conversations.canvases.create({
-        channel_id: input.channelId,
+        channel_id: input.channelId as string,
         title: input.title,
         document_content: {
           type: "markdown",

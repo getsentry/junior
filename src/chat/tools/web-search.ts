@@ -1,4 +1,6 @@
 import { tool } from "@/chat/tools/definition";
+import { generateText } from "ai";
+import { createGatewayProvider } from "@ai-sdk/gateway";
 import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/network";
 import { getGatewayApiKey } from "@/chat/pi/client";
@@ -6,35 +8,27 @@ import { getGatewayApiKey } from "@/chat/pi/client";
 const SEARCH_TIMEOUT_MS = 10_000;
 const MAX_RESULTS = 5;
 const DEFAULT_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
-const GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
-const PARALLEL_SEARCH_TOOL_ID = "vercel/parallel-search";
+const SEARCH_TOOL_NAME = "parallelSearch";
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-function parseGatewaySearchResults(payload: unknown, maxResults: number): Array<{ title: string; url: string; snippet: string }> {
-  const choices = Array.isArray((payload as { choices?: unknown }).choices)
-    ? ((payload as { choices?: unknown }).choices as Array<Record<string, unknown>>)
-    : [];
-  const message = choices[0]?.message as Record<string, unknown> | undefined;
-  const toolCalls = Array.isArray(message?.tool_calls) ? (message?.tool_calls as Array<Record<string, unknown>>) : [];
+function parseSearchResults(
+  toolResults: unknown,
+  maxResults: number
+): Array<{ title: string; url: string; snippet: string }> {
+  const typedResults = Array.isArray(toolResults) ? (toolResults as Array<Record<string, unknown>>) : [];
   const parsedResults: Array<{ title: string; url: string; snippet: string }> = [];
 
-  for (const toolCall of toolCalls) {
-    const fn = toolCall.function as Record<string, unknown> | undefined;
-    const rawArguments = asString(fn?.arguments);
-    if (!rawArguments) continue;
-
-    let parsedArguments: unknown;
-    try {
-      parsedArguments = JSON.parse(rawArguments) as unknown;
-    } catch {
+  for (const toolResult of typedResults) {
+    if (toolResult.type !== "tool-result" || toolResult.toolName !== SEARCH_TOOL_NAME) {
       continue;
     }
 
-    const results = Array.isArray((parsedArguments as { results?: unknown }).results)
-      ? ((parsedArguments as { results: unknown[] }).results as Array<Record<string, unknown>>)
+    const output = (toolResult as { output?: unknown }).output as { results?: unknown } | undefined;
+    const results = Array.isArray(output?.results)
+      ? (output.results as Array<Record<string, unknown>>)
       : [];
 
     for (const result of results) {
@@ -43,7 +37,7 @@ function parseGatewaySearchResults(payload: unknown, maxResults: number): Array<
       parsedResults.push({
         title: asString(result.title) ?? url,
         url,
-        snippet: asString(result.content) ?? asString(result.snippet) ?? ""
+        snippet: asString(result.excerpt) ?? asString(result.snippet) ?? ""
       });
 
       if (parsedResults.length >= maxResults) {
@@ -55,23 +49,15 @@ function parseGatewaySearchResults(payload: unknown, maxResults: number): Array<
   return parsedResults;
 }
 
-function parseGatewaySearchError(status: number, body: string): string {
-  const trimmed = body.trim();
-  if (!trimmed) {
-    return `web search failed: ${status}`;
-  }
-
-  try {
-    const payload = JSON.parse(trimmed) as { error?: { message?: string } };
-    const message = payload.error?.message?.trim();
+function formatSearchFailure(error: unknown): string {
+  if (error instanceof Error) {
+    const message = error.message.trim();
     if (message) {
-      return `web search failed: ${status} ${message}`;
+      return `web search failed: ${message}`;
     }
-  } catch {
-    // Fall through to return raw body when response is not JSON.
   }
 
-  return `web search failed: ${status} ${trimmed}`;
+  return "web search failed";
 }
 
 export function createWebSearchTool() {
@@ -104,44 +90,33 @@ export function createWebSearchTool() {
         process.env.AI_MODEL ??
         DEFAULT_SEARCH_MODEL;
 
-      const payload = await withTimeout(
+      const provider = createGatewayProvider({ apiKey });
+      const response = await withTimeout(
         (async () => {
-          const response = await fetch(GATEWAY_URL, {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              authorization: `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-              model,
-              messages: [{ role: "user", content: query }],
-              tools: [
-                {
-                  type: "tool",
-                  tool: {
-                    type: "provider-defined",
-                    id: PARALLEL_SEARCH_TOOL_ID,
-                    args: {
-                      query,
-                      maxResults
-                    }
-                  }
-                }
-              ],
-              tool_choice: "required"
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error(parseGatewaySearchError(response.status, await response.text()));
+          try {
+            return await generateText({
+              model: provider.chat(model),
+              prompt: query,
+              tools: {
+                [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+                  mode: "agentic",
+                  maxResults
+                })
+              },
+              toolChoice: {
+                type: "tool",
+                toolName: SEARCH_TOOL_NAME
+              }
+            });
+          } catch (error) {
+            throw new Error(formatSearchFailure(error));
           }
-
-          return (await response.json()) as unknown;
         })(),
         SEARCH_TIMEOUT_MS,
         "webSearch"
       );
-      const results = parseGatewaySearchResults(payload, maxResults);
+
+      const results = parseSearchResults(response.toolResults, maxResults);
 
       return {
         ok: true,

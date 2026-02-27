@@ -106,6 +106,7 @@ const assistantThreadMetaById = new Map<string, AssistantThreadMeta>();
 const ASSISTANT_THREAD_META_MAX = 500;
 const ASSISTANT_THREAD_META_TTL_MS = 1000 * 60 * 60 * 24;
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
+const SLACK_LOADING_STATUS_MAX_LENGTH = 50;
 
 function pruneAssistantThreadMeta(nowMs: number): void {
   for (const [threadId, meta] of assistantThreadMetaById) {
@@ -137,12 +138,17 @@ function createProgressReporter(thread: {
   let lastStatusAt = 0;
   let pendingStatus: string | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  const sanitizeStatus = (text: string): string => text.trim().slice(0, SLACK_LOADING_STATUS_MAX_LENGTH);
 
   const postAssistantStatus = async (text: string): Promise<void> => {
-    currentStatus = text;
+    const safeText = sanitizeStatus(text);
+    if (!safeText) {
+      return;
+    }
+    currentStatus = safeText;
     lastStatusAt = Date.now();
     try {
-      await thread.startTyping?.(text);
+      await thread.startTyping?.(safeText);
     } catch {
       // Best effort only.
     }
@@ -158,8 +164,8 @@ function createProgressReporter(thread: {
       await getSlackAdapter().setAssistantStatus(
         assistantThread.channelId,
         assistantThread.threadTs,
-        text,
-        [text]
+        safeText,
+        [safeText]
       );
     } catch {
       // Best effort only.
@@ -198,7 +204,8 @@ function createProgressReporter(thread: {
       clearPending();
     },
     async setStatus(text: string) {
-      if (!active || !text || text === currentStatus) {
+      const sanitizedStatus = sanitizeStatus(text);
+      if (!active || !sanitizedStatus || sanitizedStatus === currentStatus) {
         return;
       }
 
@@ -206,11 +213,11 @@ function createProgressReporter(thread: {
       const elapsed = now - lastStatusAt;
       if (elapsed >= STATUS_UPDATE_DEBOUNCE_MS) {
         clearPending();
-        await postAssistantStatus(text);
+        await postAssistantStatus(sanitizedStatus);
         return;
       }
 
-      pendingStatus = text;
+      pendingStatus = sanitizedStatus;
       if (pendingTimer) {
         return;
       }

@@ -1,86 +1,78 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWebSearchTool } from "@/chat/tools/web-search";
+import { generateText } from "ai";
+import { createGatewayProvider } from "@ai-sdk/gateway";
 
-function createJsonResponse(payload: unknown) {
-  return {
-    ok: true,
-    status: 200,
-    json: async () => payload
-  } as Response;
-}
+vi.mock("ai", () => ({
+  generateText: vi.fn()
+}));
+
+vi.mock("@ai-sdk/gateway", () => ({
+  createGatewayProvider: vi.fn()
+}));
 
 describe("createWebSearchTool", () => {
+  const parallelSearch = { id: "parallel-search-tool" };
+  const gatewayProvider = {
+    chat: vi.fn((model: string) => ({ model })),
+    tools: {
+      parallelSearch: vi.fn(() => parallelSearch)
+    }
+  };
+
+  beforeEach(() => {
+    vi.mocked(createGatewayProvider).mockReturnValue(gatewayProvider as never);
+  });
+
   afterEach(() => {
     delete process.env.AI_GATEWAY_API_KEY;
     delete process.env.VERCEL_OIDC_TOKEN;
     delete process.env.AI_WEB_SEARCH_MODEL;
     delete process.env.AI_ROUTER_MODEL;
     delete process.env.AI_MODEL;
-    vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it("uses AI Gateway parallel search and maps tool results", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     process.env.AI_WEB_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      createJsonResponse({
-        choices: [
-          {
-            message: {
-              tool_calls: [
-                {
-                  function: {
-                    arguments: JSON.stringify({
-                      results: [
-                        {
-                          title: "Vercel AI Gateway",
-                          url: "https://vercel.com/docs/ai-gateway",
-                          content: "Gateway docs"
-                        }
-                      ]
-                    })
-                  }
-                }
-              ]
-            }
+    vi.mocked(generateText).mockResolvedValueOnce({
+      toolResults: [
+        {
+          type: "tool-result",
+          toolName: "parallelSearch",
+          output: {
+            results: [
+              {
+                title: "Vercel AI Gateway",
+                url: "https://vercel.com/docs/ai-gateway",
+                excerpt: "Gateway docs"
+              }
+            ]
           }
-        ]
-      })
-    );
-    vi.stubGlobal("fetch", fetchMock);
+        }
+      ]
+    } as never);
 
     const tool = createWebSearchTool();
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
-    const result = await tool.execute({ query: "vercel ai gateway", max_results: 2 }, {} as any);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://ai-gateway.vercel.sh/v1/chat/completions");
-    expect(request.method).toBe("POST");
-    expect(request.headers).toMatchObject({
-      "content-type": "application/json",
-      authorization: "Bearer test-key"
+    const result = await tool.execute({ query: "vercel ai gateway", max_results: 2 }, {} as never);
+
+    expect(createGatewayProvider).toHaveBeenCalledWith({ apiKey: "test-key" });
+    expect(gatewayProvider.tools.parallelSearch).toHaveBeenCalledWith({
+      mode: "agentic",
+      maxResults: 2
     });
-    expect(JSON.parse(String(request.body))).toMatchObject({
-      model: "xai/grok-4-fast-reasoning",
-      messages: [{ role: "user", content: "vercel ai gateway" }],
-      tools: [
-        {
-          type: "tool",
-          tool: {
-            type: "provider-defined",
-            id: "vercel/parallel-search",
-            args: {
-              query: "vercel ai gateway",
-              maxResults: 2
-            }
-          }
-        }
-      ],
-      tool_choice: "required"
-    });
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: { model: "xai/grok-4-fast-reasoning" },
+        prompt: "vercel ai gateway",
+        toolChoice: { type: "tool", toolName: "parallelSearch" }
+      })
+    );
     expect(result).toEqual({
       ok: true,
       model: "xai/grok-4-fast-reasoning",
@@ -101,8 +93,23 @@ describe("createWebSearchTool", () => {
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
-    await expect(tool.execute({ query: "test" }, {} as any)).rejects.toThrow(
+
+    await expect(tool.execute({ query: "test" }, {} as never)).rejects.toThrow(
       "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)"
+    );
+  });
+
+  it("wraps AI SDK errors in web search error message", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    vi.mocked(generateText).mockRejectedValueOnce(new Error("400 Invalid input: expected \"function\""));
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    await expect(tool.execute({ query: "test query" }, {} as never)).rejects.toThrow(
+      "web search failed: 400 Invalid input: expected \"function\""
     );
   });
 });

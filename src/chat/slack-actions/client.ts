@@ -7,6 +7,8 @@ export type SlackActionErrorCode =
   | "missing_scope"
   | "rate_limited"
   | "feature_unavailable"
+  | "canvas_creation_failed"
+  | "canvas_editing_failed"
   | "invalid_arguments"
   | "not_found"
   | "not_in_channel"
@@ -88,6 +90,14 @@ function mapSlackError(error: unknown): SlackActionError {
     return new SlackActionError(message, "feature_unavailable");
   }
 
+  if (apiError === "canvas_creation_failed") {
+    return new SlackActionError(message, "canvas_creation_failed");
+  }
+
+  if (apiError === "canvas_editing_failed") {
+    return new SlackActionError(message, "canvas_editing_failed");
+  }
+
   if (candidate.code === "slack_webapi_rate_limited_error" || candidate.statusCode === 429) {
     return new SlackActionError(message, "rate_limited", {
       retryAfterSeconds: candidate.retryAfter
@@ -110,7 +120,7 @@ export async function withSlackRetries<T>(task: () => Promise<T>, maxAttempts = 
       return await task();
     } catch (error) {
       const mapped = mapSlackError(error);
-      const isRetryable = mapped.code === "rate_limited" || mapped.code === "internal_error";
+      const isRetryable = mapped.code === "rate_limited";
       if (!isRetryable || attempt >= maxAttempts) {
         throw mapped;
       }
