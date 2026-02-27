@@ -63,6 +63,7 @@ export interface ReplyRequestContext {
     sandboxId?: string;
   };
   onStatus?: (status: string) => void | Promise<void>;
+  onTextDelta?: (deltaText: string) => void | Promise<void>;
 }
 
 export interface AssistantReply {
@@ -774,72 +775,93 @@ export async function generateAssistantReply(
         )
       }
     });
+    const unsubscribe = agent.subscribe((event) => {
+      if (event.type !== "message_update") {
+        return;
+      }
+
+      if (event.assistantMessageEvent.type !== "text_delta") {
+        return;
+      }
+
+      const deltaText = event.assistantMessageEvent.delta;
+      if (!deltaText) {
+        return;
+      }
+      Promise.resolve(context.onTextDelta?.(deltaText)).catch(() => {
+        // Best effort only.
+      });
+    });
 
     const beforeMessageCount = agent.state.messages.length;
     let newMessages: unknown[] = [];
 
-    await withSpan(
-      "ai.generate_assistant_reply",
-      "gen_ai.invoke_agent",
-      spanContext,
-      async () => {
-        let promptResult: unknown;
-        const promptPromise = agent.prompt({
-          role: "user",
-          content: userContentParts,
-          timestamp: Date.now()
-        });
+    try {
+      await withSpan(
+        "ai.generate_assistant_reply",
+        "gen_ai.invoke_agent",
+        spanContext,
+        async () => {
+          let promptResult: unknown;
+          const promptPromise = agent.prompt({
+            role: "user",
+            content: userContentParts,
+            timestamp: Date.now()
+          });
 
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let didTimeout = false;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => {
-            didTimeout = true;
-            agent.abort();
-            reject(new Error(`Agent turn timed out after ${AGENT_TURN_TIMEOUT_MS}ms`));
-          }, AGENT_TURN_TIMEOUT_MS);
-        });
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
+          let didTimeout = false;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              didTimeout = true;
+              agent.abort();
+              reject(new Error(`Agent turn timed out after ${AGENT_TURN_TIMEOUT_MS}ms`));
+            }, AGENT_TURN_TIMEOUT_MS);
+          });
 
-        try {
-          promptResult = await Promise.race([promptPromise, timeoutPromise]);
-        } catch (error) {
-          if (didTimeout) {
-            logWarn(
-              "agent_turn_timeout",
-              {},
-              {
-                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                "gen_ai.operation.name": "invoke_agent",
-                "gen_ai.request.model": botConfig.modelId,
-                "app.ai.turn_timeout_ms": AGENT_TURN_TIMEOUT_MS
-              },
-              "Agent turn timed out and was aborted"
-            );
-            await promptPromise.catch(() => {});
+          try {
+            promptResult = await Promise.race([promptPromise, timeoutPromise]);
+          } catch (error) {
+            if (didTimeout) {
+              logWarn(
+                "agent_turn_timeout",
+                {},
+                {
+                  "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                  "gen_ai.operation.name": "invoke_agent",
+                  "gen_ai.request.model": botConfig.modelId,
+                  "app.ai.turn_timeout_ms": AGENT_TURN_TIMEOUT_MS
+                },
+                "Agent turn timed out and was aborted"
+              );
+              await promptPromise.catch(() => {});
+            }
+            throw error;
+          } finally {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+            }
           }
-          throw error;
-        } finally {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
+
+          newMessages = agent.state.messages.slice(beforeMessageCount) as unknown[];
+          const outputMessages = newMessages.filter(isAssistantMessage);
+          const outputMessagesAttribute = serializeGenAiAttribute(outputMessages);
+          const usageAttributes = extractGenAiUsageAttributes(promptResult, agent.state, ...outputMessages);
+          setSpanAttributes({
+            ...(outputMessagesAttribute ? { "gen_ai.output.messages": outputMessagesAttribute } : {}),
+            ...usageAttributes
+          });
+        },
+        {
+          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+          "gen_ai.operation.name": "invoke_agent",
+          "gen_ai.request.model": botConfig.modelId,
+          ...(inputMessagesAttribute ? { "gen_ai.input.messages": inputMessagesAttribute } : {})
         }
-
-        newMessages = agent.state.messages.slice(beforeMessageCount) as unknown[];
-        const outputMessages = newMessages.filter(isAssistantMessage);
-        const outputMessagesAttribute = serializeGenAiAttribute(outputMessages);
-        const usageAttributes = extractGenAiUsageAttributes(promptResult, agent.state, ...outputMessages);
-        setSpanAttributes({
-          ...(outputMessagesAttribute ? { "gen_ai.output.messages": outputMessagesAttribute } : {}),
-          ...usageAttributes
-        });
-      },
-      {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": "invoke_agent",
-        "gen_ai.request.model": botConfig.modelId,
-        ...(inputMessagesAttribute ? { "gen_ai.input.messages": inputMessagesAttribute } : {})
-      }
-    );
+      );
+    } finally {
+      unsubscribe();
+    }
 
     await context.onStatus?.("Drafting response...");
     const toolResults = newMessages.filter(isToolResultMessage);

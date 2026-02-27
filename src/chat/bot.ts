@@ -234,6 +234,61 @@ function createProgressReporter(thread: {
   };
 }
 
+interface EditableSentMessage {
+  edit: (newContent: unknown) => Promise<unknown>;
+}
+
+function isEditableSentMessage(value: unknown): value is EditableSentMessage {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as { edit?: unknown };
+  return typeof candidate.edit === "function";
+}
+
+function createTextStreamBridge() {
+  const queue: string[] = [];
+  let ended = false;
+  let wakeConsumer: (() => void) | null = null;
+
+  const iterable: AsyncIterable<string> = {
+    async *[Symbol.asyncIterator]() {
+      while (!ended || queue.length > 0) {
+        if (queue.length > 0) {
+          yield queue.shift() as string;
+          continue;
+        }
+        await new Promise<void>((resolve) => {
+          wakeConsumer = resolve;
+        });
+      }
+    }
+  };
+
+  return {
+    iterable,
+    push(delta: string) {
+      if (!delta || ended) {
+        return;
+      }
+      queue.push(delta);
+      const wake = wakeConsumer;
+      wakeConsumer = null;
+      wake?.();
+    },
+    end() {
+      if (ended) {
+        return;
+      }
+      ended = true;
+      const wake = wakeConsumer;
+      wakeConsumer = null;
+      wake?.();
+    }
+  };
+}
+
 interface ThreadMessageSnapshot {
   id?: string;
   text?: string | null;
@@ -1085,6 +1140,13 @@ async function replyToThread(
       });
 
       const progress = createProgressReporter(thread);
+      const textStream = createTextStreamBridge();
+      let streamedReplyPromise: Promise<unknown> | undefined;
+      const startStreamingReply = () => {
+        if (!streamedReplyPromise) {
+          streamedReplyPromise = thread.post(textStream.iterable);
+        }
+      };
       await progress.start();
       let persistedAtLeastOnce = false;
 
@@ -1113,8 +1175,13 @@ async function replyToThread(
           sandbox: {
             sandboxId: preparedState.sandboxId
           },
-          onStatus: (status) => progress.setStatus(status)
+          onStatus: (status) => progress.setStatus(status),
+          onTextDelta: (deltaText) => {
+            startStreamingReply();
+            textStream.push(deltaText);
+          }
         });
+        textStream.end();
         const diagnosticsContext = {
           slackThreadId: threadId,
           slackUserId: message.author.userId,
@@ -1184,11 +1251,30 @@ async function replyToThread(
           ? { ...reply.artifactStatePatch }
           : {};
 
-        await thread.post(
-          buildSlackOutputMessage(reply.text, {
-            files: reply.files
-          })
-        );
+        if (!streamedReplyPromise) {
+          await thread.post(
+            buildSlackOutputMessage(reply.text, {
+              files: reply.files
+            })
+          );
+        } else {
+          const streamedReply = await streamedReplyPromise;
+          if (reply.files && reply.files.length > 0) {
+            if (isEditableSentMessage(streamedReply)) {
+              await streamedReply.edit(
+                buildSlackOutputMessage(reply.text, {
+                  files: reply.files
+                })
+              );
+            } else {
+              await thread.post(
+                buildSlackOutputMessage(reply.text, {
+                  files: reply.files
+                })
+              );
+            }
+          }
+        }
 
         const shouldPersistArtifacts = Object.keys(artifactStatePatch).length > 0;
         const nextArtifacts = shouldPersistArtifacts
@@ -1204,6 +1290,7 @@ async function replyToThread(
         });
         persistedAtLeastOnce = true;
       } finally {
+        textStream.end();
         if (!persistedAtLeastOnce) {
           preparedState.conversation.processing.activeTurnId = undefined;
           preparedState.conversation.processing.lastCompletedAtMs = Date.now();

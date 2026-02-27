@@ -18,6 +18,14 @@ Co-Authored-By: (agent model name) <email>
 - Use instrumentation conventions from `specs/logging/index.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
 - Minimize defensive programming — no fallbacks when systems are expected to work. Ensure errors are captured correctly. Use retries for expected network failures, nothing more.
+- Prefer minimal interfaces and simple components across the codebase.
+- Keep public surfaces small: fewer exported types/functions, fewer integration points, explicit contracts.
+- Prefer composition over abstractions that add indirection without clear reuse.
+- Prefer standards/library-native patterns before custom infrastructure.
+- Prefer standards-based streaming surfaces over custom transport loops.
+- Chat SDK streaming standard: pass `AsyncIterable<string>` to `thread.post(...)`.
+- Pi SDK streaming standard: consume `Agent` events (`message_update`/`text_delta`) and bridge deltas into the `AsyncIterable` shim.
+- Avoid bespoke Slack `chat.update` loops unless required by a hard platform limitation.
 
 ## Known Specs
 - `specs/security-policy.md` (global runtime/container/token security policy)
