@@ -462,9 +462,9 @@ export function createSandboxExecutor(options?: {
     toolExecutors = {
       bash: async (input) => {
         const restoreNetworkPolicy = activeSandbox.networkPolicy ?? "allow-all";
-        const hasHeaderTransforms = Boolean(input.headerTransforms && input.headerTransforms.length > 0);
-        if (hasHeaderTransforms) {
-          const policy = mergeNetworkPolicyWithHeaderTransforms(restoreNetworkPolicy, input.headerTransforms);
+        const headerTransforms = input.headerTransforms;
+        if (headerTransforms && headerTransforms.length > 0) {
+          const policy = mergeNetworkPolicyWithHeaderTransforms(restoreNetworkPolicy, headerTransforms);
           await activeSandbox.updateNetworkPolicy(policy);
         }
 
@@ -494,7 +494,7 @@ export function createSandboxExecutor(options?: {
           commandError = error;
           throw error;
         } finally {
-          if (hasHeaderTransforms) {
+          if (headerTransforms && headerTransforms.length > 0) {
             try {
               await activeSandbox.updateNetworkPolicy(restoreNetworkPolicy);
             } catch (restoreError) {
