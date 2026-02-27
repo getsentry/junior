@@ -13,6 +13,15 @@ type CachedInstallationToken = {
   expiresAt: number;
 };
 
+function normalizeTargetScope(target?: CapabilityTarget): string {
+  const owner = target?.owner?.trim().toLowerCase();
+  const repo = target?.repo?.trim().toLowerCase();
+  if (!owner || !repo) {
+    return "all";
+  }
+  return `${owner}/${repo}`;
+}
+
 function base64Url(input: string): string {
   return Buffer.from(input)
     .toString("base64")
@@ -166,7 +175,8 @@ export class GitHubCredentialBroker implements CredentialBroker {
       throw new Error("Invalid GITHUB_INSTALLATION_ID");
     }
 
-    const cacheKey = `${installationId}:${input.capability}`;
+    const targetScope = normalizeTargetScope(input.target);
+    const cacheKey = `${installationId}:${input.capability}:${targetScope}`;
     const cached = this.tokenCache.get(cacheKey);
     const now = Date.now();
     if (cached && cached.expiresAt - now > 2 * 60 * 1000) {
@@ -186,21 +196,27 @@ export class GitHubCredentialBroker implements CredentialBroker {
         expiresAt: new Date(cached.expiresAt).toISOString(),
         metadata: {
           installationId: String(cached.installationId),
+          targetScope,
           reason: input.reason
         }
       };
     }
 
     const appJwt = createAppJwt(appId);
+    const repositoryName = input.target?.repo?.trim().toLowerCase();
+    const tokenRequestBody: { permissions: Record<string, "read" | "write">; repositories?: string[] } = {
+      permissions
+    };
+    if (repositoryName) {
+      tokenRequestBody.repositories = [repositoryName];
+    }
 
     const accessTokenResponse = await githubRequest<{ token: string; expires_at: string }>(
       `/app/installations/${installationId}/access_tokens`,
       {
         method: "POST",
         token: appJwt,
-        body: {
-          permissions
-        }
+        body: tokenRequestBody
       }
     );
 
@@ -228,6 +244,7 @@ export class GitHubCredentialBroker implements CredentialBroker {
       expiresAt: new Date(expiresAtMs).toISOString(),
       metadata: {
         installationId: String(installationId),
+        targetScope,
         reason: input.reason
       }
     };
