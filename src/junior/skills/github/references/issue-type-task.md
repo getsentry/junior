@@ -17,7 +17,6 @@ Create a concise execution ticket for maintenance, cleanup, docs, refactors, or 
 - explicit goal
 - scope boundaries
 - concrete implementation steps
-- done-state acceptance criteria
 - dependencies or risks only when material
 
 ## Completion Bar

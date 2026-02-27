@@ -27,7 +27,7 @@ Skills declare required capabilities in frontmatter.
 
 ```yaml
 ---
-name: gh-issue
+name: github
 description: Create and update GitHub issues.
 requires-capabilities: github.issues.read github.issues.write
 ---

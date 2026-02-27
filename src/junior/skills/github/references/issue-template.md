@@ -6,8 +6,9 @@ Select one template by issue type:
 - `task`: [issue-template-task.md](issue-template-task.md)
 
 Shared constraints:
-- Title hard max: 80 characters (target 45-72).
+- Title hard max: 60 characters (target 40-60).
 - Summary max 3 sentences.
 - Max 4 bullets per section.
 - One sentence per bullet.
 - Remove empty sections.
+- Do not include acceptance criteria unless explicitly requested.

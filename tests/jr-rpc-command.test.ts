@@ -6,9 +6,9 @@ import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { Skill } from "@/chat/skills";
 
 const activeSkill: Skill = {
-  name: "gh-issue",
+  name: "github",
   description: "Issue helper",
-  skillPath: "/tmp/gh-issue",
+  skillPath: "/tmp/github",
   body: "instructions",
   requiresCapabilities: ["github.issues.write"],
   usesConfig: ["github.repo"]

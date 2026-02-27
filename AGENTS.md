@@ -26,6 +26,7 @@ Co-Authored-By: (agent model name) <email>
 - Chat SDK streaming standard: pass `AsyncIterable<string>` to `thread.post(...)`.
 - Pi SDK streaming standard: consume `Agent` events (`message_update`/`text_delta`) and bridge deltas into the `AsyncIterable` shim.
 - Avoid bespoke Slack `chat.update` loops unless required by a hard platform limitation.
+- Prefer hard cutover for command/skill renames and behavior migrations unless the user explicitly requests backward compatibility.
 
 ## Known Specs
 - `specs/security-policy.md` (global runtime/container/token security policy)

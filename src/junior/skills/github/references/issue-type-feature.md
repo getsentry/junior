@@ -22,14 +22,10 @@ Propose an intentional improvement with clear current-state analysis and practic
 - at least one viable path, preferably multiple when tradeoffs are meaningful
 - include implementation and operational tradeoffs
 
-4. Define measurable outcomes:
-- acceptance criteria should be testable and user-facing where possible
-
 ## Completion Bar
 
 A `feature` issue is ready when it has:
 - clear problem framing and objective
 - current-state analysis
 - prior-art section (or explicit none found)
-- option tradeoffs
-- testable acceptance criteria
+- concise option tradeoffs

@@ -10,6 +10,8 @@ function usage() {
   gh_issue_api.mjs comment --repo owner/repo --number 123 --body-file /path/comment.md
   gh_issue_api.mjs add-labels --repo owner/repo --number 123 --labels bug,regression
   gh_issue_api.mjs remove-labels --repo owner/repo --number 123 --labels triage
+  gh_issue_api.mjs get --repo owner/repo --number 123
+  gh_issue_api.mjs list-comments --repo owner/repo --number 123
 
 Environment:
   Optional GITHUB_TOKEN=<installation token>
@@ -184,6 +186,20 @@ async function run() {
       removed.push(label);
     }
     result = { removed };
+  } else if (command === "get") {
+    assertRequired(options, "number");
+
+    result = await ghRequest(`/repos/${owner}/${repo}/issues/${options.number}`, {
+      method: "GET",
+      token: installationToken
+    });
+  } else if (command === "list-comments") {
+    assertRequired(options, "number");
+
+    result = await ghRequest(`/repos/${owner}/${repo}/issues/${options.number}/comments`, {
+      method: "GET",
+      token: installationToken
+    });
   } else {
     throw new Error(`Unknown command '${command}'`);
   }

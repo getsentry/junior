@@ -30,14 +30,9 @@ function extractRepoRef(text: string): { owner: string; repo: string } | undefin
 }
 
 export function extractCapabilityTarget(params: {
-  skillName: string;
   commandText: string;
   invocationArgs?: string;
 }): CapabilityTarget | undefined {
-  if (!params.skillName.startsWith("gh-")) {
-    return undefined;
-  }
-
   const commandRepo = extractRepoRef(params.commandText);
   if (commandRepo) {
     return commandRepo;

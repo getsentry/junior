@@ -45,7 +45,6 @@ export class SkillCapabilityRuntime {
       return explicitTarget;
     }
     const inferredTarget = extractCapabilityTarget({
-      skillName: activeSkill?.name ?? "unknown",
       commandText: "",
       invocationArgs: this.invocationArgs
     });

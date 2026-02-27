@@ -1,8 +1,8 @@
 # GitHub Issue API Helper
 
-All issue mutations should go through:
+All issue operations should go through:
 
-`node src/junior/skills/gh-issue/scripts/gh_issue_api.mjs <command> [options]`
+`node src/junior/skills/github/scripts/gh_issue_api.mjs <command> [options]`
 
 ## Authentication
 
@@ -30,6 +30,14 @@ All issue mutations should go through:
 ### Remove labels
 
 `node .../gh_issue_api.mjs remove-labels --repo owner/repo --number 123 --labels triage`
+
+### Get issue (read-only)
+
+`node .../gh_issue_api.mjs get --repo owner/repo --number 123`
+
+### List issue comments (read-only)
+
+`node .../gh_issue_api.mjs list-comments --repo owner/repo --number 123`
 
 ## Behavior Notes
 

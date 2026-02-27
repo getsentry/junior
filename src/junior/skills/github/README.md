@@ -1,4 +1,4 @@
-# gh-issue setup
+# github setup
 
 This skill uses host-issued GitHub App installation tokens.
 
@@ -59,19 +59,27 @@ Run as a regular sandbox `bash` command while this skill is active:
 
 ```bash
 jr-rpc issue-credential github.issues.write
-node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create \
+node /vercel/sandbox/skills/github/scripts/gh_issue_api.mjs create \
   --repo owner/repo \
   --title "Example issue" \
   --body-file /vercel/sandbox/tmp/issue.md
 ```
 
 `gh_issue_api.mjs` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
+Use `github.issues.read` for read-only commands (`get`, `list-comments`), `github.issues.comment` for comments, and `github.labels.write` for label updates.
+
+Optional: set a default repository once per channel/thread context so `--repo` is not needed each turn:
+
+```bash
+jr-rpc config set github.repo getsentry/junior
+```
 
 ## 5) Quick verification
 
 - `pnpm skills:check`
 - Create issue in a test repo.
 - Update/comment/label the same issue.
+- Use read-only commands (`get`, `list-comments`) for issue inspection.
 
 ## 6) Production verification (step-by-step)
 
@@ -81,9 +89,9 @@ node /vercel/sandbox/skills/gh-issue/scripts/gh_issue_api.mjs create \
    - `GITHUB_INSTALLATION_ID`
 2. Confirm the GitHub App is installed on your test repo with the permissions above.
 3. Deploy `main` to prod.
-4. Run `/gh-issue` to create an issue in a safe test repo.
+4. Run `/github` to create an issue in a safe test repo.
 5. Verify the issue is authored by the GitHub App identity.
-6. Run `/gh-issue` to update title/body, add/remove labels, and add a comment.
+6. Run `/github` to update title/body, add/remove labels, and add a comment.
 7. Verify all mutations succeed and are attributed to the app.
 8. Verify GitHub API calls succeed while this skill is active without writing tokens into sandbox env/files.
 9. Verify raw token values are never printed in output or logs.

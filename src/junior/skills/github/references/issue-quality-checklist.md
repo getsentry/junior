@@ -5,9 +5,9 @@ Run this checklist before create/update mutation.
 ## External Quality Signals
 
 - Is the issue easy to understand without chat context?
-- Does it include enough detail for reproducibility or implementation?
-- Are acceptance criteria testable?
+- Is the issue concise and still actionable?
 - Are unknowns called out instead of guessed?
+- Are concerns included only when material?
 
 Useful external guidance:
 - GitHub docs, creating and structuring issues: https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-an-issue
@@ -18,15 +18,13 @@ Useful external guidance:
 ## Internal Quality Bar
 
 - Issue type chosen and stated (`bug`, `feature`, or `task`).
-- Title is specific and <= 80 characters.
-- Body follows concise caps from `SKILL.md`.
+- Title is specific and <= 60 characters.
+- Summary is short and clear.
+- Analysis depth matches the issue type.
 - Verified claims have sources.
 - Timeline statements use exact dates when known.
 - Confidence is explicit when certainty is low.
-- Type-specific requirements are satisfied:
-  - `bug`: root-cause hypotheses and RCA next steps.
-  - `feature`: current-state analysis and prior-art section.
-  - `task`: concise execution plan and done-state.
+- Concerns are included only when meaningful.
 
 ## Negative Calibration
 

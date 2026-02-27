@@ -1,6 +1,6 @@
 ---
 name: jr-rpc
-description: Lazily enable capability credentials for this turn via `jr-rpc issue-credential <capability>`.
+description: Lazily enable capability credentials for this turn via `jr-rpc issue-credential CAPABILITY`.
 requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write
 uses-config: github.repo
 allowed-tools: bash

@@ -18,8 +18,8 @@ Produce a high-signal bug issue that drives root-cause discovery, not premature 
 - known regressions or relevant deploy/release windows
 
 3. Separate known from unknown:
-- `Verified Facts` contain only directly supported claims
-- unknown details stay in `Unknowns`
+- verified facts contain only directly supported claims
+- unknown details stay explicit
 
 4. Form root-cause hypotheses:
 - each hypothesis must link back to evidence
@@ -29,7 +29,7 @@ Produce a high-signal bug issue that drives root-cause discovery, not premature 
 
 - You may include tentative fix options.
 - Label options as tentative unless root cause is directly evidenced.
-- If root cause is not verified, include `RCA Next Steps` before or alongside fix options.
+- If root cause is not verified, include next RCA steps before or alongside fix options.
 - Do not present one fix as certain without explicit evidence.
 
 ## Completion Bar
@@ -39,4 +39,3 @@ A `bug` issue is ready when it has:
 - evidence-backed facts
 - explicit unknowns
 - root-cause hypotheses with confidence
-- testable acceptance criteria
