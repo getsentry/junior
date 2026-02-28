@@ -1,8 +1,39 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import type { ToolHooks } from "@/chat/tools/types";
+import { botConfig } from "@/chat/config";
+import { completeText } from "@/chat/pi/client";
+import { JUNIOR_PERSONALITY } from "@/chat/prompt";
+import { logInfo, logWarn } from "@/chat/observability";
 
 const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image";
+
+const ENRICHMENT_SYSTEM_PROMPT = `You are an image prompt enrichment agent. Your job is to rewrite image generation requests to reflect a specific visual identity and mood.
+
+<personality>
+${JUNIOR_PERSONALITY}
+</personality>
+
+Rewrite the user's image request into a detailed image generation prompt that encodes this personality's visual aesthetic. Output ONLY the rewritten prompt text — no explanation, no wrapper.`;
+
+async function enrichImagePrompt(rawPrompt: string): Promise<string> {
+  try {
+    const { text } = await completeText({
+      modelId: botConfig.routerModelId,
+      system: ENRICHMENT_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
+      maxTokens: 1024
+    });
+    if (text && text.trim().length > 0) {
+      logInfo("image_prompt_enriched", {}, { "app.image.enriched_prompt": text.trim() }, "Image prompt enriched with persona");
+      return text.trim();
+    }
+    return rawPrompt;
+  } catch (error) {
+    logWarn("image_prompt_enrichment_failed", {}, { "error.message": String(error) }, "Image prompt enrichment failed, using raw prompt");
+    return rawPrompt;
+  }
+}
 
 function extensionForMediaType(mediaType: string): string {
   if (mediaType === "image/png") return "png";
@@ -45,6 +76,7 @@ export function createImageGenerateTool(hooks: ToolHooks) {
         throw new Error("Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)");
       }
       const model = process.env.AI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODEL;
+      const enrichedPrompt = await enrichImagePrompt(prompt);
       const response = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -53,7 +85,7 @@ export function createImageGenerateTool(hooks: ToolHooks) {
         },
         body: JSON.stringify({
           model,
-          messages: [{ role: "user", content: prompt }],
+          messages: [{ role: "user", content: enrichedPrompt }],
           modalities: ["image"]
         })
       });
@@ -110,6 +142,7 @@ export function createImageGenerateTool(hooks: ToolHooks) {
         ok: true,
         model,
         prompt,
+        enrichedPrompt,
         image_count: uploads.length,
         images: uploads.map((upload) => ({
           filename: upload.filename,
