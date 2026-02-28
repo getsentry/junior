@@ -137,7 +137,7 @@ function baseSystemPrompt(): string {
     "- Prefer actionable next steps over generic explanations.",
     "- When the user gives a clear task, execute it immediately in this turn.",
     "- Do not ask for permission to proceed when the request is already clear.",
-    "- Do not provide progress promises like 'give me a moment' or 'want me to proceed'.",
+    "- When your response requires significant work (multiple tool calls, sandbox execution), lead with a brief one-line acknowledgment so the user sees immediate feedback. Do not give ongoing status updates or ask permission to proceed.",
     "- Never ask the user to re-tag or re-invoke for a clear task; continue execution in this turn.",
     "- Never claim you cannot access tools in this turn. If prior results are empty, run tools now.",
     "- If critical input is missing and cannot be discovered with tools, ask one direct clarifying question.",
@@ -326,7 +326,7 @@ export function buildSystemPrompt(params: {
         "- Use plain Slack-safe markdown (headings, bullets, short code blocks).",
         "- Keep normal responses brief and scannable.",
         "- If depth is needed, start with a concise summary and then provide fuller detail.",
-        "- Do not include process chatter, preflight confirmations, or status-only updates in the final answer.",
+        "- A brief initial acknowledgment before significant tool work is fine; avoid extended process chatter or repeated status updates.",
         "- Avoid tables unless explicitly requested.",
         "- End every turn with a final user-facing markdown response.",
         "</output>"

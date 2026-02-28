@@ -62,7 +62,7 @@ function parseImageGenerationError(status: number, body: string, model: string):
 export function createImageGenerateTool(hooks: ToolHooks) {
   return tool({
     description:
-      "Generate image files from a prompt. Use when the user explicitly asks for image creation. Do not use for text-only tasks.",
+      "Generate images from a prompt. Use when the user wants to visually show or represent something — feelings, concepts, art, humor, or any visual idea. Also use for explicit image creation requests.",
     inputSchema: Type.Object({
       prompt: Type.String({
         minLength: 1,

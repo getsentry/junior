@@ -24,7 +24,7 @@ import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState
 } from "@/chat/slack-actions/types";
-import { resolveSlackChannelIdFromMessage } from "@/chat/slack-context";
+import { parseSlackThreadId, resolveSlackChannelIdFromMessage } from "@/chat/slack-context";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { truncateStatusText } from "@/chat/status-format";
@@ -109,13 +109,6 @@ function getThreadId(thread: unknown, _message: unknown): string | undefined {
   return toOptionalString((thread as { id?: unknown }).id);
 }
 
-function getThreadTs(thread: unknown, message: unknown): string | undefined {
-  return (
-    toOptionalString((message as { threadTs?: unknown }).threadTs) ??
-    toOptionalString((thread as { threadTs?: unknown }).threadTs)
-  );
-}
-
 function getWorkflowRunId(thread: unknown, message: unknown): string | undefined {
   return (
     toOptionalString((thread as { runId?: unknown }).runId) ??
@@ -123,78 +116,34 @@ function getWorkflowRunId(thread: unknown, message: unknown): string | undefined
   );
 }
 
-function getChannelId(message: unknown): string | undefined {
-  return resolveSlackChannelIdFromMessage(message);
+function getChannelId(thread: unknown, message: unknown): string | undefined {
+  return (thread as { channelId?: string }).channelId ?? resolveSlackChannelIdFromMessage(message);
 }
 
-interface AssistantThreadMeta {
-  channelId: string;
-  threadTs: string;
-  updatedAtMs: number;
+function getThreadTs(threadId: string | undefined): string | undefined {
+  return parseSlackThreadId(threadId)?.threadTs;
 }
 
 function getSlackAdapter(): SlackAdapter {
   return bot.getAdapter("slack") as SlackAdapter;
 }
 
-const assistantThreadMetaById = new Map<string, AssistantThreadMeta>();
-const ASSISTANT_THREAD_META_MAX = 500;
-const ASSISTANT_THREAD_META_TTL_MS = 1000 * 60 * 60 * 24;
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
 const SLACK_LOADING_STATUS_MAX_LENGTH = 100;
 
-function pruneAssistantThreadMeta(nowMs: number): void {
-  for (const [threadId, meta] of assistantThreadMetaById) {
-    if (nowMs - meta.updatedAtMs > ASSISTANT_THREAD_META_TTL_MS) {
-      assistantThreadMetaById.delete(threadId);
-    }
-  }
-
-  if (assistantThreadMetaById.size <= ASSISTANT_THREAD_META_MAX) {
-    return;
-  }
-
-  const overflow = assistantThreadMetaById.size - ASSISTANT_THREAD_META_MAX;
-  const oldest = [...assistantThreadMetaById.entries()]
-    .sort((a, b) => a[1].updatedAtMs - b[1].updatedAtMs)
-    .slice(0, overflow);
-
-  for (const [threadId] of oldest) {
-    assistantThreadMetaById.delete(threadId);
-  }
-}
-
-function createProgressReporter(thread: {
-  id: string;
-}) {
+function createProgressReporter(thread: { startTyping?: (status?: string) => Promise<void> }) {
   let active = false;
-  let currentStatus = "Working...";
+  let currentStatus = "";
   let lastStatusAt = 0;
   let pendingStatus: string | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
   const sanitizeStatus = (text: string): string => truncateStatusText(text, SLACK_LOADING_STATUS_MAX_LENGTH);
 
-  const postAssistantStatus = async (text: string): Promise<void> => {
-    const safeText = sanitizeStatus(text);
-    if (!safeText) {
-      return;
-    }
-    currentStatus = safeText;
+  const postStatus = async (text: string): Promise<void> => {
+    currentStatus = text;
     lastStatusAt = Date.now();
-
-    const assistantThread = assistantThreadMetaById.get(thread.id);
-    if (!assistantThread) {
-      return;
-    }
-    assistantThread.updatedAtMs = Date.now();
-
     try {
-      await getSlackAdapter().setAssistantStatus(
-        assistantThread.channelId,
-        assistantThread.threadTs,
-        safeText,
-        [safeText]
-      );
+      await thread.startTyping?.(text);
     } catch {
       // Best effort only.
     }
@@ -217,7 +166,7 @@ function createProgressReporter(thread: {
     const next = pendingStatus;
     clearPending();
     if (next !== currentStatus) {
-      await postAssistantStatus(next);
+      await postStatus(next);
     }
   };
 
@@ -225,7 +174,7 @@ function createProgressReporter(thread: {
     async start() {
       active = true;
       clearPending();
-      await postAssistantStatus("Thinking...");
+      await postStatus("Thinking...");
     },
     async stop() {
       active = false;
@@ -241,7 +190,7 @@ function createProgressReporter(thread: {
       const elapsed = now - lastStatusAt;
       if (elapsed >= STATUS_UPDATE_DEBOUNCE_MS) {
         clearPending();
-        await postAssistantStatus(sanitizedStatus);
+        await postStatus(sanitizedStatus);
         return;
       }
 
@@ -256,19 +205,6 @@ function createProgressReporter(thread: {
       }, Math.max(1, STATUS_UPDATE_DEBOUNCE_MS - elapsed));
     }
   };
-}
-
-interface EditableSentMessage {
-  edit: (newContent: unknown) => Promise<unknown>;
-}
-
-function isEditableSentMessage(value: unknown): value is EditableSentMessage {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const candidate = value as { edit?: unknown };
-  return typeof candidate.edit === "function";
 }
 
 function createTextStreamBridge() {
@@ -1414,9 +1350,7 @@ async function prepareTurnState(args: {
       channelId: args.context.channelId,
       requesterId: args.context.requesterId,
       workflowRunId: args.context.workflowRunId,
-      threadTs:
-        toOptionalString(args.message.threadTs) ??
-        toOptionalString((args.thread as { threadTs?: unknown }).threadTs)
+      threadTs: getThreadTs(args.context.threadId)
     });
   }
 
@@ -1474,18 +1408,9 @@ async function replyToThread(
   }
 
   const threadId = getThreadId(thread, message);
-  const threadTs = getThreadTs(thread, message);
-  const channelId = getChannelId(message);
+  const channelId = getChannelId(thread, message);
+  const threadTs = getThreadTs(threadId);
   const workflowRunId = getWorkflowRunId(thread, message);
-
-  if (threadId && channelId && threadTs && !assistantThreadMetaById.has(threadId)) {
-    assistantThreadMetaById.set(threadId, {
-      channelId,
-      threadTs,
-      updatedAtMs: Date.now()
-    });
-    pruneAssistantThreadMeta(Date.now());
-  }
 
   await withSpan(
     "workflow.reply",
@@ -1725,14 +1650,6 @@ async function initializeAssistantThread(event: {
   channelId: string;
   threadTs: string;
 }): Promise<void> {
-  const nowMs = Date.now();
-  assistantThreadMetaById.set(event.threadId, {
-    channelId: event.channelId,
-    threadTs: event.threadTs,
-    updatedAtMs: nowMs
-  });
-  pruneAssistantThreadMeta(nowMs);
-
   const slack = getSlackAdapter();
   await slack.setAssistantTitle(event.channelId, event.threadTs, "Junior");
   await slack.setSuggestedPrompts(event.channelId, event.threadTs, [

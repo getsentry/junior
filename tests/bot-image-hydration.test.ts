@@ -11,7 +11,6 @@ vi.mock("chat", () => {
     onAssistantContextChanged() {}
     getAdapter() {
       return {
-        setAssistantStatus: async () => undefined,
         setAssistantTitle: async () => undefined,
         setSuggestedPrompts: async () => undefined
       };
@@ -46,24 +45,34 @@ vi.mock("@/chat/slack-user", () => ({
 
 interface TestThread {
   id: string;
+  channelId?: string;
   runId?: string;
   readonly state: Promise<Record<string, unknown>>;
   post: (message: unknown) => Promise<unknown>;
+  startTyping: (status?: string) => Promise<void>;
   subscribe: () => Promise<void>;
   setState: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
   getState: () => Record<string, unknown>;
+}
+
+function parseChannelFromThreadId(threadId: string): string | undefined {
+  const parts = threadId.split(":");
+  if (parts.length === 3 && parts[0] === "slack" && parts[1]) return parts[1];
+  return undefined;
 }
 
 function createThread(args: { id: string; state?: Record<string, unknown> }): TestThread {
   let stateData: Record<string, unknown> = { ...(args.state ?? {}) };
   return {
     id: args.id,
+    channelId: parseChannelFromThreadId(args.id),
     get state(): Promise<Record<string, unknown>> {
       return Promise.resolve(stateData);
     },
     async post(message: unknown): Promise<unknown> {
       return message;
     },
+    async startTyping(): Promise<void> {},
     async subscribe(): Promise<void> {},
     async setState(next: Record<string, unknown>, options?: { replace?: boolean }): Promise<void> {
       if (options?.replace) {
@@ -100,7 +109,7 @@ describe("bot image hydration", () => {
       listThreadReplies: listThreadRepliesMock
     });
     const firstThread = createThread({
-      id: "thread-image-hydration",
+      id: "slack:C_IMAGE:1700000000.000",
       state: {
         conversation: {
           schemaVersion: 1,
@@ -142,9 +151,8 @@ describe("bot image hydration", () => {
       id: "1700000000.200",
       text: "/brief on this candidate",
       isMention: true,
-      threadId: "thread-image-hydration",
-      threadTs: "1700000000.000",
-      channelId: "C-image",
+      threadId: "slack:C_IMAGE:1700000000.000",
+      channelId: "C_IMAGE",
       author: {
         userId: "U-user",
         userName: "user",
@@ -155,7 +163,7 @@ describe("bot image hydration", () => {
 
     const persisted = firstThread.getState();
     const secondThread = createThread({
-      id: "thread-image-hydration",
+      id: "slack:C_IMAGE:1700000000.000",
       state: persisted
     });
 
@@ -163,9 +171,8 @@ describe("bot image hydration", () => {
       id: "1700000000.300",
       text: "follow up without new images",
       isMention: true,
-      threadId: "thread-image-hydration",
-      threadTs: "1700000000.000",
-      channelId: "C-image",
+      threadId: "slack:C_IMAGE:1700000000.000",
+      channelId: "C_IMAGE",
       author: {
         userId: "U-user",
         userName: "user",
@@ -207,7 +214,7 @@ describe("bot image hydration", () => {
     });
 
     const thread = createThread({
-      id: "thread-file-upload",
+      id: "slack:C_UPLOAD:1700000000.000",
       state: {}
     });
 
@@ -215,9 +222,8 @@ describe("bot image hydration", () => {
       id: "1700000000.200",
       text: "generate an image",
       isMention: true,
-      threadId: "thread-file-upload",
-      threadTs: "1700000000.000",
-      channelId: "C-upload",
+      threadId: "slack:C_UPLOAD:1700000000.000",
+      channelId: "C_UPLOAD",
       author: {
         userId: "U-user",
         userName: "user",
@@ -229,7 +235,7 @@ describe("bot image hydration", () => {
     expect(uploadFilesToThreadMock).toHaveBeenCalledTimes(1);
     expect(uploadFilesToThreadMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        channelId: "C-upload",
+        channelId: "C_UPLOAD",
         threadTs: "1700000000.000",
         files: [
           expect.objectContaining({
@@ -271,7 +277,7 @@ describe("bot image hydration", () => {
 
     const postSpy = vi.fn().mockResolvedValue(undefined);
     const thread = createThread({
-      id: "thread-upload-fail",
+      id: "slack:C_UPLOADFAIL:1700000000.000",
       state: {}
     });
     thread.post = postSpy;
@@ -280,9 +286,8 @@ describe("bot image hydration", () => {
       id: "1700000000.200",
       text: "generate an image",
       isMention: true,
-      threadId: "thread-upload-fail",
-      threadTs: "1700000000.000",
-      channelId: "C-upload-fail",
+      threadId: "slack:C_UPLOADFAIL:1700000000.000",
+      channelId: "C_UPLOADFAIL",
       author: {
         userId: "U-user",
         userName: "user",
