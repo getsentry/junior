@@ -16,7 +16,7 @@ function loadSoul(): string {
   return raw;
 }
 
-const JUNIOR_PERSONALITY = loadSoul();
+export const JUNIOR_PERSONALITY = loadSoul();
 
 function escapeXml(value: string): string {
   return value

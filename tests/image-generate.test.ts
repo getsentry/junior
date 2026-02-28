@@ -1,5 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/chat/pi/client", () => ({
+  completeText: vi.fn()
+}));
+
+vi.mock("@/chat/prompt", () => ({
+  JUNIOR_PERSONALITY: "test persona"
+}));
+
+vi.mock("@/chat/observability", () => ({
+  logInfo: vi.fn(),
+  logWarn: vi.fn()
+}));
+
+import { completeText } from "@/chat/pi/client";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
+
+const mockCompleteText = vi.mocked(completeText);
 
 function createJsonResponse(payload: unknown) {
   return {
@@ -17,27 +34,31 @@ function createErrorResponse(status: number, body: string) {
   } as Response;
 }
 
+function imagePayload() {
+  return {
+    choices: [
+      {
+        message: {
+          images: [{ image_url: { url: `data:image/png;base64,${Buffer.from("img").toString("base64")}` } }]
+        }
+      }
+    ]
+  };
+}
+
 describe("createImageGenerateTool", () => {
   afterEach(() => {
     delete process.env.AI_GATEWAY_API_KEY;
     delete process.env.VERCEL_OIDC_TOKEN;
     delete process.env.AI_IMAGE_MODEL;
     vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it("uses the default image model when AI_IMAGE_MODEL is not set", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      createJsonResponse({
-        choices: [
-          {
-            message: {
-              images: [{ image_url: { url: `data:image/png;base64,${Buffer.from("img").toString("base64")}` } }]
-            }
-          }
-        ]
-      })
-    );
+    mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(Date, "now").mockReturnValue(1_737_000_000_000);
 
@@ -58,7 +79,7 @@ describe("createImageGenerateTool", () => {
     expect(request?.[0]).toBe("https://ai-gateway.vercel.sh/v1/chat/completions");
     expect(JSON.parse((request?.[1] as RequestInit).body as string)).toMatchObject({
       model: "google/gemini-3-pro-image",
-      messages: [{ role: "user", content: "test prompt" }],
+      messages: [{ role: "user", content: "enriched prompt" }],
       modalities: ["image"]
     });
     expect(result).toMatchObject({
@@ -72,19 +93,8 @@ describe("createImageGenerateTool", () => {
   it("uses AI_IMAGE_MODEL when configured", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     process.env.AI_IMAGE_MODEL = "openai/dall-e-3";
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        createJsonResponse({
-          choices: [
-            {
-              message: {
-                images: [{ image_url: { url: `data:image/png;base64,${Buffer.from("img").toString("base64")}` } }]
-              }
-            }
-          ]
-        })
-      );
+    mockCompleteText.mockResolvedValueOnce({ text: "enriched cat" } as any);
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({} as any);
@@ -106,6 +116,7 @@ describe("createImageGenerateTool", () => {
   it("returns an actionable error when model is not image-capable", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     process.env.AI_IMAGE_MODEL = "google/gemini-3-pro-image";
+    mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
     const fetchMock = vi.fn().mockResolvedValueOnce(
       createErrorResponse(
         400,
@@ -126,5 +137,64 @@ describe("createImageGenerateTool", () => {
     await expect(tool.execute({ prompt: "person in a forest" }, {} as any)).rejects.toThrow(
       'configured model "google/gemini-3-pro-image" is not an image generation model'
     );
+  });
+
+  it("forwards enriched prompt to image API when enrichment succeeds", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    mockCompleteText.mockResolvedValueOnce({ text: "a dark, high-contrast dog with glowing eyes" } as any);
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = createImageGenerateTool({
+      onGeneratedFiles: vi.fn()
+    } as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+
+    const request = fetchMock.mock.calls[0];
+    const body = JSON.parse((request?.[1] as RequestInit).body as string);
+    expect(body.messages[0].content).toBe("a dark, high-contrast dog with glowing eyes");
+    expect(result).toMatchObject({
+      prompt: "draw a dog",
+      enrichedPrompt: "a dark, high-contrast dog with glowing eyes"
+    });
+  });
+
+  it("falls back to raw prompt when enrichment returns empty text", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    mockCompleteText.mockResolvedValueOnce({ text: "   " } as any);
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = createImageGenerateTool({
+      onGeneratedFiles: vi.fn()
+    } as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+
+    const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(body.messages[0].content).toBe("draw a dog");
+    expect(result).toMatchObject({
+      prompt: "draw a dog",
+      enrichedPrompt: "draw a dog"
+    });
+  });
+
+  it("falls back to raw prompt when enrichment fails", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    mockCompleteText.mockRejectedValueOnce(new Error("LLM unavailable"));
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = createImageGenerateTool({
+      onGeneratedFiles: vi.fn()
+    } as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+
+    const request = fetchMock.mock.calls[0];
+    const body = JSON.parse((request?.[1] as RequestInit).body as string);
+    expect(body.messages[0].content).toBe("draw a dog");
+    expect(result).toMatchObject({
+      prompt: "draw a dog",
+      enrichedPrompt: "draw a dog"
+    });
   });
 });
