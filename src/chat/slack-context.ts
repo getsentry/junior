@@ -2,7 +2,9 @@ function toOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-export function resolveSlackChannelIdFromThreadId(threadId: string | undefined): string | undefined {
+export function parseSlackThreadId(
+  threadId: string | undefined
+): { channelId: string; threadTs: string } | undefined {
   const normalizedThreadId = toOptionalString(threadId);
   if (!normalizedThreadId) {
     return undefined;
@@ -13,7 +15,17 @@ export function resolveSlackChannelIdFromThreadId(threadId: string | undefined):
     return undefined;
   }
 
-  return toOptionalString(parts[1]);
+  const channelId = toOptionalString(parts[1]);
+  const threadTs = toOptionalString(parts[2]);
+  if (!channelId || !threadTs) {
+    return undefined;
+  }
+
+  return { channelId, threadTs };
+}
+
+export function resolveSlackChannelIdFromThreadId(threadId: string | undefined): string | undefined {
+  return parseSlackThreadId(threadId)?.channelId;
 }
 
 export function resolveSlackChannelIdFromMessage(message: unknown): string | undefined {

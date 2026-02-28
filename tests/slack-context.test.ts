@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveSlackChannelIdFromMessage, resolveSlackChannelIdFromThreadId } from "@/chat/slack-context";
+import { parseSlackThreadId, resolveSlackChannelIdFromMessage, resolveSlackChannelIdFromThreadId } from "@/chat/slack-context";
 
 describe("slack context", () => {
   it("prefers message.channelId when available", () => {
@@ -45,5 +45,30 @@ describe("slack context", () => {
     expect(resolveSlackChannelIdFromThreadId("slack::1700000000.900")).toBeUndefined();
     expect(resolveSlackChannelIdFromThreadId("slack:C111")).toBeUndefined();
     expect(resolveSlackChannelIdFromThreadId("not-slack:C111:1700000000.900")).toBeUndefined();
+  });
+});
+
+describe("parseSlackThreadId", () => {
+  it("parses valid slack thread id into channelId and threadTs", () => {
+    expect(parseSlackThreadId("slack:C123:1700000000.100")).toEqual({
+      channelId: "C123",
+      threadTs: "1700000000.100"
+    });
+  });
+
+  it("returns undefined for empty-part thread ids", () => {
+    expect(parseSlackThreadId("slack::1700000000.100")).toBeUndefined();
+    expect(parseSlackThreadId("slack:C123:")).toBeUndefined();
+    expect(parseSlackThreadId("slack: : ")).toBeUndefined();
+  });
+
+  it("returns undefined for malformed thread ids", () => {
+    expect(parseSlackThreadId("slack:C123")).toBeUndefined();
+    expect(parseSlackThreadId("not-slack:C123:1700000000.100")).toBeUndefined();
+    expect(parseSlackThreadId("just-a-string")).toBeUndefined();
+  });
+
+  it("returns undefined for undefined input", () => {
+    expect(parseSlackThreadId(undefined)).toBeUndefined();
   });
 });

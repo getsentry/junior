@@ -25,8 +25,10 @@ export interface AppRuntimeIncomingMessage {
 
 export interface AppRuntimeThreadHandle {
   id: string;
+  channelId?: string;
   runId?: string;
   post: (message: any) => Promise<unknown>;
+  startTyping?: (status?: string) => Promise<void>;
   refresh?: () => Promise<void>;
   recentMessages?: unknown[];
   setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
@@ -68,7 +70,7 @@ export interface AppSlackRuntimeDependencies<
   TMessage extends AppRuntimeIncomingMessage
 > {
   assistantUserName: string;
-  getChannelId: (message: TMessage) => string | undefined;
+  getChannelId: (thread: TThread, message: TMessage) => string | undefined;
   getPreparedConversationContext: (preparedState: TPreparedState) => string | undefined;
   getThreadId: (thread: TThread, message: TMessage) => string | undefined;
   getWorkflowRunId: (thread: TThread, message: TMessage) => string | undefined;
@@ -193,7 +195,7 @@ export function createAppSlackRuntime<
     async handleNewMention(thread: TThread, message: TMessage): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
-        const channelId = deps.getChannelId(message);
+        const channelId = deps.getChannelId(thread, message);
         const workflowRunId = deps.getWorkflowRunId(thread, message);
         const context = logContext({
           threadId,
@@ -220,7 +222,7 @@ export function createAppSlackRuntime<
           logContext({
             threadId: deps.getThreadId(thread, message),
             requesterId: message.author.userId,
-            channelId: deps.getChannelId(message),
+            channelId: deps.getChannelId(thread, message),
             workflowRunId: deps.getWorkflowRunId(thread, message)
           }),
           {},
@@ -234,7 +236,7 @@ export function createAppSlackRuntime<
     async handleSubscribedMessage(thread: TThread, message: TMessage): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
-        const channelId = deps.getChannelId(message);
+        const channelId = deps.getChannelId(thread, message);
         const workflowRunId = deps.getWorkflowRunId(thread, message);
         const rawUserText = message.text ?? "";
         const userText = deps.stripLeadingBotMention(rawUserText, {
@@ -315,7 +317,7 @@ export function createAppSlackRuntime<
           logContext({
             threadId: deps.getThreadId(thread, message),
             requesterId: message.author.userId,
-            channelId: deps.getChannelId(message),
+            channelId: deps.getChannelId(thread, message),
             workflowRunId: deps.getWorkflowRunId(thread, message)
           }),
           {},

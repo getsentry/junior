@@ -6,6 +6,7 @@ import {
   type AppRuntimeAssistantLifecycleEvent,
   type AppRuntimeThreadHandle
 } from "@/chat/app-runtime";
+import { parseSlackThreadId } from "@/chat/slack-context";
 import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { generateAssistantReply } from "@/chat/respond";
@@ -247,9 +248,6 @@ class FakeSlackAdapter {
     this.promptCalls.push({ channelId, threadTs, prompts });
   }
 
-  async setAssistantStatus(): Promise<void> {
-    // No-op for eval harness.
-  }
 }
 
 class FakeThread implements AppRuntimeThreadHandle {
@@ -257,6 +255,7 @@ class FakeThread implements AppRuntimeThreadHandle {
     state: Promise<Record<string, unknown>>;
     setState: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
   };
+  readonly channelId?: string;
   readonly id: string;
   readonly posts: unknown[] = [];
   readonly runId?: string;
@@ -273,6 +272,7 @@ class FakeThread implements AppRuntimeThreadHandle {
     threadTs?: string;
   }) {
     this.id = args.id;
+    this.channelId = parseSlackThreadId(args.id)?.channelId;
     this.runId = args.runId;
     this.threadTs = args.threadTs;
     this.stateData = { ...(args.state ?? {}) };
@@ -322,6 +322,10 @@ class FakeThread implements AppRuntimeThreadHandle {
         return newContent;
       }
     };
+  }
+
+  async startTyping(_status?: string): Promise<void> {
+    // No-op for eval harness.
   }
 
   async subscribe(): Promise<void> {
