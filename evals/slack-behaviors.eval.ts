@@ -20,7 +20,7 @@ describe("Slack Behavior Evals", () => {
     criteria: "Exactly one reply that contains the number 4.",
   });
 
-  const continuityThread = { id: "thread-continuity" };
+  const continuityThread = { id: "thread-continuity", channel_id: "C-continuity", thread_ts: "17000000.continuity" };
 
   slackEval("multi-turn continuity", {
     events: [
@@ -63,7 +63,7 @@ describe("Slack Behavior Evals", () => {
     criteria: "Posts a brief for David Cramer showing role CPO, team Executive, location San Francisco.",
   });
 
-  const candidateBriefThread = { id: "thread-candidate-brief-repeat" };
+  const candidateBriefThread = { id: "thread-candidate-brief-repeat", channel_id: "C-candidate-brief", thread_ts: "17000000.candidate-brief" };
 
   slackEval("candidate-brief repeated invocations", {
     behavior: { skill_dirs: ["evals/skills"] },
@@ -102,7 +102,7 @@ describe("Slack Behavior Evals", () => {
     criteria: "Runs bash with test credentials and outputs CREDENTIAL_OK.",
   });
 
-  const defaultRepoThread = { id: "thread-default-repo" };
+  const defaultRepoThread = { id: "thread-default-repo", channel_id: "C-default-repo", thread_ts: "17000000.default-repo" };
 
   slackEval("set default repo via natural language", {
     behavior: { enable_test_credentials: true, test_credential_token: "eval-default-repo-token" },
