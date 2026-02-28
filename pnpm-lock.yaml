@@ -87,6 +87,9 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.0.18(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.0)(@types/node@25.3.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+      vitest-evals:
+        specifier: ^0.6.0
+        version: 0.6.0(ai@6.0.103(zod@4.3.6))(tinyrainbow@3.0.3)(vitest@4.0.18(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.0)(@types/node@25.3.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))(zod@4.3.6)
 
 packages:
 
@@ -4324,6 +4327,19 @@ packages:
       tsx:
         optional: true
       yaml:
+        optional: true
+
+  vitest-evals@0.6.0:
+    resolution: {integrity: sha512-6DjQRALjHjUPsHEkz28oSjO+q6uEp7HR4aU3qXr32D9vsHGOmyfxZn7fK6PDuHzE/5hDP8dtkkgZQZ6fAmV5vA==}
+    peerDependencies:
+      ai: ^4.0.0
+      tinyrainbow: '*'
+      vitest: '*'
+      zod: ^3.0.0
+    peerDependenciesMeta:
+      ai:
+        optional: true
+      zod:
         optional: true
 
   vitest@4.0.18:
@@ -9391,6 +9407,14 @@ snapshots:
       terser: 5.46.0
       tsx: 4.21.0
       yaml: 2.8.2
+
+  vitest-evals@0.6.0(ai@6.0.103(zod@4.3.6))(tinyrainbow@3.0.3)(vitest@4.0.18(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.0)(@types/node@25.3.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))(zod@4.3.6):
+    dependencies:
+      tinyrainbow: 3.0.3
+      vitest: 4.0.18(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.0)(@types/node@25.3.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+    optionalDependencies:
+      ai: 6.0.103(zod@4.3.6)
+      zod: 4.3.6
 
   vitest@4.0.18(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.0)(@types/node@25.3.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2):
     dependencies:
