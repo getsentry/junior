@@ -29,6 +29,37 @@ type ChatLike = {
 
 const PATCH_FLAG = Symbol.for("junior.chat.runInBackgroundPatch");
 
+function nonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+// Derive canonical Slack thread IDs from the raw event payload (channel + thread_ts/ts)
+// rather than trusting adapter-provided thread ID parts which may be incomplete.
+export function normalizeIncomingSlackThreadId(threadId: string, message: unknown): string {
+  if (!threadId.startsWith("slack:")) {
+    return threadId;
+  }
+
+  if (!message || typeof message !== "object") {
+    return threadId;
+  }
+
+  const raw = (message as { raw?: Record<string, unknown> }).raw;
+  if (!raw || typeof raw !== "object") {
+    return threadId;
+  }
+
+  const channelId = nonEmptyString(raw.channel);
+  const threadTs = nonEmptyString(raw.thread_ts) ?? nonEmptyString(raw.ts);
+  if (!channelId || !threadTs) {
+    return threadId;
+  }
+
+  return `slack:${channelId}:${threadTs}`;
+}
+
 function scheduleBackgroundWork(
   instance: ChatLike,
   options: BackgroundWebhookOptions | undefined,
@@ -67,7 +98,11 @@ export function installChatBackgroundPatch(): void {
           typeof messageOrFactory === "function"
             ? await (messageOrFactory as () => Promise<unknown>)()
             : messageOrFactory;
-        await this.handleIncomingMessage(adapter, threadId, message);
+        const normalizedThreadId = normalizeIncomingSlackThreadId(threadId, message);
+        if (message && typeof message === "object" && "threadId" in message) {
+          (message as Record<string, unknown>).threadId = normalizedThreadId;
+        }
+        await this.handleIncomingMessage(adapter, normalizedThreadId, message);
       } catch (err) {
         this.logger?.error?.("Message processing error", { error: err, threadId });
       }
