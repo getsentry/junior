@@ -4,11 +4,10 @@
 
 Evals are end-to-end Slack conversation evaluations.
 
-- We define conversation fixtures in YAML.
+- We define conversation cases inline in TypeScript using `slackEval()`.
 - We run the real runtime/harness against those fixtures.
-- We score outcomes with an LLM-as-a-judge.
-
-This is intentionally close to `~/src/ash/evals`: scenario fixtures + real execution + judged outcomes.
+- We score outcomes with an LLM judge via `vitest-evals`.
+- Deterministic assertions use Vitest `expect()`.
 
 ## What Is In Scope
 
@@ -23,83 +22,41 @@ Not in scope:
 
 ## Sources Of Truth
 
-- Cases: `evals/cases/slack-behaviors.yaml`
+- Eval cases: `evals/slack-behaviors.eval.ts`
+- Helpers and event builders: `evals/helpers.ts`
 - Harness/runtime adapter: `evals/behavior-harness.ts`
-- Judge suite entrypoint: `evals/llm-judge.eval.ts`
 
 ## Execution Model
 
-For each case:
+For each case (`slackEval()` call):
 
-1. Load YAML fixture.
-2. Replay events through the harness.
-3. Collect observed artifacts:
-   - posts
-   - tool calls
-   - warning/exception events
-   - thread metadata and adapter calls
-4. Build a judge prompt with expected behavior + observed artifacts.
-5. Ask judge model for structured JSON:
-   - `score` (0-100)
-   - `reasoning` (short)
+1. Replay events through the harness via `runBehaviorEvalCase()`.
+2. Run inline `expect()` assertions (deterministic — failure = score 0).
+3. Return observed artifacts as JSON for LLM judgment.
+4. `vitest-evals` scores the output against `criteria` (A–E → 1.0–0.0).
 
 ## Running
 
-- `pnpm evals`: LLM-judged eval run (default eval command)
-- `pnpm test`: normal test suite
-
-## Fixture Contract
-
-Each case in `slack-behaviors.yaml` includes:
-
-- `id`
-- `description`
-- `events[]`
-- `expected`
-- optional `behavior` overrides for harness conditions
-
-Supported event types:
-
-- `new_mention`
-- `subscribed_message`
-- `assistant_thread_started`
-- `assistant_context_changed`
-
-Common expected fields:
-
-- `posts_count` / `min_posts`
-- `tool_calls_include`
-- `primary_thread_subscribed`
-- `warning_events`
-- `exception_events`
-- `adapter_title_calls`
-- `adapter_prompt_calls`
-- `log_events`
-- `log_event_attributes`
-- `sandbox_id_present`
-- `sandbox_ids_count`
-- `sandbox_ids_unique_count`
+- `pnpm evals`: Run all eval cases
+- `pnpm evals -- -t "subscribed"`: Filter by test name pattern
+- `pnpm test`: Normal test suite (not evals)
 
 ## Authoring Rules
 
-- Model fixtures after real Slack turns (thread IDs, mentions, author info).
+- Add new cases to `evals/slack-behaviors.eval.ts` using `slackEval()`.
+- Use event builders (`mention`, `threadMessage`, `threadStart`) from `evals/helpers.ts`.
+- For multi-turn, pass the same `thread` override so events land in one thread.
 - Keep each case focused on one primary behavior.
-- Prefer adding new cases over widening old ones.
-- Include expected signals that make failures diagnosable (posts/tool/log fields).
-- Avoid brittle assertions on incidental formatting unless that is the behavior under test.
+- Use `expect()` for deterministic assertions and `criteria` for LLM judgment.
 
 ## Minimal Case
 
-```yaml
-- id: mention_basic_reply
-  description: Mention posts a reply.
-  events:
-    - type: new_mention
-      thread:
-        id: thread-basic
-      message:
-        text: "<@U_APP> summarize this"
-        is_mention: true
-  expected:
-    posts_count: 1
+```typescript
+slackEval("mention basic reply", {
+  events: [mention("<@U_APP> summarize this")],
+  assert: (result) => {
+    expect(result.posts).toHaveLength(1);
+  },
+  criteria: "Posts exactly one reply to the mention.",
+});
 ```

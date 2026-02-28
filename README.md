@@ -61,22 +61,16 @@ Evals intentionally exclude live Slack integration concerns (Slack transport, ap
 pnpm evals
 ```
 
-Add a new eval by appending one case to [`evals/cases/slack-behaviors.yaml`](/home/dcramer/src/junior/evals/cases/slack-behaviors.yaml):
+Add a new eval case to `evals/slack-behaviors.eval.ts`:
 
-```yaml
-- id: my_new_case
-  description: Short description of expected behavior.
-  events:
-    - type: new_mention
-      thread:
-        id: thread-my-case
-      message:
-        text: "<@U_APP> do the thing"
-        is_mention: true
-  expected:
-    posts_count: 1
-    posts_contain:
-      - "summary"
+```typescript
+slackEval("my new case", {
+  events: [mention("<@U_APP> do the thing")],
+  assert: (result) => {
+    expect(result.posts).toHaveLength(1);
+  },
+  criteria: "Posts exactly one reply to the mention.",
+});
 ```
 
 Then run:

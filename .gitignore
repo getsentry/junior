@@ -7,3 +7,4 @@ coverage
 *.tsbuildinfo
 .vercel
 .env*.local
+/dist

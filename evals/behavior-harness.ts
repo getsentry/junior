@@ -1,14 +1,10 @@
-import fs from "node:fs";
 import path from "node:path";
-import { parse as parseYaml } from "yaml";
-import { z } from "zod";
 import {
   type AppRuntimeAssistantLifecycleEvent,
   type AppRuntimeThreadHandle
 } from "@/chat/app-runtime";
 import { parseSlackThreadId } from "@/chat/slack-context";
 import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
-import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { generateAssistantReply } from "@/chat/respond";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 
@@ -56,38 +52,18 @@ interface AssistantContextChangedEvent extends BehaviorBaseEvent {
   user_id?: string;
 }
 
-type BehaviorCaseEvent =
+export type BehaviorCaseEvent =
   | MentionEvent
   | SubscribedMessageEvent
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent;
-
-interface BehaviorCaseExpectation {
-  adapter_prompt_calls?: number;
-  adapter_title_calls?: number;
-  exception_events?: string[];
-  log_events?: string[];
-  log_event_attributes?: Array<{
-    event: string;
-    key: string;
-  }>;
-  min_posts?: number;
-  posts_count?: number;
-  post_contains?: string[];
-  primary_thread_subscribed?: boolean;
-  sandbox_id_present?: boolean;
-  sandbox_ids_count?: number;
-  sandbox_ids_unique_count?: number;
-  tool_calls_include?: string[];
-  warning_events?: string[];
-}
 
 interface SubscribedDecisionFixture {
   reason: string;
   should_reply: boolean;
 }
 
-interface BehaviorCaseConfig {
+export interface BehaviorCaseConfig {
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
   skill_dirs?: string[];
@@ -99,130 +75,9 @@ interface BehaviorCaseConfig {
 
 export interface BehaviorEvalCase {
   behavior?: BehaviorCaseConfig;
-  description: string;
   events: BehaviorCaseEvent[];
-  expected: BehaviorCaseExpectation;
-  id: string;
 }
 
-export interface BehaviorEvalSuite {
-  cases: BehaviorEvalCase[];
-  description?: string;
-  name: string;
-  schema_version: string;
-}
-
-const threadSchema = z.object({
-  id: z.string().min(1),
-  channel_id: z.string().min(1).optional(),
-  run_id: z.string().min(1).optional(),
-  thread_ts: z.string().min(1).optional()
-});
-
-const messageSchema = z.object({
-  author: z
-    .object({
-      full_name: z.string().min(1).optional(),
-      is_bot: z.boolean().optional(),
-      is_me: z.boolean().optional(),
-      user_id: z.string().min(1).optional(),
-      user_name: z.string().min(1).optional()
-    })
-    .optional(),
-  id: z.string().min(1).optional(),
-  is_mention: z.boolean().optional(),
-  text: z.string().optional()
-});
-
-const eventSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("new_mention"),
-    thread: threadSchema,
-    message: messageSchema
-  }),
-  z.object({
-    type: z.literal("subscribed_message"),
-    thread: threadSchema,
-    message: messageSchema
-  }),
-  z.object({
-    type: z.literal("assistant_thread_started"),
-    thread: threadSchema,
-    user_id: z.string().min(1).optional()
-  }),
-  z.object({
-    type: z.literal("assistant_context_changed"),
-    thread: threadSchema,
-    user_id: z.string().min(1).optional()
-  })
-]);
-
-const expectationSchema = z.object({
-  adapter_prompt_calls: z.number().int().nonnegative().optional(),
-  adapter_title_calls: z.number().int().nonnegative().optional(),
-  exception_events: z.array(z.string().min(1)).optional(),
-  log_events: z.array(z.string().min(1)).optional(),
-  log_event_attributes: z
-    .array(
-      z.object({
-        event: z.string().min(1),
-        key: z.string().min(1)
-      })
-    )
-    .optional(),
-  min_posts: z.number().int().nonnegative().optional(),
-  posts_count: z.number().int().nonnegative().optional(),
-  post_contains: z.array(z.string().min(1)).optional(),
-  primary_thread_subscribed: z.boolean().optional(),
-  sandbox_id_present: z.boolean().optional(),
-  sandbox_ids_count: z.number().int().nonnegative().optional(),
-  sandbox_ids_unique_count: z.number().int().nonnegative().optional(),
-  tool_calls_include: z.array(z.string().min(1)).optional(),
-  warning_events: z.array(z.string().min(1)).optional()
-});
-
-const caseSchema = z.object({
-  behavior: z
-    .object({
-      fail_reply_call: z.number().int().positive().optional(),
-      enable_test_credentials: z.boolean().optional(),
-      skill_dirs: z.array(z.string().min(1)).optional(),
-      test_credential_token: z.string().min(1).optional(),
-      unset_gateway_api_key: z.boolean().optional(),
-      reply_texts: z.array(z.string()).optional(),
-      subscribed_decisions: z
-        .array(
-          z.object({
-            reason: z.string().min(1),
-            should_reply: z.boolean()
-          })
-        )
-        .optional()
-    })
-    .optional(),
-  description: z.string().min(1),
-  events: z.array(eventSchema).min(1),
-  expected: expectationSchema,
-  id: z.string().min(1)
-});
-
-const suiteSchema = z.object({
-  schema_version: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().optional(),
-  cases: z.array(caseSchema)
-});
-
-interface EvalLogEntry {
-  eventName: string;
-}
-
-interface EvalLogRecord {
-  attributes: Record<string, string | number | boolean | string[]>;
-  body: string;
-  eventName: string;
-  level: string;
-}
 
 class FakeSlackAdapter {
   readonly promptCalls: Array<{
@@ -342,15 +197,16 @@ class FakeThread implements AppRuntimeThreadHandle {
   }
 }
 
-interface BehaviorCaseResult {
-  exceptions: EvalLogEntry[];
-  logs: EvalLogRecord[];
+export interface AgentTurn {
+  tool_calls: string[];
+  sandbox_id: string | null;
+  success: boolean;
+}
+
+export interface BehaviorCaseResult {
   posts: string[];
-  primaryThread?: FakeThread;
-  sandboxIds: string[];
   slackAdapter: FakeSlackAdapter;
-  toolCalls: string[];
-  warnings: EvalLogEntry[];
+  turns: AgentTurn[];
 }
 
 function toPostedText(value: unknown): string {
@@ -390,35 +246,14 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
   };
 }
 
-function ensureSuiteShape(value: unknown): BehaviorEvalSuite {
-  const parsed = suiteSchema.safeParse(value);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    const issuePath = issue?.path.length ? issue.path.join(".") : "suite";
-    const issueMessage = issue?.message ?? "invalid schema";
-    throw new Error(`Invalid behavior eval suite at ${issuePath}: ${issueMessage}`);
-  }
-  return parsed.data;
-}
-
-export function loadBehaviorEvalSuite(suitePath: string): BehaviorEvalSuite {
-  const absolute = path.resolve(suitePath);
-  const raw = fs.readFileSync(absolute, "utf8");
-  return ensureSuiteShape(parseYaml(raw));
-}
-
 export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<BehaviorCaseResult> {
   const slackAdapter = new FakeSlackAdapter();
-  const warnings: EvalLogEntry[] = [];
-  const exceptions: EvalLogEntry[] = [];
-  const logs: EvalLogRecord[] = [];
   const threadsById = new Map<string, FakeThread>();
   const channelStateById = new Map<string, { value: Record<string, unknown> }>();
   const replyTexts = testCase.behavior?.reply_texts ?? [];
   const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
   const replyTimeoutMs = Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000", 10);
-  const sandboxIds: string[] = [];
-  const toolCalls: string[] = [];
+  const turns: AgentTurn[] = [];
   let replyCallCount = 0;
   let decisionIndex = 0;
   const originalSkillDirs = process.env.SKILL_DIRS;
@@ -462,14 +297,6 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     return created;
   };
 
-  const unregisterLogSink = registerLogRecordSink((record: EmittedLogRecord) => {
-    logs.push({
-      eventName: record.eventName,
-      level: record.level,
-      body: record.body,
-      attributes: record.attributes
-    });
-  });
   const originalGetAdapter = (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter?.bind(bot);
   (bot as unknown as { getAdapter: (name: string) => unknown }).getAdapter = (name: string): unknown => {
     if (name === "slack") {
@@ -539,14 +366,11 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         }
       }
 
-      toolCalls.push(...reply.diagnostics.toolCalls);
-      if (reply.sandboxId) {
-        sandboxIds.push(reply.sandboxId);
-      }
-      warnings.push({ eventName: `agent_turn_${reply.diagnostics.outcome}` });
-      if (reply.diagnostics.stopReason) {
-        warnings.push({ eventName: `agent_turn_stop_reason_${reply.diagnostics.stopReason}` });
-      }
+      turns.push({
+        tool_calls: reply.diagnostics.toolCalls,
+        sandbox_id: reply.sandboxId ?? null,
+        success: reply.diagnostics.outcome === "success",
+      });
 
       const replyText = replyTexts[replyCallCount - 1];
       if (typeof replyText === "string") {
@@ -587,7 +411,6 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       await appSlackRuntime.handleAssistantContextChanged(lifecycleEvent);
     }
   } finally {
-    unregisterLogSink();
     resetBotDepsForTests();
     (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
     if (configuredSkillDirs.length > 0) {
@@ -612,168 +435,12 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     }
   }
 
-  for (const log of logs) {
-    if (log.level === "warn") {
-      warnings.push({ eventName: log.eventName });
-    } else if (log.level === "error") {
-      exceptions.push({ eventName: log.eventName });
-    }
-  }
-
-  const primaryThreadId = testCase.events[0]?.thread.id;
-  const primaryThread = primaryThreadId ? threadsById.get(primaryThreadId) : undefined;
   const posts = [...threadsById.values()].flatMap((thread) => thread.posts.map(toPostedText));
 
   return {
-    logs,
     posts,
-    sandboxIds,
-    warnings,
-    exceptions,
-    primaryThread,
     slackAdapter,
-    toolCalls
+    turns
   };
 }
 
-function formatFailure(message: string, result: BehaviorCaseResult): string {
-  return [
-    message,
-    `sandbox_ids=${JSON.stringify(result.sandboxIds)}`,
-    `log_events=${JSON.stringify(result.logs.map((entry) => entry.eventName))}`,
-    `posts=${JSON.stringify(result.posts)}`,
-    `tool_calls=${JSON.stringify(result.toolCalls)}`,
-    `warnings=${JSON.stringify(result.warnings.map((entry) => entry.eventName))}`,
-    `exceptions=${JSON.stringify(result.exceptions.map((entry) => entry.eventName))}`
-  ].join(" | ");
-}
-
-export function assertBehaviorEvalCase(
-  testCase: BehaviorEvalCase,
-  result: BehaviorCaseResult
-): void {
-  const expected = testCase.expected;
-  if (expected.posts_count !== undefined && result.posts.length !== expected.posts_count) {
-    throw new Error(
-      formatFailure(
-        `expected posts_count=${expected.posts_count} but got ${result.posts.length}`,
-        result
-      )
-    );
-  }
-
-  if (expected.min_posts !== undefined && result.posts.length < expected.min_posts) {
-    throw new Error(
-      formatFailure(`expected at least ${expected.min_posts} posts but got ${result.posts.length}`, result)
-    );
-  }
-
-  for (const snippet of expected.post_contains ?? []) {
-    const found = result.posts.some((post) => post.includes(snippet));
-    if (!found) {
-      throw new Error(formatFailure(`expected post containing ${JSON.stringify(snippet)}`, result));
-    }
-  }
-
-  if (
-    expected.primary_thread_subscribed !== undefined &&
-    Boolean(result.primaryThread?.subscribed) !== expected.primary_thread_subscribed
-  ) {
-    throw new Error(
-      formatFailure(
-        `expected primary_thread_subscribed=${expected.primary_thread_subscribed} but got ${Boolean(result.primaryThread?.subscribed)}`,
-        result
-      )
-    );
-  }
-
-  if (
-    expected.adapter_title_calls !== undefined &&
-    result.slackAdapter.titleCalls.length !== expected.adapter_title_calls
-  ) {
-    throw new Error(
-      formatFailure(
-        `expected adapter_title_calls=${expected.adapter_title_calls} but got ${result.slackAdapter.titleCalls.length}`,
-        result
-      )
-    );
-  }
-
-  if (
-    expected.adapter_prompt_calls !== undefined &&
-    result.slackAdapter.promptCalls.length !== expected.adapter_prompt_calls
-  ) {
-    throw new Error(
-      formatFailure(
-        `expected adapter_prompt_calls=${expected.adapter_prompt_calls} but got ${result.slackAdapter.promptCalls.length}`,
-        result
-      )
-    );
-  }
-
-  for (const eventName of expected.warning_events ?? []) {
-    if (!result.warnings.some((entry) => entry.eventName === eventName)) {
-      throw new Error(formatFailure(`expected warning event ${eventName}`, result));
-    }
-  }
-
-  for (const eventName of expected.exception_events ?? []) {
-    if (!result.exceptions.some((entry) => entry.eventName === eventName)) {
-      throw new Error(formatFailure(`expected exception event ${eventName}`, result));
-    }
-  }
-
-  for (const toolName of expected.tool_calls_include ?? []) {
-    if (!result.toolCalls.includes(toolName)) {
-      throw new Error(formatFailure(`expected tool call ${toolName}`, result));
-    }
-  }
-
-  if (expected.sandbox_id_present !== undefined) {
-    const hasSandboxId = result.sandboxIds.length > 0;
-    if (hasSandboxId !== expected.sandbox_id_present) {
-      throw new Error(
-        formatFailure(`expected sandbox_id_present=${expected.sandbox_id_present} but got ${hasSandboxId}`, result)
-      );
-    }
-  }
-
-  if (expected.sandbox_ids_count !== undefined && result.sandboxIds.length !== expected.sandbox_ids_count) {
-    throw new Error(
-      formatFailure(`expected sandbox_ids_count=${expected.sandbox_ids_count} but got ${result.sandboxIds.length}`, result)
-    );
-  }
-
-  if (expected.sandbox_ids_unique_count !== undefined) {
-    const uniqueCount = new Set(result.sandboxIds).size;
-    if (uniqueCount !== expected.sandbox_ids_unique_count) {
-      throw new Error(
-        formatFailure(
-          `expected sandbox_ids_unique_count=${expected.sandbox_ids_unique_count} but got ${uniqueCount}`,
-          result
-        )
-      );
-    }
-  }
-
-  for (const eventName of expected.log_events ?? []) {
-    if (!result.logs.some((entry) => entry.eventName === eventName)) {
-      throw new Error(formatFailure(`expected log event ${eventName}`, result));
-    }
-  }
-
-  for (const expectation of expected.log_event_attributes ?? []) {
-    const matched = result.logs.some(
-      (entry) =>
-        entry.eventName === expectation.event && Object.prototype.hasOwnProperty.call(entry.attributes, expectation.key)
-    );
-    if (!matched) {
-      throw new Error(
-        formatFailure(
-          `expected log attribute ${expectation.key} on event ${expectation.event}`,
-          result
-        )
-      );
-    }
-  }
-}

@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
 import fs from "node:fs";
 
@@ -16,6 +17,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["evals/**/*.eval.ts"]
+    include: ["evals/**/*.eval.ts"],
+    reporters: [new DefaultEvalReporter()]
   }
 });
