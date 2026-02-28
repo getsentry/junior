@@ -28,7 +28,7 @@ describe("createWebSearchTool", () => {
     delete process.env.AI_GATEWAY_API_KEY;
     delete process.env.VERCEL_OIDC_TOKEN;
     delete process.env.AI_WEB_SEARCH_MODEL;
-    delete process.env.AI_ROUTER_MODEL;
+    delete process.env.AI_FAST_MODEL;
     delete process.env.AI_MODEL;
     vi.useRealTimers();
     vi.clearAllMocks();

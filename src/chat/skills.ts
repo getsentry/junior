@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { isKnownCapability, isKnownConfigKey } from "@/chat/capabilities/catalog";
+import { skillsDir } from "@/chat/home";
 import { logWarn } from "@/chat/observability";
 import { getPluginSkillRoots } from "@/chat/plugins/registry";
 import { parseAndValidateSkillFrontmatter, stripFrontmatter } from "@/chat/skill-frontmatter";
@@ -39,7 +40,7 @@ export function resetSkillDiscoveryCache(): void {
 function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
   const additionalRoots = options?.additionalRoots ?? [];
   const envRoots = process.env.SKILL_DIRS?.split(path.delimiter).filter(Boolean) ?? [];
-  const defaults = [path.join(process.cwd(), "src", "junior", "skills")];
+  const defaults = [skillsDir()];
   const pluginRoots = getPluginSkillRoots();
 
   const seen = new Set<string>();

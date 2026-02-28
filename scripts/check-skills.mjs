@@ -37,7 +37,12 @@ function resolveSkillRoots() {
     .map((value) => value.trim())
     .filter(Boolean)
     .map((value) => path.resolve(value));
-  return [...envRoots, path.resolve(process.cwd(), "src", "junior", "skills")];
+
+  const homeDir = process.env.JUNIOR_HOME;
+  if (!homeDir) {
+    throw new Error("JUNIOR_HOME environment variable is required");
+  }
+  return [...envRoots, path.resolve(homeDir, "skills")];
 }
 
 function parseFrontmatter(raw) {

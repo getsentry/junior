@@ -1,8 +1,15 @@
-export const botConfig = {
-  userName: "junior",
-  modelId: process.env.AI_MODEL ?? "anthropic/claude-sonnet-4.6",
-  routerModelId: process.env.AI_ROUTER_MODEL ?? process.env.AI_MODEL ?? "anthropic/claude-sonnet-4.6"
-};
+import { loadHomeConfig } from "@/chat/home";
+
+function buildBotConfig() {
+  const home = loadHomeConfig();
+  return {
+    userName: home.bot.name,
+    modelId: process.env.AI_MODEL ?? home.ai.model,
+    fastModelId: process.env.AI_FAST_MODEL ?? home.ai.fast_model
+  };
+}
+
+export const botConfig = buildBotConfig();
 
 function toOptionalTrimmed(value: string | undefined): string | undefined {
   if (!value) {

@@ -1,0 +1,6 @@
+[bot]
+name = "junior"
+
+[ai]
+model = "anthropic/claude-sonnet-4.6"
+fast_model = "anthropic/claude-haiku-4-5"

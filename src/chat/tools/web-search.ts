@@ -96,7 +96,7 @@ export function createWebSearchTool() {
         }
         const model =
           process.env.AI_WEB_SEARCH_MODEL ??
-          process.env.AI_ROUTER_MODEL ??
+          process.env.AI_FAST_MODEL ??
           process.env.AI_MODEL ??
           DEFAULT_SEARCH_MODEL;
 

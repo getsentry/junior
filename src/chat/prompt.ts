@@ -1,7 +1,7 @@
 import fs from "node:fs";
-import path from "node:path";
 import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import { botConfig } from "@/chat/config";
+import { soulPath } from "@/chat/home";
 import { slackOutputPolicy } from "@/chat/output";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -9,10 +9,10 @@ import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 import { escapeXml } from "@/chat/xml";
 
 function loadSoul(): string {
-  const soulPath = path.join(process.cwd(), "src", "chat", "SOUL.md");
-  const raw = fs.readFileSync(soulPath, "utf8").trim();
+  const resolved = soulPath();
+  const raw = fs.readFileSync(resolved, "utf8").trim();
   if (raw.length === 0) {
-    throw new Error(`SOUL.md is empty: ${soulPath}`);
+    throw new Error(`SOUL.md is empty: ${resolved}`);
   }
   return raw;
 }

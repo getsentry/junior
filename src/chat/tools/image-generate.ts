@@ -19,7 +19,7 @@ Rewrite the user's image request into a detailed image generation prompt that en
 async function enrichImagePrompt(rawPrompt: string): Promise<string> {
   try {
     const { text } = await completeText({
-      modelId: botConfig.routerModelId,
+      modelId: botConfig.fastModelId,
       system: ENRICHMENT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
       maxTokens: 1024

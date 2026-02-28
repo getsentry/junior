@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   discoverSkills,
   parseSkillInvocation,
@@ -24,7 +24,22 @@ const stubSkills: SkillMetadata[] = [
 ];
 
 describe("skills", () => {
+  const originalJuniorHome = process.env.JUNIOR_HOME;
+
+  beforeEach(() => {
+    process.env.JUNIOR_HOME = path.resolve(process.cwd(), "jr-sentry");
+  });
+
+  afterEach(() => {
+    if (originalJuniorHome === undefined) {
+      delete process.env.JUNIOR_HOME;
+    } else {
+      process.env.JUNIOR_HOME = originalJuniorHome;
+    }
+  });
+
   it("discovers valid skills from the default skills directory", async () => {
+    resetSkillDiscoveryCache();
     const skills = await discoverSkills();
     const names = skills.map((skill) => skill.name);
 
