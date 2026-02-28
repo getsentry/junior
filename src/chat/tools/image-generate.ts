@@ -25,7 +25,7 @@ async function enrichImagePrompt(rawPrompt: string): Promise<string> {
       maxTokens: 1024
     });
     if (text && text.trim().length > 0) {
-      logInfo("image_prompt_enriched", {}, { "app.image.enriched_prompt": text.trim() }, "Image prompt enriched with persona");
+      logInfo("image_prompt_enriched", {}, { "app.image.enriched_prompt_length": text.trim().length }, "Image prompt enriched with persona");
       return text.trim();
     }
     return rawPrompt;

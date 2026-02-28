@@ -159,6 +159,25 @@ describe("createImageGenerateTool", () => {
     });
   });
 
+  it("falls back to raw prompt when enrichment returns empty text", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    mockCompleteText.mockResolvedValueOnce({ text: "   " } as any);
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = createImageGenerateTool({
+      onGeneratedFiles: vi.fn()
+    } as any);
+    const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
+
+    const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(body.messages[0].content).toBe("draw a dog");
+    expect(result).toMatchObject({
+      prompt: "draw a dog",
+      enrichedPrompt: "draw a dog"
+    });
+  });
+
   it("falls back to raw prompt when enrichment fails", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockRejectedValueOnce(new Error("LLM unavailable"));
