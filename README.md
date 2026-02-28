@@ -4,6 +4,32 @@ Slack bot built with Next.js + Chat SDK.
 
 Junior responds when mentioned in Slack and can continue replying in subscribed threads. It also supports slash-invoked local skills (`/skill-name ...`) and built-in tools (web search/fetch, image generation, Slack canvases/lists).
 
+## Home directory
+
+Junior loads its personality, skills, and bot config from an external **home directory** specified by `--home` (or `JUNIOR_HOME` env var). The included `jr-sentry/` directory is Sentry's home:
+
+```
+jr-sentry/
+  config.toml       # Bot identity + model config
+  SOUL.md           # Personality
+  skills/           # Skill definitions
+    brief/
+    github/
+    jr-rpc/
+    sum/
+```
+
+`config.toml` example:
+
+```toml
+[bot]
+name = "junior"
+
+[ai]
+model = "anthropic/claude-sonnet-4.6"
+fast_model = "anthropic/claude-haiku-4-5"
+```
+
 ## Requirements
 
 - Node.js 20+
@@ -34,6 +60,40 @@ pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
 ```bash
 pnpm dev
 ```
+
+This runs with `jr-sentry` as the home directory. To use a different home:
+
+```bash
+JUNIOR_HOME=./my-home pnpm dev
+```
+
+## Production
+
+```bash
+node bin/junior.mjs --home=./jr-sentry --port 3000
+```
+
+## Deploying your own bot
+
+Junior is available as an npm package. Create your own bot without touching Next.js internals:
+
+```bash
+npx junior init my-bot
+cd my-bot
+pnpm install
+pnpm dev
+```
+
+This scaffolds a project with `config.toml`, `SOUL.md`, and an empty `skills/` directory. Edit those files to customize your bot's personality and capabilities.
+
+### Vercel deployment
+
+1. Push your project to GitHub.
+2. Import the repo in Vercel.
+3. Set **Build Command** to `junior build` and **Framework** to "Next.js".
+4. Add environment variables: `SLACK_BOT_TOKEN`, `REDIS_URL`, and optionally `NEXT_PUBLIC_SENTRY_DSN`.
+
+The `junior build` command generates the minimal Next.js shim files automatically. You do not need to write `app/` routes or `next.config.ts`.
 
 ## Slack tunnel (Cloudflare)
 
