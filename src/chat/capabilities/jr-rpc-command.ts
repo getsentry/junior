@@ -165,7 +165,12 @@ async function handleIssueCredentialCommand(
           exitCode: 1
         });
       }
-      // OAuth start failed — fall through to generic error
+      // OAuth start failed — surface the specific misconfiguration error
+      return {
+        stdout: "",
+        stderr: `${oauthResult.error}\n`,
+        exitCode: 1
+      };
     }
 
     return {
