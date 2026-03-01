@@ -472,7 +472,7 @@ export function createSandboxExecutor(options?: {
         const pathPrefix = `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`;
         const envExports = input.env
           ? Object.entries(input.env)
-              .map(([key, value]) => `export ${key}=${JSON.stringify(value)}`)
+              .map(([key, value]) => `export ${key}='${value.replace(/'/g, "'\\''")}'`)
               .join(" && ")
           : "";
         const preamble = envExports
