@@ -21,8 +21,8 @@ async function refreshAccessToken(refreshToken: string): Promise<{
   refreshToken: string;
   expiresIn: number;
 }> {
-  const clientId = process.env.SENTRY_CLIENT_ID;
-  const clientSecret = process.env.SENTRY_CLIENT_SECRET;
+  const clientId = process.env.SENTRY_CLIENT_ID?.trim();
+  const clientSecret = process.env.SENTRY_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) {
     throw new Error("Missing SENTRY_CLIENT_ID or SENTRY_CLIENT_SECRET for token refresh");
   }
