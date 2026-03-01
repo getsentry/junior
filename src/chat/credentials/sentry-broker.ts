@@ -109,8 +109,12 @@ export class SentryCredentialBroker implements CredentialBroker {
             const leaseExpiry = Math.min(expiresAt, Date.now() + MAX_LEASE_MS);
             return buildLease(refreshed.accessToken, input.capability, leaseExpiry, input.reason);
           } catch {
-            // Refresh failed (token revoked, network error) — surface as
-            // CredentialUnavailableError so auto-OAuth can kick in.
+            // Refresh failed — if the current token is still valid, use it
+            // rather than forcing re-auth on a transient network error.
+            if (stored.expiresAt > Date.now()) {
+              const leaseExpiry = Math.min(stored.expiresAt, Date.now() + MAX_LEASE_MS);
+              return buildLease(stored.accessToken, input.capability, leaseExpiry, input.reason);
+            }
             throw new CredentialUnavailableError(
               "sentry",
               "Your Sentry connection has expired. Reconnect with /sentry auth."
