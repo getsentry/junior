@@ -108,7 +108,7 @@ Rules:
 - Callback handler at `/api/oauth/callback/sentry` exchanges code for tokens server-side.
 - Tokens stored per Slack user ID via `StateAdapterTokenStore` (Redis-backed).
 - Agent never sees token values — only receives `authorize_url` to post to the user.
-- Requires `SENTRY_OAUTH_CLIENT_ID` and `SENTRY_OAUTH_CLIENT_SECRET` on host.
+- Requires `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET` on host.
 - See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
 
 ### Lease behavior

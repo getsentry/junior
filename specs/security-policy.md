@@ -58,7 +58,7 @@ This policy applies to:
 
 - Use per-user OAuth tokens via Authorization Code Grant (RFC 6749 §4.1).
 - Tokens are per Slack user ID, stored via `UserTokenStore` interface (Redis-backed `StateAdapterTokenStore`).
-- Keep `SENTRY_OAUTH_CLIENT_SECRET` on host only.
+- Keep `SENTRY_CLIENT_SECRET` on host only.
 - Token exchange and storage happen server-side in the OAuth callback handler — the agent never sees token values.
 - Refresh tokens on host, deliver short-lived access tokens via header transforms.
 - Fall back to static `SENTRY_AUTH_TOKEN` env var for dev/testing only.

@@ -377,8 +377,8 @@ type OAuthProviderConfig = {
 
 const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
   sentry: {
-    clientIdEnv: "SENTRY_OAUTH_CLIENT_ID",
-    clientSecretEnv: "SENTRY_OAUTH_CLIENT_SECRET",
+    clientIdEnv: "SENTRY_CLIENT_ID",
+    clientSecretEnv: "SENTRY_CLIENT_SECRET",
     authorizeEndpoint: "https://sentry.io/oauth/authorize/",
     tokenEndpoint: "https://sentry.io/oauth/token/",
     scope: "event:read",

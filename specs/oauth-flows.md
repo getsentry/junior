@@ -145,8 +145,8 @@ Providers are configured in `OAUTH_PROVIDERS` (`jr-rpc-command.ts`):
 
 ### Sentry
 
-- `clientIdEnv`: `SENTRY_OAUTH_CLIENT_ID`
-- `clientSecretEnv`: `SENTRY_OAUTH_CLIENT_SECRET`
+- `clientIdEnv`: `SENTRY_CLIENT_ID`
+- `clientSecretEnv`: `SENTRY_CLIENT_SECRET`
 - Authorize: `https://sentry.io/oauth/authorize/`
 - Token: `https://sentry.io/oauth/token/`
 - Scope: `event:read`
@@ -317,7 +317,7 @@ Under the hood: `jr-rpc delete-token sentry` deletes the Redis key. Future Sentr
 
 1. Add entry to `OAUTH_PROVIDERS` in `jr-rpc-command.ts`.
 2. Register the OAuth app with the provider, setting redirect URI to `<base-url>/api/oauth/callback/<provider>`.
-3. Add `<PROVIDER>_OAUTH_CLIENT_ID` and `<PROVIDER>_OAUTH_CLIENT_SECRET` env vars.
+3. Add `<PROVIDER>_CLIENT_ID` and `<PROVIDER>_CLIENT_SECRET` env vars.
 4. Create or update the provider's `CredentialBroker` to read from `UserTokenStore`.
 5. Register the broker in `factory.ts`.
 6. Update the provider's SKILL.md with the new auth flow.

@@ -21,10 +21,10 @@ async function refreshAccessToken(refreshToken: string): Promise<{
   refreshToken: string;
   expiresIn: number;
 }> {
-  const clientId = process.env.SENTRY_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.SENTRY_OAUTH_CLIENT_SECRET;
+  const clientId = process.env.SENTRY_CLIENT_ID;
+  const clientSecret = process.env.SENTRY_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    throw new Error("Missing SENTRY_OAUTH_CLIENT_ID or SENTRY_OAUTH_CLIENT_SECRET for token refresh");
+    throw new Error("Missing SENTRY_CLIENT_ID or SENTRY_CLIENT_SECRET for token refresh");
   }
 
   const response = await fetch("https://sentry.io/oauth/token/", {
