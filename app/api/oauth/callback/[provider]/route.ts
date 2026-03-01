@@ -204,13 +204,17 @@ export async function GET(
     // Auto-resume: run agent turn in background after HTTP response
     after(() => resumePendingMessage(stored));
   } else if (stored.channelId && stored.threadTs) {
-    // No pending message — just post confirmation
+    // No pending message — post confirmation best-effort after HTTP response
+    const confirmChannelId = stored.channelId;
+    const confirmThreadTs = stored.threadTs;
     const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
-    await postSlackMessage(
-      stored.channelId,
-      stored.threadTs,
-      `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`
-    );
+    after(async () => {
+      await postSlackMessage(
+        confirmChannelId,
+        confirmThreadTs,
+        `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`
+      );
+    });
   }
 
   const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
