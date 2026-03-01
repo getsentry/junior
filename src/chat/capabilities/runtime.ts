@@ -14,7 +14,7 @@ export class SkillCapabilityRuntime {
   private readonly invocationArgs?: string;
   private readonly requesterId?: string;
   private readonly resolveConfiguration?: (key: string) => Promise<unknown>;
-  private readonly enabledByCapability = new Map<string, { expiresAtMs: number; transforms: CredentialHeaderTransform[] }>();
+  private readonly enabledByCapability = new Map<string, { expiresAtMs: number; transforms: CredentialHeaderTransform[]; env: Record<string, string> }>();
 
   constructor(params: {
     broker?: CredentialBroker;
@@ -223,7 +223,8 @@ export class SkillCapabilityRuntime {
       }
       this.enabledByCapability.set(cacheKey, {
         expiresAtMs,
-        transforms
+        transforms,
+        env: lease.env
       });
       logInfo(
         "credential_issue_success",
@@ -264,5 +265,18 @@ export class SkillCapabilityRuntime {
       headerTransforms.push(...entry.transforms);
     }
     return headerTransforms.length > 0 ? headerTransforms : undefined;
+  }
+
+  getTurnEnv(): Record<string, string> | undefined {
+    const now = Date.now();
+    const env: Record<string, string> = {};
+    for (const [capability, entry] of this.enabledByCapability.entries()) {
+      if (!Number.isFinite(entry.expiresAtMs) || entry.expiresAtMs <= now) {
+        this.enabledByCapability.delete(capability);
+        continue;
+      }
+      Object.assign(env, entry.env);
+    }
+    return Object.keys(env).length > 0 ? env : undefined;
   }
 }

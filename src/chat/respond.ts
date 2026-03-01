@@ -463,6 +463,8 @@ function createAgentTools(
 
             const injectedHeaders =
               toolName === "bash" ? capabilityRuntime?.getTurnHeaderTransforms() : undefined;
+            const injectedEnv =
+              toolName === "bash" ? capabilityRuntime?.getTurnEnv() : undefined;
             const bashCommand =
               toolName === "bash" && typeof parsed.command === "string" ? parsed.command.trim() : "";
             const isCustomBashCommand = toolName === "bash" && /^jr-rpc(?:\s|$)/.test(bashCommand);
@@ -482,15 +484,17 @@ function createAgentTools(
               );
             }
 
+            const hasBashCredentials = injectedHeaders || injectedEnv;
             const result =
               sandboxExecutor?.canExecute(toolName)
                 ? await sandboxExecutor.execute({
                     toolName,
                     input:
-                      toolName === "bash" && injectedHeaders
+                      toolName === "bash" && hasBashCredentials
                         ? {
                             ...parsed,
-                            headerTransforms: injectedHeaders
+                            ...(injectedHeaders ? { headerTransforms: injectedHeaders } : {}),
+                            ...(injectedEnv ? { env: injectedEnv } : {})
                           }
                         : parsed
                   })
