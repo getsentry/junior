@@ -42,15 +42,15 @@ async function refreshAccessToken(refreshToken: string): Promise<{
     throw new Error(`Sentry token refresh failed: ${response.status}`);
   }
 
-  const data = (await response.json()) as {
-    access_token: string;
-    refresh_token: string;
-    expires_in: number;
-  };
+  const data = (await response.json()) as Record<string, unknown>;
+
+  if (!data.access_token || !data.refresh_token || typeof data.expires_in !== "number") {
+    throw new Error("Sentry token refresh returned malformed response");
+  }
 
   return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
+    accessToken: data.access_token as string,
+    refreshToken: data.refresh_token as string,
     expiresIn: data.expires_in
   };
 }
