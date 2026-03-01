@@ -55,12 +55,17 @@ async function refreshAccessToken(refreshToken: string): Promise<{
   };
 }
 
+// Dummy env value so CLI tools that check for SENTRY_AUTH_TOKEN don't fail with
+// "missing auth". The real token is delivered only via headerTransforms — the
+// harness proxies it at the HTTP layer and the sandbox never sees the real value.
+const SENTRY_AUTH_TOKEN_PLACEHOLDER = "sntrys_host_managed_credential";
+
 function buildLease(token: string, capability: string, expiresAtMs: number, reason: string): CredentialLease {
   return {
     id: randomUUID(),
     provider: "sentry",
     capability,
-    env: { SENTRY_AUTH_TOKEN: token },
+    env: { SENTRY_AUTH_TOKEN: SENTRY_AUTH_TOKEN_PLACEHOLDER },
     headerTransforms: [
       {
         domain: SENTRY_API_DOMAIN,

@@ -63,7 +63,7 @@ This policy applies to:
 - Refresh tokens on host, deliver short-lived access tokens via header transforms.
 - Fall back to static `SENTRY_AUTH_TOKEN` env var for dev/testing only.
 - Inject `Authorization` header transform for `sentry.io` domain.
-- Inject `SENTRY_AUTH_TOKEN` in lease env for CLI consumption.
+- Set `SENTRY_AUTH_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
 - See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
 
 ## Logging and redaction policy
