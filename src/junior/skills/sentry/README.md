@@ -7,13 +7,11 @@ This skill uses per-user OAuth tokens issued via the Authorization Code Grant fl
 In your personal Sentry account:
 1. Go to `User Settings -> Applications -> New Application` at `https://sentry.io/settings/account/api/applications/`.
 2. Set the **Redirect URL** to `<base-url>/api/oauth/callback/sentry` (e.g. `https://your-app.vercel.app/api/oauth/callback/sentry`).
-3. Under **Permissions**, grant:
-   - Issue & Event: Read
-4. Save and collect:
+3. Save and collect:
    - `SENTRY_CLIENT_ID` (Client ID)
    - `SENTRY_CLIENT_SECRET` (Client Secret)
 
-The `event:read` OAuth scope (requested at authorization time) covers issues, events, and replays.
+Scopes are requested at authorization time (not configured in the app). The app requests `event:read`, which covers issues, events, and replays.
 
 ## 2) Configure host runtime
 
