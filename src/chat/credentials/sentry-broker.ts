@@ -122,8 +122,15 @@ export class SentryCredentialBroker implements CredentialBroker {
           }
         }
 
-        const leaseExpiry = Math.min(stored.expiresAt, Date.now() + MAX_LEASE_MS);
-        return buildLease(stored.accessToken, input.capability, leaseExpiry, input.reason);
+        if (stored.expiresAt > Date.now()) {
+          const leaseExpiry = Math.min(stored.expiresAt, Date.now() + MAX_LEASE_MS);
+          return buildLease(stored.accessToken, input.capability, leaseExpiry, input.reason);
+        }
+
+        throw new CredentialUnavailableError(
+          "sentry",
+          "Your Sentry connection has expired. Reconnect with /sentry auth."
+        );
       }
     }
 
