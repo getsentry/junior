@@ -11,7 +11,7 @@ In your personal Sentry account:
    - `SENTRY_CLIENT_ID` (Client ID)
    - `SENTRY_CLIENT_SECRET` (Client Secret)
 
-Scopes are requested at authorization time (not configured in the app). The app requests `event:read`, which covers issues, events, and replays.
+Scopes are requested at authorization time (not configured in the app). The app requests `event:read org:read project:read`.
 
 ## 2) Configure host runtime
 

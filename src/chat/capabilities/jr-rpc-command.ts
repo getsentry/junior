@@ -381,7 +381,7 @@ const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     clientSecretEnv: "SENTRY_CLIENT_SECRET",
     authorizeEndpoint: "https://sentry.io/oauth/authorize/",
     tokenEndpoint: "https://sentry.io/oauth/token/",
-    scope: "event:read",
+    scope: "event:read org:read project:read",
     callbackPath: "/api/oauth/callback/sentry"
   }
 };

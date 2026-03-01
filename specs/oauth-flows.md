@@ -149,7 +149,7 @@ Providers are configured in `OAUTH_PROVIDERS` (`jr-rpc-command.ts`):
 - `clientSecretEnv`: `SENTRY_CLIENT_SECRET`
 - Authorize: `https://sentry.io/oauth/authorize/`
 - Token: `https://sentry.io/oauth/token/`
-- Scope: `event:read`
+- Scope: `event:read org:read project:read`
 - Callback: `/api/oauth/callback/sentry`
 
 ## Security properties
