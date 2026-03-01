@@ -182,21 +182,23 @@ export async function GET(
     return new Response("Token exchange failed", { status: 500 });
   }
 
-  const tokenData = (await tokenResponse.json()) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-  };
+  const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
 
-  if (!tokenData.access_token || !tokenData.refresh_token || !tokenData.expires_in) {
+  if (
+    !tokenData.access_token ||
+    !tokenData.refresh_token ||
+    typeof tokenData.expires_in !== "number"
+  ) {
     return new Response("Token response missing required fields", { status: 500 });
   }
 
-  const expiresAt = Date.now() + tokenData.expires_in * 1000;
+  const accessToken = tokenData.access_token as string;
+  const refreshToken = tokenData.refresh_token as string;
+  const expiresAt = Date.now() + (tokenData.expires_in as number) * 1000;
   const userTokenStore = getUserTokenStore();
   await userTokenStore.set(stored.userId, provider, {
-    accessToken: tokenData.access_token,
-    refreshToken: tokenData.refresh_token,
+    accessToken,
+    refreshToken,
     expiresAt
   });
 
