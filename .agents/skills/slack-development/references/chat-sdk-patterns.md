@@ -28,7 +28,28 @@ Implementation patterns for responsive Slack UX in Chat SDK based bots.
 
 1. `thread.startTyping(...)` for typing/status feedback.
 2. Native stream support through `thread.post(asyncIterable)` on Slack.
-3. Optional Assistants API status features when `assistant:write` and assistant events are configured.
+3. `thread.postEphemeral(user, message, { fallbackToDM })` for messages visible only to one user.
+4. Optional Assistants API status features when `assistant:write` and assistant events are configured.
+
+## Ephemeral messages
+
+The Chat SDK supports ephemeral messages natively via `thread.postEphemeral()`:
+
+```typescript
+await thread.postEphemeral(userId, { raw: "Only you can see this" }, { fallbackToDM: false });
+```
+
+- `user`: Slack user ID (string) or `Author` object.
+- `message`: `AdapterPostableMessage` — use `{ raw: "..." }` for mrkdwn or `{ markdown: "..." }` for auto-converted markdown.
+- `options.fallbackToDM`: If `true`, sends a DM when the platform doesn't support ephemeral. If `false`, returns `null`.
+- Returns `EphemeralMessage | null`.
+
+Use ephemeral messages for:
+- OAuth authorization links (contain user-specific tokens — should not be visible to other channel members).
+- Confirmation/error messages that are only relevant to one user.
+- Sensitive information that shouldn't persist in thread history.
+
+Note: Ephemeral messages are only available when you have a thread handle (e.g. in `onNewMention`/`onSubscribedMessage` handlers). Host-side code without a thread handle (like jr-rpc command handlers or OAuth callback routes) must use `SLACK_BOT_TOKEN` with direct `chat.postEphemeral`/`chat.postMessage` API calls instead.
 
 ## Integration notes for this repository
 

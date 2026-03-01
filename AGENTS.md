@@ -10,6 +10,7 @@ Co-Authored-By: (agent model name) <email>
 ```
 
 ## Key Conventions
+- Load `slack-development` skill before implementing or modifying Slack-facing behavior (message formatting, ephemeral messages, thread routing, streaming UX, Chat SDK patterns).
 - Commit to `main` only.
 - Use `/commit` skill for any commit operation.
 - Use `/create-pr` skill for any PR creation operation.
@@ -31,6 +32,7 @@ Co-Authored-By: (agent model name) <email>
 ## Known Specs
 - `specs/security-policy.md` (global runtime/container/token security policy)
 - `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
+- `specs/oauth-flows.md` (OAuth authorization code flow + Slack UX contract)
 - `specs/harness-agent-spec.md` (agent loop and output contract)
 - `specs/logging/index.md` (logging/tracing spec index)
 - `specs/agent-stability-evaluation.md` (known stability risks and mitigations)

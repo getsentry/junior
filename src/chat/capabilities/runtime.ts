@@ -12,6 +12,7 @@ import type { Skill } from "@/chat/skills";
 export class SkillCapabilityRuntime {
   private readonly router: CapabilityCredentialRouter;
   private readonly invocationArgs?: string;
+  private readonly requesterId?: string;
   private readonly resolveConfiguration?: (key: string) => Promise<unknown>;
   private readonly enabledByCapability = new Map<string, { expiresAtMs: number; transforms: CredentialHeaderTransform[] }>();
 
@@ -19,6 +20,7 @@ export class SkillCapabilityRuntime {
     broker?: CredentialBroker;
     router?: CapabilityCredentialRouter;
     invocationArgs?: string;
+    requesterId?: string;
     resolveConfiguration?: (key: string) => Promise<unknown>;
   }) {
     if (params.router) {
@@ -31,6 +33,7 @@ export class SkillCapabilityRuntime {
       throw new Error("SkillCapabilityRuntime requires either router or broker");
     }
     this.invocationArgs = params.invocationArgs;
+    this.requesterId = params.requesterId;
     this.resolveConfiguration = params.resolveConfiguration;
   }
 
@@ -122,7 +125,8 @@ export class SkillCapabilityRuntime {
     return await this.router.issue({
       capability: input.capability,
       target,
-      reason: input.reason
+      reason: input.reason,
+      requesterId: this.requesterId
     });
   }
 

@@ -26,6 +26,16 @@ const CAPABILITY_PROVIDERS: CapabilityProviderDefinition[] = [
       type: "repo",
       configKey: "github.repo"
     }
+  },
+  {
+    provider: "sentry",
+    capabilities: [
+      "sentry.issues.read",
+      "sentry.events.read",
+      "sentry.replays.read"
+    ],
+    configKeys: ["sentry.org", "sentry.project"]
+    // no target — token is org-scoped, not project-scoped
   }
 ];
 

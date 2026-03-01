@@ -7,6 +7,7 @@ export interface CapabilityCredentialRouter {
     capability: string;
     target?: CapabilityTarget;
     reason: string;
+    requesterId?: string;
   }): Promise<CredentialLease>;
 }
 
@@ -21,6 +22,7 @@ export class ProviderCredentialRouter implements CapabilityCredentialRouter {
     capability: string;
     target?: CapabilityTarget;
     reason: string;
+    requesterId?: string;
   }): Promise<CredentialLease> {
     const provider = getCapabilityProvider(input.capability)?.provider;
     if (!provider) {

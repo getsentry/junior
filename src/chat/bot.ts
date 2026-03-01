@@ -29,7 +29,7 @@ import { createChannelConfigurationService } from "@/chat/configuration/service"
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { truncateStatusText } from "@/chat/status-format";
 import { lookupSlackUser } from "@/chat/slack-user";
-import { createStateAdapter } from "@/chat/state";
+import { getStateAdapter } from "@/chat/state";
 import { completeObject, completeText, GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { listThreadReplies } from "@/chat/slack-actions/channel";
 import { downloadPrivateSlackFile, uploadFilesToThread } from "@/chat/slack-actions/client";
@@ -1197,7 +1197,7 @@ export const bot = new Chat({
   adapters: {
     slack: createSlackAdapter()
   },
-  state: createStateAdapter()
+  state: getStateAdapter()
 });
 
 interface ThreadTurnHandle extends AppRuntimeThreadHandle {

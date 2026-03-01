@@ -54,6 +54,18 @@ This policy applies to:
 - Sign App JWT on host, then exchange for installation token.
 - Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
 
+### Sentry baseline
+
+- Use per-user OAuth tokens via Authorization Code Grant (RFC 6749 §4.1).
+- Tokens are per Slack user ID, stored via `UserTokenStore` interface (Redis-backed `StateAdapterTokenStore`).
+- Keep `SENTRY_OAUTH_CLIENT_SECRET` on host only.
+- Token exchange and storage happen server-side in the OAuth callback handler — the agent never sees token values.
+- Refresh tokens on host, deliver short-lived access tokens via header transforms.
+- Fall back to static `SENTRY_AUTH_TOKEN` env var for dev/testing only.
+- Inject `Authorization` header transform for `sentry.io` domain.
+- Inject `SENTRY_AUTH_TOKEN` in lease env for CLI consumption.
+- See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
+
 ## Logging and redaction policy
 
 - Never log token values, private keys, or raw Authorization headers.

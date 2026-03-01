@@ -36,7 +36,7 @@ function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
   };
 }
 
-export function createStateAdapter() {
+function createStateAdapter() {
   if (!hasRedisConfig()) {
     throw new Error("REDIS_URL is required for durable Slack thread state");
   }
@@ -45,4 +45,13 @@ export function createStateAdapter() {
     url: process.env.REDIS_URL
   });
   return createQueuedStateAdapter(redisState);
+}
+
+let _stateAdapter: StateAdapter | undefined;
+
+export function getStateAdapter(): StateAdapter {
+  if (!_stateAdapter) {
+    _stateAdapter = createStateAdapter();
+  }
+  return _stateAdapter;
 }

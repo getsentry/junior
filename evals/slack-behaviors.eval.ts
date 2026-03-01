@@ -104,6 +104,17 @@ describe("Slack Behavior Evals", () => {
 
   const defaultRepoThread = { id: "thread-default-repo", channel_id: "C-default-repo", thread_ts: "17000000.default-repo" };
 
+  slackEval("sentry capability credential smoke", {
+    behavior: { skill_dirs: ["evals/skills"], enable_test_credentials: true, test_credential_token: "eval-sentry-token" },
+    events: [mention("/sentry-credential-smoke")],
+    assert: (result) => {
+      expect(result.posts).toHaveLength(1);
+      expect(result.turns.flatMap((t) => t.tool_calls)).toContain("bash");
+      expect(result.posts[0]).toContain("CREDENTIAL_OK");
+    },
+    criteria: "Runs bash with test credentials for Sentry and outputs CREDENTIAL_OK.",
+  });
+
   slackEval("set default repo via natural language", {
     behavior: { enable_test_credentials: true, test_credential_token: "eval-default-repo-token" },
     events: [
