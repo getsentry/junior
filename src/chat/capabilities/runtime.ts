@@ -146,19 +146,6 @@ export class SkillCapabilityRuntime {
         }));
     }
 
-    // Backwards-compatible fallback while brokers migrate to explicit header transforms.
-    const githubToken = lease.env.GITHUB_TOKEN?.trim();
-    if (lease.provider === "github" && githubToken) {
-      return [
-        {
-          domain: "api.github.com",
-          headers: {
-            Authorization: `Bearer ${githubToken}`
-          }
-        }
-      ];
-    }
-
     return [];
   }
 

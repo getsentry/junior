@@ -35,7 +35,7 @@ describe("github credential broker", () => {
     });
 
     expect(lease.provider).toBe("github");
-    expect(lease.env).toEqual({ GITHUB_TOKEN: "issued-token" });
+    expect(lease.env).toEqual({ GITHUB_TOKEN: "ghp_host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
       {
         domain: "api.github.com",
@@ -128,7 +128,13 @@ describe("github credential broker", () => {
       reason: "test:cache:second"
     });
 
-    expect(first.env.GITHUB_TOKEN).not.toBe(second.env.GITHUB_TOKEN);
+    // Both leases use the same placeholder — real tokens are only in headerTransforms.
+    expect(first.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
+    expect(second.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
+    // Verify distinct tokens were issued (visible only in headerTransforms).
+    expect(first.headerTransforms![0].headers.Authorization).not.toBe(
+      second.headerTransforms![0].headers.Authorization
+    );
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 

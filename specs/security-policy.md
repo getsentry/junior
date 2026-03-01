@@ -51,9 +51,11 @@ This policy applies to:
 ### GitHub baseline
 
 - Use GitHub App installation auth.
-- Keep `GITHUB_APP_PRIVATE_KEY` on host only.
+- Keep `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` on host only.
 - Sign App JWT on host, then exchange for installation token.
 - Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
+- Inject `Authorization` header transform for `api.github.com` domain.
+- Set `GITHUB_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
 
 ### Sentry baseline
 

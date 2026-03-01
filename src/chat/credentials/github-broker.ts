@@ -7,6 +7,11 @@ import type { CredentialBroker, CredentialLease } from "@/chat/credentials/broke
 const API_BASE = "https://api.github.com";
 const MAX_LEASE_MS = 60 * 60 * 1000;
 
+// Dummy env value so CLI tools that check for GITHUB_TOKEN don't fail with
+// "missing auth". The real token is delivered only via headerTransforms — the
+// harness proxies it at the HTTP layer and the sandbox never sees the real value.
+const GITHUB_TOKEN_PLACEHOLDER = "ghp_host_managed_credential";
+
 type CachedInstallationToken = {
   installationId: number;
   token: string;
@@ -184,7 +189,7 @@ export class GitHubCredentialBroker implements CredentialBroker {
         id: randomUUID(),
         provider: "github",
         capability: input.capability,
-        env: { GITHUB_TOKEN: cached.token },
+        env: { GITHUB_TOKEN: GITHUB_TOKEN_PLACEHOLDER },
         headerTransforms: [
           {
             domain: "api.github.com",
@@ -232,7 +237,7 @@ export class GitHubCredentialBroker implements CredentialBroker {
       id: randomUUID(),
       provider: "github",
       capability: input.capability,
-      env: { GITHUB_TOKEN: accessTokenResponse.token },
+      env: { GITHUB_TOKEN: GITHUB_TOKEN_PLACEHOLDER },
       headerTransforms: [
         {
           domain: "api.github.com",
