@@ -1,3 +1,6 @@
+// Slack assistant.threads.setStatus enforces a 50-char limit on the status field.
+export const SLACK_STATUS_MAX_LENGTH = 50;
+
 export function truncateStatusText(text: string, maxLength: number): string {
   const trimmed = text.trim();
   if (!trimmed) {

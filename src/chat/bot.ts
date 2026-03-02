@@ -26,7 +26,7 @@ import {
 import { parseSlackThreadId, resolveSlackChannelIdFromMessage } from "@/chat/slack-context";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { truncateStatusText } from "@/chat/status-format";
+import { SLACK_STATUS_MAX_LENGTH, truncateStatusText } from "@/chat/status-format";
 import { handleSlashCommand } from "@/chat/slash-command";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { getStateAdapter } from "@/chat/state";
@@ -118,8 +118,6 @@ function getSlackAdapter(): SlackAdapter {
 }
 
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
-// Slack assistant.threads.setStatus enforces a 50-char limit on the status field.
-const SLACK_LOADING_STATUS_MAX_LENGTH = 50;
 
 function createProgressReporter(thread: Pick<Thread, "startTyping">) {
   let active = false;
@@ -127,7 +125,7 @@ function createProgressReporter(thread: Pick<Thread, "startTyping">) {
   let lastStatusAt = 0;
   let pendingStatus: string | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-  const sanitizeStatus = (text: string): string => truncateStatusText(text, SLACK_LOADING_STATUS_MAX_LENGTH);
+  const sanitizeStatus = (text: string): string => truncateStatusText(text, SLACK_STATUS_MAX_LENGTH);
 
   const postStatus = async (text: string): Promise<void> => {
     currentStatus = text;

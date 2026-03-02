@@ -7,7 +7,7 @@ import { logException, logInfo } from "@/chat/observability";
 import { generateAssistantReply } from "@/chat/respond";
 import { getSlackClient } from "@/chat/slack-actions/client";
 import { getStateAdapter } from "@/chat/state";
-import { truncateStatusText } from "@/chat/status-format";
+import { SLACK_STATUS_MAX_LENGTH, truncateStatusText } from "@/chat/status-format";
 import { escapeXml } from "@/chat/xml";
 
 export const runtime = "nodejs";
@@ -51,8 +51,6 @@ async function setAssistantStatus(channelId: string, threadTs: string, status: s
 }
 
 const STATUS_DEBOUNCE_MS = 1000;
-// Slack assistant.threads.setStatus enforces a 50-char limit on the status field.
-const SLACK_STATUS_MAX_LENGTH = 50;
 
 function createDebouncedStatusPoster(channelId: string, threadTs: string) {
   let lastPostAt = 0;
