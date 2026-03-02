@@ -29,7 +29,7 @@ export async function buildHomeView(
       },
       accessory: {
         type: "button",
-        text: { type: "plain_text", text: "Disconnect" },
+        text: { type: "plain_text", text: "Unlink" },
         action_id: "app_home_disconnect",
         value: plugin.manifest.name,
         style: "danger"
