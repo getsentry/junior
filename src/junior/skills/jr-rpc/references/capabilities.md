@@ -1,6 +1,6 @@
 # Capability guidance
 
-Use capability names declared by active skill policy, for example:
+Use provider-qualified capability names:
 
 - `github.issues.read`
 - `github.issues.write`
@@ -15,6 +15,6 @@ Examples:
 
 Scoping rules:
 
-- Capability should be declared in the active skill frontmatter (`requires-capabilities`).
-- Declarations are currently soft-enforced (warn-only) and will harden later.
-- GitHub capabilities require `--repo <owner/repo>`. Sentry capabilities are org-scoped (no `--repo` needed).
+- GitHub capabilities require `--repo <owner/repo>`.
+- Sentry capabilities are org-scoped (no `--repo` needed).
+- Declare capabilities in the consuming skill's `requires-capabilities` frontmatter. Currently soft-enforced (warn-only).

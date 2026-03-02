@@ -1,44 +1,46 @@
 ---
 name: jr-rpc
-description: Manage capability credentials and OAuth flows via jr-rpc bash commands.
-requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write sentry.api
-uses-config: github.repo sentry.org sentry.project
+description: Issue capability credentials and manage OAuth flows via jr-rpc bash commands. Use when a task needs authenticated API calls, credentials are not enabled, or a user needs to connect or disconnect a provider account.
 allowed-tools: bash
 ---
 
-# jr-rpc Capability Command
+# jr-rpc
 
-Use this skill when a task needs authenticated API calls and credentials are not enabled yet.
+Enable provider credentials and manage OAuth authorization for the current agent turn.
 
 ## Credential issuance
 
+Run before any authenticated API call:
+
 `jr-rpc issue-credential <capability> [--repo <owner/repo>]`
 
-Example:
-
-`jr-rpc issue-credential github.issues.write --repo getsentry/junior`
+- GitHub capabilities require `--repo`. Sentry capabilities are org-scoped (no `--repo`).
+- On success, sandbox header transforms are applied for this turn. Do not pass raw tokens.
+- If credential issuance fails with `credential_unavailable` + `oauth_started`, relay the `message` field to the user and **stop the turn** — the callback auto-resumes the request after authorization.
 
 ## OAuth authorization
 
-`jr-rpc oauth-start <provider>` — initiate authorization code flow, returns `{ ok, authorize_url }`.
+`jr-rpc oauth-start <provider>` — start an OAuth authorization code flow.
+
+- The authorization link is delivered privately (visible only to the requesting user).
+- Returns `{ ok: true, private_delivery_sent: true }` on success.
+- If `private_delivery_sent` is false, tell the user to send a direct message and try again.
+- If the user is already connected, returns `{ ok: true, already_connected: true, message }`.
+- **Never** post or relay authorization URLs — they are security-sensitive.
 
 ## Token management
 
-`jr-rpc delete-token <provider>` — remove stored tokens for current user.
+`jr-rpc delete-token <provider>` — remove stored OAuth tokens for the current user.
 
-## Behavior
+## Configuration
 
-- `jr-rpc` runs as a bash runtime custom command.
-- Runtime lazily issues a short-lived lease for this turn and applies sandbox header transforms.
-- Raw tokens are never written into sandbox env/files.
-- OAuth flows use authorization code grant — the callback handler exchanges the code and stores tokens server-side. The agent never sees token values.
+`jr-rpc config get|set|unset|list` — read and write channel-scoped configuration values.
+
+Read `${CLAUDE_SKILL_ROOT}/references/commands.md` for full command syntax and response shapes.
+
+Read `${CLAUDE_SKILL_ROOT}/references/capabilities.md` for capability naming and scoping rules.
 
 ## Guardrails
 
-- Use provider-qualified capabilities (for example `github.issues.write`).
+- Use provider-qualified capabilities (e.g. `github.issues.write`).
 - Do not print credential values.
-
-## References
-
-- [references/commands.md](references/commands.md)
-- [references/capabilities.md](references/capabilities.md)
