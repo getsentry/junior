@@ -1649,12 +1649,24 @@ bot.onAssistantContextChanged((event: AppRuntimeAssistantLifecycleEvent) =>
 bot.onSlashCommand("/jr", handleSlashCommand);
 
 bot.onAppHomeOpened(async (event) => {
-  await publishAppHomeView(getSlackClient(), event.userId, getUserTokenStore());
+  try {
+    await publishAppHomeView(getSlackClient(), event.userId, getUserTokenStore());
+  } catch (error) {
+    logException(error, "app_home_opened_failed", {}, { "app.user_id": event.userId });
+  }
 });
 
 bot.onAction("app_home_disconnect", async (event) => {
   const provider = event.value;
   if (!provider) return;
-  await getUserTokenStore().delete(event.user.userId, provider);
-  await publishAppHomeView(getSlackClient(), event.user.userId, getUserTokenStore());
+  const userId = event.user.userId;
+  try {
+    await getUserTokenStore().delete(userId, provider);
+    await publishAppHomeView(getSlackClient(), userId, getUserTokenStore());
+  } catch (error) {
+    logException(error, "app_home_disconnect_failed", {}, {
+      "app.user_id": userId,
+      "app.credential.provider": provider
+    });
+  }
 });
