@@ -44,15 +44,30 @@ This policy applies to:
 
 - Runtime issues short-lived, scoped credentials for skill-declared capabilities.
 - Credential enablement is explicit via bash custom command `jr-rpc issue-credential <capability>`.
-- Preferred delivery is sandbox network-policy header transforms (for example Authorization on `api.github.com`).
-- Do not inject privileged tokens into sandbox command env or files.
+- Real tokens are delivered exclusively via host-level header transforms — the host proxies `Authorization` headers for matching API domains (e.g. `api.github.com`, `sentry.io`). The sandbox never sees real token values.
+- When CLI tools require an auth env var (e.g. `SENTRY_AUTH_TOKEN`), set it to a non-secret placeholder so the tool proceeds to make HTTP requests. The host authenticates those requests via header transforms.
+- Never inject real tokens into sandbox env vars, files, or command arguments.
 
 ### GitHub baseline
 
 - Use GitHub App installation auth.
-- Keep `GITHUB_APP_PRIVATE_KEY` on host only.
+- Keep `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` on host only.
 - Sign App JWT on host, then exchange for installation token.
 - Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
+- Inject `Authorization` header transform for `api.github.com` domain.
+- Set `GITHUB_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
+
+### Sentry baseline
+
+- Use per-user OAuth tokens via Authorization Code Grant (RFC 6749 §4.1).
+- Tokens are per Slack user ID, stored via `UserTokenStore` interface (Redis-backed `StateAdapterTokenStore`).
+- Keep `SENTRY_CLIENT_SECRET` on host only.
+- Token exchange and storage happen server-side in the OAuth callback handler — the agent never sees token values.
+- Refresh tokens on host, deliver short-lived access tokens via header transforms.
+- Fall back to static `SENTRY_AUTH_TOKEN` env var for dev/testing only.
+- Inject `Authorization` header transform for `sentry.io` domain.
+- Set `SENTRY_AUTH_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
+- See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
 
 ## Logging and redaction policy
 

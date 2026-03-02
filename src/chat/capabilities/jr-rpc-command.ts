@@ -1,15 +1,55 @@
+import { randomBytes } from "node:crypto";
 import { Bash, defineCommand } from "just-bash";
+import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { parseRepoTarget } from "@/chat/capabilities/target";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { logInfo } from "@/chat/observability";
 import type { Skill } from "@/chat/skills";
+import { getStateAdapter } from "@/chat/state";
+
+async function postEphemeralMessage(input: {
+  channelId?: string;
+  threadTs?: string;
+  userId: string;
+  text: string;
+}): Promise<boolean> {
+  if (!input.channelId) return false;
+  const token = process.env.SLACK_BOT_TOKEN?.trim();
+  if (!token) return false;
+
+  try {
+    const response = await fetch("https://slack.com/api/chat.postEphemeral", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        channel: input.channelId,
+        user: input.userId,
+        text: input.text,
+        ...(input.threadTs ? { thread_ts: input.threadTs } : {})
+      })
+    });
+    const data = (await response.json()) as { ok?: boolean };
+    return data.ok === true;
+  } catch {
+    return false;
+  }
+}
 
 type JrRpcDeps = {
   capabilityRuntime: SkillCapabilityRuntime;
   activeSkill: Skill | null;
   channelConfiguration?: ChannelConfigurationService;
   requesterId?: string;
+  channelId?: string;
+  threadTs?: string;
+  userMessage?: string;
+  userTokenStore?: UserTokenStore;
   onConfigurationValueChanged?: (key: string, value: unknown | undefined) => void;
 };
 
@@ -104,6 +144,35 @@ async function handleIssueCredentialCommand(
       reason: `skill:${deps.activeSkill?.name ?? "unknown"}:jr-rpc:issue-credential`
     });
   } catch (error) {
+    // Auto-start OAuth when no credentials are available for an OAuth-capable provider
+    if (error instanceof CredentialUnavailableError && OAUTH_PROVIDERS[error.provider]) {
+      const oauthResult = await startOAuthFlow(error.provider, deps);
+      if (oauthResult.ok) {
+        const providerLabel = error.provider.charAt(0).toUpperCase() + error.provider.slice(1);
+        return commandResult({
+          stdout: {
+            credential_unavailable: true,
+            oauth_started: true,
+            provider: error.provider,
+            ephemeral_sent: oauthResult.ephemeralSent,
+            message: oauthResult.ephemeralSent
+              ? `I need to connect your ${providerLabel} account first. I've sent you a private authorization link.`
+              : `I need to connect your ${providerLabel} account first. Click here to authorize: ${oauthResult.authorizeUrl}`,
+            ...(!oauthResult.ephemeralSent && oauthResult.authorizeUrl
+              ? { authorize_url: oauthResult.authorizeUrl }
+              : {})
+          },
+          exitCode: 1
+        });
+      }
+      // OAuth start failed — surface the specific misconfiguration error
+      return {
+        stdout: "",
+        stderr: `${oauthResult.error}\n`,
+        exitCode: 1
+      };
+    }
+
     return {
       stdout: "",
       stderr: `${error instanceof Error ? error.message : String(error)}\n`,
@@ -298,10 +367,216 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
   });
 }
 
+function isKnownProvider(provider: string): boolean {
+  return listCapabilityProviders().some((p) => p.provider === provider);
+}
+
+type OAuthProviderConfig = {
+  clientIdEnv: string;
+  clientSecretEnv: string;
+  authorizeEndpoint: string;
+  tokenEndpoint: string;
+  scope: string;
+  callbackPath: string;
+};
+
+const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
+  sentry: {
+    clientIdEnv: "SENTRY_CLIENT_ID",
+    clientSecretEnv: "SENTRY_CLIENT_SECRET",
+    authorizeEndpoint: "https://sentry.io/oauth/authorize/",
+    tokenEndpoint: "https://sentry.io/oauth/token/",
+    scope: "event:read org:read project:read",
+    callbackPath: "/api/oauth/callback/sentry"
+  }
+};
+
+export { OAUTH_PROVIDERS, type OAuthProviderConfig };
+
+export type OAuthStatePayload = {
+  userId: string;
+  provider: string;
+  channelId?: string;
+  threadTs?: string;
+  pendingMessage?: string;
+  configuration?: Record<string, unknown>;
+};
+
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+export function resolveBaseUrl(): string | undefined {
+  const explicit = process.env.JUNIOR_BASE_URL?.trim();
+  if (explicit) return explicit;
+  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (vercelProd) return `https://${vercelProd}`;
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) return `https://${vercelUrl}`;
+  return undefined;
+}
+
+async function startOAuthFlow(
+  provider: string,
+  deps: JrRpcDeps
+): Promise<{ ok: false; error: string } | { ok: true; ephemeralSent: boolean; authorizeUrl?: string }> {
+  const providerConfig = OAUTH_PROVIDERS[provider];
+  if (!providerConfig) {
+    return { ok: false, error: `Provider "${provider}" does not support OAuth authorization` };
+  }
+
+  if (!deps.requesterId) {
+    return { ok: false, error: "OAuth requires requester context (requesterId)" };
+  }
+
+  const clientId = process.env[providerConfig.clientIdEnv]?.trim();
+  if (!clientId) {
+    return { ok: false, error: `Missing ${providerConfig.clientIdEnv} environment variable` };
+  }
+
+  const baseUrl = resolveBaseUrl();
+  if (!baseUrl) {
+    return { ok: false, error: "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)" };
+  }
+
+  // Snapshot channel configuration so the resumed turn has context
+  let configuration: Record<string, unknown> | undefined;
+  if (deps.userMessage && deps.channelConfiguration) {
+    configuration = await deps.channelConfiguration.resolveValues();
+  }
+
+  const state = randomBytes(32).toString("hex");
+  const stateKey = `oauth-state:${state}`;
+  const stateAdapter = getStateAdapter();
+  const statePayload: OAuthStatePayload = {
+    userId: deps.requesterId,
+    provider,
+    ...(deps.channelId ? { channelId: deps.channelId } : {}),
+    ...(deps.threadTs ? { threadTs: deps.threadTs } : {}),
+    ...(deps.userMessage ? { pendingMessage: deps.userMessage } : {}),
+    ...(configuration && Object.keys(configuration).length > 0 ? { configuration } : {})
+  };
+  await stateAdapter.set(stateKey, statePayload, OAUTH_STATE_TTL_MS);
+
+  const redirectUri = `${baseUrl}${providerConfig.callbackPath}`;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    scope: providerConfig.scope,
+    state,
+    redirect_uri: redirectUri,
+    response_type: "code"
+  });
+  const authorizeUrl = `${providerConfig.authorizeEndpoint}?${params.toString()}`;
+
+  logInfo(
+    "jr_rpc_oauth_start",
+    {},
+    {
+      "app.credential.provider": provider,
+      ...(deps.activeSkill?.name ? { "app.skill.name": deps.activeSkill.name } : {})
+    },
+    "Initiated OAuth authorization code flow via jr-rpc"
+  );
+
+  const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
+  const ephemeralSent = await postEphemeralMessage({
+    channelId: deps.channelId,
+    threadTs: deps.threadTs,
+    userId: deps.requesterId,
+    text: `<${authorizeUrl}|Click here to connect your ${providerLabel} account>. Once you've authorized, you'll see a confirmation in this thread.`
+  });
+
+  return { ok: true, ephemeralSent, ...(!ephemeralSent ? { authorizeUrl } : {}) };
+}
+
+async function handleOAuthStartCommand(
+  args: string[],
+  deps: JrRpcDeps
+): Promise<ReturnType<typeof commandResult>> {
+  const provider = (args[0] ?? "").trim();
+  if (!provider) {
+    return commandResult({
+      stderr: "jr-rpc oauth-start requires: <provider>\n",
+      exitCode: 2
+    });
+  }
+
+  if (args.length > 1) {
+    return commandResult({
+      stderr: "jr-rpc oauth-start accepts only a provider argument\n",
+      exitCode: 2
+    });
+  }
+
+  // Explicit oauth-start must not store pendingMessage — the auth request
+  // itself is the intent, and auto-resuming "/sentry auth" would loop.
+  const result = await startOAuthFlow(provider, { ...deps, userMessage: undefined });
+  if (!result.ok) {
+    return commandResult({ stderr: `${result.error}\n`, exitCode: 1 });
+  }
+
+  return commandResult({
+    stdout: {
+      ok: true,
+      ephemeral_sent: result.ephemeralSent,
+      ...(!result.ephemeralSent && result.authorizeUrl ? { authorize_url: result.authorizeUrl } : {})
+    },
+    exitCode: 0
+  });
+}
+
+async function handleDeleteTokenCommand(
+  args: string[],
+  deps: JrRpcDeps
+): Promise<ReturnType<typeof commandResult>> {
+  const provider = (args[0] ?? "").trim();
+  if (!provider) {
+    return commandResult({
+      stderr: "jr-rpc delete-token requires: <provider>\n",
+      exitCode: 2
+    });
+  }
+  if (!isKnownProvider(provider)) {
+    return commandResult({
+      stderr: `Unknown provider: ${provider}\n`,
+      exitCode: 2
+    });
+  }
+  if (!deps.requesterId) {
+    return commandResult({
+      stderr: "jr-rpc delete-token requires requester context (requesterId)\n",
+      exitCode: 1
+    });
+  }
+  if (!deps.userTokenStore) {
+    return commandResult({
+      stderr: "Token storage is not available\n",
+      exitCode: 1
+    });
+  }
+
+  await deps.userTokenStore.delete(deps.requesterId, provider);
+
+  logInfo(
+    "jr_rpc_delete_token",
+    {},
+    {
+      "app.credential.provider": provider,
+      ...(deps.activeSkill?.name ? { "app.skill.name": deps.activeSkill.name } : {})
+    },
+    "Deleted user token via jr-rpc"
+  );
+
+  return commandResult({
+    stdout: `token_deleted provider=${provider}\n`,
+    exitCode: 0
+  });
+}
+
 function createJrRpcCommand(deps: JrRpcDeps) {
   return defineCommand("jr-rpc", async (args) => {
     const usage = [
       "jr-rpc issue-credential <capability> [--repo <owner/repo>]",
+      "jr-rpc oauth-start <provider>",
+      "jr-rpc delete-token <provider>",
       "jr-rpc config get <key>",
       "jr-rpc config set <key> <value> [--json]",
       "jr-rpc config unset <key>",
@@ -310,6 +585,12 @@ function createJrRpcCommand(deps: JrRpcDeps) {
     const verb = (args[0] ?? "").trim();
     if (verb === "issue-credential") {
       return handleIssueCredentialCommand(args.slice(1), deps);
+    }
+    if (verb === "oauth-start") {
+      return handleOAuthStartCommand(args.slice(1), deps);
+    }
+    if (verb === "delete-token") {
+      return handleDeleteTokenCommand(args.slice(1), deps);
     }
     if (verb === "config") {
       return handleConfigCommand(args.slice(1), deps);

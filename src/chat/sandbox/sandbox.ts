@@ -47,6 +47,7 @@ interface ToolExecutors {
       domain: string;
       headers: Record<string, string>;
     }>;
+    env?: Record<string, string>;
   }) => Promise<{ stdout: string; stderr: string; exitCode: number; stdoutTruncated: boolean; stderrTruncated: boolean }>;
   readFile: (input: { path: string }) => Promise<{ content: string }>;
   writeFile: (input: { path: string; content: string }) => Promise<{ success: boolean }>;
@@ -469,11 +470,19 @@ export function createSandboxExecutor(options?: {
         }
 
         const pathPrefix = `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`;
+        const envExports = input.env
+          ? Object.entries(input.env)
+              .map(([key, value]) => `export ${key}='${value.replace(/'/g, "'\\''")}'`)
+              .join(" && ")
+          : "";
+        const preamble = envExports
+          ? `export PATH="${pathPrefix}" && ${envExports}`
+          : `export PATH="${pathPrefix}"`;
         let commandError: unknown;
         try {
           const commandResult = await activeSandbox.runCommand({
             cmd: "bash",
-            args: ["-c", `export PATH="${pathPrefix}" && ${input.command}`],
+            args: ["-c", `${preamble} && ${input.command}`],
             cwd: SANDBOX_WORKSPACE_ROOT
           });
           const maxOutputLength = Number.parseInt(process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "", 10);
@@ -574,6 +583,15 @@ export function createSandboxExecutor(options?: {
             }))
             .filter((transform) => transform.domain.length > 0 && Object.keys(transform.headers).length > 0)
         : undefined;
+      const envInput = rawInput.env;
+      const env =
+        envInput && typeof envInput === "object" && !Array.isArray(envInput)
+          ? Object.fromEntries(
+              Object.entries(envInput as Record<string, unknown>)
+                .filter(([, value]) => typeof value === "string")
+                .map(([key, value]) => [key, value as string])
+            )
+          : undefined;
 
       const executeBash = (await getToolExecutors()).bash;
       const result = await withSandboxSpan(
@@ -584,7 +602,7 @@ export function createSandboxExecutor(options?: {
         },
           async () => {
             try {
-              const response = await executeBash({ command, ...(headerTransforms ? { headerTransforms } : {}) });
+              const response = await executeBash({ command, ...(headerTransforms ? { headerTransforms } : {}), ...(env ? { env } : {}) });
               setSpanAttributes({
                 "process.exit.code": response.exitCode,
                 "app.sandbox.stdout_bytes": Buffer.byteLength(response.stdout ?? "", "utf8"),

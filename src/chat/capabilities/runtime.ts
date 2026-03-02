@@ -12,13 +12,15 @@ import type { Skill } from "@/chat/skills";
 export class SkillCapabilityRuntime {
   private readonly router: CapabilityCredentialRouter;
   private readonly invocationArgs?: string;
+  private readonly requesterId?: string;
   private readonly resolveConfiguration?: (key: string) => Promise<unknown>;
-  private readonly enabledByCapability = new Map<string, { expiresAtMs: number; transforms: CredentialHeaderTransform[] }>();
+  private readonly enabledByCapability = new Map<string, { expiresAtMs: number; transforms: CredentialHeaderTransform[]; env: Record<string, string> }>();
 
   constructor(params: {
     broker?: CredentialBroker;
     router?: CapabilityCredentialRouter;
     invocationArgs?: string;
+    requesterId?: string;
     resolveConfiguration?: (key: string) => Promise<unknown>;
   }) {
     if (params.router) {
@@ -31,6 +33,7 @@ export class SkillCapabilityRuntime {
       throw new Error("SkillCapabilityRuntime requires either router or broker");
     }
     this.invocationArgs = params.invocationArgs;
+    this.requesterId = params.requesterId;
     this.resolveConfiguration = params.resolveConfiguration;
   }
 
@@ -122,7 +125,8 @@ export class SkillCapabilityRuntime {
     return await this.router.issue({
       capability: input.capability,
       target,
-      reason: input.reason
+      reason: input.reason,
+      requesterId: this.requesterId
     });
   }
 
@@ -140,19 +144,6 @@ export class SkillCapabilityRuntime {
           domain: transform.domain.trim(),
           headers: transform.headers
         }));
-    }
-
-    // Backwards-compatible fallback while brokers migrate to explicit header transforms.
-    const githubToken = lease.env.GITHUB_TOKEN?.trim();
-    if (lease.provider === "github" && githubToken) {
-      return [
-        {
-          domain: "api.github.com",
-          headers: {
-            Authorization: `Bearer ${githubToken}`
-          }
-        }
-      ];
     }
 
     return [];
@@ -232,7 +223,8 @@ export class SkillCapabilityRuntime {
       }
       this.enabledByCapability.set(cacheKey, {
         expiresAtMs,
-        transforms
+        transforms,
+        env: lease.env
       });
       logInfo(
         "credential_issue_success",
@@ -273,5 +265,18 @@ export class SkillCapabilityRuntime {
       headerTransforms.push(...entry.transforms);
     }
     return headerTransforms.length > 0 ? headerTransforms : undefined;
+  }
+
+  getTurnEnv(): Record<string, string> | undefined {
+    const now = Date.now();
+    const env: Record<string, string> = {};
+    for (const [capability, entry] of this.enabledByCapability.entries()) {
+      if (!Number.isFinite(entry.expiresAtMs) || entry.expiresAtMs <= now) {
+        this.enabledByCapability.delete(capability);
+        continue;
+      }
+      Object.assign(env, entry.env);
+    }
+    return Object.keys(env).length > 0 ? env : undefined;
   }
 }

@@ -85,6 +85,38 @@ Rules:
 - Runtime cache can reuse a lease in memory.
 - Current cap: at most 1 hour lease window.
 
+## Sentry profile
+
+### Capabilities
+
+- `sentry.issues.read`
+- `sentry.events.read`
+- `sentry.replays.read`
+
+### Issuance flow
+
+1. Broker checks for per-user OAuth token (stored by Slack user ID via `UserTokenStore`).
+2. If stored token is near expiry, refreshes via Sentry token endpoint (`grant_type=refresh_token`).
+3. Falls back to static `SENTRY_AUTH_TOKEN` env var for dev/testing/CI.
+4. Runtime applies `Authorization` header transform for `sentry.io`.
+5. Lease env includes `SENTRY_AUTH_TOKEN` for CLI consumption.
+
+### OAuth authorization code flow
+
+- Auth initiated by `/sentry auth` command.
+- Uses Authorization Code Grant (RFC 6749 §4.1) via `jr-rpc oauth-start sentry`.
+- Callback handler at `/api/oauth/callback/sentry` exchanges code for tokens server-side.
+- Tokens stored per Slack user ID via `StateAdapterTokenStore` (Redis-backed).
+- Agent never sees token values — only receives `authorize_url` to post to the user.
+- Requires `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET` on host.
+- See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
+
+### Lease behavior
+
+- Prefer short-lived token leases.
+- Current cap: at most 1 hour lease window (or remaining token TTL, whichever is shorter).
+- Per-user tokens refreshed when within 5 minutes of expiry.
+
 ## Observability
 
 Emit events without secret material:
@@ -99,7 +131,6 @@ Emit events without secret material:
 ## Non-goals
 
 - External policy/config systems for capability allowlists.
-- Persistent token stores.
 - Multi-provider policy engines.
 
 ## Backward compatibility

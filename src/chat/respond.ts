@@ -15,7 +15,7 @@ import {
   type ObservabilityContext
 } from "@/chat/observability";
 import { buildSystemPrompt } from "@/chat/prompt";
-import { createSkillCapabilityRuntime } from "@/chat/capabilities/factory";
+import { createSkillCapabilityRuntime, getUserTokenStore } from "@/chat/capabilities/factory";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
@@ -463,6 +463,8 @@ function createAgentTools(
 
             const injectedHeaders =
               toolName === "bash" ? capabilityRuntime?.getTurnHeaderTransforms() : undefined;
+            const injectedEnv =
+              toolName === "bash" ? capabilityRuntime?.getTurnEnv() : undefined;
             const bashCommand =
               toolName === "bash" && typeof parsed.command === "string" ? parsed.command.trim() : "";
             const isCustomBashCommand = toolName === "bash" && /^jr-rpc(?:\s|$)/.test(bashCommand);
@@ -482,15 +484,17 @@ function createAgentTools(
               );
             }
 
+            const hasBashCredentials = injectedHeaders || injectedEnv;
             const result =
               sandboxExecutor?.canExecute(toolName)
                 ? await sandboxExecutor.execute({
                     toolName,
                     input:
-                      toolName === "bash" && injectedHeaders
+                      toolName === "bash" && hasBashCredentials
                         ? {
                             ...parsed,
-                            headerTransforms: injectedHeaders
+                            ...(injectedHeaders ? { headerTransforms: injectedHeaders } : {}),
+                            ...(injectedEnv ? { env: injectedEnv } : {})
                           }
                         : parsed
                   })
@@ -588,6 +592,7 @@ export async function generateAssistantReply(
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
     const capabilityRuntime = createSkillCapabilityRuntime({
       invocationArgs: explicitInvocation?.args,
+      requesterId: context.requester?.userId,
       resolveConfiguration: async (key) => configurationValues[key]
     });
     const sandboxExecutor = createSandboxExecutor({
@@ -599,6 +604,10 @@ export async function generateAssistantReply(
           activeSkill: skillSandbox.getActiveSkill(),
           channelConfiguration: context.channelConfiguration,
           requesterId: context.requester?.userId,
+          channelId: context.correlation?.channelId,
+          threadTs: context.correlation?.threadTs,
+          userMessage: userInput,
+          userTokenStore: getUserTokenStore(),
           onConfigurationValueChanged: (key, value) => {
             if (value === undefined) {
               delete configurationValues[key];
