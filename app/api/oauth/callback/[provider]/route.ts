@@ -52,7 +52,6 @@ async function setAssistantStatus(channelId: string, threadTs: string, status: s
 }
 
 const STATUS_DEBOUNCE_MS = 1000;
-const SLACK_STATUS_MAX_LENGTH = 100;
 
 function createDebouncedStatusPoster(channelId: string, threadTs: string) {
   let lastPostAt = 0;
@@ -73,7 +72,7 @@ function createDebouncedStatusPoster(channelId: string, threadTs: string) {
 
   const post = async (status: string) => {
     if (stopped) return;
-    const truncated = truncateStatusText(status, SLACK_STATUS_MAX_LENGTH);
+    const truncated = truncateStatusText(status);
     if (!truncated || truncated === currentStatus) return;
 
     const now = Date.now();

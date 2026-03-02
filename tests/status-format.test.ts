@@ -9,7 +9,7 @@ import {
 
 describe("status formatting", () => {
   it("truncates long status text with ellipsis", () => {
-    expect(truncateStatusText("  abcdefghijk  ", 10)).toBe("abcdefg...");
+    expect(truncateStatusText("  " + "x".repeat(60) + "  ")).toBe("x".repeat(47) + "...");
   });
 
   it("extracts filename from unix and windows paths", () => {
