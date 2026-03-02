@@ -7,7 +7,7 @@ Draft
 ## Related
 
 - [Security Policy](./security-policy.md)
-- [Provider Catalog Spec](./providers/catalog-spec.md)
+- Provider Catalog: `src/chat/capabilities/catalog.ts`
 
 ## Purpose
 

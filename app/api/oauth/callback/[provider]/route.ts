@@ -9,6 +9,24 @@ import { getStateAdapter } from "@/chat/state";
 
 export const runtime = "nodejs";
 
+function htmlErrorResponse(title: string, message: string, status: number): Response {
+  const html = `<!DOCTYPE html>
+<html>
+<head><title>${title}</title></head>
+<body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
+  <div style="text-align: center; max-width: 480px;">
+    <h1>${title}</h1>
+    <p>${message}</p>
+    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack to try again.</p>
+  </div>
+</body>
+</html>`;
+  return new Response(html, {
+    status,
+    headers: { "Content-Type": "text/html; charset=utf-8" }
+  });
+}
+
 async function postSlackMessage(channelId: string, threadTs: string, text: string): Promise<void> {
   const token = process.env.SLACK_BOT_TOKEN?.trim();
   if (!token) return;
@@ -123,7 +141,7 @@ export async function GET(
   const { provider } = await context.params;
   const providerConfig = OAUTH_PROVIDERS[provider];
   if (!providerConfig) {
-    return new Response("Unknown OAuth provider", { status: 404 });
+    return htmlErrorResponse("Unknown provider", "The OAuth provider in this link is not recognized.", 404);
   }
 
   const url = new URL(request.url);
@@ -131,18 +149,22 @@ export async function GET(
   const state = url.searchParams.get("state");
 
   if (!code || !state) {
-    return new Response("Missing code or state parameter", { status: 400 });
+    return htmlErrorResponse("Invalid request", "This authorization link is missing required parameters.", 400);
   }
 
   const stateAdapter = getStateAdapter();
   const stateKey = `oauth-state:${state}`;
   const stored = await stateAdapter.get<OAuthStatePayload>(stateKey);
   if (!stored) {
-    return new Response("Invalid or expired OAuth state", { status: 400 });
+    return htmlErrorResponse(
+      "Link expired",
+      "This authorization link has expired. Return to Slack and run the auth command again to get a new link.",
+      400
+    );
   }
 
   if (stored.provider !== provider) {
-    return new Response("OAuth state provider mismatch", { status: 400 });
+    return htmlErrorResponse("Provider mismatch", "This authorization link does not match the expected provider.", 400);
   }
 
   // Delete state key (one-time use)
@@ -151,12 +173,12 @@ export async function GET(
   const clientId = process.env[providerConfig.clientIdEnv]?.trim();
   const clientSecret = process.env[providerConfig.clientSecretEnv]?.trim();
   if (!clientId || !clientSecret) {
-    return new Response("OAuth client credentials not configured", { status: 500 });
+    return htmlErrorResponse("Configuration error", "OAuth client credentials are not configured on the server.", 500);
   }
 
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
-    return new Response("Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)", { status: 500 });
+    return htmlErrorResponse("Configuration error", "The server cannot determine its base URL.", 500);
   }
 
   const redirectUri = `${baseUrl}${providerConfig.callbackPath}`;
@@ -175,11 +197,11 @@ export async function GET(
       })
     });
   } catch {
-    return new Response("Failed to exchange authorization code", { status: 500 });
+    return htmlErrorResponse("Connection failed", "Failed to exchange the authorization code. Please try again.", 500);
   }
 
   if (!tokenResponse.ok) {
-    return new Response("Token exchange failed", { status: 500 });
+    return htmlErrorResponse("Connection failed", "The token exchange with the provider failed. Please try again.", 500);
   }
 
   const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
@@ -189,7 +211,7 @@ export async function GET(
     !tokenData.refresh_token ||
     typeof tokenData.expires_in !== "number"
   ) {
-    return new Response("Token response missing required fields", { status: 500 });
+    return htmlErrorResponse("Connection failed", "The provider returned an incomplete token response. Please try again.", 500);
   }
 
   const accessToken = tokenData.access_token as string;

@@ -18,13 +18,14 @@ export class TestCredentialBroker implements CredentialBroker {
 
     const domain = isSentry ? "sentry.io" : "api.github.com";
     const envKey = isSentry ? "SENTRY_AUTH_TOKEN" : "GITHUB_TOKEN";
+    const placeholder = isSentry ? "sntrys_test_managed_credential" : "ghp_test_managed_credential";
 
     return {
       id: randomUUID(),
       provider: "test",
       capability: input.capability,
       env: {
-        [envKey]: token
+        [envKey]: placeholder
       },
       headerTransforms: [
         {

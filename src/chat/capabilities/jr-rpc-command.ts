@@ -6,7 +6,7 @@ import { parseRepoTarget } from "@/chat/capabilities/target";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import { logInfo } from "@/chat/observability";
+import { logInfo, logWarn } from "@/chat/observability";
 import type { Skill } from "@/chat/skills";
 import { getStateAdapter } from "@/chat/state";
 
@@ -16,9 +16,15 @@ async function postEphemeralMessage(input: {
   userId: string;
   text: string;
 }): Promise<boolean> {
-  if (!input.channelId) return false;
+  if (!input.channelId) {
+    logWarn("oauth_ephemeral_skip", {}, { "app.reason": "missing_channel_id" }, "Skipped ephemeral message — no channelId");
+    return false;
+  }
   const token = process.env.SLACK_BOT_TOKEN?.trim();
-  if (!token) return false;
+  if (!token) {
+    logWarn("oauth_ephemeral_skip", {}, { "app.reason": "missing_bot_token" }, "Skipped ephemeral message — no SLACK_BOT_TOKEN");
+    return false;
+  }
 
   try {
     const response = await fetch("https://slack.com/api/chat.postEphemeral", {
@@ -34,9 +40,23 @@ async function postEphemeralMessage(input: {
         ...(input.threadTs ? { thread_ts: input.threadTs } : {})
       })
     });
-    const data = (await response.json()) as { ok?: boolean };
+    const data = (await response.json()) as { ok?: boolean; error?: string };
+    if (!data.ok) {
+      logWarn(
+        "oauth_ephemeral_failed",
+        {},
+        { "app.slack.error": data.error ?? "unknown", "app.slack.channel": input.channelId },
+        "Ephemeral message delivery failed"
+      );
+    }
     return data.ok === true;
-  } catch {
+  } catch (error) {
+    logWarn(
+      "oauth_ephemeral_error",
+      {},
+      { "error.message": error instanceof Error ? error.message : String(error) },
+      "Ephemeral message delivery threw an exception"
+    );
     return false;
   }
 }
@@ -368,7 +388,7 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
 }
 
 function isKnownProvider(provider: string): boolean {
-  return listCapabilityProviders().some((p) => p.provider === provider);
+  return listCapabilityProviders().some((p) => p.provider === provider) || Boolean(OAUTH_PROVIDERS[provider]);
 }
 
 type OAuthProviderConfig = {
@@ -504,6 +524,23 @@ async function handleOAuthStartCommand(
       stderr: "jr-rpc oauth-start accepts only a provider argument\n",
       exitCode: 2
     });
+  }
+
+  // Check if user already has valid tokens for this provider
+  if (deps.requesterId && deps.userTokenStore) {
+    const stored = await deps.userTokenStore.get(deps.requesterId, provider);
+    if (stored && stored.expiresAt > Date.now()) {
+      const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
+      return commandResult({
+        stdout: {
+          ok: true,
+          already_connected: true,
+          provider,
+          message: `Your ${providerLabel} account is already connected.`
+        },
+        exitCode: 0
+      });
+    }
   }
 
   // Explicit oauth-start must not store pendingMessage — the auth request

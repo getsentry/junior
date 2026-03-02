@@ -6,6 +6,7 @@ import { slackOutputPolicy } from "@/chat/output";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
+import { escapeXml } from "@/chat/xml";
 
 function loadSoul(): string {
   const soulPath = path.join(process.cwd(), "src", "chat", "SOUL.md");
@@ -17,15 +18,6 @@ function loadSoul(): string {
 }
 
 export const JUNIOR_PERSONALITY = loadSoul();
-
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
 
 function workspaceSkillDir(skillName: string): string {
   return sandboxSkillDir(skillName);

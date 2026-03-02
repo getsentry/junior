@@ -17,6 +17,7 @@ import type {
   ThreadConversationState
 } from "@/chat/conversation-state";
 import { logException, logInfo, logWarn, toOptionalString, withSpan } from "@/chat/observability";
+import { escapeXml } from "@/chat/xml";
 import { buildSlackOutputMessage } from "@/chat/output";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import {
@@ -94,15 +95,6 @@ function stripLeadingBotMention(
   next = next.replace(mentionByLabeledEntityRe, "").trim();
 
   return next;
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
 }
 
 function getThreadId(thread: unknown, _message: unknown): string | undefined {

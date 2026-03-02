@@ -48,7 +48,6 @@ export class SkillCapabilityRuntime {
       return explicitTarget;
     }
     const inferredTarget = extractCapabilityTarget({
-      commandText: "",
       invocationArgs: this.invocationArgs
     });
     if (inferredTarget) {

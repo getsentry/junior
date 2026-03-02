@@ -30,12 +30,14 @@ function extractRepoRef(text: string): { owner: string; repo: string } | undefin
 }
 
 export function extractCapabilityTarget(params: {
-  commandText: string;
+  commandText?: string;
   invocationArgs?: string;
 }): CapabilityTarget | undefined {
-  const commandRepo = extractRepoRef(params.commandText);
-  if (commandRepo) {
-    return commandRepo;
+  if (params.commandText) {
+    const commandRepo = extractRepoRef(params.commandText);
+    if (commandRepo) {
+      return commandRepo;
+    }
   }
 
   if (params.invocationArgs) {

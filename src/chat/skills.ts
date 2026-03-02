@@ -3,6 +3,7 @@ import path from "node:path";
 import { isKnownCapability, isKnownConfigKey } from "@/chat/capabilities/catalog";
 import { logWarn } from "@/chat/observability";
 import { parseAndValidateSkillFrontmatter, stripFrontmatter } from "@/chat/skill-frontmatter";
+import { escapeXml } from "@/chat/xml";
 
 const SKILL_CACHE_TTL_MS = 5000;
 
@@ -28,15 +29,6 @@ let skillCache: { expiresAt: number; skills: SkillMetadata[] } | null = null;
 
 export function resetSkillDiscoveryCache(): void {
   skillCache = null;
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
 }
 
 function resolveSkillRoots(): string[] {

@@ -24,6 +24,7 @@ Use this skill for `/sentry` workflows in the harness.
 - Sandbox runtime applies scoped Authorization headers for this turn.
 - Do not pass raw tokens into the sandbox.
 - If credential issuance fails with `credential_unavailable` + `oauth_started`, relay the `message` from the result to the user and **stop the turn** — the callback will automatically resume the request after they authorize.
+- If a Sentry API call returns 401 or 403 after credentials were issued, the user's token may lack access for the requested org. Run `jr-rpc delete-token sentry` to clear the stale token, then run `jr-rpc issue-credential sentry.issues.read` again to trigger a fresh OAuth flow. Do not ask the user to run a command manually — the system handles re-authorization automatically.
 
 3. Execute via CLI:
 - Use `npx @sentry/cli <command>` for structured queries.
