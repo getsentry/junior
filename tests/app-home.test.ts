@@ -24,7 +24,7 @@ const expiredToken: StoredTokens = {
 };
 
 describe("buildHomeView", () => {
-  it("shows connected oauth-bearer provider with Disconnect button", async () => {
+  it("shows connected oauth-bearer provider with Unlink button", async () => {
     const store = createMockTokenStore({ sentry: validToken });
     const view = await buildHomeView("U123", store);
 
