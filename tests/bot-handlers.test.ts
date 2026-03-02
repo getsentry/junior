@@ -4,19 +4,28 @@ import { FakeSlackAdapter, createTestThread, createTestMessage } from "./fixture
 // ── Module mocks (required for bot.ts module-level initialization) ───
 
 vi.mock("chat", () => {
-  class MockChat {
-    onNewMention() {}
-    onSubscribedMessage() {}
-    onAssistantThreadStarted() {}
-    onAssistantContextChanged() {}
-    getAdapter() {
-      return {
-        setAssistantTitle: async () => undefined,
-        setSuggestedPrompts: async () => undefined
-      };
-    }
+  // Auto-stub any method the Chat class is expected to have so the mock
+  // doesn't break every time bot.ts registers a new handler.
+  function Chat() {
+    return new Proxy(
+      {
+        getAdapter() {
+          return {
+            setAssistantTitle: async () => undefined,
+            setSuggestedPrompts: async () => undefined
+          };
+        }
+      } as Record<string, unknown>,
+      {
+        get(target, prop: string) {
+          if (prop in target) return target[prop];
+          target[prop] = () => {};
+          return target[prop];
+        }
+      }
+    );
   }
-  return { Chat: MockChat };
+  return { Chat };
 });
 
 vi.mock("@chat-adapter/slack", () => ({

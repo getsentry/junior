@@ -5,6 +5,7 @@ import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logException, logInfo } from "@/chat/observability";
 import { generateAssistantReply } from "@/chat/respond";
+import { publishAppHomeView } from "@/chat/app-home";
 import { getSlackClient } from "@/chat/slack-actions/client";
 import { getStateAdapter } from "@/chat/state";
 import { truncateStatusText } from "@/chat/status-format";
@@ -315,6 +316,12 @@ export async function GET(
     accessToken,
     refreshToken,
     expiresAt
+  });
+
+  // Refresh App Home to reflect the new connection
+  after(async () => {
+    try { await publishAppHomeView(getSlackClient(), stored.userId, userTokenStore); }
+    catch { /* best effort */ }
   });
 
   if (stored.pendingMessage && stored.channelId && stored.threadTs) {
