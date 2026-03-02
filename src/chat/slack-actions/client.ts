@@ -141,6 +141,21 @@ export function getSlackClient(): WebClient {
   return getClient();
 }
 
+/**
+ * Slack channel ID prefixes:
+ * - C: public channel
+ * - G: private channel / group DM
+ * - D: direct message (1:1)
+ */
+export function isDmChannel(channelId: string): boolean {
+  return channelId.startsWith("D");
+}
+
+export function isConversationChannel(channelId: string | undefined): boolean {
+  if (!channelId) return false;
+  return channelId.startsWith("C") || channelId.startsWith("G") || channelId.startsWith("D");
+}
+
 export async function getFilePermalink(fileId: string): Promise<string | undefined> {
   const client = getClient();
   const response = await withSlackRetries(() =>
