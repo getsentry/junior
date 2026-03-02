@@ -7,9 +7,9 @@ import {
   parseSkillInvocation,
   resetSkillDiscoveryCache,
   renderActiveSkillsXml,
-  renderSkillMetadataXml,
-  renderSkillsHarnessXml
+  renderSkillMetadataXml
 } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import * as observability from "@/chat/observability";
 
 async function writeSkillFile(rootDir: string, name: string, lines: string[]): Promise<void> {
@@ -17,6 +17,11 @@ async function writeSkillFile(rootDir: string, name: string, lines: string[]): P
   await fs.mkdir(skillDir, { recursive: true });
   await fs.writeFile(path.join(skillDir, "SKILL.md"), lines.join("\n"), "utf8");
 }
+
+const stubSkills: SkillMetadata[] = [
+  { name: "brief", description: "Candidate brief", skillPath: "/tmp/brief" },
+  { name: "sum", description: "Summarize", skillPath: "/tmp/sum" }
+];
 
 describe("skills", () => {
   it("discovers valid skills from the default skills directory", async () => {
@@ -30,21 +35,29 @@ describe("skills", () => {
   });
 
   it("parses skill invocation by slash command", () => {
-    expect(parseSkillInvocation("/brief github: octocat")).toEqual({
+    expect(parseSkillInvocation("/brief github: octocat", stubSkills)).toEqual({
       skillName: "brief",
       args: "github: octocat"
     });
   });
 
   it("does not parse invocation without slash command", () => {
-    expect(parseSkillInvocation("please summarize this candidate")).toBeNull();
+    expect(parseSkillInvocation("please summarize this candidate", stubSkills)).toBeNull();
   });
 
   it("parses slash tokens anywhere in the message", () => {
-    expect(parseSkillInvocation("hey /brief github: octocat")).toEqual({
+    expect(parseSkillInvocation("hey /brief github: octocat", stubSkills)).toEqual({
       skillName: "brief",
       args: "github: octocat"
     });
+  });
+
+  it("returns null for unregistered slash command", () => {
+    expect(parseSkillInvocation("/jr link sentry", stubSkills)).toBeNull();
+  });
+
+  it("returns null when no skills are available", () => {
+    expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
   });
 
   it("renders available and active skill XML blocks", () => {
@@ -64,20 +77,12 @@ describe("skills", () => {
         body: "# Instructions"
       }
     ]);
-    const harnessXml = renderSkillsHarnessXml([
-      {
-        name: "brief",
-        description: "Candidate brief profiles",
-        skillPath: "/tmp/brief"
-      }
-    ]);
 
     expect(metadataXml).toContain("<available_skills>");
     expect(metadataXml).toContain("&lt;profiles&gt;");
     expect(metadataXml).toContain("&amp; references");
     expect(metadataXml).toContain("<location>/tmp/brief/SKILL.md</location>");
     expect(activeXml).toContain("<active_skills>");
-    expect(harnessXml).toContain("<skills>");
   });
 
   it("skips skills with unknown capability/config metadata and logs warnings", async () => {
