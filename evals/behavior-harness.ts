@@ -1,8 +1,5 @@
 import path from "node:path";
-import {
-  type AppRuntimeAssistantLifecycleEvent,
-  type AppRuntimeThreadHandle
-} from "@/chat/app-runtime";
+import type { AppRuntimeAssistantLifecycleEvent } from "@/chat/app-runtime";
 import { parseSlackThreadId } from "@/chat/slack-context";
 import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
 import { generateAssistantReply } from "@/chat/respond";
@@ -105,7 +102,7 @@ class FakeSlackAdapter {
 
 }
 
-class FakeThread implements AppRuntimeThreadHandle {
+class FakeThread {
   readonly channel?: {
     state: Promise<Record<string, unknown>>;
     setState: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
