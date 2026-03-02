@@ -118,7 +118,8 @@ function getSlackAdapter(): SlackAdapter {
 }
 
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
-const SLACK_LOADING_STATUS_MAX_LENGTH = 100;
+// Slack assistant.threads.setStatus enforces a 50-char limit on the status field.
+const SLACK_LOADING_STATUS_MAX_LENGTH = 50;
 
 function createProgressReporter(thread: Pick<Thread, "startTyping">) {
   let active = false;

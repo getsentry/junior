@@ -51,7 +51,8 @@ async function setAssistantStatus(channelId: string, threadTs: string, status: s
 }
 
 const STATUS_DEBOUNCE_MS = 1000;
-const SLACK_STATUS_MAX_LENGTH = 100;
+// Slack assistant.threads.setStatus enforces a 50-char limit on the status field.
+const SLACK_STATUS_MAX_LENGTH = 50;
 
 function createDebouncedStatusPoster(channelId: string, threadTs: string) {
   let lastPostAt = 0;
