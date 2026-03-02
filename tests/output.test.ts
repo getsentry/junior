@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSlackOutputMessage, ensureBlockSpacing, slackOutputPolicy } from "@/chat/output";
+import { createNormalizingStream } from "@/chat/bot";
 
 describe("buildSlackOutputMessage", () => {
   it("returns inline markdown for short content", () => {
@@ -87,5 +88,50 @@ describe("ensureBlockSpacing", () => {
 
   it("handles bullet list with •", () => {
     expect(ensureBlockSpacing("intro\n• a\n• b")).toBe("intro\n\n• a\n• b");
+  });
+});
+
+async function collectStream(stream: AsyncIterable<string>): Promise<string> {
+  let result = "";
+  for await (const chunk of stream) {
+    result += chunk;
+  }
+  return result;
+}
+
+async function* chunksToIterable(chunks: string[]): AsyncIterable<string> {
+  for (const chunk of chunks) {
+    yield chunk;
+  }
+}
+
+describe("createNormalizingStream", () => {
+  it("produces same result as direct normalization", async () => {
+    const chunks = ["Hello\n", "World\n"];
+    const stream = createNormalizingStream(chunksToIterable(chunks), ensureBlockSpacing);
+    const result = await collectStream(stream);
+    expect(result).toBe(ensureBlockSpacing("Hello\nWorld\n"));
+  });
+
+  it("handles partial list item across chunk boundary", async () => {
+    // "-" alone is not a list item, but "- b" is
+    const chunks = ["- a\n-", " b"];
+    const stream = createNormalizingStream(chunksToIterable(chunks), ensureBlockSpacing);
+    const result = await collectStream(stream);
+    expect(result).toBe(ensureBlockSpacing("- a\n- b"));
+  });
+
+  it("handles code fence split across chunks", async () => {
+    const chunks = ["text\n`", "``\ncode\n```\nmore"];
+    const stream = createNormalizingStream(chunksToIterable(chunks), ensureBlockSpacing);
+    const result = await collectStream(stream);
+    expect(result).toBe(ensureBlockSpacing("text\n```\ncode\n```\nmore"));
+  });
+
+  it("flushes final incomplete line", async () => {
+    const chunks = ["hello"];
+    const stream = createNormalizingStream(chunksToIterable(chunks), ensureBlockSpacing);
+    const result = await collectStream(stream);
+    expect(result).toBe("hello");
   });
 });

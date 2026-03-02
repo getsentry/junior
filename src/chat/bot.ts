@@ -243,7 +243,7 @@ function createTextStreamBridge() {
 }
 
 
-function createNormalizingStream(
+export function createNormalizingStream(
   inner: AsyncIterable<string>,
   normalize: (text: string) => string
 ): AsyncIterable<string> {
@@ -253,9 +253,20 @@ function createNormalizingStream(
       let emitted = 0;
       for await (const chunk of inner) {
         accumulated += chunk;
-        const normalized = normalize(accumulated);
+        // Only normalize up to the last complete line to avoid corruption
+        // when a partial line changes meaning as more characters arrive
+        const lastNewline = accumulated.lastIndexOf("\n");
+        const stable = lastNewline === -1 ? "" : accumulated.slice(0, lastNewline + 1);
+        if (!stable) continue;
+        const normalized = normalize(stable);
         const delta = normalized.slice(emitted);
         emitted = normalized.length;
+        if (delta) yield delta;
+      }
+      // Flush remaining text (final incomplete line)
+      if (accumulated) {
+        const normalized = normalize(accumulated);
+        const delta = normalized.slice(emitted);
         if (delta) yield delta;
       }
     }
