@@ -368,7 +368,7 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
 }
 
 function isKnownProvider(provider: string): boolean {
-  return listCapabilityProviders().some((p) => p.provider === provider);
+  return listCapabilityProviders().some((p) => p.provider === provider) || Boolean(OAUTH_PROVIDERS[provider]);
 }
 
 type OAuthProviderConfig = {
@@ -504,6 +504,23 @@ async function handleOAuthStartCommand(
       stderr: "jr-rpc oauth-start accepts only a provider argument\n",
       exitCode: 2
     });
+  }
+
+  // Check if user already has valid tokens for this provider
+  if (deps.requesterId && deps.userTokenStore) {
+    const stored = await deps.userTokenStore.get(deps.requesterId, provider);
+    if (stored && stored.expiresAt > Date.now()) {
+      const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
+      return commandResult({
+        stdout: {
+          ok: true,
+          already_connected: true,
+          provider,
+          message: `Your ${providerLabel} account is already connected.`
+        },
+        exitCode: 0
+      });
+    }
   }
 
   // Explicit oauth-start must not store pendingMessage — the auth request
