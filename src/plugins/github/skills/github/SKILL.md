@@ -35,16 +35,18 @@ Use this skill for `/github` workflows in the harness. Issues are the primary su
 - Keep content short and scannable.
 - Do not add acceptance-criteria checklists unless explicitly requested.
 - Include concerns only when material risk, uncertainty, or dependency exists.
+- Generalize conversation context: replace user names, slash-command invocations, channel references, and session-specific fragments with the underlying technical problem. The issue must be actionable without access to the originating conversation.
+- Include code snippets when they clarify the problem pattern or proposed change.
+- Cross-reference related issues and PRs when they provide context.
 
 4. Enforce concise usability limits:
 - Title must be specific and outcome-oriented.
 - Title hard max: 60 characters. Target: 40-60.
 - If user-provided title exceeds 60 characters, rewrite concisely while preserving intent.
-- Body caps:
+- Body guidelines:
   - Summary max 3 sentences.
-  - Max 4 bullets per section.
-  - One sentence per bullet.
-  - Target issue body length: 350 words or fewer.
+  - Prefer concise sections but use as many bullets, steps, or rows as the problem requires.
+  - Include code snippets, tables, or numbered steps when they add clarity.
 
 5. Research and verify factual claims:
 - Follow [references/research-rules.md](references/research-rules.md).

@@ -1,30 +1,88 @@
-# High-Quality Issue Examples
+# Issue Examples
 
-Use examples to shape structure and clarity, not to copy wording.
+Calibrate structure and depth by comparing good and bad patterns.
 
-## Example links
+## Bug example
 
-- Sentry JavaScript: https://github.com/getsentry/sentry-javascript/issues/19529
+Bad title: "Error in auth"
+Good title: "OAuth token refresh fails during long-running operations"
 
-## What to emulate
+Bad summary:
+> Something is broken with auth tokens. Users are seeing errors.
 
-- Title is specific and scannable.
-- Summary explains the problem or goal in one short paragraph.
-- Analysis is concrete and evidence-backed.
-- Scope/impact is explicit.
-- Unknowns are called out instead of guessed.
-- Sources are linked for factual claims.
-- Concerns are included only when material.
+Good summary:
+> The SDK sets a dedup key before acquiring the per-thread lock. When the lock is contended, the message is permanently lost because the dedup slot is already consumed.
 
-## Negative calibration
+Bad structure — generic catch-all:
+> ## Analysis
+> - There's an auth error
+> - It happens sometimes
+> - We should fix it
 
-- `getsentry/sentry-mcp#817` is a calibration anti-pattern only.
-- Do not mirror overlong issue bodies.
-- Do not present speculative fixes as certain.
+Good structure — problem-specific sections:
+> ## Root cause
+> The dedup key is set *before* the lock is attempted. When a second message arrives...
+>
+> ## Reproduction
+> 1. Two users @-mention the bot in the same thread while processing
+> 2. First message acquires the lock
+> 3. Second message sets its dedup key, fails lock acquisition
+>
+> ## Expected behavior
+> Either:
+> - **Option A**: Acquire lock before setting dedup key
+> - **Option B**: Clear dedup key on lock failure
+>
+> ## Workaround
+> Retry wrapper that catches LockError and clears the dedup key (PR #32).
 
-## How to apply in `/github`
+## Task example
 
-1. Build content from the type-specific template selected by `issue-template.md`.
-2. Run `issue-quality-checklist.md` before posting.
-3. If essential content is missing, add it before create/update.
-4. Keep it concise and within title/body caps.
+Bad title: "Clean up some code"
+Good title: "Remove 7 monkey-patches made unnecessary by SDK v2.1"
+
+Bad scope:
+> We have some patches we should clean up.
+
+Good scope — quantified and specific:
+> We maintain patches on **8 of 9 `process*` methods**. 7 exist solely because the SDK lacks `runInBackground` support. The 8th has two additional behavioral fixes.
+>
+> | Method | Patch reason |
+> |--------|-------------|
+> | `processReaction` | scheduling only |
+> | `processAction` | scheduling only |
+> | `processMessage` | scheduling + thread ID normalization + lock retry |
+
+## Feature example
+
+Bad framing:
+> It would be nice to have better config reloading.
+
+Good framing — current state, gap, options:
+> ## Current behavior
+> Workers read config at startup. Changes require a full restart.
+>
+> ## Gap
+> Config changes during incidents require redeploying, adding 2-3 minutes to mitigation.
+>
+> ## Options
+> | Approach | Tradeoff |
+> |----------|----------|
+> | File watch + hot reload | Simple, but no atomicity guarantee |
+> | Config service with polling | Consistent, but adds a dependency |
+
+## Principles
+
+- Use problem-specific headings, not generic labels
+- Include code snippets when they clarify the pattern
+- Quantify scope precisely ("8 of 9", not "many")
+- Cross-reference related issues and PRs
+- Show concrete options with tradeoffs, not vague "should be fixed"
+- Use tables for structured comparisons
+
+## Anti-patterns
+
+- Overlong, sprawling body with no clear sections
+- Confident fix claims without root-cause evidence
+- Speculative detail mixed into verified facts
+- Session-specific content (user names, slash commands, channel references)

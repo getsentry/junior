@@ -1,18 +1,15 @@
 # Task Issue Template
 
-Keep concise. Remove empty sections.
+Use as a starting structure. Adapt headings to fit the specific task.
 
 ## Summary
 Up to 3 sentences describing the task and intended result.
 
-## Analysis
-- Goal and done-state.
-- Scope boundaries.
-- Concrete implementation steps.
-- Dependencies or risks only when material.
+## Suggested sections (use what fits, rename freely)
 
-## Sources
-- URL or repository reference when relevant.
+- **Background** — why this task exists, with code snippets showing current state
+- **Scope** — what's included and excluded, quantify when possible
+- **Implementation** — concrete steps or approach
+- **Dependencies** — related issues, PRs, or external blockers
 
-## Concerns
-- Risks or blockers only when material.
+Remove sections that don't apply. Add sections the task needs.

@@ -22,6 +22,16 @@ Propose an intentional improvement with clear current-state analysis and practic
 - at least one viable path, preferably multiple when tradeoffs are meaningful
 - include implementation and operational tradeoffs
 
+## Context Generalization
+
+When deriving feature content from conversation, generalize to the capability gap.
+
+Before (session-specific):
+> @carol mentioned in the standup thread that she has to manually restart the worker every time the config changes
+
+After (generalized):
+> Workers do not pick up config changes without a restart, requiring manual intervention
+
 ## Completion Bar
 
 A `feature` issue is ready when it has:
