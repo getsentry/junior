@@ -1,40 +1,4 @@
-import type { Attachment } from "chat";
-
-export interface AppRuntimeMessageAuthor {
-  fullName?: string;
-  isBot?: boolean | "unknown";
-  isMe: boolean;
-  userId?: string;
-  userName?: string;
-}
-
-export interface AppRuntimeIncomingMessage {
-  attachments?: Attachment[];
-  author: AppRuntimeMessageAuthor;
-  id?: string;
-  isMention?: boolean;
-  metadata?: {
-    dateSent?: Date;
-  };
-  text?: string | null;
-  threadId?: string;
-  threadTs?: string;
-  channelId?: string;
-  runId?: string;
-}
-
-export interface AppRuntimeThreadHandle {
-  id: string;
-  channelId?: string;
-  runId?: string;
-  post: (message: any) => Promise<unknown>;
-  startTyping?: (status?: string) => Promise<void>;
-  refresh?: () => Promise<void>;
-  recentMessages?: unknown[];
-  setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
-  state?: Promise<unknown | null>;
-  subscribe?: () => Promise<void>;
-}
+import type { Message, Thread } from "chat";
 
 export interface AppRuntimeAssistantLifecycleEvent {
   channelId: string;
@@ -64,16 +28,12 @@ type AppRuntimeLogContext = Record<string, unknown> & {
   workflowRunId?: string;
 };
 
-export interface AppSlackRuntimeDependencies<
-  TPreparedState,
-  TThread extends AppRuntimeThreadHandle,
-  TMessage extends AppRuntimeIncomingMessage
-> {
+export interface AppSlackRuntimeDependencies<TPreparedState> {
   assistantUserName: string;
-  getChannelId: (thread: TThread, message: TMessage) => string | undefined;
+  getChannelId: (thread: Thread, message: Message) => string | undefined;
   getPreparedConversationContext: (preparedState: TPreparedState) => string | undefined;
-  getThreadId: (thread: TThread, message: TMessage) => string | undefined;
-  getWorkflowRunId: (thread: TThread, message: TMessage) => string | undefined;
+  getThreadId: (thread: Thread, message: Message) => string | undefined;
+  getWorkflowRunId: (thread: Thread, message: Message) => string | undefined;
   initializeAssistantThread: (event: {
     channelId: string;
     threadId: string;
@@ -97,24 +57,24 @@ export interface AppSlackRuntimeDependencies<
   onSubscribedMessageSkipped: (args: {
     completedAtMs: number;
     decision: AppRuntimeReplyDecision;
-    message: TMessage;
+    message: Message;
     preparedState: TPreparedState;
-    thread: TThread;
+    thread: Thread;
   }) => Promise<void>;
   persistPreparedState: (args: {
     preparedState: TPreparedState;
-    thread: TThread;
+    thread: Thread;
   }) => Promise<void>;
   prepareTurnState: (args: {
     context: AppRuntimeThreadContext;
     explicitMention: boolean;
-    message: TMessage;
-    thread: TThread;
+    message: Message;
+    thread: Thread;
     userText: string;
   }) => Promise<TPreparedState>;
   replyToThread: (
-    thread: TThread,
-    message: TMessage,
+    thread: Thread,
+    message: Message,
     options?: {
       explicitMention?: boolean;
       preparedState?: TPreparedState;
@@ -143,18 +103,16 @@ export interface AppSlackRuntimeDependencies<
 
 export interface AppSlackRuntime<
   TPreparedState,
-  TThread extends AppRuntimeThreadHandle,
-  TMessage extends AppRuntimeIncomingMessage,
   TAssistantEvent extends AppRuntimeAssistantLifecycleEvent = AppRuntimeAssistantLifecycleEvent
 > {
   handleAssistantContextChanged: (event: TAssistantEvent) => Promise<void>;
   handleAssistantThreadStarted: (event: TAssistantEvent) => Promise<void>;
-  handleNewMention: (thread: TThread, message: TMessage) => Promise<void>;
-  handleSubscribedMessage: (thread: TThread, message: TMessage) => Promise<void>;
+  handleNewMention: (thread: Thread, message: Message) => Promise<void>;
+  handleSubscribedMessage: (thread: Thread, message: Message) => Promise<void>;
 }
 
 function buildLogContext(
-  deps: AppSlackRuntimeDependencies<unknown, AppRuntimeThreadHandle, AppRuntimeIncomingMessage>,
+  deps: Pick<AppSlackRuntimeDependencies<unknown>, "assistantUserName" | "modelId">,
   args: {
     channelId?: string;
     requesterId?: string;
@@ -174,25 +132,20 @@ function buildLogContext(
 
 export function createAppSlackRuntime<
   TPreparedState,
-  TThread extends AppRuntimeThreadHandle = AppRuntimeThreadHandle,
-  TMessage extends AppRuntimeIncomingMessage = AppRuntimeIncomingMessage,
   TAssistantEvent extends AppRuntimeAssistantLifecycleEvent = AppRuntimeAssistantLifecycleEvent
 >(
-  deps: AppSlackRuntimeDependencies<TPreparedState, TThread, TMessage>
-): AppSlackRuntime<TPreparedState, TThread, TMessage, TAssistantEvent> {
+  deps: AppSlackRuntimeDependencies<TPreparedState>
+): AppSlackRuntime<TPreparedState, TAssistantEvent> {
   const logContext = (args: {
     channelId?: string;
     requesterId?: string;
     threadId?: string;
     workflowRunId?: string;
   }): AppRuntimeLogContext =>
-    buildLogContext(
-      deps as AppSlackRuntimeDependencies<unknown, AppRuntimeThreadHandle, AppRuntimeIncomingMessage>,
-      args
-    );
+    buildLogContext(deps, args);
 
   return {
-    async handleNewMention(thread: TThread, message: TMessage): Promise<void> {
+    async handleNewMention(thread: Thread, message: Message): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
@@ -209,7 +162,7 @@ export function createAppSlackRuntime<
           "workflow.chat_turn",
           context,
           async () => {
-            await thread.subscribe?.();
+            await thread.subscribe();
             await deps.replyToThread(thread, message, {
               explicitMention: true
             });
@@ -233,12 +186,12 @@ export function createAppSlackRuntime<
       }
     },
 
-    async handleSubscribedMessage(thread: TThread, message: TMessage): Promise<void> {
+    async handleSubscribedMessage(thread: Thread, message: Message): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
         const workflowRunId = deps.getWorkflowRunId(thread, message);
-        const rawUserText = message.text ?? "";
+        const rawUserText = message.text;
         const userText = deps.stripLeadingBotMention(rawUserText, {
           stripLeadingSlackMentionToken: Boolean(message.isMention)
         });

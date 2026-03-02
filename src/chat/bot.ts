@@ -1,13 +1,11 @@
 import { Chat } from "chat";
-import type { Attachment } from "chat";
+import type { Attachment, Message, SentMessage, Thread } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { z } from "zod";
 import "@/chat/chat-background-patch";
 import {
   createAppSlackRuntime,
-  type AppRuntimeAssistantLifecycleEvent,
-  type AppRuntimeIncomingMessage,
-  type AppRuntimeThreadHandle
+  type AppRuntimeAssistantLifecycleEvent
 } from "@/chat/app-runtime";
 import { botConfig } from "@/chat/config";
 import { buildConversationStatePatch, coerceThreadConversationState } from "@/chat/conversation-state";
@@ -33,7 +31,7 @@ import { lookupSlackUser } from "@/chat/slack-user";
 import { getStateAdapter } from "@/chat/state";
 import { completeObject, completeText, GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { listThreadReplies } from "@/chat/slack-actions/channel";
-import { downloadPrivateSlackFile, uploadFilesToThread } from "@/chat/slack-actions/client";
+import { downloadPrivateSlackFile } from "@/chat/slack-actions/client";
 
 interface BotDeps {
   completeObject: typeof completeObject;
@@ -42,7 +40,6 @@ interface BotDeps {
   generateAssistantReply: typeof generateAssistantReplyImpl;
   listThreadReplies: typeof listThreadReplies;
   lookupSlackUser: typeof lookupSlackUser;
-  uploadFilesToThread: typeof uploadFilesToThread;
 }
 
 const defaultBotDeps: BotDeps = {
@@ -51,8 +48,7 @@ const defaultBotDeps: BotDeps = {
   downloadPrivateSlackFile,
   generateAssistantReply: generateAssistantReplyImpl,
   listThreadReplies,
-  lookupSlackUser,
-  uploadFilesToThread
+  lookupSlackUser
 };
 
 let botDeps: BotDeps = defaultBotDeps;
@@ -97,19 +93,19 @@ function stripLeadingBotMention(
   return next;
 }
 
-function getThreadId(thread: unknown, _message: unknown): string | undefined {
-  return toOptionalString((thread as { id?: unknown }).id);
+function getThreadId(thread: Thread, _message: Message): string | undefined {
+  return toOptionalString(thread.id);
 }
 
-function getWorkflowRunId(thread: unknown, message: unknown): string | undefined {
+function getWorkflowRunId(thread: Thread, message: Message): string | undefined {
   return (
-    toOptionalString((thread as { runId?: unknown }).runId) ??
-    toOptionalString((message as { runId?: unknown }).runId)
+    toOptionalString((thread as unknown as { runId?: unknown }).runId) ??
+    toOptionalString((message as unknown as { runId?: unknown }).runId)
   );
 }
 
-function getChannelId(thread: unknown, message: unknown): string | undefined {
-  return (thread as { channelId?: string }).channelId ?? resolveSlackChannelIdFromMessage(message);
+function getChannelId(thread: Thread, message: Message): string | undefined {
+  return thread.channelId ?? resolveSlackChannelIdFromMessage(message);
 }
 
 function getThreadTs(threadId: string | undefined): string | undefined {
@@ -117,13 +113,13 @@ function getThreadTs(threadId: string | undefined): string | undefined {
 }
 
 function getSlackAdapter(): SlackAdapter {
-  return bot.getAdapter("slack") as SlackAdapter;
+  return bot.getAdapter("slack");
 }
 
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
 const SLACK_LOADING_STATUS_MAX_LENGTH = 100;
 
-function createProgressReporter(thread: { startTyping?: (status?: string) => Promise<void> }) {
+function createProgressReporter(thread: Pick<Thread, "startTyping">) {
   let active = false;
   let currentStatus = "";
   let lastStatusAt = 0;
@@ -135,7 +131,7 @@ function createProgressReporter(thread: { startTyping?: (status?: string) => Pro
     currentStatus = text;
     lastStatusAt = Date.now();
     try {
-      await thread.startTyping?.(text);
+      await thread.startTyping(text);
     } catch {
       // Best effort only.
     }
@@ -172,7 +168,7 @@ function createProgressReporter(thread: { startTyping?: (status?: string) => Pro
       active = false;
       clearPending();
       try {
-        await thread.startTyping?.("");
+        await thread.startTyping("");
       } catch {
         // Best effort only.
       }
@@ -246,21 +242,6 @@ function createTextStreamBridge() {
   };
 }
 
-interface ThreadMessageSnapshot {
-  id?: string;
-  text?: string | null;
-  attachments?: Attachment[];
-  metadata?: {
-    dateSent?: Date;
-  };
-  author?: {
-    userId?: string;
-    isBot?: boolean | "unknown";
-    isMe?: boolean;
-    userName?: string;
-    fullName?: string;
-  };
-}
 
 interface UserInputAttachment {
   data: Buffer;
@@ -300,10 +281,6 @@ async function resolveUserAttachments(
         data = await attachment.fetchData();
       } else if (attachment.data instanceof Buffer) {
         data = attachment.data;
-      } else if (attachment.url) {
-        const response = await fetch(attachment.url);
-        if (!response.ok) throw new Error(`attachment fetch failed: ${response.status}`);
-        data = Buffer.from(await response.arrayBuffer());
       }
 
       if (!data) continue;
@@ -660,41 +637,34 @@ async function compactConversationIfNeeded(
   }
 }
 
-function createConversationMessageFromThreadSnapshot(
-  entry: ThreadMessageSnapshot,
-  fallbackPrefix: "backfill" | "turn"
+function createConversationMessageFromSdkMessage(
+  entry: Message,
+  _fallbackPrefix: "backfill" | "turn"
 ): ConversationMessage | null {
-  const rawText = typeof entry.text === "string" ? normalizeConversationText(entry.text) : "";
+  const rawText = normalizeConversationText(entry.text);
   if (!rawText) {
     return null;
   }
 
   return {
-    id: toOptionalString(entry.id) ?? generateConversationId(fallbackPrefix),
-    role: entry.author?.isMe ? "assistant" : "user",
+    id: entry.id,
+    role: entry.author.isMe ? "assistant" : "user",
     text: rawText,
-    createdAtMs:
-      entry.metadata?.dateSent instanceof Date && Number.isFinite(entry.metadata.dateSent.getTime())
-        ? entry.metadata.dateSent.getTime()
-        : Date.now(),
+    createdAtMs: entry.metadata.dateSent.getTime(),
     author: {
-      userId: toOptionalString(entry.author?.userId),
-      userName: toOptionalString(entry.author?.userName),
-      fullName: toOptionalString(entry.author?.fullName),
-      isBot: typeof entry.author?.isBot === "boolean" ? entry.author.isBot : undefined
+      userId: entry.author.userId,
+      userName: entry.author.userName,
+      fullName: entry.author.fullName,
+      isBot: typeof entry.author.isBot === "boolean" ? entry.author.isBot : undefined
     },
     meta: {
-      slackTs: toOptionalString(entry.id)
+      slackTs: entry.id
     }
   };
 }
 
 async function seedConversationBackfill(
-  thread: {
-    messages?: AsyncIterable<ThreadMessageSnapshot>;
-    recentMessages?: ThreadMessageSnapshot[];
-    refresh?: () => Promise<void>;
-  },
+  thread: Thread,
   conversation: ThreadConversationState
 ): Promise<void> {
   if (conversation.backfill.completedAtMs) {
@@ -713,24 +683,22 @@ async function seedConversationBackfill(
   let source: "recent_messages" | "thread_fetch" = "recent_messages";
 
   try {
-    if (thread.messages) {
-      const fetchedNewestFirst: ThreadMessageSnapshot[] = [];
-      for await (const entry of thread.messages) {
-        fetchedNewestFirst.push(entry);
-        if (fetchedNewestFirst.length >= BACKFILL_MESSAGE_LIMIT) {
-          break;
-        }
+    const fetchedNewestFirst: Message[] = [];
+    for await (const entry of thread.messages) {
+      fetchedNewestFirst.push(entry);
+      if (fetchedNewestFirst.length >= BACKFILL_MESSAGE_LIMIT) {
+        break;
       }
-      fetchedNewestFirst.reverse();
-      for (const entry of fetchedNewestFirst) {
-        const message = createConversationMessageFromThreadSnapshot(entry, "backfill");
-        if (message) {
-          seeded.push(message);
-        }
+    }
+    fetchedNewestFirst.reverse();
+    for (const entry of fetchedNewestFirst) {
+      const message = createConversationMessageFromSdkMessage(entry, "backfill");
+      if (message) {
+        seeded.push(message);
       }
-      if (seeded.length > 0) {
-        source = "thread_fetch";
-      }
+    }
+    if (seeded.length > 0) {
+      source = "thread_fetch";
     }
   } catch {
     // Fallback below.
@@ -738,14 +706,14 @@ async function seedConversationBackfill(
 
   if (seeded.length === 0) {
     try {
-      await thread.refresh?.();
+      await thread.refresh();
     } catch {
       // Best effort only.
     }
 
-    const fromRecent = (thread.recentMessages ?? []).slice(-BACKFILL_MESSAGE_LIMIT);
+    const fromRecent = thread.recentMessages.slice(-BACKFILL_MESSAGE_LIMIT);
     for (const entry of fromRecent) {
-      const message = createConversationMessageFromThreadSnapshot(entry, "backfill");
+      const message = createConversationMessageFromSdkMessage(entry, "backfill");
       if (message) {
         seeded.push(message);
       }
@@ -1189,27 +1157,13 @@ async function shouldReplyInSubscribedThread(args: {
   }
 }
 
-export const bot = new Chat({
+export const bot = new Chat<{ slack: SlackAdapter }>({
   userName: botConfig.userName,
   adapters: {
     slack: createSlackAdapter()
   },
   state: getStateAdapter()
 });
-
-interface ThreadTurnHandle extends AppRuntimeThreadHandle {
-  messages?: AsyncIterable<ThreadMessageSnapshot>;
-  recentMessages?: ThreadMessageSnapshot[];
-  state?: Promise<unknown | null>;
-  channel?: {
-    state?: Promise<unknown | null>;
-    setState?: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
-  };
-}
-
-interface IncomingThreadMessage extends AppRuntimeIncomingMessage {
-  attachments?: Attachment[];
-}
 
 interface PreparedTurnState {
   artifacts: ThreadArtifactsState;
@@ -1241,17 +1195,13 @@ function mergeArtifactsState(
 }
 
 async function persistThreadState(
-  thread: ThreadTurnHandle,
+  thread: Thread,
   patch: {
     artifacts?: ThreadArtifactsState;
     conversation?: ThreadConversationState;
     sandboxId?: string;
   }
 ): Promise<void> {
-  if (!thread.setState) {
-    return;
-  }
-
   const payload: Record<string, unknown> = {};
   if (patch.artifacts) {
     Object.assign(payload, buildArtifactStatePatch(patch.artifacts));
@@ -1269,17 +1219,12 @@ async function persistThreadState(
   await thread.setState(payload);
 }
 
-function getChannelConfigurationService(thread: ThreadTurnHandle): ChannelConfigurationService | undefined {
+function getChannelConfigurationService(thread: Thread): ChannelConfigurationService {
   const channel = thread.channel;
-  if (!channel?.state || !channel.setState) {
-    return undefined;
-  }
-  const setChannelState = channel.setState.bind(channel);
-
   return createChannelConfigurationService({
-    load: async () => channel.state ?? null,
+    load: async () => channel.state,
     save: async (state) => {
-      await setChannelState({
+      await channel.setState({
         configuration: state
       });
     }
@@ -1288,8 +1233,8 @@ function getChannelConfigurationService(thread: ThreadTurnHandle): ChannelConfig
 
 async function prepareTurnState(args: {
   explicitMention: boolean;
-  message: IncomingThreadMessage;
-  thread: ThreadTurnHandle;
+  message: Message;
+  thread: Thread;
   userText: string;
   context: {
     threadId?: string;
@@ -1298,18 +1243,17 @@ async function prepareTurnState(args: {
     workflowRunId?: string;
   };
 }): Promise<PreparedTurnState> {
-  const existingState = args.thread.state ? await args.thread.state : null;
-  const existingSandboxId =
-    existingState && typeof existingState === "object"
-      ? toOptionalString((existingState as { app_sandbox_id?: unknown }).app_sandbox_id)
-      : undefined;
+  const existingState = await args.thread.state;
+  const existingSandboxId = existingState
+    ? toOptionalString((existingState as Record<string, unknown>).app_sandbox_id)
+    : undefined;
   const artifacts = coerceThreadArtifactsState(existingState);
   const conversation = coerceThreadConversationState(existingState);
   const channelConfiguration = getChannelConfigurationService(args.thread);
-  const configuration = channelConfiguration ? await channelConfiguration.resolveValues() : {};
+  const configuration = await channelConfiguration.resolveValues();
 
   await seedConversationBackfill(args.thread, conversation);
-  const messageHasPotentialImageAttachment = (args.message.attachments ?? []).some((attachment) => {
+  const messageHasPotentialImageAttachment = args.message.attachments.some((attachment) => {
     if (attachment.type === "image") {
       return true;
     }
@@ -1319,13 +1263,10 @@ async function prepareTurnState(args: {
 
   const normalizedUserText = normalizeConversationText(args.userText) || "[non-text message]";
   const incomingUserMessage: ConversationMessage = {
-    id: toOptionalString(args.message.id) ?? generateConversationId("turn"),
+    id: args.message.id,
     role: "user",
     text: normalizedUserText,
-    createdAtMs:
-      args.message.metadata?.dateSent instanceof Date && Number.isFinite(args.message.metadata.dateSent.getTime())
-        ? args.message.metadata.dateSent.getTime()
-        : Date.now(),
+    createdAtMs: args.message.metadata.dateSent.getTime(),
     author: {
       userId: args.message.author.userId,
       userName: args.message.author.userName,
@@ -1334,7 +1275,7 @@ async function prepareTurnState(args: {
     },
     meta: {
       explicitMention: args.explicitMention,
-      slackTs: toOptionalString(args.message.id),
+      slackTs: args.message.id,
       imagesHydrated: !messageHasPotentialImageAttachment
     }
   };
@@ -1393,8 +1334,8 @@ async function prepareTurnState(args: {
 }
 
 async function replyToThread(
-  thread: ThreadTurnHandle,
-  message: IncomingThreadMessage,
+  thread: Thread,
+  message: Message,
   options: {
     explicitMention?: boolean;
     preparedState?: PreparedTurnState;
@@ -1421,7 +1362,7 @@ async function replyToThread(
       modelId: botConfig.modelId
     },
     async () => {
-      const userText = stripLeadingBotMention(message.text ?? "", {
+      const userText = stripLeadingBotMention(message.text, {
         stripLeadingSlackMentionToken: options.explicitMention || Boolean(message.isMention)
       });
 
@@ -1456,7 +1397,7 @@ async function replyToThread(
 
       const progress = createProgressReporter(thread);
       const textStream = createTextStreamBridge();
-      let streamedReplyPromise: Promise<unknown> | undefined;
+      let streamedReplyPromise: Promise<SentMessage> | undefined;
       const startStreamingReply = () => {
         if (!streamedReplyPromise) {
           streamedReplyPromise = thread.post(textStream.iterable);
@@ -1566,48 +1507,11 @@ async function replyToThread(
           ? { ...reply.artifactStatePatch }
           : {};
 
+        const replyFiles = reply.files && reply.files.length > 0 ? reply.files : undefined;
         if (!streamedReplyPromise) {
-          await thread.post(buildSlackOutputMessage(reply.text));
+          await thread.post(buildSlackOutputMessage(reply.text, { files: replyFiles }));
         } else {
           await streamedReplyPromise;
-        }
-
-        if (reply.files && reply.files.length > 0 && (!channelId || !threadTs)) {
-          logWarn(
-            "file_upload_skipped_missing_context",
-            { slackThreadId: threadId },
-            { "app.file_count": reply.files.length },
-            "Generated files could not be uploaded: missing channelId or threadTs"
-          );
-        }
-
-        if (reply.files && reply.files.length > 0 && channelId && threadTs) {
-          try {
-            await botDeps.uploadFilesToThread({
-              channelId,
-              threadTs,
-              files: reply.files.map((f) => ({
-                data: Buffer.isBuffer(f.data) ? f.data : Buffer.from(f.data as ArrayBuffer),
-                filename: f.filename
-              }))
-            });
-          } catch (uploadError) {
-            logException(
-              uploadError instanceof Error ? uploadError : new Error(String(uploadError)),
-              "file_upload_failed",
-              {
-                slackThreadId: threadId,
-                slackChannelId: channelId
-              },
-              {},
-              "Failed to upload generated files to Slack thread"
-            );
-            await thread.post(
-              buildSlackOutputMessage(
-                "I generated the image but failed to upload it to this thread."
-              )
-            );
-          }
         }
 
         const shouldPersistArtifacts = Object.keys(artifactStatePatch).length > 0;
@@ -1623,6 +1527,10 @@ async function replyToThread(
           sandboxId: reply.sandboxId
         });
         persistedAtLeastOnce = true;
+
+        if (streamedReplyPromise && replyFiles) {
+          await thread.post({ markdown: "", files: replyFiles });
+        }
       } finally {
         textStream.end();
         if (!persistedAtLeastOnce) {
@@ -1658,8 +1566,6 @@ async function initializeAssistantThread(event: {
 
 export const appSlackRuntime = createAppSlackRuntime<
   PreparedTurnState,
-  ThreadTurnHandle,
-  IncomingThreadMessage,
   AppRuntimeAssistantLifecycleEvent
 >({
   assistantUserName: botConfig.userName,
