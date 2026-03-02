@@ -1654,8 +1654,7 @@ bot.onAppHomeOpened(async (event) => {
 
 bot.onAction("app_home_disconnect", async (event) => {
   const provider = event.value;
-  const userId = (event.raw as { user?: { id?: string } })?.user?.id;
-  if (!provider || !userId) return;
-  await getUserTokenStore().delete(userId, provider);
-  await publishAppHomeView(getSlackClient(), userId, getUserTokenStore());
+  if (!provider) return;
+  await getUserTokenStore().delete(event.user.userId, provider);
+  await publishAppHomeView(getSlackClient(), event.user.userId, getUserTokenStore());
 });
