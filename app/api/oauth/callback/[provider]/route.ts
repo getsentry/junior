@@ -280,7 +280,7 @@ export async function GET(
     const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
     return htmlErrorResponse(
       "Link expired",
-      `This authorization link has expired (links are valid for 10 minutes). Return to Slack and run <code>/sentry auth</code> again, or retry your original ${providerLabel} command to get a new link.`,
+      `This authorization link has expired (links are valid for 10 minutes). Return to Slack and run <code>/${provider} auth</code> again, or retry your original ${providerLabel} command to get a new link.`,
       400
     );
   }
