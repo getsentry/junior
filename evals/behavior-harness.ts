@@ -1,10 +1,10 @@
 import path from "node:path";
-import type { Message, Thread } from "chat";
+import type { Message } from "chat";
 import type { AppRuntimeAssistantLifecycleEvent } from "@/chat/app-runtime";
-import { parseSlackThreadId } from "@/chat/slack-context";
 import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
 import { generateAssistantReply } from "@/chat/respond";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
+import { FakeSlackAdapter, createTestThread, type TestThread } from "../tests/fixtures/slack-harness";
 
 interface BehaviorEventThreadFixture {
   channel_id?: string;
@@ -76,133 +76,6 @@ export interface BehaviorEvalCase {
   events: BehaviorCaseEvent[];
 }
 
-
-class FakeSlackAdapter {
-  readonly promptCalls: Array<{
-    channelId: string;
-    prompts: Array<{ message: string; title: string }>;
-    threadTs: string;
-  }> = [];
-  readonly titleCalls: Array<{
-    channelId: string;
-    threadTs: string;
-    title: string;
-  }> = [];
-
-  async setAssistantTitle(channelId: string, threadTs: string, title: string): Promise<void> {
-    this.titleCalls.push({ channelId, threadTs, title });
-  }
-
-  async setSuggestedPrompts(
-    channelId: string,
-    threadTs: string,
-    prompts: Array<{ message: string; title: string }>
-  ): Promise<void> {
-    this.promptCalls.push({ channelId, threadTs, prompts });
-  }
-
-}
-
-class FakeThread {
-  readonly channel: {
-    state: Promise<Record<string, unknown>>;
-    setState: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
-  };
-  readonly channelId: string;
-  readonly id: string;
-  readonly posts: unknown[] = [];
-  readonly recentMessages: Message[] = [];
-  readonly runId?: string;
-  readonly threadTs?: string;
-  subscribeCalls = 0;
-  subscribed = false;
-  private stateData: Record<string, unknown> = {};
-
-  constructor(args: {
-    channelStateRef?: { value: Record<string, unknown> };
-    id: string;
-    runId?: string;
-    state?: Record<string, unknown>;
-    threadTs?: string;
-  }) {
-    this.id = args.id;
-    this.channelId = parseSlackThreadId(args.id)?.channelId ?? "";
-    this.runId = args.runId;
-    this.threadTs = args.threadTs;
-    this.stateData = { ...(args.state ?? {}) };
-    const ref = args.channelStateRef ?? { value: {} };
-    this.channel = {
-      get state() {
-        return Promise.resolve(ref.value);
-      },
-      async setState(nextState: Record<string, unknown>, options?: { replace?: boolean }) {
-        if (options?.replace) {
-          ref.value = { ...nextState };
-          return;
-        }
-        ref.value = { ...ref.value, ...nextState };
-      }
-    };
-  }
-
-  get state(): Promise<Record<string, unknown>> {
-    return Promise.resolve(this.stateData);
-  }
-
-  async post(message: unknown): Promise<{ edit(newContent: unknown): Promise<unknown> }> {
-    if (
-      message &&
-      typeof message === "object" &&
-      Symbol.asyncIterator in (message as Record<PropertyKey, unknown>)
-    ) {
-      let text = "";
-      for await (const chunk of message as AsyncIterable<string>) {
-        text += chunk;
-      }
-      this.posts.push(text);
-      const self = this;
-      return {
-        async edit(newContent: unknown): Promise<unknown> {
-          self.posts.push(newContent);
-          return newContent;
-        }
-      };
-    }
-
-    this.posts.push(message);
-    return {
-      async edit(newContent: unknown): Promise<unknown> {
-        return newContent;
-      }
-    };
-  }
-
-  get messages(): AsyncIterable<never> {
-    return (async function* () {})();
-  }
-
-  async refresh(): Promise<void> {
-    // No-op for eval harness.
-  }
-
-  async startTyping(_status?: string): Promise<void> {
-    // No-op for eval harness.
-  }
-
-  async subscribe(): Promise<void> {
-    this.subscribed = true;
-    this.subscribeCalls += 1;
-  }
-
-  async setState(state: Record<string, unknown>, options?: { replace?: boolean }): Promise<void> {
-    if (options?.replace) {
-      this.stateData = { ...state };
-      return;
-    }
-    this.stateData = { ...this.stateData, ...state };
-  }
-}
-
 export interface AgentTurn {
   tool_calls: string[];
   sandbox_id: string | null;
@@ -256,7 +129,7 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
 
 export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<BehaviorCaseResult> {
   const slackAdapter = new FakeSlackAdapter();
-  const threadsById = new Map<string, FakeThread>();
+  const threadsById = new Map<string, TestThread>();
   const channelStateById = new Map<string, { value: Record<string, unknown> }>();
   const replyTexts = testCase.behavior?.reply_texts ?? [];
   const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
@@ -290,12 +163,12 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     return created;
   };
 
-  const getThread = (fixture: BehaviorEventThreadFixture): FakeThread => {
+  const getThread = (fixture: BehaviorEventThreadFixture): TestThread => {
     const existing = threadsById.get(fixture.id);
     if (existing) {
       return existing;
     }
-    const created = new FakeThread({
+    const created = createTestThread({
       id: fixture.id,
       runId: fixture.run_id,
       threadTs: fixture.thread_ts,
@@ -395,13 +268,13 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     for (const event of testCase.events) {
       if (event.type === "new_mention") {
         const thread = getThread(event.thread);
-        await appSlackRuntime.handleNewMention(thread as any, toIncomingMessage(event) as any);
+        await appSlackRuntime.handleNewMention(thread, toIncomingMessage(event) as any);
         continue;
       }
 
       if (event.type === "subscribed_message") {
         const thread = getThread(event.thread);
-        await appSlackRuntime.handleSubscribedMessage(thread as any, toIncomingMessage(event) as any);
+        await appSlackRuntime.handleSubscribedMessage(thread, toIncomingMessage(event) as any);
         continue;
       }
 
@@ -452,11 +325,8 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   };
 }
 
-// ── Compile-time guards ──────────────────────────────────────────────
-// These assertions ensure FakeThread and toIncomingMessage stay in sync
-// with the SDK's Thread and Message types. If bot.ts starts accessing a
-// new property, typecheck will fail here rather than silently at runtime.
+// Compile-time guards for Thread and Message fakes are in tests/fixtures/slack-harness.ts.
+// The toIncomingMessage function below still needs a local check since it maps from eval-specific fixtures.
 type AssertAssignable<_TSub extends TSuper, TSuper> = true;
-type _ThreadCheck = AssertAssignable<FakeThread, Pick<Thread, "id" | "channelId" | "state" | "setState" | "subscribe" | "startTyping" | "recentMessages" | "messages" | "refresh"> & { channel: Pick<Thread["channel"], "state" | "setState">; post: (...args: unknown[]) => Promise<unknown> }>;
 type _MessageCheck = AssertAssignable<ReturnType<typeof toIncomingMessage>, Pick<Message, "id" | "text" | "isMention" | "attachments" | "metadata" | "author">>;
 

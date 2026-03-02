@@ -1,0 +1,353 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  createAppSlackRuntime,
+  type AppRuntimeReplyDecision,
+  type AppSlackRuntimeDependencies
+} from "@/chat/app-runtime";
+import { createTestThread, createTestMessage } from "./fixtures/slack-harness";
+
+interface TestState {
+  prepared: boolean;
+  conversationContext?: string;
+}
+
+function createMockDeps(
+  overrides?: Partial<AppSlackRuntimeDependencies<TestState>>
+): AppSlackRuntimeDependencies<TestState> {
+  return {
+    assistantUserName: "test-bot",
+    modelId: "test-model",
+    now: () => 1700000000000,
+    getChannelId: (_thread, message) => message.threadId?.split(":")[1],
+    getThreadId: (_thread, message) => message.threadId,
+    getWorkflowRunId: () => undefined,
+    initializeAssistantThread: vi.fn().mockResolvedValue(undefined),
+    logException: vi.fn(),
+    logWarn: vi.fn(),
+    onSubscribedMessageSkipped: vi.fn().mockResolvedValue(undefined),
+    persistPreparedState: vi.fn().mockResolvedValue(undefined),
+    prepareTurnState: vi.fn().mockResolvedValue({ prepared: true } satisfies TestState),
+    replyToThread: vi.fn().mockResolvedValue(undefined),
+    shouldReplyInSubscribedThread: vi.fn().mockResolvedValue({
+      shouldReply: true,
+      reason: "test"
+    } satisfies AppRuntimeReplyDecision),
+    stripLeadingBotMention: vi.fn((text: string) => text),
+    getPreparedConversationContext: vi.fn(() => undefined),
+    withSpan: vi.fn(async (_name, _op, _ctx, cb) => cb()),
+    ...overrides
+  };
+}
+
+describe("createAppSlackRuntime", () => {
+  describe("handleNewMention", () => {
+    it("subscribes thread and calls replyToThread with explicitMention: true", async () => {
+      const deps = createMockDeps();
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({ text: "hey bot" });
+
+      await runtime.handleNewMention(thread, message);
+
+      expect(thread.subscribeCalls).toBe(1);
+      expect(deps.replyToThread).toHaveBeenCalledWith(thread, message, {
+        explicitMention: true
+      });
+    });
+
+    it("wraps call in withSpan with correct log context", async () => {
+      const deps = createMockDeps();
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({
+        author: { userId: "U-caller" }
+      });
+
+      await runtime.handleNewMention(thread, message);
+
+      expect(deps.withSpan).toHaveBeenCalledWith(
+        "workflow.chat_turn",
+        "workflow.chat_turn",
+        expect.objectContaining({
+          assistantUserName: "test-bot",
+          modelId: "test-model",
+          slackUserId: "U-caller"
+        }),
+        expect.any(Function)
+      );
+    });
+
+    it("on replyToThread failure: posts error and calls logException", async () => {
+      const replyError = new Error("reply failed");
+      const deps = createMockDeps({
+        replyToThread: vi.fn().mockRejectedValue(replyError),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb())
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({});
+
+      await runtime.handleNewMention(thread, message);
+
+      expect(deps.logException).toHaveBeenCalledWith(
+        replyError,
+        "mention_handler_failed",
+        expect.any(Object),
+        {},
+        "onNewMention failed"
+      );
+      expect(thread.posts).toContain("Error: reply failed");
+    });
+
+    it("on subscribe failure: posts error and calls logException", async () => {
+      const subscribeError = new Error("subscribe failed");
+      const deps = createMockDeps({
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb())
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      // Override subscribe to throw
+      thread.subscribe = async () => {
+        throw subscribeError;
+      };
+      const message = createTestMessage({});
+
+      await runtime.handleNewMention(thread, message);
+
+      expect(deps.logException).toHaveBeenCalledWith(
+        subscribeError,
+        "mention_handler_failed",
+        expect.any(Object),
+        {},
+        "onNewMention failed"
+      );
+      expect(thread.posts).toContain("Error: subscribe failed");
+    });
+  });
+
+  describe("handleSubscribedMessage", () => {
+    it("calls prepareTurnState → persistPreparedState → shouldReply → replyToThread in order", async () => {
+      const callOrder: string[] = [];
+      const deps = createMockDeps({
+        prepareTurnState: vi.fn(async () => {
+          callOrder.push("prepareTurnState");
+          return { prepared: true };
+        }),
+        persistPreparedState: vi.fn(async () => {
+          callOrder.push("persistPreparedState");
+        }),
+        shouldReplyInSubscribedThread: vi.fn(async () => {
+          callOrder.push("shouldReply");
+          return { shouldReply: true, reason: "test" };
+        }),
+        replyToThread: vi.fn(async () => {
+          callOrder.push("replyToThread");
+        }),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb())
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({});
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(callOrder).toEqual([
+        "prepareTurnState",
+        "persistPreparedState",
+        "shouldReply",
+        "replyToThread"
+      ]);
+    });
+
+    it("passes stripped text via stripLeadingBotMention to prepareTurnState", async () => {
+      const deps = createMockDeps({
+        stripLeadingBotMention: vi.fn(() => "stripped text"),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb())
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({ text: "<@U123> stripped text", isMention: true });
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(deps.stripLeadingBotMention).toHaveBeenCalledWith(
+        "<@U123> stripped text",
+        { stripLeadingSlackMentionToken: true }
+      );
+      expect(deps.prepareTurnState).toHaveBeenCalledWith(
+        expect.objectContaining({ userText: "stripped text" })
+      );
+    });
+
+    it("when shouldReply: false, skips replyToThread and logs skip", async () => {
+      const deps = createMockDeps({
+        shouldReplyInSubscribedThread: vi.fn(async () => ({
+          shouldReply: false,
+          reason: "passive conversation"
+        }))
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({});
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(deps.replyToThread).not.toHaveBeenCalled();
+      expect(deps.logWarn).toHaveBeenCalledWith(
+        "subscribed_message_reply_skipped",
+        expect.any(Object),
+        { "app.decision.reason": "passive conversation" },
+        "Skipping subscribed message reply"
+      );
+      expect(deps.onSubscribedMessageSkipped).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thread,
+          message,
+          decision: { shouldReply: false, reason: "passive conversation" },
+          completedAtMs: 1700000000000
+        })
+      );
+    });
+
+    it("passes conversationContext from getPreparedConversationContext to shouldReply", async () => {
+      const deps = createMockDeps({
+        getPreparedConversationContext: vi.fn(() => "some context"),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb())
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({});
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(deps.shouldReplyInSubscribedThread).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationContext: "some context" })
+      );
+    });
+
+    it("when decision reason is 'explicit mention': passes explicitMention: true to replyToThread", async () => {
+      const deps = createMockDeps({
+        shouldReplyInSubscribedThread: vi.fn(async () => ({
+          shouldReply: true,
+          reason: "explicit mention"
+        })),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb())
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({});
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(deps.replyToThread).toHaveBeenCalledWith(thread, message, {
+        explicitMention: true,
+        preparedState: { prepared: true }
+      });
+    });
+
+    it("on failure: posts error message and calls logException", async () => {
+      const err = new Error("handler boom");
+      const deps = createMockDeps({
+        prepareTurnState: vi.fn().mockRejectedValue(err)
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({});
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(deps.logException).toHaveBeenCalledWith(
+        err,
+        "subscribed_message_handler_failed",
+        expect.any(Object),
+        {},
+        "onSubscribedMessage failed"
+      );
+      expect(thread.posts).toContain("Error: handler boom");
+    });
+  });
+
+  describe("handleAssistantThreadStarted", () => {
+    it("calls initializeAssistantThread with correct fields", async () => {
+      const deps = createMockDeps();
+      const runtime = createAppSlackRuntime<TestState>(deps);
+
+      await runtime.handleAssistantThreadStarted({
+        threadId: "T-1",
+        channelId: "C-1",
+        threadTs: "1700000000.000",
+        userId: "U-1"
+      });
+
+      expect(deps.initializeAssistantThread).toHaveBeenCalledWith({
+        threadId: "T-1",
+        channelId: "C-1",
+        threadTs: "1700000000.000"
+      });
+    });
+
+    it("on failure: calls logException without posting error", async () => {
+      const err = new Error("init boom");
+      const deps = createMockDeps({
+        initializeAssistantThread: vi.fn().mockRejectedValue(err)
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+
+      await runtime.handleAssistantThreadStarted({
+        threadId: "T-1",
+        channelId: "C-1",
+        threadTs: "1700000000.000"
+      });
+
+      expect(deps.logException).toHaveBeenCalledWith(
+        err,
+        "assistant_thread_started_handler_failed",
+        expect.objectContaining({ slackThreadId: "T-1", slackChannelId: "C-1" }),
+        {},
+        "onAssistantThreadStarted failed"
+      );
+    });
+  });
+
+  describe("handleAssistantContextChanged", () => {
+    it("calls initializeAssistantThread with correct fields", async () => {
+      const deps = createMockDeps();
+      const runtime = createAppSlackRuntime<TestState>(deps);
+
+      await runtime.handleAssistantContextChanged({
+        threadId: "T-2",
+        channelId: "C-2",
+        threadTs: "1700000000.100",
+        userId: "U-2"
+      });
+
+      expect(deps.initializeAssistantThread).toHaveBeenCalledWith({
+        threadId: "T-2",
+        channelId: "C-2",
+        threadTs: "1700000000.100"
+      });
+    });
+
+    it("on failure: calls logException without posting error", async () => {
+      const err = new Error("context boom");
+      const deps = createMockDeps({
+        initializeAssistantThread: vi.fn().mockRejectedValue(err)
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+
+      await runtime.handleAssistantContextChanged({
+        threadId: "T-2",
+        channelId: "C-2",
+        threadTs: "1700000000.100"
+      });
+
+      expect(deps.logException).toHaveBeenCalledWith(
+        err,
+        "assistant_context_changed_handler_failed",
+        expect.objectContaining({ slackThreadId: "T-2", slackChannelId: "C-2" }),
+        {},
+        "onAssistantContextChanged failed"
+      );
+    });
+  });
+});
