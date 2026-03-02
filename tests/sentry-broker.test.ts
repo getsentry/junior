@@ -14,7 +14,7 @@ const SENTRY_MANIFEST: PluginManifest = {
   configKeys: ["sentry.org", "sentry.project"],
   credentials: {
     type: "oauth-bearer",
-    apiDomain: "sentry.io",
+    apiDomains: ["sentry.io", "us.sentry.io", "de.sentry.io"],
     authTokenEnv: "SENTRY_AUTH_TOKEN"
   },
   oauth: {
@@ -79,10 +79,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     expect(lease.capability).toBe("sentry.api");
     expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer user-access-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer user-access-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer user-access-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer user-access-token" } }
     ]);
   });
 
@@ -97,10 +96,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     expect(lease.provider).toBe("sentry");
     expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer static-env-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer static-env-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer static-env-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer static-env-token" } }
     ]);
   });
 
@@ -157,10 +155,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     });
 
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer new-access-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer new-access-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer new-access-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer new-access-token" } }
     ]);
 
     // Verify updated tokens were stored
@@ -194,10 +191,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     });
 
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer still-valid-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer still-valid-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer still-valid-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer still-valid-token" } }
     ]);
   });
 
@@ -285,10 +281,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       reason: "test:without-requester"
     });
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer static-env-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer static-env-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer static-env-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer static-env-token" } }
     ]);
   });
 

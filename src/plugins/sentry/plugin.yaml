@@ -10,7 +10,10 @@ config-keys:
 
 credentials:
   type: oauth-bearer
-  api-domain: sentry.io
+  api-domains:
+    - sentry.io
+    - us.sentry.io
+    - de.sentry.io
   auth-token-env: SENTRY_AUTH_TOKEN
 
 oauth:

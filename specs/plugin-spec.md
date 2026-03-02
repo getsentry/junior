@@ -55,7 +55,10 @@ config-keys:                         # short names — qualified to sentry.org, 
 
 credentials:                         # how tokens are delivered to the sandbox
   type: oauth-bearer                 # bearer token via Authorization header
-  api-domain: sentry.io              # domain for header transforms
+  api-domains:                       # domains for header transforms
+    - sentry.io
+    - us.sentry.io
+    - de.sentry.io
   auth-token-env: SENTRY_AUTH_TOKEN  # env var for static fallback + sandbox placeholder
 
 oauth:                               # optional — omit for non-OAuth providers
@@ -88,7 +91,7 @@ mcp:                                 # optional — MCP server config for tool s
 | `config-keys` | `string[]` | Short names (e.g. `org`). Qualified to `<name>.org` by the registry. |
 | `credentials` | `object` | Credential delivery configuration. |
 | `credentials.type` | `string` | Currently only `"oauth-bearer"`. |
-| `credentials.api-domain` | `string` | Domain for `Authorization: Bearer` header transforms. |
+| `credentials.api-domains` | `string[]` | Domains for `Authorization: Bearer` header transforms. At least one required. |
 | `credentials.auth-token-env` | `string` | Env var name for static token fallback and sandbox placeholder. |
 
 ### Optional fields
@@ -187,7 +190,7 @@ All existing functions (`getCapabilityProvider`, `isKnownCapability`, etc.) work
 for (const plugin of getPluginProviders()) {
   const { credentials, name } = plugin.manifest;
   brokersByProvider[name] = useTestBroker
-    ? new TestCredentialBroker({ provider: name, domain: credentials.apiDomain, envKey: credentials.authTokenEnv, placeholder: "host_managed_credential" })
+    ? new TestCredentialBroker({ provider: name, domains: credentials.apiDomains, envKey: credentials.authTokenEnv, placeholder: "host_managed_credential" })
     : createPluginBroker(name, { userTokenStore });
 }
 ```
@@ -232,7 +235,7 @@ Plugin skills are subject to the same frontmatter validation, `requires-capabili
 All existing security invariants from `security-policy.md` are preserved:
 
 - **Host-trusted code.** Plugin manifests are YAML files committed to the repository. No dynamic code loading.
-- **Credential delivery via header transforms only.** The generic broker delivers tokens as `Authorization: Bearer` headers on the declared `api-domain`. The sandbox never sees real token values.
+- **Credential delivery via header transforms only.** The generic broker delivers tokens as `Authorization: Bearer` headers on each declared `api-domains` entry. The sandbox never sees real token values.
 - **Short-lived leases.** Lease behavior is unchanged. The `CredentialLease` contract enforces expiry timestamps.
 - **No env var leakage.** Placeholder values are injected for the `auth-token-env` variable.
 - **OAuth privacy rules unchanged.** Authorization URLs are delivered privately. The agent never sees token values.
@@ -272,7 +275,8 @@ config-keys:
 
 credentials:
   type: oauth-bearer
-  api-domain: api.linear.app
+  api-domains:
+    - api.linear.app
   auth-token-env: LINEAR_API_KEY
 
 oauth:

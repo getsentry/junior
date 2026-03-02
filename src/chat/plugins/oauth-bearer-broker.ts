@@ -57,7 +57,7 @@ export function createOAuthBearerBroker(
 ): CredentialBroker {
   const provider = manifest.name;
   const supportedCapabilities = new Set(manifest.capabilities);
-  const { apiDomain, authTokenEnv } = credentials;
+  const { apiDomains, authTokenEnv } = credentials;
 
   function buildLease(token: string, capability: string, expiresAtMs: number, reason: string): CredentialLease {
     return {
@@ -65,12 +65,10 @@ export function createOAuthBearerBroker(
       provider,
       capability,
       env: { [authTokenEnv]: AUTH_TOKEN_PLACEHOLDER },
-      headerTransforms: [
-        {
-          domain: apiDomain,
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      ],
+      headerTransforms: apiDomains.map((domain) => ({
+        domain,
+        headers: { Authorization: `Bearer ${token}` }
+      })),
       expiresAt: new Date(expiresAtMs).toISOString(),
       metadata: { reason }
     };

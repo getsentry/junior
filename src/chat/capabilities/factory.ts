@@ -33,7 +33,7 @@ export function createSkillCapabilityRuntime(options: {
   // Hardcoded providers (not yet plugins)
   const brokersByProvider: Record<string, CredentialBroker> = {
     github: useTestBroker
-      ? new TestCredentialBroker({ provider: "github", domain: "api.github.com", envKey: "GITHUB_TOKEN", placeholder: "ghp_test_managed_credential" })
+      ? new TestCredentialBroker({ provider: "github", domains: ["api.github.com"], envKey: "GITHUB_TOKEN", placeholder: "ghp_test_managed_credential" })
       : new GitHubCredentialBroker()
   };
 
@@ -41,7 +41,7 @@ export function createSkillCapabilityRuntime(options: {
   for (const plugin of getPluginProviders()) {
     const { credentials, name } = plugin.manifest;
     brokersByProvider[name] = useTestBroker
-      ? new TestCredentialBroker({ provider: name, domain: credentials.apiDomain, envKey: credentials.authTokenEnv, placeholder: "host_managed_credential" })
+      ? new TestCredentialBroker({ provider: name, domains: credentials.apiDomains, envKey: credentials.authTokenEnv, placeholder: "host_managed_credential" })
       : createPluginBroker(name, { userTokenStore });
   }
 

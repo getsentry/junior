@@ -4,7 +4,7 @@ import type { CredentialBroker, CredentialLease } from "@/chat/credentials/broke
 
 export interface TestBrokerConfig {
   provider: string;
-  domain: string;
+  domains: string[];
   envKey: string;
   placeholder: string;
 }
@@ -31,14 +31,12 @@ export class TestCredentialBroker implements CredentialBroker {
       env: {
         [this.config.envKey]: this.config.placeholder
       },
-      headerTransforms: [
-        {
-          domain: this.config.domain,
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+      headerTransforms: this.config.domains.map((domain) => ({
+        domain,
+        headers: {
+          Authorization: `Bearer ${token}`
         }
-      ],
+      })),
       expiresAt,
       metadata: {
         reason: input.reason,

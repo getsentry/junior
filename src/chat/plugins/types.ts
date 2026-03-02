@@ -2,7 +2,7 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 
 export interface OAuthBearerCredentials {
   type: "oauth-bearer";
-  apiDomain: string;
+  apiDomains: string[];
   authTokenEnv: string;
 }
 

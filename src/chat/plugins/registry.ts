@@ -16,15 +16,16 @@ const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 function parseCredentials(data: Record<string, unknown>, name: string): PluginCredentials {
   const type = data.type;
   if (type === "oauth-bearer") {
-    const apiDomain = data["api-domain"];
-    if (typeof apiDomain !== "string" || !apiDomain.trim()) {
-      throw new Error(`Plugin ${name} credentials.api-domain must be a non-empty string`);
+    const rawDomains = data["api-domains"];
+    if (!Array.isArray(rawDomains) || rawDomains.length === 0 || !rawDomains.every((d) => typeof d === "string" && d.trim())) {
+      throw new Error(`Plugin ${name} credentials.api-domains must be a non-empty array of strings`);
     }
+    const apiDomains = rawDomains as string[];
     const authTokenEnv = data["auth-token-env"];
     if (typeof authTokenEnv !== "string" || !authTokenEnv.trim()) {
       throw new Error(`Plugin ${name} credentials.auth-token-env must be a non-empty string`);
     }
-    return { type: "oauth-bearer", apiDomain, authTokenEnv } satisfies OAuthBearerCredentials;
+    return { type: "oauth-bearer", apiDomains, authTokenEnv } satisfies OAuthBearerCredentials;
   }
 
   throw new Error(`Plugin ${name} has unsupported credentials.type: "${type}"`);
