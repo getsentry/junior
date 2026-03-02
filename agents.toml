@@ -39,3 +39,11 @@ source = "getsentry/skills"
 [[mcp]]
 name = "sentry"
 url = "https://mcp.sentry.dev/mcp?experimental=1"
+
+[[skills]]
+name = "chat-sdk"
+source = "vercel/chat"
+
+[[skills]]
+name = "ai-sdk"
+source = "vercel/ai"
