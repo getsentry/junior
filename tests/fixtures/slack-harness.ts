@@ -79,8 +79,10 @@ export class FakeSlackAdapter {
 
 export interface TestThread extends Thread {
   posts: unknown[];
+  runId?: string;
   subscribeCalls: number;
   subscribed: boolean;
+  threadTs?: string;
   getState: () => Record<string, unknown>;
 }
 
@@ -137,6 +139,8 @@ export function createTestThread(args: {
     adapter: stubAdapter,
     id,
     channelId,
+    runId: args.runId,
+    threadTs: args.threadTs,
     isDM: false,
     channel,
     get allMessages(): AsyncIterable<Message> {

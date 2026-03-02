@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Message, Thread } from "chat";
 import { FakeSlackAdapter, createTestThread, createTestMessage } from "./fixtures/slack-harness";
 
 // ── Module mocks (required for bot.ts module-level initialization) ───
@@ -69,9 +68,7 @@ describe("bot handlers (integration)", () => {
       listThreadReplies: async () => []
     });
 
-    const postSpy = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({ id: "slack:C_INT:1700000000.000" });
-    thread.post = postSpy as unknown as Thread["post"];
 
     await appSlackRuntime.handleNewMention(
       thread,
@@ -83,16 +80,15 @@ describe("bot handlers (integration)", () => {
       })
     );
 
-    const postArgs = postSpy.mock.calls.map((c: unknown[]) => c[0]);
-    const hasReply = postArgs.some((arg: unknown) => {
-      if (typeof arg === "string") return arg.includes("Hello from the bot!");
-      if (arg && typeof arg === "object" && "markdown" in (arg as Record<string, unknown>)) {
-        return String((arg as { markdown: string }).markdown).includes("Hello from the bot!");
+    expect(thread.posts.length).toBeGreaterThan(0);
+    const hasReply = thread.posts.some((p) => {
+      if (typeof p === "string") return p.includes("Hello from the bot!");
+      if (p && typeof p === "object" && "markdown" in (p as Record<string, unknown>)) {
+        return String((p as { markdown: string }).markdown).includes("Hello from the bot!");
       }
-      // AsyncIterable — the thread.post in createTestThread will consume it
       return false;
     });
-    expect(hasReply || postSpy.mock.calls.length > 0).toBe(true);
+    expect(hasReply).toBe(true);
   });
 
   it("handleSubscribedMessage with explicit mention: replies when should_reply is true", async () => {
@@ -118,9 +114,7 @@ describe("bot handlers (integration)", () => {
       listThreadReplies: async () => []
     });
 
-    const postSpy = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({ id: "slack:C_SUB:1700000000.000" });
-    thread.post = postSpy as unknown as Thread["post"];
 
     await appSlackRuntime.handleSubscribedMessage(
       thread,
@@ -132,7 +126,7 @@ describe("bot handlers (integration)", () => {
       })
     );
 
-    expect(postSpy.mock.calls.length).toBeGreaterThan(0);
+    expect(thread.posts.length).toBeGreaterThan(0);
   });
 
   it("handleSubscribedMessage skip: does not reply when should_reply is false", async () => {
@@ -146,9 +140,7 @@ describe("bot handlers (integration)", () => {
       listThreadReplies: async () => []
     });
 
-    const postSpy = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({ id: "slack:C_SKIP:1700000000.000" });
-    thread.post = postSpy as unknown as Thread["post"];
 
     await appSlackRuntime.handleSubscribedMessage(
       thread,
@@ -160,10 +152,9 @@ describe("bot handlers (integration)", () => {
     );
 
     // Should not have posted a reply (no generateAssistantReply call)
-    const hasReply = postSpy.mock.calls.some((call: unknown[]) => {
-      const arg = call[0];
-      if (typeof arg === "string") return !arg.startsWith("Error:");
-      if (arg && typeof arg === "object" && "markdown" in (arg as Record<string, unknown>)) return true;
+    const hasReply = thread.posts.some((p) => {
+      if (typeof p === "string") return !p.startsWith("Error:");
+      if (p && typeof p === "object" && "markdown" in (p as Record<string, unknown>)) return true;
       return false;
     });
     expect(hasReply).toBe(false);
