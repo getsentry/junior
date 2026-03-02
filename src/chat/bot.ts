@@ -1512,9 +1512,6 @@ async function replyToThread(
           await thread.post(buildSlackOutputMessage(reply.text, { files: replyFiles }));
         } else {
           await streamedReplyPromise;
-          if (replyFiles) {
-            await thread.post({ markdown: "", files: replyFiles });
-          }
         }
 
         const shouldPersistArtifacts = Object.keys(artifactStatePatch).length > 0;
@@ -1530,6 +1527,10 @@ async function replyToThread(
           sandboxId: reply.sandboxId
         });
         persistedAtLeastOnce = true;
+
+        if (streamedReplyPromise && replyFiles) {
+          await thread.post({ markdown: "", files: replyFiles });
+        }
       } finally {
         textStream.end();
         if (!persistedAtLeastOnce) {
