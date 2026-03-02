@@ -8,7 +8,7 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { logInfo, logWarn } from "@/chat/observability";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
-import { getSlackClient } from "@/chat/slack-actions/client";
+import { getSlackClient, isDmChannel } from "@/chat/slack-actions/client";
 import type { Skill } from "@/chat/skills";
 import { getStateAdapter } from "@/chat/state";
 
@@ -40,7 +40,7 @@ async function deliverPrivateMessage(input: {
 
   // Strategy 1 & 2: Try in-context delivery (ephemeral or DM message)
   if (input.channelId) {
-    const isDm = input.channelId.startsWith("D");
+    const isDm = isDmChannel(input.channelId);
     try {
       if (isDm) {
         await client.chat.postMessage({

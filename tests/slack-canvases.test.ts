@@ -19,11 +19,15 @@ const mockClient = {
   }
 };
 
-vi.mock("@/chat/slack-actions/client", () => ({
-  getSlackClient: () => mockClient,
-  withSlackRetries: (task: () => Promise<unknown>) => mockWithSlackRetries(task),
-  getFilePermalink: (fileId: string) => mockGetFilePermalink(fileId)
-}));
+vi.mock("@/chat/slack-actions/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/slack-actions/client")>();
+  return {
+    ...actual,
+    getSlackClient: () => mockClient,
+    withSlackRetries: (task: () => Promise<unknown>) => mockWithSlackRetries(task),
+    getFilePermalink: (fileId: string) => mockGetFilePermalink(fileId)
+  };
+});
 
 describe("createCanvas", () => {
   beforeEach(() => {
