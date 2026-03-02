@@ -1,4 +1,5 @@
 import { Chat } from "chat";
+import { retryOnLockError } from "@/chat/lock-retry";
 
 type LegacyWebhookOptions = {
   waitUntil?: (task: Promise<unknown>) => void;
@@ -85,6 +86,11 @@ export function installChatBackgroundPatch(): void {
   target[PATCH_FLAG] = true;
   const chatProto = Chat.prototype as unknown as ChatLike;
 
+  // Concurrent @-mentions in the same thread hit a per-thread Redis lock (5-min TTL).
+  // The SDK dedupes by message ID before acquiring the lock, so a failed lock attempt
+  // permanently "consumes" the dedup slot — the message is lost with no retry.
+  // We wrap handleIncomingMessage with retryOnLockError which clears the dedup key
+  // on LockError and retries with exponential backoff. See lock-retry.ts for details.
   (chatProto as unknown as { processMessage: unknown }).processMessage = function processMessage(
     this: ChatLike,
     adapter: unknown,
@@ -93,19 +99,22 @@ export function installChatBackgroundPatch(): void {
     options?: BackgroundWebhookOptions
   ): void {
     const run = async (): Promise<void> => {
-      try {
-        const message =
-          typeof messageOrFactory === "function"
-            ? await (messageOrFactory as () => Promise<unknown>)()
-            : messageOrFactory;
-        const normalizedThreadId = normalizeIncomingSlackThreadId(threadId, message);
-        if (message && typeof message === "object" && "threadId" in message) {
-          (message as Record<string, unknown>).threadId = normalizedThreadId;
-        }
-        await this.handleIncomingMessage(adapter, normalizedThreadId, message);
-      } catch (err) {
-        this.logger?.error?.("Message processing error", { error: err, threadId });
+      const message =
+        typeof messageOrFactory === "function"
+          ? await (messageOrFactory as () => Promise<unknown>)()
+          : messageOrFactory;
+      const normalizedThreadId = normalizeIncomingSlackThreadId(threadId, message);
+      if (message && typeof message === "object" && "threadId" in message) {
+        (message as Record<string, unknown>).threadId = normalizedThreadId;
       }
+
+      await retryOnLockError({
+        fn: () => this.handleIncomingMessage(adapter, normalizedThreadId, message),
+        adapterName: (adapter as { name?: string }).name ?? "unknown",
+        messageId: (message as { id?: string } | null)?.id,
+        threadId,
+        logger: this.logger,
+      });
     };
 
     scheduleBackgroundWork(this, options, run);
