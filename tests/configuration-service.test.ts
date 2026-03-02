@@ -29,7 +29,7 @@ describe("channel configuration service", () => {
       source: "test"
     });
     expect(created.key).toBe("github.repo");
-    expect(created.scope).toBe("channel");
+    expect(created.scope).toBe("conversation");
     expect(created.updatedBy).toBe("U123");
     expect(created.source).toBe("test");
 
@@ -68,7 +68,7 @@ describe("channel configuration service", () => {
           "jira.project": expect.objectContaining({
             key: "jira.project",
             value: "PLAT",
-            scope: "channel"
+            scope: "conversation"
           })
         }
       }

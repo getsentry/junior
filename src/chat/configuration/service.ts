@@ -37,10 +37,11 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
   if (!updatedAt) {
     return undefined;
   }
-  const scope = value.scope === "channel" ? "channel" : undefined;
-  if (!scope) {
+  // Accept both legacy "channel" and current "conversation" scope from persisted data
+  if (value.scope !== "channel" && value.scope !== "conversation") {
     return undefined;
   }
+  const scope = "conversation" as const;
 
   return {
     key,
@@ -110,7 +111,7 @@ export function createChannelConfigurationService(storage: ChannelConfigurationS
     const nextEntry: ConfigEntry = {
       key: normalizedKey,
       value: input.value,
-      scope: "channel",
+      scope: "conversation",
       updatedAt: new Date().toISOString(),
       updatedBy: toOptionalString(input.updatedBy),
       source: toOptionalString(input.source),

@@ -49,11 +49,73 @@ async function postSlackMessage(channelId: string, threadTs: string, text: strin
   }
 }
 
+async function setAssistantStatus(channelId: string, threadTs: string, status: string): Promise<void> {
+  const token = process.env.SLACK_BOT_TOKEN?.trim();
+  if (!token) return;
+
+  try {
+    await fetch("https://slack.com/api/assistant.threads.setStatus", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        channel_id: channelId,
+        thread_ts: threadTs,
+        status
+      })
+    });
+  } catch {
+    // Best effort.
+  }
+}
+
+const STATUS_DEBOUNCE_MS = 1000;
+
+function createDebouncedStatusPoster(channelId: string, threadTs: string) {
+  let lastPostAt = 0;
+  let pendingStatus: string | null = null;
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = async () => {
+    if (!pendingStatus) return;
+    const status = pendingStatus;
+    pendingStatus = null;
+    pendingTimer = null;
+    lastPostAt = Date.now();
+    await setAssistantStatus(channelId, threadTs, status);
+  };
+
+  return async (status: string) => {
+    const now = Date.now();
+    const elapsed = now - lastPostAt;
+
+    if (elapsed >= STATUS_DEBOUNCE_MS) {
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        pendingTimer = null;
+      }
+      pendingStatus = null;
+      lastPostAt = now;
+      await setAssistantStatus(channelId, threadTs, status);
+      return;
+    }
+
+    pendingStatus = status;
+    if (!pendingTimer) {
+      pendingTimer = setTimeout(() => {
+        void flush();
+      }, Math.max(1, STATUS_DEBOUNCE_MS - elapsed));
+    }
+  };
+}
+
 function createReadOnlyConfigService(values: Record<string, unknown>): ChannelConfigurationService {
   const entries = Object.entries(values).map(([key, value]) => ({
     key,
     value,
-    scope: "channel" as const,
+    scope: "conversation" as const,
     updatedAt: new Date().toISOString()
   }));
 
@@ -88,6 +150,9 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
     `Your ${providerLabel} account is now connected. Processing your request...`
   );
 
+  const postStatus = createDebouncedStatusPoster(stored.channelId, stored.threadTs);
+  await setAssistantStatus(stored.channelId, stored.threadTs, "Thinking...");
+
   try {
     const reply = await generateAssistantReply(stored.pendingMessage, {
       assistant: { userName: botConfig.userName },
@@ -100,7 +165,8 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
       configuration: stored.configuration,
       channelConfiguration: stored.configuration
         ? createReadOnlyConfigService(stored.configuration)
-        : undefined
+        : undefined,
+      onStatus: postStatus
     });
 
     if (reply.text) {

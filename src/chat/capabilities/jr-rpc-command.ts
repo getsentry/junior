@@ -26,8 +26,13 @@ async function postEphemeralMessage(input: {
     return false;
   }
 
+  // Slack DM channel IDs start with "D". chat.postEphemeral doesn't work in
+  // DMs, but the conversation is already private so a regular message suffices.
+  const isDm = input.channelId.startsWith("D");
+  const apiMethod = isDm ? "chat.postMessage" : "chat.postEphemeral";
+
   try {
-    const response = await fetch("https://slack.com/api/chat.postEphemeral", {
+    const response = await fetch(`https://slack.com/api/${apiMethod}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -35,8 +40,9 @@ async function postEphemeralMessage(input: {
       },
       body: JSON.stringify({
         channel: input.channelId,
-        user: input.userId,
         text: input.text,
+        // chat.postEphemeral requires `user`; chat.postMessage does not
+        ...(!isDm ? { user: input.userId } : {}),
         ...(input.threadTs ? { thread_ts: input.threadTs } : {})
       })
     });
@@ -45,8 +51,8 @@ async function postEphemeralMessage(input: {
       logWarn(
         "oauth_ephemeral_failed",
         {},
-        { "app.slack.error": data.error ?? "unknown", "app.slack.channel": input.channelId },
-        "Ephemeral message delivery failed"
+        { "app.slack.error": data.error ?? "unknown", "app.slack.channel": input.channelId, "app.slack.api_method": apiMethod },
+        `${isDm ? "DM" : "Ephemeral"} message delivery failed`
       );
     }
     return data.ok === true;
@@ -96,7 +102,7 @@ function requireChannelConfiguration(
   return {
     ok: false,
     result: commandResult({
-      stderr: "jr-rpc config commands require active channel context\n",
+      stderr: "jr-rpc config commands require active conversation context\n",
       exitCode: 1
     })
   };

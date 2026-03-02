@@ -249,7 +249,7 @@ describe("jr-rpc custom command", () => {
     expect(result.handled).toBe(true);
     if (result.handled) {
       expect(result.result.exit_code).toBe(1);
-      expect(result.result.stderr).toContain("require active channel context");
+      expect(result.result.stderr).toContain("require active conversation context");
     }
   });
 
