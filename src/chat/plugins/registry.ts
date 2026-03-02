@@ -14,31 +14,27 @@ const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 
+function parseBaseCredentialFields(data: Record<string, unknown>, name: string): { apiDomains: string[]; authTokenEnv: string } {
+  const rawDomains = data["api-domains"];
+  if (!Array.isArray(rawDomains) || rawDomains.length === 0 || !rawDomains.every((d) => typeof d === "string" && d.trim())) {
+    throw new Error(`Plugin ${name} credentials.api-domains must be a non-empty array of strings`);
+  }
+  const authTokenEnv = data["auth-token-env"];
+  if (typeof authTokenEnv !== "string" || !authTokenEnv.trim()) {
+    throw new Error(`Plugin ${name} credentials.auth-token-env must be a non-empty string`);
+  }
+  return { apiDomains: rawDomains as string[], authTokenEnv };
+}
+
 function parseCredentials(data: Record<string, unknown>, name: string): PluginCredentials {
   const type = data.type;
   if (type === "oauth-bearer") {
-    const rawDomains = data["api-domains"];
-    if (!Array.isArray(rawDomains) || rawDomains.length === 0 || !rawDomains.every((d) => typeof d === "string" && d.trim())) {
-      throw new Error(`Plugin ${name} credentials.api-domains must be a non-empty array of strings`);
-    }
-    const apiDomains = rawDomains as string[];
-    const authTokenEnv = data["auth-token-env"];
-    if (typeof authTokenEnv !== "string" || !authTokenEnv.trim()) {
-      throw new Error(`Plugin ${name} credentials.auth-token-env must be a non-empty string`);
-    }
-    return { type: "oauth-bearer", apiDomains, authTokenEnv } satisfies OAuthBearerCredentials;
+    const base = parseBaseCredentialFields(data, name);
+    return { type: "oauth-bearer", ...base } satisfies OAuthBearerCredentials;
   }
 
   if (type === "github-app") {
-    const rawDomains = data["api-domains"];
-    if (!Array.isArray(rawDomains) || rawDomains.length === 0 || !rawDomains.every((d) => typeof d === "string" && d.trim())) {
-      throw new Error(`Plugin ${name} credentials.api-domains must be a non-empty array of strings`);
-    }
-    const apiDomains = rawDomains as string[];
-    const authTokenEnv = data["auth-token-env"];
-    if (typeof authTokenEnv !== "string" || !authTokenEnv.trim()) {
-      throw new Error(`Plugin ${name} credentials.auth-token-env must be a non-empty string`);
-    }
+    const base = parseBaseCredentialFields(data, name);
     const appIdEnv = data["app-id-env"];
     if (typeof appIdEnv !== "string" || !appIdEnv.trim()) {
       throw new Error(`Plugin ${name} credentials.app-id-env must be a non-empty string`);
@@ -51,7 +47,7 @@ function parseCredentials(data: Record<string, unknown>, name: string): PluginCr
     if (typeof installationIdEnv !== "string" || !installationIdEnv.trim()) {
       throw new Error(`Plugin ${name} credentials.installation-id-env must be a non-empty string`);
     }
-    return { type: "github-app", apiDomains, authTokenEnv, appIdEnv, privateKeyEnv, installationIdEnv } satisfies GitHubAppCredentials;
+    return { type: "github-app", ...base, appIdEnv, privateKeyEnv, installationIdEnv } satisfies GitHubAppCredentials;
   }
 
   throw new Error(`Plugin ${name} has unsupported credentials.type: "${type}"`);
