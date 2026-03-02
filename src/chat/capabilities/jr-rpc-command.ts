@@ -7,55 +7,84 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { logInfo, logWarn } from "@/chat/observability";
+import { getSlackClient } from "@/chat/slack-actions/client";
 import type { Skill } from "@/chat/skills";
 import { getStateAdapter } from "@/chat/state";
 
-async function postEphemeralMessage(input: {
+/**
+ * Deliver a private message to the requesting user. Authorization links must
+ * ONLY be visible to the requesting user — never posted as visible channel
+ * messages. See specs/security-policy.md "OAuth authorization link privacy".
+ *
+ * Delivery strategy:
+ * 1. In 1:1 DMs (D-prefix): chat.postMessage (already private).
+ * 2. In channels/groups: chat.postEphemeral (only the user sees it).
+ * 3. If step 1 or 2 fails: open a DM with the user via conversations.open
+ *    and send there.
+ * 4. If all fail: return false. Caller must NOT expose the URL.
+ */
+async function deliverPrivateMessage(input: {
   channelId?: string;
   threadTs?: string;
   userId: string;
   text: string;
 }): Promise<boolean> {
-  if (!input.channelId) {
-    logWarn("oauth_ephemeral_skip", {}, { "app.reason": "missing_channel_id" }, "Skipped ephemeral message — no channelId");
-    return false;
-  }
-  const token = process.env.SLACK_BOT_TOKEN?.trim();
-  if (!token) {
-    logWarn("oauth_ephemeral_skip", {}, { "app.reason": "missing_bot_token" }, "Skipped ephemeral message — no SLACK_BOT_TOKEN");
+  let client: ReturnType<typeof getSlackClient>;
+  try {
+    client = getSlackClient();
+  } catch {
+    logWarn("oauth_private_delivery_skip", {}, { "app.reason": "missing_bot_token" }, "Skipped private message delivery — no SLACK_BOT_TOKEN");
     return false;
   }
 
-  try {
-    const response = await fetch("https://slack.com/api/chat.postEphemeral", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        channel: input.channelId,
-        user: input.userId,
-        text: input.text,
-        ...(input.threadTs ? { thread_ts: input.threadTs } : {})
-      })
-    });
-    const data = (await response.json()) as { ok?: boolean; error?: string };
-    if (!data.ok) {
+  // Strategy 1 & 2: Try in-context delivery (ephemeral or DM message)
+  if (input.channelId) {
+    const isDm = input.channelId.startsWith("D");
+    try {
+      if (isDm) {
+        await client.chat.postMessage({
+          channel: input.channelId,
+          text: input.text,
+          ...(input.threadTs ? { thread_ts: input.threadTs } : {})
+        });
+      } else {
+        await client.chat.postEphemeral({
+          channel: input.channelId,
+          user: input.userId,
+          text: input.text,
+          ...(input.threadTs ? { thread_ts: input.threadTs } : {})
+        });
+      }
+      return true;
+    } catch (error) {
+      const slackError = error instanceof Error ? error.message : String(error);
       logWarn(
-        "oauth_ephemeral_failed",
+        "oauth_private_delivery_failed",
         {},
-        { "app.slack.error": data.error ?? "unknown", "app.slack.channel": input.channelId },
-        "Ephemeral message delivery failed"
+        { "app.slack.error": slackError, "app.slack.channel": input.channelId },
+        `${isDm ? "DM" : "Ephemeral"} message delivery failed, falling back to DM`
       );
     }
-    return data.ok === true;
+  }
+
+  // Strategy 3: Open a DM with the user and send there
+  try {
+    const openResult = await client.conversations.open({ users: input.userId });
+    const dmChannelId = openResult.channel?.id;
+    if (!dmChannelId) {
+      logWarn("oauth_dm_fallback_failed", {}, { "app.reason": "no_dm_channel_id" }, "conversations.open returned no channel ID");
+      return false;
+    }
+
+    await client.chat.postMessage({ channel: dmChannelId, text: input.text });
+    return true;
   } catch (error) {
+    const slackError = error instanceof Error ? error.message : String(error);
     logWarn(
-      "oauth_ephemeral_error",
+      "oauth_dm_fallback_failed",
       {},
-      { "error.message": error instanceof Error ? error.message : String(error) },
-      "Ephemeral message delivery threw an exception"
+      { "app.slack.error": slackError },
+      "DM fallback delivery failed"
     );
     return false;
   }
@@ -96,7 +125,7 @@ function requireChannelConfiguration(
   return {
     ok: false,
     result: commandResult({
-      stderr: "jr-rpc config commands require active channel context\n",
+      stderr: "jr-rpc config commands require active conversation context\n",
       exitCode: 1
     })
   };
@@ -174,13 +203,10 @@ async function handleIssueCredentialCommand(
             credential_unavailable: true,
             oauth_started: true,
             provider: error.provider,
-            ephemeral_sent: oauthResult.ephemeralSent,
-            message: oauthResult.ephemeralSent
+            private_delivery_sent: oauthResult.privateSent,
+            message: oauthResult.privateSent
               ? `I need to connect your ${providerLabel} account first. I've sent you a private authorization link.`
-              : `I need to connect your ${providerLabel} account first. Click here to authorize: ${oauthResult.authorizeUrl}`,
-            ...(!oauthResult.ephemeralSent && oauthResult.authorizeUrl
-              ? { authorize_url: oauthResult.authorizeUrl }
-              : {})
+              : `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try your command again.`
           },
           exitCode: 1
         });
@@ -437,7 +463,7 @@ export function resolveBaseUrl(): string | undefined {
 async function startOAuthFlow(
   provider: string,
   deps: JrRpcDeps
-): Promise<{ ok: false; error: string } | { ok: true; ephemeralSent: boolean; authorizeUrl?: string }> {
+): Promise<{ ok: false; error: string } | { ok: true; privateSent: boolean }> {
   const providerConfig = OAUTH_PROVIDERS[provider];
   if (!providerConfig) {
     return { ok: false, error: `Provider "${provider}" does not support OAuth authorization` };
@@ -497,14 +523,14 @@ async function startOAuthFlow(
   );
 
   const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
-  const ephemeralSent = await postEphemeralMessage({
+  const privateSent = await deliverPrivateMessage({
     channelId: deps.channelId,
     threadTs: deps.threadTs,
     userId: deps.requesterId,
-    text: `<${authorizeUrl}|Click here to connect your ${providerLabel} account>. Once you've authorized, you'll see a confirmation in this thread.`
+    text: `<${authorizeUrl}|Click here to connect your ${providerLabel} account>. Once you've authorized, you'll see a confirmation in Slack.`
   });
 
-  return { ok: true, ephemeralSent, ...(!ephemeralSent ? { authorizeUrl } : {}) };
+  return { ok: true, privateSent };
 }
 
 async function handleOAuthStartCommand(
@@ -550,11 +576,21 @@ async function handleOAuthStartCommand(
     return commandResult({ stderr: `${result.error}\n`, exitCode: 1 });
   }
 
+  if (!result.privateSent) {
+    return commandResult({
+      stdout: {
+        ok: true,
+        private_delivery_sent: false,
+        message: "I wasn't able to send you a private authorization link. Please send me a direct message and try again."
+      },
+      exitCode: 0
+    });
+  }
+
   return commandResult({
     stdout: {
       ok: true,
-      ephemeral_sent: result.ephemeralSent,
-      ...(!result.ephemeralSent && result.authorizeUrl ? { authorize_url: result.authorizeUrl } : {})
+      private_delivery_sent: true
     },
     exitCode: 0
   });

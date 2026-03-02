@@ -247,6 +247,50 @@ describe("oauth callback handler", () => {
     expect(body).toContain("failed");
   });
 
+  it("returns styled HTML 400 when user denies authorization", async () => {
+    const stateKey = "oauth-state:deny-test";
+    mockStateStore.set(stateKey, {
+      userId: "U999",
+      provider: "sentry"
+    });
+
+    const response = await GET(
+      makeRequest("https://example.com/api/oauth/callback/sentry?error=access_denied&state=deny-test"),
+      makeContext("sentry")
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).toContain("<!DOCTYPE html>");
+    expect(body).toContain("declined");
+    // State should be cleaned up
+    expect(mockStateStore.has(stateKey)).toBe(false);
+  });
+
+  it("returns styled HTML 400 for provider-returned errors", async () => {
+    const response = await GET(
+      makeRequest("https://example.com/api/oauth/callback/sentry?error=server_error&state=some-state"),
+      makeContext("sentry")
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).toContain("<!DOCTYPE html>");
+    expect(body).toContain("server_error");
+  });
+
+  it("escapes HTML in provider error parameter to prevent XSS", async () => {
+    const response = await GET(
+      makeRequest("https://example.com/api/oauth/callback/sentry?error=%3Cscript%3Ealert(1)%3C/script%3E&state=xss-test"),
+      makeContext("sentry")
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).not.toContain("<script>");
+    expect(body).toContain("&lt;script&gt;");
+  });
+
   it("shows pending-message status in success page", async () => {
     const stateKey = "oauth-state:pending-test";
     mockStateStore.set(stateKey, {

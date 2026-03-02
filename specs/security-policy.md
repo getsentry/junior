@@ -57,6 +57,13 @@ This policy applies to:
 - Inject `Authorization` header transform for `api.github.com` domain.
 - Set `GITHUB_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
 
+### OAuth authorization link privacy
+
+- Authorization URLs contain user-specific CSRF state tokens and must **only** be visible to the requesting user.
+- Deliver authorization links via Slack `chat.postEphemeral` (channels) or `chat.postMessage` in 1:1 DMs (where the conversation is already private).
+- If private delivery fails, fall back to a DM to the user — **never** post an authorization URL as a visible message in a channel or group conversation.
+- The agent must **never** receive or relay raw authorization URLs. If private delivery fails entirely, return an error instructing the user to DM the bot.
+
 ### Sentry baseline
 
 - Use per-user OAuth tokens via Authorization Code Grant (RFC 6749 §4.1).

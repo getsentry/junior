@@ -52,7 +52,8 @@ Agent: jr-rpc oauth-start sentry
   │   key `oauth-state:<state>`, 10-min TTL
   ├─ Build authorize URL with client_id, scope, state, redirect_uri, response_type=code
   ├─ Send authorize URL as ephemeral Slack message (only visible to the user)
-  └─ Return { ok: true, ephemeral_sent: true }
+  ├─ If ephemeral fails: send as DM to the user (still private)
+  └─ Return { ok: true, private_delivery_sent: true }
   │
   ▼
 Agent: Tells user a private authorization link was sent, turn ends
@@ -154,7 +155,8 @@ Providers are configured in `OAUTH_PROVIDERS` (`jr-rpc-command.ts`):
 
 ## Security properties
 
-- **Agent never sees tokens**: `oauth-start` sends the URL directly to the user via ephemeral message. Token exchange happens in the callback route.
+- **Authorization links are private**: Authorization URLs contain user-specific CSRF state tokens and must **only** be visible to the requesting user. Delivered via `chat.postEphemeral` in channels or `chat.postMessage` in 1:1 DMs. If private delivery fails, falls back to a DM to the user. Authorization URLs are **never** posted as visible messages in channels or returned to the agent.
+- **Agent never sees tokens or authorization URLs**: `oauth-start` sends the URL directly to the user via ephemeral/DM message. The agent never receives the URL. Token exchange happens in the callback route.
 - **CSRF protection**: Random state parameter with short TTL, validated on callback.
 - **One-time state**: State key deleted after use — replay not possible.
 - **Server-side secrets**: `client_secret` is read from host env, never exposed to sandbox or agent.
@@ -185,7 +187,7 @@ Junior:   Your Sentry account is now connected. You can start using Sentry comma
 Three messages from Junior appear in the thread:
 
 1. **Agent reply** (visible to all): "I've sent you a private link..." — the agent's normal text response posted via `thread.post()`.
-2. **Ephemeral link** (visible only to requesting user): the clickable authorization URL, sent by `oauth-start` via `chat.postEphemeral`. Other channel members never see this.
+2. **Private link** (visible only to requesting user): the clickable authorization URL, sent by `oauth-start` via `chat.postEphemeral` (channels) or `chat.postMessage` (1:1 DMs). Falls back to a DM if in-context delivery fails. Other channel members never see this. The authorization URL is **never** posted as a visible channel message or returned to the agent.
 3. **Callback confirmation** (visible to all): "Your Sentry account is now connected." — posted by the OAuth callback handler via `chat.postMessage` after the user finishes authorizing.
 
 The user also sees a success page in their browser after authorizing, telling them to close the tab and return to Slack.
@@ -198,8 +200,8 @@ What happens under the hood:
    a. Agent loads sentry skill, sees "auth" operation
    b. Runs `jr-rpc oauth-start sentry`
    c. oauth-start: stores { userId, provider, channelId, threadTs } in Redis (10-min TTL)
-   d. oauth-start: sends authorize URL as ephemeral Slack message via SLACK_BOT_TOKEN
-   e. oauth-start: returns { ok: true, ephemeral_sent: true }
+   d. oauth-start: sends authorize URL privately via SLACK_BOT_TOKEN (ephemeral in channels, DM fallback)
+   e. oauth-start: returns { ok: true, private_delivery_sent: true }
    f. Agent replies: "I've sent you a private link..."
    g. Agent turn ends
 3. User sees ephemeral message, clicks link → opens Sentry authorization page
@@ -259,13 +261,13 @@ What the thread looks like:
 ```
 User:     @Junior /sentry issue list
 Junior:   I need to connect your Sentry account first. I've sent you a private link.
-          [ephemeral — only this user sees: "Click here to connect your Sentry account" with link]
+          [private — only this user sees: "Click here to connect your Sentry account" with link]
           ... user clicks link, authorizes in browser ...
 Junior:   Your Sentry account is now connected. Processing your request...
 Junior:   [issue list results]
 ```
 
-The broker throws `CredentialUnavailableError`. The harness (`issue-credential` handler) catches this, detects the provider supports OAuth, and automatically starts the OAuth flow — storing the original user message and channel configuration snapshot in the OAuth state. The agent sees `{ credential_unavailable, oauth_started, ephemeral_sent, message }` and relays the `message` to the user. After the user authorizes, the callback stores tokens and triggers a new agent turn in the background (via `after()`) that processes the original request.
+The broker throws `CredentialUnavailableError`. The harness (`issue-credential` handler) catches this, detects the provider supports OAuth, and automatically starts the OAuth flow — storing the original user message and channel configuration snapshot in the OAuth state. The agent sees `{ credential_unavailable, oauth_started, private_delivery_sent, message }` and relays the `message` to the user. After the user authorizes, the callback stores tokens and triggers a new agent turn in the background (via `after()`) that processes the original request.
 
 What happens under the hood:
 
@@ -276,8 +278,8 @@ What happens under the hood:
    b. Broker throws CredentialUnavailableError("sentry", ...)
    c. issue-credential handler catches it, calls startOAuthFlow("sentry") internally
    d. startOAuthFlow: stores { userId, provider, channelId, threadTs, pendingMessage, configuration } in Redis
-   e. startOAuthFlow: sends authorize URL as ephemeral Slack message
-   f. issue-credential returns: { credential_unavailable, oauth_started, ephemeral_sent, message }
+   e. startOAuthFlow: sends authorize URL privately (ephemeral or DM fallback)
+   f. issue-credential returns: { credential_unavailable, oauth_started, private_delivery_sent, message }
    g. Agent relays `message` to user
    h. Agent turn ends
 3. User clicks ephemeral link → authorizes on Sentry → redirected to callback
@@ -303,9 +305,9 @@ Under the hood: `jr-rpc delete-token sentry` deletes the Redis key. Future Sentr
 
 ### Design notes
 
-**Ephemeral authorize link.** The authorization URL is sent as a Slack ephemeral message (`chat.postEphemeral`) so only the requesting user sees it. The URL contains a user-specific CSRF state token — keeping it private prevents other channel members from clicking it. The jr-rpc `oauth-start` handler posts the ephemeral message directly via `SLACK_BOT_TOKEN`, not through the Chat SDK's `thread.postEphemeral()`, because the thread handle is not available at the jr-rpc layer.
+**Private authorize link.** The authorization URL is delivered privately so only the requesting user sees it. The URL contains a user-specific CSRF state token — keeping it private prevents other channel members from completing OAuth on behalf of another user. Delivery strategy: `chat.postEphemeral` in channels, `chat.postMessage` in 1:1 DMs, DM fallback via `conversations.open` if in-context delivery fails. The authorization URL is **never** returned to the agent or posted as a visible channel message — this is a hard security invariant. The jr-rpc `oauth-start` handler posts the message directly via `SLACK_BOT_TOKEN`, not through the Chat SDK, because the thread handle is not available at the jr-rpc layer.
 
-**Ephemeral fallback.** If ephemeral delivery fails (missing `channelId`, missing `SLACK_BOT_TOKEN`), the command returns `{ ok: true, ephemeral_sent: false, authorize_url: "..." }` so the agent can post the URL normally as a visible message.
+**Ephemeral fallback.** If ephemeral delivery fails (e.g. Slack API error), the system attempts to send the authorization link as a DM to the user. If DM delivery also fails (missing `SLACK_BOT_TOKEN`, user has DMs disabled), the command returns an error instructing the user to DM the bot directly. Authorization URLs are **never** returned to the agent or posted as visible messages — this is a hard security invariant.
 
 **Callback confirmation is best effort.** The callback posts into the originating Slack thread using thread coordinates stored in the OAuth state. This is a direct `chat.postMessage` via `SLACK_BOT_TOKEN`. If the Slack post fails, the user still sees success in the browser, and their next command will work.
 

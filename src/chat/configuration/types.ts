@@ -1,4 +1,4 @@
-export type ConfigScope = "channel";
+export type ConfigScope = "conversation";
 
 export interface ConfigEntry {
   key: string;

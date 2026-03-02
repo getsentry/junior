@@ -211,7 +211,7 @@ export function buildSystemPrompt(params: {
     .map((key) => `  - ${escapeXml(key)}: ${formatConfigurationValue(configuration?.[key])}`);
 
   const configurationSection = [
-    "Use these channel-scoped defaults when the user has not provided explicit values in this turn.",
+    "Use these conversation-scoped defaults when the user has not provided explicit values in this turn.",
     "If explicit user input conflicts with configuration, follow explicit user input.",
     configurationKeys.length === 0
       ? "- none"
@@ -288,7 +288,7 @@ export function buildSystemPrompt(params: {
         "- Use explicit `canvas_id` for `slackCanvasUpdate` unless updating a canvas created earlier in this same turn.",
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- To enable provider credentials for this turn, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before commands that need authenticated API calls.",
-        "- To persist or read channel defaults (for example `github.repo`), run `jr-rpc config get|set|unset|list ...` as a bash command.",
+        "- To persist or read conversation defaults (for example `github.repo`), run `jr-rpc config get|set|unset|list ...` as a bash command.",
         "- Capabilities are provider-qualified (for example `github.issues.write`).",
         "- When your work is complete, provide the exact user-facing markdown response.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
