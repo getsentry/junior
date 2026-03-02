@@ -12,14 +12,14 @@ function hasExplicitChannelPostIntent(userText: string | undefined): boolean {
   const normalized = userText.toLowerCase();
   const mentionsChannelTarget =
     /\b(channel|main channel|public channel)\b/.test(normalized) || /(^|\s)#([a-z0-9_-]+)/.test(normalized);
-  const hasPostingVerb = /\b(post|send|share|announce|broadcast|publish)\b/.test(normalized);
+  const hasPostingVerb = /\b(post|send|share|show|tell|announce|broadcast|publish)\b/.test(normalized);
   return mentionsChannelTarget && hasPostingVerb;
 }
 
 export function createSlackChannelPostMessageTool(context: ToolRuntimeContext, state: ToolState) {
   return tool({
     description:
-      "Post a message in a Slack channel (outside the thread). Use when the user explicitly asks to share or announce something in a channel. Do not use for normal thread replies or speculative broadcasts.",
+      "Post a message in a Slack channel (outside the thread). Use when the user explicitly asks to show, share, or announce something in a channel. Do not use for normal thread replies or speculative broadcasts.",
     inputSchema: Type.Object({
       text: Type.String({
         minLength: 1,
