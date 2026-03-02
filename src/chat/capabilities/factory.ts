@@ -1,7 +1,6 @@
 import { logCapabilityCatalogLoadedOnce } from "@/chat/capabilities/catalog";
 import { ProviderCredentialRouter } from "@/chat/capabilities/router";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
-import { GitHubCredentialBroker } from "@/chat/credentials/github-broker";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { TestCredentialBroker } from "@/chat/credentials/test-broker";
 import type { CredentialBroker } from "@/chat/credentials/broker";
@@ -30,12 +29,7 @@ export function createSkillCapabilityRuntime(options: {
   const useTestBroker = process.env.EVAL_ENABLE_TEST_CREDENTIALS === "1";
   const userTokenStore = getUserTokenStore();
 
-  // Hardcoded providers (not yet plugins)
-  const brokersByProvider: Record<string, CredentialBroker> = {
-    github: useTestBroker
-      ? new TestCredentialBroker({ provider: "github", domains: ["api.github.com"], envKey: "GITHUB_TOKEN", placeholder: "ghp_test_managed_credential" })
-      : new GitHubCredentialBroker()
-  };
+  const brokersByProvider: Record<string, CredentialBroker> = {};
 
   // Plugin providers
   for (const plugin of getPluginProviders()) {

@@ -1,9 +1,28 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
-import { GitHubCredentialBroker } from "@/chat/credentials/github-broker";
+import { createGitHubAppBroker } from "@/chat/plugins/github-app-broker";
+import type { GitHubAppCredentials, PluginManifest } from "@/chat/plugins/types";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
+
+const TEST_CREDENTIALS: GitHubAppCredentials = {
+  type: "github-app",
+  apiDomains: ["api.github.com"],
+  authTokenEnv: "GITHUB_TOKEN",
+  appIdEnv: "GITHUB_APP_ID",
+  privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+  installationIdEnv: "GITHUB_INSTALLATION_ID"
+};
+
+const TEST_MANIFEST: PluginManifest = {
+  name: "github",
+  description: "GitHub issue management via GitHub App",
+  capabilities: ["github.issues.read", "github.issues.write", "github.issues.comment", "github.labels.write"],
+  configKeys: ["github.repo"],
+  credentials: TEST_CREDENTIALS,
+  target: { type: "repo", configKey: "github.repo" }
+};
 
 afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
@@ -11,7 +30,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("github credential broker", () => {
+describe("github app credential broker", () => {
   it("accepts base64-encoded PEM private key for app signing", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
       .export({ type: "pkcs8", format: "pem" })
@@ -28,7 +47,7 @@ describe("github credential broker", () => {
       } as Response;
     });
     globalThis.fetch = fetchSpy as typeof fetch;
-    const broker = new GitHubCredentialBroker();
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.issues.write",
       reason: "test:base64-key"
@@ -76,7 +95,7 @@ describe("github credential broker", () => {
       } as Response;
     });
     globalThis.fetch = fetchSpy as typeof fetch;
-    const broker = new GitHubCredentialBroker();
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await broker.issue({
       capability: "github.issues.write",
       target: { owner: "getsentry", repo: "junior" },
@@ -115,7 +134,7 @@ describe("github credential broker", () => {
       } as Response;
     });
     globalThis.fetch = fetchSpy as typeof fetch;
-    const broker = new GitHubCredentialBroker();
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
 
     const first = await broker.issue({
       capability: "github.issues.write",
@@ -141,7 +160,7 @@ describe("github credential broker", () => {
   it("still rejects unsupported capabilities", async () => {
     process.env.GITHUB_APP_ID = "12345";
 
-    const broker = new GitHubCredentialBroker();
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
       broker.issue({
         capability: "github.actions.write",
@@ -153,7 +172,7 @@ describe("github credential broker", () => {
   it("requires GITHUB_APP_ID", async () => {
     delete process.env.GITHUB_APP_ID;
 
-    const broker = new GitHubCredentialBroker();
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
       broker.issue({
         capability: "github.issues.read",
@@ -166,7 +185,7 @@ describe("github credential broker", () => {
     process.env.GITHUB_APP_ID = "12345";
     delete process.env.GITHUB_INSTALLATION_ID;
 
-    const broker = new GitHubCredentialBroker();
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
       broker.issue({
         capability: "github.issues.read",
@@ -181,7 +200,7 @@ describe("github credential broker", () => {
     process.env.GITHUB_INSTALLATION_ID = "42";
     globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
-    const broker = new GitHubCredentialBroker();
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
       broker.issue({
         capability: "github.issues.read",

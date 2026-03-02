@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented (v1 — Sentry migrated)
+Implemented (v2 — Sentry + GitHub migrated)
 
 ## Related
 
@@ -12,6 +12,7 @@ Implemented (v1 — Sentry migrated)
 - Plugin Registry: `src/chat/plugins/registry.ts`
 - Plugin Types: `src/chat/plugins/types.ts`
 - Generic OAuth Bearer Broker: `src/chat/plugins/oauth-bearer-broker.ts`
+- GitHub App Broker: `src/chat/plugins/github-app-broker.ts`
 - Provider Catalog: `src/chat/capabilities/catalog.ts`
 - Broker Factory: `src/chat/capabilities/factory.ts`
 - OAuth Providers: `src/chat/capabilities/jr-rpc-command.ts`
@@ -25,7 +26,7 @@ Define a plugin model where provider integrations are self-contained directories
 1. A plugin is a directory under `src/plugins/<name>/` containing a `plugin.yaml` manifest.
 2. At startup, the plugin registry scans `src/plugins/` and parses each manifest synchronously (`readFileSync`).
 3. The registry registers capabilities, config keys, OAuth config, and skill roots from each manifest.
-4. Credential brokers are created on demand from manifest config (generic `oauth-bearer` type).
+4. Credential brokers are created on demand from manifest config (`oauth-bearer` or `github-app` type).
 5. Skills in `src/plugins/<name>/skills/` are auto-discovered alongside existing skill roots.
 6. Core infrastructure (agent loop, sandbox, jr-rpc, Slack tools, web tools) stays unchanged.
 
@@ -90,7 +91,7 @@ mcp:                                 # optional — MCP server config for tool s
 | `capabilities` | `string[]` | Short names (e.g. `issues.read`). Qualified to `<name>.issues.read` by the registry. At least one required. No qualified capability may appear in more than one plugin. |
 | `config-keys` | `string[]` | Short names (e.g. `org`). Qualified to `<name>.org` by the registry. |
 | `credentials` | `object` | Credential delivery configuration. |
-| `credentials.type` | `string` | Currently only `"oauth-bearer"`. |
+| `credentials.type` | `string` | `"oauth-bearer"` or `"github-app"`. |
 | `credentials.api-domains` | `string[]` | Domains for `Authorization: Bearer` header transforms. At least one required. |
 | `credentials.auth-token-env` | `string` | Env var name for static token fallback and sandbox placeholder. |
 
@@ -98,6 +99,9 @@ mcp:                                 # optional — MCP server config for tool s
 
 | Field | Type | Rules |
 |-------|------|-------|
+| `credentials.app-id-env` | `string` | Env var name for GitHub App ID. Required when `credentials.type` is `"github-app"`. |
+| `credentials.private-key-env` | `string` | Env var name for GitHub App private key (PEM). Required when `credentials.type` is `"github-app"`. |
+| `credentials.installation-id-env` | `string` | Env var name for GitHub App installation ID. Required when `credentials.type` is `"github-app"`. |
 | `oauth` | `object` | OAuth provider configuration. All sub-fields required when present. |
 | `oauth.client-id-env` | `string` | Env var name for client ID. |
 | `oauth.client-secret-env` | `string` | Env var name for client secret. |
@@ -150,6 +154,7 @@ The plugin registry is initialized at module load time (sync). This means it is 
 The registry provides `createPluginBroker(provider, deps)` which constructs the appropriate broker from manifest config:
 
 - `oauth-bearer`: Creates a generic `OAuthBearerBroker` that handles per-user OAuth tokens, token refresh, static env fallback, and header transforms — all parameterized from the manifest.
+- `github-app`: Creates a `GitHubAppBroker` that signs JWTs with an RSA private key and exchanges them for short-lived installation tokens via the GitHub App API. No `UserTokenStore` dependency — tokens are per-installation, not per-user.
 
 ### Plugin registry exports
 
@@ -171,11 +176,10 @@ createPluginBroker(provider, deps: PluginBrokerDeps): CredentialBroker
 
 ### Catalog integration
 
-`catalog.ts` merges plugin capabilities into the hardcoded provider list:
+`catalog.ts` sources all capabilities from plugins:
 
 ```typescript
 const CAPABILITY_PROVIDERS = [
-  { provider: "github", ... },
   ...getPluginCapabilityProviders()
 ];
 ```
@@ -255,7 +259,6 @@ All existing security invariants from `security-policy.md` are preserved:
 | `ProviderCredentialRouter` | Generic router |
 | `SkillCapabilityRuntime` | Generic runtime |
 | OAuth callback route (`/api/oauth/callback/[provider]`) | Shared HTTP handler |
-| GitHub broker | Uses GitHub App JWT — not a standard OAuth bearer flow |
 | `TestCredentialBroker` | Eval infrastructure, not a plugin |
 
 ## Example: adding a new provider (Linear)
@@ -307,4 +310,4 @@ oauth:
 - **MCP as the plugin protocol.** MCP is an optional tool source, not the plugin discovery protocol.
 - **Plugin sandboxing.** Broker logic runs on the host with full trust.
 - **Plugin versioning.** Plugins are part of the monorepo.
-- **Custom per-plugin broker modules.** The generic `oauth-bearer` type covers standard OAuth providers. More credential types can be added as needed.
+- **Custom per-plugin broker modules beyond supported types.** The `oauth-bearer` and `github-app` credential types cover current providers. More types can be added as needed.

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOAuthBearerBroker } from "@/chat/plugins/oauth-bearer-broker";
-import type { PluginManifest } from "@/chat/plugins/types";
+import type { OAuthBearerCredentials, PluginManifest } from "@/chat/plugins/types";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import type { StoredTokens, UserTokenStore } from "@/chat/credentials/user-token-store";
 
@@ -47,7 +47,7 @@ function createMockTokenStore(tokens?: Record<string, StoredTokens>): UserTokenS
 function createBroker(tokenStore?: UserTokenStore) {
   return createOAuthBearerBroker(
     SENTRY_MANIFEST,
-    SENTRY_MANIFEST.credentials,
+    SENTRY_MANIFEST.credentials as OAuthBearerCredentials,
     { userTokenStore: tokenStore ?? createMockTokenStore() }
   );
 }
