@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented (v2 — Sentry + GitHub migrated)
+Implemented (Sentry + GitHub migrated)
 
 ## Related
 
