@@ -7,30 +7,9 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { logInfo, logWarn } from "@/chat/observability";
+import { getSlackClient } from "@/chat/slack-actions/client";
 import type { Skill } from "@/chat/skills";
 import { getStateAdapter } from "@/chat/state";
-
-async function postSlackApi(
-  method: string,
-  body: Record<string, unknown>
-): Promise<{ ok: boolean; error?: string }> {
-  const token = process.env.SLACK_BOT_TOKEN?.trim();
-  if (!token) return { ok: false, error: "missing_bot_token" };
-
-  try {
-    const response = await fetch(`https://slack.com/api/${method}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
-    return (await response.json()) as { ok: boolean; error?: string };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
 
 /**
  * Deliver a private message to the requesting user. Authorization links must
@@ -50,8 +29,10 @@ async function deliverPrivateMessage(input: {
   userId: string;
   text: string;
 }): Promise<boolean> {
-  const token = process.env.SLACK_BOT_TOKEN?.trim();
-  if (!token) {
+  let client: ReturnType<typeof getSlackClient>;
+  try {
+    client = getSlackClient();
+  } catch {
     logWarn("oauth_private_delivery_skip", {}, { "app.reason": "missing_bot_token" }, "Skipped private message delivery — no SLACK_BOT_TOKEN");
     return false;
   }
@@ -59,59 +40,54 @@ async function deliverPrivateMessage(input: {
   // Strategy 1 & 2: Try in-context delivery (ephemeral or DM message)
   if (input.channelId) {
     const isDm = input.channelId.startsWith("D");
-    const apiMethod = isDm ? "chat.postMessage" : "chat.postEphemeral";
-
-    const result = await postSlackApi(apiMethod, {
-      channel: input.channelId,
-      text: input.text,
-      ...(!isDm ? { user: input.userId } : {}),
-      ...(input.threadTs ? { thread_ts: input.threadTs } : {})
-    });
-
-    if (result.ok) return true;
-
-    logWarn(
-      "oauth_private_delivery_failed",
-      {},
-      { "app.slack.error": result.error ?? "unknown", "app.slack.channel": input.channelId, "app.slack.api_method": apiMethod },
-      `${isDm ? "DM" : "Ephemeral"} message delivery failed, falling back to DM`
-    );
+    try {
+      if (isDm) {
+        await client.chat.postMessage({
+          channel: input.channelId,
+          text: input.text,
+          ...(input.threadTs ? { thread_ts: input.threadTs } : {})
+        });
+      } else {
+        await client.chat.postEphemeral({
+          channel: input.channelId,
+          user: input.userId,
+          text: input.text,
+          ...(input.threadTs ? { thread_ts: input.threadTs } : {})
+        });
+      }
+      return true;
+    } catch (error) {
+      const slackError = error instanceof Error ? error.message : String(error);
+      logWarn(
+        "oauth_private_delivery_failed",
+        {},
+        { "app.slack.error": slackError, "app.slack.channel": input.channelId },
+        `${isDm ? "DM" : "Ephemeral"} message delivery failed, falling back to DM`
+      );
+    }
   }
 
   // Strategy 3: Open a DM with the user and send there
-  const openResult = await postSlackApi("conversations.open", { users: input.userId });
-  if (!openResult.ok) {
+  try {
+    const openResult = await client.conversations.open({ users: input.userId });
+    const dmChannelId = openResult.channel?.id;
+    if (!dmChannelId) {
+      logWarn("oauth_dm_fallback_failed", {}, { "app.reason": "no_dm_channel_id" }, "conversations.open returned no channel ID");
+      return false;
+    }
+
+    await client.chat.postMessage({ channel: dmChannelId, text: input.text });
+    return true;
+  } catch (error) {
+    const slackError = error instanceof Error ? error.message : String(error);
     logWarn(
       "oauth_dm_fallback_failed",
       {},
-      { "app.slack.error": (openResult as { error?: string }).error ?? "unknown", "app.reason": "conversations_open_failed" },
-      "Could not open DM with user for auth link delivery"
+      { "app.slack.error": slackError },
+      "DM fallback delivery failed"
     );
     return false;
   }
-
-  const dmChannelId = ((openResult as unknown) as { channel?: { id?: string } }).channel?.id;
-  if (!dmChannelId) {
-    logWarn("oauth_dm_fallback_failed", {}, { "app.reason": "no_dm_channel_id" }, "conversations.open returned no channel ID");
-    return false;
-  }
-
-  const dmResult = await postSlackApi("chat.postMessage", {
-    channel: dmChannelId,
-    text: input.text
-  });
-
-  if (!dmResult.ok) {
-    logWarn(
-      "oauth_dm_fallback_failed",
-      {},
-      { "app.slack.error": dmResult.error ?? "unknown", "app.slack.channel": dmChannelId },
-      "DM fallback message delivery failed"
-    );
-    return false;
-  }
-
-  return true;
 }
 
 type JrRpcDeps = {

@@ -5,22 +5,15 @@ import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logException, logInfo } from "@/chat/observability";
 import { generateAssistantReply } from "@/chat/respond";
+import { getSlackClient } from "@/chat/slack-actions/client";
 import { getStateAdapter } from "@/chat/state";
 import { truncateStatusText } from "@/chat/status-format";
+import { escapeXml } from "@/chat/xml";
 
 export const runtime = "nodejs";
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
 function htmlErrorResponse(title: string, message: string, status: number): Response {
-  const safeTitle = escapeHtml(title);
+  const safeTitle = escapeXml(title);
   // message may contain intentional HTML (e.g. <code> tags) — only escape
   // the title which is always plain text. Callers must pre-escape any
   // user-controlled content embedded in message.
@@ -42,51 +35,22 @@ function htmlErrorResponse(title: string, message: string, status: number): Resp
 }
 
 async function postSlackMessage(channelId: string, threadTs: string, text: string): Promise<void> {
-  const token = process.env.SLACK_BOT_TOKEN?.trim();
-  if (!token) return;
-
   try {
-    await fetch("https://slack.com/api/chat.postMessage", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        channel: channelId,
-        thread_ts: threadTs,
-        text
-      })
-    });
+    await getSlackClient().chat.postMessage({ channel: channelId, thread_ts: threadTs, text });
   } catch {
     // Best effort.
   }
 }
 
 async function setAssistantStatus(channelId: string, threadTs: string, status: string): Promise<void> {
-  const token = process.env.SLACK_BOT_TOKEN?.trim();
-  if (!token) return;
-
   try {
-    await fetch("https://slack.com/api/assistant.threads.setStatus", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        channel_id: channelId,
-        thread_ts: threadTs,
-        status
-      })
-    });
+    await getSlackClient().assistant.threads.setStatus({ channel_id: channelId, thread_ts: threadTs, status });
   } catch {
     // Best effort.
   }
 }
 
 const STATUS_DEBOUNCE_MS = 1000;
-
 const SLACK_STATUS_MAX_LENGTH = 100;
 
 function createDebouncedStatusPoster(channelId: string, threadTs: string) {
@@ -231,11 +195,10 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
       "Failed to auto-resume pending message after OAuth callback"
     );
 
-    const retryHint = stored.pendingMessage ? ` Please try \`${stored.pendingMessage}\` again.` : " Please try your command again.";
     await postSlackMessage(
       stored.channelId,
       stored.threadTs,
-      `I connected your account but hit an error processing your request.${retryHint}`
+      `I connected your account but hit an error processing your request. Please try \`${stored.pendingMessage}\` again.`
     );
   }
 }
@@ -250,6 +213,7 @@ export async function GET(
     return htmlErrorResponse("Unknown provider", "The OAuth provider in this link is not recognized.", 404);
   }
 
+  const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
   const url = new URL(request.url);
   const errorParam = url.searchParams.get("error");
   const code = url.searchParams.get("code");
@@ -263,7 +227,6 @@ export async function GET(
       await cleanupAdapter.delete(`oauth-state:${state}`);
     }
 
-    const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
     if (errorParam === "access_denied") {
       return htmlErrorResponse(
         "Authorization declined",
@@ -273,7 +236,7 @@ export async function GET(
     }
     return htmlErrorResponse(
       "Authorization failed",
-      `${providerLabel} returned an error: ${escapeHtml(errorParam)}. Return to Slack and try again.`,
+      `${providerLabel} returned an error: ${escapeXml(errorParam)}. Return to Slack and try again.`,
       400
     );
   }
@@ -286,7 +249,6 @@ export async function GET(
   const stateKey = `oauth-state:${state}`;
   const stored = await stateAdapter.get<OAuthStatePayload>(stateKey);
   if (!stored) {
-    const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
     return htmlErrorResponse(
       "Link expired",
       `This authorization link has expired (links are valid for 10 minutes). Return to Slack and ask to connect your ${providerLabel} account again, or retry your original command to get a new link.`,
@@ -360,19 +322,15 @@ export async function GET(
     after(() => resumePendingMessage(stored));
   } else if (stored.channelId && stored.threadTs) {
     // No pending message — post confirmation best-effort after HTTP response
-    const confirmChannelId = stored.channelId;
-    const confirmThreadTs = stored.threadTs;
-    const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
     after(async () => {
       await postSlackMessage(
-        confirmChannelId,
-        confirmThreadTs,
+        stored.channelId!,
+        stored.threadTs!,
         `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`
       );
     });
   }
 
-  const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
   const statusMessage = stored.pendingMessage
     ? "Your request is being processed in Slack."
     : "You can close this tab and return to Slack.";
