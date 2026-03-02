@@ -36,6 +36,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/harness-agent-spec.md` (agent loop and output contract)
 - `specs/logging/index.md` (logging/tracing spec index)
 - `specs/agent-stability-evaluation.md` (known stability risks and mitigations)
+- `specs/plugin-spec.md` (plugin architecture for self-contained provider integrations)
 
 ## Local Skills
 - Use `agents-md` for `AGENTS.md`/`CLAUDE.md` maintenance. See `.agents/skills/agents-md/SKILL.md`

@@ -89,9 +89,7 @@ Rules:
 
 ### Capabilities
 
-- `sentry.issues.read`
-- `sentry.events.read`
-- `sentry.replays.read`
+- `sentry.api`
 
 ### Issuance flow
 

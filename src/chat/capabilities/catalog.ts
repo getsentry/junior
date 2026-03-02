@@ -1,4 +1,5 @@
 import { logInfo } from "@/chat/observability";
+import { getPluginCapabilityProviders } from "@/chat/plugins/registry";
 
 export interface CapabilityProviderTargetDefinition {
   type: "repo";
@@ -27,16 +28,8 @@ const CAPABILITY_PROVIDERS: CapabilityProviderDefinition[] = [
       configKey: "github.repo"
     }
   },
-  {
-    provider: "sentry",
-    capabilities: [
-      "sentry.issues.read",
-      "sentry.events.read",
-      "sentry.replays.read"
-    ],
-    configKeys: ["sentry.org", "sentry.project"]
-    // no target — token is org-scoped, not project-scoped
-  }
+  // Plugin-provided capabilities are merged below
+  ...getPluginCapabilityProviders()
 ];
 
 const capabilityToProvider = new Map<string, CapabilityProviderDefinition>();

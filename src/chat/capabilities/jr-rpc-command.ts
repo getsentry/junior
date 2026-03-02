@@ -7,6 +7,7 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { logInfo, logWarn } from "@/chat/observability";
+import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { getSlackClient } from "@/chat/slack-actions/client";
 import type { Skill } from "@/chat/skills";
 import { getStateAdapter } from "@/chat/state";
@@ -194,7 +195,7 @@ async function handleIssueCredentialCommand(
     });
   } catch (error) {
     // Auto-start OAuth when no credentials are available for an OAuth-capable provider
-    if (error instanceof CredentialUnavailableError && OAUTH_PROVIDERS[error.provider]) {
+    if (error instanceof CredentialUnavailableError && getOAuthProviderConfig(error.provider)) {
       const oauthResult = await startOAuthFlow(error.provider, deps);
       if (oauthResult.ok) {
         const providerLabel = error.provider.charAt(0).toUpperCase() + error.provider.slice(1);
@@ -414,10 +415,10 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
 }
 
 function isKnownProvider(provider: string): boolean {
-  return listCapabilityProviders().some((p) => p.provider === provider) || Boolean(OAUTH_PROVIDERS[provider]);
+  return listCapabilityProviders().some((p) => p.provider === provider);
 }
 
-type OAuthProviderConfig = {
+export type OAuthProviderConfig = {
   clientIdEnv: string;
   clientSecretEnv: string;
   authorizeEndpoint: string;
@@ -426,18 +427,9 @@ type OAuthProviderConfig = {
   callbackPath: string;
 };
 
-const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
-  sentry: {
-    clientIdEnv: "SENTRY_CLIENT_ID",
-    clientSecretEnv: "SENTRY_CLIENT_SECRET",
-    authorizeEndpoint: "https://sentry.io/oauth/authorize/",
-    tokenEndpoint: "https://sentry.io/oauth/token/",
-    scope: "event:read org:read project:read",
-    callbackPath: "/api/oauth/callback/sentry"
-  }
-};
-
-export { OAUTH_PROVIDERS, type OAuthProviderConfig };
+export function getOAuthProviderConfig(provider: string): OAuthProviderConfig | undefined {
+  return getPluginOAuthConfig(provider);
+}
 
 export type OAuthStatePayload = {
   userId: string;
@@ -464,7 +456,7 @@ async function startOAuthFlow(
   provider: string,
   deps: JrRpcDeps
 ): Promise<{ ok: false; error: string } | { ok: true; privateSent: boolean }> {
-  const providerConfig = OAUTH_PROVIDERS[provider];
+  const providerConfig = getOAuthProviderConfig(provider);
   if (!providerConfig) {
     return { ok: false, error: `Provider "${provider}" does not support OAuth authorization` };
   }

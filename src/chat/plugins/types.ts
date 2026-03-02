@@ -1,0 +1,38 @@
+import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+
+export interface OAuthBearerCredentials {
+  type: "oauth-bearer";
+  apiDomain: string;
+  authTokenEnv: string;
+}
+
+export type PluginCredentials = OAuthBearerCredentials;
+
+export interface PluginManifest {
+  name: string;
+  description: string;
+  capabilities: string[];
+  configKeys: string[];
+  credentials: PluginCredentials;
+  oauth?: {
+    clientIdEnv: string;
+    clientSecretEnv: string;
+    authorizeEndpoint: string;
+    tokenEndpoint: string;
+    scope: string;
+  };
+  target?: {
+    type: "repo";
+    configKey: string;
+  };
+}
+
+export interface PluginBrokerDeps {
+  userTokenStore: UserTokenStore;
+}
+
+export interface PluginDefinition {
+  manifest: PluginManifest;
+  dir: string;
+  skillsDir: string;
+}

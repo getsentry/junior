@@ -36,6 +36,30 @@ vi.mock("@/chat/capabilities/factory", () => ({
   })
 }));
 
+// Mock plugin registry — provide sentry OAuth config
+vi.mock("@/chat/plugins/registry", () => ({
+  getPluginOAuthConfig: (provider: string) => {
+    if (provider === "sentry") {
+      return {
+        clientIdEnv: "SENTRY_CLIENT_ID",
+        clientSecretEnv: "SENTRY_CLIENT_SECRET",
+        authorizeEndpoint: "https://sentry.io/oauth/authorize/",
+        tokenEndpoint: "https://sentry.io/oauth/token/",
+        scope: "event:read org:read project:read",
+        callbackPath: "/api/oauth/callback/sentry"
+      };
+    }
+    return undefined;
+  },
+  isPluginProvider: (provider: string) => provider === "sentry",
+  getPluginCapabilityProviders: () => [],
+  isPluginCapability: () => false,
+  isPluginConfigKey: () => false,
+  getPluginProviders: () => [],
+  getPluginSkillRoots: () => [],
+  createPluginBroker: () => { throw new Error("not implemented in test"); }
+}));
+
 // Mock generateAssistantReply
 vi.mock("@/chat/respond", () => ({
   generateAssistantReply: vi.fn(async () => ({

@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
-import { OAUTH_PROVIDERS, resolveBaseUrl, type OAuthStatePayload } from "@/chat/capabilities/jr-rpc-command";
+import { getOAuthProviderConfig, resolveBaseUrl, type OAuthStatePayload } from "@/chat/capabilities/jr-rpc-command";
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logException, logInfo } from "@/chat/observability";
@@ -208,7 +208,7 @@ export async function GET(
   context: { params: Promise<{ provider: string }> }
 ): Promise<Response> {
   const { provider } = await context.params;
-  const providerConfig = OAUTH_PROVIDERS[provider];
+  const providerConfig = getOAuthProviderConfig(provider);
   if (!providerConfig) {
     return htmlErrorResponse("Unknown provider", "The OAuth provider in this link is not recognized.", 404);
   }
