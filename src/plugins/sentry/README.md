@@ -49,7 +49,7 @@ Set `SENTRY_AUTH_TOKEN` to a static auth token. The broker falls back to this wh
 - If no token exists, the harness auto-starts the OAuth flow, sends an ephemeral authorization link, and auto-resumes the original request after the user authorizes.
 - The broker refreshes tokens within 5 minutes of expiry via `grant_type=refresh_token`.
 - Sandbox does not receive raw tokens via env; host applies scoped Authorization header transforms for Sentry API calls.
-- `SENTRY_AUTH_TOKEN` is injected in the lease env for CLI consumption (`npx @sentry/cli`).
+- `SENTRY_AUTH_TOKEN` is injected in the lease env for CLI consumption (`npx sentry`).
 
 ## 4) CLI usage
 
@@ -57,7 +57,7 @@ Run as a regular sandbox `bash` command while this skill is active:
 
 ```bash
 jr-rpc issue-credential sentry.api
-npx @sentry/cli issues list --org ORG --json
+npx sentry issues list --org ORG --json
 ```
 
 Optional: set org/project once per channel so they don't need to be repeated:

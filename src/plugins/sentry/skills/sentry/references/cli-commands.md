@@ -1,13 +1,13 @@
 # Sentry CLI Command Reference
 
-All commands use `npx @sentry/cli` and read `SENTRY_AUTH_TOKEN` from environment.
+All commands use `npx sentry` and read `SENTRY_AUTH_TOKEN` from environment.
 
 ## Issue commands
 
 ### List issues
 
 ```bash
-npx @sentry/cli issues list --org ORG [--project PROJECT] [--query QUERY] [--json]
+npx sentry issues list --org ORG [--project PROJECT] [--query QUERY] [--json]
 ```
 
 - `--org`: Organization slug (required).
@@ -18,7 +18,7 @@ npx @sentry/cli issues list --org ORG [--project PROJECT] [--query QUERY] [--jso
 ### Explain issue
 
 ```bash
-npx @sentry/cli issues explain ISSUE_ID --org ORG [--json]
+npx sentry issues explain ISSUE_ID --org ORG [--json]
 ```
 
 AI-powered root cause analysis for a specific issue.
@@ -26,7 +26,7 @@ AI-powered root cause analysis for a specific issue.
 ### Plan fix
 
 ```bash
-npx @sentry/cli issues plan ISSUE_ID --org ORG [--json]
+npx sentry issues plan ISSUE_ID --org ORG [--json]
 ```
 
 AI-powered remediation guidance for a specific issue.
@@ -36,7 +36,7 @@ AI-powered remediation guidance for a specific issue.
 ### List organizations
 
 ```bash
-npx @sentry/cli organizations list [--json]
+npx sentry organizations list [--json]
 ```
 
 Lists organizations accessible with current token.
