@@ -195,9 +195,9 @@ async function handleIssueCredentialCommand(
     });
   } catch (error) {
     // Auto-start OAuth when no credentials are available for an OAuth-capable provider
-    if (error instanceof CredentialUnavailableError && getOAuthProviderConfig(error.provider)) {
+    if (error instanceof CredentialUnavailableError && getOAuthProviderConfig(error.provider) && deps.requesterId) {
       const oauthResult = await startOAuthFlow(error.provider, {
-        requesterId: deps.requesterId!,
+        requesterId: deps.requesterId,
         channelId: deps.channelId,
         threadTs: deps.threadTs,
         userMessage: deps.userMessage,
