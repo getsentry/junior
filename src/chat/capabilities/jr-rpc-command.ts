@@ -29,7 +29,7 @@ async function deliverPrivateMessage(input: {
   threadTs?: string;
   userId: string;
   text: string;
-}): Promise<boolean> {
+}): Promise<"in_context" | "fallback_dm" | false> {
   let client: ReturnType<typeof getSlackClient>;
   try {
     client = getSlackClient();
@@ -56,7 +56,7 @@ async function deliverPrivateMessage(input: {
           ...(input.threadTs ? { thread_ts: input.threadTs } : {})
         });
       }
-      return true;
+      return "in_context";
     } catch (error) {
       const slackError = error instanceof Error ? error.message : String(error);
       logWarn(
@@ -78,7 +78,7 @@ async function deliverPrivateMessage(input: {
     }
 
     await client.chat.postMessage({ channel: dmChannelId, text: input.text });
-    return true;
+    return "fallback_dm";
   } catch (error) {
     const slackError = error instanceof Error ? error.message : String(error);
     logWarn(
@@ -211,8 +211,8 @@ async function handleIssueCredentialCommand(
             credential_unavailable: true,
             oauth_started: true,
             provider: error.provider,
-            private_delivery_sent: oauthResult.privateSent,
-            message: oauthResult.privateSent
+            private_delivery_sent: !!oauthResult.delivery,
+            message: oauthResult.delivery
               ? `I need to connect your ${providerLabel} account first. I've sent you a private authorization link.`
               : `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try your command again.`
           },
@@ -471,7 +471,7 @@ export type OAuthFlowInput = {
 export async function startOAuthFlow(
   provider: string,
   input: OAuthFlowInput
-): Promise<{ ok: false; error: string } | { ok: true; privateSent: boolean }> {
+): Promise<{ ok: false; error: string } | { ok: true; delivery: "in_context" | "fallback_dm" | false }> {
   const providerConfig = getOAuthProviderConfig(provider);
   if (!providerConfig) {
     return { ok: false, error: `Provider "${provider}" does not support OAuth authorization` };
@@ -527,14 +527,14 @@ export async function startOAuthFlow(
   );
 
   const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
-  const privateSent = await deliverPrivateMessage({
+  const delivery = await deliverPrivateMessage({
     channelId: input.channelId,
     threadTs: input.threadTs,
     userId: input.requesterId,
     text: `<${authorizeUrl}|Click here to link your ${providerLabel} account>. Once you've authorized, you'll see a confirmation in Slack.`
   });
 
-  return { ok: true, privateSent };
+  return { ok: true, delivery };
 }
 
 async function handleOAuthStartCommand(
@@ -592,7 +592,7 @@ async function handleOAuthStartCommand(
     return commandResult({ stderr: `${result.error}\n`, exitCode: 1 });
   }
 
-  if (!result.privateSent) {
+  if (!result.delivery) {
     return commandResult({
       stdout: {
         ok: true,
