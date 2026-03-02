@@ -171,6 +171,11 @@ function createProgressReporter(thread: { startTyping?: (status?: string) => Pro
     async stop() {
       active = false;
       clearPending();
+      try {
+        await thread.startTyping?.("");
+      } catch {
+        // Best effort only.
+      }
     },
     async setStatus(text: string) {
       const sanitizedStatus = sanitizeStatus(text);

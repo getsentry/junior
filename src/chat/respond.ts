@@ -872,7 +872,6 @@ export async function generateAssistantReply(
       unsubscribe();
     }
 
-    await context.onStatus?.("Drafting response...");
     const toolResults = newMessages.filter(isToolResultMessage);
 
     const assistantMessages = newMessages.filter(isAssistantMessage);
