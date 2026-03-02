@@ -104,7 +104,7 @@ class FakeSlackAdapter {
 }
 
 class FakeThread {
-  readonly channel?: {
+  readonly channel: {
     state: Promise<Record<string, unknown>>;
     setState: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
   };
@@ -130,20 +130,19 @@ class FakeThread {
     this.runId = args.runId;
     this.threadTs = args.threadTs;
     this.stateData = { ...(args.state ?? {}) };
-    if (args.channelStateRef) {
-      this.channel = {
-        get state() {
-          return Promise.resolve(args.channelStateRef?.value ?? {});
-        },
-        async setState(nextState: Record<string, unknown>, options?: { replace?: boolean }) {
-          if (options?.replace) {
-            args.channelStateRef!.value = { ...nextState };
-            return;
-          }
-          args.channelStateRef!.value = { ...args.channelStateRef!.value, ...nextState };
+    const ref = args.channelStateRef ?? { value: {} };
+    this.channel = {
+      get state() {
+        return Promise.resolve(ref.value);
+      },
+      async setState(nextState: Record<string, unknown>, options?: { replace?: boolean }) {
+        if (options?.replace) {
+          ref.value = { ...nextState };
+          return;
         }
-      };
-    }
+        ref.value = { ...ref.value, ...nextState };
+      }
+    };
   }
 
   get state(): Promise<Record<string, unknown>> {
@@ -458,6 +457,6 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
 // with the SDK's Thread and Message types. If bot.ts starts accessing a
 // new property, typecheck will fail here rather than silently at runtime.
 type AssertAssignable<_TSub extends TSuper, TSuper> = true;
-type _ThreadCheck = AssertAssignable<FakeThread, Pick<Thread, "id" | "channelId" | "state" | "setState" | "subscribe" | "startTyping" | "recentMessages" | "messages" | "refresh"> & { post: (...args: unknown[]) => Promise<unknown> }>;
+type _ThreadCheck = AssertAssignable<FakeThread, Pick<Thread, "id" | "channelId" | "state" | "setState" | "subscribe" | "startTyping" | "recentMessages" | "messages" | "refresh"> & { channel: Pick<Thread["channel"], "state" | "setState">; post: (...args: unknown[]) => Promise<unknown> }>;
 type _MessageCheck = AssertAssignable<ReturnType<typeof toIncomingMessage>, Pick<Message, "id" | "text" | "isMention" | "attachments" | "metadata" | "author">>;
 
