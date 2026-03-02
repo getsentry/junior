@@ -17,19 +17,9 @@ Practical implication:
 - Do not assume app credentials are automatically available inside the sandbox.
 - Prefer short-lived installation token delivery via sandbox header transforms.
 
-## Preferred credential strategy
+## Credential strategy
 
-1. Host/runtime obtains a short-lived GitHub installation token.
-2. Apply Authorization header transforms for required API domains on the specific command execution.
-3. Run the script command.
-4. Ensure no long-lived token persistence in sandbox files.
-
-Fallback:
-- No credential file handoff.
-- No app private key in sandbox.
-
-## Recommended harness expansions
-
-- Keep command env passthrough behind an explicit allowlist for secret names.
-- Add configurable sandbox network policy and restrict to required domains by default.
-- Inject auth headers via network policy transforms for specific APIs by default.
+1. Enable credentials with `jr-rpc issue-credential github.issues.write` (or the appropriate capability).
+2. Runtime injects `Authorization` header transforms for `api.github.com`.
+3. Run script commands: `node /vercel/sandbox/skills/github/scripts/gh_issue_api.mjs <command>`.
+4. No long-lived token persistence in sandbox files.

@@ -2,7 +2,7 @@
 
 All issue operations should go through:
 
-`node src/junior/skills/github/scripts/gh_issue_api.mjs <command> [options]`
+`node /vercel/sandbox/skills/github/scripts/gh_issue_api.mjs <command> [options]`
 
 ## Authentication
 

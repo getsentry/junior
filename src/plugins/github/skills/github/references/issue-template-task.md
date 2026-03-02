@@ -13,3 +13,10 @@ Up to 3 sentences describing the task and intended result.
 - **Dependencies** — related issues, PRs, or external blockers
 
 Remove sections that don't apply. Add sections the task needs.
+
+## Constraints
+- Title hard max: 60 characters (target 40-60).
+- Summary max 3 sentences.
+- Remove empty sections.
+- Adapt section headings to fit the issue, not the reverse.
+- Do not include acceptance criteria unless explicitly requested.
