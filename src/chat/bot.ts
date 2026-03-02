@@ -1600,10 +1600,6 @@ async function initializeAssistantThread(event: {
     { title: "Generate image", message: "Generate an image based on this conversation." }
   ]);
 
-  if (!event.sourceChannelId) {
-    return;
-  }
-
   const thread = ThreadImpl.fromJSON({
     _type: "chat:Thread",
     adapterName: "slack",

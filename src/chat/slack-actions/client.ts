@@ -195,18 +195,22 @@ export async function withSlackRetries<T>(
     } catch (error) {
       const mapped = mapSlackError(error);
       const isRetryable = mapped.code === "rate_limited";
+      const baseLogAttributes: Record<string, string | number | boolean> = {
+        "app.slack.action": context.action ?? "unknown",
+        "app.slack.error_code": mapped.code,
+        ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : {}),
+        ...(mapped.requestId ? { "app.slack.request_id": mapped.requestId } : {}),
+        ...(mapped.statusCode !== undefined ? { "http.response.status_code": mapped.statusCode } : {}),
+        ...(context.attributes ?? {})
+      };
+
       if (!isRetryable || attempt >= maxAttempts) {
         logWarn(
           "slack_action_failed",
           {},
           {
-            "app.slack.action": context.action ?? "unknown",
-            "app.slack.error_code": mapped.code,
-            ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : {}),
-            ...(mapped.requestId ? { "app.slack.request_id": mapped.requestId } : {}),
-            ...(mapped.errorData ? { "app.slack.error_data": mapped.errorData } : {}),
-            ...(mapped.statusCode !== undefined ? { "http.response.status_code": mapped.statusCode } : {}),
-            ...(context.attributes ?? {})
+            ...baseLogAttributes,
+            ...(mapped.errorData ? { "app.slack.error_data": mapped.errorData } : {})
           },
           "Slack action failed"
         );
@@ -217,13 +221,8 @@ export async function withSlackRetries<T>(
         "slack_action_retrying",
         {},
         {
-          "app.slack.action": context.action ?? "unknown",
-          "app.slack.error_code": mapped.code,
-          ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : {}),
-          ...(mapped.requestId ? { "app.slack.request_id": mapped.requestId } : {}),
-          ...(mapped.statusCode !== undefined ? { "http.response.status_code": mapped.statusCode } : {}),
-          "app.slack.retry_attempt": attempt,
-          ...(context.attributes ?? {})
+          ...baseLogAttributes,
+          "app.slack.retry_attempt": attempt
         },
         "Retrying Slack action after transient failure"
       );
