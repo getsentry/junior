@@ -243,10 +243,14 @@ What the thread looks like:
 
 ```
 User:     @Junior /sentry issue list
-Junior:   Your Sentry connection has expired. Run /sentry auth to reconnect.
+Junior:   I need to reconnect your Sentry account. I've sent you a private authorization link.
+          [ephemeral — only this user sees: "Click here to connect your Sentry account" with link]
+          ... user clicks link, authorizes in browser ...
+Junior:   Your Sentry account is now connected. Processing your request...
+Junior:   [issue list results]
 ```
 
-This happens when the refresh token itself is revoked or Sentry's token endpoint is unreachable. The broker throws, the agent catches the error and tells the user how to fix it.
+This happens when the refresh token itself is revoked or Sentry's token endpoint is unreachable. The broker throws `CredentialUnavailableError`, and `issue-credential` auto-starts the OAuth flow with the pending message — same as the first-time connect scenario.
 
 ### Not connected (first Sentry command — auto-resume)
 

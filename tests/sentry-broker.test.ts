@@ -221,6 +221,49 @@ describe("sentry credential broker", () => {
     ).rejects.toThrow(CredentialUnavailableError);
   });
 
+  it("throws CredentialUnavailableError for requester with no stored token even when SENTRY_AUTH_TOKEN is set", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "static-env-token";
+    const tokenStore = createMockTokenStore(); // empty — no stored tokens
+
+    const broker = new SentryCredentialBroker({ userTokenStore: tokenStore });
+
+    await expect(
+      broker.issue({
+        capability: "sentry.issues.read",
+        reason: "test:requester-no-token",
+        requesterId: "U999"
+      })
+    ).rejects.toThrow(CredentialUnavailableError);
+  });
+
+  it("uses SENTRY_AUTH_TOKEN env var only without requester context", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "static-env-token";
+    const tokenStore = createMockTokenStore();
+
+    const broker = new SentryCredentialBroker({ userTokenStore: tokenStore });
+
+    // With requesterId → should throw (no per-user token)
+    await expect(
+      broker.issue({
+        capability: "sentry.issues.read",
+        reason: "test:with-requester",
+        requesterId: "U999"
+      })
+    ).rejects.toThrow(CredentialUnavailableError);
+
+    // Without requesterId → should use static token
+    const lease = await broker.issue({
+      capability: "sentry.issues.read",
+      reason: "test:without-requester"
+    });
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "sentry.io",
+        headers: { Authorization: "Bearer static-env-token" }
+      }
+    ]);
+  });
+
   it("uses placeholder in env, not real token", async () => {
     process.env.SENTRY_AUTH_TOKEN = "real-secret-token";
     const broker = new SentryCredentialBroker();

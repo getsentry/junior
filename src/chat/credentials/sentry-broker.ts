@@ -96,7 +96,7 @@ export class SentryCredentialBroker implements CredentialBroker {
       throw new Error(`Unsupported Sentry capability: ${input.capability}`);
     }
 
-    // 1. Per-user OAuth token
+    // 1. Per-user OAuth token (preferred when requester context exists)
     if (input.requesterId && this.userTokenStore) {
       const stored = await this.userTokenStore.get(input.requesterId, "sentry");
       if (stored) {
@@ -122,7 +122,7 @@ export class SentryCredentialBroker implements CredentialBroker {
             }
             throw new CredentialUnavailableError(
               "sentry",
-              "Your Sentry connection has expired. Reconnect with /sentry auth."
+              "Your Sentry connection has expired."
             );
           }
         }
@@ -134,12 +134,21 @@ export class SentryCredentialBroker implements CredentialBroker {
 
         throw new CredentialUnavailableError(
           "sentry",
-          "Your Sentry connection has expired. Reconnect with /sentry auth."
+          "Your Sentry connection has expired."
         );
       }
+
+      // User has requester context but no stored token — require OAuth.
+      // Do not fall through to static env token, which is org-scoped
+      // and won't have access to the user's personal Sentry org.
+      throw new CredentialUnavailableError(
+        "sentry",
+        "No Sentry credentials available."
+      );
     }
 
-    // 2. Static env fallback
+    // 2. Static env fallback — only used when there is no requester context
+    //    (e.g. CI, evals, or server-to-server flows without a Slack user).
     const envToken = process.env.SENTRY_AUTH_TOKEN?.trim();
     if (envToken) {
       const expiresAtMs = Date.now() + MAX_LEASE_MS;
@@ -148,7 +157,7 @@ export class SentryCredentialBroker implements CredentialBroker {
 
     throw new CredentialUnavailableError(
       "sentry",
-      "No Sentry credentials available. Use `/sentry auth` to connect your Sentry account, or set SENTRY_AUTH_TOKEN."
+      "No Sentry credentials available."
     );
   }
 }
