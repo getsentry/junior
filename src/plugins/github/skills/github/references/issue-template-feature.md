@@ -1,18 +1,15 @@
 # Feature Issue Template
 
-Keep concise. Remove empty sections.
+Use as a starting structure. Adapt headings to fit the specific feature.
 
 ## Summary
 Up to 3 sentences describing the desired improvement and user outcome.
 
-## Analysis
-- Current behavior and constraints.
-- Gap and user/developer impact.
-- Viable options with tradeoffs.
-- Recommended direction with short rationale.
+## Suggested sections (use what fits, rename freely)
 
-## Sources
-- URL or repository reference for factual claims.
+- **Current behavior** — how the system works today, with code snippets if relevant
+- **Gap** — why current behavior is insufficient, with concrete impact
+- **Options** — viable approaches with tradeoffs
+- **Recommendation** — preferred direction with rationale
 
-## Concerns
-- Risks, open questions, or dependencies only when material.
+Remove sections that don't apply. Add sections the feature needs.

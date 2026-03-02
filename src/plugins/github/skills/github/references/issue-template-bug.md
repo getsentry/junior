@@ -1,18 +1,16 @@
 # Bug Issue Template
 
-Keep concise. Remove empty sections.
+Use as a starting structure. Adapt headings to fit the specific bug.
 
 ## Summary
-Up to 3 sentences describing the user-visible failure.
+Up to 3 sentences describing the failure and its impact.
 
-## Analysis
-- Symptom and affected surface.
-- Evidence (repro details, logs, observed vs expected).
-- Verified facts with source links.
-- Unknowns and root-cause hypotheses with confidence.
+## Suggested sections (use what fits, rename freely)
 
-## Sources
-- URL or repository reference for factual claims.
+- **Root cause** — technical explanation of why the bug occurs, with code snippets if relevant
+- **Reproduction** — numbered steps any developer can follow independently
+- **Expected behavior** — what should happen, with concrete options if multiple fixes exist
+- **Workaround** — current mitigation if one exists, with links to relevant PRs
+- **Versions affected** — specific versions or environments confirmed
 
-## Concerns
-- Risks, uncertainty, or dependency concerns only when material.
+Remove sections that don't apply. Add sections the problem needs.

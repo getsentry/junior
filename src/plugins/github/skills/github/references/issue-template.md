@@ -8,7 +8,6 @@ Select one template by issue type:
 Shared constraints:
 - Title hard max: 60 characters (target 40-60).
 - Summary max 3 sentences.
-- Max 4 bullets per section.
-- One sentence per bullet.
 - Remove empty sections.
+- Use problem-specific section headings — adapt the template to fit the issue, not the reverse.
 - Do not include acceptance criteria unless explicitly requested.

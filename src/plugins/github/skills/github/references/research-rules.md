@@ -26,7 +26,7 @@ Use this file for cross-type rules. Then apply the matching type-specific file:
 
 ## Output Expectations
 
-- Separate `Verified Facts`, `Likely`, and `Unknowns`.
+- Clearly distinguish verified facts from unknowns. Weave evidence naturally into the issue structure rather than forcing separate sections.
 - Include source links/paths for each verified fact.
 - Use exact dates for timeline claims.
 - Avoid absolute language when confidence is low.

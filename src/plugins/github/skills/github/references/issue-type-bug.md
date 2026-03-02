@@ -32,6 +32,16 @@ Produce a high-signal bug issue that drives root-cause discovery, not premature 
 - If root cause is not verified, include next RCA steps before or alongside fix options.
 - Do not present one fix as certain without explicit evidence.
 
+## Context Generalization
+
+When deriving bug content from conversation, generalize to the technical problem.
+
+Before (session-specific):
+> @alice ran `/github create` in #ops-alerts and saw "token refresh failed" when the OAuth token expired mid-thread
+
+After (generalized):
+> OAuth token refresh fails during long-running operations, producing "token refresh failed" errors
+
 ## Completion Bar
 
 A `bug` issue is ready when it has:
