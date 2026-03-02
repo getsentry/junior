@@ -16,9 +16,12 @@ export interface CanvasUpdateInput {
 
 export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
   const client = getSlackClient();
+  const isConversationScoped = isConversationChannel(input.channelId);
+  const channelPrefix = input.channelId?.slice(0, 1) ?? "none";
+  const action = isConversationScoped ? "conversations.canvases.create" : "canvases.create";
 
   const result = await withSlackRetries(async () => {
-    if (isConversationChannel(input.channelId)) {
+    if (isConversationScoped) {
       return client.conversations.canvases.create({
         channel_id: input.channelId as string,
         title: input.title,
@@ -36,6 +39,14 @@ export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId
         markdown: input.markdown
       }
     });
+  }, 3, {
+    action,
+    attributes: {
+      "app.slack.canvas.channel_id_prefix": channelPrefix,
+      "app.slack.canvas.has_channel_id": Boolean(input.channelId),
+      "app.slack.canvas.title_length": input.title.length,
+      "app.slack.canvas.markdown_length": input.markdown.length
+    }
   });
 
   if (!result.canvas_id) {
@@ -57,13 +68,22 @@ export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId
 
 export async function lookupCanvasSection(canvasId: string, containsText: string): Promise<string | undefined> {
   const client = getSlackClient();
-  const response: CanvasesSectionsLookupResponse = await withSlackRetries(() =>
-    client.canvases.sections.lookup({
-      canvas_id: canvasId,
-      criteria: {
-        contains_text: containsText
+  const response: CanvasesSectionsLookupResponse = await withSlackRetries(
+    () =>
+      client.canvases.sections.lookup({
+        canvas_id: canvasId,
+        criteria: {
+          contains_text: containsText
+        }
+      }),
+    3,
+    {
+      action: "canvases.sections.lookup",
+      attributes: {
+        "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),
+        "app.slack.canvas.contains_text_length": containsText.length
       }
-    })
+    }
   );
 
   return response.sections?.[0]?.id;
@@ -72,19 +92,29 @@ export async function lookupCanvasSection(canvasId: string, containsText: string
 export async function updateCanvas(input: CanvasUpdateInput): Promise<void> {
   const client = getSlackClient();
 
-  await withSlackRetries(() =>
-    client.canvases.edit({
-      canvas_id: input.canvasId,
-      changes: [
-        {
-          operation: input.operation,
-          section_id: input.sectionId,
-          document_content: {
-            type: "markdown",
-            markdown: input.markdown
+  await withSlackRetries(
+    () =>
+      client.canvases.edit({
+        canvas_id: input.canvasId,
+        changes: [
+          {
+            operation: input.operation,
+            section_id: input.sectionId,
+            document_content: {
+              type: "markdown",
+              markdown: input.markdown
+            }
           }
-        }
-      ]
-    })
+        ]
+      }),
+    3,
+    {
+      action: "canvases.edit",
+      attributes: {
+        "app.slack.canvas.canvas_id_prefix": input.canvasId.slice(0, 1),
+        "app.slack.canvas.operation": input.operation,
+        "app.slack.canvas.markdown_length": input.markdown.length
+      }
+    }
   );
 }

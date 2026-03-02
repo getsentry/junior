@@ -1,4 +1,5 @@
 import { WebClient } from "@slack/web-api";
+import { logWarn } from "@/chat/observability";
 
 // Slack canvas/list methods are not exposed by the current chat adapter public API,
 // so this module owns direct Web API calls for artifact actions.
@@ -16,22 +17,82 @@ export type SlackActionErrorCode =
 
 export class SlackActionError extends Error {
   code: SlackActionErrorCode;
+  apiError?: string;
   needed?: string;
   provided?: string;
+  statusCode?: number;
+  requestId?: string;
+  errorData?: string;
   retryAfterSeconds?: number;
 
   constructor(
     message: string,
     code: SlackActionErrorCode,
-    options: { needed?: string; provided?: string; retryAfterSeconds?: number } = {}
+    options: {
+      apiError?: string;
+      needed?: string;
+      provided?: string;
+      statusCode?: number;
+      requestId?: string;
+      errorData?: string;
+      retryAfterSeconds?: number;
+    } = {}
   ) {
     super(message);
     this.name = "SlackActionError";
     this.code = code;
+    this.apiError = options.apiError;
     this.needed = options.needed;
     this.provided = options.provided;
+    this.statusCode = options.statusCode;
+    this.requestId = options.requestId;
+    this.errorData = options.errorData;
     this.retryAfterSeconds = options.retryAfterSeconds;
   }
+}
+
+interface SlackRetryContext {
+  action?: string;
+  attributes?: Record<string, string | number | boolean>;
+}
+
+function serializeSlackErrorData(data: unknown): string | undefined {
+  if (!data || typeof data !== "object") {
+    return undefined;
+  }
+
+  const filtered = Object.fromEntries(
+    Object.entries(data as Record<string, unknown>).filter(([key]) => key !== "error")
+  );
+  if (Object.keys(filtered).length === 0) {
+    return undefined;
+  }
+
+  try {
+    const serialized = JSON.stringify(filtered);
+    return serialized.length <= 600 ? serialized : `${serialized.slice(0, 597)}...`;
+  } catch {
+    return undefined;
+  }
+}
+
+function getHeaderString(headers: unknown, name: string): string | undefined {
+  if (!headers || typeof headers !== "object") {
+    return undefined;
+  }
+
+  const key = name.toLowerCase();
+  const entries = headers as Record<string, unknown>;
+  for (const [entryKey, value] of Object.entries(entries)) {
+    if (entryKey.toLowerCase() !== key) continue;
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) {
+      const first = value.find((entry) => typeof entry === "string");
+      return typeof first === "string" ? first : undefined;
+    }
+  }
+
+  return undefined;
 }
 
 let client: WebClient | null = null;
@@ -57,61 +118,74 @@ function mapSlackError(error: unknown): SlackActionError {
   }
 
   const candidate = error as {
-    data?: { error?: string; needed?: string; provided?: string };
+    data?: { error?: string; needed?: string; provided?: string } & Record<string, unknown>;
     message?: string;
     code?: string;
     statusCode?: number;
     retryAfter?: number;
+    headers?: Record<string, unknown>;
   };
 
   const apiError = candidate.data?.error;
   const message = candidate.message ?? "Slack action failed";
+  const baseOptions = {
+    apiError,
+    statusCode: candidate.statusCode,
+    requestId: getHeaderString(candidate.headers, "x-slack-req-id"),
+    errorData: serializeSlackErrorData(candidate.data)
+  };
 
   if (apiError === "missing_scope") {
     return new SlackActionError(message, "missing_scope", {
+      ...baseOptions,
       needed: candidate.data?.needed,
       provided: candidate.data?.provided
     });
   }
 
   if (apiError === "not_in_channel") {
-    return new SlackActionError(message, "not_in_channel");
+    return new SlackActionError(message, "not_in_channel", baseOptions);
   }
 
   if (apiError === "invalid_arguments") {
-    return new SlackActionError(message, "invalid_arguments");
+    return new SlackActionError(message, "invalid_arguments", baseOptions);
   }
 
   if (apiError === "not_found") {
-    return new SlackActionError(message, "not_found");
+    return new SlackActionError(message, "not_found", baseOptions);
   }
 
   if (apiError === "feature_not_enabled" || apiError === "not_allowed_token_type") {
-    return new SlackActionError(message, "feature_unavailable");
+    return new SlackActionError(message, "feature_unavailable", baseOptions);
   }
 
   if (apiError === "canvas_creation_failed") {
-    return new SlackActionError(message, "canvas_creation_failed");
+    return new SlackActionError(message, "canvas_creation_failed", baseOptions);
   }
 
   if (apiError === "canvas_editing_failed") {
-    return new SlackActionError(message, "canvas_editing_failed");
+    return new SlackActionError(message, "canvas_editing_failed", baseOptions);
   }
 
   if (candidate.code === "slack_webapi_rate_limited_error" || candidate.statusCode === 429) {
     return new SlackActionError(message, "rate_limited", {
+      ...baseOptions,
       retryAfterSeconds: candidate.retryAfter
     });
   }
 
-  return new SlackActionError(message, "internal_error");
+  return new SlackActionError(message, "internal_error", baseOptions);
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function withSlackRetries<T>(task: () => Promise<T>, maxAttempts = 3): Promise<T> {
+export async function withSlackRetries<T>(
+  task: () => Promise<T>,
+  maxAttempts = 3,
+  context: SlackRetryContext = {}
+): Promise<T> {
   let attempt = 0;
 
   while (attempt < maxAttempts) {
@@ -122,8 +196,37 @@ export async function withSlackRetries<T>(task: () => Promise<T>, maxAttempts = 
       const mapped = mapSlackError(error);
       const isRetryable = mapped.code === "rate_limited";
       if (!isRetryable || attempt >= maxAttempts) {
+        logWarn(
+          "slack_action_failed",
+          {},
+          {
+            "app.slack.action": context.action ?? "unknown",
+            "app.slack.error_code": mapped.code,
+            ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : {}),
+            ...(mapped.requestId ? { "app.slack.request_id": mapped.requestId } : {}),
+            ...(mapped.errorData ? { "app.slack.error_data": mapped.errorData } : {}),
+            ...(mapped.statusCode !== undefined ? { "http.response.status_code": mapped.statusCode } : {}),
+            ...(context.attributes ?? {})
+          },
+          "Slack action failed"
+        );
         throw mapped;
       }
+
+      logWarn(
+        "slack_action_retrying",
+        {},
+        {
+          "app.slack.action": context.action ?? "unknown",
+          "app.slack.error_code": mapped.code,
+          ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : {}),
+          ...(mapped.requestId ? { "app.slack.request_id": mapped.requestId } : {}),
+          ...(mapped.statusCode !== undefined ? { "http.response.status_code": mapped.statusCode } : {}),
+          "app.slack.retry_attempt": attempt,
+          ...(context.attributes ?? {})
+        },
+        "Retrying Slack action after transient failure"
+      );
 
       const retryAfterMs =
         mapped.code === "rate_limited" && mapped.retryAfterSeconds && mapped.retryAfterSeconds > 0
@@ -153,7 +256,7 @@ export function isDmChannel(channelId: string): boolean {
 
 export function isConversationChannel(channelId: string | undefined): boolean {
   if (!channelId) return false;
-  return channelId.startsWith("C") || channelId.startsWith("G") || channelId.startsWith("D");
+  return channelId.startsWith("C") || channelId.startsWith("G");
 }
 
 export async function getFilePermalink(fileId: string): Promise<string | undefined> {

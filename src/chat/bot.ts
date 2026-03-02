@@ -1,4 +1,4 @@
-import { Chat } from "chat";
+import { Chat, ThreadImpl } from "chat";
 import type { Attachment, Message, SentMessage, Thread } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { z } from "zod";
@@ -1441,6 +1441,7 @@ async function replyToThread(
       let persistedAtLeastOnce = false;
 
       try {
+        const toolChannelId = preparedState.artifacts.assistantContextChannelId ?? channelId;
         const reply = await botDeps.generateAssistantReply(userText, {
           assistant: {
             userName: botConfig.userName
@@ -1462,6 +1463,7 @@ async function replyToThread(
             channelId,
             requesterId: message.author.userId
           },
+          toolChannelId,
           sandbox: {
             sandboxId: preparedState.sandboxId
           },
@@ -1588,6 +1590,7 @@ async function initializeAssistantThread(event: {
   threadId: string;
   channelId: string;
   threadTs: string;
+  sourceChannelId?: string;
 }): Promise<void> {
   const slack = getSlackAdapter();
   await slack.setAssistantTitle(event.channelId, event.threadTs, "Junior");
@@ -1596,6 +1599,25 @@ async function initializeAssistantThread(event: {
     { title: "Draft a reply", message: "Draft a concise reply I can send." },
     { title: "Generate image", message: "Generate an image based on this conversation." }
   ]);
+
+  if (!event.sourceChannelId) {
+    return;
+  }
+
+  const thread = ThreadImpl.fromJSON({
+    _type: "chat:Thread",
+    adapterName: "slack",
+    channelId: event.channelId,
+    id: event.threadId,
+    isDM: event.channelId.startsWith("D")
+  });
+  const currentArtifacts = coerceThreadArtifactsState(await thread.state);
+  const nextArtifacts = mergeArtifactsState(currentArtifacts, {
+    assistantContextChannelId: event.sourceChannelId
+  });
+  await persistThreadState(thread, {
+    artifacts: nextArtifacts
+  });
 }
 
 export const appSlackRuntime = createAppSlackRuntime<

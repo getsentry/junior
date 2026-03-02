@@ -282,7 +282,8 @@ describe("createAppSlackRuntime", () => {
       expect(deps.initializeAssistantThread).toHaveBeenCalledWith({
         threadId: "T-1",
         channelId: "C-1",
-        threadTs: "1700000000.000"
+        threadTs: "1700000000.000",
+        sourceChannelId: undefined
       });
     });
 
@@ -324,7 +325,30 @@ describe("createAppSlackRuntime", () => {
       expect(deps.initializeAssistantThread).toHaveBeenCalledWith({
         threadId: "T-2",
         channelId: "C-2",
-        threadTs: "1700000000.100"
+        threadTs: "1700000000.100",
+        sourceChannelId: undefined
+      });
+    });
+
+    it("forwards source channel context when provided", async () => {
+      const deps = createMockDeps();
+      const runtime = createAppSlackRuntime<TestState>(deps);
+
+      await runtime.handleAssistantContextChanged({
+        threadId: "T-2",
+        channelId: "D-assistant",
+        threadTs: "1700000000.100",
+        userId: "U-2",
+        context: {
+          channelId: "C-source"
+        }
+      });
+
+      expect(deps.initializeAssistantThread).toHaveBeenCalledWith({
+        threadId: "T-2",
+        channelId: "D-assistant",
+        threadTs: "1700000000.100",
+        sourceChannelId: "C-source"
       });
     });
 
