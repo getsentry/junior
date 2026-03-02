@@ -16,7 +16,7 @@ import type {
 } from "@/chat/conversation-state";
 import { logException, logInfo, logWarn, toOptionalString, withSpan } from "@/chat/observability";
 import { escapeXml } from "@/chat/xml";
-import { buildSlackOutputMessage } from "@/chat/output";
+import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import {
   buildArtifactStatePatch,
@@ -242,6 +242,36 @@ function createTextStreamBridge() {
   };
 }
 
+
+export function createNormalizingStream(
+  inner: AsyncIterable<string>,
+  normalize: (text: string) => string
+): AsyncIterable<string> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      let accumulated = "";
+      let emitted = 0;
+      for await (const chunk of inner) {
+        accumulated += chunk;
+        // Only normalize up to the last complete line to avoid corruption
+        // when a partial line changes meaning as more characters arrive
+        const lastNewline = accumulated.lastIndexOf("\n");
+        const stable = lastNewline === -1 ? "" : accumulated.slice(0, lastNewline + 1);
+        if (!stable) continue;
+        const normalized = normalize(stable);
+        const delta = normalized.slice(emitted);
+        emitted = normalized.length;
+        if (delta) yield delta;
+      }
+      // Flush remaining text (final incomplete line)
+      if (accumulated) {
+        const normalized = normalize(accumulated);
+        const delta = normalized.slice(emitted);
+        if (delta) yield delta;
+      }
+    }
+  };
+}
 
 interface UserInputAttachment {
   data: Buffer;
@@ -1400,7 +1430,9 @@ async function replyToThread(
       let streamedReplyPromise: Promise<SentMessage> | undefined;
       const startStreamingReply = () => {
         if (!streamedReplyPromise) {
-          streamedReplyPromise = thread.post(textStream.iterable);
+          streamedReplyPromise = thread.post(
+            createNormalizingStream(textStream.iterable, ensureBlockSpacing)
+          );
         }
       };
       await progress.start();
