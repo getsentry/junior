@@ -6,6 +6,7 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logException, logInfo } from "@/chat/observability";
 import { generateAssistantReply } from "@/chat/respond";
 import { getStateAdapter } from "@/chat/state";
+import { truncateStatusText } from "@/chat/status-format";
 
 export const runtime = "nodejs";
 
@@ -86,8 +87,11 @@ async function setAssistantStatus(channelId: string, threadTs: string, status: s
 
 const STATUS_DEBOUNCE_MS = 1000;
 
+const SLACK_STATUS_MAX_LENGTH = 100;
+
 function createDebouncedStatusPoster(channelId: string, threadTs: string) {
   let lastPostAt = 0;
+  let currentStatus = "";
   let pendingStatus: string | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
@@ -98,11 +102,15 @@ function createDebouncedStatusPoster(channelId: string, threadTs: string) {
     pendingStatus = null;
     pendingTimer = null;
     lastPostAt = Date.now();
+    currentStatus = status;
     await setAssistantStatus(channelId, threadTs, status);
   };
 
   const post = async (status: string) => {
     if (stopped) return;
+    const truncated = truncateStatusText(status, SLACK_STATUS_MAX_LENGTH);
+    if (!truncated || truncated === currentStatus) return;
+
     const now = Date.now();
     const elapsed = now - lastPostAt;
 
@@ -113,11 +121,12 @@ function createDebouncedStatusPoster(channelId: string, threadTs: string) {
       }
       pendingStatus = null;
       lastPostAt = now;
-      await setAssistantStatus(channelId, threadTs, status);
+      currentStatus = truncated;
+      await setAssistantStatus(channelId, threadTs, truncated);
       return;
     }
 
-    pendingStatus = status;
+    pendingStatus = truncated;
     if (!pendingTimer) {
       pendingTimer = setTimeout(() => {
         void flush();
@@ -280,7 +289,7 @@ export async function GET(
     const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
     return htmlErrorResponse(
       "Link expired",
-      `This authorization link has expired (links are valid for 10 minutes). Return to Slack and run <code>/${provider} auth</code> again, or retry your original ${providerLabel} command to get a new link.`,
+      `This authorization link has expired (links are valid for 10 minutes). Return to Slack and ask to connect your ${providerLabel} account again, or retry your original command to get a new link.`,
       400
     );
   }

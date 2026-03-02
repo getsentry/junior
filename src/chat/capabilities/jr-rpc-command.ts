@@ -551,7 +551,7 @@ async function startOAuthFlow(
     channelId: deps.channelId,
     threadTs: deps.threadTs,
     userId: deps.requesterId,
-    text: `<${authorizeUrl}|Click here to connect your ${providerLabel} account>. Once you've authorized, you'll see a confirmation in this thread.`
+    text: `<${authorizeUrl}|Click here to connect your ${providerLabel} account>. Once you've authorized, you'll see a confirmation in Slack.`
   });
 
   return { ok: true, privateSent };
