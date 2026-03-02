@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { Message, Thread } from "chat";
 import type { AppRuntimeAssistantLifecycleEvent } from "@/chat/app-runtime";
 import { parseSlackThreadId } from "@/chat/slack-context";
 import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
@@ -107,9 +108,10 @@ class FakeThread {
     state: Promise<Record<string, unknown>>;
     setState: (state: Record<string, unknown>, options?: { replace?: boolean }) => Promise<void>;
   };
-  readonly channelId?: string;
+  readonly channelId: string;
   readonly id: string;
   readonly posts: unknown[] = [];
+  readonly recentMessages: Message[] = [];
   readonly runId?: string;
   readonly threadTs?: string;
   subscribeCalls = 0;
@@ -124,7 +126,7 @@ class FakeThread {
     threadTs?: string;
   }) {
     this.id = args.id;
-    this.channelId = parseSlackThreadId(args.id)?.channelId;
+    this.channelId = parseSlackThreadId(args.id)?.channelId ?? "";
     this.runId = args.runId;
     this.threadTs = args.threadTs;
     this.stateData = { ...(args.state ?? {}) };
@@ -148,7 +150,7 @@ class FakeThread {
     return Promise.resolve(this.stateData);
   }
 
-  async post(message: unknown): Promise<unknown> {
+  async post(message: unknown): Promise<{ edit(newContent: unknown): Promise<unknown> }> {
     if (
       message &&
       typeof message === "object" &&
@@ -174,6 +176,14 @@ class FakeThread {
         return newContent;
       }
     };
+  }
+
+  get messages(): AsyncIterable<never> {
+    return (async function* () {})();
+  }
+
+  async refresh(): Promise<void> {
+    // No-op for eval harness.
   }
 
   async startTyping(_status?: string): Promise<void> {
@@ -226,19 +236,21 @@ function toPostedText(value: unknown): string {
 
 function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
   return {
-    id: event.message.id,
+    id: event.message.id ?? "",
     text: event.message.text ?? "",
     isMention: event.message.is_mention,
+    attachments: [],
+    metadata: { dateSent: new Date(), edited: false },
     channelId: event.thread.channel_id,
     threadId: event.thread.id,
     threadTs: event.thread.thread_ts,
     runId: event.thread.run_id,
     author: {
-      userId: event.message.author?.user_id,
-      userName: event.message.author?.user_name,
-      fullName: event.message.author?.full_name,
+      userId: event.message.author?.user_id ?? "",
+      userName: event.message.author?.user_name ?? "",
+      fullName: event.message.author?.full_name ?? "",
       isMe: event.message.author?.is_me ?? false,
-      isBot: event.message.author?.is_bot
+      isBot: event.message.author?.is_bot ?? false
     }
   };
 }
@@ -440,4 +452,12 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     turns
   };
 }
+
+// ── Compile-time guards ──────────────────────────────────────────────
+// These assertions ensure FakeThread and toIncomingMessage stay in sync
+// with the SDK's Thread and Message types. If bot.ts starts accessing a
+// new property, typecheck will fail here rather than silently at runtime.
+type AssertAssignable<_TSub extends TSuper, TSuper> = true;
+type _ThreadCheck = AssertAssignable<FakeThread, Pick<Thread, "id" | "channelId" | "state" | "setState" | "subscribe" | "startTyping" | "recentMessages" | "messages" | "refresh"> & { post: (...args: unknown[]) => Promise<unknown> }>;
+type _MessageCheck = AssertAssignable<ReturnType<typeof toIncomingMessage>, Pick<Message, "id" | "text" | "isMention" | "attachments" | "metadata" | "author">>;
 
