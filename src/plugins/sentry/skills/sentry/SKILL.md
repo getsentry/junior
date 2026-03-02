@@ -1,7 +1,7 @@
 ---
 name: sentry
-description: Query Sentry telemetry (issues, events, replays, traces) and generate deep links scoped to users or timeframes. Use when users ask to investigate bugs, search errors, find replays, or look up Sentry data via /sentry.
-requires-capabilities: sentry.issues.read sentry.events.read sentry.replays.read
+description: Query Sentry telemetry (issues, events, replays, traces) and generate deep links scoped to users or timeframes. This skill should be used when users ask to investigate bugs, search errors, find replays, or look up Sentry data via /sentry.
+requires-capabilities: sentry.api
 uses-config: sentry.org sentry.project
 allowed-tools: bash
 ---
@@ -20,11 +20,11 @@ Use this skill for `/sentry` workflows in the harness.
 - If org is missing and needed, ask the user.
 
 2. Enable credentials:
-- Before any authenticated Sentry operation, run: `jr-rpc issue-credential sentry.issues.read`
+- Before any authenticated Sentry operation, run: `jr-rpc issue-credential sentry.api`
 - Sandbox runtime applies scoped Authorization headers for this turn.
 - Do not pass raw tokens into the sandbox.
 - If credential issuance fails with `credential_unavailable` + `oauth_started`, relay the `message` from the result to the user and **stop the turn** — the callback will automatically resume the request after they authorize.
-- If a Sentry API call returns 401 or 403 after credentials were issued, the user's token may lack access for the requested org. Run `jr-rpc delete-token sentry` to clear the stale token, then run `jr-rpc issue-credential sentry.issues.read` again to trigger a fresh OAuth flow. Do not ask the user to run a command manually — the system handles re-authorization automatically.
+- If a Sentry API call returns 401 or 403 after credentials were issued, the user's token may lack access for the requested org. Run `jr-rpc delete-token sentry` to clear the stale token, then run `jr-rpc issue-credential sentry.api` again to trigger a fresh OAuth flow. Do not ask the user to run a command manually — the system handles re-authorization automatically.
 
 3. Execute via CLI:
 - Use `npx @sentry/cli <command>` for structured queries.

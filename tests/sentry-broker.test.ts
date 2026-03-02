@@ -1,10 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SentryCredentialBroker } from "@/chat/credentials/sentry-broker";
+import { createOAuthBearerBroker } from "@/chat/plugins/oauth-bearer-broker";
+import type { PluginManifest } from "@/chat/plugins/types";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import type { StoredTokens, UserTokenStore } from "@/chat/credentials/user-token-store";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
+
+const SENTRY_MANIFEST: PluginManifest = {
+  name: "sentry",
+  description: "Sentry issue tracking",
+  capabilities: ["sentry.api"],
+  configKeys: ["sentry.org", "sentry.project"],
+  credentials: {
+    type: "oauth-bearer",
+    apiDomains: ["sentry.io", "us.sentry.io", "de.sentry.io"],
+    authTokenEnv: "SENTRY_AUTH_TOKEN"
+  },
+  oauth: {
+    clientIdEnv: "SENTRY_CLIENT_ID",
+    clientSecretEnv: "SENTRY_CLIENT_SECRET",
+    authorizeEndpoint: "https://sentry.io/oauth/authorize/",
+    tokenEndpoint: "https://sentry.io/oauth/token/",
+    scope: "event:read org:read project:read"
+  }
+};
 
 function createMockTokenStore(tokens?: Record<string, StoredTokens>): UserTokenStore {
   const store = new Map<string, StoredTokens>();
@@ -24,13 +44,21 @@ function createMockTokenStore(tokens?: Record<string, StoredTokens>): UserTokenS
   };
 }
 
+function createBroker(tokenStore?: UserTokenStore) {
+  return createOAuthBearerBroker(
+    SENTRY_MANIFEST,
+    SENTRY_MANIFEST.credentials,
+    { userTokenStore: tokenStore ?? createMockTokenStore() }
+  );
+}
+
 afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
   globalThis.fetch = ORIGINAL_FETCH;
   vi.restoreAllMocks();
 });
 
-describe("sentry credential broker", () => {
+describe("sentry credential broker (oauth-bearer plugin)", () => {
   it("issues lease from per-user OAuth token", async () => {
     const tokenStore = createMockTokenStore({
       "U123:sentry": {
@@ -40,49 +68,47 @@ describe("sentry credential broker", () => {
       }
     });
 
-    const broker = new SentryCredentialBroker({ userTokenStore: tokenStore });
+    const broker = createBroker(tokenStore);
     const lease = await broker.issue({
-      capability: "sentry.issues.read",
+      capability: "sentry.api",
       reason: "test:oauth",
       requesterId: "U123"
     });
 
     expect(lease.provider).toBe("sentry");
-    expect(lease.capability).toBe("sentry.issues.read");
-    expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "sntrys_host_managed_credential" });
+    expect(lease.capability).toBe("sentry.api");
+    expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer user-access-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer user-access-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer user-access-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer user-access-token" } }
     ]);
   });
 
   it("falls back to SENTRY_AUTH_TOKEN env var", async () => {
     process.env.SENTRY_AUTH_TOKEN = "static-env-token";
-    const broker = new SentryCredentialBroker();
+    const broker = createBroker();
     const lease = await broker.issue({
-      capability: "sentry.events.read",
+      capability: "sentry.api",
       reason: "test:env-fallback"
     });
 
     expect(lease.provider).toBe("sentry");
-    expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "sntrys_host_managed_credential" });
+    expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer static-env-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer static-env-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer static-env-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer static-env-token" } }
     ]);
   });
 
   it("throws CredentialUnavailableError when no credentials are available", async () => {
     delete process.env.SENTRY_AUTH_TOKEN;
-    const broker = new SentryCredentialBroker();
+    const broker = createBroker();
 
     await expect(
       broker.issue({
-        capability: "sentry.issues.read",
+        capability: "sentry.api",
         reason: "test:unavailable"
       })
     ).rejects.toThrow(CredentialUnavailableError);
@@ -90,14 +116,14 @@ describe("sentry credential broker", () => {
 
   it("rejects unsupported capabilities", async () => {
     process.env.SENTRY_AUTH_TOKEN = "token";
-    const broker = new SentryCredentialBroker();
+    const broker = createBroker();
 
     await expect(
       broker.issue({
         capability: "sentry.admin.write",
         reason: "test:unsupported"
       })
-    ).rejects.toThrow("Unsupported Sentry capability: sentry.admin.write");
+    ).rejects.toThrow("Unsupported sentry capability: sentry.admin.write");
   });
 
   it("refreshes token when near expiry", async () => {
@@ -121,18 +147,17 @@ describe("sentry credential broker", () => {
       })
     })) as unknown as typeof fetch;
 
-    const broker = new SentryCredentialBroker({ userTokenStore: tokenStore });
+    const broker = createBroker(tokenStore);
     const lease = await broker.issue({
-      capability: "sentry.issues.read",
+      capability: "sentry.api",
       reason: "test:refresh",
       requesterId: "U123"
     });
 
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer new-access-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer new-access-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer new-access-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer new-access-token" } }
     ]);
 
     // Verify updated tokens were stored
@@ -158,18 +183,17 @@ describe("sentry credential broker", () => {
       status: 400
     })) as unknown as typeof fetch;
 
-    const broker = new SentryCredentialBroker({ userTokenStore: tokenStore });
+    const broker = createBroker(tokenStore);
     const lease = await broker.issue({
-      capability: "sentry.issues.read",
+      capability: "sentry.api",
       reason: "test:refresh-fail-fallback",
       requesterId: "U123"
     });
 
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer still-valid-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer still-valid-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer still-valid-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer still-valid-token" } }
     ]);
   });
 
@@ -190,11 +214,11 @@ describe("sentry credential broker", () => {
       status: 400
     })) as unknown as typeof fetch;
 
-    const broker = new SentryCredentialBroker({ userTokenStore: tokenStore });
+    const broker = createBroker(tokenStore);
 
     await expect(
       broker.issue({
-        capability: "sentry.issues.read",
+        capability: "sentry.api",
         reason: "test:expired",
         requesterId: "U123"
       })
@@ -210,11 +234,11 @@ describe("sentry credential broker", () => {
       }
     });
 
-    const broker = new SentryCredentialBroker({ userTokenStore: tokenStore });
+    const broker = createBroker(tokenStore);
 
     await expect(
       broker.issue({
-        capability: "sentry.issues.read",
+        capability: "sentry.api",
         reason: "test:expired-no-refresh",
         requesterId: "U123"
       })
@@ -225,11 +249,11 @@ describe("sentry credential broker", () => {
     process.env.SENTRY_AUTH_TOKEN = "static-env-token";
     const tokenStore = createMockTokenStore(); // empty — no stored tokens
 
-    const broker = new SentryCredentialBroker({ userTokenStore: tokenStore });
+    const broker = createBroker(tokenStore);
 
     await expect(
       broker.issue({
-        capability: "sentry.issues.read",
+        capability: "sentry.api",
         reason: "test:requester-no-token",
         requesterId: "U999"
       })
@@ -240,12 +264,12 @@ describe("sentry credential broker", () => {
     process.env.SENTRY_AUTH_TOKEN = "static-env-token";
     const tokenStore = createMockTokenStore();
 
-    const broker = new SentryCredentialBroker({ userTokenStore: tokenStore });
+    const broker = createBroker(tokenStore);
 
     // With requesterId → should throw (no per-user token)
     await expect(
       broker.issue({
-        capability: "sentry.issues.read",
+        capability: "sentry.api",
         reason: "test:with-requester",
         requesterId: "U999"
       })
@@ -253,26 +277,25 @@ describe("sentry credential broker", () => {
 
     // Without requesterId → should use static token
     const lease = await broker.issue({
-      capability: "sentry.issues.read",
+      capability: "sentry.api",
       reason: "test:without-requester"
     });
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "sentry.io",
-        headers: { Authorization: "Bearer static-env-token" }
-      }
+      { domain: "sentry.io", headers: { Authorization: "Bearer static-env-token" } },
+      { domain: "us.sentry.io", headers: { Authorization: "Bearer static-env-token" } },
+      { domain: "de.sentry.io", headers: { Authorization: "Bearer static-env-token" } }
     ]);
   });
 
   it("uses placeholder in env, not real token", async () => {
     process.env.SENTRY_AUTH_TOKEN = "real-secret-token";
-    const broker = new SentryCredentialBroker();
+    const broker = createBroker();
     const lease = await broker.issue({
-      capability: "sentry.issues.read",
+      capability: "sentry.api",
       reason: "test:placeholder"
     });
 
-    expect(lease.env.SENTRY_AUTH_TOKEN).toBe("sntrys_host_managed_credential");
+    expect(lease.env.SENTRY_AUTH_TOKEN).toBe("host_managed_credential");
     expect(lease.env.SENTRY_AUTH_TOKEN).not.toBe("real-secret-token");
   });
 });

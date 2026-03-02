@@ -6,14 +6,12 @@ Use capability names declared by active skill policy, for example:
 - `github.issues.write`
 - `github.issues.comment`
 - `github.labels.write`
-- `sentry.issues.read`
-- `sentry.events.read`
-- `sentry.replays.read`
+- `sentry.api`
 
 Examples:
 
 - `jr-rpc issue-credential github.issues.write --repo getsentry/junior`
-- `jr-rpc issue-credential sentry.issues.read`
+- `jr-rpc issue-credential sentry.api`
 
 Scoping rules:
 

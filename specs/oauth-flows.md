@@ -131,7 +131,7 @@ The same base URL must be registered in the provider's OAuth app configuration.
 
 ## Provider configuration
 
-Providers are configured in `OAUTH_PROVIDERS` (`jr-rpc-command.ts`):
+Providers are configured via plugin manifests (`plugin.yaml`) and exposed through `getOAuthProviderConfig()` (`jr-rpc-command.ts`):
 
 ```typescript
 {
@@ -274,7 +274,7 @@ What happens under the hood:
 ```
 1. User sends "@Junior /sentry issue list"
 2. Agent turn starts
-   a. Agent loads sentry skill, runs jr-rpc issue-credential sentry.issues.read
+   a. Agent loads sentry skill, runs jr-rpc issue-credential sentry.api
    b. Broker throws CredentialUnavailableError("sentry", ...)
    c. issue-credential handler catches it, calls startOAuthFlow("sentry") internally
    d. startOAuthFlow: stores { userId, provider, channelId, threadTs, pendingMessage, configuration } in Redis
@@ -321,9 +321,7 @@ Under the hood: `jr-rpc delete-token sentry` deletes the Redis key. Future Sentr
 
 ## Adding a new provider
 
-1. Add entry to `OAUTH_PROVIDERS` in `jr-rpc-command.ts`.
-2. Register the OAuth app with the provider, setting redirect URI to `<base-url>/api/oauth/callback/<provider>`.
+1. Create a plugin directory under `src/plugins/<name>/` with a `plugin.yaml` manifest declaring `oauth` configuration (see `specs/plugin-spec.md`).
+2. Register the OAuth app with the provider, setting redirect URI to `<base-url>/api/oauth/callback/<name>`.
 3. Add `<PROVIDER>_CLIENT_ID` and `<PROVIDER>_CLIENT_SECRET` env vars.
-4. Create or update the provider's `CredentialBroker` to read from `UserTokenStore`.
-5. Register the broker in `factory.ts`.
-6. Update the provider's SKILL.md with the new auth flow.
+4. Create the provider's skills in `src/plugins/<name>/skills/`.

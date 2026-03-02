@@ -45,7 +45,7 @@ Set `SENTRY_AUTH_TOKEN` to a static auth token. The broker falls back to this wh
 
 - Each Slack user connects their own Sentry account via `/sentry auth`.
 - Tokens are stored per user in Redis (`oauth-token:<userId>:sentry`).
-- Credentials are issued lazily when `jr-rpc issue-credential sentry.issues.read` is run.
+- Credentials are issued lazily when `jr-rpc issue-credential sentry.api` is run.
 - If no token exists, the harness auto-starts the OAuth flow, sends an ephemeral authorization link, and auto-resumes the original request after the user authorizes.
 - The broker refreshes tokens within 5 minutes of expiry via `grant_type=refresh_token`.
 - Sandbox does not receive raw tokens via env; host applies scoped Authorization header transforms for Sentry API calls.
@@ -56,7 +56,7 @@ Set `SENTRY_AUTH_TOKEN` to a static auth token. The broker falls back to this wh
 Run as a regular sandbox `bash` command while this skill is active:
 
 ```bash
-jr-rpc issue-credential sentry.issues.read
+jr-rpc issue-credential sentry.api
 npx @sentry/cli issues list --org ORG --json
 ```
 

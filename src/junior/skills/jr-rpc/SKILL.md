@@ -1,7 +1,7 @@
 ---
 name: jr-rpc
 description: Manage capability credentials and OAuth flows via jr-rpc bash commands.
-requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write sentry.issues.read sentry.events.read sentry.replays.read
+requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write sentry.api
 uses-config: github.repo sentry.org sentry.project
 allowed-tools: bash
 ---

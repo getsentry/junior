@@ -6,7 +6,7 @@
 
 Enable a capability credential for the current turn.
 
-- `<capability>` — provider-qualified (e.g. `github.issues.write`, `sentry.issues.read`)
+- `<capability>` — provider-qualified (e.g. `github.issues.write`, `sentry.api`)
 - `--repo <owner/repo>` — required for GitHub capabilities, not needed for Sentry
 
 ## oauth-start

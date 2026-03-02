@@ -9,6 +9,28 @@ const MAX_NAME_LENGTH = 64;
 const SKILL_DESCRIPTION_MAX = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
 
+async function resolvePluginSkillRoots() {
+  const pluginsRoot = path.resolve(process.cwd(), "src", "plugins");
+  const roots = [];
+  let entries;
+  try {
+    entries = await fs.readdir(pluginsRoot, { withFileTypes: true });
+  } catch {
+    return roots;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = path.join(pluginsRoot, entry.name, "plugin.yaml");
+    try {
+      await fs.access(manifestPath);
+      roots.push(path.join(pluginsRoot, entry.name, "skills"));
+    } catch {
+      continue;
+    }
+  }
+  return roots;
+}
+
 function resolveSkillRoots() {
   const envRoots = (process.env.SKILL_DIRS ?? "")
     .split(path.delimiter)
@@ -149,7 +171,8 @@ async function validateSkillDirectory(skillDir, duplicateNames) {
 }
 
 async function main() {
-  const roots = resolveSkillRoots();
+  const pluginRoots = await resolvePluginSkillRoots();
+  const roots = [...resolveSkillRoots(), ...pluginRoots];
   const errors = [];
   const warnings = [];
   const duplicateNames = new Map();
