@@ -28,7 +28,7 @@ Useful external guidance:
 
 ## Negative Calibration
 
-Treat `getsentry/sentry-mcp#817` as an anti-pattern reminder, not a model:
-- avoid overlong, sprawling issue bodies
-- avoid confident solution claims that are weakly evidenced
-- avoid mixing speculative detail into verified sections
+Avoid these anti-patterns:
+- Overlong, sprawling issue bodies with no clear sections
+- Confident solution claims that are weakly evidenced
+- Speculative detail mixed into verified sections
