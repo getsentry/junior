@@ -9,28 +9,33 @@ Enable a capability credential for the current turn.
 - `<capability>` — provider-qualified (e.g. `github.issues.write`, `sentry.api`)
 - `--repo <owner/repo>` — required for GitHub capabilities, not needed for Sentry
 
-## oauth-start
-
-`jr-rpc oauth-start <provider>`
-
-Initiate an OAuth authorization code flow for the given provider. The command sends the authorization link as an ephemeral Slack message (visible only to the requesting user) and returns:
-
-- `{ ok: true, ephemeral_sent: true }` — link was sent privately. Tell the user you've sent them a private link.
-- `{ ok: true, ephemeral_sent: false, authorize_url: "..." }` — ephemeral delivery failed (missing channel context). Post `authorize_url` normally as a fallback.
-
-The user clicks the link, authorizes in browser, and is redirected back to the callback handler which exchanges the code, stores tokens server-side, and posts a confirmation into the thread.
-
-Supported providers: `sentry`
-
-## issue-credential auto-OAuth
+### Auto-OAuth
 
 When `issue-credential` fails because no credentials are available for an OAuth-capable provider, the harness automatically starts the OAuth flow and returns:
 
 ```json
-{ "credential_unavailable": true, "oauth_started": true, "provider": "sentry", "ephemeral_sent": true, "message": "I need to connect your Sentry account first. I've sent you a private authorization link." }
+{ "credential_unavailable": true, "oauth_started": true, "provider": "sentry", "private_delivery_sent": true, "message": "I need to connect your Sentry account first. I've sent you a private authorization link." }
 ```
 
-The `message` field contains the exact text to relay to the user. The callback handler will automatically resume the original user request after authorization completes. The agent should relay `message` and stop the turn.
+Relay the `message` field to the user and stop the turn. The callback handler automatically resumes the original request after authorization completes.
+
+If `private_delivery_sent` is false, the `message` field instructs the user to send a direct message and try again.
+
+## oauth-start
+
+`jr-rpc oauth-start <provider>`
+
+Initiate an OAuth authorization code flow for the given provider. The command sends the authorization link as a private Slack message (visible only to the requesting user).
+
+Responses:
+
+- `{ ok: true, private_delivery_sent: true }` — link was sent privately. Tell the user you've sent them a private authorization link.
+- `{ ok: true, private_delivery_sent: false, message: "..." }` — private delivery failed (missing channel context). Relay the `message` to the user.
+- `{ ok: true, already_connected: true, provider: "...", message: "..." }` — user already has a valid token. Relay the `message`.
+
+**Never** post or relay authorization URLs — they are security-sensitive and are only delivered privately.
+
+Supported providers: `sentry`
 
 ## delete-token
 
