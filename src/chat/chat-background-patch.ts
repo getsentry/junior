@@ -1,5 +1,5 @@
-import { Chat } from "chat";
-import { retryOnLockError } from "@/chat/lock-retry";
+import { Chat, LockError } from "chat";
+import { enqueueMessage, drainThreadQueue } from "@/chat/thread-queue";
 
 type LegacyWebhookOptions = {
   waitUntil?: (task: Promise<unknown>) => void;
@@ -89,8 +89,8 @@ export function installChatBackgroundPatch(): void {
   // Concurrent @-mentions in the same thread hit a per-thread Redis lock (5-min TTL).
   // The SDK dedupes by message ID before acquiring the lock, so a failed lock attempt
   // permanently "consumes" the dedup slot — the message is lost with no retry.
-  // We wrap handleIncomingMessage with retryOnLockError which clears the dedup key
-  // on LockError and retries with exponential backoff. See lock-retry.ts for details.
+  // On LockError we enqueue the message into a per-thread Redis LIST. After each
+  // successful turn we drain the queue so queued messages are processed in order.
   (chatProto as unknown as { processMessage: unknown }).processMessage = function processMessage(
     this: ChatLike,
     adapter: unknown,
@@ -109,13 +109,20 @@ export function installChatBackgroundPatch(): void {
           (message as Record<string, unknown>).threadId = normalizedThreadId;
         }
 
-        await retryOnLockError({
-          fn: () => this.handleIncomingMessage(adapter, normalizedThreadId, message),
-          adapterName: (adapter as { name?: string }).name ?? "unknown",
-          messageId: (message as { id?: string } | null)?.id,
-          threadId,
-          logger: this.logger,
-        });
+        const adapterName = (adapter as { name?: string }).name ?? "unknown";
+
+        try {
+          await this.handleIncomingMessage(adapter, normalizedThreadId, message);
+        } catch (err) {
+          if (err instanceof LockError) {
+            await enqueueMessage(normalizedThreadId, adapterName, message);
+            return;
+          }
+          throw err;
+        }
+
+        // Turn succeeded — drain any queued messages for this thread.
+        await drainThreadQueue(this, adapter, normalizedThreadId);
       } catch (err) {
         this.logger?.error?.("Message processing error", { error: err, threadId });
       }

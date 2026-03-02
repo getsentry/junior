@@ -1,4 +1,4 @@
-import { createRedisState } from "@chat-adapter/state-redis";
+import { createRedisState, type RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { Lock, StateAdapter } from "chat";
 import { hasRedisConfig } from "@/chat/config";
 import { logInfo } from "@/chat/observability";
@@ -36,15 +36,17 @@ function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
   };
 }
 
+let _redisState: RedisStateAdapter | undefined;
+
 function createStateAdapter() {
   if (!hasRedisConfig()) {
     throw new Error("REDIS_URL is required for durable Slack thread state");
   }
 
-  const redisState = createRedisState({
+  _redisState = createRedisState({
     url: process.env.REDIS_URL
   });
-  return createQueuedStateAdapter(redisState);
+  return createQueuedStateAdapter(_redisState);
 }
 
 let _stateAdapter: StateAdapter | undefined;
@@ -54,4 +56,11 @@ export function getStateAdapter(): StateAdapter {
     _stateAdapter = createStateAdapter();
   }
   return _stateAdapter;
+}
+
+export function getRedisClient(): ReturnType<RedisStateAdapter["getClient"]> {
+  if (!_redisState) {
+    getStateAdapter();
+  }
+  return _redisState!.getClient();
 }
