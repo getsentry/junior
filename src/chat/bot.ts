@@ -1513,7 +1513,7 @@ async function replyToThread(
         } else {
           await streamedReplyPromise;
           if (replyFiles) {
-            await thread.post(buildSlackOutputMessage("", { files: replyFiles }));
+            await thread.post({ markdown: "", files: replyFiles });
           }
         }
 
