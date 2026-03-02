@@ -26,7 +26,7 @@ import {
 import { parseSlackThreadId, resolveSlackChannelIdFromMessage } from "@/chat/slack-context";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { SLACK_STATUS_MAX_LENGTH, truncateStatusText } from "@/chat/status-format";
+import { truncateStatusText } from "@/chat/status-format";
 import { handleSlashCommand } from "@/chat/slash-command";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { getStateAdapter } from "@/chat/state";
@@ -125,7 +125,7 @@ function createProgressReporter(thread: Pick<Thread, "startTyping">) {
   let lastStatusAt = 0;
   let pendingStatus: string | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-  const sanitizeStatus = (text: string): string => truncateStatusText(text, SLACK_STATUS_MAX_LENGTH);
+  const sanitizeStatus = (text: string): string => truncateStatusText(text);
 
   const postStatus = async (text: string): Promise<void> => {
     currentStatus = text;

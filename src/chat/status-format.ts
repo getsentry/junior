@@ -1,15 +1,15 @@
 // Slack assistant.threads.setStatus enforces a 50-char limit on the status field.
-export const SLACK_STATUS_MAX_LENGTH = 50;
+const SLACK_STATUS_MAX_LENGTH = 50;
 
-export function truncateStatusText(text: string, maxLength: number): string {
+export function truncateStatusText(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) {
     return "";
   }
-  if (trimmed.length <= maxLength) {
+  if (trimmed.length <= SLACK_STATUS_MAX_LENGTH) {
     return trimmed;
   }
-  return `${trimmed.slice(0, Math.max(1, maxLength - 3)).trimEnd()}...`;
+  return `${trimmed.slice(0, Math.max(1, SLACK_STATUS_MAX_LENGTH - 3)).trimEnd()}...`;
 }
 
 export function compactStatusPath(value: unknown): string | undefined {
@@ -34,8 +34,14 @@ export function compactStatusText(value: unknown, maxLength = 80): string | unde
     return undefined;
   }
 
-  const compacted = truncateStatusText(value, maxLength);
-  return compacted || undefined;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, Math.max(1, maxLength - 3)).trimEnd()}...`;
 }
 
 export function compactStatusFilename(value: unknown): string | undefined {

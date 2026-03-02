@@ -7,7 +7,7 @@ import { logException, logInfo } from "@/chat/observability";
 import { generateAssistantReply } from "@/chat/respond";
 import { getSlackClient } from "@/chat/slack-actions/client";
 import { getStateAdapter } from "@/chat/state";
-import { SLACK_STATUS_MAX_LENGTH, truncateStatusText } from "@/chat/status-format";
+import { truncateStatusText } from "@/chat/status-format";
 import { escapeXml } from "@/chat/xml";
 
 export const runtime = "nodejs";
@@ -71,7 +71,7 @@ function createDebouncedStatusPoster(channelId: string, threadTs: string) {
 
   const post = async (status: string) => {
     if (stopped) return;
-    const truncated = truncateStatusText(status, SLACK_STATUS_MAX_LENGTH);
+    const truncated = truncateStatusText(status);
     if (!truncated || truncated === currentStatus) return;
 
     const now = Date.now();
