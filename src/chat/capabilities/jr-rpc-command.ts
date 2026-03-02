@@ -196,7 +196,14 @@ async function handleIssueCredentialCommand(
   } catch (error) {
     // Auto-start OAuth when no credentials are available for an OAuth-capable provider
     if (error instanceof CredentialUnavailableError && getOAuthProviderConfig(error.provider)) {
-      const oauthResult = await startOAuthFlow(error.provider, deps);
+      const oauthResult = await startOAuthFlow(error.provider, {
+        requesterId: deps.requesterId!,
+        channelId: deps.channelId,
+        threadTs: deps.threadTs,
+        userMessage: deps.userMessage,
+        channelConfiguration: deps.channelConfiguration,
+        activeSkillName: deps.activeSkill?.name ?? undefined
+      });
       if (oauthResult.ok) {
         const providerLabel = error.provider.charAt(0).toUpperCase() + error.provider.slice(1);
         return commandResult({
@@ -452,17 +459,22 @@ export function resolveBaseUrl(): string | undefined {
   return undefined;
 }
 
-async function startOAuthFlow(
+export type OAuthFlowInput = {
+  requesterId: string;
+  channelId?: string;
+  threadTs?: string;
+  userMessage?: string;
+  channelConfiguration?: ChannelConfigurationService;
+  activeSkillName?: string;
+};
+
+export async function startOAuthFlow(
   provider: string,
-  deps: JrRpcDeps
+  input: OAuthFlowInput
 ): Promise<{ ok: false; error: string } | { ok: true; privateSent: boolean }> {
   const providerConfig = getOAuthProviderConfig(provider);
   if (!providerConfig) {
     return { ok: false, error: `Provider "${provider}" does not support OAuth authorization` };
-  }
-
-  if (!deps.requesterId) {
-    return { ok: false, error: "OAuth requires requester context (requesterId)" };
   }
 
   const clientId = process.env[providerConfig.clientIdEnv]?.trim();
@@ -477,19 +489,19 @@ async function startOAuthFlow(
 
   // Snapshot channel configuration so the resumed turn has context
   let configuration: Record<string, unknown> | undefined;
-  if (deps.userMessage && deps.channelConfiguration) {
-    configuration = await deps.channelConfiguration.resolveValues();
+  if (input.userMessage && input.channelConfiguration) {
+    configuration = await input.channelConfiguration.resolveValues();
   }
 
   const state = randomBytes(32).toString("hex");
   const stateKey = `oauth-state:${state}`;
   const stateAdapter = getStateAdapter();
   const statePayload: OAuthStatePayload = {
-    userId: deps.requesterId,
+    userId: input.requesterId,
     provider,
-    ...(deps.channelId ? { channelId: deps.channelId } : {}),
-    ...(deps.threadTs ? { threadTs: deps.threadTs } : {}),
-    ...(deps.userMessage ? { pendingMessage: deps.userMessage } : {}),
+    ...(input.channelId ? { channelId: input.channelId } : {}),
+    ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+    ...(input.userMessage ? { pendingMessage: input.userMessage } : {}),
     ...(configuration && Object.keys(configuration).length > 0 ? { configuration } : {})
   };
   await stateAdapter.set(stateKey, statePayload, OAUTH_STATE_TTL_MS);
@@ -509,17 +521,17 @@ async function startOAuthFlow(
     {},
     {
       "app.credential.provider": provider,
-      ...(deps.activeSkill?.name ? { "app.skill.name": deps.activeSkill.name } : {})
+      ...(input.activeSkillName ? { "app.skill.name": input.activeSkillName } : {})
     },
-    "Initiated OAuth authorization code flow via jr-rpc"
+    "Initiated OAuth authorization code flow"
   );
 
   const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
   const privateSent = await deliverPrivateMessage({
-    channelId: deps.channelId,
-    threadTs: deps.threadTs,
-    userId: deps.requesterId,
-    text: `<${authorizeUrl}|Click here to connect your ${providerLabel} account>. Once you've authorized, you'll see a confirmation in Slack.`
+    channelId: input.channelId,
+    threadTs: input.threadTs,
+    userId: input.requesterId,
+    text: `<${authorizeUrl}|Click here to link your ${providerLabel} account>. Once you've authorized, you'll see a confirmation in Slack.`
   });
 
   return { ok: true, privateSent };
@@ -561,9 +573,21 @@ async function handleOAuthStartCommand(
     }
   }
 
+  if (!deps.requesterId) {
+    return commandResult({
+      stderr: "jr-rpc oauth-start requires requester context (requesterId)\n",
+      exitCode: 1
+    });
+  }
+
   // Explicit oauth-start must not store pendingMessage — the auth request
   // itself is the intent, and auto-resuming "/sentry auth" would loop.
-  const result = await startOAuthFlow(provider, { ...deps, userMessage: undefined });
+  const result = await startOAuthFlow(provider, {
+    requesterId: deps.requesterId,
+    channelId: deps.channelId,
+    threadTs: deps.threadTs,
+    activeSkillName: deps.activeSkill?.name ?? undefined
+  });
   if (!result.ok) {
     return commandResult({ stderr: `${result.error}\n`, exitCode: 1 });
   }

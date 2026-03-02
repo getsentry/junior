@@ -27,6 +27,7 @@ import { parseSlackThreadId, resolveSlackChannelIdFromMessage } from "@/chat/sla
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { truncateStatusText } from "@/chat/status-format";
+import { handleSlashCommand } from "@/chat/slash-command";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { getStateAdapter } from "@/chat/state";
 import { completeObject, completeText, GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
@@ -1611,3 +1612,4 @@ bot.onAssistantThreadStarted((event: AppRuntimeAssistantLifecycleEvent) =>
 bot.onAssistantContextChanged((event: AppRuntimeAssistantLifecycleEvent) =>
   appSlackRuntime.handleAssistantContextChanged(event)
 );
+bot.onSlashCommand("/jr", handleSlashCommand);

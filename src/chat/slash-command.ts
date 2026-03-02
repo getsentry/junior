@@ -1,0 +1,96 @@
+import type { SlashCommandEvent } from "chat";
+import { startOAuthFlow } from "@/chat/capabilities/jr-rpc-command";
+import { getUserTokenStore } from "@/chat/capabilities/factory";
+import { getOAuthProviderConfig } from "@/chat/capabilities/jr-rpc-command";
+import { isPluginProvider } from "@/chat/plugins/registry";
+import { logInfo } from "@/chat/observability";
+
+function providerLabel(provider: string): string {
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+async function postEphemeral(event: SlashCommandEvent, text: string): Promise<void> {
+  await event.channel.postEphemeral(event.user, text, { fallbackToDM: false });
+}
+
+async function handleLink(event: SlashCommandEvent, provider: string): Promise<void> {
+  if (!isPluginProvider(provider)) {
+    await postEphemeral(event, `Unknown provider: \`${provider}\``);
+    return;
+  }
+
+  if (!getOAuthProviderConfig(provider)) {
+    await postEphemeral(
+      event,
+      `${providerLabel(provider)} uses app-level authentication and doesn't require account linking.`
+    );
+    return;
+  }
+
+  const raw = event.raw as { channel_id?: string };
+  const result = await startOAuthFlow(provider, {
+    requesterId: event.user.userId,
+    channelId: raw.channel_id
+  });
+
+  if (!result.ok) {
+    await postEphemeral(event, `Failed to start linking: ${result.error}`);
+    return;
+  }
+
+  if (!result.privateSent) {
+    await postEphemeral(
+      event,
+      "I wasn't able to send you a private authorization link. Please try again in a direct message."
+    );
+  }
+}
+
+async function handleUnlink(event: SlashCommandEvent, provider: string): Promise<void> {
+  if (!isPluginProvider(provider)) {
+    await postEphemeral(event, `Unknown provider: \`${provider}\``);
+    return;
+  }
+
+  if (!getOAuthProviderConfig(provider)) {
+    await postEphemeral(
+      event,
+      `${providerLabel(provider)} uses app-level authentication and can't be unlinked.`
+    );
+    return;
+  }
+
+  const tokenStore = getUserTokenStore();
+  await tokenStore.delete(event.user.userId, provider);
+
+  logInfo(
+    "slash_command_unlink",
+    {},
+    { "app.credential.provider": provider, "app.slack.user_id": event.user.userId },
+    `Unlinked ${providerLabel(provider)} account via /jr slash command`
+  );
+
+  await postEphemeral(event, `Your ${providerLabel(provider)} account has been unlinked.`);
+}
+
+export async function handleSlashCommand(event: SlashCommandEvent): Promise<void> {
+  const [subcommand, provider, ...rest] = event.text.trim().split(/\s+/);
+
+  if (!subcommand || !["link", "unlink"].includes(subcommand)) {
+    await postEphemeral(event, "Usage: `/jr link <provider>` or `/jr unlink <provider>`");
+    return;
+  }
+
+  if (!provider || rest.length > 0) {
+    await postEphemeral(event, `Usage: \`/jr ${subcommand} <provider>\``);
+    return;
+  }
+
+  const normalized = provider.toLowerCase();
+
+  if (subcommand === "link") {
+    await handleLink(event, normalized);
+  } else {
+    await handleUnlink(event, normalized);
+  }
+}

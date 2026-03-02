@@ -9,6 +9,7 @@ vi.mock("chat", () => {
     onSubscribedMessage() {}
     onAssistantThreadStarted() {}
     onAssistantContextChanged() {}
+    onSlashCommand() {}
     getAdapter() {
       return {
         setAssistantTitle: async () => undefined,
