@@ -90,14 +90,6 @@ export interface AgentTurnDiagnostics {
 const AGENT_TURN_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 
-function formatUnknownSkillMessage(requestedSkill: string, availableSkills: Array<{ name: string }>): string {
-  const available = availableSkills.map((skill) => `/${skill.name}`).join(", ");
-  return [
-    `Unknown skill: /${requestedSkill}`,
-    available ? `Available skills: ${available}` : "No skills are currently available."
-  ].join("\n");
-}
-
 function isExecutionDeferralResponse(text: string): boolean {
   return /\b(want me to proceed|do you want me to proceed|shall i proceed|can i proceed|should i proceed|let me do that now|give me a moment|tag me again|fresh invocation)\b/i.test(
     text
@@ -584,7 +576,7 @@ export async function generateAssistantReply(
       ...(context.configuration ?? {})
     };
     const userInput = messageText;
-    const explicitInvocation = parseSkillInvocation(userInput);
+    const explicitInvocation = parseSkillInvocation(userInput, availableSkills);
     const explicitSkill = explicitInvocation
       ? findSkillByName(explicitInvocation.skillName, availableSkills)
       : null;
@@ -623,22 +615,6 @@ export async function generateAssistantReply(
     });
     sandboxExecutor.configureSkills(availableSkills);
     const sandbox = await sandboxExecutor.createSandbox();
-
-    if (explicitInvocation && !explicitSkill) {
-      return {
-        text: formatUnknownSkillMessage(explicitInvocation.skillName, availableSkills),
-        sandboxId: sandboxExecutor.getSandboxId(),
-        diagnostics: {
-          outcome: "execution_failure",
-          modelId: botConfig.modelId,
-          assistantMessageCount: 0,
-          toolCalls: [],
-          toolResultCount: 0,
-          toolErrorCount: 0,
-          usedPrimaryText: false
-        }
-      };
-    }
 
     if (explicitSkill) {
       const preloaded = await skillSandbox.loadSkill(explicitSkill.name);

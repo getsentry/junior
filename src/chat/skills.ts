@@ -167,7 +167,10 @@ export async function discoverSkills(): Promise<SkillMetadata[]> {
   return sorted;
 }
 
-export function parseSkillInvocation(messageText: string): SkillInvocation | null {
+export function parseSkillInvocation(
+  messageText: string,
+  availableSkills: SkillMetadata[]
+): SkillInvocation | null {
   const trimmed = messageText.trim();
   const match = /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(trimmed);
   if (!match) {
@@ -175,6 +178,10 @@ export function parseSkillInvocation(messageText: string): SkillInvocation | nul
   }
 
   const skillName = match[1].toLowerCase();
+  if (!availableSkills.some((s) => s.name === skillName)) {
+    return null;
+  }
+
   const args = (match[2] ?? "").trim();
 
   return {
@@ -227,25 +234,6 @@ export function renderSkillMetadataXml(skills: SkillMetadata[]): string {
   return `<available_skills>\n${items}\n</available_skills>`;
 }
 
-export function renderSkillsHarnessXml(skills: SkillMetadata[]): string {
-  return [
-    "<skills>",
-    "  <rules>",
-    "    1. If the message contains /<skill-name> anywhere, treat it as a skill invocation request.",
-    "    2. If a slash-invoked skill exists, apply that skill's instructions first.",
-    "    3. If a slash-invoked skill does not exist, return an unknown-skill error and list available skills.",
-    "    4. Never reinterpret slash skill commands as plain text chat intent.",
-    "  </rules>",
-    "  <usage>",
-    "    Use format: /<skill-name> <optional arguments>",
-    "  </usage>",
-    renderSkillMetadataXml(skills)
-      .split("\n")
-      .map((line) => `  ${line}`)
-      .join("\n"),
-    "</skills>"
-  ].join("\n");
-}
 
 export function renderActiveSkillsXml(skills: Skill[]): string {
   if (skills.length === 0) {
