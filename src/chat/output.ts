@@ -8,10 +8,60 @@ export interface SlackOutputOptions {
   files?: FileUpload[];
 }
 
+export function ensureBlockSpacing(text: string): string {
+  const codeBlockPattern = /^```/;
+  const listItemPattern = /^[-*•]\s|^\d+\.\s/;
+  const lines = text.split("\n");
+  const result: string[] = [];
+  let inCodeBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isCodeFence = codeBlockPattern.test(line.trimStart());
+
+    if (isCodeFence) {
+      // Insert blank line before code fence if needed (only outside code blocks)
+      if (!inCodeBlock) {
+        const prev = result.length > 0 ? result[result.length - 1] : undefined;
+        if (prev !== undefined && prev.trim() !== "") {
+          result.push("");
+        }
+      }
+      inCodeBlock = !inCodeBlock;
+      result.push(line);
+      continue;
+    }
+
+    if (inCodeBlock) {
+      result.push(line);
+      continue;
+    }
+
+    const prev = result.length > 0 ? result[result.length - 1] : undefined;
+
+    // Insert blank line if: prev is non-empty, current is non-empty,
+    // prev is not already a blank line, and they're not both list items
+    if (
+      prev !== undefined &&
+      prev.trim() !== "" &&
+      line.trim() !== "" &&
+      !(listItemPattern.test(prev.trimStart()) && listItemPattern.test(line.trimStart()))
+    ) {
+      result.push("");
+    }
+
+    result.push(line);
+  }
+
+  return result.join("\n");
+}
+
 function normalizeForSlack(text: string): string {
-  return text
+  let normalized = text
     .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]+$/gm, "")
+    .replace(/[ \t]+$/gm, "");
+  normalized = ensureBlockSpacing(normalized);
+  return normalized
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

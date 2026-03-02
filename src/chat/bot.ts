@@ -16,7 +16,7 @@ import type {
 } from "@/chat/conversation-state";
 import { logException, logInfo, logWarn, toOptionalString, withSpan } from "@/chat/observability";
 import { escapeXml } from "@/chat/xml";
-import { buildSlackOutputMessage } from "@/chat/output";
+import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import {
   buildArtifactStatePatch,
@@ -242,6 +242,25 @@ function createTextStreamBridge() {
   };
 }
 
+
+function createNormalizingStream(
+  inner: AsyncIterable<string>,
+  normalize: (text: string) => string
+): AsyncIterable<string> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      let accumulated = "";
+      let emitted = 0;
+      for await (const chunk of inner) {
+        accumulated += chunk;
+        const normalized = normalize(accumulated);
+        const delta = normalized.slice(emitted);
+        emitted = normalized.length;
+        if (delta) yield delta;
+      }
+    }
+  };
+}
 
 interface UserInputAttachment {
   data: Buffer;
@@ -1400,7 +1419,9 @@ async function replyToThread(
       let streamedReplyPromise: Promise<SentMessage> | undefined;
       const startStreamingReply = () => {
         if (!streamedReplyPromise) {
-          streamedReplyPromise = thread.post(textStream.iterable);
+          streamedReplyPromise = thread.post(
+            createNormalizingStream(textStream.iterable, ensureBlockSpacing)
+          );
         }
       };
       await progress.start();
