@@ -14,7 +14,7 @@ This skill runs in the harness sandbox (`node22`) and commands execute via the `
 1. Enable credentials with `jr-rpc issue-credential sentry.api`.
 2. Runtime injects `Authorization` header transforms for `sentry.io` and regional subdomains (`us.sentry.io`, `de.sentry.io`) — the host proxies the real token at the HTTP layer.
 3. `SENTRY_AUTH_TOKEN` is set to a placeholder so CLI tools don't fail on missing auth. The real token never enters the sandbox.
-4. Run CLI commands: `npx @sentry/cli <command>`.
+4. Run CLI commands: `npx sentry <command>`.
 5. No long-lived token persistence in sandbox files.
 
 ## Important constraint

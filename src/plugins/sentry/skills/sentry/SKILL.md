@@ -27,7 +27,7 @@ Use this skill for `/sentry` workflows in the harness.
 - If a Sentry API call returns 401 or 403 after credentials were issued, the user's token may lack access for the requested org. Run `jr-rpc delete-token sentry` to clear the stale token, then run `jr-rpc issue-credential sentry.api` again to trigger a fresh OAuth flow. Do not ask the user to run a command manually — the system handles re-authorization automatically.
 
 3. Execute via CLI:
-- Use `npx @sentry/cli <command>` for structured queries.
+- Use `npx sentry <command>` for structured queries.
 - The CLI reads `SENTRY_AUTH_TOKEN` from env (injected by broker via lease env field).
 - Read [references/cli-commands.md](references/cli-commands.md) for command shapes and flags.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
