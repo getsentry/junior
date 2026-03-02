@@ -125,7 +125,7 @@ function createProgressReporter(thread: Pick<Thread, "startTyping">) {
   let lastStatusAt = 0;
   let pendingStatus: string | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-  const sanitizeStatus = (text: string): string => truncateStatusText(text);
+
 
   const postStatus = async (text: string): Promise<void> => {
     currentStatus = text;
@@ -174,8 +174,8 @@ function createProgressReporter(thread: Pick<Thread, "startTyping">) {
       }
     },
     async setStatus(text: string) {
-      const sanitizedStatus = sanitizeStatus(text);
-      if (!active || !sanitizedStatus || sanitizedStatus === currentStatus) {
+      const truncated = truncateStatusText(text);
+      if (!active || !truncated || truncated === currentStatus) {
         return;
       }
 
@@ -183,11 +183,11 @@ function createProgressReporter(thread: Pick<Thread, "startTyping">) {
       const elapsed = now - lastStatusAt;
       if (elapsed >= STATUS_UPDATE_DEBOUNCE_MS) {
         clearPending();
-        await postStatus(sanitizedStatus);
+        await postStatus(truncated);
         return;
       }
 
-      pendingStatus = sanitizedStatus;
+      pendingStatus = truncated;
       if (pendingTimer) {
         return;
       }
