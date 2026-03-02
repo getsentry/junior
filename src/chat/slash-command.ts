@@ -38,7 +38,9 @@ async function handleLink(event: SlashCommandEvent, provider: string): Promise<v
     return;
   }
 
-  if (!result.privateSent) {
+  if (result.privateSent) {
+    await postEphemeral(event, `Check your DMs for a ${providerLabel(provider)} authorization link.`);
+  } else {
     await postEphemeral(
       event,
       "I wasn't able to send you a private authorization link. Please try again in a direct message."
