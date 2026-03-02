@@ -14,21 +14,6 @@ export interface CapabilityProviderDefinition {
 }
 
 const CAPABILITY_PROVIDERS: CapabilityProviderDefinition[] = [
-  {
-    provider: "github",
-    capabilities: [
-      "github.issues.read",
-      "github.issues.write",
-      "github.issues.comment",
-      "github.labels.write"
-    ],
-    configKeys: ["github.repo"],
-    target: {
-      type: "repo",
-      configKey: "github.repo"
-    }
-  },
-  // Plugin-provided capabilities are merged below
   ...getPluginCapabilityProviders()
 ];
 

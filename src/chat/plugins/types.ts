@@ -6,7 +6,16 @@ export interface OAuthBearerCredentials {
   authTokenEnv: string;
 }
 
-export type PluginCredentials = OAuthBearerCredentials;
+export interface GitHubAppCredentials {
+  type: "github-app";
+  apiDomains: string[];
+  authTokenEnv: string;
+  appIdEnv: string;
+  privateKeyEnv: string;
+  installationIdEnv: string;
+}
+
+export type PluginCredentials = OAuthBearerCredentials | GitHubAppCredentials;
 
 export interface PluginManifest {
   name: string;

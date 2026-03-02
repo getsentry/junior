@@ -6,26 +6,48 @@ import type { OAuthProviderConfig } from "@/chat/capabilities/jr-rpc-command";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { logInfo } from "@/chat/observability";
+import { createGitHubAppBroker } from "./github-app-broker";
 import { createOAuthBearerBroker } from "./oauth-bearer-broker";
-import type { OAuthBearerCredentials, PluginBrokerDeps, PluginCredentials, PluginDefinition, PluginManifest } from "./types";
+import type { GitHubAppCredentials, OAuthBearerCredentials, PluginBrokerDeps, PluginCredentials, PluginDefinition, PluginManifest } from "./types";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 
+function parseBaseCredentialFields(data: Record<string, unknown>, name: string): { apiDomains: string[]; authTokenEnv: string } {
+  const rawDomains = data["api-domains"];
+  if (!Array.isArray(rawDomains) || rawDomains.length === 0 || !rawDomains.every((d) => typeof d === "string" && d.trim())) {
+    throw new Error(`Plugin ${name} credentials.api-domains must be a non-empty array of strings`);
+  }
+  const authTokenEnv = data["auth-token-env"];
+  if (typeof authTokenEnv !== "string" || !authTokenEnv.trim()) {
+    throw new Error(`Plugin ${name} credentials.auth-token-env must be a non-empty string`);
+  }
+  return { apiDomains: rawDomains as string[], authTokenEnv };
+}
+
 function parseCredentials(data: Record<string, unknown>, name: string): PluginCredentials {
   const type = data.type;
   if (type === "oauth-bearer") {
-    const rawDomains = data["api-domains"];
-    if (!Array.isArray(rawDomains) || rawDomains.length === 0 || !rawDomains.every((d) => typeof d === "string" && d.trim())) {
-      throw new Error(`Plugin ${name} credentials.api-domains must be a non-empty array of strings`);
+    const base = parseBaseCredentialFields(data, name);
+    return { type: "oauth-bearer", ...base } satisfies OAuthBearerCredentials;
+  }
+
+  if (type === "github-app") {
+    const base = parseBaseCredentialFields(data, name);
+    const appIdEnv = data["app-id-env"];
+    if (typeof appIdEnv !== "string" || !appIdEnv.trim()) {
+      throw new Error(`Plugin ${name} credentials.app-id-env must be a non-empty string`);
     }
-    const apiDomains = rawDomains as string[];
-    const authTokenEnv = data["auth-token-env"];
-    if (typeof authTokenEnv !== "string" || !authTokenEnv.trim()) {
-      throw new Error(`Plugin ${name} credentials.auth-token-env must be a non-empty string`);
+    const privateKeyEnv = data["private-key-env"];
+    if (typeof privateKeyEnv !== "string" || !privateKeyEnv.trim()) {
+      throw new Error(`Plugin ${name} credentials.private-key-env must be a non-empty string`);
     }
-    return { type: "oauth-bearer", apiDomains, authTokenEnv } satisfies OAuthBearerCredentials;
+    const installationIdEnv = data["installation-id-env"];
+    if (typeof installationIdEnv !== "string" || !installationIdEnv.trim()) {
+      throw new Error(`Plugin ${name} credentials.installation-id-env must be a non-empty string`);
+    }
+    return { type: "github-app", ...base, appIdEnv, privateKeyEnv, installationIdEnv } satisfies GitHubAppCredentials;
   }
 
   throw new Error(`Plugin ${name} has unsupported credentials.type: "${type}"`);
@@ -254,6 +276,8 @@ export function createPluginBroker(
 
   if (credentials.type === "oauth-bearer") {
     broker = createOAuthBearerBroker(plugin.manifest, credentials, deps);
+  } else if (credentials.type === "github-app") {
+    broker = createGitHubAppBroker(plugin.manifest, credentials);
   } else {
     throw new Error(`Unsupported credentials type for plugin "${name}"`);
   }
