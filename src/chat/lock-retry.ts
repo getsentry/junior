@@ -4,10 +4,6 @@ import { getStateAdapter } from "@/chat/state";
 const MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 1000;
 
-type Logger = {
-  error?: (message: string, data?: Record<string, unknown>) => void;
-};
-
 // Retries a Chat SDK operation that may throw LockError due to per-thread Redis lock contention.
 //
 // The SDK dedupes inbound messages by setting a `dedupe:<adapter>:<messageId>` key *before*
@@ -16,13 +12,14 @@ type Logger = {
 // through normal dispatch. This helper clears that dedup key on each LockError before retrying,
 // giving the next attempt a clean slate.
 //
+// Non-LockError exceptions propagate to the caller. Only LockError is handled here.
 // Exponential backoff: 1s, 2s, 4s.
 export async function retryOnLockError(opts: {
   fn: () => Promise<void>;
   adapterName: string;
   messageId: string | undefined;
   threadId: string;
-  logger?: Logger;
+  logger?: { error?: (message: string, data?: Record<string, unknown>) => void };
 }): Promise<void> {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
@@ -30,8 +27,7 @@ export async function retryOnLockError(opts: {
       return;
     } catch (err) {
       if (!(err instanceof LockError)) {
-        opts.logger?.error?.("Message processing error", { error: err, threadId: opts.threadId });
-        return;
+        throw err;
       }
 
       if (attempt >= MAX_ATTEMPTS) {
