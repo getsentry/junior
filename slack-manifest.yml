@@ -8,6 +8,11 @@ features:
   bot_user:
     display_name: junior
     always_online: true
+  slash_commands:
+    - command: /jr
+      url: https://example.com/api/webhooks/slack
+      description: Manage provider account linking
+      usage_hint: "[link|unlink] [provider]"
 oauth_config:
   scopes:
     bot:
@@ -15,6 +20,7 @@ oauth_config:
       - app_mentions:read
       - canvases:read
       - canvases:write
+      - commands
       - channels:history
       - channels:read
       - chat:write
