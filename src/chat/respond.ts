@@ -760,7 +760,19 @@ export async function generateAssistantReply(
         )
       }
     });
+    let hasEmittedText = false;
+    let needsSeparator = false;
+
     const unsubscribe = agent.subscribe((event) => {
+      // Track message boundaries so text from consecutive assistant messages
+      // is separated by "\n", matching the non-streamed join behavior.
+      if (event.type === "message_start") {
+        if (hasEmittedText) {
+          needsSeparator = true;
+        }
+        return;
+      }
+
       if (event.type !== "message_update") {
         return;
       }
@@ -773,8 +785,18 @@ export async function generateAssistantReply(
       if (!deltaText) {
         return;
       }
-      Promise.resolve(context.onTextDelta?.(deltaText)).catch(() => {
-        // Best effort only.
+
+      const text = needsSeparator ? "\n" + deltaText : deltaText;
+      needsSeparator = false;
+      hasEmittedText = true;
+
+      Promise.resolve(context.onTextDelta?.(text)).catch((error) => {
+        logWarn(
+          "streaming_text_delta_error",
+          {},
+          { "error.message": error instanceof Error ? error.message : String(error) },
+          "Failed to deliver text delta to stream"
+        );
       });
     });
 

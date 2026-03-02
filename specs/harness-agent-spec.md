@@ -13,6 +13,12 @@ This document defines how the Junior harness must run agent turns for Slack repl
 - The agent must end each turn with a user-facing assistant markdown response.
 - Reply rendering should use assistant text from the turn's generated assistant message(s).
 
+## Streaming Contract
+
+- When streaming text deltas to the user, the harness must insert a newline separator (`"\n"`) between text from consecutive assistant messages within a single turn.
+- This matches the non-streamed path's `join("\n")` behavior, so the final rendered output is identical regardless of delivery method.
+- The normalizing stream applies `ensureBlockSpacing` to the combined text, expanding single newlines between non-empty paragraphs to double newlines for Slack rendering.
+
 ## Visibility Rules
 
 - Intermediate tool calls/results are internal reasoning artifacts. They are not posted directly to users.
