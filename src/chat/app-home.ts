@@ -19,7 +19,7 @@ export async function buildHomeView(
     if (plugin.manifest.credentials.type !== "oauth-bearer") continue;
 
     const tokens = await userTokenStore.get(userId, plugin.manifest.name);
-    if (!tokens || tokens.expiresAt <= Date.now()) continue;
+    if (!tokens) continue;
 
     connectedSections.push({
       type: "section",

@@ -51,12 +51,13 @@ describe("buildHomeView", () => {
     expect(section.text!.text).toBe("No connected accounts");
   });
 
-  it("excludes providers with expired tokens", async () => {
+  it("shows providers with expired access tokens (refresh token keeps connection alive)", async () => {
     const store = createMockTokenStore({ sentry: expiredToken });
     const view = await buildHomeView("U123", store);
 
+    expect(view.blocks).toHaveLength(1);
     const section = view.blocks[0] as SectionBlock;
-    expect(section.text!.text).toBe("No connected accounts");
+    expect(section.text!.text).toContain("sentry");
   });
 
   it("excludes github-app providers (no per-user auth)", async () => {
