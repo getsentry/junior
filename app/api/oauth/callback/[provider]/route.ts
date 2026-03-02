@@ -192,10 +192,11 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
       "Failed to auto-resume pending message after OAuth callback"
     );
 
+    const retryHint = stored.pendingMessage ? ` Please try \`${stored.pendingMessage}\` again.` : " Please try your command again.";
     await postSlackMessage(
       stored.channelId,
       stored.threadTs,
-      "I connected your account but hit an error processing your request. Please try your command again."
+      `I connected your account but hit an error processing your request.${retryHint}`
     );
   }
 }
@@ -211,8 +212,32 @@ export async function GET(
   }
 
   const url = new URL(request.url);
+  const errorParam = url.searchParams.get("error");
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
+
+  // Handle OAuth denial — provider redirects with ?error=access_denied&state=...
+  if (errorParam) {
+    // Clean up the state token if present so it doesn't linger in Redis
+    if (state) {
+      const cleanupAdapter = getStateAdapter();
+      await cleanupAdapter.delete(`oauth-state:${state}`);
+    }
+
+    const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
+    if (errorParam === "access_denied") {
+      return htmlErrorResponse(
+        "Authorization declined",
+        `You declined the ${providerLabel} authorization request. Return to Slack and run the auth command again if you change your mind.`,
+        400
+      );
+    }
+    return htmlErrorResponse(
+      "Authorization failed",
+      `${providerLabel} returned an error: ${errorParam}. Return to Slack and try again.`,
+      400
+    );
+  }
 
   if (!code || !state) {
     return htmlErrorResponse("Invalid request", "This authorization link is missing required parameters.", 400);
@@ -222,9 +247,10 @@ export async function GET(
   const stateKey = `oauth-state:${state}`;
   const stored = await stateAdapter.get<OAuthStatePayload>(stateKey);
   if (!stored) {
+    const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
     return htmlErrorResponse(
       "Link expired",
-      "This authorization link has expired. Return to Slack and run the auth command again to get a new link.",
+      `This authorization link has expired (links are valid for 10 minutes). Return to Slack and run <code>/sentry auth</code> again, or retry your original ${providerLabel} command to get a new link.`,
       400
     );
   }

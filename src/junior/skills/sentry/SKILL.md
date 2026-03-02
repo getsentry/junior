@@ -44,8 +44,8 @@ Use this skill for `/sentry` workflows in the harness.
 
 When user runs `/sentry auth`:
 1. Run: `jr-rpc oauth-start sentry`
-   - The command sends the authorization link as an ephemeral Slack message (visible only to the requesting user) and returns `{ ok, ephemeral_sent: true }`.
-   - If ephemeral delivery fails (missing channel context), the response includes `authorize_url` — post it normally as a fallback.
+   - The command sends the authorization link privately (visible only to the requesting user) and returns `{ ok, private_delivery_sent: true }`.
+   - If `private_delivery_sent` is false, tell the user to send you a direct message and try again. **Never** post or relay authorization URLs — they are security-sensitive.
 2. Tell the user you've sent them a private authorization link.
 3. Stop. The agent turn ends here. When the user completes authorization in their browser, the callback handler stores tokens and posts a confirmation message back into the thread automatically.
 
