@@ -9,13 +9,26 @@ import { getStateAdapter } from "@/chat/state";
 
 export const runtime = "nodejs";
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function htmlErrorResponse(title: string, message: string, status: number): Response {
+  const safeTitle = escapeHtml(title);
+  // message may contain intentional HTML (e.g. <code> tags) — only escape
+  // the title which is always plain text. Callers must pre-escape any
+  // user-controlled content embedded in message.
   const html = `<!DOCTYPE html>
 <html>
-<head><title>${title}</title></head>
+<head><title>${safeTitle}</title></head>
 <body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
   <div style="text-align: center; max-width: 480px;">
-    <h1>${title}</h1>
+    <h1>${safeTitle}</h1>
     <p>${message}</p>
     <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack to try again.</p>
   </div>
@@ -77,9 +90,10 @@ function createDebouncedStatusPoster(channelId: string, threadTs: string) {
   let lastPostAt = 0;
   let pendingStatus: string | null = null;
   let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
 
   const flush = async () => {
-    if (!pendingStatus) return;
+    if (stopped || !pendingStatus) return;
     const status = pendingStatus;
     pendingStatus = null;
     pendingTimer = null;
@@ -87,7 +101,8 @@ function createDebouncedStatusPoster(channelId: string, threadTs: string) {
     await setAssistantStatus(channelId, threadTs, status);
   };
 
-  return async (status: string) => {
+  const post = async (status: string) => {
+    if (stopped) return;
     const now = Date.now();
     const elapsed = now - lastPostAt;
 
@@ -109,6 +124,17 @@ function createDebouncedStatusPoster(channelId: string, threadTs: string) {
       }, Math.max(1, STATUS_DEBOUNCE_MS - elapsed));
     }
   };
+
+  post.stop = () => {
+    stopped = true;
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+    pendingStatus = null;
+  };
+
+  return post;
 }
 
 function createReadOnlyConfigService(values: Record<string, unknown>): ChannelConfigurationService {
@@ -169,6 +195,8 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
       onStatus: postStatus
     });
 
+    postStatus.stop();
+
     if (reply.text) {
       await postSlackMessage(stored.channelId, stored.threadTs, reply.text);
     }
@@ -184,6 +212,8 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
       "Auto-resumed pending message after OAuth callback"
     );
   } catch (error) {
+    postStatus.stop();
+
     logException(
       error,
       "oauth_callback_resume_failed",
@@ -234,7 +264,7 @@ export async function GET(
     }
     return htmlErrorResponse(
       "Authorization failed",
-      `${providerLabel} returned an error: ${errorParam}. Return to Slack and try again.`,
+      `${providerLabel} returned an error: ${escapeHtml(errorParam)}. Return to Slack and try again.`,
       400
     );
   }

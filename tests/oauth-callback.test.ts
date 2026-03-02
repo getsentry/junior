@@ -279,6 +279,18 @@ describe("oauth callback handler", () => {
     expect(body).toContain("server_error");
   });
 
+  it("escapes HTML in provider error parameter to prevent XSS", async () => {
+    const response = await GET(
+      makeRequest("https://example.com/api/oauth/callback/sentry?error=%3Cscript%3Ealert(1)%3C/script%3E&state=xss-test"),
+      makeContext("sentry")
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).not.toContain("<script>");
+    expect(body).toContain("&lt;script&gt;");
+  });
+
   it("shows pending-message status in success page", async () => {
     const stateKey = "oauth-state:pending-test";
     mockStateStore.set(stateKey, {
