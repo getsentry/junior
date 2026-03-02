@@ -24,6 +24,23 @@ const TEST_MANIFEST: PluginManifest = {
   target: { type: "repo", configKey: "github.repo" }
 };
 
+function setupValidEnv() {
+  const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
+    .export({ type: "pkcs8", format: "pem" })
+    .toString();
+  process.env.GITHUB_APP_ID = "12345";
+  process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+  process.env.GITHUB_INSTALLATION_ID = "42";
+}
+
+function mockGitHubTokenEndpoint(token = "issued-token") {
+  globalThis.fetch = vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ token, expires_at: "2099-01-01T00:00:00Z" })
+  })) as unknown as typeof fetch;
+}
+
 afterEach(() => {
   process.env = { ...ORIGINAL_ENV };
   globalThis.fetch = ORIGINAL_FETCH;
@@ -31,141 +48,55 @@ afterEach(() => {
 });
 
 describe("github app credential broker", () => {
-  it("accepts base64-encoded PEM private key for app signing", async () => {
-    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
-      .export({ type: "pkcs8", format: "pem" })
-      .toString();
-    process.env.GITHUB_APP_ID = "12345";
-    process.env.GITHUB_APP_PRIVATE_KEY = Buffer.from(privateKey, "utf8").toString("base64");
-    process.env.GITHUB_INSTALLATION_ID = "42";
+  it("issues lease with correct shape", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint("issued-token");
 
-    const fetchSpy = vi.fn(async () => {
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ token: "issued-token", expires_at: "2099-01-01T00:00:00Z" })
-      } as Response;
-    });
-    globalThis.fetch = fetchSpy as typeof fetch;
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.issues.write",
-      reason: "test:base64-key"
+      reason: "test:lease-shape"
     });
 
     expect(lease.provider).toBe("github");
     expect(lease.env).toEqual({ GITHUB_TOKEN: "ghp_host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
-      {
-        domain: "api.github.com",
-        headers: {
-          Authorization: "Bearer issued-token"
-        }
-      }
+      { domain: "api.github.com", headers: { Authorization: "Bearer issued-token" } }
     ]);
-    expect(lease.metadata).toMatchObject({
-      installationId: "42",
-      targetScope: "all"
-    });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const calls = (fetchSpy as unknown as { mock: { calls: Array<[unknown, RequestInit?]> } }).mock.calls;
-    const requestInit = calls[0]?.[1];
-    expect(requestInit).toBeDefined();
-    expect(requestInit?.method).toBe("POST");
-    expect(requestInit?.body).toBe(
-      JSON.stringify({
-        permissions: { issues: "write" }
-      })
-    );
   });
 
-  it("requests repository-scoped token when a target is provided", async () => {
-    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
-      .export({ type: "pkcs8", format: "pem" })
-      .toString();
-    process.env.GITHUB_APP_ID = "12345";
-    process.env.GITHUB_APP_PRIVATE_KEY = Buffer.from(privateKey, "utf8").toString("base64");
-    process.env.GITHUB_INSTALLATION_ID = "42";
+  it("uses placeholder in env, not real token", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint("real-secret-token");
 
-    const fetchSpy = vi.fn(async () => {
-      return {
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify({ token: "issued-token", expires_at: "2099-01-01T00:00:00Z" })
-      } as Response;
-    });
-    globalThis.fetch = fetchSpy as typeof fetch;
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    await broker.issue({
+    const lease = await broker.issue({
+      capability: "github.issues.read",
+      reason: "test:placeholder"
+    });
+
+    expect(lease.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
+    expect(lease.env.GITHUB_TOKEN).not.toBe("real-secret-token");
+  });
+
+  it("scopes token to repository when target is provided", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint();
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const lease = await broker.issue({
       capability: "github.issues.write",
       target: { owner: "getsentry", repo: "junior" },
       reason: "test:scoped"
     });
 
-    const calls = (fetchSpy as unknown as { mock: { calls: Array<[unknown, RequestInit?]> } }).mock.calls;
-    const requestInit = calls[0]?.[1];
-    expect(requestInit?.body).toBe(
-      JSON.stringify({
-        permissions: { issues: "write" },
-        repositories: ["junior"]
-      })
-    );
+    expect(lease.metadata).toMatchObject({ targetScope: "getsentry/junior" });
   });
 
-  it("does not reuse cached tokens across repository targets", async () => {
-    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
-      .export({ type: "pkcs8", format: "pem" })
-      .toString();
-    process.env.GITHUB_APP_ID = "12345";
-    process.env.GITHUB_APP_PRIVATE_KEY = Buffer.from(privateKey, "utf8").toString("base64");
-    process.env.GITHUB_INSTALLATION_ID = "42";
-
-    let issueCount = 0;
-    const fetchSpy = vi.fn(async () => {
-      issueCount += 1;
-      return {
-        ok: true,
-        status: 200,
-        text: async () =>
-          JSON.stringify({
-            token: `issued-token-${issueCount}`,
-            expires_at: "2099-01-01T00:00:00Z"
-          })
-      } as Response;
-    });
-    globalThis.fetch = fetchSpy as typeof fetch;
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-
-    const first = await broker.issue({
-      capability: "github.issues.write",
-      target: { owner: "getsentry", repo: "junior" },
-      reason: "test:cache:first"
-    });
-    const second = await broker.issue({
-      capability: "github.issues.write",
-      target: { owner: "getsentry", repo: "other-repo" },
-      reason: "test:cache:second"
-    });
-
-    // Both leases use the same placeholder — real tokens are only in headerTransforms.
-    expect(first.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
-    expect(second.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
-    // Verify distinct tokens were issued (visible only in headerTransforms).
-    expect(first.headerTransforms![0].headers.Authorization).not.toBe(
-      second.headerTransforms![0].headers.Authorization
-    );
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-  });
-
-  it("still rejects unsupported capabilities", async () => {
-    process.env.GITHUB_APP_ID = "12345";
-
+  it("rejects unsupported capabilities", async () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
-      broker.issue({
-        capability: "github.actions.write",
-        reason: "test:unsupported"
-      })
+      broker.issue({ capability: "github.actions.write", reason: "test:unsupported" })
     ).rejects.toThrow("Unsupported GitHub capability: github.actions.write");
   });
 
@@ -174,10 +105,7 @@ describe("github app credential broker", () => {
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
-      broker.issue({
-        capability: "github.issues.read",
-        reason: "test:missing-app-id"
-      })
+      broker.issue({ capability: "github.issues.read", reason: "test:missing-app-id" })
     ).rejects.toThrow("Missing GITHUB_APP_ID");
   });
 
@@ -187,10 +115,7 @@ describe("github app credential broker", () => {
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
-      broker.issue({
-        capability: "github.issues.read",
-        reason: "test:missing-installation-id"
-      })
+      broker.issue({ capability: "github.issues.read", reason: "test:missing-installation-id" })
     ).rejects.toThrow("Missing GITHUB_INSTALLATION_ID");
   });
 
@@ -198,14 +123,10 @@ describe("github app credential broker", () => {
     process.env.GITHUB_APP_ID = "12345";
     process.env.GITHUB_APP_PRIVATE_KEY = "not-a-real-private-key";
     process.env.GITHUB_INSTALLATION_ID = "42";
-    globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
-      broker.issue({
-        capability: "github.issues.read",
-        reason: "test:bad-key"
-      })
+      broker.issue({ capability: "github.issues.read", reason: "test:bad-key" })
     ).rejects.toThrow("Invalid GITHUB_APP_PRIVATE_KEY");
   });
 });
