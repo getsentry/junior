@@ -99,22 +99,26 @@ export function installChatBackgroundPatch(): void {
     options?: BackgroundWebhookOptions
   ): void {
     const run = async (): Promise<void> => {
-      const message =
-        typeof messageOrFactory === "function"
-          ? await (messageOrFactory as () => Promise<unknown>)()
-          : messageOrFactory;
-      const normalizedThreadId = normalizeIncomingSlackThreadId(threadId, message);
-      if (message && typeof message === "object" && "threadId" in message) {
-        (message as Record<string, unknown>).threadId = normalizedThreadId;
-      }
+      try {
+        const message =
+          typeof messageOrFactory === "function"
+            ? await (messageOrFactory as () => Promise<unknown>)()
+            : messageOrFactory;
+        const normalizedThreadId = normalizeIncomingSlackThreadId(threadId, message);
+        if (message && typeof message === "object" && "threadId" in message) {
+          (message as Record<string, unknown>).threadId = normalizedThreadId;
+        }
 
-      await retryOnLockError({
-        fn: () => this.handleIncomingMessage(adapter, normalizedThreadId, message),
-        adapterName: (adapter as { name?: string }).name ?? "unknown",
-        messageId: (message as { id?: string } | null)?.id,
-        threadId,
-        logger: this.logger,
-      });
+        await retryOnLockError({
+          fn: () => this.handleIncomingMessage(adapter, normalizedThreadId, message),
+          adapterName: (adapter as { name?: string }).name ?? "unknown",
+          messageId: (message as { id?: string } | null)?.id,
+          threadId,
+          logger: this.logger,
+        });
+      } catch (err) {
+        this.logger?.error?.("Message processing error", { error: err, threadId });
+      }
     };
 
     scheduleBackgroundWork(this, options, run);

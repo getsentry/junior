@@ -43,9 +43,14 @@ export async function retryOnLockError(opts: {
         return;
       }
 
-      // Clear the dedup key so the SDK doesn't reject the message as already-processed on retry.
+      // Best-effort: clear the dedup key so the SDK doesn't reject the message on retry.
+      // If this fails (Redis transient error), we still retry — the SDK will re-set the key anyway.
       if (opts.messageId) {
-        await getStateAdapter().delete(`dedupe:${opts.adapterName}:${opts.messageId}`);
+        try {
+          await getStateAdapter().delete(`dedupe:${opts.adapterName}:${opts.messageId}`);
+        } catch {
+          // ignored — dedup clear is best-effort
+        }
       }
 
       const delayMs = BASE_DELAY_MS * Math.pow(2, attempt - 1);
