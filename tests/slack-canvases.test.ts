@@ -35,22 +35,23 @@ describe("createCanvas", () => {
     vi.clearAllMocks();
   });
 
-  it("uses canvases.create for DM channels", async () => {
+  it("uses conversations.canvases.create for DM channels", async () => {
     const created = await createCanvas({
       title: "Title",
       markdown: "Body",
       channelId: "D12345"
     });
 
-    expect(mockClient.canvases.create).toHaveBeenCalledWith({
+    expect(mockClient.conversations.canvases.create).toHaveBeenCalledWith({
+      channel_id: "D12345",
       title: "Title",
       document_content: {
         type: "markdown",
         markdown: "Body"
       }
     });
-    expect(mockClient.conversations.canvases.create).not.toHaveBeenCalled();
-    expect(created.canvasId).toBe("F1");
+    expect(mockClient.canvases.create).not.toHaveBeenCalled();
+    expect(created.canvasId).toBe("F2");
   });
 
   it("uses conversations.canvases.create for C/G channels", async () => {

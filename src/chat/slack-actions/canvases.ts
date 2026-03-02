@@ -18,7 +18,7 @@ function shouldCreateCanvasInConversation(channelId: string | undefined): boolea
   if (!channelId) {
     return false;
   }
-  return channelId.startsWith("C") || channelId.startsWith("G");
+  return channelId.startsWith("C") || channelId.startsWith("G") || channelId.startsWith("D");
 }
 
 export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
