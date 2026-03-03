@@ -113,7 +113,17 @@ describe("tool idempotency", () => {
     });
   });
 
-  it("returns a non-throwing error when creating canvas from DM/private context", async () => {
+  it("creates a canvas from DM context using the bound channel", async () => {
+    queueSlackApiResponse("conversations.canvases.create", {
+      body: conversationsCanvasesCreateOk({ canvasId: "canvas-dm-1" })
+    });
+    queueSlackApiResponse("files.info", {
+      body: filesInfoOk({
+        fileId: "canvas-dm-1",
+        permalink: "https://example.invalid/canvas-dm-1"
+      })
+    });
+
     const state = createToolState();
     const tool = createSlackCanvasCreateTool({ channelId: "D123", sandbox: noopSandbox }, state);
 
@@ -123,9 +133,24 @@ describe("tool idempotency", () => {
     });
 
     expect(result).toMatchObject({
-      ok: false,
-      error: expect.stringContaining("Canvas creation is bound to the active assistant channel context")
+      ok: true,
+      canvas_id: "canvas-dm-1"
     });
+    expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
+  });
+
+  it("throws when creating a canvas without assistant channel context", async () => {
+    const state = createToolState();
+    const tool = createSlackCanvasCreateTool({ sandbox: noopSandbox }, state);
+
+    await expect(
+      executeTool(tool, {
+        title: "No context",
+        markdown: "Body"
+      })
+    ).rejects.toThrow("Cannot create a canvas without an active assistant channel context (C/G/D).");
+
     expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(0);
     expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
   });

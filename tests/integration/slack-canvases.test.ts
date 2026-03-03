@@ -13,16 +13,25 @@ describe("createCanvas", () => {
     process.env.SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
   });
 
-  it("rejects DM channel canvas creation to avoid bot-private canvases", async () => {
-    await expect(
-      createCanvas({
-        title: "Title",
-        markdown: "Body",
-        channelId: "D12345"
-      })
-    ).rejects.toThrow("Shared canvas creation requires a C/G channel context");
+  it("uses conversations.canvases.create for DMs", async () => {
+    queueSlackApiResponse("conversations.canvases.create", {
+      body: conversationsCanvasesCreateOk({ canvasId: "F_DM" })
+    });
+    queueSlackApiResponse("files.info", {
+      body: filesInfoOk({ fileId: "F_DM", permalink: "https://example.invalid/files/F_DM" })
+    });
 
-    expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(0);
+    const created = await createCanvas({
+      title: "Title",
+      markdown: "Body",
+      channelId: "D12345"
+    });
+
+    expect(created).toEqual({
+      canvasId: "F_DM",
+      permalink: "https://example.invalid/files/F_DM"
+    });
+    expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
   });
 
@@ -65,7 +74,7 @@ describe("createCanvas", () => {
         title: "Title",
         markdown: "Body"
       })
-    ).rejects.toThrow("Shared canvas creation requires a C/G channel context");
+    ).rejects.toThrow("Canvas creation requires an active Slack conversation context (C/G/D).");
 
     expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(0);
     expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);

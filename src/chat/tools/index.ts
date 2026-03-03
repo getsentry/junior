@@ -18,6 +18,7 @@ import { createWebFetchTool } from "@/chat/tools/web-fetch";
 import { createWebSearchTool } from "@/chat/tools/web-search";
 import { createWriteFileTool } from "@/chat/tools/write-file";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import { isCanvasChannel, isConversationChannel } from "@/chat/slack-actions/client";
 
 function createToolState(
   hooks: ToolHooks,
@@ -94,7 +95,7 @@ export function createTools(
   context: ToolRuntimeContext
 ) {
   const state = createToolState(hooks, context);
-  return {
+  const tools: Record<string, unknown> = {
     loadSkill: wrapToolExecution(
       "loadSkill",
       createLoadSkillTool(context.sandbox, availableSkills, {
@@ -109,26 +110,6 @@ export function createTools(
     webSearch: wrapToolExecution("webSearch", createWebSearchTool(), hooks),
     webFetch: wrapToolExecution("webFetch", createWebFetchTool(hooks), hooks),
     imageGenerate: wrapToolExecution("imageGenerate", createImageGenerateTool(hooks), hooks),
-    slackChannelPostMessage: wrapToolExecution(
-      "slackChannelPostMessage",
-      createSlackChannelPostMessageTool(context, state),
-      hooks
-    ),
-    slackChannelListMembers: wrapToolExecution(
-      "slackChannelListMembers",
-      createSlackChannelListMembersTool(context),
-      hooks
-    ),
-    slackChannelListMessages: wrapToolExecution(
-      "slackChannelListMessages",
-      createSlackChannelListMessagesTool(context),
-      hooks
-    ),
-    slackCanvasCreate: wrapToolExecution(
-      "slackCanvasCreate",
-      createSlackCanvasCreateTool(context, state),
-      hooks
-    ),
     slackCanvasUpdate: wrapToolExecution("slackCanvasUpdate", createSlackCanvasUpdateTool(state, context), hooks),
     slackListCreate: wrapToolExecution("slackListCreate", createSlackListCreateTool(state), hooks),
     slackListAddItems: wrapToolExecution("slackListAddItems", createSlackListAddItemsTool(state), hooks),
@@ -139,4 +120,32 @@ export function createTools(
       hooks
     )
   };
+
+  if (isCanvasChannel(context.channelId)) {
+    tools.slackCanvasCreate = wrapToolExecution(
+      "slackCanvasCreate",
+      createSlackCanvasCreateTool(context, state),
+      hooks
+    );
+  }
+
+  if (isConversationChannel(context.channelId)) {
+    tools.slackChannelPostMessage = wrapToolExecution(
+      "slackChannelPostMessage",
+      createSlackChannelPostMessageTool(context, state),
+      hooks
+    );
+    tools.slackChannelListMembers = wrapToolExecution(
+      "slackChannelListMembers",
+      createSlackChannelListMembersTool(context),
+      hooks
+    );
+    tools.slackChannelListMessages = wrapToolExecution(
+      "slackChannelListMessages",
+      createSlackChannelListMessagesTool(context),
+      hooks
+    );
+  }
+
+  return tools;
 }

@@ -1,8 +1,9 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import { createCanvas } from "@/chat/slack-actions/canvases";
-import { isConversationChannel } from "@/chat/slack-actions/client";
+import { isCanvasChannel } from "@/chat/slack-actions/client";
 import { createOperationKey } from "@/chat/tools/idempotency";
+import { logError } from "@/chat/observability";
 import type { CanvasArtifactSummary } from "@/chat/slack-actions/types";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 
@@ -43,12 +44,20 @@ export function createSlackCanvasCreateTool(
     }),
     execute: async ({ title, markdown }) => {
       const targetChannelId = context.channelId;
-      if (!isConversationChannel(targetChannelId)) {
-        return {
-          ok: false,
-          error:
-            "Cannot create a shared canvas from this context. Canvas creation is bound to the active assistant channel context (C/G)."
-        };
+      if (!isCanvasChannel(targetChannelId)) {
+        logError(
+          "slack_canvas_create_invalid_context",
+          {},
+          {
+            "gen_ai.tool.name": "slackCanvasCreate",
+            "messaging.destination.name": targetChannelId ?? "none",
+            "app.slack.canvas.has_channel_context": Boolean(targetChannelId)
+          },
+          "Canvas create failed due to missing or invalid assistant channel context"
+        );
+        throw new Error(
+          "Cannot create a canvas without an active assistant channel context (C/G/D)."
+        );
       }
       const operationKey = createOperationKey("slackCanvasCreate", {
         title,

@@ -16,7 +16,7 @@ describe("Conversational Evals: Routing and Continuity", () => {
 
   slackEval("routing: explicit in-channel post request uses channel post", {
     behavior: { mock_slack_api: true },
-    events: [mention("post a hello message in the channel")],
+    events: [mention("@bot say hello to the channel!")],
     criteria:
       "The assistant sends the hello message as a channel post (channel_posts has exactly one item with hello/wave-style text and no thread_ts). It must not post the hello as a thread reply in assistant_posts.",
   });

@@ -1,5 +1,5 @@
 import type { CanvasesSectionsLookupResponse } from "@slack/web-api";
-import { getFilePermalink, getSlackClient, isConversationChannel, withSlackRetries } from "@/chat/slack-actions/client";
+import { getFilePermalink, getSlackClient, isCanvasChannel, withSlackRetries } from "@/chat/slack-actions/client";
 
 export interface CanvasCreateInput {
   title: string;
@@ -16,10 +16,10 @@ export interface CanvasUpdateInput {
 
 export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
   const client = getSlackClient();
-  const isConversationScoped = isConversationChannel(input.channelId);
+  const isConversationScoped = isCanvasChannel(input.channelId);
   if (!isConversationScoped) {
     throw new Error(
-      "Shared canvas creation requires a C/G channel context. DM/private-to-bot canvases are disabled."
+      "Canvas creation requires an active Slack conversation context (C/G/D)."
     );
   }
   const channelPrefix = input.channelId?.slice(0, 1) ?? "none";

@@ -254,6 +254,11 @@ export function isDmChannel(channelId: string): boolean {
   return channelId.startsWith("D");
 }
 
+export function isCanvasChannel(channelId: string | undefined): boolean {
+  if (!channelId) return false;
+  return channelId.startsWith("C") || channelId.startsWith("G") || channelId.startsWith("D");
+}
+
 export function isConversationChannel(channelId: string | undefined): boolean {
   if (!channelId) return false;
   return channelId.startsWith("C") || channelId.startsWith("G");

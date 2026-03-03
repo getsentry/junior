@@ -4,7 +4,11 @@ import type { ThreadMessagePayload } from "@/chat/workflow/types";
 const mocks = vi.hoisted(() => ({
   resume: vi.fn(),
   slackThreadWorkflow: vi.fn(),
-  start: vi.fn()
+  start: vi.fn(),
+  logInfo: vi.fn(),
+  logWarn: vi.fn(),
+  logError: vi.fn(),
+  withContext: vi.fn()
 }));
 
 vi.mock("workflow/api", () => ({
@@ -16,6 +20,13 @@ vi.mock("@/chat/workflow/thread-workflow", () => ({
   threadMessageHook: {
     resume: mocks.resume
   }
+}));
+
+vi.mock("@/chat/observability", () => ({
+  logInfo: mocks.logInfo,
+  logWarn: mocks.logWarn,
+  logError: mocks.logError,
+  withContext: mocks.withContext
 }));
 
 import { routeToThreadWorkflow } from "@/chat/workflow/router";
@@ -40,6 +51,7 @@ describe("routeToThreadWorkflow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    mocks.withContext.mockImplementation(async (_context: unknown, callback: () => Promise<unknown>) => callback());
   });
 
   afterEach(() => {
@@ -60,7 +72,7 @@ describe("routeToThreadWorkflow", () => {
   it("starts workflow when first resume misses and retries resume", async () => {
     const payload = createPayload();
     mocks.resume.mockResolvedValueOnce(null).mockResolvedValueOnce({ hookId: "hook-1" });
-    mocks.start.mockResolvedValueOnce(undefined);
+    mocks.start.mockResolvedValueOnce({ runId: "wrun-1" });
 
     const promise = routeToThreadWorkflow("slack:C123:1700000000.100", payload);
     await vi.runAllTimersAsync();
@@ -117,7 +129,7 @@ describe("routeToThreadWorkflow", () => {
   it("throws when all resume attempts fail", async () => {
     mocks.resume.mockResolvedValue(null);
     mocks.start.mockImplementationOnce(async () => {
-      throw new Error("start failed");
+      throw new Error("hook conflict");
     });
 
     const promise = routeToThreadWorkflow("slack:C123:1700000000.100", createPayload());
@@ -135,7 +147,7 @@ describe("routeToThreadWorkflow", () => {
     mocks.resume.mockImplementation(async () => {
       throw new Error("resume failed");
     });
-    mocks.start.mockResolvedValueOnce(undefined);
+    mocks.start.mockResolvedValueOnce({ runId: "wrun-1" });
 
     const promise = routeToThreadWorkflow("slack:C123:1700000000.100", createPayload());
     const capturedErrorPromise = promise.catch((error) => error);
@@ -146,5 +158,39 @@ describe("routeToThreadWorkflow", () => {
     expect((capturedError as Error).message).toContain("resume failed");
     expect(mocks.start).toHaveBeenCalledTimes(1);
     expect(mocks.resume).toHaveBeenCalledTimes(6);
+  });
+
+  it("throws start errors that are not benign races", async () => {
+    const payload = createPayload();
+    mocks.resume.mockResolvedValueOnce(null);
+    mocks.start.mockRejectedValueOnce(new Error("workflow service unavailable"));
+
+    const promise = routeToThreadWorkflow("slack:C123:1700000000.100", payload);
+    const capturedErrorPromise = promise.catch((error) => error);
+    await vi.runAllTimersAsync();
+    const capturedError = await capturedErrorPromise;
+
+    expect(capturedError).toBeInstanceOf(Error);
+    expect((capturedError as Error).message).toContain("workflow service unavailable");
+    expect(mocks.resume).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs retry misses as info first, then warn at higher retry counts", async () => {
+    mocks.resume
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ hookId: "hook-1" });
+    mocks.start.mockResolvedValueOnce({ runId: "wrun-1" });
+
+    const promise = routeToThreadWorkflow("slack:C123:1700000000.100", createPayload());
+    await vi.runAllTimersAsync();
+    await promise;
+
+    const retryInfoCalls = mocks.logInfo.mock.calls.filter(([eventName]) => eventName === "workflow_route_resume_retry");
+    const retryWarnCalls = mocks.logWarn.mock.calls.filter(([eventName]) => eventName === "workflow_route_resume_retry");
+    expect(retryInfoCalls).toHaveLength(2);
+    expect(retryWarnCalls).toHaveLength(1);
   });
 });
