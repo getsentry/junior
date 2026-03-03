@@ -255,11 +255,21 @@ export function createNormalizingStream(
       let emitted = 0;
       for await (const chunk of inner) {
         accumulated += chunk;
-        // Only normalize up to the last complete line to avoid corruption
-        // when a partial line changes meaning as more characters arrive
         const lastNewline = accumulated.lastIndexOf("\n");
-        const stable = lastNewline === -1 ? "" : accumulated.slice(0, lastNewline + 1);
-        if (!stable) continue;
+
+        if (lastNewline === -1) {
+          // No newline yet — yield raw (identical to normalized for single-line content)
+          const delta = accumulated.slice(emitted);
+          if (delta) {
+            yield delta;
+            emitted = accumulated.length;
+          }
+          continue;
+        }
+
+        // Normalize up to the last complete line to avoid corruption
+        // when a partial line changes meaning as more characters arrive
+        const stable = accumulated.slice(0, lastNewline + 1);
         const normalized = normalize(stable);
         const delta = normalized.slice(emitted);
         emitted = normalized.length;
