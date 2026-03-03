@@ -32,7 +32,7 @@ import { lookupSlackUser } from "@/chat/slack-user";
 import { getStateAdapter } from "@/chat/state";
 import { completeObject, completeText, GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { listThreadReplies } from "@/chat/slack-actions/channel";
-import { downloadPrivateSlackFile, getSlackClient } from "@/chat/slack-actions/client";
+import { downloadPrivateSlackFile, getSlackClient, isDmChannel } from "@/chat/slack-actions/client";
 import { publishAppHomeView } from "@/chat/app-home";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
 
@@ -601,6 +601,26 @@ async function summarizeConversationChunk(
   }
 
   return transcript.slice(0, 2800);
+}
+
+async function generateThreadTitle(userText: string, assistantText: string): Promise<string> {
+  const result = await botDeps.completeText({
+    modelId: botConfig.routerModelId,
+    temperature: 0,
+    messages: [
+      {
+        role: "user",
+        content: [
+          "Generate a concise 5-8 word title for this conversation. Reply with ONLY the title, no quotes or punctuation.",
+          "",
+          `User: ${userText.slice(0, 500)}`,
+          `Assistant: ${assistantText.slice(0, 500)}`
+        ].join("\n"),
+        timestamp: Date.now()
+      }
+    ]
+  });
+  return result.text.trim().slice(0, 60);
 }
 
 async function compactConversationIfNeeded(
@@ -1581,6 +1601,29 @@ async function replyToThread(
           sandboxId: reply.sandboxId
         });
         persistedAtLeastOnce = true;
+
+        const isFirstAssistantReply =
+          preparedState.conversation.stats.compactedMessageCount === 0 &&
+          preparedState.conversation.messages.filter((m) => m.role === "assistant").length === 1;
+        if (isFirstAssistantReply && channelId && isDmChannel(channelId) && threadTs) {
+          void generateThreadTitle(userText, reply.text)
+            .then((title) => getSlackAdapter().setAssistantTitle(channelId, threadTs, title))
+            .catch((error) => {
+              logWarn(
+                "thread_title_generation_failed",
+                {
+                  slackThreadId: threadId,
+                  slackUserId: message.author.userId,
+                  slackChannelId: channelId,
+                  workflowRunId,
+                  assistantUserName: botConfig.userName,
+                  modelId: botConfig.routerModelId
+                },
+                { "error.message": error instanceof Error ? error.message : String(error) },
+                "Thread title generation failed"
+              );
+            });
+        }
 
         if (streamedReplyPromise && replyFiles) {
           await thread.post({ markdown: "", files: replyFiles });

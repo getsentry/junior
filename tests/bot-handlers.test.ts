@@ -242,6 +242,129 @@ describe("bot handlers (integration)", () => {
     expect(String(errorPost)).toContain("LLM unavailable");
   });
 
+  it("thread title: generates and sets title after first assistant reply", async () => {
+    const { appSlackRuntime, setBotDepsForTests, bot } = await import("@/chat/bot");
+    const fakeAdapter = new FakeSlackAdapter();
+    const originalGetAdapter = (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter?.bind(bot);
+    (bot as unknown as { getAdapter: (name: string) => unknown }).getAdapter = (name: string): unknown => {
+      if (name === "slack") return fakeAdapter;
+      return originalGetAdapter ? originalGetAdapter(name) : undefined;
+    };
+
+    setBotDepsForTests({
+      completeText: async () => ({ text: "Debugging Node.js Memory Leaks", message: { role: "assistant", content: "" } }) as any,
+      generateAssistantReply: async () => ({
+        text: "Here is how to debug memory leaks.",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true
+        }
+      }),
+      listThreadReplies: async () => []
+    });
+
+    const thread = createTestThread({ id: "slack:D_TITLE:1700000000.000" });
+
+    try {
+      await appSlackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-title-1",
+          threadId: "slack:D_TITLE:1700000000.000",
+          text: "How do I debug memory leaks in Node?",
+          isMention: true
+        })
+      );
+
+      // Flush fire-and-forget promise
+      await new Promise((r) => setTimeout(r, 0));
+
+      // The initial "Junior" title from handleAssistantThreadStarted is not triggered here,
+      // so only the generated title call should appear.
+      const generatedTitleCall = fakeAdapter.titleCalls.find(
+        (c) => c.title !== "Junior"
+      );
+      expect(generatedTitleCall).toBeDefined();
+      expect(generatedTitleCall!.title).toBe("Debugging Node.js Memory Leaks");
+      expect(generatedTitleCall!.channelId).toBe("D_TITLE");
+      expect(generatedTitleCall!.threadTs).toBe("1700000000.000");
+    } finally {
+      (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
+    }
+  });
+
+  it("thread title: does not generate title on subsequent replies", async () => {
+    const { appSlackRuntime, setBotDepsForTests, bot } = await import("@/chat/bot");
+    const fakeAdapter = new FakeSlackAdapter();
+    const originalGetAdapter = (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter?.bind(bot);
+    (bot as unknown as { getAdapter: (name: string) => unknown }).getAdapter = (name: string): unknown => {
+      if (name === "slack") return fakeAdapter;
+      return originalGetAdapter ? originalGetAdapter(name) : undefined;
+    };
+
+    let turnCount = 0;
+    setBotDepsForTests({
+      completeText: async () => ({ text: "Some Title", message: { role: "assistant", content: "" } }) as any,
+      generateAssistantReply: async () => {
+        turnCount += 1;
+        return {
+          text: `reply-${turnCount}`,
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "test-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
+      },
+      listThreadReplies: async () => []
+    });
+
+    const thread = createTestThread({ id: "slack:D_TITLE2:1700000000.000" });
+
+    try {
+      // First turn — should trigger title generation
+      await appSlackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-t2-1",
+          threadId: "slack:D_TITLE2:1700000000.000",
+          text: "first message",
+          isMention: true
+        })
+      );
+      await new Promise((r) => setTimeout(r, 0));
+
+      const titleCallsAfterFirst = fakeAdapter.titleCalls.filter((c) => c.title !== "Junior").length;
+      expect(titleCallsAfterFirst).toBe(1);
+
+      // Second turn — should NOT trigger title generation
+      await appSlackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-t2-2",
+          threadId: "slack:D_TITLE2:1700000000.000",
+          text: "second message",
+          isMention: true
+        })
+      );
+      await new Promise((r) => setTimeout(r, 0));
+
+      const titleCallsAfterSecond = fakeAdapter.titleCalls.filter((c) => c.title !== "Junior").length;
+      expect(titleCallsAfterSecond).toBe(1);
+    } finally {
+      (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
+    }
+  });
+
   it("multi-turn state continuity: second turn sees first turn's conversation state", async () => {
     const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     let turnCount = 0;
