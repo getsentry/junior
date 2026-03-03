@@ -10,6 +10,7 @@ describe("coerceThreadArtifactsState", () => {
   it("extracts artifact fields", () => {
     const state = coerceThreadArtifactsState({
       artifacts: {
+        assistantContextChannelId: "C999",
         lastCanvasId: "F123",
         lastCanvasUrl: "https://example.com/canvas/F123",
         lastListId: "L123",
@@ -23,6 +24,7 @@ describe("coerceThreadArtifactsState", () => {
     });
 
     expect(state.lastCanvasId).toBe("F123");
+    expect(state.assistantContextChannelId).toBe("C999");
     expect(state.lastCanvasUrl).toBe("https://example.com/canvas/F123");
     expect(state.lastListId).toBe("L123");
     expect(state.lastListUrl).toBe("https://example.com/list/L123");

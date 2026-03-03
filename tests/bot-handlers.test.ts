@@ -25,7 +25,15 @@ vi.mock("chat", () => {
       }
     );
   }
-  return { Chat };
+  return {
+    Chat,
+    ThreadImpl: {
+      fromJSON: () => ({
+        state: Promise.resolve({}),
+        setState: async () => undefined
+      })
+    }
+  };
 });
 
 vi.mock("@chat-adapter/slack", () => ({

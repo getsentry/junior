@@ -50,6 +50,7 @@ export interface ReplyRequestContext {
     threadTs?: string;
     requesterId?: string;
   };
+  toolChannelId?: string;
   conversationContext?: string;
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
@@ -688,7 +689,7 @@ export async function generateAssistantReply(
         }
       },
       {
-        channelId: context.correlation?.channelId,
+        channelId: context.toolChannelId ?? context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
         userText: userInput,
         artifactState: context.artifactState,

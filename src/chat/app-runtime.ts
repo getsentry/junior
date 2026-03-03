@@ -2,6 +2,9 @@ import type { Message, Thread } from "chat";
 
 export interface AppRuntimeAssistantLifecycleEvent {
   channelId: string;
+  context?: {
+    channelId?: string;
+  };
   threadId: string;
   threadTs: string;
   userId?: string;
@@ -36,6 +39,7 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
   getWorkflowRunId: (thread: Thread, message: Message) => string | undefined;
   initializeAssistantThread: (event: {
     channelId: string;
+    sourceChannelId?: string;
     threadId: string;
     threadTs: string;
   }) => Promise<void>;
@@ -286,7 +290,8 @@ export function createAppSlackRuntime<
         await deps.initializeAssistantThread({
           threadId: event.threadId,
           channelId: event.channelId,
-          threadTs: event.threadTs
+          threadTs: event.threadTs,
+          sourceChannelId: event.context?.channelId
         });
       } catch (error) {
         deps.logException(
@@ -310,7 +315,8 @@ export function createAppSlackRuntime<
         await deps.initializeAssistantThread({
           threadId: event.threadId,
           channelId: event.channelId,
-          threadTs: event.threadTs
+          threadTs: event.threadTs,
+          sourceChannelId: event.context?.channelId
         });
       } catch (error) {
         deps.logException(

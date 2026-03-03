@@ -13,6 +13,7 @@ export interface CanvasArtifactSummary {
 }
 
 export interface ThreadArtifactsState {
+  assistantContextChannelId?: string;
   lastCanvasId?: string;
   lastCanvasUrl?: string;
   recentCanvases?: CanvasArtifactSummary[];
@@ -29,6 +30,7 @@ export function coerceThreadArtifactsState(value: unknown): ThreadArtifactsState
 
   const raw = value as {
     artifacts?: {
+      assistantContextChannelId?: unknown;
       lastCanvasId?: unknown;
       lastCanvasUrl?: unknown;
       recentCanvases?: unknown;
@@ -71,6 +73,8 @@ export function coerceThreadArtifactsState(value: unknown): ThreadArtifactsState
   }
 
   return {
+    assistantContextChannelId:
+      typeof artifacts.assistantContextChannelId === "string" ? artifacts.assistantContextChannelId : undefined,
     lastCanvasId: typeof artifacts.lastCanvasId === "string" ? artifacts.lastCanvasId : undefined,
     lastCanvasUrl: typeof artifacts.lastCanvasUrl === "string" ? artifacts.lastCanvasUrl : undefined,
     recentCanvases,
