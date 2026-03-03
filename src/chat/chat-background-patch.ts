@@ -262,12 +262,21 @@ export async function routeIncomingMessageToWorkflow(args: {
 
 function scheduleBackgroundWork(
   options: WebhookOptions | undefined,
-  run: () => Promise<void>
+  run: () => Promise<void>,
+  onUnhandledError?: (error: unknown) => void
 ): void {
   const task = run();
   if (options?.waitUntil) {
     options.waitUntil(task);
+    return;
   }
+
+  // Some invocations may not provide waitUntil (non-webhook/test contexts).
+  // In that case we still surface failures instead of letting promise rejections
+  // disappear without structured logging.
+  void task.catch((error) => {
+    onUnhandledError?.(error);
+  });
 }
 
 export function installChatBackgroundPatch(): void {
@@ -314,7 +323,9 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run);
+    scheduleBackgroundWork(options, run, (error) => {
+      this.logger?.error?.("Message processing error", { error, threadId });
+    });
   };
 
   (chatProto as unknown as { processReaction: unknown }).processReaction = function processReaction(
@@ -334,7 +345,13 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run);
+    scheduleBackgroundWork(options, run, (error) => {
+      this.logger?.error?.("Reaction processing error", {
+        error,
+        emoji: event.emoji,
+        messageId: event.messageId
+      });
+    });
   };
 
   (chatProto as unknown as { processAction: unknown }).processAction = function processAction(
@@ -354,7 +371,13 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run);
+    scheduleBackgroundWork(options, run, (error) => {
+      this.logger?.error?.("Action processing error", {
+        error,
+        actionId: event.actionId,
+        messageId: event.messageId
+      });
+    });
   };
 
   (chatProto as unknown as { processModalClose: unknown }).processModalClose = function processModalClose(
@@ -380,7 +403,12 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run);
+    scheduleBackgroundWork(options, run, (error) => {
+      this.logger?.error?.("Modal close handler error", {
+        error,
+        callbackId: event.callbackId
+      });
+    });
   };
 
   (chatProto as unknown as { processSlashCommand: unknown }).processSlashCommand = function processSlashCommand(
@@ -400,7 +428,13 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run);
+    scheduleBackgroundWork(options, run, (error) => {
+      this.logger?.error?.("Slash command processing error", {
+        error,
+        command: event.command,
+        text: event.text
+      });
+    });
   };
 
   (chatProto as unknown as { processAssistantThreadStarted: unknown }).processAssistantThreadStarted =
@@ -422,7 +456,12 @@ export function installChatBackgroundPatch(): void {
         }
       };
 
-      scheduleBackgroundWork(options, run);
+      scheduleBackgroundWork(options, run, (error) => {
+        this.logger?.error?.("Assistant thread started handler error", {
+          error,
+          threadId: event.threadId
+        });
+      });
     };
 
   (chatProto as unknown as { processAssistantContextChanged: unknown }).processAssistantContextChanged =
@@ -444,7 +483,12 @@ export function installChatBackgroundPatch(): void {
         }
       };
 
-      scheduleBackgroundWork(options, run);
+      scheduleBackgroundWork(options, run, (error) => {
+        this.logger?.error?.("Assistant context changed handler error", {
+          error,
+          threadId: event.threadId
+        });
+      });
     };
 
   (chatProto as unknown as { processAppHomeOpened: unknown }).processAppHomeOpened = function processAppHomeOpened(
@@ -465,7 +509,12 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run);
+    scheduleBackgroundWork(options, run, (error) => {
+      this.logger?.error?.("App home opened handler error", {
+        error,
+        userId: event.userId
+      });
+    });
   };
 }
 

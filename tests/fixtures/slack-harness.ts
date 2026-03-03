@@ -88,13 +88,14 @@ export interface TestThread extends Thread {
 
 export function createTestThread(args: {
   id?: string;
+  channelId?: string;
   state?: Record<string, unknown>;
   channelStateRef?: { value: Record<string, unknown> };
   runId?: string;
   threadTs?: string;
 }): TestThread {
   const id = args.id ?? "slack:C_TEST:1700000000.000";
-  const channelId = parseChannelFromThreadId(id) ?? id;
+  const channelId = args.channelId ?? parseChannelFromThreadId(id) ?? id;
   let stateData: Record<string, unknown> = { ...(args.state ?? {}) };
   const posts: unknown[] = [];
   let subscribeCalls = 0;

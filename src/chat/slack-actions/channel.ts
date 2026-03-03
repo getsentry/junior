@@ -1,4 +1,4 @@
-import { getSlackClient, withSlackRetries } from "@/chat/slack-actions/client";
+import { getSlackClient, normalizeSlackConversationId, withSlackRetries } from "@/chat/slack-actions/client";
 
 export interface SlackChannelMessage {
   ts?: string;
@@ -39,9 +39,13 @@ export async function postMessageToChannel(input: {
   text: string;
 }): Promise<{ ts: string; permalink?: string }> {
   const client = getSlackClient();
+  const channelId = normalizeSlackConversationId(input.channelId);
+  if (!channelId) {
+    throw new Error("Slack channel message posting requires a valid channel ID");
+  }
   const response = await withSlackRetries(() =>
     client.chat.postMessage({
-      channel: input.channelId,
+      channel: channelId,
       text: input.text,
       mrkdwn: true
     })
@@ -55,7 +59,7 @@ export async function postMessageToChannel(input: {
   try {
     const permalinkResponse = await withSlackRetries(() =>
       client.chat.getPermalink({
-        channel: input.channelId,
+        channel: channelId,
         message_ts: response.ts as string
       })
     );
@@ -80,6 +84,10 @@ export async function listChannelMessages(input: {
   maxPages?: number;
 }): Promise<{ messages: SlackChannelMessage[]; nextCursor?: string }> {
   const client = getSlackClient();
+  const channelId = normalizeSlackConversationId(input.channelId);
+  if (!channelId) {
+    throw new Error("Slack channel history lookup requires a valid channel ID");
+  }
   const targetLimit = Math.max(1, Math.min(input.limit, 1000));
   const maxPages = Math.max(1, Math.min(input.maxPages ?? 5, 10));
   const messages: SlackChannelMessage[] = [];
@@ -91,7 +99,7 @@ export async function listChannelMessages(input: {
     const pageLimit = Math.max(1, Math.min(200, targetLimit - messages.length));
     const response = await withSlackRetries(() =>
       client.conversations.history({
-        channel: input.channelId,
+        channel: channelId,
         limit: pageLimit,
         cursor,
         oldest: input.oldest,
@@ -121,10 +129,14 @@ export async function listChannelMembers(input: {
   cursor?: string;
 }): Promise<{ members: SlackChannelMemberProfile[]; nextCursor?: string }> {
   const client = getSlackClient();
+  const channelId = normalizeSlackConversationId(input.channelId);
+  if (!channelId) {
+    throw new Error("Slack channel member lookup requires a valid channel ID");
+  }
   const targetLimit = Math.max(1, Math.min(input.limit, 200));
   const response = await withSlackRetries(() =>
     client.conversations.members({
-      channel: input.channelId,
+      channel: channelId,
       limit: targetLimit,
       cursor: input.cursor
     })
@@ -145,6 +157,10 @@ export async function listThreadReplies(input: {
   targetMessageTs?: string[];
 }): Promise<SlackThreadReply[]> {
   const client = getSlackClient();
+  const channelId = normalizeSlackConversationId(input.channelId);
+  if (!channelId) {
+    throw new Error("Slack thread reply lookup requires a valid channel ID");
+  }
   const targetLimit = Math.max(1, Math.min(input.limit ?? 1000, 1000));
   const maxPages = Math.max(1, Math.min(input.maxPages ?? 10, 10));
   const pendingTargets = new Set(
@@ -159,7 +175,7 @@ export async function listThreadReplies(input: {
     const pageLimit = Math.max(1, Math.min(200, targetLimit - replies.length));
     const response = await withSlackRetries(() =>
       client.conversations.replies({
-        channel: input.channelId,
+        channel: channelId,
         ts: input.threadTs,
         limit: pageLimit,
         cursor

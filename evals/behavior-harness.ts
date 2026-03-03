@@ -231,6 +231,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     }
     const created = createTestThread({
       id: fixture.id,
+      channelId: fixture.channel_id,
       runId: fixture.run_id,
       threadTs: fixture.thread_ts,
       channelStateRef: getChannelStateRef(fixture.channel_id)

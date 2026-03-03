@@ -289,6 +289,7 @@ export function buildSystemPrompt(params: {
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- `slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` target the active artifact-context list automatically; do not ask the user for `list_id`.",
         "- If the user explicitly asks to post/send/share a message in the channel (outside this thread), call `slackChannelPostMessage` with the requested text instead of only replying in-thread.",
+        "- After calling `slackChannelPostMessage` for an explicit channel post request, do not repeat the posted message content in-thread; if needed, use a brief confirmation like \"Posted in channel.\".",
         "- To enable provider credentials for this turn, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before commands that need authenticated API calls.",
         "- To persist or read conversation defaults (for example `github.repo`), run `jr-rpc config get|set|unset|list ...` as a bash command.",
         "- Capabilities are provider-qualified (for example `github.issues.write`).",

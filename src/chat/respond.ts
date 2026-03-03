@@ -698,7 +698,6 @@ export async function generateAssistantReply(
         sandbox
       }
     );
-
     const baseInstructions = buildSystemPrompt({
       availableSkills,
       activeSkills,

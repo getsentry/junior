@@ -44,6 +44,9 @@ export function createSlackCanvasCreateTool(
     }),
     execute: async ({ title, markdown }) => {
       const targetChannelId = context.channelId;
+      // Invariant: this tool is only registered when a valid C/G/D channel context exists.
+      // If this guard triggers, runtime/tool registration drifted and we intentionally hard-fail
+      // instead of silently falling back to any broader/private target.
       if (!isCanvasChannel(targetChannelId)) {
         logError(
           "slack_canvas_create_invalid_context",

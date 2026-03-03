@@ -98,6 +98,21 @@ function getHeaderString(headers: unknown, name: string): string | undefined {
 
 let client: WebClient | null = null;
 
+export function normalizeSlackConversationId(channelId: string | undefined): string | undefined {
+  if (!channelId) return undefined;
+  const trimmed = channelId.trim();
+  if (!trimmed) return undefined;
+
+  if (!trimmed.startsWith("slack:")) {
+    return trimmed;
+  }
+
+  const parts = trimmed.split(":");
+  // Accept both "slack:C123" and "slack:C123:1700000000.000" and normalize
+  // to the canonical conversation ID expected by Slack Web API methods.
+  return parts[1]?.trim() || undefined;
+}
+
 function getClient(): WebClient {
   if (client) return client;
 
@@ -251,17 +266,20 @@ export function getSlackClient(): WebClient {
  * - D: direct message (1:1)
  */
 export function isDmChannel(channelId: string): boolean {
-  return channelId.startsWith("D");
+  const normalized = normalizeSlackConversationId(channelId);
+  return Boolean(normalized && normalized.startsWith("D"));
 }
 
 export function isCanvasChannel(channelId: string | undefined): boolean {
-  if (!channelId) return false;
-  return channelId.startsWith("C") || channelId.startsWith("G") || channelId.startsWith("D");
+  const normalized = normalizeSlackConversationId(channelId);
+  if (!normalized) return false;
+  return normalized.startsWith("C") || normalized.startsWith("G") || normalized.startsWith("D");
 }
 
 export function isConversationChannel(channelId: string | undefined): boolean {
-  if (!channelId) return false;
-  return channelId.startsWith("C") || channelId.startsWith("G");
+  const normalized = normalizeSlackConversationId(channelId);
+  if (!normalized) return false;
+  return normalized.startsWith("C") || normalized.startsWith("G");
 }
 
 export async function getFilePermalink(fileId: string): Promise<string | undefined> {

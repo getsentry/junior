@@ -1,5 +1,11 @@
 import type { CanvasesSectionsLookupResponse } from "@slack/web-api";
-import { getFilePermalink, getSlackClient, isCanvasChannel, withSlackRetries } from "@/chat/slack-actions/client";
+import {
+  getFilePermalink,
+  getSlackClient,
+  isCanvasChannel,
+  normalizeSlackConversationId,
+  withSlackRetries
+} from "@/chat/slack-actions/client";
 
 export interface CanvasCreateInput {
   title: string;
@@ -16,18 +22,19 @@ export interface CanvasUpdateInput {
 
 export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
   const client = getSlackClient();
-  const isConversationScoped = isCanvasChannel(input.channelId);
+  const normalizedChannelId = normalizeSlackConversationId(input.channelId);
+  const isConversationScoped = isCanvasChannel(normalizedChannelId);
   if (!isConversationScoped) {
     throw new Error(
       "Canvas creation requires an active Slack conversation context (C/G/D)."
     );
   }
-  const channelPrefix = input.channelId?.slice(0, 1) ?? "none";
+  const channelPrefix = normalizedChannelId?.slice(0, 1) ?? "none";
   const action = "conversations.canvases.create";
 
   const result = await withSlackRetries(async () => {
     return client.conversations.canvases.create({
-      channel_id: input.channelId as string,
+      channel_id: normalizedChannelId as string,
       title: input.title,
       document_content: {
         type: "markdown",
