@@ -1626,7 +1626,9 @@ async function replyToThread(
         }
 
         if (streamedReplyPromise && replyFiles) {
-          await thread.post({ markdown: "", files: replyFiles });
+          // Omit text properties so the adapter's file-only early-return
+          // triggers (avoids Slack `no_text` error from empty chat.postMessage)
+          await thread.post({ files: replyFiles } as Parameters<typeof thread.post>[0]);
         }
       } finally {
         textStream.end();

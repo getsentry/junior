@@ -395,5 +395,19 @@ describe("bot image hydration", () => {
 
     // Should have at least 2 posts: the streamed reply and the file upload
     expect(postSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    // The file-only post should omit markdown so the adapter's file-only early-return triggers
+    const filePost = postSpy.mock.calls.find(
+      (call: unknown[]) =>
+        typeof call[0] === "object" &&
+        call[0] !== null &&
+        "files" in (call[0] as Record<string, unknown>) &&
+        Array.isArray((call[0] as { files?: unknown[] }).files) &&
+        ((call[0] as { files: unknown[] }).files).length > 0
+    );
+    expect(filePost).toBeDefined();
+    const filePostArg = filePost![0] as Record<string, unknown>;
+    expect(filePostArg).not.toHaveProperty("markdown");
+    expect((filePostArg.files as Array<{ filename: string }>)[0].filename).toBe("generated.png");
   });
 });
