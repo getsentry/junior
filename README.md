@@ -35,21 +35,41 @@ pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
 pnpm dev
 ```
 
-## Ngrok for Slack
+## Slack tunnel (Cloudflare)
 
-1. Expose local port `3000`.
+Install `cloudflared` if you don't have it (`brew install cloudflared` on macOS).
+
+### Quick (random hostname each time)
 
 ```bash
-ngrok http 3000
+cloudflared tunnel --url http://localhost:3000
 ```
 
-2. Set Slack Event Subscriptions and Interactivity request URL to:
+### Stable hostname (one-time setup)
+
+Requires a free Cloudflare account and a domain managed through Cloudflare DNS.
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create junior-dev
+cloudflared tunnel route dns junior-dev junior-dev.yourdomain.com
+```
+
+Then each time you develop:
+
+```bash
+cloudflared tunnel run --url http://localhost:3000 junior-dev
+```
+
+### Configuring Slack
+
+Set Slack Event Subscriptions and Interactivity request URL to:
 
 ```text
-https://<ngrok-host>/api/webhooks/slack
+https://<tunnel-host>/api/webhooks/slack
 ```
 
-3. Invite `@junior` to a channel and mention it.
+With a stable hostname you only need to do this once. Invite `@junior` to a channel and mention it.
 
 ## Evals
 
