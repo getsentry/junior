@@ -1,4 +1,5 @@
 import { getSlackBotToken } from "@/chat/config";
+import { logWarn } from "@/chat/observability";
 
 interface SlackUserLookupResult {
   userName?: string;
@@ -48,6 +49,15 @@ export async function lookupSlackUser(userId?: string): Promise<SlackUserLookupR
     });
 
     if (!response.ok) {
+      logWarn(
+        "slack_user_lookup_failed",
+        {},
+        {
+          "enduser.id": userId,
+          "http.response.status_code": response.status
+        },
+        "Slack user lookup request failed"
+      );
       return null;
     }
 
@@ -80,7 +90,16 @@ export async function lookupSlackUser(userId?: string): Promise<SlackUserLookupR
     };
     writeToCache(userId, result);
     return result;
-  } catch {
+  } catch (error) {
+    logWarn(
+      "slack_user_lookup_failed",
+      {},
+      {
+        "enduser.id": userId,
+        "error.message": error instanceof Error ? error.message : String(error)
+      },
+      "Slack user lookup failed with exception"
+    );
     return null;
   }
 }

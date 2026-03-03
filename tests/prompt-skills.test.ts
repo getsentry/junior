@@ -69,6 +69,6 @@ describe("buildSystemPrompt skill paths", () => {
     expect(prompt).toContain("do not ask the user for `canvas_id`");
     expect(prompt).toContain("`slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` target the active artifact-context list automatically");
     expect(prompt).toContain("do not ask the user for `list_id`");
-    expect(prompt).toContain("If the user explicitly asks to post/send/share a message in the channel (outside this thread), call `slackChannelPostMessage`");
+    expect(prompt).toContain("If the user explicitly asks to post/send/share/say a message in the channel (outside this thread), call `slackChannelPostMessage`");
   });
 });

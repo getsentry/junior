@@ -7,7 +7,7 @@ import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 export function createSlackChannelPostMessageTool(context: ToolRuntimeContext, state: ToolState) {
   return tool({
     description:
-      "Post a message in the active Slack channel context (outside the thread). Use when an in-channel broadcast/update is appropriate. Do not use for normal thread replies or speculative broadcasts.",
+      "Post a message in the active Slack channel context (outside the thread). Use this when the user explicitly asks to post/send/share/say something in the channel. Do not use for normal thread replies or speculative broadcasts. Do not claim a channel message was posted unless this tool succeeds in this turn.",
     inputSchema: Type.Object({
       text: Type.String({
         minLength: 1,

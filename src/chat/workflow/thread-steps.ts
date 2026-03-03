@@ -3,6 +3,8 @@ import type { SerializedMessage, SerializedThread, Thread } from "chat";
 import { WORKFLOW_DESERIALIZE } from "@workflow/serde";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
 
+let stateAdapterConnected = false;
+
 function rehydrateAttachmentFetchers(
   payload: { message: { attachments: Array<{ fetchData?: () => Promise<Buffer>; url?: string }> } },
   downloadPrivateFile: (url: string) => Promise<Buffer>
@@ -99,8 +101,11 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
   const threadWasSerialized = isSerializedThread(payload.thread);
 
   bot.registerSingleton();
-  if (threadWasSerialized) {
+  // Serialized payloads require state adapter connectivity for ThreadImpl-backed state.
+  // Connect once per runtime process to avoid repeated connect overhead on every step.
+  if (threadWasSerialized && !stateAdapterConnected) {
     await getStateAdapter().connect();
+    stateAdapterConnected = true;
   }
   const runtimeThread = toRuntimeThread(payload.thread);
   const runtimeMessage = toRuntimeMessage(payload.message);

@@ -1212,6 +1212,9 @@ async function shouldReplyInSubscribedThread(args: {
       reason
     };
   } catch (error) {
+    // Fail closed for passive subscribed-thread routing. If the classifier cannot
+    // make a decision, we prefer no unsolicited reply over potentially interrupting
+    // human conversation in a subscribed channel thread.
     logWarn(
       "subscribed_reply_classifier_failed",
       {
