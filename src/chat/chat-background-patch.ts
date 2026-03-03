@@ -323,9 +323,9 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run, (error) => {
-      this.logger?.error?.("Message processing error", { error, threadId });
-    });
+    // processMessage already logs and rethrows inside run(); avoid duplicate
+    // logging in non-waitUntil paths by not adding a second unhandled callback.
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processReaction: unknown }).processReaction = function processReaction(

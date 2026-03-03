@@ -702,8 +702,7 @@ async function compactConversationIfNeeded(
 }
 
 function createConversationMessageFromSdkMessage(
-  entry: Message,
-  _fallbackPrefix: "backfill" | "turn"
+  entry: Message
 ): ConversationMessage | null {
   const rawText = normalizeConversationText(entry.text);
   if (!rawText) {
@@ -760,7 +759,7 @@ async function seedConversationBackfill(
     }
     fetchedNewestFirst.reverse();
     for (const entry of fetchedNewestFirst) {
-      const message = createConversationMessageFromSdkMessage(entry, "backfill");
+      const message = createConversationMessageFromSdkMessage(entry);
       if (message) {
         seeded.push(message);
       }
@@ -781,7 +780,7 @@ async function seedConversationBackfill(
 
     const fromRecent = thread.recentMessages.slice(-BACKFILL_MESSAGE_LIMIT);
     for (const entry of fromRecent) {
-      const message = createConversationMessageFromSdkMessage(entry, "backfill");
+      const message = createConversationMessageFromSdkMessage(entry);
       if (message) {
         seeded.push(message);
       }
