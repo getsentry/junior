@@ -5,6 +5,7 @@
 - Use OpenTelemetry semantic attribute names wherever a standard exists.
 - Keep one logging entrypoint (similar to `ash`'s centralized logging model).
 - Guarantee trace/log correlation for request and AI workflow debugging.
+- Remove repeated per-request/per-turn attributes from log callsites by defaulting to ambient context propagation.
 
 ## Non-goals
 - Replacing Sentry tracing setup.
@@ -64,7 +65,38 @@ Each emitted log record follows this logical shape (transport can vary):
 - `withLogContext(context, fn)` using `AsyncLocalStorage`
 - `createLogContextFromRequest(...)`
 
-All existing helpers in `observability.ts` remain as compatibility shims initially, then migrate to the new API.
+Compatibility shims in `src/chat/observability.ts` remain supported:
+- `logInfo(eventName, context?, attributes?, body?)`
+- `logWarn(eventName, context?, attributes?, body?)`
+- `logError(eventName, context?, attributes?, body?)`
+- `logException(error, eventName, context?, attributes?, body?)`
+- `withContext(context, fn)`
+
+Context passed directly to compatibility shims is optional and merged with ambient context.
+
+### Ambient Context Contract
+Context is attached in layered order and merged into a single flat attribute map:
+- `request_context`
+  - Long-lived per incoming request context (for example request ID, HTTP route, platform).
+- `operation_context`
+  - Per turn/workflow/span context (for example Slack thread/user/channel, workflow run, model).
+- `log_call_attributes`
+  - Per-event attributes passed at log callsites.
+
+Merge precedence (highest wins):
+1. `log_call_attributes`
+2. `operation_context`
+3. `request_context`
+
+Rules:
+- Explicit per-log context/attributes remain allowed, but should be used only for event-local data.
+- Baseline request/turn keys should be bound once via ambient context instead of repeated in every call.
+- When keys collide, higher precedence overwrites lower precedence; duplicate keys are not emitted.
+
+### Runtime Constraints (Next.js)
+- Ambient context propagation relies on Node `AsyncLocalStorage`.
+- API routes that rely on ambient context must run in Node runtime.
+- If Edge runtime logging is introduced later, it needs a separate propagation strategy.
 
 ## Event Naming Convention
 - `snake_case` identifiers.
@@ -142,6 +174,11 @@ Only when no semantic key exists:
 
 ## Rollout Plan
 
+### Phase 0: Spec Alignment (current)
+- Define ambient context merge semantics and precedence.
+- Define compatibility API contract where explicit context remains optional.
+- Track concrete migration and hardening items in `Logging TODOs`.
+
 ### Phase 1: Foundation
 - Add `src/chat/logging.ts` with:
   - typed event names (string union + fallback string)
@@ -197,6 +234,26 @@ Only when no semantic key exists:
   - skill discovery/read/frontmatter parse issues
 - `src/chat/output.ts`
   - output normalization fallback
+
+## Logging TODOs
+- [ ] Migrate duplicated per-turn context in `src/chat/bot.ts` to ambient `withContext`/`withLogContext`.
+- [ ] Migrate duplicated per-turn context in `src/chat/respond.ts` to ambient `withContext`/`withLogContext`.
+- [ ] Update `src/chat/app-runtime.ts` logging call patterns to rely on ambient context by default.
+- [ ] Normalize remaining ad-hoc context passing in `src/chat/capabilities/*`, `src/chat/workflow/*`, and `src/chat/slack-actions/*`.
+- [ ] Add unit tests for context merge precedence and async propagation in `src/chat/logging.ts`.
+- [ ] Add regression tests to verify optional context behavior for `logInfo`, `logWarn`, `logError`, and `logException`.
+- [ ] Add a lint/check rule that flags repeated baseline context keys when ambient context is already bound.
+- [ ] Audit noisy or low-value events after migration and reduce log volume where possible.
+- [ ] Validate Sentry dashboards/queries still group by `event.name` and retain correlation attributes after migration.
+- [ ] Investigate and fix duplicate Sentry emission in logger transport path (`emitSentry` currently invokes logger twice).
+
+## Decision Record
+- Keep current logging stack (`src/chat/logging.ts` + `AsyncLocalStorage` + Sentry transport) for this migration.
+- Do not adopt LogTape in this phase.
+- Revisit LogTape (or another logger) only if one or more become true:
+  - We need multi-sink fanout not reasonably supported in current transport.
+  - We need first-class local structured log sinks that are hard to support with current stack.
+  - Current transport limitations block required queryability, performance, or reliability.
 
 ## Open Questions
 - Should we emit logs to local JSONL in addition to Sentry in dev (ash-style local inspectability)?
