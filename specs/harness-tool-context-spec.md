@@ -1,8 +1,38 @@
 # Harness Tool Context Spec
 
+## Metadata
+
+- Created: 2026-03-03
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
+## Status
+
+Active
+
+## Related Specs
+
+- [Harness Agent Spec](./harness-agent-spec.md)
+- [Security Policy](./security-policy.md)
+
 ## Purpose
 
 Define how tool execution context is sourced and enforced so model outputs cannot choose privileged or cross-scope targets.
+
+## Scope
+
+- Context-bound Slack channel/canvas/list tool targeting.
+- Runtime-owned destination resolution rules.
+- Failure behavior for missing or invalid context.
+
+## Non-Goals
+
+- Provider credential issuance and OAuth flow definitions.
+- Non-context-bound general-purpose tool semantics.
 
 ## Core Rule
 

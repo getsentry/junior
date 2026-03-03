@@ -1,5 +1,15 @@
 # Eval (E2E Behavior) Testing Spec
 
+## Metadata
+
+- Created: 2026-03-03
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
 ## Intent
 
 Evals validate end-to-end conversational behavior outcomes through the runtime harness and LLM-judged criteria.

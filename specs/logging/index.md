@@ -1,5 +1,23 @@
 # Instrumentation Specs
 
+## Metadata
+
+- Created: 2026-02-25
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
+## Status
+
+Active
+
+## Purpose
+
+Index canonical logging/tracing instrumentation contracts and shared policy for this repository.
+
 This directory is the source of truth for application instrumentation.
 
 ## Scope

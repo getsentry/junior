@@ -1,5 +1,35 @@
 # Structured Logging Spec (OpenTelemetry Semantic Conventions)
 
+## Metadata
+
+- Created: 2026-02-24
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
+## Status
+
+Active
+
+## Purpose
+
+Define the canonical structured logging contract for application events, context propagation, and redaction.
+
+## Scope
+
+- Application logging APIs and event naming.
+- Attribute key semantics and sanitization.
+- Context propagation and compatibility shims.
+
+## Related Specs
+
+- [Instrumentation Specs](./index.md)
+- [OpenTelemetry Semantics Map](./semantics.md)
+- [Tracing Spec](./tracing-spec.md)
+
 ## Goals
 - Make logs consistent, structured, and queryable across the app.
 - Use OpenTelemetry semantic attribute names wherever a standard exists.

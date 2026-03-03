@@ -1,5 +1,15 @@
 # Durable Slack Thread Workflows Spec
 
+## Metadata
+
+- Created: 2026-03-03
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
 ## Status
 
 Accepted
@@ -292,7 +302,7 @@ Required correlation attributes when available:
 | `tests/unit/workflow/router.test.ts` | Unit tests for resume/start race paths and retry behavior. |
 | `tests/integration/workflow/thread-workflow.test.ts` | Validate orchestration ordering/dedupe/keep-alive behavior through real runtime step execution with fake agent output only. |
 | `tests/integration/workflow/thread-step-boundaries.test.ts` | Validate step-level Slack/runtime side effects through real runtime wiring. |
-| `tests/integration/slack/chat-background-routing.test.ts` | Extend with routing classification and dedupe coverage. |
+| `tests/unit/slack/chat-background-routing.test.ts` | Extend with routing classification and dedupe coverage. |
 
 ## Verification Plan
 

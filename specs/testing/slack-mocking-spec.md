@@ -1,5 +1,15 @@
 # Slack HTTP Mocking Spec (MSW + Fixtures)
 
+## Metadata
+
+- Created: 2026-03-02
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
 ## Purpose
 
 Define the Slack HTTP contract testing model used by integration tests.

@@ -1,5 +1,15 @@
 # Integration Testing Spec
 
+## Metadata
+
+- Created: 2026-03-03
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
 ## Intent
 
 Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary.

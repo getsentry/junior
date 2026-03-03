@@ -1,5 +1,15 @@
 # Agent Stability Evaluation
 
+## Metadata
+
+- Created: 2026-03-03
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
 Last updated: 2026-02-27
 
 ## Scope

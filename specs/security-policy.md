@@ -82,7 +82,7 @@ This policy applies to:
 - Fall back to static `SENTRY_AUTH_TOKEN` env var for dev/testing only.
 - Inject `Authorization` header transform for `sentry.io` domain.
 - Set `SENTRY_AUTH_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
-- See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
+- See [OAuth Flows Spec](./oauth-flows-spec.md) for full flow details.
 
 ## Logging and redaction policy
 

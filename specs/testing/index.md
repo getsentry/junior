@@ -1,5 +1,15 @@
 # Testing Spec Index
 
+## Metadata
+
+- Created: 2026-03-03
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
 ## Purpose
 
 This index defines the project testing taxonomy and the contract between test layers.

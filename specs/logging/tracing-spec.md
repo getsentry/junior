@@ -1,5 +1,15 @@
 # Tracing Spec (OpenTelemetry + Sentry Spans)
 
+## Metadata
+
+- Created: 2026-02-25
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
 ## Goals
 - Make span instrumentation consistent, queryable, and low-noise.
 - Define stable span names and operations for workflow and sandbox lifecycle visibility.
