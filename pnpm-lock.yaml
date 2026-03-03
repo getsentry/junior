@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@chat-adapter/slack':
+    hash: 850da599c1f24ecfcc41f6aec67b1101468e12fdb18dd1db340e104fba52de86
+    path: patches/@chat-adapter__slack.patch
+
 importers:
 
   .:
@@ -12,14 +17,14 @@ importers:
         specifier: ^3.0.57
         version: 3.0.57(zod@4.3.6)
       '@chat-adapter/slack':
-        specifier: ^4.14.0
-        version: 4.14.0
+        specifier: ^4.15.0
+        version: 4.15.0(patch_hash=850da599c1f24ecfcc41f6aec67b1101468e12fdb18dd1db340e104fba52de86)
       '@chat-adapter/state-memory':
-        specifier: ^4.14.0
-        version: 4.14.0
+        specifier: ^4.15.0
+        version: 4.15.0
       '@chat-adapter/state-redis':
-        specifier: ^4.14.0
-        version: 4.14.0
+        specifier: ^4.15.0
+        version: 4.15.0
       '@mariozechner/pi-agent-core':
         specifier: ^0.55.0
         version: 0.55.0(ws@8.19.0)(zod@4.3.6)
@@ -45,8 +50,8 @@ importers:
         specifier: ^1.3.15
         version: 1.3.15(@vercel/sandbox@1.7.1)(ai@6.0.103(zod@4.3.6))(just-bash@2.10.6)
       chat:
-        specifier: ^4.14.0
-        version: 4.14.0
+        specifier: ^4.15.0
+        version: 4.15.0
       just-bash:
         specifier: ^2.10.6
         version: 2.10.6
@@ -328,17 +333,17 @@ packages:
   '@bytecodealliance/preview2-shim@0.17.6':
     resolution: {integrity: sha512-n3cM88gTen5980UOBAD6xDcNNL3ocTK8keab21bpx1ONdA+ARj7uD1qoFxOWCyKlkpSi195FH+GeAut7Oc6zZw==}
 
-  '@chat-adapter/shared@4.14.0':
-    resolution: {integrity: sha512-D6OCFlO7g8Tvq6YJ06c0KkEtR4XKFx0FLCGV93AtRrww9mE9MBKEgeQwJosFRMt7y21n6XJK1n/BPZDnTveNZg==}
+  '@chat-adapter/shared@4.15.0':
+    resolution: {integrity: sha512-otIS9zf0wY3DMc5WGK1sOJiASSeMHcdEqmuxDWW/6tK7gdRE7FOVE+dfo/74ykj9QZwv+a9cByh1cimaeHbiAw==}
 
-  '@chat-adapter/slack@4.14.0':
-    resolution: {integrity: sha512-IJ0cJ3QC1f/inieA12VIhoJCap59kQbT4xovt52OU9WtTy4zGkxKIgEem7jA+KcbxeepoypmNIpTy8QSUMZBnQ==}
+  '@chat-adapter/slack@4.15.0':
+    resolution: {integrity: sha512-DE2puxMXitt2AVLBvMAldZ4KKUKpKWxSd62nWLDX6xXtOo6z9uXAggZD3FnMOGITqw+oQypdFopvm/Wu6OxeFg==}
 
-  '@chat-adapter/state-memory@4.14.0':
-    resolution: {integrity: sha512-6YWMok5/1tS81lXspXhObmXVN+Zaopdd4ZMMh3r2WVeCCLCvbRYz9X9tqA+QuI2XCWxUcAPuWavFATgn+PdkLw==}
+  '@chat-adapter/state-memory@4.15.0':
+    resolution: {integrity: sha512-I/p6dA8fl8peZH9utKOsO8raFttUSyIQwyhB/uP6cR9d07hZVcG/SF30t4RjKDgegnq8+euqPFj3lCssIaYhoA==}
 
-  '@chat-adapter/state-redis@4.14.0':
-    resolution: {integrity: sha512-JammJeUWsh14Lk6egFI05aVx9FHvcAmvOwpNw6HRh56vff54kfCeBt+S07FnTkd2FSNUy7Jvo4bnVGHjF+cUWg==}
+  '@chat-adapter/state-redis@4.15.0':
+    resolution: {integrity: sha512-156CGZCkMXzsnMC20nIpNkAGScbasOHxR9YcPMuLm2IwSC1L/Kyea7o9TEv2ldvk63q/e+AaU+98T7T5/2+mvg==}
 
   '@edge-runtime/format@2.2.1':
     resolution: {integrity: sha512-JQTRVuiusQLNNLe2W9tnzBlV/GvSVcozLl4XZHk5swnRZ/v6jp8TqR8P7sqmJsQqblDZ3EztcWmLDbhRje/+8g==}
@@ -2058,6 +2063,9 @@ packages:
   '@types/node@25.3.0':
     resolution: {integrity: sha512-4K3bqJpXpqfg2XKGK9bpDTc6xO/xoUP/RBWS7AtRMug6zZFaRekiLzjVtAoZMquxoAbzBvy5nxQ7veS5eYzf8A==}
 
+  '@types/node@25.3.3':
+    resolution: {integrity: sha512-DpzbrH7wIcBaJibpKo9nnSQL0MTRdnWttGyE5haGwK86xgMOkFLp7vEyfQPGLOJh5wNYiJ3V9PmUMDhV9u8kkQ==}
+
   '@types/pg-pool@2.0.7':
     resolution: {integrity: sha512-U4CwmGVQcbEuqpyju8/ptOKg6gEC+Tqsvj2xS9o1g71bUh8twxnC6ZL5rZKCsGN0iyH0CwgUyc9VR5owNQF9Ng==}
 
@@ -2520,8 +2528,8 @@ packages:
   character-entities@2.0.2:
     resolution: {integrity: sha512-shx7oQ0Awen/BRIdkjkvz54PnEEI/EjwXDSIZp86/KKdbafHh1Df/RYGBhn4hbe2+uKC9FnT5UCEdyPz3ai9hQ==}
 
-  chat@4.14.0:
-    resolution: {integrity: sha512-gVod4FBptr4ewPEdY2zo1GnegI8/O0aC5F+IvFMIjimqmQjW0txhQbgI/DgmD48pwXJhxUGpvNrqzMrChx8GWw==}
+  chat@4.15.0:
+    resolution: {integrity: sha512-fE1m3UEiKQoiYkhXWT0rpH1+ZhKqJGZYkS+1gNCZWNkLv0QWTZhzdzBM5qYWe5A/Y0wJ8yLVjaqvGO4zZFxZqg==}
 
   chokidar@4.0.0:
     resolution: {integrity: sha512-mxIojEAQcuEvT/lyXq+jf/3cO/KoA6z4CeNDGGevTybECPOMFCnQy3OPahluUkbqgPNGw5Bi78UC7Po6Lhy+NA==}
@@ -2725,8 +2733,8 @@ packages:
   end-of-stream@1.4.5:
     resolution: {integrity: sha512-ooEGc6HP26xXq/N+GCGOT0JKCLDGrq2bQUZrQ7gyrJiZANJ/8YDTxTpQBXGMn+WbIQXNVpyWymm7KYVICQnyOg==}
 
-  enhanced-resolve@5.19.0:
-    resolution: {integrity: sha512-phv3E1Xl4tQOShqSte26C7Fl84EwUdZsyOuSSk9qtAGyyQs2s3jJzComh+Abf4g187lUUAvH+H26omrqia2aGg==}
+  enhanced-resolve@5.20.0:
+    resolution: {integrity: sha512-/ce7+jQ1PQ6rVXwe+jKEg5hW5ciicHwIQUagZkp6IufBoY3YDgdTTY1azVs0qoRgVmvsNB+rbjLJxDAeHHtwsQ==}
     engines: {node: '>=10.13.0'}
 
   entities@4.5.0:
@@ -5008,30 +5016,30 @@ snapshots:
 
   '@bytecodealliance/preview2-shim@0.17.6': {}
 
-  '@chat-adapter/shared@4.14.0':
+  '@chat-adapter/shared@4.15.0':
     dependencies:
-      chat: 4.14.0
+      chat: 4.15.0
     transitivePeerDependencies:
       - supports-color
 
-  '@chat-adapter/slack@4.14.0':
+  '@chat-adapter/slack@4.15.0(patch_hash=850da599c1f24ecfcc41f6aec67b1101468e12fdb18dd1db340e104fba52de86)':
     dependencies:
-      '@chat-adapter/shared': 4.14.0
+      '@chat-adapter/shared': 4.15.0
       '@slack/web-api': 7.14.1
-      chat: 4.14.0
+      chat: 4.15.0
     transitivePeerDependencies:
       - debug
       - supports-color
 
-  '@chat-adapter/state-memory@4.14.0':
+  '@chat-adapter/state-memory@4.15.0':
     dependencies:
-      chat: 4.14.0
+      chat: 4.15.0
     transitivePeerDependencies:
       - supports-color
 
-  '@chat-adapter/state-redis@4.14.0':
+  '@chat-adapter/state-redis@4.15.0':
     dependencies:
-      chat: 4.14.0
+      chat: 4.15.0
       redis: 4.7.1
     transitivePeerDependencies:
       - supports-color
@@ -6628,6 +6636,10 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
 
+  '@types/node@25.3.3':
+    dependencies:
+      undici-types: 7.18.2
+
   '@types/pg-pool@2.0.7':
     dependencies:
       '@types/pg': 8.15.6
@@ -7288,7 +7300,7 @@ snapshots:
 
   character-entities@2.0.2: {}
 
-  chat@4.14.0:
+  chat@4.15.0:
     dependencies:
       '@workflow/serde': 4.1.0-beta.2
       mdast-util-to-string: 4.0.0
@@ -7475,7 +7487,7 @@ snapshots:
     dependencies:
       once: 1.4.0
 
-  enhanced-resolve@5.19.0:
+  enhanced-resolve@5.20.0:
     dependencies:
       graceful-fs: 4.2.11
       tapable: 2.3.0
@@ -7960,7 +7972,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 25.3.0
+      '@types/node': 25.3.3
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
@@ -9480,7 +9492,7 @@ snapshots:
       acorn-import-phases: 1.0.4(acorn@8.16.0)
       browserslist: 4.28.1
       chrome-trace-event: 1.0.4
-      enhanced-resolve: 5.19.0
+      enhanced-resolve: 5.20.0
       es-module-lexer: 2.0.0
       eslint-scope: 5.1.1
       events: 3.3.0

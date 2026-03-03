@@ -26,7 +26,9 @@ vi.mock("chat", () => {
     );
   }
 
-  return { Chat };
+  return {
+    Chat
+  };
 });
 
 vi.mock("@chat-adapter/slack", () => ({

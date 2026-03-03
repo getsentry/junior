@@ -1,7 +1,6 @@
 import { Chat, ThreadImpl } from "chat";
 import type { Attachment, Message, SentMessage, Thread } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
-import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 import "@/chat/chat-background-patch";
 import {
@@ -15,7 +14,7 @@ import type {
   ConversationMessage,
   ThreadConversationState
 } from "@/chat/conversation-state";
-import { logException, logInfo, logWarn, setSpanAttributes, setTags, toOptionalString, withSpan } from "@/chat/observability";
+import { logException, logInfo, logWarn, setTags, toOptionalString, withSpan } from "@/chat/observability";
 import { escapeXml } from "@/chat/xml";
 import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
@@ -1093,6 +1092,7 @@ async function shouldReplyInSubscribedThread(args: {
   rawText: string;
   text: string;
   conversationContext?: string;
+  hasAttachments?: boolean;
   isExplicitMention?: boolean;
   context: {
     threadId?: string;
@@ -1103,8 +1103,11 @@ async function shouldReplyInSubscribedThread(args: {
 }): Promise<{ shouldReply: boolean; reason: string }> {
   const text = args.text.trim();
   const rawText = args.rawText.trim();
-  if (!text) {
+  if (!text && !args.hasAttachments) {
     return { shouldReply: false, reason: "empty message" };
+  }
+  if (!text && args.hasAttachments) {
+    return { shouldReply: true, reason: "attachment" };
   }
 
   if (args.isExplicitMention) {
@@ -1197,38 +1200,6 @@ export const bot = new Chat<{ slack: SlackAdapter }>({
   },
   state: getStateAdapter()
 });
-
-// Monkey-patch processEventPayload to log and annotate every inbound event_callback.
-// Unrecognized events that the SDK drops silently will now appear in Sentry logs.
-{
-  const adapter = getSlackAdapter() as unknown as Record<string, Function>;
-  if (typeof adapter.processEventPayload === "function") {
-    const originalProcessEvent = adapter.processEventPayload.bind(adapter);
-    adapter.processEventPayload = (payload: Record<string, unknown>, options: unknown) => {
-      const event = payload.event as Record<string, unknown> | undefined;
-      const eventType = event?.type as string | undefined;
-      const userId = event?.user as string | undefined;
-
-      setSpanAttributes({
-        "app.slack.payload_type": payload.type,
-        "app.slack.event_type": eventType,
-        "app.slack.team_id": payload.team_id
-      });
-
-      if (userId) {
-        Sentry.setUser({ id: userId });
-      }
-
-      logInfo("webhook_event_received", {}, {
-        "app.slack.payload_type": payload.type,
-        "app.slack.event_type": eventType,
-        "app.slack.team_id": payload.team_id
-      });
-
-      return originalProcessEvent(payload, options);
-    };
-  }
-}
 
 interface PreparedTurnState {
   artifacts: ThreadArtifactsState;

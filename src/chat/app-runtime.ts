@@ -88,6 +88,7 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
   shouldReplyInSubscribedThread: (args: {
     context: AppRuntimeThreadContext;
     conversationContext?: string;
+    hasAttachments?: boolean;
     isExplicitMention?: boolean;
     rawText: string;
     text: string;
@@ -229,6 +230,7 @@ export function createAppSlackRuntime<
           rawText: rawUserText,
           text: userText,
           conversationContext: deps.getPreparedConversationContext(preparedState),
+          hasAttachments: message.attachments.length > 0,
           isExplicitMention: Boolean(message.isMention),
           context
         });
