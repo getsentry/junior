@@ -77,4 +77,22 @@ describe("runThreadMessageLoop", () => {
       }
     ]);
   });
+
+  it("evicts old dedupe keys after cap and allows replay outside dedupe window", async () => {
+    const baseThread = "slack:C123:1700000000.100";
+    const uniquePayloads = Array.from({ length: 550 }, (_, index) =>
+      createPayload({ dedupKey: `${baseThread}:${index}` })
+    );
+    const replayedPayload = createPayload({ dedupKey: `${baseThread}:0` });
+    const processed: string[] = [];
+
+    await runThreadMessageLoop(toAsyncIterable([...uniquePayloads, replayedPayload]), {
+      processMessage: async (payload) => {
+        processed.push(payload.dedupKey);
+      }
+    });
+
+    expect(processed).toHaveLength(551);
+    expect(processed.filter((key) => key === `${baseThread}:0`)).toHaveLength(2);
+  });
 });

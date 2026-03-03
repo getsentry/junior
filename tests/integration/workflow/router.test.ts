@@ -47,24 +47,53 @@ describe("routeToThreadWorkflow", () => {
   });
 
   it("uses resume directly when hook exists", async () => {
+    const payload = createPayload();
     mocks.resume.mockResolvedValueOnce({ hookId: "hook-1" });
 
-    await routeToThreadWorkflow("slack:C123:1700000000.100", createPayload());
+    await routeToThreadWorkflow("slack:C123:1700000000.100", payload);
 
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.resume).toHaveBeenCalledTimes(1);
+    expect(mocks.resume).toHaveBeenCalledWith("slack:C123:1700000000.100", payload);
   });
 
   it("starts workflow when first resume misses and retries resume", async () => {
+    const payload = createPayload();
     mocks.resume.mockResolvedValueOnce(null).mockResolvedValueOnce({ hookId: "hook-1" });
     mocks.start.mockResolvedValueOnce(undefined);
 
-    const promise = routeToThreadWorkflow("slack:C123:1700000000.100", createPayload());
+    const promise = routeToThreadWorkflow("slack:C123:1700000000.100", payload);
     await vi.runAllTimersAsync();
     await promise;
 
     expect(mocks.start).toHaveBeenCalledTimes(1);
+    expect(mocks.start).toHaveBeenCalledWith(mocks.slackThreadWorkflow, ["slack:C123:1700000000.100"]);
     expect(mocks.resume).toHaveBeenCalledTimes(2);
+    expect(mocks.resume).toHaveBeenNthCalledWith(1, "slack:C123:1700000000.100", payload);
+    expect(mocks.resume).toHaveBeenNthCalledWith(2, "slack:C123:1700000000.100", payload);
+  });
+
+  it("continues retrying resume when start throws a race error", async () => {
+    const payload = createPayload();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    mocks.resume
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ hookId: "hook-1" });
+    mocks.start.mockRejectedValueOnce(new Error("hook conflict"));
+
+    const promise = routeToThreadWorkflow("slack:C123:1700000000.100", payload);
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(mocks.start).toHaveBeenCalledTimes(1);
+    expect(mocks.resume).toHaveBeenCalledTimes(4);
+    const delays = setTimeoutSpy.mock.calls
+      .map((call) => call[1])
+      .filter((value): value is number => typeof value === "number");
+    expect(delays).toEqual(expect.arrayContaining([50, 100]));
+    setTimeoutSpy.mockRestore();
   });
 
   it("throws when all resume attempts fail", async () => {

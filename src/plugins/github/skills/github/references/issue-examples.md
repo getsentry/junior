@@ -45,7 +45,7 @@ Bad scope:
 > We have some patches we should clean up.
 
 Good scope — quantified and specific:
-> We maintain patches on **8 of 9 `process*` methods**. 7 exist solely because the SDK lacks `runInBackground` support. The 8th has two additional behavioral fixes.
+> We maintain patches on **8 of 9 `process*` methods**. 7 exist solely to keep `waitUntil` offload behavior consistent while `processMessage` is customized for durable workflow routing. The 8th has two additional behavioral fixes.
 >
 > | Method | Patch reason |
 > |--------|-------------|

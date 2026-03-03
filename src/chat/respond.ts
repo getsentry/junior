@@ -34,6 +34,7 @@ import {
 } from "@/chat/status-format";
 
 export interface ReplyRequestContext {
+  skillDirs?: string[];
   assistant?: {
     userId?: string;
     userName?: string;
@@ -572,7 +573,7 @@ export async function generateAssistantReply(
       modelId: botConfig.modelId
     };
 
-    const availableSkills = await discoverSkills();
+    const availableSkills = await discoverSkills({ additionalRoots: context.skillDirs });
     const configurationValues: Record<string, unknown> = {
       ...(context.configuration ?? {})
     };

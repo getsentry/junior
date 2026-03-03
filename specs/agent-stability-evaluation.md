@@ -29,7 +29,7 @@ This document tracks stability risks in the Slack agent loop, concrete mitigatio
 | Tool-loop control | Add deterministic prepare-step guardrails against repetitive tool call patterns | Completed | Added `prepareStep` loop guard + `onStepFinish` tool-error logging in `respond.ts` |
 | Side-effect idempotency | Add per-turn dedupe keys for create/update Slack artifact tools | Completed | Added operation cache in `ToolState` + dedupe keys in side-effect tools |
 | PI continue-loop diagnosis | Remove/replace auto-continue branch and document behavior change | Completed | Removed PI-style auto-continue retry loop from `respond.ts` |
-| Test coverage | Add focused tests for idempotency + regression-prone loop helpers | Completed | Added `tests/tool-idempotency.test.ts` |
+| Test coverage | Add focused tests for idempotency + regression-prone loop helpers | Completed | Added `tests/integration/tool-idempotency.test.ts` |
 | Channel member enrichment rate limits | Refactor member profile lookup to bounded concurrency (or staged hydration) | Pending | `src/chat/slack-actions/channel.ts` currently uses broad `Promise.all` fan-out |
 
 ## Notes

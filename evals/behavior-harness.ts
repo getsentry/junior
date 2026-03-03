@@ -3,7 +3,6 @@ import type { Message } from "chat";
 import type { AppRuntimeAssistantLifecycleEvent } from "@/chat/app-runtime";
 import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
 import { generateAssistantReply } from "@/chat/respond";
-import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { FakeSlackAdapter, createTestThread, type TestThread } from "../tests/fixtures/slack-harness";
 
 interface BehaviorEventThreadFixture {
@@ -76,16 +75,9 @@ export interface BehaviorEvalCase {
   events: BehaviorCaseEvent[];
 }
 
-export interface AgentTurn {
-  tool_calls: string[];
-  sandbox_id: string | null;
-  success: boolean;
-}
-
 export interface BehaviorCaseResult {
   posts: string[];
   slackAdapter: FakeSlackAdapter;
-  turns: AgentTurn[];
 }
 
 function toPostedText(value: unknown): string {
@@ -134,18 +126,12 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   const replyTexts = testCase.behavior?.reply_texts ?? [];
   const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
   const replyTimeoutMs = Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000", 10);
-  const turns: AgentTurn[] = [];
   let replyCallCount = 0;
   let decisionIndex = 0;
-  const originalSkillDirs = process.env.SKILL_DIRS;
   const originalEnableTestCredentials = process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   const originalTestCredentialToken = process.env.EVAL_TEST_CREDENTIAL_TOKEN;
   const configuredSkillDirs =
     testCase.behavior?.skill_dirs?.map((entry) => path.resolve(process.cwd(), entry)) ?? [];
-  if (configuredSkillDirs.length > 0) {
-    process.env.SKILL_DIRS = configuredSkillDirs.join(path.delimiter);
-    resetSkillDiscoveryCache();
-  }
   if (testCase.behavior?.enable_test_credentials) {
     process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
     if (testCase.behavior?.test_credential_token) {
@@ -224,7 +210,10 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       let reply: Awaited<ReturnType<typeof generateAssistantReply>>;
       try {
         reply = await Promise.race([
-          generateAssistantReply(text, context),
+          generateAssistantReply(text, {
+            ...context,
+            ...(configuredSkillDirs.length > 0 ? { skillDirs: configuredSkillDirs } : {})
+          }),
           new Promise<never>((_, reject) =>
             setTimeout(
               () => reject(new Error(`generateAssistantReply timed out after ${replyTimeoutMs}ms`)),
@@ -246,12 +235,6 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
           }
         }
       }
-
-      turns.push({
-        tool_calls: reply.diagnostics.toolCalls,
-        sandbox_id: reply.sandboxId ?? null,
-        success: reply.diagnostics.outcome === "success",
-      });
 
       const replyText = replyTexts[replyCallCount - 1];
       if (typeof replyText === "string") {
@@ -294,14 +277,6 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   } finally {
     resetBotDepsForTests();
     (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
-    if (configuredSkillDirs.length > 0) {
-      if (originalSkillDirs === undefined) {
-        delete process.env.SKILL_DIRS;
-      } else {
-        process.env.SKILL_DIRS = originalSkillDirs;
-      }
-      resetSkillDiscoveryCache();
-    }
     if (testCase.behavior?.enable_test_credentials) {
       if (originalEnableTestCredentials === undefined) {
         delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
@@ -320,8 +295,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
 
   return {
     posts,
-    slackAdapter,
-    turns
+    slackAdapter
   };
 }
 
@@ -329,4 +303,3 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
 // The toIncomingMessage function below still needs a local check since it maps from eval-specific fixtures.
 type AssertAssignable<_TSub extends TSuper, TSuper> = true;
 type _MessageCheck = AssertAssignable<ReturnType<typeof toIncomingMessage>, Pick<Message, "id" | "text" | "isMention" | "attachments" | "metadata" | "author">>;
-

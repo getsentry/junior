@@ -1,28 +1,34 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
+import { SlackActionError } from "@/chat/slack-actions/client";
 import type { ToolState } from "@/chat/tools/types";
-
-const createCanvasMock = vi.fn();
-const addListItemsMock = vi.fn();
-
-vi.mock("@/chat/slack-actions/canvases", () => ({
-  createCanvas: (...args: unknown[]) => createCanvasMock(...args)
-}));
-
-vi.mock("@/chat/slack-actions/lists", () => ({
-  addListItems: (...args: unknown[]) => addListItemsMock(...args)
-}));
+import {
+  conversationsCanvasesCreateOk,
+  filesInfoOk,
+  slackListsItemsCreateOk
+} from "../fixtures/slack/factories/api";
+import {
+  getCapturedSlackApiCalls,
+  queueSlackApiError,
+  queueSlackApiResponse
+} from "../msw/handlers/slack-api";
 
 function createToolState(options: {
   currentCanvasId?: string;
   currentListId?: string;
+  listColumnMap?: {
+    titleColumnId?: string;
+    completedColumnId?: string;
+    assigneeColumnId?: string;
+    dueDateColumnId?: string;
+  };
 } = {}): ToolState {
   const operationResultCache = new Map<string, unknown>();
   let turnCreatedCanvasId: string | undefined;
   const artifactState: Record<string, unknown> = {
-    listColumnMap: {}
+    listColumnMap: options.listColumnMap ?? {}
   };
 
   return {
@@ -51,11 +57,6 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 }
 
 describe("tool idempotency", () => {
-  beforeEach(() => {
-    createCanvasMock.mockReset();
-    addListItemsMock.mockReset();
-  });
-
   it("creates deterministic operation keys regardless of object key order", () => {
     const a = createOperationKey("slack_canvas_create", {
       title: "Status",
@@ -72,9 +73,14 @@ describe("tool idempotency", () => {
   });
 
   it("deduplicates repeated slack_canvas_create operations in one turn", async () => {
-    createCanvasMock.mockResolvedValue({
-      canvasId: "canvas-1",
-      permalink: "https://example.invalid/canvas-1"
+    queueSlackApiResponse("conversations.canvases.create", {
+      body: conversationsCanvasesCreateOk({ canvasId: "canvas-1" })
+    });
+    queueSlackApiResponse("files.info", {
+      body: filesInfoOk({
+        fileId: "canvas-1",
+        permalink: "https://example.invalid/canvas-1"
+      })
     });
     const state = createToolState();
     const tool = createSlackCanvasCreateTool({ channelId: "C123", sandbox: noopSandbox }, state);
@@ -88,7 +94,8 @@ describe("tool idempotency", () => {
       markdown: "- item one"
     });
 
-    expect(createCanvasMock).toHaveBeenCalledTimes(1);
+    expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("files.info")).toHaveLength(1);
     expect(first).toMatchObject({
       ok: true,
       canvas_id: "canvas-1"
@@ -107,13 +114,18 @@ describe("tool idempotency", () => {
   });
 
   it("deduplicates repeated slack_list_add_items operations in one turn", async () => {
-    addListItemsMock.mockResolvedValue({
-      createdItemIds: ["item-1", "item-2"],
+    queueSlackApiResponse("slackLists.items.create", {
+      body: slackListsItemsCreateOk({ itemId: "item-1" })
+    });
+    queueSlackApiResponse("slackLists.items.create", {
+      body: slackListsItemsCreateOk({ itemId: "item-2" })
+    });
+    const state = createToolState({
+      currentListId: "list-1",
       listColumnMap: {
         titleColumnId: "col-title"
       }
     });
-    const state = createToolState({ currentListId: "list-1" });
     const tool = createSlackListAddItemsTool(state);
 
     const first = await executeTool(tool, {
@@ -123,7 +135,14 @@ describe("tool idempotency", () => {
       items: ["Ship patch", "Run test"]
     });
 
-    expect(addListItemsMock).toHaveBeenCalledTimes(1);
+    const itemCreateCalls = getCapturedSlackApiCalls("slackLists.items.create");
+    expect(itemCreateCalls).toHaveLength(2);
+    expect(itemCreateCalls[0]?.params).toMatchObject({
+      list_id: "list-1"
+    });
+    expect(itemCreateCalls[1]?.params).toMatchObject({
+      list_id: "list-1"
+    });
     expect(first).toMatchObject({
       ok: true,
       list_id: "list-1",
@@ -137,7 +156,9 @@ describe("tool idempotency", () => {
   });
 
   it("throws operational errors for slack_canvas_create execution failures", async () => {
-    createCanvasMock.mockRejectedValue(new Error("slack api unavailable"));
+    queueSlackApiError("conversations.canvases.create", {
+      error: "internal_error"
+    });
     const state = createToolState();
     const tool = createSlackCanvasCreateTool({ channelId: "C123", sandbox: noopSandbox }, state);
 
@@ -146,6 +167,6 @@ describe("tool idempotency", () => {
         title: "Incident plan",
         markdown: "placeholder"
       })
-    ).rejects.toThrow("slack api unavailable");
+    ).rejects.toBeInstanceOf(SlackActionError);
   });
 });

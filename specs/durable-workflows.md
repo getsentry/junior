@@ -157,7 +157,7 @@ export interface ThreadMessagePayload {
 10. If dedupe claim fails, return early.
 11. Build `ThreadMessagePayload`.
 12. Call router `routeToThreadWorkflow(threadId, payload)`.
-13. On router error, log and rethrow so runInBackground logs capture failure.
+13. On router error, log and rethrow so background task logs capture failure.
 
 ### B. Router (`src/chat/workflow/router.ts`)
 
@@ -291,9 +291,9 @@ Required correlation attributes when available:
 | `src/chat/workflow/thread-workflow.ts` | Add hook definition, workflow loop, step dispatcher, dedupe set, attachment rehydration. |
 | `src/chat/workflow/router.ts` | Add resume-or-start router with bounded retry. |
 | `src/chat/chat-background-patch.ts` | Replace `handleIncomingMessage` call path in `processMessage` with routing algorithm above. |
-| `tests/workflow/router.test.ts` | New unit tests for resume/start race paths and retry behavior. |
-| `tests/workflow/thread-workflow.test.ts` | New tests for ordering, dedupe, and keep-alive-on-error behavior. |
-| `tests/chat-background-patch.test.ts` | Extend with routing classification and dedupe coverage. |
+| `tests/integration/workflow/router.test.ts` | New tests for resume/start race paths and retry behavior. |
+| `tests/integration/workflow/thread-workflow.test.ts` | New tests for ordering, dedupe, and keep-alive-on-error behavior. |
+| `tests/integration/slack/chat-background-routing.test.ts` | Extend with routing classification and dedupe coverage. |
 
 ## Verification Plan
 

@@ -1,21 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-update";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
-
-const lookupCanvasSectionMock = vi.fn();
-const updateCanvasMock = vi.fn();
-
-vi.mock("@/chat/slack-actions/canvases", () => ({
-  lookupCanvasSection: (...args: unknown[]) => lookupCanvasSectionMock(...args),
-  updateCanvas: (...args: unknown[]) => updateCanvasMock(...args)
-}));
+import { canvasesEditOk } from "../fixtures/slack/factories/api";
+import { getCapturedSlackApiCalls, queueSlackApiResponse } from "../msw/handlers/slack-api";
 
 function createState(options: { currentCanvasId?: string; turnCreatedCanvasId?: string } = {}): ToolState {
   const operationResultCache = new Map<string, unknown>();
+  const artifactState: Record<string, unknown> = {};
   let turnCreatedCanvasId = options.turnCreatedCanvasId;
   return {
-    artifactState: {},
-    patchArtifactState: vi.fn(),
+    artifactState: artifactState as ToolState["artifactState"],
+    patchArtifactState: (patch) => Object.assign(artifactState, patch),
     getCurrentCanvasId: () => options.currentCanvasId,
     getTurnCreatedCanvasId: () => turnCreatedCanvasId,
     setTurnCreatedCanvasId: (canvasId: string) => {
@@ -56,11 +51,13 @@ describe("createSlackCanvasUpdateTool", () => {
       ok: false,
       error: "No canvas_id provided. For cross-turn updates, provide explicit canvas_id."
     });
-    expect(updateCanvasMock).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("canvases.edit")).toHaveLength(0);
   });
 
   it("allows implicit same-turn updates to a canvas created in this turn", async () => {
-    updateCanvasMock.mockResolvedValueOnce(undefined);
+    queueSlackApiResponse("canvases.edit", {
+      body: canvasesEditOk()
+    });
     const state = createState({ currentCanvasId: "F_OLD", turnCreatedCanvasId: "F_NEW" });
     const tool = createSlackCanvasUpdateTool(state, createContext("append this section"));
 
@@ -75,11 +72,19 @@ describe("createSlackCanvasUpdateTool", () => {
       {} as never
     );
 
-    expect(updateCanvasMock).toHaveBeenCalledWith({
-      canvasId: "F_NEW",
-      markdown: "new section",
-      operation: "insert_at_end",
-      sectionId: undefined
+    const editCalls = getCapturedSlackApiCalls("canvases.edit");
+    expect(editCalls).toHaveLength(1);
+    expect(editCalls[0]?.params).toMatchObject({
+      canvas_id: "F_NEW",
+      changes: [
+        {
+          operation: "insert_at_end",
+          document_content: {
+            type: "markdown",
+            markdown: "new section"
+          }
+        }
+      ]
     });
     expect(result).toEqual({
       ok: true,
@@ -87,5 +92,6 @@ describe("createSlackCanvasUpdateTool", () => {
       operation: "insert_at_end",
       section_id: undefined
     });
+    expect(state.artifactState.lastCanvasId).toBe("F_NEW");
   });
 });

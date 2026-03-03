@@ -2,7 +2,6 @@ import { configure, evaluate } from "vitest-evals/evaluate";
 import { gateway } from "@ai-sdk/gateway";
 import { z } from "zod";
 import {
-  type AgentTurn,
   type BehaviorCaseConfig,
   type BehaviorCaseEvent,
   type BehaviorCaseResult,
@@ -13,12 +12,6 @@ configure({ model: gateway("openai/gpt-5.2") });
 
 // ── Eval output schema ─────────────────────────────────────
 
-const agentTurnSchema = z.object({
-  tool_calls: z.array(z.string()).describe("Tools invoked during this turn (e.g. bash)"),
-  sandboxed: z.boolean().describe("Whether this turn executed inside a sandbox"),
-  success: z.boolean().describe("Whether the turn completed successfully"),
-});
-
 const slackMetadataSchema = z.object({
   thread_title_set: z.boolean().describe("Whether the assistant set a title on the Slack thread"),
   suggested_prompts_set: z.boolean().describe("Whether the assistant set suggested prompts on the Slack thread"),
@@ -26,22 +19,12 @@ const slackMetadataSchema = z.object({
 
 const evalOutputSchema = z.object({
   assistant_posts: z.array(z.string()).describe("Messages the assistant posted to the thread"),
-  agent_turns: z.array(agentTurnSchema).describe("Per-turn agent execution results"),
   slack_metadata: slackMetadataSchema.describe("Slack thread metadata set by the assistant"),
 });
-
-function serializeTurn(turn: AgentTurn): z.input<typeof agentTurnSchema> {
-  return {
-    tool_calls: turn.tool_calls,
-    sandboxed: turn.sandbox_id !== null,
-    success: turn.success,
-  };
-}
 
 function serializeResult(result: BehaviorCaseResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
-    agent_turns: result.turns.map(serializeTurn),
     slack_metadata: {
       thread_title_set: result.slackAdapter.titleCalls.length > 0,
       suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,
@@ -55,10 +38,25 @@ function serializeResult(result: BehaviorCaseResult): string {
 interface SlackEvalOptions {
   behavior?: BehaviorCaseConfig;
   events: BehaviorCaseEvent[];
-  assert: (result: BehaviorCaseResult) => void;
   criteria: string;
   threshold?: number;
   timeout?: number;
+  requireSandboxReady?: boolean;
+}
+
+const SANDBOX_SETUP_FAILED_TEXT = "Error: sandbox setup failed";
+
+function assertSandboxReady(name: string, result: BehaviorCaseResult): void {
+  const failingPosts = result.posts.filter((post) => post.includes(SANDBOX_SETUP_FAILED_TEXT));
+  if (failingPosts.length === 0) {
+    return;
+  }
+
+  const sample = failingPosts[0];
+  throw new Error(
+    `Eval sandbox bootstrap failed for "${name}". Received "${sample}". ` +
+      "Evals require a working Vercel Sandbox and do not permit local fallback."
+  );
 }
 
 export function slackEval(name: string, opts: SlackEvalOptions) {
@@ -70,7 +68,9 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
         behavior: opts.behavior,
         events: opts.events,
       });
-      opts.assert(result);
+      if (opts.requireSandboxReady ?? true) {
+        assertSandboxReady(name, result);
+      }
       return serializeResult(result);
     },
     criteria: opts.criteria,

@@ -1,4 +1,4 @@
-import { defineHook } from "workflow";
+import { defineHook, getWorkflowMetadata } from "workflow";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
 
 const MAX_DEDUP_KEYS = 500;
@@ -32,32 +32,75 @@ function rehydrateAttachmentFetchers(
   }
 }
 
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function getPayloadWorkflowRunId(payload: ThreadMessagePayload): string | undefined {
+  return (
+    toOptionalString(payload.workflowRunId) ??
+    toOptionalString((payload.thread as { runId?: unknown }).runId) ??
+    toOptionalString((payload.message as { runId?: unknown }).runId)
+  );
+}
+
+function attachWorkflowRunId(payload: ThreadMessagePayload, workflowRunId: string): void {
+  payload.workflowRunId = workflowRunId;
+
+  const threadWithRun = payload.thread as { runId?: string };
+  if (!threadWithRun.runId) {
+    threadWithRun.runId = workflowRunId;
+  }
+
+  const messageWithRun = payload.message as { runId?: string };
+  if (!messageWithRun.runId) {
+    messageWithRun.runId = workflowRunId;
+  }
+}
+
+async function* withWorkflowRunId(
+  stream: AsyncIterable<ThreadMessagePayload>,
+  workflowRunId: string
+): AsyncIterable<ThreadMessagePayload> {
+  for await (const payload of stream) {
+    attachWorkflowRunId(payload, workflowRunId);
+    yield payload;
+  }
+}
+
 async function logThreadMessageFailure(args: {
   errorMessage: string;
   payload: Pick<ThreadMessagePayload, "kind" | "normalizedThreadId" | "message" | "thread">;
+  workflowRunId?: string;
 }): Promise<void> {
   "use step";
-  const { logError } = await import("@/chat/observability");
+  const { logError, withContext } = await import("@/chat/observability");
 
-  logError(
-    "workflow_message_failed",
+  await withContext(
     {
       slackThreadId: args.payload.normalizedThreadId,
       slackChannelId: args.payload.thread.channelId,
-      slackUserId: args.payload.message.author.userId
+      slackUserId: args.payload.message.author.userId,
+      workflowRunId: args.workflowRunId
     },
-    {
-      "app.workflow.message_kind": args.payload.kind,
-      "messaging.message.id": args.payload.message.id,
-      "error.message": args.errorMessage
-    },
-    "Thread workflow step failed"
+    async () => {
+      logError(
+        "workflow_message_failed",
+        {},
+        {
+          "app.workflow.message_kind": args.payload.kind,
+          "messaging.message.id": args.payload.message.id,
+          "error.message": args.errorMessage
+        },
+        "Thread workflow step failed"
+      );
+    }
   );
 }
 
 export async function processThreadMessage(payload: ThreadMessagePayload): Promise<void> {
   "use step";
-  const [{ appSlackRuntime, bot }, { logInfo, withSpan }, { downloadPrivateSlackFile }] = await Promise.all([
+  const [{ appSlackRuntime, bot }, { logInfo, withContext, withSpan }, { downloadPrivateSlackFile }] = await Promise.all([
     import("@/chat/bot"),
     import("@/chat/observability"),
     import("@/chat/slack-actions/client")
@@ -65,39 +108,47 @@ export async function processThreadMessage(payload: ThreadMessagePayload): Promi
 
   bot.registerSingleton();
   rehydrateAttachmentFetchers(payload, downloadPrivateSlackFile);
+  const workflowRunId = getPayloadWorkflowRunId(payload);
 
-  await withSpan(
-    "workflow.thread_message",
-    "workflow.thread_message",
+  await withContext(
     {
       slackThreadId: payload.normalizedThreadId,
       slackChannelId: payload.thread.channelId,
-      slackUserId: payload.message.author.userId
+      slackUserId: payload.message.author.userId,
+      workflowRunId
     },
     async () => {
-      if (payload.kind === "new_mention") {
-        await appSlackRuntime.handleNewMention(payload.thread, payload.message);
-      } else {
-        await appSlackRuntime.handleSubscribedMessage(payload.thread, payload.message);
-      }
-    },
-    {
-      "messaging.message.id": payload.message.id,
-      "app.workflow.message_kind": payload.kind
-    }
-  );
+      await withSpan(
+        "workflow.thread_message",
+        "workflow.thread_message",
+        {
+          slackThreadId: payload.normalizedThreadId,
+          slackChannelId: payload.thread.channelId,
+          slackUserId: payload.message.author.userId,
+          workflowRunId
+        },
+        async () => {
+          if (payload.kind === "new_mention") {
+            await appSlackRuntime.handleNewMention(payload.thread, payload.message);
+          } else {
+            await appSlackRuntime.handleSubscribedMessage(payload.thread, payload.message);
+          }
+        },
+        {
+          "messaging.message.id": payload.message.id,
+          "app.workflow.message_kind": payload.kind
+        }
+      );
 
-  logInfo(
-    "workflow_message_processed",
-    {
-      slackThreadId: payload.normalizedThreadId,
-      slackChannelId: payload.thread.channelId,
-      slackUserId: payload.message.author.userId
-    },
-    {
-      "app.workflow.message_kind": payload.kind
-    },
-    "Thread workflow step processed message"
+      logInfo(
+        "workflow_message_processed",
+        {},
+        {
+          "app.workflow.message_kind": payload.kind
+        },
+        "Thread workflow step processed message"
+      );
+    }
   );
 }
 
@@ -118,7 +169,8 @@ export async function runThreadMessageLoop(
     (async ({ errorMessage, payload }: { errorMessage: string; payload: ThreadMessagePayload }) =>
       logThreadMessageFailure({
         payload,
-        errorMessage
+        errorMessage,
+        workflowRunId: getPayloadWorkflowRunId(payload)
       }));
 
   const seenDedupKeys = new Set<string>();
@@ -145,10 +197,11 @@ export async function runThreadMessageLoop(
 
 export async function slackThreadWorkflow(normalizedThreadId: string): Promise<void> {
   "use workflow";
+  const { workflowRunId } = getWorkflowMetadata();
 
   const hook = threadMessageHook.create({
     token: normalizedThreadId
   });
 
-  await runThreadMessageLoop(hook);
+  await runThreadMessageLoop(withWorkflowRunId(hook, workflowRunId));
 }

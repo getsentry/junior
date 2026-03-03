@@ -61,7 +61,7 @@ Evals intentionally exclude live Slack integration concerns (Slack transport, ap
 pnpm evals
 ```
 
-Add a new eval case to `evals/slack-behaviors.eval.ts`:
+Add a new conversational eval case under `evals/conversational/*.eval.ts`:
 
 ```typescript
 slackEval("my new case", {

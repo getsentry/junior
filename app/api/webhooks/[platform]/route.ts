@@ -36,13 +36,12 @@ export async function POST(request: Request, context: WebhookRouteContext): Prom
           try {
             const activeSpan = Sentry.getActiveSpan();
             const response = await handler(request, {
-              waitUntil: (task) => after(() => task),
-              runInBackground: (run: () => Promise<unknown>) =>
+              waitUntil: (task) =>
                 after(() => {
                   if (activeSpan) {
-                    return Sentry.withActiveSpan(activeSpan, run);
+                    return Sentry.withActiveSpan(activeSpan, () => task);
                   }
-                  return run();
+                  return task;
                 })
             } as Parameters<typeof handler>[1]);
             setSpanAttributes({

@@ -2,14 +2,10 @@ import { Chat } from "chat";
 import type { Message, Thread } from "chat";
 import type { ThreadMessageKind, ThreadMessagePayload } from "@/chat/workflow/types";
 import { claimWorkflowIngressDedup, getStateAdapter } from "@/chat/state";
-import { logInfo, withSpan } from "@/chat/observability";
+import { logInfo, setSpanAttributes, withContext, withSpan } from "@/chat/observability";
 
-type LegacyWebhookOptions = {
+type WebhookOptions = {
   waitUntil?: (task: Promise<unknown>) => void;
-};
-
-type BackgroundWebhookOptions = LegacyWebhookOptions & {
-  runInBackground?: (run: () => Promise<unknown>) => void;
 };
 
 type ChatLike = {
@@ -38,7 +34,7 @@ type ChatLike = {
   appHomeOpenedHandlers: Array<(event: unknown) => Promise<void>>;
 };
 
-const PATCH_FLAG = Symbol.for("junior.chat.runInBackgroundPatch");
+const PATCH_FLAG = Symbol.for("junior.chat.backgroundPatch");
 export const WORKFLOW_INGRESS_DEDUP_TTL_MS = 5 * 60 * 1000;
 
 function nonEmptyString(value: unknown): string | undefined {
@@ -100,7 +96,7 @@ interface WorkflowRoutingDeps {
   claimDedup: (key: string, ttlMs: number) => Promise<boolean>;
   getIsSubscribed: (threadId: string) => Promise<boolean>;
   logInfo: typeof logInfo;
-  routeToThreadWorkflow: (normalizedThreadId: string, payload: ThreadMessagePayload) => Promise<void>;
+  routeToThreadWorkflow: (normalizedThreadId: string, payload: ThreadMessagePayload) => Promise<string | undefined>;
 }
 
 const defaultWorkflowRoutingDeps: WorkflowRoutingDeps = {
@@ -109,7 +105,7 @@ const defaultWorkflowRoutingDeps: WorkflowRoutingDeps = {
   logInfo,
   routeToThreadWorkflow: async (normalizedThreadId, payload) => {
     const { routeToThreadWorkflow } = await import("@/chat/workflow/router");
-    await routeToThreadWorkflow(normalizedThreadId, payload);
+    return await routeToThreadWorkflow(normalizedThreadId, payload);
   }
 };
 
@@ -191,34 +187,47 @@ export async function routeIncomingMessageToWorkflow(args: {
     thread
   };
 
-  deps.logInfo(
-    "workflow_ingress_enqueued",
-    {
-      slackThreadId: normalizedThreadId,
-      slackChannelId: thread.channelId,
-      slackUserId: (message as Message).author.userId
-    },
-    {
-      "messaging.message.id": messageId,
-      "app.workflow.message_kind": kind
-    },
-    "Routing incoming message to thread workflow"
-  );
-
-  await withSpan(
-    "workflow.route_message",
-    "workflow.route_message",
+  await withContext(
     {
       slackThreadId: normalizedThreadId,
       slackChannelId: thread.channelId,
       slackUserId: (message as Message).author.userId
     },
     async () => {
-      await deps.routeToThreadWorkflow(normalizedThreadId, payload);
-    },
-    {
-      "messaging.message.id": messageId,
-      "app.workflow.message_kind": kind
+      let routedRunId: string | undefined;
+      await withSpan(
+        "workflow.route_message",
+        "workflow.route_message",
+        {
+          slackThreadId: normalizedThreadId,
+          slackChannelId: thread.channelId,
+          slackUserId: (message as Message).author.userId,
+          workflowRunId: routedRunId
+        },
+        async () => {
+          routedRunId = await deps.routeToThreadWorkflow(normalizedThreadId, payload);
+          if (routedRunId) {
+            setSpanAttributes({
+              "app.workflow.run_id": routedRunId
+            });
+          }
+        },
+        {
+          "messaging.message.id": messageId,
+          "app.workflow.message_kind": kind
+        }
+      );
+
+      deps.logInfo(
+        "workflow_ingress_enqueued",
+        {},
+        {
+          "messaging.message.id": messageId,
+          "app.workflow.message_kind": kind,
+          ...(routedRunId ? { "app.workflow.run_id": routedRunId } : {})
+        },
+        "Routing incoming message to thread workflow"
+      );
     }
   );
 
@@ -226,15 +235,9 @@ export async function routeIncomingMessageToWorkflow(args: {
 }
 
 function scheduleBackgroundWork(
-  instance: ChatLike,
-  options: BackgroundWebhookOptions | undefined,
+  options: WebhookOptions | undefined,
   run: () => Promise<void>
 ): void {
-  if (options?.runInBackground) {
-    options.runInBackground(run);
-    return;
-  }
-
   const task = run();
   if (options?.waitUntil) {
     options.waitUntil(task);
@@ -255,7 +258,7 @@ export function installChatBackgroundPatch(): void {
     adapter: unknown,
     threadId: string,
     messageOrFactory: unknown,
-    options?: BackgroundWebhookOptions
+    options?: WebhookOptions
   ): void {
     const run = async (): Promise<void> => {
       try {
@@ -284,13 +287,13 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(this, options, run);
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processReaction: unknown }).processReaction = function processReaction(
     this: ChatLike,
     event: { emoji?: string; messageId?: string },
-    options?: BackgroundWebhookOptions
+    options?: WebhookOptions
   ): void {
     const run = async (): Promise<void> => {
       try {
@@ -304,13 +307,13 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(this, options, run);
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processAction: unknown }).processAction = function processAction(
     this: ChatLike,
     event: { actionId?: string; messageId?: string },
-    options?: BackgroundWebhookOptions
+    options?: WebhookOptions
   ): void {
     const run = async (): Promise<void> => {
       try {
@@ -324,14 +327,14 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(this, options, run);
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processModalClose: unknown }).processModalClose = function processModalClose(
     this: ChatLike,
     event: { adapter: { name: string }; callbackId: string },
     contextId: string,
-    options?: BackgroundWebhookOptions
+    options?: WebhookOptions
   ): void {
     const run = async (): Promise<void> => {
       try {
@@ -350,13 +353,13 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(this, options, run);
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processSlashCommand: unknown }).processSlashCommand = function processSlashCommand(
     this: ChatLike,
     event: { command?: string; text?: string },
-    options?: BackgroundWebhookOptions
+    options?: WebhookOptions
   ): void {
     const run = async (): Promise<void> => {
       try {
@@ -370,14 +373,14 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(this, options, run);
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processAssistantThreadStarted: unknown }).processAssistantThreadStarted =
     function processAssistantThreadStarted(
       this: ChatLike,
       event: { threadId?: string },
-      options?: BackgroundWebhookOptions
+      options?: WebhookOptions
     ): void {
       const run = async (): Promise<void> => {
         try {
@@ -392,14 +395,14 @@ export function installChatBackgroundPatch(): void {
         }
       };
 
-      scheduleBackgroundWork(this, options, run);
+      scheduleBackgroundWork(options, run);
     };
 
   (chatProto as unknown as { processAssistantContextChanged: unknown }).processAssistantContextChanged =
     function processAssistantContextChanged(
       this: ChatLike,
       event: { threadId?: string },
-      options?: BackgroundWebhookOptions
+      options?: WebhookOptions
     ): void {
       const run = async (): Promise<void> => {
         try {
@@ -414,13 +417,13 @@ export function installChatBackgroundPatch(): void {
         }
       };
 
-      scheduleBackgroundWork(this, options, run);
+      scheduleBackgroundWork(options, run);
     };
 
   (chatProto as unknown as { processAppHomeOpened: unknown }).processAppHomeOpened = function processAppHomeOpened(
     this: ChatLike,
     event: { userId?: string },
-    options?: BackgroundWebhookOptions
+    options?: WebhookOptions
   ): void {
     const run = async (): Promise<void> => {
       try {
@@ -435,7 +438,7 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(this, options, run);
+    scheduleBackgroundWork(options, run);
   };
 }
 

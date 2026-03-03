@@ -18,6 +18,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["evals/**/*.eval.ts"],
+    setupFiles: ["tests/msw/setup.ts"],
     reporters: [new DefaultEvalReporter()]
   }
 });

@@ -8,4 +8,5 @@ export interface ThreadMessagePayload {
   message: Message;
   normalizedThreadId: string;
   thread: Thread;
+  workflowRunId?: string;
 }
