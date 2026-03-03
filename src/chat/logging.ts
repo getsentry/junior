@@ -17,6 +17,7 @@ export interface LogContext {
   requestId?: string;
   slackThreadId?: string;
   slackUserId?: string;
+  slackUserName?: string;
   slackChannelId?: string;
   workflowRunId?: string;
   assistantUserName?: string;
@@ -195,6 +196,7 @@ function contextToAttributes(context: LogContext): LogAttributes {
     "messaging.message.conversation_id": context.slackThreadId,
     "messaging.destination.name": context.slackChannelId,
     "enduser.id": context.slackUserId,
+    "enduser.pseudo_id": context.slackUserName,
     "app.workflow.run_id": context.workflowRunId,
     "app.assistant.username": context.assistantUserName,
     "gen_ai.request.model": context.modelId,
@@ -377,6 +379,9 @@ export function setSentryTagsFromContext(context: LogContext): void {
       Sentry.setTag(key, value);
     }
   }
+  if (context.slackUserId) {
+    Sentry.setUser({ id: context.slackUserId, username: context.slackUserName });
+  }
 }
 
 export function setSentryScopeContext(scope: Sentry.Scope, context: LogContext): void {
@@ -385,6 +390,9 @@ export function setSentryScopeContext(scope: Sentry.Scope, context: LogContext):
     if (typeof value === "string" && value.length > 0) {
       scope.setTag(key, value);
     }
+  }
+  if (context.slackUserId) {
+    scope.setUser({ id: context.slackUserId, username: context.slackUserName });
   }
   scope.setContext("app", attrs);
 }

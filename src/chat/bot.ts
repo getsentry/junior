@@ -1,6 +1,7 @@
 import { Chat, ThreadImpl } from "chat";
 import type { Attachment, Message, SentMessage, Thread } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
+import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
 import "@/chat/chat-background-patch";
 import {
@@ -14,7 +15,7 @@ import type {
   ConversationMessage,
   ThreadConversationState
 } from "@/chat/conversation-state";
-import { logException, logInfo, logWarn, toOptionalString, withSpan } from "@/chat/observability";
+import { logException, logInfo, logWarn, setSpanAttributes, setTags, toOptionalString, withSpan } from "@/chat/observability";
 import { escapeXml } from "@/chat/xml";
 import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
@@ -1197,6 +1198,38 @@ export const bot = new Chat<{ slack: SlackAdapter }>({
   state: getStateAdapter()
 });
 
+// Monkey-patch processEventPayload to log and annotate every inbound event_callback.
+// Unrecognized events that the SDK drops silently will now appear in Sentry logs.
+{
+  const adapter = getSlackAdapter() as unknown as Record<string, Function>;
+  if (typeof adapter.processEventPayload === "function") {
+    const originalProcessEvent = adapter.processEventPayload.bind(adapter);
+    adapter.processEventPayload = (payload: Record<string, unknown>, options: unknown) => {
+      const event = payload.event as Record<string, unknown> | undefined;
+      const eventType = event?.type as string | undefined;
+      const userId = event?.user as string | undefined;
+
+      setSpanAttributes({
+        "app.slack.payload_type": payload.type,
+        "app.slack.event_type": eventType,
+        "app.slack.team_id": payload.team_id
+      });
+
+      if (userId) {
+        Sentry.setUser({ id: userId });
+      }
+
+      logInfo("webhook_event_received", {}, {
+        "app.slack.payload_type": payload.type,
+        "app.slack.event_type": eventType,
+        "app.slack.team_id": payload.team_id
+      });
+
+      return originalProcessEvent(payload, options);
+    };
+  }
+}
+
 interface PreparedTurnState {
   artifacts: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
@@ -1420,6 +1453,10 @@ async function replyToThread(
       });
 
       const fallbackIdentity = await botDeps.lookupSlackUser(message.author.userId);
+      const resolvedUserName = message.author.userName ?? fallbackIdentity?.userName;
+      if (resolvedUserName) {
+        setTags({ slackUserName: resolvedUserName });
+      }
       const userAttachments = await resolveUserAttachments(message.attachments, {
         threadId,
         requesterId: message.author.userId,
@@ -1667,27 +1704,56 @@ bot.onAssistantThreadStarted((event: AppRuntimeAssistantLifecycleEvent) =>
 bot.onAssistantContextChanged((event: AppRuntimeAssistantLifecycleEvent) =>
   appSlackRuntime.handleAssistantContextChanged(event)
 );
-bot.onSlashCommand("/jr", handleSlashCommand);
+bot.onSlashCommand("/jr", (event) =>
+  withSpan(
+    "workflow.slash_command",
+    "workflow.slash_command",
+    { slackUserId: event.user.userId },
+    async () => {
+      try {
+        await handleSlashCommand(event);
+      } catch (error) {
+        logException(error, "slash_command_failed", { slackUserId: event.user.userId });
+        throw error;
+      }
+    }
+  )
+);
 
-bot.onAppHomeOpened(async (event) => {
-  try {
-    await publishAppHomeView(getSlackClient(), event.userId, getUserTokenStore());
-  } catch (error) {
-    logException(error, "app_home_opened_failed", {}, { "app.user_id": event.userId });
-  }
-});
+bot.onAppHomeOpened((event) =>
+  withSpan(
+    "workflow.app_home_opened",
+    "workflow.app_home_opened",
+    { slackUserId: event.userId },
+    async () => {
+      try {
+        await publishAppHomeView(getSlackClient(), event.userId, getUserTokenStore());
+      } catch (error) {
+        logException(error, "app_home_opened_failed", { slackUserId: event.userId });
+        throw error;
+      }
+    }
+  )
+);
 
-bot.onAction("app_home_disconnect", async (event) => {
+bot.onAction("app_home_disconnect", (event) => {
   const provider = event.value;
   if (!provider) return;
   const userId = event.user.userId;
-  try {
-    await getUserTokenStore().delete(userId, provider);
-    await publishAppHomeView(getSlackClient(), userId, getUserTokenStore());
-  } catch (error) {
-    logException(error, "app_home_disconnect_failed", {}, {
-      "app.user_id": userId,
-      "app.credential.provider": provider
-    });
-  }
+  return withSpan(
+    "workflow.app_home_disconnect",
+    "workflow.app_home_disconnect",
+    { slackUserId: userId },
+    async () => {
+      try {
+        await getUserTokenStore().delete(userId, provider);
+        await publishAppHomeView(getSlackClient(), userId, getUserTokenStore());
+      } catch (error) {
+        logException(error, "app_home_disconnect_failed", { slackUserId: userId }, {
+          "app.credential.provider": provider
+        });
+        throw error;
+      }
+    }
+  );
 });

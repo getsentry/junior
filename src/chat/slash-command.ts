@@ -67,8 +67,8 @@ async function handleUnlink(event: SlashCommandEvent, provider: string): Promise
 
   logInfo(
     "slash_command_unlink",
-    {},
-    { "app.credential.provider": provider, "app.slack.user_id": event.user.userId },
+    { slackUserId: event.user.userId },
+    { "app.credential.provider": provider },
     `Unlinked ${providerLabel(provider)} account via /jr slash command`
   );
 
