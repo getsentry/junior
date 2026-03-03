@@ -1223,13 +1223,19 @@ async function shouldReplyInSubscribedThread(args: {
   }
 }
 
-export const bot = new Chat<{ slack: SlackAdapter }>({
+const createdBot = new Chat<{ slack: SlackAdapter }>({
   userName: botConfig.userName,
   adapters: {
     slack: createSlackAdapter()
   },
   state: getStateAdapter()
 });
+const registerSingleton = (createdBot as unknown as { registerSingleton?: () => unknown }).registerSingleton;
+if (typeof registerSingleton === "function") {
+  registerSingleton.call(createdBot);
+}
+
+export const bot = createdBot;
 
 interface PreparedTurnState {
   artifacts: ThreadArtifactsState;

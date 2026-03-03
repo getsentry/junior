@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { normalizeIncomingSlackThreadId } from "@/chat/chat-background-patch";
+import {
+  buildWorkflowIngressDedupKey,
+  determineThreadMessageKind,
+  normalizeIncomingSlackThreadId
+} from "@/chat/chat-background-patch";
 
 describe("normalizeIncomingSlackThreadId", () => {
   it("keeps canonical slack thread ids unchanged", () => {
@@ -45,5 +49,42 @@ describe("normalizeIncomingSlackThreadId", () => {
   it("returns original thread id when message is null or undefined", () => {
     expect(normalizeIncomingSlackThreadId("slack:C123:", null)).toBe("slack:C123:");
     expect(normalizeIncomingSlackThreadId("slack:C123:", undefined)).toBe("slack:C123:");
+  });
+});
+
+describe("buildWorkflowIngressDedupKey", () => {
+  it("uses thread and message identifiers", () => {
+    expect(buildWorkflowIngressDedupKey("slack:C123:1700000000.100", "1700000000.200")).toBe(
+      "slack:C123:1700000000.100:1700000000.200"
+    );
+  });
+});
+
+describe("determineThreadMessageKind", () => {
+  it("routes subscribed messages regardless of mention state", () => {
+    expect(
+      determineThreadMessageKind({
+        isSubscribed: true,
+        isMention: false
+      })
+    ).toBe("subscribed_message");
+  });
+
+  it("routes explicit mentions in unsubscribed threads", () => {
+    expect(
+      determineThreadMessageKind({
+        isSubscribed: false,
+        isMention: true
+      })
+    ).toBe("new_mention");
+  });
+
+  it("skips unsubscribed non-mention messages", () => {
+    expect(
+      determineThreadMessageKind({
+        isSubscribed: false,
+        isMention: false
+      })
+    ).toBeUndefined();
   });
 });

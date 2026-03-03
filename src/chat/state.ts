@@ -1,9 +1,11 @@
 import { createRedisState } from "@chat-adapter/state-redis";
+import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { Lock, StateAdapter } from "chat";
 import { hasRedisConfig } from "@/chat/config";
 import { logInfo } from "@/chat/observability";
 
 const MIN_LOCK_TTL_MS = 1000 * 60 * 5;
+const WORKFLOW_INGRESS_DEDUP_PREFIX = "junior:workflow_ingress";
 
 function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
   const acquireLock = async (threadId: string, ttlMs: number): Promise<Lock | null> => {
@@ -44,14 +46,37 @@ function createStateAdapter() {
   const redisState = createRedisState({
     url: process.env.REDIS_URL
   });
+  _redisStateAdapter = redisState;
   return createQueuedStateAdapter(redisState);
 }
 
 let _stateAdapter: StateAdapter | undefined;
+let _redisStateAdapter: RedisStateAdapter | undefined;
+
+function getRedisStateAdapter(): RedisStateAdapter {
+  if (!_redisStateAdapter) {
+    getStateAdapter();
+  }
+
+  if (!_redisStateAdapter) {
+    throw new Error("Redis state adapter is unavailable for workflow ingress dedupe");
+  }
+
+  return _redisStateAdapter;
+}
 
 export function getStateAdapter(): StateAdapter {
   if (!_stateAdapter) {
     _stateAdapter = createStateAdapter();
   }
   return _stateAdapter;
+}
+
+export async function claimWorkflowIngressDedup(rawKey: string, ttlMs: number): Promise<boolean> {
+  const key = `${WORKFLOW_INGRESS_DEDUP_PREFIX}:${rawKey}`;
+  const result = await getRedisStateAdapter().getClient().set(key, "1", {
+    NX: true,
+    PX: ttlMs
+  });
+  return result === "OK";
 }

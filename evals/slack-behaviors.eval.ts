@@ -33,6 +33,25 @@ describe("Slack Behavior Evals", () => {
     criteria: "Two replies. The second reply references the budget or Friday.",
   });
 
+  const rapidThread = { id: "thread-rapid", channel_id: "C-rapid", thread_ts: "17000000.rapid" };
+
+  slackEval("rapid same-thread messages both processed", {
+    behavior: {
+      reply_texts: ["first rapid reply", "second rapid reply"],
+    },
+    events: [
+      mention("first rapid message", { thread: rapidThread }),
+      threadMessage("<@U_APP> second rapid message", { thread: rapidThread, is_mention: true }),
+    ],
+    assert: (result) => {
+      expect(result.posts).toHaveLength(2);
+      expect(result.posts[0]).toContain("first rapid reply");
+      expect(result.posts[1]).toContain("second rapid reply");
+    },
+    criteria:
+      "assistant_posts has exactly two entries in order: first rapid reply, then second rapid reply.",
+  });
+
   slackEval("assistant thread init metadata", {
     events: [threadStart()],
     assert: (result) => {

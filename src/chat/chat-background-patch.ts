@@ -1,4 +1,8 @@
 import { Chat } from "chat";
+import type { Message, Thread } from "chat";
+import type { ThreadMessageKind, ThreadMessagePayload } from "@/chat/workflow/types";
+import { claimWorkflowIngressDedup, getStateAdapter } from "@/chat/state";
+import { logInfo, withSpan } from "@/chat/observability";
 
 type LegacyWebhookOptions = {
   waitUntil?: (task: Promise<unknown>) => void;
@@ -12,6 +16,13 @@ type ChatLike = {
   logger?: {
     error?: (message: string, data?: Record<string, unknown>) => void;
   };
+  createThread: (
+    adapter: unknown,
+    threadId: string,
+    initialMessage: unknown,
+    isSubscribedContext?: boolean
+  ) => Promise<unknown>;
+  detectMention?: (adapter: unknown, message: unknown) => boolean;
   handleIncomingMessage: (adapter: unknown, threadId: string, message: unknown) => Promise<void>;
   handleReactionEvent: (event: unknown) => Promise<void>;
   handleActionEvent: (event: unknown) => Promise<void>;
@@ -28,6 +39,7 @@ type ChatLike = {
 };
 
 const PATCH_FLAG = Symbol.for("junior.chat.runInBackgroundPatch");
+export const WORKFLOW_INGRESS_DEDUP_TTL_MS = 5 * 60 * 1000;
 
 function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -58,6 +70,159 @@ export function normalizeIncomingSlackThreadId(threadId: string, message: unknow
   }
 
   return `slack:${channelId}:${threadTs}`;
+}
+
+export function buildWorkflowIngressDedupKey(normalizedThreadId: string, messageId: string): string {
+  return `${normalizedThreadId}:${messageId}`;
+}
+
+export function determineThreadMessageKind(args: {
+  isMention: boolean;
+  isSubscribed: boolean;
+}): ThreadMessageKind | undefined {
+  if (args.isSubscribed) {
+    return "subscribed_message";
+  }
+
+  if (args.isMention) {
+    return "new_mention";
+  }
+
+  return undefined;
+}
+
+interface WorkflowRoutingRuntime {
+  createThread: ChatLike["createThread"];
+  detectMention?: ChatLike["detectMention"];
+}
+
+interface WorkflowRoutingDeps {
+  claimDedup: (key: string, ttlMs: number) => Promise<boolean>;
+  getIsSubscribed: (threadId: string) => Promise<boolean>;
+  logInfo: typeof logInfo;
+  routeToThreadWorkflow: (normalizedThreadId: string, payload: ThreadMessagePayload) => Promise<void>;
+}
+
+const defaultWorkflowRoutingDeps: WorkflowRoutingDeps = {
+  claimDedup: (key, ttlMs) => claimWorkflowIngressDedup(key, ttlMs),
+  getIsSubscribed: (threadId) => getStateAdapter().isSubscribed(threadId),
+  logInfo,
+  routeToThreadWorkflow: async (normalizedThreadId, payload) => {
+    const { routeToThreadWorkflow } = await import("@/chat/workflow/router");
+    await routeToThreadWorkflow(normalizedThreadId, payload);
+  }
+};
+
+export type WorkflowIngressRouteResult =
+  | "ignored_non_object"
+  | "ignored_self_message"
+  | "ignored_missing_message_id"
+  | "ignored_unsubscribed_non_mention"
+  | "ignored_duplicate"
+  | "routed";
+
+export async function routeIncomingMessageToWorkflow(args: {
+  adapter: unknown;
+  message: unknown;
+  runtime: WorkflowRoutingRuntime;
+  threadId: string;
+  deps?: WorkflowRoutingDeps;
+}): Promise<WorkflowIngressRouteResult> {
+  const deps = args.deps ?? defaultWorkflowRoutingDeps;
+  const { adapter, runtime } = args;
+  const message = args.message;
+  if (!message || typeof message !== "object") {
+    return "ignored_non_object";
+  }
+
+  const normalizedThreadId = normalizeIncomingSlackThreadId(args.threadId, message);
+  if ("threadId" in message) {
+    (message as Record<string, unknown>).threadId = normalizedThreadId;
+  }
+
+  const typedMessage = message as {
+    author?: { isMe?: boolean };
+    id?: unknown;
+    isMention?: boolean;
+  };
+  if (typedMessage.author?.isMe) {
+    return "ignored_self_message";
+  }
+
+  const messageId = nonEmptyString(typedMessage.id);
+  if (!messageId) {
+    return "ignored_missing_message_id";
+  }
+
+  const isSubscribed = await deps.getIsSubscribed(normalizedThreadId);
+  const isMention = Boolean(typedMessage.isMention || runtime.detectMention?.(adapter, message));
+  const kind = determineThreadMessageKind({
+    isSubscribed,
+    isMention
+  });
+  if (!kind) {
+    return "ignored_unsubscribed_non_mention";
+  }
+
+  const dedupKey = buildWorkflowIngressDedupKey(normalizedThreadId, messageId);
+  const claimed = await deps.claimDedup(dedupKey, WORKFLOW_INGRESS_DEDUP_TTL_MS);
+  if (!claimed) {
+    deps.logInfo(
+      "workflow_ingress_dedup_hit",
+      {
+        slackThreadId: normalizedThreadId,
+        slackUserId: (message as Message).author.userId
+      },
+      {
+        "messaging.message.id": messageId,
+        "app.workflow.message_kind": kind
+      },
+      "Skipping duplicate incoming message before workflow routing"
+    );
+    return "ignored_duplicate";
+  }
+
+  const thread = (await runtime.createThread(adapter, normalizedThreadId, message, isSubscribed)) as Thread;
+  const payload: ThreadMessagePayload = {
+    dedupKey,
+    kind,
+    message: message as Message,
+    normalizedThreadId,
+    thread
+  };
+
+  deps.logInfo(
+    "workflow_ingress_enqueued",
+    {
+      slackThreadId: normalizedThreadId,
+      slackChannelId: thread.channelId,
+      slackUserId: (message as Message).author.userId
+    },
+    {
+      "messaging.message.id": messageId,
+      "app.workflow.message_kind": kind
+    },
+    "Routing incoming message to thread workflow"
+  );
+
+  await withSpan(
+    "workflow.route_message",
+    "workflow.route_message",
+    {
+      slackThreadId: normalizedThreadId,
+      slackChannelId: thread.channelId,
+      slackUserId: (message as Message).author.userId
+    },
+    async () => {
+      await deps.routeToThreadWorkflow(normalizedThreadId, payload);
+    },
+    {
+      "messaging.message.id": messageId,
+      "app.workflow.message_kind": kind
+    }
+  );
+
+  return "routed";
 }
 
 function scheduleBackgroundWork(
@@ -98,11 +263,22 @@ export function installChatBackgroundPatch(): void {
           typeof messageOrFactory === "function"
             ? await (messageOrFactory as () => Promise<unknown>)()
             : messageOrFactory;
-        const normalizedThreadId = normalizeIncomingSlackThreadId(threadId, message);
-        if (message && typeof message === "object" && "threadId" in message) {
-          (message as Record<string, unknown>).threadId = normalizedThreadId;
+        const result = await routeIncomingMessageToWorkflow({
+          adapter,
+          threadId,
+          message,
+          runtime: {
+            createThread: this.createThread.bind(this),
+            detectMention: this.detectMention?.bind(this)
+          }
+        });
+        if (result === "ignored_missing_message_id") {
+          const normalizedThreadId = normalizeIncomingSlackThreadId(threadId, message);
+          this.logger?.error?.("Message processing error", {
+            threadId: normalizedThreadId,
+            reason: "missing_message_id"
+          });
         }
-        await this.handleIncomingMessage(adapter, normalizedThreadId, message);
       } catch (err) {
         this.logger?.error?.("Message processing error", { error: err, threadId });
       }

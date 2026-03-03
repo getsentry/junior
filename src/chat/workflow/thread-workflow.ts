@@ -1,0 +1,154 @@
+import { defineHook } from "workflow";
+import type { ThreadMessagePayload } from "@/chat/workflow/types";
+
+const MAX_DEDUP_KEYS = 500;
+const DEDUP_TRIM_SIZE = Math.floor(MAX_DEDUP_KEYS / 2);
+
+export const threadMessageHook = defineHook<ThreadMessagePayload>();
+
+function trimSeenDedupKeys(seen: Set<string>): void {
+  if (seen.size <= MAX_DEDUP_KEYS) {
+    return;
+  }
+
+  let deleteCount = seen.size - DEDUP_TRIM_SIZE;
+  for (const key of seen) {
+    seen.delete(key);
+    deleteCount -= 1;
+    if (deleteCount <= 0) {
+      break;
+    }
+  }
+}
+
+function rehydrateAttachmentFetchers(
+  payload: ThreadMessagePayload,
+  downloadPrivateFile: (url: string) => Promise<Buffer>
+): void {
+  for (const attachment of payload.message.attachments) {
+    if (!attachment.fetchData && attachment.url) {
+      attachment.fetchData = () => downloadPrivateFile(attachment.url as string);
+    }
+  }
+}
+
+async function logThreadMessageFailure(args: {
+  errorMessage: string;
+  payload: Pick<ThreadMessagePayload, "kind" | "normalizedThreadId" | "message" | "thread">;
+}): Promise<void> {
+  "use step";
+  const { logError } = await import("@/chat/observability");
+
+  logError(
+    "workflow_message_failed",
+    {
+      slackThreadId: args.payload.normalizedThreadId,
+      slackChannelId: args.payload.thread.channelId,
+      slackUserId: args.payload.message.author.userId
+    },
+    {
+      "app.workflow.message_kind": args.payload.kind,
+      "messaging.message.id": args.payload.message.id,
+      "error.message": args.errorMessage
+    },
+    "Thread workflow step failed"
+  );
+}
+
+export async function processThreadMessage(payload: ThreadMessagePayload): Promise<void> {
+  "use step";
+  const [{ appSlackRuntime, bot }, { logInfo, withSpan }, { downloadPrivateSlackFile }] = await Promise.all([
+    import("@/chat/bot"),
+    import("@/chat/observability"),
+    import("@/chat/slack-actions/client")
+  ]);
+
+  bot.registerSingleton();
+  rehydrateAttachmentFetchers(payload, downloadPrivateSlackFile);
+
+  await withSpan(
+    "workflow.thread_message",
+    "workflow.thread_message",
+    {
+      slackThreadId: payload.normalizedThreadId,
+      slackChannelId: payload.thread.channelId,
+      slackUserId: payload.message.author.userId
+    },
+    async () => {
+      if (payload.kind === "new_mention") {
+        await appSlackRuntime.handleNewMention(payload.thread, payload.message);
+      } else {
+        await appSlackRuntime.handleSubscribedMessage(payload.thread, payload.message);
+      }
+    },
+    {
+      "messaging.message.id": payload.message.id,
+      "app.workflow.message_kind": payload.kind
+    }
+  );
+
+  logInfo(
+    "workflow_message_processed",
+    {
+      slackThreadId: payload.normalizedThreadId,
+      slackChannelId: payload.thread.channelId,
+      slackUserId: payload.message.author.userId
+    },
+    {
+      "app.workflow.message_kind": payload.kind
+    },
+    "Thread workflow step processed message"
+  );
+}
+
+Object.assign(processThreadMessage, { maxRetries: 1 });
+
+export interface ThreadMessageLoopOptions {
+  onProcessingError?: (args: { errorMessage: string; payload: ThreadMessagePayload }) => Promise<void>;
+  processMessage?: (payload: ThreadMessagePayload) => Promise<void>;
+}
+
+export async function runThreadMessageLoop(
+  stream: AsyncIterable<ThreadMessagePayload>,
+  options: ThreadMessageLoopOptions = {}
+): Promise<void> {
+  const processMessageImpl = options.processMessage ?? processThreadMessage;
+  const onProcessingErrorImpl =
+    options.onProcessingError ??
+    (async ({ errorMessage, payload }: { errorMessage: string; payload: ThreadMessagePayload }) =>
+      logThreadMessageFailure({
+        payload,
+        errorMessage
+      }));
+
+  const seenDedupKeys = new Set<string>();
+
+  for await (const payload of stream) {
+    if (seenDedupKeys.has(payload.dedupKey)) {
+      continue;
+    }
+
+    seenDedupKeys.add(payload.dedupKey);
+    trimSeenDedupKeys(seenDedupKeys);
+
+    try {
+      await processMessageImpl(payload);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await onProcessingErrorImpl({
+        payload,
+        errorMessage
+      });
+    }
+  }
+}
+
+export async function slackThreadWorkflow(normalizedThreadId: string): Promise<void> {
+  "use workflow";
+
+  const hook = threadMessageHook.create({
+    token: normalizedThreadId
+  });
+
+  await runThreadMessageLoop(hook);
+}
