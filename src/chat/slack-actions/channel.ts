@@ -48,7 +48,9 @@ export async function postMessageToChannel(input: {
       channel: channelId,
       text: input.text,
       mrkdwn: true
-    })
+    }),
+    3,
+    { action: "chat.postMessage" }
   );
 
   if (!response.ts) {
@@ -61,7 +63,9 @@ export async function postMessageToChannel(input: {
       client.chat.getPermalink({
         channel: channelId,
         message_ts: response.ts as string
-      })
+      }),
+      3,
+      { action: "chat.getPermalink" }
     );
     permalink = permalinkResponse.permalink;
   } catch {
@@ -72,6 +76,37 @@ export async function postMessageToChannel(input: {
     ts: response.ts,
     permalink
   };
+}
+
+export async function addReactionToMessage(input: {
+  channelId: string;
+  timestamp: string;
+  emoji: string;
+}): Promise<{ ok: true }> {
+  const client = getSlackClient();
+  const channelId = normalizeSlackConversationId(input.channelId);
+  if (!channelId) {
+    throw new Error("Slack reaction requires a valid channel ID");
+  }
+  const timestamp = input.timestamp.trim();
+  if (!timestamp) {
+    throw new Error("Slack reaction requires a target message timestamp");
+  }
+  const emoji = input.emoji.trim().replaceAll(":", "");
+  if (!emoji) {
+    throw new Error("Slack reaction requires a non-empty emoji name");
+  }
+
+  await withSlackRetries(() =>
+    client.reactions.add({
+      channel: channelId,
+      timestamp,
+      name: emoji
+    }),
+    3,
+    { action: "reactions.add" }
+  );
+  return { ok: true };
 }
 
 export async function listChannelMessages(input: {
@@ -105,7 +140,9 @@ export async function listChannelMessages(input: {
         oldest: input.oldest,
         latest: input.latest,
         inclusive: input.inclusive
-      })
+      }),
+      3,
+      { action: "conversations.history" }
     );
 
     const batch = (response.messages ?? []) as SlackChannelMessage[];
@@ -139,7 +176,9 @@ export async function listChannelMembers(input: {
       channel: channelId,
       limit: targetLimit,
       cursor: input.cursor
-    })
+    }),
+    3,
+    { action: "conversations.members" }
   );
 
   const members = (response.members ?? []).slice(0, targetLimit);
@@ -179,7 +218,9 @@ export async function listThreadReplies(input: {
         ts: input.threadTs,
         limit: pageLimit,
         cursor
-      })
+      }),
+      3,
+      { action: "conversations.replies" }
     );
 
     const batch = (response.messages ?? []) as SlackThreadReply[];

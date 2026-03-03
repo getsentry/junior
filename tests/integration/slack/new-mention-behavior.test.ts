@@ -69,4 +69,43 @@ describe("Slack behavior: new mention", () => {
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("Rollback is complete");
   });
+
+  it("suppresses thread reply when assistant marks delivery as channel_only", async () => {
+    setBotDepsForTests({
+      generateAssistantReply: async () => {
+        return {
+          text: "Posted in channel.",
+          deliveryMode: "channel_only",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: ["slackChannelPostMessage"],
+            toolErrorCount: 0,
+            toolResultCount: 1,
+            usedPrimaryText: true
+          }
+        };
+      }
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_BEHAVIOR:1700005678.000"
+    });
+    const message = createTestMessage({
+      id: "m-behavior-2",
+      text: "<@U_APP> say hello to the channel",
+      isMention: true,
+      threadId: thread.id,
+      author: {
+        userId: "U_TESTER",
+        userName: "tester"
+      }
+    });
+
+    await appSlackRuntime.handleNewMention(thread, message);
+
+    expect(thread.subscribeCalls).toBe(1);
+    expect(thread.posts).toHaveLength(0);
+  });
 });

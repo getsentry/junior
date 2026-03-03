@@ -10,6 +10,7 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("slackChannelPostMessage");
     expect(tools).not.toHaveProperty("slackChannelListMembers");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("slackMessageAddReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
@@ -19,6 +20,7 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelPostMessage");
     expect(tools).toHaveProperty("slackChannelListMembers");
     expect(tools).toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("slackMessageAddReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
   });
 
@@ -29,5 +31,6 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("slackChannelPostMessage");
     expect(tools).not.toHaveProperty("slackChannelListMembers");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
+    expect(tools).not.toHaveProperty("slackMessageAddReaction");
   });
 });

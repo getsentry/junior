@@ -195,7 +195,9 @@ export async function routeIncomingMessageToWorkflow(args: {
       },
       {
         "messaging.message.id": messageId,
-        "app.workflow.message_kind": kind
+        "app.workflow.message_kind": kind,
+        "app.workflow.dedup_key": dedupKey,
+        "app.workflow.dedup_outcome": "duplicate"
       },
       "Skipping duplicate incoming message before workflow routing"
     );
@@ -250,6 +252,8 @@ export async function routeIncomingMessageToWorkflow(args: {
         {
           "messaging.message.id": messageId,
           "app.workflow.message_kind": kind,
+          "app.workflow.dedup_key": dedupKey,
+          "app.workflow.dedup_outcome": "primary",
           ...(routedRunId ? { "app.workflow.run_id": routedRunId } : {})
         },
         "Routing incoming message to thread workflow"

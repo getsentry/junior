@@ -18,7 +18,14 @@ describe("Conversational Evals: Routing and Continuity", () => {
     behavior: { mock_slack_api: true },
     events: [mention("@bot say hello to the channel!")],
     criteria:
-      "The assistant sends the hello message as a channel post (channel_posts has exactly one item with hello/wave-style text and no thread_ts). It must not post the hello as a thread reply in assistant_posts.",
+      "The assistant sends the hello message as a channel post (channel_posts has exactly one item with hello/wave-style text and no thread_ts). It does not post hello/wave text as a thread reply in assistant_posts. An optional lightweight acknowledgement reaction in reactions is acceptable.",
+  });
+
+  slackEval("routing: explicit reaction request uses implicit-target reaction tool", {
+    behavior: { mock_slack_api: true },
+    events: [mention("@bot react to this with a thumbs up only")],
+    criteria:
+      "The assistant adds exactly one thumbs-up-style reaction in reactions to the current message timestamp and does not send a redundant text acknowledgment in assistant_posts.",
   });
 
   const continuityThread = { id: "thread-continuity", channel_id: "C-continuity", thread_ts: "17000000.continuity" };

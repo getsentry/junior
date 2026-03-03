@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createSlackChannelListMembersTool } from "@/chat/tools/slack-channel-list-members";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
+import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 import {
   chatGetPermalinkOk,
   chatPostMessageOk,
   conversationsHistoryPage,
-  conversationsMembersPage
+  conversationsMembersPage,
+  reactionsAddOk
 } from "../fixtures/slack/factories/api";
 import { getCapturedSlackApiCalls, queueSlackApiError, queueSlackApiResponse } from "../msw/handlers/slack-api";
 
@@ -37,6 +39,7 @@ function createToolState(): ToolState {
 function createContext(userText: string): ToolRuntimeContext {
   return {
     channelId: "C123",
+    messageTs: "1700000000.321",
     userText,
     sandbox: {} as any
   };
@@ -251,6 +254,56 @@ describe("slack channel tools", () => {
       cursor: "cursor-next"
     });
     expect(String(historyCalls[1]?.params.limit)).toBe("1");
+  });
+
+  it("adds a reaction to the implicitly targeted inbound message", async () => {
+    queueSlackApiResponse("reactions.add", {
+      body: reactionsAddOk()
+    });
+    const tool = createSlackMessageAddReactionTool(createContext("yep"), createToolState());
+
+    const result = await executeTool(tool, {
+      emoji: ":wave:"
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      channel_id: "C123",
+      message_ts: "1700000000.321",
+      emoji: "wave"
+    });
+    const reactionCalls = getCapturedSlackApiCalls("reactions.add");
+    expect(reactionCalls).toHaveLength(1);
+    expect(reactionCalls[0]?.params).toMatchObject({
+      channel: "C123",
+      timestamp: "1700000000.321",
+      name: "wave"
+    });
+  });
+
+  it("deduplicates repeated reactions to the same message in one turn", async () => {
+    queueSlackApiResponse("reactions.add", {
+      body: reactionsAddOk()
+    });
+    const tool = createSlackMessageAddReactionTool(createContext("ack"), createToolState());
+
+    const first = await executeTool(tool, {
+      emoji: "thumbsup"
+    });
+    const second = await executeTool(tool, {
+      emoji: "thumbsup"
+    });
+
+    expect(first).toMatchObject({
+      ok: true,
+      emoji: "thumbsup"
+    });
+    expect(second).toMatchObject({
+      ok: true,
+      emoji: "thumbsup",
+      deduplicated: true
+    });
+    expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(1);
   });
 
   it("propagates missing_scope when members API fails", async () => {

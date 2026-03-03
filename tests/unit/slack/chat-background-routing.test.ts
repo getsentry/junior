@@ -116,6 +116,14 @@ describe("routeIncomingMessageToWorkflow", () => {
 
     expect(result).toBe("ignored_duplicate");
     expect(deps.routeToThreadWorkflow).not.toHaveBeenCalled();
+    expect(deps.logInfo).toHaveBeenCalledWith(
+      "workflow_ingress_dedup_hit",
+      expect.any(Object),
+      expect.objectContaining({
+        "app.workflow.dedup_outcome": "duplicate"
+      }),
+      "Skipping duplicate incoming message before workflow routing"
+    );
   });
 
   it("routes explicit mentions in unsubscribed threads without fallback detection", async () => {
@@ -150,6 +158,7 @@ describe("routeIncomingMessageToWorkflow", () => {
       "workflow_ingress_enqueued",
       {},
       expect.objectContaining({
+        "app.workflow.dedup_outcome": "primary",
         "app.workflow.run_id": "wrun_123"
       }),
       "Routing incoming message to thread workflow"

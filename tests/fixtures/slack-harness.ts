@@ -31,17 +31,25 @@ export function createTestMessage(args: {
   author?: Partial<Author>;
   isMention?: boolean;
   attachments?: Message["attachments"];
+  raw?: Record<string, unknown>;
 }): Message {
+  const threadId = args.threadId ?? "slack:C_TEST:1700000000.000";
+  const threadParts = threadId.split(":");
+  const inferredChannel = threadParts.length === 3 ? threadParts[1] : undefined;
+  const inferredTs = threadParts.length === 3 ? threadParts[2] : undefined;
   return {
     id: args.id ?? "msg-1",
-    threadId: args.threadId ?? "slack:C_TEST:1700000000.000",
+    threadId,
     text: args.text ?? "hello",
     author: createTestAuthor(args.author),
     isMention: args.isMention,
     attachments: args.attachments ?? [],
     metadata: { dateSent: new Date(), edited: false },
     formatted: { type: "root", children: [] },
-    raw: {},
+    raw: args.raw ?? {
+      ...(inferredChannel ? { channel: inferredChannel } : {}),
+      ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : {})
+    },
     toJSON() {
       return {} as ReturnType<Message["toJSON"]>;
     }
@@ -51,6 +59,12 @@ export function createTestMessage(args: {
 // ── Fake Slack Adapter ───────────────────────────────────────────────
 
 export class FakeSlackAdapter {
+  readonly statusCalls: Array<{
+    channelId: string;
+    threadTs: string;
+    text: string;
+    suggestions: string[];
+  }> = [];
   readonly promptCalls: Array<{
     channelId: string;
     prompts: Array<{ message: string; title: string }>;
@@ -72,6 +86,15 @@ export class FakeSlackAdapter {
     prompts: Array<{ message: string; title: string }>
   ): Promise<void> {
     this.promptCalls.push({ channelId, threadTs, prompts });
+  }
+
+  async setAssistantStatus(
+    channelId: string,
+    threadTs: string,
+    text: string,
+    suggestions: string[]
+  ): Promise<void> {
+    this.statusCalls.push({ channelId, threadTs, text, suggestions });
   }
 }
 

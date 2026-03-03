@@ -32,6 +32,17 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function classifyResumeMiss(error: unknown): "hook_not_found" | "resume_empty" | "resume_error" {
+  const message = getErrorMessage(error).toLowerCase();
+  if (message.includes("not found")) {
+    return "hook_not_found";
+  }
+  if (message.includes("returned no hook entity")) {
+    return "resume_empty";
+  }
+  return "resume_error";
+}
+
 function isBenignStartRaceError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -98,15 +109,17 @@ async function retryResume(normalizedThreadId: string, payload: ThreadMessagePay
     if (index < RESUME_RETRY_DELAYS_MS.length - 1) {
       const retryAttempt = index + 1;
       const logRetry = retryAttempt >= WARN_RETRY_ATTEMPT ? logWarn : logInfo;
+      const retryReason = classifyResumeMiss(resumeAttempt.error);
       logRetry(
         "workflow_route_resume_retry",
         {},
         {
           "app.workflow.retry_attempt": retryAttempt,
-          "error.message": getErrorMessage(resumeAttempt.error),
+          ...(retryReason !== "hook_not_found" ? { "error.message": getErrorMessage(resumeAttempt.error) } : {}),
+          "app.workflow.retry_reason": retryReason,
           "app.workflow.retry_severity": retryAttempt >= WARN_RETRY_ATTEMPT ? "warn" : "info"
         },
-        "Retrying workflow hook resume"
+        "Retrying workflow hook resume after startup race"
       );
     }
   }
@@ -159,10 +172,13 @@ export async function routeToThreadWorkflow(
           "app.workflow.message_kind": payload.kind,
           ...(startedRunId ? { "app.workflow.run_id": startedRunId } : {}),
           "app.workflow.start_outcome": startOutcome,
-          "error.message": getErrorMessage(firstResumeAttempt.error),
+          "app.workflow.resume_miss_reason": classifyResumeMiss(firstResumeAttempt.error),
+          ...(classifyResumeMiss(firstResumeAttempt.error) !== "hook_not_found"
+            ? { "error.message": getErrorMessage(firstResumeAttempt.error) }
+            : {}),
           ...(startError ? { "app.workflow.start_error": getErrorMessage(startError) } : {})
         },
-        "Starting thread workflow after resume miss"
+        "Starting thread workflow after expected resume miss"
       );
 
       if (startOutcome === "failed") {

@@ -83,6 +83,14 @@ describe("routeToThreadWorkflow", () => {
     expect(mocks.resume).toHaveBeenCalledTimes(2);
     expect(mocks.resume).toHaveBeenNthCalledWith(1, "slack:C123:1700000000.100", payload);
     expect(mocks.resume).toHaveBeenNthCalledWith(2, "slack:C123:1700000000.100", payload);
+    expect(mocks.logInfo).toHaveBeenCalledWith(
+      "workflow_route_start_attempt",
+      {},
+      expect.objectContaining({
+        "app.workflow.resume_miss_reason": "resume_empty"
+      }),
+      "Starting thread workflow after expected resume miss"
+    );
   });
 
   it("continues retrying resume when start throws a race error", async () => {
@@ -192,5 +200,9 @@ describe("routeToThreadWorkflow", () => {
     const retryWarnCalls = mocks.logWarn.mock.calls.filter(([eventName]) => eventName === "workflow_route_resume_retry");
     expect(retryInfoCalls).toHaveLength(2);
     expect(retryWarnCalls).toHaveLength(1);
+    for (const call of [...retryInfoCalls, ...retryWarnCalls]) {
+      const attributes = call[2] as Record<string, unknown>;
+      expect(attributes["app.workflow.retry_reason"]).toBeDefined();
+    }
   });
 });

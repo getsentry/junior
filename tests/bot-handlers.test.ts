@@ -242,6 +242,107 @@ describe("bot handlers (integration)", () => {
     expect(String(errorPost)).toContain("LLM unavailable");
   });
 
+  it("posts non-empty fallback text when streaming reply includes files", async () => {
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    setBotDepsForTests({
+      generateAssistantReply: async (_prompt, context) => {
+        await context?.onTextDelta?.("Here is the result.");
+        return {
+          text: "Here is the result.",
+          files: [
+            {
+              data: Buffer.from("file-data"),
+              filename: "result.txt"
+            }
+          ],
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "test-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
+      },
+      listThreadReplies: async () => []
+    });
+
+    const thread = createTestThread({ id: "slack:C_FILES:1700000000.000" });
+
+    await appSlackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-files",
+        threadId: "slack:C_FILES:1700000000.000",
+        text: "attach files",
+        isMention: true
+      })
+    );
+
+    expect(thread.posts).toHaveLength(2);
+    expect(thread.posts[0]).toBe("Here is the result.");
+    expect(thread.posts[1]).toEqual(
+      expect.objectContaining({
+        markdown: "Attached files."
+      })
+    );
+  });
+
+  it("emits assistant status updates in shared channel threads", async () => {
+    const { appSlackRuntime, setBotDepsForTests, bot } = await import("@/chat/bot");
+    const fakeAdapter = new FakeSlackAdapter();
+    const originalGetAdapter = (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter?.bind(bot);
+    (bot as unknown as { getAdapter: (name: string) => unknown }).getAdapter = (name: string): unknown => {
+      if (name === "slack") return fakeAdapter;
+      return originalGetAdapter ? originalGetAdapter(name) : undefined;
+    };
+
+    setBotDepsForTests({
+      generateAssistantReply: async (_prompt, context) => {
+        await context?.onStatus?.("Listing channel messages...");
+        return {
+          text: "Done.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "test-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
+      },
+      listThreadReplies: async () => []
+    });
+
+    try {
+      const thread = createTestThread({ id: "slack:C_STATUS:1700000000.000" });
+
+      await appSlackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-status",
+          threadId: "slack:C_STATUS:1700000000.000",
+          text: "show the channel",
+          isMention: true
+        })
+      );
+
+      expect(fakeAdapter.statusCalls.length).toBeGreaterThan(0);
+      expect(fakeAdapter.statusCalls[0]).toEqual(
+        expect.objectContaining({
+          channelId: "C_STATUS",
+          threadTs: "1700000000.000"
+        })
+      );
+    } finally {
+      (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
+    }
+  });
+
   it("thread title: generates and sets title after first assistant reply", async () => {
     const { appSlackRuntime, setBotDepsForTests, bot } = await import("@/chat/bot");
     const fakeAdapter = new FakeSlackAdapter();

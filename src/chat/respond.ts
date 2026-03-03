@@ -18,6 +18,7 @@ import { buildSystemPrompt } from "@/chat/prompt";
 import { createSkillCapabilityRuntime, getUserTokenStore } from "@/chat/capabilities/factory";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
+import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { SkillSandbox } from "@/chat/skill-sandbox";
 import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
@@ -48,6 +49,7 @@ export interface ReplyRequestContext {
     threadId?: string;
     workflowRunId?: string;
     channelId?: string;
+    messageTs?: string;
     threadTs?: string;
     requesterId?: string;
   };
@@ -72,6 +74,8 @@ export interface AssistantReply {
   text: string;
   files?: FileUpload[];
   artifactStatePatch?: Partial<ThreadArtifactsState>;
+  deliveryMode?: "thread" | "channel_only";
+  ackStrategy?: "none" | "reaction";
   sandboxId?: string;
   diagnostics: AgentTurnDiagnostics;
 }
@@ -166,6 +170,7 @@ function formatToolStatus(toolName: string): string {
     webSearch: "Searching public sources",
     webFetch: "Reading source pages",
     slackChannelPostMessage: "Posting message to channel",
+    slackMessageAddReaction: "Adding emoji reaction",
     slackChannelListMembers: "Listing channel members",
     slackChannelListMessages: "Listing channel messages",
     slackCanvasCreate: "Creating detailed brief",
@@ -220,6 +225,7 @@ function formatToolResultStatus(toolName: string): string {
     webSearch: "Reviewing search results",
     webFetch: "Reviewing page content",
     slackChannelPostMessage: "Posted message to channel",
+    slackMessageAddReaction: "Added emoji reaction",
     slackChannelListMembers: "Reviewed channel members",
     slackChannelListMessages: "Reviewed channel messages",
     slackCanvasCreate: "Preparing canvas response",
@@ -340,6 +346,23 @@ function toToolContentText(value: unknown): string {
 
 function isToolResultMessage(value: unknown): value is ToolResultMessage<any> {
   return typeof value === "object" && value !== null && (value as { role?: unknown }).role === "toolResult";
+}
+
+function normalizeToolNameFromResult(result: unknown): string | undefined {
+  if (!result || typeof result !== "object") return undefined;
+  const record = result as { toolName?: unknown; name?: unknown };
+  if (typeof record.toolName === "string" && record.toolName.length > 0) {
+    return record.toolName;
+  }
+  if (typeof record.name === "string" && record.name.length > 0) {
+    return record.name;
+  }
+  return undefined;
+}
+
+function isToolResultError(result: unknown): boolean {
+  if (!result || typeof result !== "object") return false;
+  return Boolean((result as { isError?: unknown }).isError);
 }
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
@@ -691,6 +714,7 @@ export async function generateAssistantReply(
       },
       {
         channelId: context.toolChannelId ?? context.correlation?.channelId,
+        messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
         userText: userInput,
         artifactState: context.artifactState,
@@ -881,6 +905,18 @@ export async function generateAssistantReply(
       .trim();
 
     const toolErrorCount = toolResults.filter((result) => result.isError).length;
+    const explicitChannelPostIntent = isExplicitChannelPostIntent(userInput);
+    const successfulToolNames = new Set(
+      toolResults
+        .filter((result) => !isToolResultError(result))
+        .map((result) => normalizeToolNameFromResult(result))
+        .filter((value): value is string => Boolean(value))
+    );
+    const channelPostPerformed = successfulToolNames.has("slackChannelPostMessage");
+    const reactionPerformed = successfulToolNames.has("slackMessageAddReaction");
+    const deliveryMode: "thread" | "channel_only" =
+      explicitChannelPostIntent && channelPostPerformed ? "channel_only" : "thread";
+    const ackStrategy: "none" | "reaction" = reactionPerformed ? "reaction" : "none";
 
     if (!primaryText) {
       logWarn(
@@ -915,6 +951,8 @@ export async function generateAssistantReply(
         text: buildExecutionFailureMessage(toolErrorCount),
         files: generatedFiles.length > 0 ? generatedFiles : undefined,
         artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined,
+        deliveryMode,
+        ackStrategy,
         sandboxId: sandboxExecutor.getSandboxId(),
         diagnostics: {
           outcome: "execution_failure",
@@ -935,6 +973,8 @@ export async function generateAssistantReply(
       text: resolvedText,
       files: generatedFiles.length > 0 ? generatedFiles : undefined,
       artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined,
+      deliveryMode,
+      ackStrategy,
       sandboxId: sandboxExecutor.getSandboxId(),
       diagnostics: {
         outcome,

@@ -93,4 +93,22 @@ describe("withSlackRetries", () => {
     );
     expect(task).toHaveBeenCalledTimes(1);
   });
+
+  it("maps invalid_name as invalid_arguments", async () => {
+    const task = vi.fn<() => Promise<string>>().mockRejectedValue({
+      data: {
+        error: "invalid_name"
+      },
+      message: "An API error occurred: invalid_name"
+    });
+
+    await expect(withSlackRetries(task, 3)).rejects.toEqual(
+      expect.objectContaining<Partial<SlackActionError>>({
+        name: "SlackActionError",
+        code: "invalid_arguments",
+        apiError: "invalid_name"
+      })
+    );
+    expect(task).toHaveBeenCalledTimes(1);
+  });
 });

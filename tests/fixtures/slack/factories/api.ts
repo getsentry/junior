@@ -43,6 +43,10 @@ export function chatGetPermalinkOk(input: { permalink?: string } = {}): { ok: tr
   });
 }
 
+export function reactionsAddOk(): { ok: true } {
+  return slackOk();
+}
+
 export function conversationsHistoryPage(input: {
   messages?: Array<Record<string, unknown>>;
   nextCursor?: string;

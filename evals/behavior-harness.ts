@@ -82,6 +82,11 @@ export interface BehaviorCaseResult {
     text: string;
     thread_ts?: string;
   }>;
+  reactions: Array<{
+    channel: string;
+    emoji: string;
+    timestamp: string;
+  }>;
   posts: string[];
   slackAdapter: FakeSlackAdapter;
 }
@@ -105,6 +110,7 @@ function toPostedText(value: unknown): string {
 }
 
 function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
+  const messageTs = event.thread.thread_ts ?? event.message.id;
   return {
     id: event.message.id ?? "",
     text: event.message.text ?? "",
@@ -115,6 +121,11 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     threadId: event.thread.id,
     threadTs: event.thread.thread_ts,
     runId: event.thread.run_id,
+    raw: {
+      channel: event.thread.channel_id,
+      ts: messageTs,
+      thread_ts: event.thread.thread_ts
+    },
     author: {
       userId: event.message.author?.user_id ?? "",
       userName: event.message.author?.user_name ?? "",
@@ -131,6 +142,11 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     channel: string;
     text: string;
     thread_ts?: string;
+  }> = [];
+  const reactions: Array<{
+    channel: string;
+    emoji: string;
+    timestamp: string;
   }> = [];
   const threadsById = new Map<string, TestThread>();
   const channelStateById = new Map<string, { value: Record<string, unknown> }>();
@@ -183,6 +199,26 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
             channel,
             ts: "17000000.channel-post",
             ...(threadTs ? { thread_ts: threadTs } : {})
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          }
+        );
+      }
+
+      if (endpoint === "reactions.add") {
+        const channel = typeof payload.channel === "string" ? payload.channel : "C_EVAL";
+        const emoji = typeof payload.name === "string" ? payload.name : "";
+        const timestamp = typeof payload.timestamp === "string" ? payload.timestamp : "";
+        reactions.push({
+          channel,
+          emoji,
+          timestamp
+        });
+        return new Response(
+          JSON.stringify({
+            ok: true
           }),
           {
             status: 200,
@@ -377,6 +413,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
 
   return {
     channelPosts,
+    reactions,
     posts,
     slackAdapter
   };

@@ -24,6 +24,7 @@ import {
   type ThreadArtifactsState
 } from "@/chat/slack-actions/types";
 import { parseSlackThreadId, resolveSlackChannelIdFromMessage } from "@/chat/slack-context";
+import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { truncateStatusText } from "@/chat/status-format";
@@ -113,6 +114,25 @@ function getChannelId(thread: Thread, message: Message): string | undefined {
 
 function getThreadTs(threadId: string | undefined): string | undefined {
   return parseSlackThreadId(threadId)?.threadTs;
+}
+
+function getMessageTs(message: Message): string | undefined {
+  const directTs = toOptionalString((message as unknown as { ts?: unknown }).ts);
+  if (directTs) {
+    return directTs;
+  }
+
+  const raw = (message as unknown as { raw?: unknown }).raw;
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+
+  const rawRecord = raw as Record<string, unknown>;
+  return (
+    toOptionalString(rawRecord.ts) ??
+    toOptionalString(rawRecord.event_ts) ??
+    toOptionalString((rawRecord.message as { ts?: unknown } | undefined)?.ts)
+  );
 }
 
 function getSlackApiErrorCode(error: unknown): string | undefined {
@@ -1441,6 +1461,7 @@ async function replyToThread(
   const threadId = getThreadId(thread, message);
   const channelId = getChannelId(thread, message);
   const threadTs = getThreadTs(threadId);
+  const messageTs = getMessageTs(message);
   const workflowRunId = getWorkflowRunId(thread, message);
 
   await withSpan(
@@ -1458,6 +1479,7 @@ async function replyToThread(
       const userText = stripLeadingBotMention(message.text, {
         stripLeadingSlackMentionToken: options.explicitMention || Boolean(message.isMention)
       });
+      const explicitChannelPostIntent = isExplicitChannelPostIntent(userText);
 
       const preparedState =
         options.preparedState ??
@@ -1493,7 +1515,7 @@ async function replyToThread(
       });
 
       const progress = createProgressReporter({
-        channelId: channelId && isDmChannel(channelId) ? channelId : undefined,
+        channelId,
         threadTs
       });
       const textStream = createTextStreamBridge();
@@ -1527,6 +1549,7 @@ async function replyToThread(
           correlation: {
             threadId,
             threadTs,
+            messageTs,
             workflowRunId,
             channelId,
             requesterId: message.author.userId
@@ -1537,6 +1560,9 @@ async function replyToThread(
           },
           onStatus: (status) => progress.setStatus(status),
           onTextDelta: (deltaText) => {
+            if (explicitChannelPostIntent) {
+              return;
+            }
             startStreamingReply();
             textStream.push(deltaText);
           }
@@ -1612,10 +1638,13 @@ async function replyToThread(
           : {};
 
         const replyFiles = reply.files && reply.files.length > 0 ? reply.files : undefined;
-        if (!streamedReplyPromise) {
-          await thread.post(buildSlackOutputMessage(reply.text, { files: replyFiles }));
-        } else {
-          await streamedReplyPromise;
+        const shouldPostThreadReply = reply.deliveryMode !== "channel_only";
+        if (shouldPostThreadReply) {
+          if (!streamedReplyPromise) {
+            await thread.post(buildSlackOutputMessage(reply.text, { files: replyFiles }));
+          } else {
+            await streamedReplyPromise;
+          }
         }
 
         const shouldPersistArtifacts = Object.keys(artifactStatePatch).length > 0;
@@ -1664,8 +1693,12 @@ async function replyToThread(
             });
         }
 
-        if (streamedReplyPromise && replyFiles) {
-          await thread.post({ markdown: "", files: replyFiles });
+        if (shouldPostThreadReply && streamedReplyPromise && replyFiles) {
+          await thread.post(
+            buildSlackOutputMessage("Attached files.", {
+              files: replyFiles
+            })
+          );
         }
       } finally {
         textStream.end();

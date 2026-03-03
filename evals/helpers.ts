@@ -28,6 +28,15 @@ const evalOutputSchema = z.object({
       })
     )
     .describe("Slack channel posts sent outside the thread-reply surface"),
+  reactions: z
+    .array(
+      z.object({
+        channel: z.string().describe("Slack channel ID where the reaction was added"),
+        emoji: z.string().describe("Emoji reaction name sent via Slack reactions.add"),
+        timestamp: z.string().describe("Target message timestamp reacted to via Slack reactions.add")
+      })
+    )
+    .describe("Slack reactions added by the assistant"),
   slack_metadata: slackMetadataSchema.describe("Slack thread metadata set by the assistant"),
 });
 
@@ -35,6 +44,7 @@ function serializeResult(result: BehaviorCaseResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
     channel_posts: result.channelPosts,
+    reactions: result.reactions,
     slack_metadata: {
       thread_title_set: result.slackAdapter.titleCalls.length > 0,
       suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,

@@ -6,6 +6,7 @@ import { createReadFileTool } from "@/chat/tools/read-file";
 import { createSlackChannelListMembersTool } from "@/chat/tools/slack-channel-list-members";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
+import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
 import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-update";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
@@ -143,6 +144,14 @@ export function createTools(
     tools.slackChannelListMessages = wrapToolExecution(
       "slackChannelListMessages",
       createSlackChannelListMessagesTool(context),
+      hooks
+    );
+  }
+
+  if (isCanvasChannel(context.channelId)) {
+    tools.slackMessageAddReaction = wrapToolExecution(
+      "slackMessageAddReaction",
+      createSlackMessageAddReactionTool(context, state),
       hooks
     );
   }

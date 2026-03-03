@@ -12,6 +12,7 @@ import {
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
   filesInfoOk,
+  reactionsAddOk,
   slackError,
   slackListsCreateOk,
   slackListsItemsCreateOk,
@@ -25,6 +26,7 @@ const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
 export const SUPPORTED_SLACK_API_METHODS = [
   "chat.postMessage",
   "chat.getPermalink",
+  "reactions.add",
   "conversations.history",
   "conversations.members",
   "conversations.replies",
@@ -161,6 +163,8 @@ function defaultSlackApiResponse(method: SlackApiMethod): SlackMockHttpResponse 
       return { body: chatPostMessageOk() };
     case "chat.getPermalink":
       return { body: chatGetPermalinkOk() };
+    case "reactions.add":
+      return { body: reactionsAddOk() };
     case "conversations.history":
       return { body: conversationsHistoryPage() };
     case "conversations.members":
