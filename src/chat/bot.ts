@@ -14,7 +14,7 @@ import type {
   ConversationMessage,
   ThreadConversationState
 } from "@/chat/conversation-state";
-import { logException, logInfo, logWarn, toOptionalString, withSpan } from "@/chat/observability";
+import { logException, logInfo, logWarn, setTags, toOptionalString, withSpan } from "@/chat/observability";
 import { escapeXml } from "@/chat/xml";
 import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
@@ -1092,6 +1092,7 @@ async function shouldReplyInSubscribedThread(args: {
   rawText: string;
   text: string;
   conversationContext?: string;
+  hasAttachments?: boolean;
   isExplicitMention?: boolean;
   context: {
     threadId?: string;
@@ -1102,12 +1103,15 @@ async function shouldReplyInSubscribedThread(args: {
 }): Promise<{ shouldReply: boolean; reason: string }> {
   const text = args.text.trim();
   const rawText = args.rawText.trim();
-  if (!text) {
-    return { shouldReply: false, reason: "empty message" };
-  }
 
   if (args.isExplicitMention) {
     return { shouldReply: true, reason: "explicit mention" };
+  }
+  if (!text && !args.hasAttachments) {
+    return { shouldReply: false, reason: "empty message" };
+  }
+  if (!text && args.hasAttachments) {
+    return { shouldReply: true, reason: "attachment" };
   }
 
   try {
@@ -1420,6 +1424,10 @@ async function replyToThread(
       });
 
       const fallbackIdentity = await botDeps.lookupSlackUser(message.author.userId);
+      const resolvedUserName = message.author.userName ?? fallbackIdentity?.userName;
+      if (resolvedUserName) {
+        setTags({ slackUserName: resolvedUserName });
+      }
       const userAttachments = await resolveUserAttachments(message.attachments, {
         threadId,
         requesterId: message.author.userId,
@@ -1667,27 +1675,54 @@ bot.onAssistantThreadStarted((event: AppRuntimeAssistantLifecycleEvent) =>
 bot.onAssistantContextChanged((event: AppRuntimeAssistantLifecycleEvent) =>
   appSlackRuntime.handleAssistantContextChanged(event)
 );
-bot.onSlashCommand("/jr", handleSlashCommand);
+bot.onSlashCommand("/jr", (event) =>
+  withSpan(
+    "workflow.slash_command",
+    "workflow.slash_command",
+    { slackUserId: event.user.userId },
+    async () => {
+      try {
+        await handleSlashCommand(event);
+      } catch (error) {
+        logException(error, "slash_command_failed", { slackUserId: event.user.userId });
+        throw error;
+      }
+    }
+  )
+);
 
-bot.onAppHomeOpened(async (event) => {
-  try {
-    await publishAppHomeView(getSlackClient(), event.userId, getUserTokenStore());
-  } catch (error) {
-    logException(error, "app_home_opened_failed", {}, { "app.user_id": event.userId });
-  }
-});
+bot.onAppHomeOpened((event) =>
+  withSpan(
+    "workflow.app_home_opened",
+    "workflow.app_home_opened",
+    { slackUserId: event.userId },
+    async () => {
+      try {
+        await publishAppHomeView(getSlackClient(), event.userId, getUserTokenStore());
+      } catch (error) {
+        logException(error, "app_home_opened_failed", { slackUserId: event.userId });
+      }
+    }
+  )
+);
 
 bot.onAction("app_home_disconnect", async (event) => {
   const provider = event.value;
   if (!provider) return;
   const userId = event.user.userId;
-  try {
-    await getUserTokenStore().delete(userId, provider);
-    await publishAppHomeView(getSlackClient(), userId, getUserTokenStore());
-  } catch (error) {
-    logException(error, "app_home_disconnect_failed", {}, {
-      "app.user_id": userId,
-      "app.credential.provider": provider
-    });
-  }
+  await withSpan(
+    "workflow.app_home_disconnect",
+    "workflow.app_home_disconnect",
+    { slackUserId: userId },
+    async () => {
+      try {
+        await getUserTokenStore().delete(userId, provider);
+        await publishAppHomeView(getSlackClient(), userId, getUserTokenStore());
+      } catch (error) {
+        logException(error, "app_home_disconnect_failed", { slackUserId: userId }, {
+          "app.credential.provider": provider
+        });
+      }
+    }
+  );
 });

@@ -28,6 +28,7 @@ type AppRuntimeLogContext = Record<string, unknown> & {
   slackChannelId?: string;
   slackThreadId?: string;
   slackUserId?: string;
+  slackUserName?: string;
   workflowRunId?: string;
 };
 
@@ -87,6 +88,7 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
   shouldReplyInSubscribedThread: (args: {
     context: AppRuntimeThreadContext;
     conversationContext?: string;
+    hasAttachments?: boolean;
     isExplicitMention?: boolean;
     rawText: string;
     text: string;
@@ -120,6 +122,7 @@ function buildLogContext(
   args: {
     channelId?: string;
     requesterId?: string;
+    requesterUserName?: string;
     threadId?: string;
     workflowRunId?: string;
   }
@@ -127,6 +130,7 @@ function buildLogContext(
   return {
     slackThreadId: args.threadId,
     slackUserId: args.requesterId,
+    slackUserName: args.requesterUserName,
     slackChannelId: args.channelId,
     workflowRunId: args.workflowRunId,
     assistantUserName: deps.assistantUserName,
@@ -143,6 +147,7 @@ export function createAppSlackRuntime<
   const logContext = (args: {
     channelId?: string;
     requesterId?: string;
+    requesterUserName?: string;
     threadId?: string;
     workflowRunId?: string;
   }): AppRuntimeLogContext =>
@@ -158,6 +163,7 @@ export function createAppSlackRuntime<
           threadId,
           channelId,
           requesterId: message.author.userId,
+          requesterUserName: message.author.userName,
           workflowRunId
         });
 
@@ -179,6 +185,7 @@ export function createAppSlackRuntime<
           logContext({
             threadId: deps.getThreadId(thread, message),
             requesterId: message.author.userId,
+            requesterUserName: message.author.userName,
             channelId: deps.getChannelId(thread, message),
             workflowRunId: deps.getWorkflowRunId(thread, message)
           }),
@@ -223,6 +230,7 @@ export function createAppSlackRuntime<
           rawText: rawUserText,
           text: userText,
           conversationContext: deps.getPreparedConversationContext(preparedState),
+          hasAttachments: message.attachments.length > 0,
           isExplicitMention: Boolean(message.isMention),
           context
         });
@@ -233,6 +241,7 @@ export function createAppSlackRuntime<
             logContext({
               threadId,
               requesterId: message.author.userId,
+              requesterUserName: message.author.userName,
               channelId,
               workflowRunId
             }),
@@ -257,6 +266,7 @@ export function createAppSlackRuntime<
           logContext({
             threadId,
             requesterId: message.author.userId,
+            requesterUserName: message.author.userName,
             channelId,
             workflowRunId
           }),
@@ -274,6 +284,7 @@ export function createAppSlackRuntime<
           logContext({
             threadId: deps.getThreadId(thread, message),
             requesterId: message.author.userId,
+            requesterUserName: message.author.userName,
             channelId: deps.getChannelId(thread, message),
             workflowRunId: deps.getWorkflowRunId(thread, message)
           }),

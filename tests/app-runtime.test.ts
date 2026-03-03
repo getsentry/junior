@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { Attachment } from "chat";
 import {
   createAppSlackRuntime,
   type AppRuntimeReplyDecision,
@@ -243,6 +244,46 @@ describe("createAppSlackRuntime", () => {
         explicitMention: true,
         preparedState: { prepared: true }
       });
+    });
+
+    it("passes hasAttachments: true when message has attachments", async () => {
+      const deps = createMockDeps({
+        shouldReplyInSubscribedThread: vi.fn(async (args) => ({
+          shouldReply: Boolean(args.hasAttachments),
+          reason: args.hasAttachments ? "attachment" : "empty message"
+        })),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb())
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({
+        text: "",
+        attachments: [
+          { type: "image", url: "https://example.com/img.png" } satisfies Attachment
+        ]
+      });
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(deps.shouldReplyInSubscribedThread).toHaveBeenCalledWith(
+        expect.objectContaining({ hasAttachments: true })
+      );
+      expect(deps.replyToThread).toHaveBeenCalled();
+    });
+
+    it("passes hasAttachments: false when message has no attachments", async () => {
+      const deps = createMockDeps({
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb())
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({ text: "hello" });
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(deps.shouldReplyInSubscribedThread).toHaveBeenCalledWith(
+        expect.objectContaining({ hasAttachments: false })
+      );
     });
 
     it("on failure: posts error message and calls logException", async () => {
