@@ -603,6 +603,26 @@ async function summarizeConversationChunk(
   return transcript.slice(0, 2800);
 }
 
+async function generateThreadTitle(userText: string, assistantText: string): Promise<string> {
+  const result = await botDeps.completeText({
+    modelId: botConfig.routerModelId,
+    temperature: 0,
+    messages: [
+      {
+        role: "user",
+        content: [
+          "Generate a concise 5-8 word title for this conversation. Reply with ONLY the title, no quotes or punctuation.",
+          "",
+          `User: ${userText.slice(0, 500)}`,
+          `Assistant: ${assistantText.slice(0, 500)}`
+        ].join("\n"),
+        timestamp: Date.now()
+      }
+    ]
+  });
+  return result.text.trim().slice(0, 60);
+}
+
 async function compactConversationIfNeeded(
   conversation: ThreadConversationState,
   context: {
@@ -1581,6 +1601,29 @@ async function replyToThread(
           sandboxId: reply.sandboxId
         });
         persistedAtLeastOnce = true;
+
+        const assistantMessageCount = preparedState.conversation.messages.filter(
+          (m) => m.role === "assistant"
+        ).length;
+        if (assistantMessageCount === 1 && channelId && threadTs) {
+          void generateThreadTitle(userText, reply.text)
+            .then((title) => getSlackAdapter().setAssistantTitle(channelId, threadTs, title))
+            .catch((error) => {
+              logWarn(
+                "thread_title_generation_failed",
+                {
+                  slackThreadId: threadId,
+                  slackUserId: message.author.userId,
+                  slackChannelId: channelId,
+                  workflowRunId,
+                  assistantUserName: botConfig.userName,
+                  modelId: botConfig.routerModelId
+                },
+                { "error.message": error instanceof Error ? error.message : String(error) },
+                "Thread title generation failed"
+              );
+            });
+        }
 
         if (streamedReplyPromise && replyFiles) {
           await thread.post({ markdown: "", files: replyFiles });
