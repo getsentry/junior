@@ -229,7 +229,7 @@ Only when no semantic key exists:
   - attachment handling, thread lifecycle, handler failures
 - `src/chat/respond.ts`
   - empty/fallback behaviors, retries, model/tool anomalies
-  - required per-turn event: `agent_turn_diagnostics`
+  - per-turn diagnostics are captured on turn spans (not required as info logs)
 - `src/chat/skills.ts`
   - skill discovery/read/frontmatter parse issues
 - `src/chat/output.ts`

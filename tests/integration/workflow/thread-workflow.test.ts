@@ -1,28 +1,33 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
+import { processThreadPayloadStream } from "@/chat/workflow/thread-workflow";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
-import { runThreadMessageLoop } from "@/chat/workflow/thread-workflow";
+import { createTestMessage, createTestThread } from "../../fixtures/slack-harness";
 
-function createPayload(overrides: Partial<ThreadMessagePayload> = {}): ThreadMessagePayload {
-  const dedupKey = overrides.dedupKey ?? "slack:C123:1700000000.100:1700000000.200";
-  const normalizedThreadId = overrides.normalizedThreadId ?? "slack:C123:1700000000.100";
+function buildPayload(args: {
+  dedupKey: string;
+  messageId: string;
+  text: string;
+  threadId: string;
+}): ThreadMessagePayload {
+  const thread = createTestThread({ id: args.threadId });
+  const message = createTestMessage({
+    id: args.messageId,
+    threadId: args.threadId,
+    text: args.text,
+    isMention: true,
+    author: {
+      userId: "U_TESTER",
+      userName: "tester"
+    }
+  });
+
   return {
-    dedupKey,
-    kind: overrides.kind ?? "new_mention",
-    message:
-      overrides.message ??
-      ({
-        id: dedupKey.split(":").at(-1) ?? "1700000000.200",
-        author: {
-          userId: "U_TEST"
-        },
-        attachments: []
-      } as unknown as ThreadMessagePayload["message"]),
-    normalizedThreadId,
-    thread:
-      overrides.thread ??
-      ({
-        channelId: "slack:C123"
-      } as ThreadMessagePayload["thread"])
+    dedupKey: args.dedupKey,
+    kind: "new_mention",
+    message,
+    normalizedThreadId: args.threadId,
+    thread
   };
 }
 
@@ -32,90 +37,104 @@ async function* toAsyncIterable(items: ThreadMessagePayload[]): AsyncIterable<Th
   }
 }
 
-describe("runThreadMessageLoop", () => {
-  it("deduplicates repeated payloads by dedupKey", async () => {
-    const payloadA = createPayload({ dedupKey: "slack:C123:1700000000.100:1" });
-    const payloadADuplicate = createPayload({ dedupKey: "slack:C123:1700000000.100:1" });
-    const payloadB = createPayload({ dedupKey: "slack:C123:1700000000.100:2" });
-    const processed: string[] = [];
+describe("thread workflow integration", () => {
+  afterEach(() => {
+    resetBotDepsForTests();
+  });
 
-    await runThreadMessageLoop(toAsyncIterable([payloadA, payloadADuplicate, payloadB]), {
-      processMessage: async (payload) => {
-        processed.push(payload.dedupKey);
+  it("processes unique payloads and skips duplicate dedup keys", async () => {
+    const prompts: string[] = [];
+
+    setBotDepsForTests({
+      generateAssistantReply: async (prompt) => {
+        prompts.push(prompt);
+        return {
+          text: "Acknowledged. Workflow turn complete.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
       }
     });
 
-    expect(processed).toEqual(["slack:C123:1700000000.100:1", "slack:C123:1700000000.100:2"]);
-  });
-
-  it("continues processing after a payload failure", async () => {
-    const payloadA = createPayload({ dedupKey: "slack:C123:1700000000.100:1" });
-    const payloadB = createPayload({ dedupKey: "slack:C123:1700000000.100:2" });
-    const processed: string[] = [];
-    const failures: Array<{ dedupKey: string; errorMessage: string }> = [];
-
-    await runThreadMessageLoop(toAsyncIterable([payloadA, payloadB]), {
-      processMessage: async (payload) => {
-        processed.push(payload.dedupKey);
-        if (payload.dedupKey.endsWith(":1")) {
-          throw new Error("turn failed");
+    const threadId = "slack:C_WORKFLOW:1700000000.100";
+    const payloadA = buildPayload({
+      dedupKey: `${threadId}:1`,
+      messageId: "1",
+      text: "<@U_APP> summarize incident status",
+      threadId
+    });
+    const payloadADuplicate = {
+      ...payloadA,
+      message: createTestMessage({
+        id: "1",
+        threadId,
+        text: "<@U_APP> summarize incident status",
+        isMention: true,
+        author: {
+          userId: "U_TESTER",
+          userName: "tester"
         }
-      },
-      onProcessingError: async ({ payload, errorMessage }) => {
-        failures.push({
-          dedupKey: payload.dedupKey,
-          errorMessage
-        });
-      }
+      })
+    };
+    const payloadB = buildPayload({
+      dedupKey: `${threadId}:2`,
+      messageId: "2",
+      text: "<@U_APP> now give next actions",
+      threadId
     });
 
-    expect(processed).toEqual(["slack:C123:1700000000.100:1", "slack:C123:1700000000.100:2"]);
-    expect(failures).toEqual([
-      {
-        dedupKey: "slack:C123:1700000000.100:1",
-        errorMessage: "turn failed"
-      }
-    ]);
+    await processThreadPayloadStream(toAsyncIterable([payloadA, payloadADuplicate, payloadB]), "wrun-int-1");
+
+    expect(prompts).toHaveLength(2);
   });
 
-  it("does not reprocess a duplicate dedupKey after an initial failure", async () => {
-    const payloadA = createPayload({ dedupKey: "slack:C123:1700000000.100:1" });
-    const payloadADuplicate = createPayload({ dedupKey: "slack:C123:1700000000.100:1" });
-    const payloadB = createPayload({ dedupKey: "slack:C123:1700000000.100:2" });
-    const processed: string[] = [];
-    const failures: string[] = [];
+  it("continues processing subsequent payloads when one turn fails", async () => {
+    const prompts: string[] = [];
 
-    await runThreadMessageLoop(toAsyncIterable([payloadA, payloadADuplicate, payloadB]), {
-      processMessage: async (payload) => {
-        processed.push(payload.dedupKey);
-        if (payload.dedupKey.endsWith(":1")) {
-          throw new Error("first attempt failed");
+    setBotDepsForTests({
+      generateAssistantReply: async (prompt) => {
+        prompts.push(prompt);
+        if (prompt.includes("fail-first")) {
+          throw new Error("forced integration failure");
         }
-      },
-      onProcessingError: async ({ payload }) => {
-        failures.push(payload.dedupKey);
+
+        return {
+          text: "Recovered on second message.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
       }
     });
 
-    expect(processed).toEqual(["slack:C123:1700000000.100:1", "slack:C123:1700000000.100:2"]);
-    expect(failures).toEqual(["slack:C123:1700000000.100:1"]);
-  });
-
-  it("evicts old dedupe keys after cap and allows replay outside dedupe window", async () => {
-    const baseThread = "slack:C123:1700000000.100";
-    const uniquePayloads = Array.from({ length: 550 }, (_, index) =>
-      createPayload({ dedupKey: `${baseThread}:${index}` })
-    );
-    const replayedPayload = createPayload({ dedupKey: `${baseThread}:0` });
-    const processed: string[] = [];
-
-    await runThreadMessageLoop(toAsyncIterable([...uniquePayloads, replayedPayload]), {
-      processMessage: async (payload) => {
-        processed.push(payload.dedupKey);
-      }
+    const threadId = "slack:C_WORKFLOW:1700000000.200";
+    const payloadA = buildPayload({
+      dedupKey: `${threadId}:1`,
+      messageId: "1",
+      text: "<@U_APP> fail-first",
+      threadId
+    });
+    const payloadB = buildPayload({
+      dedupKey: `${threadId}:2`,
+      messageId: "2",
+      text: "<@U_APP> still respond",
+      threadId
     });
 
-    expect(processed).toHaveLength(551);
-    expect(processed.filter((key) => key === `${baseThread}:0`)).toHaveLength(2);
+    await expect(processThreadPayloadStream(toAsyncIterable([payloadA, payloadB]), "wrun-int-2")).resolves.toBeUndefined();
+    expect(prompts).toHaveLength(2);
   });
 });

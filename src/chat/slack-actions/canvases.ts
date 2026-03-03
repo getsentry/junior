@@ -17,22 +17,17 @@ export interface CanvasUpdateInput {
 export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
   const client = getSlackClient();
   const isConversationScoped = isConversationChannel(input.channelId);
+  if (!isConversationScoped) {
+    throw new Error(
+      "Shared canvas creation requires a C/G channel context. DM/private-to-bot canvases are disabled."
+    );
+  }
   const channelPrefix = input.channelId?.slice(0, 1) ?? "none";
-  const action = isConversationScoped ? "conversations.canvases.create" : "canvases.create";
+  const action = "conversations.canvases.create";
 
   const result = await withSlackRetries(async () => {
-    if (isConversationScoped) {
-      return client.conversations.canvases.create({
-        channel_id: input.channelId as string,
-        title: input.title,
-        document_content: {
-          type: "markdown",
-          markdown: input.markdown
-        }
-      });
-    }
-
-    return client.canvases.create({
+    return client.conversations.canvases.create({
+      channel_id: input.channelId as string,
       title: input.title,
       document_content: {
         type: "markdown",

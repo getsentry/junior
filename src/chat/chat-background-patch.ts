@@ -43,6 +43,30 @@ function nonEmptyString(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
+function serializeMessageForWorkflow(message: Message): ThreadMessagePayload["message"] {
+  const candidate = message as Message & { toJSON?: () => unknown };
+  if (typeof candidate.toJSON === "function") {
+    return candidate.toJSON() as ThreadMessagePayload["message"];
+  }
+
+  return {
+    _type: "chat:Message",
+    ...(message as unknown as Record<string, unknown>)
+  } as ThreadMessagePayload["message"];
+}
+
+function serializeThreadForWorkflow(thread: Thread): ThreadMessagePayload["thread"] {
+  const candidate = thread as Thread & { toJSON?: () => unknown };
+  if (typeof candidate.toJSON === "function") {
+    return candidate.toJSON() as ThreadMessagePayload["thread"];
+  }
+
+  return {
+    _type: "chat:Thread",
+    ...(thread as unknown as Record<string, unknown>)
+  } as ThreadMessagePayload["thread"];
+}
+
 // Derive canonical Slack thread IDs from the raw event payload (channel + thread_ts/ts)
 // rather than trusting adapter-provided thread ID parts which may be incomplete.
 export function normalizeIncomingSlackThreadId(threadId: string, message: unknown): string {
@@ -179,12 +203,14 @@ export async function routeIncomingMessageToWorkflow(args: {
   }
 
   const thread = (await runtime.createThread(adapter, normalizedThreadId, message, isSubscribed)) as Thread;
+  const serializedMessage = serializeMessageForWorkflow(message as Message);
+  const serializedThread = serializeThreadForWorkflow(thread);
   const payload: ThreadMessagePayload = {
     dedupKey,
     kind,
-    message: message as Message,
+    message: serializedMessage,
     normalizedThreadId,
-    thread
+    thread: serializedThread
   };
 
   await withContext(

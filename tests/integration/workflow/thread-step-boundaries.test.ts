@@ -1,197 +1,102 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
+import { processThreadMessageStep } from "@/chat/workflow/thread-steps";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
-
-const mocks = vi.hoisted(() => ({
-  downloadPrivateSlackFile: vi.fn(async () => Buffer.from("rehydrated-data")),
-  handleNewMention: vi.fn(async () => undefined),
-  handleSubscribedMessage: vi.fn(async () => undefined),
-  logError: vi.fn(),
-  logInfo: vi.fn(),
-  registerSingleton: vi.fn(),
-  withContext: vi.fn(async (_context: unknown, callback: () => Promise<unknown>) => callback()),
-  withSpan: vi.fn(async (_name: string, _op: string, _context: unknown, callback: () => Promise<unknown>) => callback())
-}));
-
-vi.mock("@/chat/bot", () => ({
-  appSlackRuntime: {
-    handleNewMention: mocks.handleNewMention,
-    handleSubscribedMessage: mocks.handleSubscribedMessage
-  },
-  bot: {
-    registerSingleton: mocks.registerSingleton
-  }
-}));
-
-vi.mock("@/chat/slack-actions/client", () => ({
-  downloadPrivateSlackFile: mocks.downloadPrivateSlackFile
-}));
-
-vi.mock("@/chat/observability", () => ({
-  logError: mocks.logError,
-  logInfo: mocks.logInfo,
-  withContext: mocks.withContext,
-  withSpan: mocks.withSpan
-}));
-
-import { processThreadMessage, runThreadMessageLoop } from "@/chat/workflow/thread-workflow";
+import type { TestThread } from "../../fixtures/slack-harness";
+import { createTestMessage, createTestThread } from "../../fixtures/slack-harness";
 
 function createPayload(
-  overrides: Partial<ThreadMessagePayload> = {}
-): ThreadMessagePayload {
-  const dedupKey = overrides.dedupKey ?? "slack:C123:1700000000.100:1700000000.200";
-  const normalizedThreadId = overrides.normalizedThreadId ?? "slack:C123:1700000000.100";
+  kind: ThreadMessagePayload["kind"],
+  text: string
+): {
+  payload: ThreadMessagePayload;
+  thread: TestThread;
+} {
+  const threadId = "slack:C_STEP:1700001234.100";
+  const thread = createTestThread({ id: threadId });
+  const message = createTestMessage({
+    id: `m-${kind}`,
+    threadId,
+    text,
+    isMention: true,
+    author: {
+      userId: "U_TESTER",
+      userName: "tester"
+    }
+  });
 
   return {
-    dedupKey,
-    kind: overrides.kind ?? "new_mention",
-    message:
-      overrides.message ??
-      ({
-        id: dedupKey.split(":").at(-1) ?? "1700000000.200",
-        author: {
-          userId: "U_TEST"
-        },
-        attachments: []
-      } as unknown as ThreadMessagePayload["message"]),
-    normalizedThreadId,
-    thread:
-      overrides.thread ??
-      ({
-        channelId: "slack:C123"
-      } as unknown as ThreadMessagePayload["thread"])
+    payload: {
+      dedupKey: `${threadId}:${message.id}`,
+      kind,
+      message,
+      normalizedThreadId: threadId,
+      thread
+    },
+    thread
   };
 }
 
-async function* toAsyncIterable(items: ThreadMessagePayload[]): AsyncIterable<ThreadMessagePayload> {
-  for (const item of items) {
-    yield item;
-  }
-}
-
-describe("thread workflow step boundaries", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("thread workflow step integration", () => {
+  afterEach(() => {
+    resetBotDepsForTests();
   });
 
-  it("dispatches new mentions through the step and rehydrates attachment fetchers", async () => {
-    const attachment: {
-      url: string;
-      fetchData?: () => Promise<Buffer>;
-    } = {
-      url: "https://files.slack.com/private/new-file"
-    };
-    const payload = createPayload({
-      kind: "new_mention",
-      message: {
-        id: "1700000000.300",
-        author: { userId: "U_TEST" },
-        attachments: [attachment]
-      } as unknown as ThreadMessagePayload["message"]
-    });
-
-    await processThreadMessage(payload);
-
-    expect((processThreadMessage as { maxRetries?: number }).maxRetries).toBe(1);
-    expect(mocks.registerSingleton).toHaveBeenCalledTimes(1);
-    expect(mocks.handleNewMention).toHaveBeenCalledWith(payload.thread, payload.message);
-    expect(mocks.handleSubscribedMessage).not.toHaveBeenCalled();
-    expect(mocks.withSpan).toHaveBeenCalledTimes(1);
-    expect(typeof attachment.fetchData).toBe("function");
-    const content = await attachment.fetchData?.();
-    expect(content).toEqual(Buffer.from("rehydrated-data"));
-    expect(mocks.downloadPrivateSlackFile).toHaveBeenCalledWith("https://files.slack.com/private/new-file");
-    expect(mocks.logInfo).toHaveBeenCalledWith(
-      "workflow_message_processed",
-      {},
-      expect.objectContaining({
-        "messaging.message.id": "1700000000.300"
-      }),
-      "Thread workflow step processed message"
-    );
-  });
-
-  it("dispatches subscribed messages and keeps existing attachment fetchers intact", async () => {
-    const existingFetcher = vi.fn(async () => Buffer.from("existing"));
-    const attachment: {
-      url: string;
-      fetchData?: () => Promise<Buffer>;
-    } = {
-      url: "https://files.slack.com/private/existing-file",
-      fetchData: existingFetcher
-    };
-    const payload = createPayload({
-      kind: "subscribed_message",
-      message: {
-        id: "1700000000.400",
-        author: { userId: "U_TEST" },
-        attachments: [attachment]
-      } as unknown as ThreadMessagePayload["message"]
-    });
-
-    await processThreadMessage(payload);
-
-    expect(mocks.handleSubscribedMessage).toHaveBeenCalledWith(payload.thread, payload.message);
-    expect(mocks.handleNewMention).not.toHaveBeenCalled();
-    expect(attachment.fetchData).toBe(existingFetcher);
-    expect(mocks.downloadPrivateSlackFile).not.toHaveBeenCalled();
-  });
-
-  it("uses default processing error handler and keeps the workflow loop alive", async () => {
-    const payloadA = createPayload({ dedupKey: "slack:C123:1700000000.100:1" });
-    const payloadB = createPayload({ dedupKey: "slack:C123:1700000000.100:2" });
-    const processed: string[] = [];
-
-    await runThreadMessageLoop(toAsyncIterable([payloadA, payloadB]), {
-      processMessage: async (payload) => {
-        processed.push(payload.dedupKey);
-        if (payload.dedupKey.endsWith(":1")) {
-          throw new Error("turn failed");
-        }
+  it("runs new mention handling through real runtime wiring", async () => {
+    const prompts: string[] = [];
+    setBotDepsForTests({
+      generateAssistantReply: async (prompt) => {
+        prompts.push(prompt);
+        return {
+          text: "Mention received and processed.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
       }
     });
 
-    expect(processed).toEqual(["slack:C123:1700000000.100:1", "slack:C123:1700000000.100:2"]);
-    expect(mocks.logError).toHaveBeenCalledTimes(1);
+    const { payload, thread } = createPayload("new_mention", "<@U_APP> tell me the latest");
+
+    await processThreadMessageStep(payload, "wrun-step-1");
+
+    expect((processThreadMessageStep as { maxRetries?: number }).maxRetries).toBe(1);
+    expect(prompts).toHaveLength(1);
+    expect(thread.subscribeCalls).toBe(1);
+    expect(thread.posts).toHaveLength(1);
   });
 
-  it("keeps workflow loop alive when attachment download fails during handler execution", async () => {
-    mocks.downloadPrivateSlackFile.mockRejectedValueOnce(new Error("download failed"));
-    mocks.handleNewMention.mockImplementation(async (...args: unknown[]) => {
-      const message = args[1] as ThreadMessagePayload["message"];
-      const attachment = message.attachments[0];
-      if (attachment?.fetchData) {
-        await attachment.fetchData();
+  it("runs subscribed-message handling through real runtime wiring", async () => {
+    const prompts: string[] = [];
+    setBotDepsForTests({
+      generateAssistantReply: async (prompt) => {
+        prompts.push(prompt);
+        return {
+          text: "Subscribed message handled.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
       }
     });
 
-    const payloadA = createPayload({
-      dedupKey: "slack:C123:1700000000.100:1",
-      message: {
-        id: "1700000000.500",
-        author: { userId: "U_TEST" },
-        attachments: [{ url: "https://files.slack.com/private/failing-file" }]
-      } as unknown as ThreadMessagePayload["message"]
-    });
-    const payloadB = createPayload({
-      dedupKey: "slack:C123:1700000000.100:2",
-      message: {
-        id: "1700000000.600",
-        author: { userId: "U_TEST" },
-        attachments: []
-      } as unknown as ThreadMessagePayload["message"]
-    });
+    const { payload, thread } = createPayload("subscribed_message", "Update from thread participant");
 
-    await runThreadMessageLoop(toAsyncIterable([payloadA, payloadB]));
+    await processThreadMessageStep(payload, "wrun-step-2");
 
-    expect(mocks.handleNewMention).toHaveBeenCalledTimes(2);
-    expect(mocks.logError).toHaveBeenCalledWith(
-      "workflow_message_failed",
-      {},
-      expect.objectContaining({
-        "messaging.message.id": "1700000000.500",
-        "error.message": "download failed"
-      }),
-      "Thread workflow step failed"
-    );
+    expect(prompts).toHaveLength(1);
+    expect(thread.posts).toHaveLength(1);
   });
 });

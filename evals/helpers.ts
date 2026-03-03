@@ -19,12 +19,22 @@ const slackMetadataSchema = z.object({
 
 const evalOutputSchema = z.object({
   assistant_posts: z.array(z.string()).describe("Messages the assistant posted to the thread"),
+  channel_posts: z
+    .array(
+      z.object({
+        channel: z.string().describe("Slack channel ID where a direct channel post was sent"),
+        text: z.string().describe("Message text sent via Slack chat.postMessage"),
+        thread_ts: z.string().optional().describe("Slack thread timestamp when the message was sent as a thread reply")
+      })
+    )
+    .describe("Slack channel posts sent outside the thread-reply surface"),
   slack_metadata: slackMetadataSchema.describe("Slack thread metadata set by the assistant"),
 });
 
 function serializeResult(result: BehaviorCaseResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
+    channel_posts: result.channelPosts,
     slack_metadata: {
       thread_title_set: result.slackAdapter.titleCalls.length > 0,
       suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,

@@ -47,6 +47,23 @@ If a test relies on runtime module mocks to drive control-flow branches, classif
 2. Rapid same-thread message ordering/continuity.
 3. Error handling that remains user-visible and non-silent.
 4. Slack API contract correctness for tools/actions used by runtime paths.
+5. Context-bound tool targeting behavior (harness-resolved targets, no model-selected destination overrides).
+
+## Workflow Coverage Requirements
+
+Integration tests that cover workflow ingress/execution must assert workflow-boundary behavior, not just handler internals:
+
+1. Verify ingress payloads sent to workflow routing are serializable and contain serialized `chat:Message` / `chat:Thread` data (no function-valued fields).
+2. Exercise the real message-kind routing behavior (`new_mention` vs `subscribed_message`) through `routeIncomingMessageToWorkflow(...)`.
+3. Validate de-dup behavior on ingress and de-dup behavior in workflow stream processing.
+
+## Context-Bound Tool Coverage Requirements
+
+For tools governed by harness context (for example Slack channel/canvas/list operations):
+
+1. Assert destination/target comes from harness/runtime context rather than model-supplied IDs.
+2. Assert missing context fails safely with actionable error responses.
+3. Assert disallowed fallback scopes (for example bot-private artifacts for shared deliverables) are not used.
 
 ## Scope Discipline (Do Not Over-Test)
 

@@ -31,6 +31,15 @@ This document defines how the Junior harness must run agent turns for Slack repl
 - Completion is based on assistant text output, not a dedicated terminal tool.
 - Do not rely on provider/tool-only finish states (`finishReason: "tool-calls"`) as a complete user response.
 
+## Tool Target Resolution
+
+- Context-bound tool targets are resolved by harness/runtime context, not model-selected IDs.
+- For context-bound tools, tool schemas should not expose destination override fields (for example `channel_id`, `canvas_id`, `list_id`) unless explicitly approved.
+- Slack channel operations use active `ToolRuntimeContext.channelId`.
+- Canvas/list follow-up operations use artifact context (`lastCanvasId`, `lastListId`, turn-created IDs).
+- Missing context must fail safely (`ok: false`) instead of attempting broader/private fallback.
+- See [Harness Tool Context Spec](./harness-tool-context-spec.md).
+
 ## Execution Scenarios
 
 ### Scenario A: Normal Tool + Assistant Response
@@ -79,8 +88,8 @@ Expected: side effects plus a clear user-visible wrap-up.
 
 ## Observability
 
-- Every assistant turn must emit one `agent_turn_diagnostics` log event after `generateAssistantReply`.
-- The event must include:
+- Every assistant turn must annotate the active turn span with diagnostics after `generateAssistantReply`.
+- Required span attributes:
   - `gen_ai.request.model`
   - `gen_ai.provider.name`
   - `gen_ai.operation.name`
@@ -95,4 +104,4 @@ Expected: side effects plus a clear user-visible wrap-up.
   - `app.ai.stop_reason` (when available)
   - `error.message` (when available)
 - Do not emit empty placeholder values for optional fields; omit absent optional attributes.
-- Harness/evals must be able to observe these diagnostics (directly or via mapped warning events).
+- Harness/evals must be able to observe these diagnostics (via span attributes and failure logs).

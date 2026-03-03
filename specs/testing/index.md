@@ -19,6 +19,7 @@ Use this file as the source of truth for where a test belongs and what it is all
 - Integration rules: `specs/testing/integration-spec.md`
 - Evals rules: `specs/testing/evals-spec.md`
 - Slack HTTP fixture/MSW details: `specs/testing/slack-mocking-spec.md`
+- Harness tool-targeting rules: `specs/harness-tool-context-spec.md`
 
 ## Shared Rules Across All Layers
 
@@ -29,6 +30,7 @@ Use this file as the source of truth for where a test belongs and what it is all
 5. Keep test names descriptive of outcomes, not implementation mechanics.
 6. Do not over-test: cover representative, high-risk scenarios for each contract, not every theoretical permutation.
 7. Prefer one focused assertion path per behavior contract; add more cases only when they validate a distinct failure mode.
+8. Workflow behavior integration tests should execute real runtime paths and only substitute deterministic fake agent output at the agent boundary.
 
 ## Coverage Budget (Avoid Over-Testing)
 

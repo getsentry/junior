@@ -14,7 +14,7 @@ import type {
   ConversationMessage,
   ThreadConversationState
 } from "@/chat/conversation-state";
-import { logException, logInfo, logWarn, setTags, toOptionalString, withSpan } from "@/chat/observability";
+import { logException, logInfo, logWarn, setSpanAttributes, setTags, toOptionalString, withSpan } from "@/chat/observability";
 import { escapeXml } from "@/chat/xml";
 import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
@@ -115,13 +115,41 @@ function getThreadTs(threadId: string | undefined): string | undefined {
   return parseSlackThreadId(threadId)?.threadTs;
 }
 
+function getSlackApiErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    data?: { error?: unknown };
+  };
+
+  if (typeof candidate.data?.error === "string" && candidate.data.error.trim().length > 0) {
+    return candidate.data.error;
+  }
+  if (typeof candidate.code === "string" && candidate.code.trim().length > 0) {
+    return candidate.code;
+  }
+
+  return undefined;
+}
+
+function isSlackTitlePermissionError(error: unknown): boolean {
+  const code = getSlackApiErrorCode(error);
+  return code === "no_permission" || code === "missing_scope" || code === "not_allowed_token_type";
+}
+
 function getSlackAdapter(): SlackAdapter {
   return bot.getAdapter("slack");
 }
 
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
 
-function createProgressReporter(thread: Pick<Thread, "startTyping">) {
+function createProgressReporter(args: {
+  channelId?: string;
+  threadTs?: string;
+}) {
   let active = false;
   let currentStatus = "";
   let lastStatusAt = 0;
@@ -130,10 +158,13 @@ function createProgressReporter(thread: Pick<Thread, "startTyping">) {
 
 
   const postStatus = async (text: string): Promise<void> => {
+    if (!args.channelId || !args.threadTs) {
+      return;
+    }
     currentStatus = text;
     lastStatusAt = Date.now();
     try {
-      await thread.startTyping(text);
+      await getSlackAdapter().setAssistantStatus(args.channelId, args.threadTs, text, [text]);
     } catch {
       // Best effort only.
     }
@@ -164,16 +195,11 @@ function createProgressReporter(thread: Pick<Thread, "startTyping">) {
     async start() {
       active = true;
       clearPending();
-      await postStatus("Thinking...");
+      void postStatus("Thinking...");
     },
     async stop() {
       active = false;
       clearPending();
-      try {
-        await thread.startTyping("");
-      } catch {
-        // Best effort only.
-      }
     },
     async setStatus(text: string) {
       const truncated = truncateStatusText(text);
@@ -185,7 +211,7 @@ function createProgressReporter(thread: Pick<Thread, "startTyping">) {
       const elapsed = now - lastStatusAt;
       if (elapsed >= STATUS_UPDATE_DEBOUNCE_MS) {
         clearPending();
-        await postStatus(truncated);
+        void postStatus(truncated);
         return;
       }
 
@@ -634,21 +660,9 @@ async function compactConversationIfNeeded(
 ): Promise<void> {
   updateConversationStats(conversation);
   let estimatedTokens = conversation.stats.estimatedContextTokens;
-  logInfo(
-    "conversation_context_estimated",
-    {
-      slackThreadId: context.threadId,
-      slackUserId: context.requesterId,
-      slackChannelId: context.channelId,
-      workflowRunId: context.workflowRunId,
-      assistantUserName: botConfig.userName,
-      modelId: botConfig.modelId
-    },
-    {
-      "app.context_tokens_estimated": estimatedTokens
-    },
-    "Estimated thread context tokens"
-  );
+  setSpanAttributes({
+    "app.context_tokens_estimated": estimatedTokens
+  });
 
   while (
     estimatedTokens > CONTEXT_COMPACTION_TRIGGER_TOKENS &&
@@ -676,22 +690,10 @@ async function compactConversationIfNeeded(
     updateConversationStats(conversation);
 
     estimatedTokens = conversation.stats.estimatedContextTokens;
-    logInfo(
-      "conversation_compaction_applied",
-      {
-        slackThreadId: context.threadId,
-        slackUserId: context.requesterId,
-        slackChannelId: context.channelId,
-        workflowRunId: context.workflowRunId,
-        assistantUserName: botConfig.userName,
-        modelId: botConfig.modelId
-      },
-      {
-        "app.compaction_messages_covered": compactCount,
-        "app.context_tokens_estimated": estimatedTokens
-      },
-      "Compacted thread transcript context"
-    );
+    setSpanAttributes({
+      "app.compaction_messages_covered": compactCount,
+      "app.context_tokens_estimated": estimatedTokens
+    });
 
     if (estimatedTokens <= CONTEXT_COMPACTION_TARGET_TOKENS) {
       break;
@@ -727,7 +729,11 @@ function createConversationMessageFromSdkMessage(
 
 async function seedConversationBackfill(
   thread: Thread,
-  conversation: ThreadConversationState
+  conversation: ThreadConversationState,
+  currentTurn: {
+    messageId: string;
+    messageCreatedAtMs: number;
+  }
 ): Promise<void> {
   if (conversation.backfill.completedAtMs) {
     return;
@@ -784,6 +790,12 @@ async function seedConversationBackfill(
   }
 
   for (const message of seeded) {
+    if (message.id !== currentTurn.messageId && message.createdAtMs > currentTurn.messageCreatedAtMs) {
+      continue;
+    }
+    if (message.id !== currentTurn.messageId && message.createdAtMs === currentTurn.messageCreatedAtMs && message.id > currentTurn.messageId) {
+      continue;
+    }
     upsertConversationMessage(conversation, message);
   }
 
@@ -1232,19 +1244,6 @@ const createdBot = new Chat<{ slack: SlackAdapter }>({
       const clientId = getSlackClientId();
       const clientSecret = getSlackClientSecret();
 
-      logInfo(
-        "slack_adapter_boot_config",
-        {},
-        {
-          "app.slack.has_signing_secret": Boolean(signingSecret),
-          "app.slack.has_bot_token": Boolean(botToken),
-          "app.slack.has_client_id": Boolean(clientId),
-          "app.slack.has_client_secret": Boolean(clientSecret),
-          "app.slack.mode": botToken ? "single_workspace" : "multi_workspace"
-        },
-        "Resolved Slack adapter credentials at boot"
-      );
-
       if (!signingSecret) {
         throw new Error("SLACK_SIGNING_SECRET is required");
       }
@@ -1353,7 +1352,10 @@ async function prepareTurnState(args: {
   const channelConfiguration = getChannelConfigurationService(args.thread);
   const configuration = await channelConfiguration.resolveValues();
 
-  await seedConversationBackfill(args.thread, conversation);
+  await seedConversationBackfill(args.thread, conversation, {
+    messageId: args.message.id,
+    messageCreatedAtMs: args.message.metadata.dateSent.getTime()
+  });
   const messageHasPotentialImageAttachment = args.message.attachments.some((attachment) => {
     if (attachment.type === "image") {
       return true;
@@ -1405,22 +1407,10 @@ async function prepareTurnState(args: {
     excludeMessageId: userMessageId
   });
 
-  logInfo(
-    "conversation_turn_prepared",
-    {
-      slackThreadId: args.context.threadId,
-      slackUserId: args.context.requesterId,
-      slackChannelId: args.context.channelId,
-      workflowRunId: args.context.workflowRunId,
-      assistantUserName: botConfig.userName,
-      modelId: botConfig.modelId
-    },
-    {
-      "app.backfill_source": conversation.backfill.source ?? "none",
-      "app.context_tokens_estimated": conversation.stats.estimatedContextTokens
-    },
-    "Prepared thread conversation state"
-  );
+  setSpanAttributes({
+    "app.backfill_source": conversation.backfill.source ?? "none",
+    "app.context_tokens_estimated": conversation.stats.estimatedContextTokens
+  });
 
   return {
     artifacts,
@@ -1500,7 +1490,10 @@ async function replyToThread(
         workflowRunId
       });
 
-      const progress = createProgressReporter(thread);
+      const progress = createProgressReporter({
+        channelId: channelId && isDmChannel(channelId) ? channelId : undefined,
+        threadTs
+      });
       const textStream = createTextStreamBridge();
       let streamedReplyPromise: Promise<SentMessage> | undefined;
       const startStreamingReply = () => {
@@ -1571,8 +1564,8 @@ async function replyToThread(
             ? { "error.message": reply.diagnostics.errorMessage }
             : {})
         };
+        setSpanAttributes(diagnosticsAttributes);
         if (reply.diagnostics.outcome === "success") {
-          logInfo("agent_turn_diagnostics", diagnosticsContext, diagnosticsAttributes, "Agent turn diagnostics");
         } else if (reply.diagnostics.outcome === "provider_error") {
           const providerError =
             reply.diagnostics.providerError ??
@@ -1644,6 +1637,15 @@ async function replyToThread(
           void generateThreadTitle(userText, reply.text)
             .then((title) => getSlackAdapter().setAssistantTitle(channelId, threadTs, title))
             .catch((error) => {
+              const slackErrorCode = getSlackApiErrorCode(error);
+              if (isSlackTitlePermissionError(error)) {
+                setSpanAttributes({
+                  "app.slack.assistant_title.outcome": "permission_denied",
+                  ...(slackErrorCode ? { "app.slack.assistant_title.error_code": slackErrorCode } : {})
+                });
+                return;
+              }
+
               logWarn(
                 "thread_title_generation_failed",
                 {

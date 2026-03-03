@@ -14,6 +14,13 @@ describe("Conversational Evals: Routing and Continuity", () => {
       "The assistant posts exactly one reply, answers with 4, and does not respond with sandbox setup failure text.",
   });
 
+  slackEval("routing: explicit in-channel post request uses channel post", {
+    behavior: { mock_slack_api: true },
+    events: [mention("post a hello message in the channel")],
+    criteria:
+      "The assistant sends the hello message as a channel post (channel_posts has exactly one item with hello/wave-style text and no thread_ts). It must not post the hello as a thread reply in assistant_posts.",
+  });
+
   const continuityThread = { id: "thread-continuity", channel_id: "C-continuity", thread_ts: "17000000.continuity" };
 
   slackEval("continuity: remembers prior turn context", {

@@ -1,6 +1,7 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import { createCanvas } from "@/chat/slack-actions/canvases";
+import { isConversationChannel } from "@/chat/slack-actions/client";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { CanvasArtifactSummary } from "@/chat/slack-actions/types";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
@@ -28,7 +29,7 @@ export function createSlackCanvasCreateTool(
 ) {
   return tool({
     description:
-      "Create a Slack canvas for long-form output in a channel. Use when content is too long for a thread reply or needs a persistent document. Do not use for short answers that fit in-thread.",
+      "Create a Slack canvas for long-form output in the active assistant context channel. Use when content is too long for a thread reply or needs a persistent document. Do not use for short answers that fit in-thread.",
     inputSchema: Type.Object({
       title: Type.String({
         minLength: 1,
@@ -38,16 +39,17 @@ export function createSlackCanvasCreateTool(
       markdown: Type.String({
         minLength: 1,
         description: "Canvas markdown body content."
-      }),
-      channel_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional Slack channel ID. Defaults to the current thread channel."
-        })
-      )
+      })
     }),
-    execute: async ({ title, markdown, channel_id }) => {
-      const targetChannelId = channel_id ?? context.channelId;
+    execute: async ({ title, markdown }) => {
+      const targetChannelId = context.channelId;
+      if (!isConversationChannel(targetChannelId)) {
+        return {
+          ok: false,
+          error:
+            "Cannot create a shared canvas from this context. Canvas creation is bound to the active assistant channel context (C/G)."
+        };
+      }
       const operationKey = createOperationKey("slackCanvasCreate", {
         title,
         markdown,

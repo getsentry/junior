@@ -50,16 +50,29 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 }
 
 describe("slack channel tools", () => {
-  it("blocks channel posting without explicit post intent in user text", async () => {
+  it("posts to channel even without explicit post-intent phrasing in user text", async () => {
+    queueSlackApiResponse("chat.postMessage", {
+      body: chatPostMessageOk({
+        ts: "1700000000.111",
+        channel: "C123"
+      })
+    });
+    queueSlackApiResponse("chat.getPermalink", {
+      body: chatGetPermalinkOk({
+        permalink: "https://example.invalid/permalink-1"
+      })
+    });
     const tool = createSlackChannelPostMessageTool(createContext("summarize this thread"), createToolState());
     const result = await executeTool(tool, {
       text: "Posting this update"
     });
 
     expect(result).toMatchObject({
-      ok: false
+      ok: true,
+      channel_id: "C123",
+      ts: "1700000000.111"
     });
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
   });
 
   it("posts to channel when explicit post intent is present and deduplicates within turn", async () => {

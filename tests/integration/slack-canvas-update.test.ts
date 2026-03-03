@@ -32,9 +32,12 @@ function createContext(userText: string): ToolRuntimeContext {
 }
 
 describe("createSlackCanvasUpdateTool", () => {
-  it("does not default to prior-thread canvas when canvas_id is omitted", async () => {
+  it("uses active artifact-state canvas when no same-turn canvas exists", async () => {
+    queueSlackApiResponse("canvases.edit", {
+      body: canvasesEditOk()
+    });
     const state = createState({ currentCanvasId: "F_PREVIOUS" });
-    const tool = createSlackCanvasUpdateTool(state, createContext("/brief Sunil Pai"));
+    const tool = createSlackCanvasUpdateTool(state, createContext("append this to the doc"));
 
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasUpdate execute function missing");
@@ -47,11 +50,27 @@ describe("createSlackCanvasUpdateTool", () => {
       {} as never
     );
 
-    expect(result).toEqual({
-      ok: false,
-      error: "No canvas_id provided. For cross-turn updates, provide explicit canvas_id."
+    const editCalls = getCapturedSlackApiCalls("canvases.edit");
+    expect(editCalls).toHaveLength(1);
+    expect(editCalls[0]?.params).toMatchObject({
+      canvas_id: "F_PREVIOUS",
+      changes: [
+        {
+          operation: "insert_at_end",
+          document_content: {
+            type: "markdown",
+            markdown: "new content"
+          }
+        }
+      ]
     });
-    expect(getCapturedSlackApiCalls("canvases.edit")).toHaveLength(0);
+    expect(result).toEqual({
+      ok: true,
+      canvas_id: "F_PREVIOUS",
+      operation: "insert_at_end",
+      section_id: undefined
+    });
+    expect(state.artifactState.lastCanvasId).toBe("F_PREVIOUS");
   });
 
   it("allows implicit same-turn updates to a canvas created in this turn", async () => {

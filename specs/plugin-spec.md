@@ -142,7 +142,7 @@ mcp:                                 # optional — MCP server config for tool s
 1. **Scan** `src/plugins/` for directories containing `plugin.yaml`.
 2. **Parse** each manifest and validate against the contract above.
 3. **Register** capabilities, config keys, OAuth config in internal maps.
-4. **Emit** `plugin_loaded` observability event per plugin (on broker creation).
+4. **Annotate** active span with plugin metadata per broker creation.
 5. Plugin skills are discovered later by `discoverSkills()` via `getPluginSkillRoots()`.
 
 ### Initialization ordering
@@ -300,7 +300,7 @@ oauth:
 
 ## Observability
 
-- `plugin_loaded` — per plugin at broker creation. Attributes: `app.plugin.name`, `app.plugin.capabilities`, `app.plugin.has_oauth`.
+- Plugin broker creation annotates active span with: `app.plugin.name`, `app.plugin.capabilities`, `app.plugin.has_oauth`.
 - `capability_catalog_loaded` — existing event, now includes plugin-sourced capabilities.
 
 ## Non-goals

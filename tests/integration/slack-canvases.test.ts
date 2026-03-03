@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createCanvas } from "@/chat/slack-actions/canvases";
-import { canvasesCreateOk, conversationsCanvasesCreateOk, filesInfoOk } from "../fixtures/slack/factories/api";
+import { conversationsCanvasesCreateOk, filesInfoOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
@@ -13,43 +13,17 @@ describe("createCanvas", () => {
     process.env.SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
   });
 
-  it("uses canvases.create for DM channels", async () => {
-    queueSlackApiResponse("canvases.create", {
-      body: canvasesCreateOk({ canvasId: "F_DM" })
-    });
-    queueSlackApiResponse("files.info", {
-      body: filesInfoOk({
-        fileId: "F_DM",
-        permalink: "https://example.invalid/files/F_DM"
+  it("rejects DM channel canvas creation to avoid bot-private canvases", async () => {
+    await expect(
+      createCanvas({
+        title: "Title",
+        markdown: "Body",
+        channelId: "D12345"
       })
-    });
-
-    const created = await createCanvas({
-      title: "Title",
-      markdown: "Body",
-      channelId: "D12345"
-    });
-
-    expect(created).toEqual({
-      canvasId: "F_DM",
-      permalink: "https://example.invalid/files/F_DM"
-    });
-
-    const canvasCreateCalls = getCapturedSlackApiCalls("canvases.create");
-    expect(canvasCreateCalls).toHaveLength(1);
-    expect(canvasCreateCalls[0]?.params).toMatchObject({
-      title: "Title",
-      document_content: {
-        type: "markdown",
-        markdown: "Body"
-      }
-    });
+    ).rejects.toThrow("Shared canvas creation requires a C/G channel context");
 
     expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(0);
-
-    const fileInfoCalls = getCapturedSlackApiCalls("files.info");
-    expect(fileInfoCalls).toHaveLength(1);
-    expect(fileInfoCalls[0]?.params).toMatchObject({ file: "F_DM" });
+    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
   });
 
   it("uses conversations.canvases.create for C/G channels", async () => {
@@ -85,31 +59,21 @@ describe("createCanvas", () => {
     expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
   });
 
-  it("uses canvases.create when channel id is not provided", async () => {
-    queueSlackApiResponse("canvases.create", {
-      body: canvasesCreateOk({ canvasId: "F_NO_CHANNEL" })
-    });
-    queueSlackApiResponse("files.info", {
-      body: filesInfoOk({ fileId: "F_NO_CHANNEL", permalink: "https://example.invalid/files/F_NO_CHANNEL" })
-    });
+  it("rejects canvas creation when channel id is not provided", async () => {
+    await expect(
+      createCanvas({
+        title: "Title",
+        markdown: "Body"
+      })
+    ).rejects.toThrow("Shared canvas creation requires a C/G channel context");
 
-    const created = await createCanvas({
-      title: "Title",
-      markdown: "Body"
-    });
-
-    expect(created).toEqual({
-      canvasId: "F_NO_CHANNEL",
-      permalink: "https://example.invalid/files/F_NO_CHANNEL"
-    });
-
-    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
   });
 
   it("returns created canvas when permalink lookup fails", async () => {
-    queueSlackApiResponse("canvases.create", {
-      body: canvasesCreateOk({ canvasId: "F_NO_LINK" })
+    queueSlackApiResponse("conversations.canvases.create", {
+      body: conversationsCanvasesCreateOk({ canvasId: "F_NO_LINK" })
     });
     queueSlackApiError("files.info", {
       error: "internal_error"
@@ -118,14 +82,14 @@ describe("createCanvas", () => {
     const created = await createCanvas({
       title: "Title",
       markdown: "Body",
-      channelId: "D12345"
+      channelId: "C12345"
     });
 
     expect(created).toEqual({
       canvasId: "F_NO_LINK",
       permalink: undefined
     });
-    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("files.info")).toHaveLength(1);
   });
 

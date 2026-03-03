@@ -113,6 +113,23 @@ describe("tool idempotency", () => {
     });
   });
 
+  it("returns a non-throwing error when creating canvas from DM/private context", async () => {
+    const state = createToolState();
+    const tool = createSlackCanvasCreateTool({ channelId: "D123", sandbox: noopSandbox }, state);
+
+    const result = await executeTool(tool, {
+      title: "DM brief",
+      markdown: "Body"
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("Canvas creation is bound to the active assistant channel context")
+    });
+    expect(getCapturedSlackApiCalls("conversations.canvases.create")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
+  });
+
   it("deduplicates repeated slack_list_add_items operations in one turn", async () => {
     queueSlackApiResponse("slackLists.items.create", {
       body: slackListsItemsCreateOk({ itemId: "item-1" })

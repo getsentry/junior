@@ -32,6 +32,14 @@ This policy applies to:
 
 - Production should use explicit network policy and minimal allowlists.
 
+### Harness-owned tool targeting
+
+- For context-bound tools, destination/target resolution is owned by the runtime harness, not model-supplied tool arguments.
+- Tool schemas must not expose destination override fields for context-bound operations unless explicitly approved by spec.
+- When required context is missing, tools must fail safely with structured errors; they must not silently choose alternate/private scopes.
+- Shared deliverables must not fall back to bot-private artifacts.
+- See [Harness Tool Context Spec](./harness-tool-context-spec.md).
+
 ## Credential and token policy
 
 ### Secret custody

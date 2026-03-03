@@ -5,7 +5,7 @@ import type { CapabilityProviderDefinition } from "@/chat/capabilities/catalog";
 import type { OAuthProviderConfig } from "@/chat/capabilities/jr-rpc-command";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
-import { logInfo } from "@/chat/observability";
+import { setSpanAttributes } from "@/chat/observability";
 import { createGitHubAppBroker } from "./github-app-broker";
 import { createOAuthBearerBroker } from "./oauth-bearer-broker";
 import type { GitHubAppCredentials, OAuthBearerCredentials, PluginBrokerDeps, PluginCredentials, PluginDefinition, PluginManifest } from "./types";
@@ -282,16 +282,11 @@ export function createPluginBroker(
     throw new Error(`Unsupported credentials type for plugin "${name}"`);
   }
 
-  logInfo(
-    "plugin_loaded",
-    {},
-    {
-      "app.plugin.name": name,
-      "app.plugin.capabilities": plugin.manifest.capabilities,
-      "app.plugin.has_oauth": Boolean(plugin.manifest.oauth)
-    },
-    `Loaded plugin: ${name}`
-  );
+  setSpanAttributes({
+    "app.plugin.name": name,
+    "app.plugin.capabilities": plugin.manifest.capabilities,
+    "app.plugin.has_oauth": Boolean(plugin.manifest.oauth)
+  });
 
   return broker;
 }

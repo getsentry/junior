@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Source
 
@@ -104,6 +104,13 @@ slackThreadWorkflow(threadId):
 | Attachment fetcher rehydration | ❌ | ✅ |
 | Runtime handler dispatch (`appSlackRuntime.*`) | ❌ | ✅ |
 
+### Direct Step Invocation Requirement
+
+1. Workflow code must call step functions directly.
+2. Do not route step execution through callback/config abstraction layers from workflow code.
+3. Keep step wrappers in separate modules so workflow files only import explicit step entrypoints.
+4. This rule prevents workflow bundling from traversing Node-dependent application graphs as workflow-context code.
+
 ## Invariants
 
 1. One active workflow run per normalized Slack thread ID.
@@ -204,32 +211,23 @@ Start/resume state machine:
 export async function slackThreadWorkflow(threadId: string) {
   "use workflow";
   const hook = threadMessageHook.create({ token: threadId });
-  const seen = new Set<string>();
-
-  for await (const payload of hook) {
-    if (seen.has(payload.dedupKey)) continue;
-    seen.add(payload.dedupKey);
-    evictSeenIfNeeded(seen);
-
-    try {
-      await processThreadMessage(payload);
-    } catch (error) {
-      // keep workflow alive for later messages
-      await logThreadProcessingFailure(payload, error);
-    }
-  }
+  const { workflowRunId } = getWorkflowMetadata();
+  await processThreadPayloadStream(hook, workflowRunId);
 }
 ```
 
-### D. Step (`processThreadMessage`)
+### D. Step (`thread-steps.ts`)
 
 Rules:
 
-1. Mark with `"use step"`.
-2. Set `processThreadMessage.maxRetries = 1`.
-3. Dynamically import `@/chat/bot` and call `bot.registerSingleton()`.
-4. Rehydrate attachment `fetchData` from `url` before runtime call.
-5. Dispatch by `kind` to `appSlackRuntime`.
+1. Keep step code in explicit step functions:
+   - `processThreadMessageStep(...)`
+   - `logThreadMessageFailureStep(...)`
+2. Mark step functions with `"use step"`.
+3. Set `processThreadMessageStep.maxRetries = 1`.
+4. Dynamically import `@/chat/bot` and call `bot.registerSingleton()`.
+5. Rehydrate attachment `fetchData` from `url` before runtime call.
+6. Dispatch by `kind` to `appSlackRuntime`.
 
 Attachment rehydration contract:
 
@@ -262,7 +260,6 @@ Required event names:
 - `workflow_route_start_attempt`
 - `workflow_route_resume_retry`
 - `workflow_route_failed`
-- `workflow_message_processed`
 - `workflow_message_failed`
 
 Required span boundaries:
@@ -288,11 +285,13 @@ Required correlation attributes when available:
 | `src/chat/bot.ts` | Register Chat singleton at construction-time (with test-safe compatibility for mocked Chat instances). |
 | `src/chat/state.ts` | Expose helper for atomic ingress dedupe claim using Redis `SET NX`. |
 | `src/chat/workflow/types.ts` | Add payload contract types. |
-| `src/chat/workflow/thread-workflow.ts` | Add hook definition, workflow loop, step dispatcher, dedupe set, attachment rehydration. |
+| `src/chat/workflow/thread-workflow.ts` | Keep workflow-only orchestration: hook definition, dedupe loop, direct calls to explicit step functions. |
+| `src/chat/workflow/thread-steps.ts` | Add all step IO: singleton registration, attachment rehydration, runtime dispatch, and failure logging. |
 | `src/chat/workflow/router.ts` | Add resume-or-start router with bounded retry. |
 | `src/chat/chat-background-patch.ts` | Replace `handleIncomingMessage` call path in `processMessage` with routing algorithm above. |
-| `tests/integration/workflow/router.test.ts` | New tests for resume/start race paths and retry behavior. |
-| `tests/integration/workflow/thread-workflow.test.ts` | New tests for ordering, dedupe, and keep-alive-on-error behavior. |
+| `tests/unit/workflow/router.test.ts` | Unit tests for resume/start race paths and retry behavior. |
+| `tests/integration/workflow/thread-workflow.test.ts` | Validate orchestration ordering/dedupe/keep-alive behavior through real runtime step execution with fake agent output only. |
+| `tests/integration/workflow/thread-step-boundaries.test.ts` | Validate step-level Slack/runtime side effects through real runtime wiring. |
 | `tests/integration/slack/chat-background-routing.test.ts` | Extend with routing classification and dedupe coverage. |
 
 ## Verification Plan

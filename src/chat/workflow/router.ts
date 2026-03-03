@@ -11,6 +11,14 @@ interface ResumeAttemptResult {
   runId?: string;
 }
 
+function getPayloadChannelId(payload: ThreadMessagePayload): string | undefined {
+  return payload.thread.channelId;
+}
+
+function getPayloadUserId(payload: ThreadMessagePayload): string | undefined {
+  return payload.message.author?.userId;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -81,8 +89,8 @@ export async function routeToThreadWorkflow(
   return withContext(
     {
       slackThreadId: normalizedThreadId,
-      slackChannelId: payload.thread.channelId,
-      slackUserId: payload.message.author.userId
+      slackChannelId: getPayloadChannelId(payload),
+      slackUserId: getPayloadUserId(payload)
     },
     async () => {
       const firstResumeAttempt = await attemptResumeHook(normalizedThreadId, payload);

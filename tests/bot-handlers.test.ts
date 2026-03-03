@@ -365,6 +365,119 @@ describe("bot handlers (integration)", () => {
     }
   });
 
+  it("thread title: ignores Slack permission errors when setting title", async () => {
+    const { appSlackRuntime, setBotDepsForTests, bot } = await import("@/chat/bot");
+    const fakeAdapter = new FakeSlackAdapter();
+    fakeAdapter.setAssistantTitle = async () => {
+      const error = new Error("An API error occurred: no_permission") as Error & {
+        data?: { error?: string };
+      };
+      error.data = { error: "no_permission" };
+      throw error;
+    };
+    const originalGetAdapter = (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter?.bind(bot);
+    (bot as unknown as { getAdapter: (name: string) => unknown }).getAdapter = (name: string): unknown => {
+      if (name === "slack") return fakeAdapter;
+      return originalGetAdapter ? originalGetAdapter(name) : undefined;
+    };
+
+    setBotDepsForTests({
+      completeText: async () => ({ text: "Permission Safe Title", message: { role: "assistant", content: "" } }) as any,
+      generateAssistantReply: async () => ({
+        text: "This reply should still succeed.",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "test-model",
+          outcome: "success" as const,
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true
+        }
+      }),
+      listThreadReplies: async () => []
+    });
+
+    const thread = createTestThread({ id: "slack:D_TITLE3:1700000000.000" });
+
+    try {
+      await expect(
+        appSlackRuntime.handleNewMention(
+          thread,
+          createTestMessage({
+            id: "msg-title-3",
+            threadId: "slack:D_TITLE3:1700000000.000",
+            text: "title this thread please",
+            isMention: true
+          })
+        )
+      ).resolves.toBeUndefined();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(thread.posts.length).toBeGreaterThan(0);
+    } finally {
+      (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
+    }
+  });
+
+  it("subscribed message: does not include newer thread messages in turn context", async () => {
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    const capturedContexts: Array<string | undefined> = [];
+    setBotDepsForTests({
+      completeObject: async () =>
+        ({
+          object: { should_reply: true, confidence: 1, reason: "follow-up" },
+          text: '{"should_reply":true,"confidence":1,"reason":"follow-up"}'
+        }) as any,
+      generateAssistantReply: async (_prompt, context) => {
+        capturedContexts.push(context?.conversationContext);
+        return {
+          text: "Responding to first message only.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "test-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
+      },
+      listThreadReplies: async () => []
+    });
+
+    const threadId = "slack:D_ORDER:1700000000.000";
+    const thread = createTestThread({ id: threadId });
+    const firstMessage = createTestMessage({
+      id: "1700000000.100",
+      threadId,
+      text: "you work now?",
+      isMention: false
+    });
+    const laterMessage = createTestMessage({
+      id: "1700000000.200",
+      threadId,
+      text: "hello",
+      isMention: false
+    });
+
+    Object.defineProperty(thread, "messages", {
+      configurable: true,
+      get() {
+        return (async function* () {
+          // Chat SDK thread iterators are newest-first.
+          yield laterMessage;
+          yield firstMessage;
+        })();
+      }
+    });
+
+    await appSlackRuntime.handleSubscribedMessage(thread, firstMessage);
+
+    expect(capturedContexts).toHaveLength(1);
+    expect(capturedContexts[0]).not.toContain("hello");
+  });
+
   it("multi-turn state continuity: second turn sees first turn's conversation state", async () => {
     const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     let turnCount = 0;

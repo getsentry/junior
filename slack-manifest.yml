@@ -30,6 +30,7 @@ oauth_config:
       - groups:read
       - im:history
       - im:read
+      - im:write
       - lists:read
       - lists:write
       - mpim:history

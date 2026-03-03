@@ -39,6 +39,16 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 }
 
 describe("slack list tools", () => {
+  it("does not expose model-selectable list_id in schema", () => {
+    const tool = createSlackListGetItemsTool(createToolState());
+    expect(tool.inputSchema).toMatchObject({
+      properties: {
+        limit: expect.any(Object)
+      }
+    });
+    expect((tool.inputSchema as { properties?: Record<string, unknown> }).properties?.list_id).toBeUndefined();
+  });
+
   it("returns an actionable error when list context is unavailable", async () => {
     const tool = createSlackListGetItemsTool(createToolState());
 
@@ -48,7 +58,7 @@ describe("slack list tools", () => {
 
     expect(result).toEqual({
       ok: false,
-      error: "No list_id provided and no prior list found in thread state"
+      error: "No active list found in artifact context"
     });
     expect(getCapturedSlackApiCalls("slackLists.items.list")).toHaveLength(0);
   });
