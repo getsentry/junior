@@ -1103,15 +1103,15 @@ async function shouldReplyInSubscribedThread(args: {
 }): Promise<{ shouldReply: boolean; reason: string }> {
   const text = args.text.trim();
   const rawText = args.rawText.trim();
+
+  if (args.isExplicitMention) {
+    return { shouldReply: true, reason: "explicit mention" };
+  }
   if (!text && !args.hasAttachments) {
     return { shouldReply: false, reason: "empty message" };
   }
   if (!text && args.hasAttachments) {
     return { shouldReply: true, reason: "attachment" };
-  }
-
-  if (args.isExplicitMention) {
-    return { shouldReply: true, reason: "explicit mention" };
   }
 
   try {
@@ -1701,7 +1701,6 @@ bot.onAppHomeOpened((event) =>
         await publishAppHomeView(getSlackClient(), event.userId, getUserTokenStore());
       } catch (error) {
         logException(error, "app_home_opened_failed", { slackUserId: event.userId });
-        throw error;
       }
     }
   )
@@ -1723,7 +1722,6 @@ bot.onAction("app_home_disconnect", (event) => {
         logException(error, "app_home_disconnect_failed", { slackUserId: userId }, {
           "app.credential.provider": provider
         });
-        throw error;
       }
     }
   );
