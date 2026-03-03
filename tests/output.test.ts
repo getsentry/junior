@@ -99,6 +99,14 @@ async function collectStream(stream: AsyncIterable<string>): Promise<string> {
   return result;
 }
 
+async function collectChunks(stream: AsyncIterable<string>): Promise<string[]> {
+  const chunks: string[] = [];
+  for await (const chunk of stream) {
+    chunks.push(chunk);
+  }
+  return chunks;
+}
+
 async function* chunksToIterable(chunks: string[]): AsyncIterable<string> {
   for (const chunk of chunks) {
     yield chunk;
@@ -142,5 +150,39 @@ describe("createNormalizingStream", () => {
     const stream = createNormalizingStream(chunksToIterable(chunks), ensureBlockSpacing);
     const result = await collectStream(stream);
     expect(result).toBe("hello");
+  });
+
+  it("yields pre-newline content immediately", async () => {
+    const chunks = ["Hello", " world", "!\nNext line"];
+    const stream = createNormalizingStream(chunksToIterable(chunks), ensureBlockSpacing);
+    const yielded = await collectChunks(stream);
+    // First three chunks have no newline yet — content should be yielded incrementally
+    expect(yielded[0]).toBe("Hello");
+    expect(yielded[1]).toBe(" world");
+    // Final output should still match full normalization
+    expect(yielded.join("")).toBe(ensureBlockSpacing("Hello world!\nNext line"));
+  });
+
+  it("transitions correctly from raw to normalized when first newline arrives", async () => {
+    // "intro\n- item" triggers ensureBlockSpacing to insert a blank line
+    const chunks = ["intro", "\n- item"];
+    const stream = createNormalizingStream(chunksToIterable(chunks), ensureBlockSpacing);
+    const yielded = await collectChunks(stream);
+    // "intro" is yielded immediately (pre-newline)
+    expect(yielded[0]).toBe("intro");
+    // When "\n- item" arrives, normalization inserts a blank line between prose and list.
+    // The normalized stable portion is "intro\n\n" but we already emitted "intro" (5 chars).
+    // So the delta from normalization is "\n\n" (chars 5..7), then final flush yields "- item".
+    expect(yielded.join("")).toBe(ensureBlockSpacing("intro\n- item"));
+  });
+
+  it("yields multiple pre-newline chunks then normalizes correctly", async () => {
+    const chunks = ["a", "b", "c", "\nd"];
+    const stream = createNormalizingStream(chunksToIterable(chunks), ensureBlockSpacing);
+    const yielded = await collectChunks(stream);
+    expect(yielded[0]).toBe("a");
+    expect(yielded[1]).toBe("b");
+    expect(yielded[2]).toBe("c");
+    expect(yielded.join("")).toBe(ensureBlockSpacing("abc\nd"));
   });
 });
