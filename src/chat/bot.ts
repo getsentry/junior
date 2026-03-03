@@ -1706,11 +1706,11 @@ bot.onAppHomeOpened((event) =>
   )
 );
 
-bot.onAction("app_home_disconnect", (event) => {
+bot.onAction("app_home_disconnect", async (event) => {
   const provider = event.value;
   if (!provider) return;
   const userId = event.user.userId;
-  return withSpan(
+  await withSpan(
     "workflow.app_home_disconnect",
     "workflow.app_home_disconnect",
     { slackUserId: userId },
