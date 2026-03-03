@@ -268,14 +268,14 @@ describe("bot handlers (integration)", () => {
       listThreadReplies: async () => []
     });
 
-    const thread = createTestThread({ id: "slack:C_TITLE:1700000000.000" });
+    const thread = createTestThread({ id: "slack:D_TITLE:1700000000.000" });
 
     try {
       await appSlackRuntime.handleNewMention(
         thread,
         createTestMessage({
           id: "msg-title-1",
-          threadId: "slack:C_TITLE:1700000000.000",
+          threadId: "slack:D_TITLE:1700000000.000",
           text: "How do I debug memory leaks in Node?",
           isMention: true
         })
@@ -291,7 +291,7 @@ describe("bot handlers (integration)", () => {
       );
       expect(generatedTitleCall).toBeDefined();
       expect(generatedTitleCall!.title).toBe("Debugging Node.js Memory Leaks");
-      expect(generatedTitleCall!.channelId).toBe("C_TITLE");
+      expect(generatedTitleCall!.channelId).toBe("D_TITLE");
       expect(generatedTitleCall!.threadTs).toBe("1700000000.000");
     } finally {
       (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
@@ -328,7 +328,7 @@ describe("bot handlers (integration)", () => {
       listThreadReplies: async () => []
     });
 
-    const thread = createTestThread({ id: "slack:C_TITLE2:1700000000.000" });
+    const thread = createTestThread({ id: "slack:D_TITLE2:1700000000.000" });
 
     try {
       // First turn — should trigger title generation
@@ -336,7 +336,7 @@ describe("bot handlers (integration)", () => {
         thread,
         createTestMessage({
           id: "msg-t2-1",
-          threadId: "slack:C_TITLE2:1700000000.000",
+          threadId: "slack:D_TITLE2:1700000000.000",
           text: "first message",
           isMention: true
         })
@@ -351,7 +351,7 @@ describe("bot handlers (integration)", () => {
         thread,
         createTestMessage({
           id: "msg-t2-2",
-          threadId: "slack:C_TITLE2:1700000000.000",
+          threadId: "slack:D_TITLE2:1700000000.000",
           text: "second message",
           isMention: true
         })

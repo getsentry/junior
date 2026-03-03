@@ -32,7 +32,7 @@ import { lookupSlackUser } from "@/chat/slack-user";
 import { getStateAdapter } from "@/chat/state";
 import { completeObject, completeText, GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { listThreadReplies } from "@/chat/slack-actions/channel";
-import { downloadPrivateSlackFile, getSlackClient } from "@/chat/slack-actions/client";
+import { downloadPrivateSlackFile, getSlackClient, isDmChannel } from "@/chat/slack-actions/client";
 import { publishAppHomeView } from "@/chat/app-home";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
 
@@ -1602,10 +1602,10 @@ async function replyToThread(
         });
         persistedAtLeastOnce = true;
 
-        const assistantMessageCount = preparedState.conversation.messages.filter(
-          (m) => m.role === "assistant"
-        ).length;
-        if (assistantMessageCount === 1 && channelId && threadTs) {
+        const isFirstAssistantReply =
+          preparedState.conversation.stats.compactedMessageCount === 0 &&
+          preparedState.conversation.messages.filter((m) => m.role === "assistant").length === 1;
+        if (isFirstAssistantReply && channelId && isDmChannel(channelId) && threadTs) {
           void generateThreadTitle(userText, reply.text)
             .then((title) => getSlackAdapter().setAssistantTitle(channelId, threadTs, title))
             .catch((error) => {
