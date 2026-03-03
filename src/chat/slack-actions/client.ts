@@ -1,4 +1,5 @@
 import { WebClient } from "@slack/web-api";
+import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/observability";
 
 // Slack canvas/list methods are not exposed by the current chat adapter public API,
@@ -100,10 +101,10 @@ let client: WebClient | null = null;
 function getClient(): WebClient {
   if (client) return client;
 
-  const token = process.env.SLACK_BOT_TOKEN;
+  const token = getSlackBotToken();
   if (!token) {
     throw new SlackActionError(
-      "SLACK_BOT_TOKEN is required for Slack canvas/list actions in this service",
+      "SLACK_BOT_TOKEN (or SLACK_BOT_USER_TOKEN) is required for Slack canvas/list actions in this service",
       "missing_token"
     );
   }
@@ -288,10 +289,10 @@ export async function uploadFilesToThread(args: {
 }
 
 export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
-  const token = process.env.SLACK_BOT_TOKEN;
+  const token = getSlackBotToken();
   if (!token) {
     throw new SlackActionError(
-      "SLACK_BOT_TOKEN is required for Slack file downloads in this service",
+      "SLACK_BOT_TOKEN (or SLACK_BOT_USER_TOKEN) is required for Slack file downloads in this service",
       "missing_token"
     );
   }

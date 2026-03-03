@@ -37,3 +37,4 @@ Co-Authored-By: (agent model name) <email>
 - `specs/logging/index.md` (logging/tracing spec index)
 - `specs/agent-stability-evaluation.md` (known stability risks and mitigations)
 - `specs/plugin-spec.md` (plugin architecture for self-contained provider integrations)
+- `specs/testing/index.md` (testing taxonomy and layer boundaries: unit/integration/eval)

@@ -10,5 +10,26 @@ export function isSlackEventsApiEnvelope(value: unknown): value is SlackEventsAp
   }
 
   const candidate = value as Partial<SlackEventsApiEnvelope>;
-  return candidate.type === "event_callback" && typeof candidate.event === "object";
+  if (
+    candidate.type !== "event_callback" ||
+    typeof candidate.token !== "string" ||
+    typeof candidate.team_id !== "string" ||
+    typeof candidate.api_app_id !== "string" ||
+    typeof candidate.event_id !== "string" ||
+    typeof candidate.event_time !== "number" ||
+    !candidate.event ||
+    typeof candidate.event !== "object"
+  ) {
+    return false;
+  }
+
+  const event = candidate.event as Partial<SlackEventsApiEnvelope["event"]>;
+  return (
+    (event.type === "app_mention" || event.type === "message") &&
+    typeof event.user === "string" &&
+    typeof event.text === "string" &&
+    typeof event.channel === "string" &&
+    typeof event.ts === "string" &&
+    typeof event.event_ts === "string"
+  );
 }

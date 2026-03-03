@@ -78,6 +78,29 @@ describe("runThreadMessageLoop", () => {
     ]);
   });
 
+  it("does not reprocess a duplicate dedupKey after an initial failure", async () => {
+    const payloadA = createPayload({ dedupKey: "slack:C123:1700000000.100:1" });
+    const payloadADuplicate = createPayload({ dedupKey: "slack:C123:1700000000.100:1" });
+    const payloadB = createPayload({ dedupKey: "slack:C123:1700000000.100:2" });
+    const processed: string[] = [];
+    const failures: string[] = [];
+
+    await runThreadMessageLoop(toAsyncIterable([payloadA, payloadADuplicate, payloadB]), {
+      processMessage: async (payload) => {
+        processed.push(payload.dedupKey);
+        if (payload.dedupKey.endsWith(":1")) {
+          throw new Error("first attempt failed");
+        }
+      },
+      onProcessingError: async ({ payload }) => {
+        failures.push(payload.dedupKey);
+      }
+    });
+
+    expect(processed).toEqual(["slack:C123:1700000000.100:1", "slack:C123:1700000000.100:2"]);
+    expect(failures).toEqual(["slack:C123:1700000000.100:1"]);
+  });
+
   it("evicts old dedupe keys after cap and allows replay outside dedupe window", async () => {
     const baseThread = "slack:C123:1700000000.100";
     const uniquePayloads = Array.from({ length: 550 }, (_, index) =>

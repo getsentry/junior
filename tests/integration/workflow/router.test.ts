@@ -96,6 +96,24 @@ describe("routeToThreadWorkflow", () => {
     setTimeoutSpy.mockRestore();
   });
 
+  it("handles concurrent route attempts for the same thread without dropping either call", async () => {
+    const payloadA = createPayload();
+    const payloadB = createPayload();
+    mocks.resume
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ hookId: "hook-1" });
+    mocks.start.mockResolvedValueOnce({ runId: "wrun-1" }).mockRejectedValueOnce(new Error("hook conflict"));
+
+    const routeA = routeToThreadWorkflow("slack:C123:1700000000.100", payloadA);
+    const routeB = routeToThreadWorkflow("slack:C123:1700000000.100", payloadB);
+    await vi.runAllTimersAsync();
+
+    await expect(Promise.all([routeA, routeB])).resolves.toEqual(["wrun-1", undefined]);
+    expect(mocks.start).toHaveBeenCalledTimes(2);
+    expect(mocks.resume).toHaveBeenCalledTimes(4);
+  });
+
   it("throws when all resume attempts fail", async () => {
     mocks.resume.mockResolvedValue(null);
     mocks.start.mockImplementationOnce(async () => {

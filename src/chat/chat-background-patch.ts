@@ -284,6 +284,7 @@ export function installChatBackgroundPatch(): void {
         }
       } catch (err) {
         this.logger?.error?.("Message processing error", { error: err, threadId });
+        throw err;
       }
     };
 

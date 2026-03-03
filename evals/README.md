@@ -8,11 +8,17 @@ Evals are end-to-end Slack conversation evaluations.
 - We run the real runtime/harness against those fixtures.
 - We score outcomes with an LLM judge via `vitest-evals`.
 
-## Slack Test Taxonomy
+## Layer Boundaries
 
-- `tests/integration/*`: Slack HTTP contract tests using MSW (`queueSlackApiResponse`, `getCapturedSlackApiCalls`, request payload assertions).
+Testing taxonomy and layer contracts are defined in:
+- `specs/testing/index.md`
+- `specs/testing/evals-spec.md`
+- `specs/testing/integration-spec.md`
+
+Quick mapping:
+- `tests/integration/*`: Slack/runtime integration and HTTP contract tests.
 - `evals/*`: Conversation-level behavior and quality scoring through the runtime harness.
-- `tests/*` (non-integration): Unit and domain tests without Slack HTTP contract assertions.
+- `tests/unit/*` (or non-integration tests): isolated logic/invariant tests.
 
 This separation is enforced by `pnpm run test:slack-boundary`.
 
@@ -24,8 +30,8 @@ This separation is enforced by `pnpm run test:slack-boundary`.
 
 Not in scope:
 
-- Isolated unit behavior (belongs in `tests/`).
-- Mock-only prompt snapshots that bypass runtime flow.
+- Isolated unit behavior (belongs in unit tests).
+- Low-level Slack HTTP payload contract checks (belongs in integration tests).
 
 ## Sources Of Truth
 

@@ -7,7 +7,7 @@ import {
   createAppSlackRuntime,
   type AppRuntimeAssistantLifecycleEvent
 } from "@/chat/app-runtime";
-import { botConfig } from "@/chat/config";
+import { botConfig, getSlackBotToken, getSlackClientId, getSlackClientSecret, getSlackSigningSecret } from "@/chat/config";
 import { buildConversationStatePatch, coerceThreadConversationState } from "@/chat/conversation-state";
 import type {
   ConversationCompaction,
@@ -1226,7 +1226,36 @@ async function shouldReplyInSubscribedThread(args: {
 const createdBot = new Chat<{ slack: SlackAdapter }>({
   userName: botConfig.userName,
   adapters: {
-    slack: createSlackAdapter()
+    slack: (() => {
+      const signingSecret = getSlackSigningSecret();
+      const botToken = getSlackBotToken();
+      const clientId = getSlackClientId();
+      const clientSecret = getSlackClientSecret();
+
+      logInfo(
+        "slack_adapter_boot_config",
+        {},
+        {
+          "app.slack.has_signing_secret": Boolean(signingSecret),
+          "app.slack.has_bot_token": Boolean(botToken),
+          "app.slack.has_client_id": Boolean(clientId),
+          "app.slack.has_client_secret": Boolean(clientSecret),
+          "app.slack.mode": botToken ? "single_workspace" : "multi_workspace"
+        },
+        "Resolved Slack adapter credentials at boot"
+      );
+
+      if (!signingSecret) {
+        throw new Error("SLACK_SIGNING_SECRET is required");
+      }
+
+      return createSlackAdapter({
+        signingSecret,
+        ...(botToken ? { botToken } : {}),
+        ...(clientId ? { clientId } : {}),
+        ...(clientSecret ? { clientSecret } : {})
+      });
+    })()
   },
   state: getStateAdapter()
 });

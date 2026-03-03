@@ -6,6 +6,11 @@ const DEDUP_TRIM_SIZE = Math.floor(MAX_DEDUP_KEYS / 2);
 
 export const threadMessageHook = defineHook<ThreadMessagePayload>();
 
+async function ensureChatSingletonRegistered(): Promise<void> {
+  const { bot } = await import("@/chat/bot");
+  bot.registerSingleton();
+}
+
 function trimSeenDedupKeys(seen: Set<string>): void {
   if (seen.size <= MAX_DEDUP_KEYS) {
     return;
@@ -144,7 +149,8 @@ export async function processThreadMessage(payload: ThreadMessagePayload): Promi
         "workflow_message_processed",
         {},
         {
-          "app.workflow.message_kind": payload.kind
+          "app.workflow.message_kind": payload.kind,
+          "messaging.message.id": payload.message.id
         },
         "Thread workflow step processed message"
       );
@@ -197,6 +203,7 @@ export async function runThreadMessageLoop(
 
 export async function slackThreadWorkflow(normalizedThreadId: string): Promise<void> {
   "use workflow";
+  await ensureChatSingletonRegistered();
   const { workflowRunId } = getWorkflowMetadata();
 
   const hook = threadMessageHook.create({

@@ -99,6 +99,14 @@ function shouldSuppressInfoLog(level: LogLevel): boolean {
   return level === "info" && getSentryEnvironment() === "production";
 }
 
+function shouldEmitConsole(level: LogLevel): boolean {
+  if (process.env.NODE_ENV === "test") {
+    return level === "error";
+  }
+
+  return getSentryEnvironment() !== "production";
+}
+
 function redactSecrets(input: string): string {
   let out = input;
   for (const pattern of SECRETS_RE) {
@@ -270,15 +278,37 @@ function emitSentry(level: LogLevel, body: string, attributes: LogAttributes): v
   });
 }
 
+function emitConsole(level: LogLevel, eventName: string, body: string, attributes: LogAttributes): void {
+  if (!shouldEmitConsole(level)) {
+    return;
+  }
+
+  const line = `[junior][${level}] ${eventName}: ${body}`;
+  if (level === "error") {
+    console.error(line, attributes);
+    return;
+  }
+  if (level === "warn") {
+    console.warn(line, attributes);
+    return;
+  }
+  if (level === "info") {
+    console.info(line, attributes);
+    return;
+  }
+  console.debug(line, attributes);
+}
+
 function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown> = {}, body?: string): void {
   const contextAttributes = contextStorage.getStore() ?? {};
   const traceAttributes = getTraceCorrelationAttributes();
-  const message = body ? redactSecrets(body) : eventName;
+  const normalizedEventName = toSnakeCase(eventName);
+  const message = body ? redactSecrets(body) : normalizedEventName;
   const attributes = mergeAttributes(
     contextAttributes,
     traceAttributes,
     {
-      "event.name": toSnakeCase(eventName),
+      "event.name": normalizedEventName,
       ...attrs
     }
   );
@@ -287,7 +317,7 @@ function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown>
     try {
       sink({
         level,
-        eventName: toSnakeCase(eventName),
+        eventName: normalizedEventName,
         body: message,
         attributes
       });
@@ -296,6 +326,7 @@ function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown>
     }
   }
 
+  emitConsole(level, normalizedEventName, message, attributes);
   emitSentry(level, message, attributes);
 }
 

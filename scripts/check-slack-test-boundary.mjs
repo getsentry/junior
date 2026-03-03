@@ -13,6 +13,11 @@ const FORBIDDEN_EVAL_PATTERNS = [
   /@\/chat\/slack-actions\//
 ];
 
+const INTEGRATION_BEHAVIOR_ROOT = path.join(repoRoot, "tests", "integration", "slack");
+const FORBIDDEN_INTEGRATION_BEHAVIOR_PATTERNS = [
+  /\bvi\.mock\(/
+];
+
 async function pathExists(targetPath) {
   try {
     await fs.access(targetPath);
@@ -97,8 +102,37 @@ async function checkEvalSources() {
   return violations;
 }
 
+async function checkIntegrationBehaviorSources() {
+  if (!(await pathExists(INTEGRATION_BEHAVIOR_ROOT))) {
+    return [];
+  }
+
+  const violations = [];
+  const files = await listFilesRecursive(INTEGRATION_BEHAVIOR_ROOT);
+  const testFiles = files.filter((filePath) => /\.test\.[cm]?[jt]sx?$/.test(filePath));
+
+  for (const filePath of testFiles) {
+    const source = await fs.readFile(filePath, "utf8");
+    for (const pattern of FORBIDDEN_INTEGRATION_BEHAVIOR_PATTERNS) {
+      const lineNumbers = findPatternLineNumbers(source, pattern);
+      if (lineNumbers.length === 0) {
+        continue;
+      }
+      violations.push(
+        `Forbidden integration behavior pattern "${pattern.source}" in ${toRelative(filePath)} at line(s): ${lineNumbers.join(", ")}`
+      );
+    }
+  }
+
+  return violations;
+}
+
 async function main() {
-  const violations = [...(await checkMswDirectory()), ...(await checkEvalSources())];
+  const violations = [
+    ...(await checkMswDirectory()),
+    ...(await checkEvalSources()),
+    ...(await checkIntegrationBehaviorSources())
+  ];
 
   if (violations.length > 0) {
     console.error("Slack test boundary check failed:");

@@ -43,6 +43,9 @@ importers:
       '@vercel/sandbox':
         specifier: ^1.7.1
         version: 1.7.1
+      '@workflow/serde':
+        specifier: 4.1.0-beta.2
+        version: 4.1.0-beta.2
       ai:
         specifier: ^6.0.103
         version: 6.0.103(zod@4.3.6)

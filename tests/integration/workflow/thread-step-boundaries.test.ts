@@ -100,7 +100,14 @@ describe("thread workflow step boundaries", () => {
     const content = await attachment.fetchData?.();
     expect(content).toEqual(Buffer.from("rehydrated-data"));
     expect(mocks.downloadPrivateSlackFile).toHaveBeenCalledWith("https://files.slack.com/private/new-file");
-    expect(mocks.logInfo).toHaveBeenCalledTimes(1);
+    expect(mocks.logInfo).toHaveBeenCalledWith(
+      "workflow_message_processed",
+      {},
+      expect.objectContaining({
+        "messaging.message.id": "1700000000.300"
+      }),
+      "Thread workflow step processed message"
+    );
   });
 
   it("dispatches subscribed messages and keeps existing attachment fetchers intact", async () => {
@@ -145,5 +152,46 @@ describe("thread workflow step boundaries", () => {
 
     expect(processed).toEqual(["slack:C123:1700000000.100:1", "slack:C123:1700000000.100:2"]);
     expect(mocks.logError).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps workflow loop alive when attachment download fails during handler execution", async () => {
+    mocks.downloadPrivateSlackFile.mockRejectedValueOnce(new Error("download failed"));
+    mocks.handleNewMention.mockImplementation(async (...args: unknown[]) => {
+      const message = args[1] as ThreadMessagePayload["message"];
+      const attachment = message.attachments[0];
+      if (attachment?.fetchData) {
+        await attachment.fetchData();
+      }
+    });
+
+    const payloadA = createPayload({
+      dedupKey: "slack:C123:1700000000.100:1",
+      message: {
+        id: "1700000000.500",
+        author: { userId: "U_TEST" },
+        attachments: [{ url: "https://files.slack.com/private/failing-file" }]
+      } as unknown as ThreadMessagePayload["message"]
+    });
+    const payloadB = createPayload({
+      dedupKey: "slack:C123:1700000000.100:2",
+      message: {
+        id: "1700000000.600",
+        author: { userId: "U_TEST" },
+        attachments: []
+      } as unknown as ThreadMessagePayload["message"]
+    });
+
+    await runThreadMessageLoop(toAsyncIterable([payloadA, payloadB]));
+
+    expect(mocks.handleNewMention).toHaveBeenCalledTimes(2);
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "workflow_message_failed",
+      {},
+      expect.objectContaining({
+        "messaging.message.id": "1700000000.500",
+        "error.message": "download failed"
+      }),
+      "Thread workflow step failed"
+    );
   });
 });

@@ -1,3 +1,5 @@
+import { getSlackBotToken } from "@/chat/config";
+
 interface SlackUserLookupResult {
   userName?: string;
   fullName?: string;
@@ -33,7 +35,7 @@ export async function lookupSlackUser(userId?: string): Promise<SlackUserLookupR
     return cached;
   }
 
-  const token = process.env.SLACK_BOT_TOKEN;
+  const token = getSlackBotToken();
   if (!token) {
     return null;
   }
