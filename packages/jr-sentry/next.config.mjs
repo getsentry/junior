@@ -7,9 +7,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { withWorkflow } = workflowNext;
 
 export default withWorkflow(
-  withJunior({
-    turbopack: {
-      root: path.resolve(__dirname, "../..")
+  withJunior(
+    {
+      turbopack: {
+        root: path.resolve(__dirname, "../..")
+      }
+    },
+    {
+      dataDir: "./packages/jr-sentry/data",
+      skillsDir: "./packages/jr-sentry/skills",
+      pluginsDir: "./packages/jr-sentry/plugins"
     }
-  })
+  )
 );
