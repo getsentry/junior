@@ -3,6 +3,7 @@ import path from "node:path";
 
 const projectRoot = process.cwd();
 const requiredServerFilesPath = path.join(projectRoot, ".next", "required-server-files.json");
+const runtimeAssetsRoot = path.join(projectRoot, ".next", "server", "runtime-assets");
 
 if (!fs.existsSync(requiredServerFilesPath)) {
   throw new Error(`Missing required-server-files.json: ${requiredServerFilesPath}`);
@@ -31,3 +32,10 @@ if (!apiIncludes.includes(expectedInclude) || !wellKnownIncludes.includes(expect
 }
 
 console.log("Verified build config: JUNIOR_SOUL is inlined and trace includes are configured.");
+
+const copiedSoul = path.join(runtimeAssetsRoot, "data", "SOUL.md");
+if (!fs.existsSync(copiedSoul)) {
+  throw new Error(`Copied runtime assets are missing SOUL.md: ${copiedSoul}`);
+}
+
+console.log("Verified runtime assets: data/SOUL.md copied into .next/server/runtime-assets.");

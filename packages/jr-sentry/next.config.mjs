@@ -19,6 +19,7 @@ export default withWorkflow(
       env: {
         JUNIOR_SOUL: soul
       },
+      outputFileTracingRoot: path.resolve(__dirname, "../.."),
       outputFileTracingIncludes: {
         "/api/**": [
           "./packages/jr-sentry/data/**/*",
