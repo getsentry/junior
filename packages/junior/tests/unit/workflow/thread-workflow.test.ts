@@ -67,6 +67,20 @@ describe("slackThreadWorkflow", () => {
     expect(mocks.logThreadMessageFailureStep).not.toHaveBeenCalled();
   });
 
+  it("treats non-Error hook-conflict payloads as benign duplicate-start races", async () => {
+    mocks.createHook.mockReturnValueOnce((async function* () {
+      throw {
+        name: "WorkflowRuntimeError",
+        slug: "hook-conflict",
+        message: 'Hook token "slack:C123:1700000000.100" is already in use by another workflow'
+      };
+    })());
+
+    await expect(slackThreadWorkflow("slack:C123:1700000000.100")).resolves.toBeUndefined();
+    expect(mocks.processThreadMessageStep).not.toHaveBeenCalled();
+    expect(mocks.logThreadMessageFailureStep).not.toHaveBeenCalled();
+  });
+
   it("logs per-message failures and continues loop", async () => {
     const payload = createPayload();
     mocks.createHook.mockReturnValueOnce(payloadStream(payload));

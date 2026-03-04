@@ -12,15 +12,30 @@ const DEDUP_TRIM_SIZE = Math.floor(MAX_DEDUP_KEYS / 2);
 export const threadMessageHook = defineHook<ThreadMessagePayload>();
 
 function isHookConflictError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
+  if (error == null) {
     return false;
   }
 
-  const message = error.message.toLowerCase();
+  const typed = error as {
+    message?: unknown;
+    name?: unknown;
+    slug?: unknown;
+    cause?: unknown;
+  };
+  const message = String(typed.message ?? "").toLowerCase();
+  const name = String(typed.name ?? "").toLowerCase();
+  const slug = String(typed.slug ?? "").toLowerCase();
+
+  if (slug === "hook-conflict") {
+    return true;
+  }
+
   return (
+    (name === "workflowruntimeerror" && message.includes("hook token")) ||
     message.includes("already in use") ||
     message.includes("hook token") ||
-    message.includes("hook conflict")
+    message.includes("hook conflict") ||
+    isHookConflictError(typed.cause)
   );
 }
 
