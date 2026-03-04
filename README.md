@@ -83,32 +83,32 @@ plugins/ (optional)
 
 4. Add wrapper files:
 
-`app/api/[...path]/route.ts`:
+`app/api/[...path]/route.js`:
 
-```ts
+```js
 export { GET, POST } from "junior/handler";
 export const runtime = "nodejs";
 ```
 
-`next.config.ts`:
+`next.config.mjs`:
 
-```ts
+```js
 import { withJunior } from "junior/config";
 
 export default withJunior();
 ```
 
-`instrumentation.ts`:
+`instrumentation.js`:
 
-```ts
+```js
 export { register, onRequestError } from "junior/instrumentation";
 ```
 
 If your app doesn't already have a root app layout, add:
 
-`app/layout.tsx`:
+`app/layout.js`:
 
-```tsx
+```js
 export { default } from "junior/app/layout";
 ```
 
