@@ -79,7 +79,7 @@ describe("routeToThreadWorkflow", () => {
     expect(mocks.claimWorkflowStartupLease).toHaveBeenCalledWith(
       "slack:C123:1700000000.100",
       expect.any(String),
-      3000
+      15000
     );
     expect(mocks.resume).toHaveBeenCalledTimes(2);
     expect(mocks.resume).toHaveBeenNthCalledWith(1, "slack:C123:1700000000.100", payload);
@@ -172,37 +172,25 @@ describe("routeToThreadWorkflow", () => {
     expect(mocks.releaseWorkflowStartupLease).toHaveBeenCalledTimes(1);
   });
 
-  it("tries to become leader after follower retries are exhausted", async () => {
-    mocks.claimWorkflowStartupLease.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+  it("does not attempt fallback start after follower retries are exhausted", async () => {
+    mocks.claimWorkflowStartupLease.mockResolvedValueOnce(false);
     mocks.resume
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ hookId: "hook-1" });
-    mocks.start.mockResolvedValueOnce({ runId: "wrun-2" });
 
     const promise = routeToThreadWorkflow("slack:C123:1700000000.100", createPayload());
     await vi.runAllTimersAsync();
     await promise;
 
-    expect(mocks.claimWorkflowStartupLease).toHaveBeenNthCalledWith(
-      1,
-      "slack:C123:1700000000.100",
-      expect.any(String),
-      3000
-    );
-    expect(mocks.claimWorkflowStartupLease).toHaveBeenNthCalledWith(
-      2,
-      "slack:C123:1700000000.100",
-      expect.any(String),
-      3000
-    );
-    expect(mocks.start).toHaveBeenCalledTimes(1);
+    expect(mocks.claimWorkflowStartupLease).toHaveBeenCalledTimes(1);
+    expect(mocks.start).not.toHaveBeenCalled();
   });
 
-  it("uses final safety resume window when fallback lease is contended", async () => {
-    mocks.claimWorkflowStartupLease.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+  it("uses final safety resume window when follower wait is exhausted", async () => {
+    mocks.claimWorkflowStartupLease.mockResolvedValueOnce(false);
     mocks.resume
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null)
@@ -220,7 +208,7 @@ describe("routeToThreadWorkflow", () => {
   });
 
   it("fails only after final safety resume window is exhausted", async () => {
-    mocks.claimWorkflowStartupLease.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+    mocks.claimWorkflowStartupLease.mockResolvedValueOnce(false);
     mocks.resume.mockResolvedValue(null);
 
     const promise = routeToThreadWorkflow("slack:C123:1700000000.100", createPayload());

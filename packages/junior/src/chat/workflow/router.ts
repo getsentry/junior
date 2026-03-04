@@ -5,7 +5,7 @@ import { slackThreadWorkflow, threadMessageHook } from "@/chat/workflow/thread-w
 const LEADER_POST_START_RESUME_DELAYS_MS = [250, 750, 1500] as const;
 const FOLLOWER_RESUME_DELAYS_MS = [250, 750, 1500] as const;
 const FINAL_SAFETY_RESUME_DELAYS_MS = [250, 500] as const;
-const STARTUP_LEASE_TTL_MS = 3000;
+const STARTUP_LEASE_TTL_MS = 15000;
 const WARN_RETRY_ATTEMPT = 3;
 
 type StartError = Error & { code?: string; name?: string };
@@ -238,32 +238,10 @@ export async function routeToThreadWorkflow(
         FOLLOWER_RESUME_DELAYS_MS,
         "follower_wait"
       );
-    } catch (followerRetryError) {
+    } catch {
       // Scenario C: Follower wait window expired without a resumable hook.
-      // Try to become the new leader in case the original leader crashed/stalled.
-      const fallbackOwnerToken = createStartupLeaseToken();
-      const claimedFallbackLease = await claimWorkflowStartupLeaseSafe(
-        normalizedThreadId,
-        fallbackOwnerToken,
-        STARTUP_LEASE_TTL_MS
-      );
-      if (claimedFallbackLease) {
-        try {
-          return await startWorkflowAndRetryResume({
-            normalizedThreadId,
-            payload,
-            startupRole: "leader",
-            resumeMissReason: classifyResumeMiss(followerRetryError),
-            resumeMissError: followerRetryError
-          });
-        } finally {
-          await releaseWorkflowStartupLeaseSafe(normalizedThreadId, fallbackOwnerToken);
-        }
-      }
-
-      // Scenario D: Fallback lease is also contended, meaning another caller is
-      // actively handling startup. Do one final bounded resume window so this
-      // payload is not dropped due to contention timing.
+      // Do one final bounded resume window only; avoid starting a duplicate
+      // workflow run for the same hook token.
       return await retryResume(
         normalizedThreadId,
         payload,
