@@ -4,7 +4,7 @@ import path from "node:path";
 import { builtinModules } from "node:module";
 
 const projectRoot = process.cwd();
-const juniorDistRoot = path.resolve(projectRoot, "../junior/dist");
+const distRoot = path.join(projectRoot, "dist");
 const sourceExts = [".js", ".mjs", ".cjs"];
 
 const builtinSet = new Set([
@@ -82,7 +82,14 @@ async function resolveRelativeImport(fromFile, specifier) {
   return undefined;
 }
 
-const distFiles = await walk(juniorDistRoot);
+try {
+  await fs.access(distRoot);
+} catch {
+  console.error("dist/ does not exist. Run 'pnpm run build:pkg' first.");
+  process.exit(1);
+}
+
+const distFiles = await walk(distRoot);
 const entryFiles = [];
 for (const file of distFiles) {
   const source = await fs.readFile(file, "utf8");
@@ -120,7 +127,7 @@ while (queue.length > 0) {
 }
 
 if (violations.length > 0) {
-  console.error("Workflow dist boundary check failed for junior package:\n");
+  console.error("Workflow dist boundary check failed:\n");
   for (const violation of violations) {
     const rel = path.relative(projectRoot, violation.file);
     console.error(`- ${rel}: imports Node builtin '${violation.specifier}'`);
@@ -128,6 +135,4 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log(
-  `Workflow dist boundary check passed: ${entryFiles.length} entries, ${visited.size} linked files inspected.`
-);
+console.log(`Workflow dist boundary check passed: ${entryFiles.length} entries, ${visited.size} linked files inspected.`);
