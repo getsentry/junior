@@ -26,10 +26,8 @@ describe("normalizeIncomingSlackThreadId", () => {
     ).toBe("slack:C123:1700000000.300");
   });
 
-  it("throws when slack thread context is not recoverable", () => {
-    expect(() => normalizeIncomingSlackThreadId("slack:D123:", {})).toThrow(
-      "Invalid Slack thread context"
-    );
+  it("returns original thread id when raw slack fields are missing", () => {
+    expect(normalizeIncomingSlackThreadId("slack:D123:", {})).toBe("slack:D123:");
   });
 
   it("returns non-slack thread ids as-is", () => {
