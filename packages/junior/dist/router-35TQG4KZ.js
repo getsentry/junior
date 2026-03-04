@@ -43,7 +43,7 @@ async function processThreadMessageStep(payload, workflowRunId) {
   const threadDeserializer = ThreadImpl[WORKFLOW_DESERIALIZE];
   const messageDeserializer = Message[WORKFLOW_DESERIALIZE];
   const [
-    { appSlackRuntime, bot },
+    { appSlackRuntime },
     { downloadPrivateSlackFile },
     {
       getStateAdapter,
@@ -53,7 +53,7 @@ async function processThreadMessageStep(payload, workflowRunId) {
       markWorkflowMessageStarted
     }
   ] = await Promise.all([
-    import("./bot-YQLHURDR.js"),
+    import("./bot-HU3MLBT7.js"),
     import("./client-6MQLGUUV.js"),
     import("./state-LYSMOIJZ.js")
   ]);
@@ -82,7 +82,6 @@ async function processThreadMessageStep(payload, workflowRunId) {
       return;
     }
   }
-  bot.registerSingleton();
   if (threadWasSerialized && !stateAdapterConnected) {
     await getStateAdapter().connect();
     stateAdapterConnected = true;

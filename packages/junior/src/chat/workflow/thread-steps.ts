@@ -63,7 +63,7 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
     WORKFLOW_DESERIALIZE
   ];
   const [
-    { appSlackRuntime, bot },
+    { appSlackRuntime },
     { downloadPrivateSlackFile },
     {
       getStateAdapter,
@@ -104,7 +104,6 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
     }
   }
 
-  bot.registerSingleton();
   // Serialized payloads require state adapter connectivity for ThreadImpl-backed state.
   // Connect once per runtime process to avoid repeated connect overhead on every step.
   if (threadWasSerialized && !stateAdapterConnected) {
