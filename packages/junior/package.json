@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "build:pkg": "tsup",
     "start": "next start",
     "test": "pnpm run test:slack-boundary && vitest run",
