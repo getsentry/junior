@@ -1,6 +1,6 @@
 import {
   POST
-} from "../chunk-T3FOR7K6.js";
+} from "../chunk-PWNJU3KC.js";
 import {
   GET
 } from "../chunk-4RBEYCOG.js";
@@ -8,7 +8,7 @@ import "../chunk-OXCKLXL3.js";
 
 // src/handlers/oauth-callback.ts
 async function loadOAuthRoute() {
-  return import("../route-ZYASKU6H.js");
+  return import("../route-VDW24YUN.js");
 }
 async function GET2(request, context) {
   const route = await loadOAuthRoute();

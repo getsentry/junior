@@ -68,7 +68,7 @@ async function processThreadMessageStep(payload, workflowRunId) {
       refreshWorkflowMessageProcessingOwnership
     }
   ] = await Promise.all([
-    import("./process-thread-message-runtime-BC4KVZU3.js"),
+    import("./process-thread-message-runtime-7FAJ7KQK.js"),
     import("./state-HQNMBF7O.js")
   ]);
   const resolvedWorkflowRunId = workflowRunId ?? getPayloadWorkflowRunId(payload);

@@ -17,7 +17,7 @@ import {
   publishAppHomeView,
   startOAuthFlow,
   truncateStatusText
-} from "./chunk-UMQMFADD.js";
+} from "./chunk-PJRX3DME.js";
 import {
   logException,
   logInfo,
@@ -108,7 +108,7 @@ var defaultWorkflowRoutingDeps = {
   getIsSubscribed: (threadId) => getStateAdapter().isSubscribed(threadId),
   logInfo,
   routeToThreadWorkflow: async (normalizedThreadId, payload) => {
-    const { routeToThreadWorkflow } = await import("./router-YD4VHXS6.js");
+    const { routeToThreadWorkflow } = await import("./router-S2V7ZVPP.js");
     return await routeToThreadWorkflow(normalizedThreadId, payload);
   }
 };
