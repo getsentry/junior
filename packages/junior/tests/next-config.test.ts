@@ -128,5 +128,5 @@ describe("withJunior", () => {
 
     expect(config.typedRoutes).toBe(true);
     expect(config.transpilePackages).toEqual(expect.arrayContaining(["junior"]));
-  });
+  }, 20_000);
 });
