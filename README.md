@@ -75,7 +75,69 @@ node bin/junior.mjs --home=./jr-sentry --port 3000
 
 ## Deploying your own bot
 
-Junior is available as an npm package. Create your own bot without touching Next.js internals:
+Junior is available as an npm package and integrates as standard Next.js wrappers.
+
+### Install into an existing Next.js app
+
+1. Install dependencies:
+
+```bash
+pnpm add junior
+pnpm add next react react-dom @sentry/nextjs
+```
+
+2. Add bot home files in your project root:
+
+```text
+config.toml
+SOUL.md
+skills/
+```
+
+3. Set `JUNIOR_HOME` in your scripts:
+
+```json
+{
+  "scripts": {
+    "dev": "JUNIOR_HOME=. next dev",
+    "build": "JUNIOR_HOME=. next build",
+    "start": "JUNIOR_HOME=. next start"
+  }
+}
+```
+
+4. Add wrapper files:
+
+`app/api/[...path]/route.ts`:
+
+```ts
+export { GET, POST } from "junior/handler";
+export const runtime = "nodejs";
+```
+
+`next.config.ts`:
+
+```ts
+import { withJunior } from "junior/config";
+
+export default withJunior();
+```
+
+`instrumentation.ts`:
+
+```ts
+export { register, onRequestError } from "junior/instrumentation";
+```
+
+If your app doesn't already have a root app layout, add:
+
+`app/layout.tsx`:
+
+```tsx
+export { default } from "junior/app/layout";
+```
+
+### Scaffold a new bot project
 
 ```bash
 npx junior init my-bot
@@ -90,10 +152,8 @@ This scaffolds a project with `config.toml`, `SOUL.md`, and an empty `skills/` d
 
 1. Push your project to GitHub.
 2. Import the repo in Vercel.
-3. Set **Build Command** to `junior build` and **Framework** to "Next.js".
-4. Add environment variables: `SLACK_BOT_TOKEN`, `REDIS_URL`, and optionally `NEXT_PUBLIC_SENTRY_DSN`.
-
-The `junior build` command generates the minimal Next.js shim files automatically. You do not need to write `app/` routes or `next.config.ts`.
+3. Set **Build Command** to `pnpm build` and **Framework** to "Next.js".
+4. Add environment variables: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `REDIS_URL`, and optionally `NEXT_PUBLIC_SENTRY_DSN`.
 
 ## Slack tunnel (Cloudflare)
 

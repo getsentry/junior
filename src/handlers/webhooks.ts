@@ -1,6 +1,5 @@
 import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
-import { bot } from "@/chat/bot";
 import {
   createRequestContext,
   logException,
@@ -11,7 +10,6 @@ import {
   withSpan
 } from "@/chat/observability";
 
-type Platform = keyof typeof bot.webhooks;
 type WebhookRouteContext = {
   params: Promise<{
     platform: string;
@@ -20,9 +18,15 @@ type WebhookRouteContext = {
 
 export const runtime = "nodejs";
 
+async function loadBot() {
+  const { bot } = await import("@/chat/bot");
+  return bot;
+}
+
 export async function POST(request: Request, context: WebhookRouteContext): Promise<Response> {
+  const bot = await loadBot();
   const { platform } = await context.params;
-  const handler = bot.webhooks[platform as Platform];
+  const handler = bot.webhooks[platform as keyof typeof bot.webhooks];
   const requestContext = createRequestContext(request, { platform });
   const requestUrl = new URL(request.url);
 
