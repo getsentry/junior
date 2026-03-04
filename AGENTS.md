@@ -10,7 +10,6 @@ Co-Authored-By: (agent model name) <email>
 ```
 
 ## Key Conventions
-- Load `slack-development` skill before implementing or modifying Slack-facing behavior (message formatting, ephemeral messages, thread routing, streaming UX, Chat SDK patterns).
 - Commit to `main` only.
 - Use `/commit` skill for any commit operation.
 - Use `/create-pr` skill for any PR creation operation.
