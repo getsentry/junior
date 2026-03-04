@@ -1,1 +1,2 @@
-export { POST, runtime } from "@/handlers/webhooks";
+export { POST } from "@/handlers/webhooks";
+export const runtime = "nodejs";
