@@ -6,6 +6,14 @@ import { logInfo } from "@/chat/observability";
 
 const MIN_LOCK_TTL_MS = 1000 * 60 * 5;
 const WORKFLOW_INGRESS_DEDUP_PREFIX = "junior:workflow_ingress";
+const WORKFLOW_STARTUP_LEASE_PREFIX = "junior:workflow_startup";
+const COMPARE_AND_DELETE_SCRIPT = `
+  if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+  else
+    return 0
+  end
+`;
 
 function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
   const acquireLock = async (threadId: string, ttlMs: number): Promise<Lock | null> => {
@@ -73,10 +81,38 @@ export function getStateAdapter(): StateAdapter {
 }
 
 export async function claimWorkflowIngressDedup(rawKey: string, ttlMs: number): Promise<boolean> {
+  await getStateAdapter().connect();
   const key = `${WORKFLOW_INGRESS_DEDUP_PREFIX}:${rawKey}`;
   const result = await getRedisStateAdapter().getClient().set(key, "1", {
     NX: true,
     PX: ttlMs
   });
   return result === "OK";
+}
+
+export async function claimWorkflowStartupLease(
+  normalizedThreadId: string,
+  ownerToken: string,
+  ttlMs: number
+): Promise<boolean> {
+  await getStateAdapter().connect();
+  const key = `${WORKFLOW_STARTUP_LEASE_PREFIX}:${normalizedThreadId}`;
+  const result = await getRedisStateAdapter().getClient().set(key, ownerToken, {
+    NX: true,
+    PX: ttlMs
+  });
+  return result === "OK";
+}
+
+export async function releaseWorkflowStartupLease(
+  normalizedThreadId: string,
+  ownerToken: string
+): Promise<boolean> {
+  await getStateAdapter().connect();
+  const key = `${WORKFLOW_STARTUP_LEASE_PREFIX}:${normalizedThreadId}`;
+  const result = await getRedisStateAdapter().getClient().eval(COMPARE_AND_DELETE_SCRIPT, {
+    keys: [key],
+    arguments: [ownerToken]
+  });
+  return result === 1;
 }

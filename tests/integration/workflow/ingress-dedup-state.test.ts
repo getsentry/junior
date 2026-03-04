@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-function createRedisState(setResult: "OK" | null) {
+function createRedisState(setResult: "OK" | null, evalResult = 1) {
   const set = vi.fn(async () => setResult);
+  const evalFn = vi.fn(async () => evalResult);
+  const connect = vi.fn(async () => undefined);
   return {
     adapter: {
-      connect: vi.fn(),
+      connect,
       disconnect: vi.fn(),
       subscribe: vi.fn(),
       unsubscribe: vi.fn(),
@@ -15,9 +17,11 @@ function createRedisState(setResult: "OK" | null) {
       get: vi.fn(async () => null),
       set: vi.fn(async () => undefined),
       delete: vi.fn(async () => undefined),
-      getClient: vi.fn(() => ({ set }))
+      getClient: vi.fn(() => ({ set, eval: evalFn }))
     },
-    set
+    connect,
+    set,
+    evalFn
   };
 }
 
@@ -43,6 +47,7 @@ describe("claimWorkflowIngressDedup", () => {
     const claimed = await claimWorkflowIngressDedup("slack:C123:1700000000.100:1700000000.200", 30_000);
 
     expect(claimed).toBe(true);
+    expect(redis.connect).toHaveBeenCalledTimes(1);
     expect(redis.set).toHaveBeenCalledWith(
       "junior:workflow_ingress:slack:C123:1700000000.100:1700000000.200",
       "1",
@@ -69,6 +74,61 @@ describe("claimWorkflowIngressDedup", () => {
     const claimed = await claimWorkflowIngressDedup("slack:C123:1700000000.100:1700000000.200", 30_000);
 
     expect(claimed).toBe(false);
+    expect(redis.connect).toHaveBeenCalledTimes(1);
     expect(redis.set).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("workflow startup lease helpers", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.REDIS_URL = "redis://localhost:6379";
+  });
+
+  it("claims startup lease keys via Redis SET NX PX with expected prefix", async () => {
+    const redis = createRedisState("OK");
+    vi.doMock("@chat-adapter/state-redis", () => ({
+      createRedisState: vi.fn(() => redis.adapter)
+    }));
+    vi.doMock("@/chat/config", () => ({
+      hasRedisConfig: vi.fn(() => true)
+    }));
+    vi.doMock("@/chat/observability", () => ({
+      logInfo: vi.fn()
+    }));
+
+    const { claimWorkflowStartupLease } = await import("@/chat/state");
+    const claimed = await claimWorkflowStartupLease("slack:C123:1700000000.100", "lease-token-1", 3000);
+
+    expect(claimed).toBe(true);
+    expect(redis.connect).toHaveBeenCalledTimes(1);
+    expect(redis.set).toHaveBeenCalledWith("junior:workflow_startup:slack:C123:1700000000.100", "lease-token-1", {
+      NX: true,
+      PX: 3000
+    });
+  });
+
+  it("releases startup lease only when owner token matches", async () => {
+    const redis = createRedisState("OK", 1);
+    vi.doMock("@chat-adapter/state-redis", () => ({
+      createRedisState: vi.fn(() => redis.adapter)
+    }));
+    vi.doMock("@/chat/config", () => ({
+      hasRedisConfig: vi.fn(() => true)
+    }));
+    vi.doMock("@/chat/observability", () => ({
+      logInfo: vi.fn()
+    }));
+
+    const { releaseWorkflowStartupLease } = await import("@/chat/state");
+    const released = await releaseWorkflowStartupLease("slack:C123:1700000000.100", "lease-token-1");
+
+    expect(released).toBe(true);
+    expect(redis.connect).toHaveBeenCalledTimes(1);
+    expect(redis.evalFn).toHaveBeenCalledTimes(1);
+    expect(redis.evalFn).toHaveBeenCalledWith(expect.any(String), {
+      keys: ["junior:workflow_startup:slack:C123:1700000000.100"],
+      arguments: ["lease-token-1"]
+    });
   });
 });

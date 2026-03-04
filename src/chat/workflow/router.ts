@@ -1,11 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { start } from "workflow/api";
+import { claimWorkflowStartupLease } from "@/chat/state";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
 import { slackThreadWorkflow, threadMessageHook } from "@/chat/workflow/thread-workflow";
 import { logError, logInfo, logWarn, withContext } from "@/chat/observability";
 
-// Start with a short initial delay so the workflow hook has time to register
-// before we attempt the first retry after creating the workflow run.
-const RESUME_RETRY_DELAYS_MS = [75, 150, 300, 600, 1000] as const;
+const LEADER_POST_START_RESUME_DELAYS_MS = [250, 750, 1500] as const;
+const FOLLOWER_RESUME_DELAYS_MS = [250, 750, 1500] as const;
+const FINAL_SAFETY_RESUME_DELAYS_MS = [250, 500] as const;
+const STARTUP_LEASE_TTL_MS = 3000;
 const WARN_RETRY_ATTEMPT = 3;
 
 type StartError = Error & { code?: string; name?: string };
@@ -15,6 +18,9 @@ interface ResumeAttemptResult {
   error?: unknown;
   runId?: string;
 }
+
+type StartupRole = "leader" | "follower";
+type RetryPhase = "leader_post_start" | "follower_wait" | "final_safety_wait";
 
 function getPayloadChannelId(payload: ThreadMessagePayload): string | undefined {
   return payload.thread.channelId;
@@ -94,13 +100,17 @@ async function attemptResumeHook(
   }
 }
 
-async function retryResume(normalizedThreadId: string, payload: ThreadMessagePayload): Promise<string | undefined> {
+async function retryResume(
+  normalizedThreadId: string,
+  payload: ThreadMessagePayload,
+  startupRole: StartupRole,
+  retryDelaysMs: readonly number[],
+  retryPhase: RetryPhase
+): Promise<string | undefined> {
   let lastError: unknown;
 
-  for (const [index, delayMs] of RESUME_RETRY_DELAYS_MS.entries()) {
-    if (delayMs > 0) {
-      await sleep(delayMs);
-    }
+  for (const [index, delayMs] of retryDelaysMs.entries()) {
+    await sleep(delayMs);
 
     const resumeAttempt = await attemptResumeHook(normalizedThreadId, payload);
     if (resumeAttempt.resumed) {
@@ -108,22 +118,24 @@ async function retryResume(normalizedThreadId: string, payload: ThreadMessagePay
     }
 
     lastError = resumeAttempt.error;
-    if (index < RESUME_RETRY_DELAYS_MS.length - 1) {
-      const retryAttempt = index + 1;
-      const logRetry = retryAttempt >= WARN_RETRY_ATTEMPT ? logWarn : logInfo;
-      const retryReason = classifyResumeMiss(resumeAttempt.error);
-      logRetry(
-        "workflow_route_resume_retry",
-        {},
-        {
-          "app.workflow.retry_attempt": retryAttempt,
-          ...(retryReason !== "hook_not_found" ? { "error.message": getErrorMessage(resumeAttempt.error) } : {}),
-          "app.workflow.retry_reason": retryReason,
-          "app.workflow.retry_severity": retryAttempt >= WARN_RETRY_ATTEMPT ? "warn" : "info"
-        },
-        "Retrying workflow hook resume after startup race"
-      );
-    }
+    const retryAttempt = index + 1;
+    const retryReason = classifyResumeMiss(resumeAttempt.error);
+    const isFinalRetry = index === retryDelaysMs.length - 1;
+    const isWarnRetry = retryAttempt >= WARN_RETRY_ATTEMPT || isFinalRetry;
+    const logRetry = isWarnRetry ? logWarn : logInfo;
+    logRetry(
+      "workflow_route_resume_retry",
+      {},
+      {
+        "app.workflow.retry_attempt": retryAttempt,
+        "app.workflow.retry_reason": retryReason,
+        "app.workflow.retry_severity": isWarnRetry ? "warn" : "info",
+        "app.workflow.startup_role": startupRole,
+        "app.workflow.retry_phase": retryPhase,
+        ...(retryReason !== "hook_not_found" ? { "error.message": getErrorMessage(resumeAttempt.error) } : {})
+      },
+      "Retrying workflow hook resume after startup race"
+    );
   }
 
   if (lastError instanceof Error) {
@@ -131,6 +143,64 @@ async function retryResume(normalizedThreadId: string, payload: ThreadMessagePay
   }
 
   throw new Error("Failed to resume thread workflow hook after start");
+}
+
+async function startWorkflowAndRetryResume(args: {
+  normalizedThreadId: string;
+  payload: ThreadMessagePayload;
+  startupLeaseOwnerToken: string;
+  startupRole: StartupRole;
+  resumeMissReason: ReturnType<typeof classifyResumeMiss>;
+  resumeMissError?: unknown;
+}): Promise<string | undefined> {
+  const { normalizedThreadId, payload, startupLeaseOwnerToken, startupRole, resumeMissReason, resumeMissError } = args;
+  let startedRunId: string | undefined;
+  let startError: unknown;
+  let startOutcome: "started" | "raced" | "failed" = "started";
+
+  try {
+    const startedRun = await start(slackThreadWorkflow, [normalizedThreadId, startupLeaseOwnerToken]);
+    startedRunId = startedRun.runId;
+  } catch (error) {
+    if (isBenignStartRaceError(error)) {
+      startError = error;
+      startOutcome = "raced";
+    } else {
+      startError = error;
+      startOutcome = "failed";
+    }
+  }
+
+  logInfo(
+    "workflow_route_start_attempt",
+    {},
+    {
+      "app.workflow.message_kind": payload.kind,
+      "app.workflow.startup_role": startupRole,
+      "app.workflow.startup_lease": "acquired",
+      ...(startedRunId ? { "app.workflow.run_id": startedRunId } : {}),
+      "app.workflow.start_outcome": startOutcome,
+      "app.workflow.resume_miss_reason": resumeMissReason,
+      ...(resumeMissReason !== "hook_not_found" && resumeMissError
+        ? { "error.message": getErrorMessage(resumeMissError) }
+        : {}),
+      ...(startError ? { "app.workflow.start_error": getErrorMessage(startError) } : {})
+    },
+    "Starting thread workflow after expected resume miss"
+  );
+
+  if (startOutcome === "failed") {
+    throw startError;
+  }
+
+  const resumedRunId = await retryResume(
+    normalizedThreadId,
+    payload,
+    startupRole,
+    LEADER_POST_START_RESUME_DELAYS_MS,
+    "leader_post_start"
+  );
+  return resumedRunId ?? startedRunId;
 }
 
 export async function routeToThreadWorkflow(
@@ -149,54 +219,89 @@ export async function routeToThreadWorkflow(
         return firstResumeAttempt.runId;
       }
 
-      let startedRunId: string | undefined;
-      let startError: unknown;
-      let startOutcome: "started" | "raced" | "failed";
       try {
-        const startedRun = await start(slackThreadWorkflow, [normalizedThreadId]);
-        startedRunId = startedRun.runId;
-        startOutcome = "started";
-      } catch (error) {
-        if (isBenignStartRaceError(error)) {
-          // Expected race: another worker may have started the same thread workflow.
-          startError = error;
-          startOutcome = "raced";
-        } else {
-          startError = error;
-          startOutcome = "failed";
+        const firstMissReason = classifyResumeMiss(firstResumeAttempt.error);
+        // Scenario A: This caller wins the per-thread startup lease and acts as the
+        // leader that attempts to start the workflow and then resumes into its hook.
+        const leaderOwnerToken = randomUUID();
+        const claimedLeaderLease = await claimWorkflowStartupLease(
+          normalizedThreadId,
+          leaderOwnerToken,
+          STARTUP_LEASE_TTL_MS
+        );
+
+        if (claimedLeaderLease) {
+          return await startWorkflowAndRetryResume({
+            normalizedThreadId,
+            payload,
+            startupLeaseOwnerToken: leaderOwnerToken,
+            startupRole: "leader",
+            resumeMissReason: firstMissReason,
+            resumeMissError: firstResumeAttempt.error
+          });
         }
-      }
 
-      logInfo(
-        "workflow_route_start_attempt",
-        {},
-        {
-          "app.workflow.message_kind": payload.kind,
-          ...(startedRunId ? { "app.workflow.run_id": startedRunId } : {}),
-          "app.workflow.start_outcome": startOutcome,
-          "app.workflow.resume_miss_reason": classifyResumeMiss(firstResumeAttempt.error),
-          ...(classifyResumeMiss(firstResumeAttempt.error) !== "hook_not_found"
-            ? { "error.message": getErrorMessage(firstResumeAttempt.error) }
-            : {}),
-          ...(startError ? { "app.workflow.start_error": getErrorMessage(startError) } : {})
-        },
-        "Starting thread workflow after expected resume miss"
-      );
+        // Scenario B: Another caller already holds the startup lease and should be
+        // creating the hook. This caller follows and waits with bounded resume polls.
+        logInfo(
+          "workflow_route_start_attempt",
+          {},
+          {
+            "app.workflow.message_kind": payload.kind,
+            "app.workflow.startup_role": "follower",
+            "app.workflow.startup_lease": "contended",
+            "app.workflow.start_outcome": "contended",
+            "app.workflow.resume_miss_reason": firstMissReason
+          },
+          "Waiting for existing workflow startup lease holder"
+        );
 
-      if (startOutcome === "failed") {
-        throw startError;
-      }
+        try {
+          return await retryResume(
+            normalizedThreadId,
+            payload,
+            "follower",
+            FOLLOWER_RESUME_DELAYS_MS,
+            "follower_wait"
+          );
+        } catch (followerRetryError) {
+          // Scenario C: Follower wait window expired without a resumable hook.
+          // Try to become the new leader in case the original leader crashed/stalled.
+          const fallbackOwnerToken = randomUUID();
+          const claimedFallbackLease = await claimWorkflowStartupLease(
+            normalizedThreadId,
+            fallbackOwnerToken,
+            STARTUP_LEASE_TTL_MS
+          );
+          if (claimedFallbackLease) {
+            return await startWorkflowAndRetryResume({
+              normalizedThreadId,
+              payload,
+              startupLeaseOwnerToken: fallbackOwnerToken,
+              startupRole: "leader",
+              resumeMissReason: classifyResumeMiss(followerRetryError),
+              resumeMissError: followerRetryError
+            });
+          }
 
-      try {
-        const resumedRunId = await retryResume(normalizedThreadId, payload);
-        return resumedRunId ?? startedRunId;
+          // Scenario D: Fallback lease is also contended, meaning another caller is
+          // actively handling startup. Do one final bounded resume window so this
+          // payload is not dropped due to contention timing.
+          return await retryResume(
+            normalizedThreadId,
+            payload,
+            "follower",
+            FINAL_SAFETY_RESUME_DELAYS_MS,
+            "final_safety_wait"
+          );
+        }
       } catch (error) {
+        // Scenario E: Terminal failure after all bounded start/resume windows.
         logError(
           "workflow_route_failed",
           {},
           {
             "app.workflow.message_kind": payload.kind,
-            ...(startedRunId ? { "app.workflow.run_id": startedRunId } : {}),
             "error.message": error instanceof Error ? error.message : String(error)
           },
           "Failed to route message to thread workflow"

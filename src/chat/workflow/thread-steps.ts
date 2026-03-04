@@ -150,3 +150,28 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
 }
 
 Object.assign(processThreadMessageStep, { maxRetries: 1 });
+
+export async function releaseWorkflowStartupLeaseStep(
+  normalizedThreadId: string,
+  startupLeaseOwnerToken: string
+): Promise<void> {
+  "use step";
+  const [{ releaseWorkflowStartupLease }, { logWarn }] = await Promise.all([
+    import("@/chat/state"),
+    import("@/chat/observability")
+  ]);
+
+  try {
+    await releaseWorkflowStartupLease(normalizedThreadId, startupLeaseOwnerToken);
+  } catch (error) {
+    logWarn(
+      "workflow_startup_lease_release_failed",
+      {},
+      {
+        "messaging.message.conversation_id": normalizedThreadId,
+        "error.message": error instanceof Error ? error.message : String(error)
+      },
+      "Failed to release workflow startup lease after hook registration"
+    );
+  }
+}
