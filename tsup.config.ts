@@ -36,7 +36,6 @@ export default defineConfig({
     "chat",
     "just-bash",
     "node-html-markdown",
-    "smol-toml",
     "workflow",
     "@workflow/serde",
     "yaml",

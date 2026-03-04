@@ -58,9 +58,6 @@ importers:
       node-html-markdown:
         specifier: ^2.0.0
         version: 2.0.0
-      smol-toml:
-        specifier: ^1.6.0
-        version: 1.6.0
       workflow:
         specifier: 4.1.0-beta.60
         version: 4.1.0-beta.60(@aws-sdk/client-sts@3.1000.0)(@nestjs/common@11.1.14(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.14(@nestjs/common@11.1.14(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.9.0)(@swc/cli@0.8.0(@swc/core@1.15.3)(chokidar@5.0.0))(@swc/core@1.15.3)(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react-router@7.13.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(typescript@5.9.3)

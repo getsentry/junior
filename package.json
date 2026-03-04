@@ -48,7 +48,6 @@
     "chat": "4.15.0",
     "just-bash": "^2.10.6",
     "node-html-markdown": "^2.0.0",
-    "smol-toml": "^1.6.0",
     "workflow": "4.1.0-beta.60",
     "yaml": "^2.8.2",
     "zod": "^4.3.6"
