@@ -5,8 +5,7 @@ const mocks = vi.hoisted(() => ({
   resume: vi.fn(),
   slackThreadWorkflow: vi.fn(),
   start: vi.fn(),
-  claimWorkflowStartupLease: vi.fn(),
-  releaseWorkflowStartupLease: vi.fn()
+  claimWorkflowStartupLease: vi.fn()
 }));
 
 vi.mock("workflow/api", () => ({
@@ -14,8 +13,7 @@ vi.mock("workflow/api", () => ({
 }));
 
 vi.mock("@/chat/state", () => ({
-  claimWorkflowStartupLease: mocks.claimWorkflowStartupLease,
-  releaseWorkflowStartupLease: mocks.releaseWorkflowStartupLease
+  claimWorkflowStartupLease: mocks.claimWorkflowStartupLease
 }));
 
 vi.mock("@/chat/workflow/thread-workflow", () => ({
@@ -48,7 +46,6 @@ describe("routeToThreadWorkflow", () => {
     vi.resetAllMocks();
     vi.useFakeTimers();
     mocks.claimWorkflowStartupLease.mockResolvedValue(true);
-    mocks.releaseWorkflowStartupLease.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -75,7 +72,10 @@ describe("routeToThreadWorkflow", () => {
     await routeToThreadWorkflow("slack:C123:1700000000.100", payload);
 
     expect(mocks.start).toHaveBeenCalledTimes(1);
-    expect(mocks.start).toHaveBeenCalledWith(mocks.slackThreadWorkflow, ["slack:C123:1700000000.100"]);
+    expect(mocks.start).toHaveBeenCalledWith(mocks.slackThreadWorkflow, [
+      "slack:C123:1700000000.100",
+      expect.any(String)
+    ]);
     expect(mocks.claimWorkflowStartupLease).toHaveBeenCalledWith(
       "slack:C123:1700000000.100",
       expect.any(String),
@@ -169,7 +169,6 @@ describe("routeToThreadWorkflow", () => {
     expect(capturedError).toBeInstanceOf(Error);
     expect((capturedError as Error).message).toContain("workflow service unavailable");
     expect(mocks.resume).toHaveBeenCalledTimes(1);
-    expect(mocks.releaseWorkflowStartupLease).toHaveBeenCalledTimes(1);
   });
 
   it("does not attempt fallback start after follower retries are exhausted", async () => {

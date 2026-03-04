@@ -4,7 +4,8 @@ import type { ThreadMessagePayload } from "@/chat/workflow/types";
 const mocks = vi.hoisted(() => ({
   createHook: vi.fn(),
   processThreadMessageStep: vi.fn(),
-  logThreadMessageFailureStep: vi.fn()
+  logThreadMessageFailureStep: vi.fn(),
+  releaseWorkflowStartupLeaseStep: vi.fn()
 }));
 
 vi.mock("workflow", () => ({
@@ -18,7 +19,8 @@ vi.mock("workflow", () => ({
 
 vi.mock("@/chat/workflow/thread-steps", () => ({
   processThreadMessageStep: mocks.processThreadMessageStep,
-  logThreadMessageFailureStep: mocks.logThreadMessageFailureStep
+  logThreadMessageFailureStep: mocks.logThreadMessageFailureStep,
+  releaseWorkflowStartupLeaseStep: mocks.releaseWorkflowStartupLeaseStep
 }));
 
 import { slackThreadWorkflow } from "@/chat/workflow/thread-workflow";
@@ -74,5 +76,17 @@ describe("slackThreadWorkflow", () => {
 
     expect(mocks.processThreadMessageStep).toHaveBeenCalledWith(payload, "wrun-test");
     expect(mocks.logThreadMessageFailureStep).toHaveBeenCalledWith(payload, "boom", "wrun-test");
+  });
+
+  it("releases startup lease from workflow when owner token is provided", async () => {
+    const payload = createPayload();
+    mocks.createHook.mockReturnValueOnce(payloadStream(payload));
+
+    await expect(slackThreadWorkflow("slack:C123:1700000000.100", "lease-owner")).resolves.toBeUndefined();
+
+    expect(mocks.releaseWorkflowStartupLeaseStep).toHaveBeenCalledWith(
+      "slack:C123:1700000000.100",
+      "lease-owner"
+    );
   });
 });

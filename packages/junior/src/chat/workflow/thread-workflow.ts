@@ -1,6 +1,10 @@
 import { defineHook, getWorkflowMetadata } from "workflow";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
-import { logThreadMessageFailureStep, processThreadMessageStep } from "@/chat/workflow/thread-steps";
+import {
+  logThreadMessageFailureStep,
+  processThreadMessageStep,
+  releaseWorkflowStartupLeaseStep
+} from "@/chat/workflow/thread-steps";
 
 const MAX_DEDUP_KEYS = 500;
 const DEDUP_TRIM_SIZE = Math.floor(MAX_DEDUP_KEYS / 2);
@@ -59,7 +63,8 @@ export async function processThreadPayloadStream(
 }
 
 export async function slackThreadWorkflow(
-  normalizedThreadId: string
+  normalizedThreadId: string,
+  startupLeaseOwnerToken?: string
 ): Promise<void> {
   "use workflow";
   const { workflowRunId } = getWorkflowMetadata();
@@ -74,6 +79,10 @@ export async function slackThreadWorkflow(
       return;
     }
     throw error;
+  }
+
+  if (startupLeaseOwnerToken) {
+    await releaseWorkflowStartupLeaseStep(normalizedThreadId, startupLeaseOwnerToken);
   }
 
   try {

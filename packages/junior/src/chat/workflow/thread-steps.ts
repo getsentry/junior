@@ -163,3 +163,12 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
 }
 
 Object.assign(processThreadMessageStep, { maxRetries: 1 });
+
+export async function releaseWorkflowStartupLeaseStep(
+  normalizedThreadId: string,
+  startupLeaseOwnerToken: string
+): Promise<void> {
+  "use step";
+  const { releaseWorkflowStartupLease } = await import("@/chat/state");
+  await releaseWorkflowStartupLease(normalizedThreadId, startupLeaseOwnerToken);
+}
