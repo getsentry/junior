@@ -19,7 +19,7 @@ import { createWebFetchTool } from "@/chat/tools/web-fetch";
 import { createWebSearchTool } from "@/chat/tools/web-search";
 import { createWriteFileTool } from "@/chat/tools/write-file";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
-import { isCanvasChannel, isConversationChannel } from "@/chat/slack-actions/client";
+import { isConversationChannel, isConversationScopedChannel } from "@/chat/slack-actions/client";
 
 function createToolState(
   hooks: ToolHooks,
@@ -122,7 +122,7 @@ export function createTools(
     )
   };
 
-  if (isCanvasChannel(context.channelId)) {
+  if (isConversationScopedChannel(context.channelId)) {
     tools.slackCanvasCreate = wrapToolExecution(
       "slackCanvasCreate",
       createSlackCanvasCreateTool(context, state),
@@ -148,7 +148,7 @@ export function createTools(
     );
   }
 
-  if (isCanvasChannel(context.channelId)) {
+  if (isConversationScopedChannel(context.channelId)) {
     tools.slackMessageAddReaction = wrapToolExecution(
       "slackMessageAddReaction",
       createSlackMessageAddReactionTool(context, state),

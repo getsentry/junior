@@ -8,6 +8,12 @@ describe("Conversational Evals: Routing and Continuity", () => {
     criteria: "The assistant posts no reply when subscription logic decides to skip this message.",
   });
 
+  slackEval("routing: acknowledgment-only subscribed message is skipped", {
+    events: [threadMessage("thanks!")],
+    criteria:
+      "The assistant posts no reply for acknowledgment-only subscribed thread messages that are not explicit mentions.",
+  });
+
   slackEval("routing: explicit mention forces reply", {
     events: [threadMessage("<@U_APP> what is 2+2?", { is_mention: true })],
     criteria:
@@ -37,6 +43,15 @@ describe("Conversational Evals: Routing and Continuity", () => {
     ],
     criteria:
       "The assistant posts two replies in-order. The second reply explicitly references the prior context (budget and/or Friday) and does not include sandbox setup failure text.",
+  });
+
+  slackEval("routing: follow-up question without mention still replies", {
+    events: [
+      mention("I need the budget by Friday.", { thread: continuityThread }),
+      threadMessage("what did you just say about the budget?", { thread: continuityThread }),
+    ],
+    criteria:
+      "The assistant posts two replies in-order, and the second reply answers the follow-up question using prior thread context.",
   });
 
   const rapidThread = { id: "thread-rapid", channel_id: "C-rapid", thread_ts: "17000000.rapid" };

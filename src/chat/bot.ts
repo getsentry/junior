@@ -1,7 +1,6 @@
 import { Chat, ThreadImpl } from "chat";
 import type { Attachment, Message, SentMessage, Thread } from "chat";
 import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
-import { z } from "zod";
 import "@/chat/chat-background-patch";
 import {
   createAppSlackRuntime,
@@ -15,7 +14,6 @@ import type {
   ThreadConversationState
 } from "@/chat/conversation-state";
 import { logException, logInfo, logWarn, setSpanAttributes, setTags, toOptionalString, withSpan } from "@/chat/observability";
-import { escapeXml } from "@/chat/xml";
 import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import {
@@ -27,7 +25,8 @@ import { parseSlackThreadId, resolveSlackChannelIdFromMessage } from "@/chat/sla
 import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { truncateStatusText } from "@/chat/status-format";
+import { createProgressReporter } from "@/chat/progress-reporter";
+import { decideSubscribedThreadReply } from "@/chat/routing/subscribed-decision";
 import { handleSlashCommand } from "@/chat/slash-command";
 import { lookupSlackUser } from "@/chat/slack-user";
 import { getStateAdapter } from "@/chat/state";
@@ -36,6 +35,9 @@ import { listThreadReplies } from "@/chat/slack-actions/channel";
 import { downloadPrivateSlackFile, getSlackClient, isDmChannel } from "@/chat/slack-actions/client";
 import { publishAppHomeView } from "@/chat/app-home";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
+import { resolveReplyDelivery } from "@/chat/turn/execute";
+import { startActiveTurn } from "@/chat/turn/prepare";
+import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 
 interface BotDeps {
   completeObject: typeof completeObject;
@@ -162,90 +164,6 @@ function isSlackTitlePermissionError(error: unknown): boolean {
 
 function getSlackAdapter(): SlackAdapter {
   return bot.getAdapter("slack");
-}
-
-const STATUS_UPDATE_DEBOUNCE_MS = 1000;
-
-function createProgressReporter(args: {
-  channelId?: string;
-  threadTs?: string;
-}) {
-  let active = false;
-  let currentStatus = "";
-  let lastStatusAt = 0;
-  let pendingStatus: string | null = null;
-  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-
-
-  const postStatus = async (text: string): Promise<void> => {
-    if (!args.channelId || !args.threadTs) {
-      return;
-    }
-    currentStatus = text;
-    lastStatusAt = Date.now();
-    try {
-      await getSlackAdapter().setAssistantStatus(args.channelId, args.threadTs, text, [text]);
-    } catch {
-      // Best effort only.
-    }
-  };
-
-  const clearPending = () => {
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      pendingTimer = null;
-    }
-    pendingStatus = null;
-  };
-
-  const flushPending = async () => {
-    if (!active || !pendingStatus) {
-      clearPending();
-      return;
-    }
-
-    const next = pendingStatus;
-    clearPending();
-    if (next !== currentStatus) {
-      await postStatus(next);
-    }
-  };
-
-  return {
-    async start() {
-      active = true;
-      clearPending();
-      void postStatus("Thinking...");
-    },
-    async stop() {
-      active = false;
-      clearPending();
-    },
-    async setStatus(text: string) {
-      const truncated = truncateStatusText(text);
-      if (!active || !truncated || truncated === currentStatus) {
-        return;
-      }
-
-      const now = Date.now();
-      const elapsed = now - lastStatusAt;
-      if (elapsed >= STATUS_UPDATE_DEBOUNCE_MS) {
-        clearPending();
-        void postStatus(truncated);
-        return;
-      }
-
-      pendingStatus = truncated;
-      if (pendingTimer) {
-        return;
-      }
-
-      pendingTimer = setTimeout(() => {
-        pendingTimer = null;
-        void flushPending();
-      }, Math.max(1, STATUS_UPDATE_DEBOUNCE_MS - elapsed));
-    }
-  };
 }
 
 function createTextStreamBridge() {
@@ -1133,22 +1051,6 @@ async function hydrateConversationVisionContext(
   }
 }
 
-const replyDecisionSchema = z.object({
-  should_reply: z.boolean().describe("Whether Junior should respond to this thread message."),
-  confidence: z
-    .number()
-    .min(0)
-    .max(1)
-    .describe("Classifier confidence from 0 to 1."),
-  reason: z
-    .string()
-    .max(160)
-    .optional()
-    .describe("Short reason for the decision.")
-});
-
-const ROUTER_CONFIDENCE_THRESHOLD = 0.72;
-
 async function shouldReplyInSubscribedThread(args: {
   rawText: string;
   text: string;
@@ -1162,99 +1064,40 @@ async function shouldReplyInSubscribedThread(args: {
     workflowRunId?: string;
   };
 }): Promise<{ shouldReply: boolean; reason: string }> {
-  const text = args.text.trim();
-  const rawText = args.rawText.trim();
-
-  if (args.isExplicitMention) {
-    return { shouldReply: true, reason: "explicit mention" };
-  }
-  if (!text && !args.hasAttachments) {
-    return { shouldReply: false, reason: "empty message" };
-  }
-  if (!text && args.hasAttachments) {
-    return { shouldReply: true, reason: "attachment" };
-  }
-
-  try {
-    const routerSystem = [
-      "You are a message router for a Slack assistant named Junior in a subscribed Slack thread.",
-      "Decide whether Junior should reply to the latest message.",
-      "Default to should_reply=false unless the user is clearly asking Junior for help or follow-up.",
-      "",
-      "Reply should be true only when the user is clearly asking Junior a question, requesting help,",
-      "or when a direct follow-up is contextually aimed at Junior's previous response in the thread context.",
-      "",
-      "Reply should be false for side conversations between humans, acknowledgements (thanks, +1),",
-      "status chatter, or messages not seeking assistant input.",
-      "Junior must not participate in casual banter.",
-      "If uncertain, set should_reply=false and use low confidence.",
-      "",
-      "Return JSON with should_reply, confidence, and a short reason. Do not return any extra keys.",
-      "",
-      `<assistant-name>${escapeXml(botConfig.userName)}</assistant-name>`,
-      `<thread-context>${escapeXml(args.conversationContext?.trim() || "[none]")}</thread-context>`
-    ].join("\n");
-
-    const result = await botDeps.completeObject({
-      modelId: botConfig.routerModelId,
-      schema: replyDecisionSchema,
-      maxTokens: 120,
-      temperature: 0,
-      system: routerSystem,
-      prompt: rawText,
-      metadata: {
-        modelId: botConfig.routerModelId,
-        threadId: args.context.threadId ?? "",
-        channelId: args.context.channelId ?? "",
-        requesterId: args.context.requesterId ?? "",
-        workflowRunId: args.context.workflowRunId ?? ""
-      }
-    });
-
-    const parsed = replyDecisionSchema.parse(result.object);
-    const reason = parsed.reason?.trim() || "llm classifier";
-    if (!parsed.should_reply) {
-      return {
-        shouldReply: false,
-        reason
-      };
+  const decision = await decideSubscribedThreadReply({
+    botUserName: botConfig.userName,
+    modelId: botConfig.routerModelId,
+    input: args,
+    completeObject: (input) => botDeps.completeObject(input),
+    logClassifierFailure: (error, input) => {
+      // Fail closed for passive subscribed-thread routing. If the classifier cannot
+      // make a decision, we prefer no unsolicited reply over potentially interrupting
+      // human conversation in a subscribed channel thread.
+      logWarn(
+        "subscribed_reply_classifier_failed",
+        {
+          slackThreadId: input.context.threadId,
+          slackUserId: input.context.requesterId,
+          slackChannelId: input.context.channelId,
+          workflowRunId: input.context.workflowRunId,
+          assistantUserName: botConfig.userName,
+          modelId: botConfig.routerModelId
+        },
+        {
+          "error.message": error instanceof Error ? error.message : String(error)
+        },
+        "Subscribed-thread reply classifier failed; skipping reply"
+      );
     }
+  });
 
-    if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
-      return {
-        shouldReply: false,
-        reason: `low confidence (${parsed.confidence.toFixed(2)}): ${reason}`
-      };
-    }
-
-    return {
-      shouldReply: true,
-      reason
-    };
-  } catch (error) {
-    // Fail closed for passive subscribed-thread routing. If the classifier cannot
-    // make a decision, we prefer no unsolicited reply over potentially interrupting
-    // human conversation in a subscribed channel thread.
-    logWarn(
-      "subscribed_reply_classifier_failed",
-      {
-        slackThreadId: args.context.threadId,
-        slackUserId: args.context.requesterId,
-        slackChannelId: args.context.channelId,
-        workflowRunId: args.context.workflowRunId,
-        assistantUserName: botConfig.userName,
-        modelId: botConfig.routerModelId
-      },
-      {
-        "error.message": error instanceof Error ? error.message : String(error)
-      },
-      "Subscribed-thread reply classifier failed; skipping reply"
-    );
-    return {
-      shouldReply: false,
-      reason: "classifier error"
-    };
-  }
+  const reason = decision.reasonDetail
+    ? `${decision.reason}:${decision.reasonDetail}`
+    : decision.reason;
+  return {
+    shouldReply: decision.shouldReply,
+    reason
+  };
 }
 
 const createdBot = new Chat<{ slack: SlackAdapter }>({
@@ -1496,8 +1339,11 @@ async function replyToThread(
           }
         }));
 
-      preparedState.conversation.processing.activeTurnId = generateConversationId("turn");
-      updateConversationStats(preparedState.conversation);
+      startActiveTurn({
+        conversation: preparedState.conversation,
+        nextTurnId: generateConversationId("turn"),
+        updateConversationStats
+      });
       await persistThreadState(thread, {
         conversation: preparedState.conversation
       });
@@ -1516,7 +1362,9 @@ async function replyToThread(
 
       const progress = createProgressReporter({
         channelId,
-        threadTs
+        threadTs,
+        setAssistantStatus: (channel, thread, text, suggestions) =>
+          getSlackAdapter().setAssistantStatus(channel, thread, text, suggestions)
       });
       const textStream = createTextStreamBridge();
       let streamedReplyPromise: Promise<SentMessage> | undefined;
@@ -1638,10 +1486,18 @@ async function replyToThread(
           : {};
 
         const replyFiles = reply.files && reply.files.length > 0 ? reply.files : undefined;
-        const shouldPostThreadReply = reply.deliveryMode !== "channel_only";
+        const { shouldPostThreadReply, attachFiles: resolvedAttachFiles } = resolveReplyDelivery({
+          reply,
+          hasStreamedThreadReply: Boolean(streamedReplyPromise)
+        });
+
         if (shouldPostThreadReply) {
           if (!streamedReplyPromise) {
-            await thread.post(buildSlackOutputMessage(reply.text, { files: replyFiles }));
+            await thread.post(
+              buildSlackOutputMessage(reply.text, {
+                files: resolvedAttachFiles === "inline" ? replyFiles : undefined
+              })
+            );
           } else {
             await streamedReplyPromise;
           }
@@ -1651,9 +1507,11 @@ async function replyToThread(
         const nextArtifacts = shouldPersistArtifacts
           ? mergeArtifactsState(preparedState.artifacts, artifactStatePatch)
           : undefined;
-        preparedState.conversation.processing.activeTurnId = undefined;
-        preparedState.conversation.processing.lastCompletedAtMs = Date.now();
-        updateConversationStats(preparedState.conversation);
+        markTurnCompleted({
+          conversation: preparedState.conversation,
+          nowMs: Date.now(),
+          updateConversationStats
+        });
         await persistThreadState(thread, {
           artifacts: nextArtifacts,
           conversation: preparedState.conversation,
@@ -1693,7 +1551,7 @@ async function replyToThread(
             });
         }
 
-        if (shouldPostThreadReply && streamedReplyPromise && replyFiles) {
+        if (shouldPostThreadReply && resolvedAttachFiles === "followup" && replyFiles) {
           // Omit text properties so the adapter's file-only early-return
           // triggers (avoids Slack `no_text` error from empty chat.postMessage)
           await thread.post({ files: replyFiles } as Parameters<typeof thread.post>[0]);
@@ -1701,11 +1559,14 @@ async function replyToThread(
       } finally {
         textStream.end();
         if (!persistedAtLeastOnce) {
-          preparedState.conversation.processing.activeTurnId = undefined;
-          preparedState.conversation.processing.lastCompletedAtMs = Date.now();
-          markConversationMessage(preparedState.conversation, preparedState.userMessageId, {
-            replied: false,
-            skippedReason: "reply failed"
+          markTurnFailed({
+            conversation: preparedState.conversation,
+            nowMs: Date.now(),
+            userMessageId: preparedState.userMessageId,
+            markConversationMessage: (conversation, messageId, patch) => {
+              markConversationMessage(conversation, messageId, patch);
+            },
+            updateConversationStats
           });
           await persistThreadState(thread, {
             conversation: preparedState.conversation

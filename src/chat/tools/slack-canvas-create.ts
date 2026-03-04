@@ -1,7 +1,7 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import { createCanvas } from "@/chat/slack-actions/canvases";
-import { isCanvasChannel } from "@/chat/slack-actions/client";
+import { isConversationScopedChannel } from "@/chat/slack-actions/client";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { logError } from "@/chat/observability";
 import type { CanvasArtifactSummary } from "@/chat/slack-actions/types";
@@ -47,7 +47,7 @@ export function createSlackCanvasCreateTool(
       // Invariant: this tool is only registered when a valid C/G/D channel context exists.
       // If this guard triggers, runtime/tool registration drifted and we intentionally hard-fail
       // instead of silently falling back to any broader/private target.
-      if (!isCanvasChannel(targetChannelId)) {
+      if (!isConversationScopedChannel(targetChannelId)) {
         logError(
           "slack_canvas_create_invalid_context",
           {},

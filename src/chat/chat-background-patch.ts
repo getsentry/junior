@@ -5,7 +5,7 @@ import { claimWorkflowIngressDedup, getStateAdapter } from "@/chat/state";
 import { logInfo, setSpanAttributes, withContext, withSpan } from "@/chat/observability";
 
 type WebhookOptions = {
-  waitUntil?: (task: Promise<unknown>) => void;
+  waitUntil?: (task: () => Promise<unknown>) => void;
 };
 
 type ChatLike = {
@@ -269,11 +269,12 @@ function scheduleBackgroundWork(
   run: () => Promise<void>,
   onUnhandledError?: (error: unknown) => void
 ): void {
-  const task = run();
   if (options?.waitUntil) {
-    options.waitUntil(task);
+    options.waitUntil(run);
     return;
   }
+
+  const task = run();
 
   // Some invocations may not provide waitUntil (non-webhook/test contexts).
   // In that case we still surface failures instead of letting promise rejections

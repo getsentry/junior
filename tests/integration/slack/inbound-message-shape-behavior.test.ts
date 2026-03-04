@@ -15,8 +15,8 @@ describe("Slack behavior: inbound message shape", () => {
     };
 
     processMessage.call(fakeChat, {}, "slack:C123:1700000000.100", "not-an-object", {
-      waitUntil(task: Promise<unknown>) {
-        waitUntilTasks.push(task);
+      waitUntil(taskFactory: () => Promise<unknown>) {
+        waitUntilTasks.push(taskFactory());
       }
     });
 
@@ -55,8 +55,8 @@ describe("Slack behavior: inbound message shape", () => {
         }
       },
       {
-        waitUntil(task: Promise<unknown>) {
-          waitUntilTasks.push(task);
+        waitUntil(taskFactory: () => Promise<unknown>) {
+          waitUntilTasks.push(taskFactory());
         }
       }
     );

@@ -285,7 +285,11 @@ describe("bot handlers (integration)", () => {
     expect(thread.posts[0]).toBe("Here is the result.");
     expect(thread.posts[1]).toEqual(
       expect.objectContaining({
-        markdown: "Attached files."
+        files: [
+          expect.objectContaining({
+            filename: "result.txt"
+          })
+        ]
       })
     );
   });

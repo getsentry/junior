@@ -20,6 +20,7 @@ import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { buildReplyDeliveryPlan, type ReplyDeliveryPlan } from "@/chat/delivery/plan";
 import { SkillSandbox } from "@/chat/skill-sandbox";
 import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -74,6 +75,7 @@ export interface AssistantReply {
   text: string;
   files?: FileUpload[];
   artifactStatePatch?: Partial<ThreadArtifactsState>;
+  deliveryPlan?: ReplyDeliveryPlan;
   deliveryMode?: "thread" | "channel_only";
   ackStrategy?: "none" | "reaction";
   sandboxId?: string;
@@ -914,9 +916,15 @@ export async function generateAssistantReply(
     );
     const channelPostPerformed = successfulToolNames.has("slackChannelPostMessage");
     const reactionPerformed = successfulToolNames.has("slackMessageAddReaction");
-    const deliveryMode: "thread" | "channel_only" =
-      explicitChannelPostIntent && channelPostPerformed ? "channel_only" : "thread";
-    const ackStrategy: "none" | "reaction" = reactionPerformed ? "reaction" : "none";
+    const deliveryPlan = buildReplyDeliveryPlan({
+      explicitChannelPostIntent,
+      channelPostPerformed,
+      reactionPerformed,
+      hasFiles: generatedFiles.length > 0,
+      streamingThreadReply: Boolean(context.onTextDelta)
+    });
+    const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
+    const ackStrategy: "none" | "reaction" = deliveryPlan.ack;
 
     if (!primaryText) {
       logWarn(
@@ -951,6 +959,7 @@ export async function generateAssistantReply(
         text: buildExecutionFailureMessage(toolErrorCount),
         files: generatedFiles.length > 0 ? generatedFiles : undefined,
         artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined,
+        deliveryPlan,
         deliveryMode,
         ackStrategy,
         sandboxId: sandboxExecutor.getSandboxId(),
@@ -973,6 +982,7 @@ export async function generateAssistantReply(
       text: resolvedText,
       files: generatedFiles.length > 0 ? generatedFiles : undefined,
       artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined,
+      deliveryPlan,
       deliveryMode,
       ackStrategy,
       sandboxId: sandboxExecutor.getSandboxId(),

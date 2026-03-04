@@ -46,10 +46,14 @@ export async function POST(request: Request, context: WebhookRouteContext): Prom
             const response = await handler(request, {
               waitUntil: (task) =>
                 after(() => {
+                  const runTask = () => {
+                    const taskOrFactory = task as Promise<unknown> | (() => Promise<unknown>);
+                    return typeof taskOrFactory === "function" ? taskOrFactory() : taskOrFactory;
+                  };
                   if (activeSpan) {
-                    return Sentry.withActiveSpan(activeSpan, () => task);
+                    return Sentry.withActiveSpan(activeSpan, runTask);
                   }
-                  return task;
+                  return runTask();
                 })
             } as Parameters<typeof handler>[1]);
             if (response.status >= 400) {

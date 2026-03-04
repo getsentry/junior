@@ -274,7 +274,11 @@ export function isDmChannel(channelId: string): boolean {
   return Boolean(normalized && normalized.startsWith("D"));
 }
 
-export function isCanvasChannel(channelId: string | undefined): boolean {
+/**
+ * Conversation-scoped Slack contexts backed by a concrete conversation ID.
+ * Includes channels/groups/DMs (C/G/D).
+ */
+export function isConversationScopedChannel(channelId: string | undefined): boolean {
   const normalized = normalizeSlackConversationId(channelId);
   if (!normalized) return false;
   return normalized.startsWith("C") || normalized.startsWith("G") || normalized.startsWith("D");

@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { Message, ThreadImpl, parseMarkdown } from "chat";
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from "@workflow/serde";
-import { bot } from "@/chat/bot";
 
 describe("chat sdk workflow serde contract", () => {
-  it("serializes and deserializes thread and message payloads for workflow boundaries", () => {
+  it("serializes and deserializes thread and message payloads for workflow boundaries", async () => {
+    process.env.SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env.SLACK_BOT_USER_TOKEN = process.env.SLACK_BOT_USER_TOKEN ?? "xoxp-test-token";
+    process.env.SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET ?? "test-signing-secret";
+    process.env.SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID ?? "test-client-id";
+    process.env.SLACK_CLIENT_SECRET = process.env.SLACK_CLIENT_SECRET ?? "test-client-secret";
+    const { bot } = await import("@/chat/bot");
+
     bot.registerSingleton();
 
     const thread = ThreadImpl.fromJSON({

@@ -2,7 +2,7 @@ import type { CanvasesSectionsLookupResponse } from "@slack/web-api";
 import {
   getFilePermalink,
   getSlackClient,
-  isCanvasChannel,
+  isConversationScopedChannel,
   normalizeSlackConversationId,
   withSlackRetries
 } from "@/chat/slack-actions/client";
@@ -23,7 +23,7 @@ export interface CanvasUpdateInput {
 export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
   const client = getSlackClient();
   const normalizedChannelId = normalizeSlackConversationId(input.channelId);
-  const isConversationScoped = isCanvasChannel(normalizedChannelId);
+  const isConversationScoped = isConversationScopedChannel(normalizedChannelId);
   if (!isConversationScoped) {
     throw new Error(
       "Canvas creation requires an active Slack conversation context (C/G/D)."

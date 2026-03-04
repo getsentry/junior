@@ -149,4 +149,101 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("Shipping status is green");
   });
+
+  it("bypasses classifier for acknowledgment-only messages", async () => {
+    let classifierCalled = false;
+    let replyCalled = false;
+
+    setBotDepsForTests({
+      completeObject: async () => {
+        classifierCalled = true;
+        throw new Error("classifier should be bypassed for acknowledgments");
+      },
+      generateAssistantReply: async () => {
+        replyCalled = true;
+        return {
+          text: "This should never be posted.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
+      }
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.000" });
+    const message = createTestMessage({
+      id: "m-subscribed-ack",
+      text: "thanks!",
+      isMention: false,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" }
+    });
+
+    await appSlackRuntime.handleSubscribedMessage(thread, message);
+
+    expect(classifierCalled).toBe(false);
+    expect(replyCalled).toBe(false);
+    expect(thread.posts).toHaveLength(0);
+  });
+
+  it("bypasses classifier for assistant-directed follow-up questions", async () => {
+    let classifierCalled = false;
+    const replyCalls: string[] = [];
+
+    setBotDepsForTests({
+      completeObject: async () => {
+        classifierCalled = true;
+        throw new Error("classifier should be bypassed for follow-up questions");
+      },
+      generateAssistantReply: async (prompt) => {
+        replyCalls.push(prompt);
+        return {
+          text: "You asked for the budget by Friday.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
+      }
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002004.000" });
+    await appSlackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-followup-1",
+        text: "<@U_APP> I need the budget by Friday",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" }
+      })
+    );
+
+    await appSlackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-followup-2",
+        text: "what did you just say about the budget?",
+        isMention: false,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" }
+      })
+    );
+
+    expect(classifierCalled).toBe(false);
+    expect(replyCalls).toContain("what did you just say about the budget?");
+    expect(thread.posts).toHaveLength(2);
+    expect(toPostedText(thread.posts[1])).toContain("budget by Friday");
+  });
 });

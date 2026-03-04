@@ -45,8 +45,8 @@ describe("chat background processMessage", () => {
         }
       },
       {
-        waitUntil(task: Promise<unknown>) {
-          waitUntilTasks.push(task);
+        waitUntil(taskFactory: () => Promise<unknown>) {
+          waitUntilTasks.push(taskFactory());
         }
       }
     );

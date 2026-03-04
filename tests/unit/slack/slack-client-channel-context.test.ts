@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  isCanvasChannel,
   isConversationChannel,
+  isConversationScopedChannel,
   isDmChannel,
   normalizeSlackConversationId
 } from "@/chat/slack-actions/client";
@@ -28,10 +28,10 @@ describe("slack client channel context helpers", () => {
     expect(isDmChannel("slack:D123:1700000000.000")).toBe(true);
     expect(isDmChannel("slack:C123:1700000000.000")).toBe(false);
 
-    expect(isCanvasChannel("slack:C123:1700000000.000")).toBe(true);
-    expect(isCanvasChannel("slack:G123:1700000000.000")).toBe(true);
-    expect(isCanvasChannel("slack:D123:1700000000.000")).toBe(true);
-    expect(isCanvasChannel("slack:X123:1700000000.000")).toBe(false);
+    expect(isConversationScopedChannel("slack:C123:1700000000.000")).toBe(true);
+    expect(isConversationScopedChannel("slack:G123:1700000000.000")).toBe(true);
+    expect(isConversationScopedChannel("slack:D123:1700000000.000")).toBe(true);
+    expect(isConversationScopedChannel("slack:X123:1700000000.000")).toBe(false);
 
     expect(isConversationChannel("slack:C123:1700000000.000")).toBe(true);
     expect(isConversationChannel("slack:G123:1700000000.000")).toBe(true);
