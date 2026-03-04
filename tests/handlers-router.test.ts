@@ -61,6 +61,15 @@ describe("handlers router", () => {
     expect(webhooksPostMock).toHaveBeenCalledTimes(1);
   });
 
+  it("returns 404 for multi-segment webhook routes", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/webhooks/slack/unexpected", { method: "POST" }),
+      routeContext(["webhooks", "slack", "unexpected"])
+    );
+    expect(response.status).toBe(404);
+    expect(webhooksPostMock).not.toHaveBeenCalled();
+  });
+
   it("returns 404 for unknown routes", async () => {
     const response = await GET(new Request("http://localhost/api/unknown"), routeContext(["unknown"]));
     expect(response.status).toBe(404);

@@ -56,4 +56,28 @@ describe("withJunior", () => {
       expect.arrayContaining(["@vercel/sandbox", "bash-tool", "just-bash"])
     );
   });
+
+  it("merges existing /api/** tracing includes instead of overwriting them", () => {
+    const config = withJunior(
+      {
+        outputFileTracingIncludes: {
+          "/api/**": ["./existing/**/*"],
+          "/other/**": ["./other/**/*"]
+        }
+      },
+      {
+        dataDir: "./my-data",
+        skillsDir: "./my-skills",
+        pluginsDir: "./my-plugins"
+      }
+    ) as NextConfig;
+
+    expect(config.outputFileTracingIncludes?.["/api/**"]).toEqual([
+      "./existing/**/*",
+      "./my-data/**/*",
+      "./my-skills/**/*",
+      "./my-plugins/**/*"
+    ]);
+    expect(config.outputFileTracingIncludes?.["/other/**"]).toEqual(["./other/**/*"]);
+  });
 });

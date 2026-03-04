@@ -29,7 +29,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   const { path } = await context.params;
   const route = normalizeRoutePath(path);
 
-  const webhookMatch = route.match(/^webhooks\/(.+)$/);
+  const webhookMatch = route.match(/^webhooks\/([^/]+)$/);
   if (webhookMatch) {
     const platform = webhookMatch[1];
     return webhooksPOST(request, {

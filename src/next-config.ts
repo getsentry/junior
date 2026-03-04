@@ -21,6 +21,8 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     `${skillsDir}/**/*`,
     `${pluginsDir}/**/*`
   ]));
+  const existingApiTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/api/**"] ?? [];
+  const mergedApiTracingIncludes = Array.from(new Set([...existingApiTracingIncludes, ...tracingIncludes]));
 
   const config: NextConfig = {
     ...nextConfig,
@@ -32,7 +34,7 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     ],
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,
-      "/api/**": tracingIncludes
+      "/api/**": mergedApiTracingIncludes
     }
   };
 
