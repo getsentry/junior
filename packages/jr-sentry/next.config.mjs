@@ -30,9 +30,6 @@ export default withWorkflow(
           "./packages/jr-sentry/skills/**/*",
           "./packages/jr-sentry/plugins/**/*"
         ]
-      },
-      turbopack: {
-        root: path.resolve(__dirname, "../..")
       }
     },
     {
