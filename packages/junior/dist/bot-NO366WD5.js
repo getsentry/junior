@@ -110,7 +110,7 @@ var defaultWorkflowRoutingDeps = {
   getIsSubscribed: (threadId) => getStateAdapter().isSubscribed(threadId),
   logInfo,
   routeToThreadWorkflow: async (normalizedThreadId, payload) => {
-    const { routeToThreadWorkflow } = await import("./router-35TQG4KZ.js");
+    const { routeToThreadWorkflow } = await import("./router-6X7WLY34.js");
     return await routeToThreadWorkflow(normalizedThreadId, payload);
   }
 };

@@ -11,6 +11,19 @@ const DEDUP_TRIM_SIZE = Math.floor(MAX_DEDUP_KEYS / 2);
 
 export const threadMessageHook = defineHook<ThreadMessagePayload>();
 
+function isHookConflictError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("already in use") ||
+    message.includes("hook token") ||
+    message.includes("hook conflict")
+  );
+}
+
 function trimSeenDedupKeys(seen: Set<string>): void {
   if (seen.size <= MAX_DEDUP_KEYS) {
     return;
@@ -56,9 +69,20 @@ export async function slackThreadWorkflow(
   "use workflow";
   const { workflowRunId } = getWorkflowMetadata();
 
-  const hook = threadMessageHook.create({
-    token: normalizedThreadId
-  });
+  let hook: AsyncIterable<ThreadMessagePayload>;
+  try {
+    hook = threadMessageHook.create({
+      token: normalizedThreadId
+    });
+  } catch (error) {
+    if (isHookConflictError(error)) {
+      if (startupLeaseOwnerToken) {
+        await releaseWorkflowStartupLeaseStep(normalizedThreadId, startupLeaseOwnerToken);
+      }
+      return;
+    }
+    throw error;
+  }
 
   if (startupLeaseOwnerToken) {
     await releaseWorkflowStartupLeaseStep(normalizedThreadId, startupLeaseOwnerToken);

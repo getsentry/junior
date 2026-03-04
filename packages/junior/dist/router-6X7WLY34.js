@@ -53,7 +53,7 @@ async function processThreadMessageStep(payload, workflowRunId) {
       markWorkflowMessageStarted
     }
   ] = await Promise.all([
-    import("./bot-HU3MLBT7.js"),
+    import("./bot-NO366WD5.js"),
     import("./client-6MQLGUUV.js"),
     import("./state-LYSMOIJZ.js")
   ]);
@@ -122,6 +122,13 @@ async function releaseWorkflowStartupLeaseStep(normalizedThreadId, startupLeaseO
 var MAX_DEDUP_KEYS = 500;
 var DEDUP_TRIM_SIZE = Math.floor(MAX_DEDUP_KEYS / 2);
 var threadMessageHook = defineHook();
+function isHookConflictError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes("already in use") || message.includes("hook token") || message.includes("hook conflict");
+}
 function trimSeenDedupKeys(seen) {
   if (seen.size <= MAX_DEDUP_KEYS) {
     return;
@@ -154,9 +161,20 @@ async function processThreadPayloadStream(stream, workflowRunId) {
 async function slackThreadWorkflow(normalizedThreadId, startupLeaseOwnerToken) {
   "use workflow";
   const { workflowRunId } = getWorkflowMetadata();
-  const hook = threadMessageHook.create({
-    token: normalizedThreadId
-  });
+  let hook;
+  try {
+    hook = threadMessageHook.create({
+      token: normalizedThreadId
+    });
+  } catch (error) {
+    if (isHookConflictError(error)) {
+      if (startupLeaseOwnerToken) {
+        await releaseWorkflowStartupLeaseStep(normalizedThreadId, startupLeaseOwnerToken);
+      }
+      return;
+    }
+    throw error;
+  }
   if (startupLeaseOwnerToken) {
     await releaseWorkflowStartupLeaseStep(normalizedThreadId, startupLeaseOwnerToken);
   }

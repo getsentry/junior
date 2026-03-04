@@ -12,7 +12,7 @@ import {
 import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 async function loadBot() {
-  const { bot } = await import("./bot-HU3MLBT7.js");
+  const { bot } = await import("./bot-NO366WD5.js");
   return bot;
 }
 async function POST(request, context) {
