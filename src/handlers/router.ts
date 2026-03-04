@@ -1,8 +1,6 @@
 import { GET as healthGET } from "@/handlers/health";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 
-export const runtime = "nodejs";
-
 type RouteContext = {
   params: Promise<{
     path: string[];

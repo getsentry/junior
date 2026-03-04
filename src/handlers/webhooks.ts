@@ -16,8 +16,6 @@ type WebhookRouteContext = {
   }>;
 };
 
-export const runtime = "nodejs";
-
 async function loadBot() {
   const { bot } = await import("@/chat/bot");
   return bot;
