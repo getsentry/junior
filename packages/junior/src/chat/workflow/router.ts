@@ -1,5 +1,4 @@
 import { start } from "workflow/api";
-import { claimWorkflowStartupLease } from "@/chat/state";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
 import { slackThreadWorkflow, threadMessageHook } from "@/chat/workflow/thread-workflow";
 
@@ -31,11 +30,16 @@ function getErrorMessage(error: unknown): string {
 }
 
 function createStartupLeaseToken(): string {
-  const maybeRandomUuid = globalThis.crypto?.randomUUID?.();
-  if (maybeRandomUuid) {
-    return maybeRandomUuid;
-  }
   return `lease-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function claimWorkflowStartupLeaseSafe(
+  normalizedThreadId: string,
+  ownerToken: string,
+  ttlMs: number
+): Promise<boolean> {
+  const { claimWorkflowStartupLease } = await import("@/chat/state");
+  return await claimWorkflowStartupLease(normalizedThreadId, ownerToken, ttlMs);
 }
 
 function classifyResumeMiss(error: unknown): "hook_not_found" | "resume_empty" | "resume_error" {
@@ -195,7 +199,7 @@ export async function routeToThreadWorkflow(
     // Scenario A: This caller wins the per-thread startup lease and acts as the
     // leader that attempts to start the workflow and then resumes into its hook.
     const leaderOwnerToken = createStartupLeaseToken();
-    const claimedLeaderLease = await claimWorkflowStartupLease(
+    const claimedLeaderLease = await claimWorkflowStartupLeaseSafe(
       normalizedThreadId,
       leaderOwnerToken,
       STARTUP_LEASE_TTL_MS
@@ -227,7 +231,7 @@ export async function routeToThreadWorkflow(
       // Scenario C: Follower wait window expired without a resumable hook.
       // Try to become the new leader in case the original leader crashed/stalled.
       const fallbackOwnerToken = createStartupLeaseToken();
-      const claimedFallbackLease = await claimWorkflowStartupLease(
+      const claimedFallbackLease = await claimWorkflowStartupLeaseSafe(
         normalizedThreadId,
         fallbackOwnerToken,
         STARTUP_LEASE_TTL_MS

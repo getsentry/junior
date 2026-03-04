@@ -14,6 +14,7 @@ function applyJuniorConfig(nextConfig, options) {
   const mergedApiTracingIncludes = Array.from(/* @__PURE__ */ new Set([...existingApiTracingIncludes, ...tracingIncludes]));
   const config = {
     ...nextConfig,
+    transpilePackages: Array.from(/* @__PURE__ */ new Set([...nextConfig?.transpilePackages ?? [], "junior"])),
     serverExternalPackages: Array.from(/* @__PURE__ */ new Set([
       ...nextConfig?.serverExternalPackages ?? [],
       "@vercel/sandbox",

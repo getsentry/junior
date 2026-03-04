@@ -383,18 +383,6 @@ function setSentryTagsFromContext(context) {
     Sentry.setUser({ id: context.slackUserId, username: context.slackUserName });
   }
 }
-function setSentryScopeContext(scope, context) {
-  const attrs = contextToAttributes(context);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (typeof value === "string" && value.length > 0) {
-      scope.setTag(key, value);
-    }
-  }
-  if (context.slackUserId) {
-    scope.setUser({ id: context.slackUserId, username: context.slackUserName });
-  }
-  scope.setContext("app", attrs);
-}
 
 // src/chat/observability.ts
 function toSpanAttributeValue(value) {
@@ -412,10 +400,6 @@ function toContextAndAttributes(context, attributes) {
     ...toSpanAttributes(context),
     ...attributes
   };
-}
-function captureException3(error, context = {}) {
-  const normalizedError = error instanceof Error ? error : new Error(String(error));
-  log.exception("exception_captured", normalizedError, toContextAndAttributes(context, {}), "Captured exception");
 }
 function logWithLevel(level, eventName, attributes = {}, body) {
   if (level === "info") {
@@ -503,19 +487,11 @@ function setSpanStatus(status) {
   }
   setStatus.call(span, status === "ok" ? "ok" : "internal_error");
 }
-function captureExceptionInScope(error, context = {}) {
-  Sentry2.withScope((scope) => {
-    setSentryScopeContext(scope, context);
-    const normalizedError = error instanceof Error ? error : new Error(String(error));
-    Sentry2.captureException(normalizedError);
-  });
-}
 function toOptionalString(value) {
   return typeof value === "string" && value.trim() ? value : void 0;
 }
 
 export {
-  captureException3 as captureException,
   logInfo,
   logWarn,
   logError,
@@ -526,6 +502,5 @@ export {
   withSpan,
   setSpanAttributes,
   setSpanStatus,
-  captureExceptionInScope,
   toOptionalString
 };

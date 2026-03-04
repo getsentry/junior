@@ -6,13 +6,13 @@ import {
   setSpanStatus,
   withContext,
   withSpan
-} from "./chunk-OXCKLXL3.js";
+} from "./chunk-PZF6TC63.js";
 
 // src/handlers/webhooks.ts
 import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 async function loadBot() {
-  const { bot } = await import("./bot-5NOJLX62.js");
+  const { bot } = await import("./bot-YQLHURDR.js");
   return bot;
 }
 async function POST(request, context) {

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/check-junior-workflow-dist-boundary.mjs && next build",
     "start": "next start"
   },
   "dependencies": {

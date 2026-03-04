@@ -4,6 +4,7 @@ import path from "node:path";
 
 const projectRoot = process.cwd();
 const srcRoot = path.join(projectRoot, "src");
+const workflowRoot = path.join(srcRoot, "chat", "workflow");
 const allowedExternal = new Set(["workflow", "workflow/api"]);
 
 const sourceExts = [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"];
@@ -89,13 +90,19 @@ function isExternalImport(specifier) {
 }
 
 const allSourceFiles = await walk(srcRoot);
-const workflowEntryFiles = [];
+const workflowEntryFilesSet = new Set();
+for (const file of allSourceFiles) {
+  if (file.startsWith(`${workflowRoot}${path.sep}`)) {
+    workflowEntryFilesSet.add(file);
+  }
+}
 for (const file of allSourceFiles) {
   const source = await fs.readFile(file, "utf8");
   if (hasWorkflowDirective(source)) {
-    workflowEntryFiles.push(file);
+    workflowEntryFilesSet.add(file);
   }
 }
+const workflowEntryFiles = [...workflowEntryFilesSet];
 
 const queue = [...workflowEntryFiles];
 const visited = new Set();

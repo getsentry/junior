@@ -1,0 +1,133 @@
+#!/usr/bin/env node
+import fs from "node:fs/promises";
+import path from "node:path";
+import { builtinModules } from "node:module";
+
+const projectRoot = process.cwd();
+const juniorDistRoot = path.resolve(projectRoot, "../junior/dist");
+const sourceExts = [".js", ".mjs", ".cjs"];
+
+const builtinSet = new Set([
+  ...builtinModules,
+  ...builtinModules.map((name) => (name.startsWith("node:") ? name.slice(5) : `node:${name}`))
+]);
+
+function isNodeBuiltin(specifier) {
+  return builtinSet.has(specifier) || specifier.startsWith("node:");
+}
+
+async function walk(dir) {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await walk(full)));
+      continue;
+    }
+    if (sourceExts.some((ext) => entry.name.endsWith(ext))) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
+function extractStaticImports(source) {
+  const imports = [];
+  const importFromRegex = /(^|\n)\s*import\s+[^;\n]*?from\s+["']([^"']+)["']/g;
+  const sideEffectRegex = /(^|\n)\s*import\s+["']([^"']+)["']/g;
+  const exportFromRegex = /(^|\n)\s*export\s+[^;\n]*?from\s+["']([^"']+)["']/g;
+
+  for (const regex of [importFromRegex, sideEffectRegex, exportFromRegex]) {
+    let match;
+    while ((match = regex.exec(source)) !== null) {
+      imports.push(match[2]);
+    }
+  }
+  return imports;
+}
+
+function hasWorkflowSignal(source) {
+  return (
+    /(^|\n)\s*["']use workflow["']\s*;?/.test(source) ||
+    source.includes('from "workflow/api"') ||
+    source.includes("from 'workflow/api'") ||
+    source.includes('from "workflow"') ||
+    source.includes("from 'workflow'")
+  );
+}
+
+async function resolveRelativeImport(fromFile, specifier) {
+  if (!specifier.startsWith("./") && !specifier.startsWith("../")) {
+    return undefined;
+  }
+
+  const base = path.resolve(path.dirname(fromFile), specifier);
+  const candidates = [base, ...sourceExts.map((ext) => `${base}${ext}`)];
+  for (const ext of sourceExts) {
+    candidates.push(path.join(base, `index${ext}`));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const stat = await fs.stat(candidate);
+      if (stat.isFile()) {
+        return candidate;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return undefined;
+}
+
+const distFiles = await walk(juniorDistRoot);
+const entryFiles = [];
+for (const file of distFiles) {
+  const source = await fs.readFile(file, "utf8");
+  if (hasWorkflowSignal(source)) {
+    entryFiles.push(file);
+  }
+}
+
+const visited = new Set();
+const queue = [...entryFiles];
+const violations = [];
+
+while (queue.length > 0) {
+  const file = queue.shift();
+  if (!file || visited.has(file)) {
+    continue;
+  }
+  visited.add(file);
+
+  const source = await fs.readFile(file, "utf8");
+  const imports = extractStaticImports(source);
+  for (const specifier of imports) {
+    if (isNodeBuiltin(specifier)) {
+      violations.push({ file, specifier });
+      continue;
+    }
+
+    if (specifier.startsWith("./") || specifier.startsWith("../")) {
+      const resolved = await resolveRelativeImport(file, specifier);
+      if (resolved) {
+        queue.push(resolved);
+      }
+    }
+  }
+}
+
+if (violations.length > 0) {
+  console.error("Workflow dist boundary check failed for junior package:\n");
+  for (const violation of violations) {
+    const rel = path.relative(projectRoot, violation.file);
+    console.error(`- ${rel}: imports Node builtin '${violation.specifier}'`);
+  }
+  process.exit(1);
+}
+
+console.log(
+  `Workflow dist boundary check passed: ${entryFiles.length} entries, ${visited.size} linked files inspected.`
+);
