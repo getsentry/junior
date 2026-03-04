@@ -8,13 +8,21 @@ describe("withJunior", () => {
       {
         serverExternalPackages: ["existing-package"]
       },
-      { home: "./my-home" }
+      {
+        dataDir: "./my-data",
+        skillsDir: "./my-skills",
+        pluginsDir: "./my-plugins"
+      }
     ) as NextConfig;
 
     expect(config.serverExternalPackages).toEqual(
       expect.arrayContaining(["existing-package", "@vercel/sandbox", "bash-tool", "just-bash"])
     );
-    expect(config.outputFileTracingIncludes?.["/api/**"]).toEqual(["./my-home/**/*"]);
+    expect(config.outputFileTracingIncludes?.["/api/**"]).toEqual([
+      "./my-data/**/*",
+      "./my-skills/**/*",
+      "./my-plugins/**/*"
+    ]);
   });
 
   it("wraps async Next config factories", async () => {
@@ -22,7 +30,11 @@ describe("withJunior", () => {
       async () => ({
         typedRoutes: true
       }),
-      { home: "./my-home" }
+      {
+        dataDir: "./my-data",
+        skillsDir: "./my-skills",
+        pluginsDir: "./my-plugins"
+      }
     );
 
     expect(typeof wrapped).toBe("function");
@@ -35,7 +47,11 @@ describe("withJunior", () => {
     });
 
     expect(resolved.typedRoutes).toBe(true);
-    expect(resolved.outputFileTracingIncludes?.["/api/**"]).toEqual(["./my-home/**/*"]);
+    expect(resolved.outputFileTracingIncludes?.["/api/**"]).toEqual([
+      "./my-data/**/*",
+      "./my-skills/**/*",
+      "./my-plugins/**/*"
+    ]);
     expect(resolved.serverExternalPackages).toEqual(
       expect.arrayContaining(["@vercel/sandbox", "bash-tool", "just-bash"])
     );

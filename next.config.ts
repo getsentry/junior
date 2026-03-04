@@ -8,4 +8,4 @@ const nextConfig = withWorkflow({
   }
 });
 
-export default withJunior(nextConfig, { home: "./jr-sentry", sentry: true });
+export default withJunior(nextConfig, { sentry: true });

@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 export interface JuniorConfigOptions {
-  home?: string;
+  dataDir?: string;
+  skillsDir?: string;
+  pluginsDir?: string;
   sentry?: boolean;
 }
 
@@ -11,7 +13,14 @@ type NextConfigFactory = (
 ) => Promise<NextConfig> | NextConfig;
 
 function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorConfigOptions): NextConfig {
-  const home = options?.home ?? ".";
+  const dataDir = options?.dataDir ?? "./data";
+  const skillsDir = options?.skillsDir ?? "./skills";
+  const pluginsDir = options?.pluginsDir ?? "./plugins";
+  const tracingIncludes = Array.from(new Set([
+    `${dataDir}/**/*`,
+    `${skillsDir}/**/*`,
+    `${pluginsDir}/**/*`
+  ]));
 
   const config: NextConfig = {
     ...nextConfig,
@@ -23,7 +32,7 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     ],
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,
-      "/api/**": [`${home}/**/*`]
+      "/api/**": tracingIncludes
     }
   };
 

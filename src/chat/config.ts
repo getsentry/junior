@@ -1,11 +1,8 @@
-import { loadHomeConfig } from "@/chat/home";
-
 function buildBotConfig() {
-  const home = loadHomeConfig();
   return {
-    userName: home.bot.name,
-    modelId: process.env.AI_MODEL ?? home.ai.model,
-    fastModelId: process.env.AI_FAST_MODEL ?? home.ai.fast_model
+    userName: process.env.JUNIOR_BOT_NAME ?? "junior",
+    modelId: process.env.AI_MODEL ?? "anthropic/claude-sonnet-4.6",
+    fastModelId: process.env.AI_FAST_MODEL ?? "anthropic/claude-haiku-4-5"
   };
 }
 

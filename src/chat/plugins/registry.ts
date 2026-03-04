@@ -5,6 +5,7 @@ import type { CapabilityProviderDefinition } from "@/chat/capabilities/catalog";
 import type { OAuthProviderConfig } from "@/chat/capabilities/jr-rpc-command";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import { pluginsDir } from "@/chat/home";
 import { setSpanAttributes } from "@/chat/observability";
 import { createGitHubAppBroker } from "./github-app-broker";
 import { createOAuthBearerBroker } from "./oauth-bearer-broker";
@@ -157,7 +158,7 @@ function loadPlugins(): void {
   if (pluginsLoaded) return;
   pluginsLoaded = true;
 
-  const pluginsRoot = path.join(process.cwd(), "src", "plugins");
+  const pluginsRoot = pluginsDir();
 
   let entries: string[];
   try {

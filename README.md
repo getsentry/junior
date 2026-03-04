@@ -4,30 +4,15 @@ Slack bot built with Next.js + Chat SDK.
 
 Junior responds when mentioned in Slack and can continue replying in subscribed threads. It also supports slash-invoked local skills (`/skill-name ...`) and built-in tools (web search/fetch, image generation, Slack canvases/lists).
 
-## Home directory
+## Project layout
 
-Junior loads its personality, skills, and bot config from an external **home directory** specified by `--home` (or `JUNIOR_HOME` env var). The included `jr-sentry/` directory is Sentry's home:
+Junior uses one standard Next.js model:
 
-```
-jr-sentry/
-  config.toml       # Bot identity + model config
+```text
+data/
   SOUL.md           # Personality
-  skills/           # Skill definitions
-    brief/
-    github/
-    jr-rpc/
-    sum/
-```
-
-`config.toml` example:
-
-```toml
-[bot]
-name = "junior"
-
-[ai]
-model = "anthropic/claude-sonnet-4.6"
-fast_model = "anthropic/claude-haiku-4-5"
+skills/             # Skill definitions
+plugins/            # Provider plugins (optional)
 ```
 
 ## Requirements
@@ -61,17 +46,7 @@ pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
 pnpm dev
 ```
 
-This runs with `jr-sentry` as the home directory. To use a different home:
-
-```bash
-JUNIOR_HOME=./my-home pnpm dev
-```
-
-## Production
-
-```bash
-node bin/junior.mjs --home=./jr-sentry --port 3000
-```
+This runs the app with files loaded from `data/`, `skills/`, and `plugins/` in the project root.
 
 ## Deploying your own bot
 
@@ -86,22 +61,22 @@ pnpm add junior
 pnpm add next react react-dom @sentry/nextjs
 ```
 
-2. Add bot home files in your project root:
+2. Add bot files in your project root:
 
 ```text
-config.toml
-SOUL.md
+data/SOUL.md
 skills/
+plugins/ (optional)
 ```
 
-3. Set `JUNIOR_HOME` in your scripts:
+3. Use normal Next.js scripts:
 
 ```json
 {
   "scripts": {
-    "dev": "JUNIOR_HOME=. next dev",
-    "build": "JUNIOR_HOME=. next build",
-    "start": "JUNIOR_HOME=. next start"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   }
 }
 ```
@@ -146,14 +121,14 @@ pnpm install
 pnpm dev
 ```
 
-This scaffolds a project with `config.toml`, `SOUL.md`, and an empty `skills/` directory. Edit those files to customize your bot's personality and capabilities.
+This scaffolds a project with `data/SOUL.md`, plus empty `skills/` and `plugins/` directories.
 
 ### Vercel deployment
 
 1. Push your project to GitHub.
 2. Import the repo in Vercel.
 3. Set **Build Command** to `pnpm build` and **Framework** to "Next.js".
-4. Add environment variables: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `REDIS_URL`, and optionally `NEXT_PUBLIC_SENTRY_DSN`.
+4. Add environment variables: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `REDIS_URL`, and optionally `NEXT_PUBLIC_SENTRY_DSN`, `JUNIOR_BOT_NAME`, `AI_MODEL`, and `AI_FAST_MODEL`.
 
 ## Slack tunnel (Cloudflare)
 

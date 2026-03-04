@@ -1,21 +1,10 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-const packageRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  ".."
-);
-
-const { values, positionals } = parseArgs({
-  options: {
-    home: { type: "string" },
-    port: { type: "string", short: "p" }
-  },
+const { positionals } = parseArgs({
   allowPositionals: true,
   strict: false
 });
@@ -74,9 +63,9 @@ if (command === "init") {
     private: true,
     type: "module",
     scripts: {
-      dev: "JUNIOR_HOME=. next dev",
-      build: "JUNIOR_HOME=. next build",
-      start: "JUNIOR_HOME=. next start"
+      dev: "next dev",
+      build: "next build",
+      start: "next start"
     },
     dependencies: {
       junior: "latest",
@@ -91,15 +80,11 @@ if (command === "init") {
     JSON.stringify(pkg, null, 2) + "\n"
   );
 
-  // config.toml
+  // data/SOUL.md
+  const dataDir = path.join(target, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(
-    path.join(target, "config.toml"),
-    `[bot]\nname = "${name}"\n\n[ai]\nmodel = "anthropic/claude-sonnet-4.6"\nfast_model = "anthropic/claude-haiku-4-5"\n`
-  );
-
-  // SOUL.md
-  fs.writeFileSync(
-    path.join(target, "SOUL.md"),
+    path.join(dataDir, "SOUL.md"),
     `# ${name}\n\nYou are ${name}, a helpful assistant.\n`
   );
 
@@ -107,6 +92,11 @@ if (command === "init") {
   const skillsDir = path.join(target, "skills");
   fs.mkdirSync(skillsDir, { recursive: true });
   fs.writeFileSync(path.join(skillsDir, ".gitkeep"), "");
+
+  // plugins/
+  const pluginsDir = path.join(target, "plugins");
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginsDir, ".gitkeep"), "");
 
   // .gitignore
   fs.writeFileSync(
@@ -126,6 +116,9 @@ if (command === "init") {
     [
       "SLACK_BOT_TOKEN=",
       "SLACK_SIGNING_SECRET=",
+      "JUNIOR_BOT_NAME=",
+      "AI_MODEL=",
+      "AI_FAST_MODEL=",
       "REDIS_URL=",
       "NEXT_PUBLIC_SENTRY_DSN=",
       "SENTRY_ORG=",
@@ -144,69 +137,5 @@ if (command === "init") {
   process.exit(0);
 }
 
-// ---------------------------------------------------------------------------
-// junior dev
-// ---------------------------------------------------------------------------
-if (command === "dev") {
-  const homeDir = path.resolve(values.home ?? process.cwd());
-
-  const args = ["next", "dev"];
-  if (values.port) args.push("-p", values.port);
-
-  execFileSync("npx", args, {
-    cwd: homeDir,
-    stdio: "inherit",
-    env: { ...process.env, JUNIOR_HOME: homeDir }
-  });
-  process.exit(0);
-}
-
-// ---------------------------------------------------------------------------
-// junior build
-// ---------------------------------------------------------------------------
-if (command === "build") {
-  const homeDir = path.resolve(values.home ?? process.cwd());
-
-  execFileSync("npx", ["next", "build"], {
-    cwd: homeDir,
-    stdio: "inherit",
-    env: { ...process.env, JUNIOR_HOME: homeDir }
-  });
-  process.exit(0);
-}
-
-// ---------------------------------------------------------------------------
-// junior start
-// ---------------------------------------------------------------------------
-if (command === "start") {
-  const homeDir = path.resolve(values.home ?? process.cwd());
-
-  const args = ["next", "start"];
-  if (values.port) args.push("-p", values.port);
-
-  execFileSync("npx", args, {
-    cwd: homeDir,
-    stdio: "inherit",
-    env: { ...process.env, JUNIOR_HOME: homeDir }
-  });
-  process.exit(0);
-}
-
-// ---------------------------------------------------------------------------
-// Legacy: no subcommand — run `next start` from package root
-// ---------------------------------------------------------------------------
-const homeDir = path.resolve(values.home ?? process.cwd());
-
-if (!fs.existsSync(path.join(homeDir, "SOUL.md"))) {
-  console.error(`error: SOUL.md not found in home directory: ${homeDir}`);
-  process.exit(1);
-}
-
-const args = ["next", "start"];
-if (values.port) args.push("-p", values.port);
-
-execFileSync("npx", args, {
-  cwd: packageRoot,
-  stdio: "inherit",
-  env: { ...process.env, JUNIOR_HOME: homeDir }
-});
+console.error("usage: junior init <dir>");
+process.exit(1);

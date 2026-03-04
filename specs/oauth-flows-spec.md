@@ -331,7 +331,7 @@ Under the hood: `jr-rpc delete-token sentry` deletes the Redis key. Future Sentr
 
 ## Adding a new provider
 
-1. Create a plugin directory under `src/plugins/<name>/` with a `plugin.yaml` manifest declaring `oauth` configuration (see `specs/plugin-spec.md`).
+1. Create a plugin directory under `plugins/<name>/` with a `plugin.yaml` manifest declaring `oauth` configuration (see `specs/plugin-spec.md`).
 2. Register the OAuth app with the provider, setting redirect URI to `<base-url>/api/oauth/callback/<name>`.
 3. Add `<PROVIDER>_CLIENT_ID` and `<PROVIDER>_CLIENT_SECRET` env vars.
-4. Create the provider's skills in `src/plugins/<name>/skills/`.
+4. Create the provider's skills in `plugins/<name>/skills/`.

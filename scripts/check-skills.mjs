@@ -10,7 +10,7 @@ const SKILL_DESCRIPTION_MAX = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
 
 async function resolvePluginSkillRoots() {
-  const pluginsRoot = path.resolve(process.cwd(), "src", "plugins");
+  const pluginsRoot = path.resolve(process.cwd(), "plugins");
   const roots = [];
   let entries;
   try {
@@ -38,11 +38,7 @@ function resolveSkillRoots() {
     .filter(Boolean)
     .map((value) => path.resolve(value));
 
-  const homeDir = process.env.JUNIOR_HOME;
-  if (!homeDir) {
-    throw new Error("JUNIOR_HOME environment variable is required");
-  }
-  return [...envRoots, path.resolve(homeDir, "skills")];
+  return [...envRoots, path.resolve(process.cwd(), "skills")];
 }
 
 function parseFrontmatter(raw) {
