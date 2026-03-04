@@ -76,7 +76,7 @@ pnpm --filter jr-sentry build
 
 ```bash
 pnpm add junior
-pnpm add next react react-dom @sentry/nextjs
+pnpm add next react react-dom @sentry/nextjs workflow
 ```
 
 2. Add bot files in your project root:
@@ -112,9 +112,14 @@ export const runtime = "nodejs";
 
 ```js
 import { withJunior } from "junior/config";
+import workflowNext from "workflow/next";
 
-export default withJunior();
+const { withWorkflow } = workflowNext;
+
+export default withWorkflow(withJunior());
 ```
+
+`workflow/next` is currently a CommonJS export, so use the default import form shown above.
 
 `instrumentation.js`:
 
