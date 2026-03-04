@@ -20,6 +20,8 @@
     "bin"
   ],
   "scripts": {
+    "prepare": "pnpm run build:pkg",
+    "prepack": "pnpm run build:pkg",
     "dev": "next dev",
     "build": "next build --webpack",
     "build:pkg": "pnpm run test:workflow-source-boundary && tsup && pnpm run test:workflow-dist-boundary",
