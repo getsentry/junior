@@ -1,44 +1,18 @@
 {
-  "name": "junior",
-  "version": "0.1.0",
+  "name": "junior-monorepo",
   "private": true,
-  "type": "module",
   "packageManager": "pnpm@10.30.2",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "test": "pnpm run test:slack-boundary && vitest run",
-    "test:watch": "vitest",
-    "preevals": "pnpm run test:slack-boundary",
-    "evals": "pnpm exec vitest run -c vitest.evals.config.ts",
-    "test:slack-boundary": "node scripts/check-slack-test-boundary.mjs",
-    "typecheck": "tsc --noEmit",
-    "skills:check": "node scripts/check-skills.mjs"
-  },
-  "dependencies": {
-    "@ai-sdk/gateway": "^3.0.57",
-    "@chat-adapter/slack": "^4.15.0",
-    "@chat-adapter/state-memory": "^4.15.0",
-    "@chat-adapter/state-redis": "^4.15.0",
-    "@mariozechner/pi-agent-core": "^0.55.0",
-    "@mariozechner/pi-ai": "^0.55.0",
-    "@sentry/nextjs": "^10.40.0",
-    "@sinclair/typebox": "^0.34.48",
-    "@slack/web-api": "^7.14.1",
-    "@vercel/sandbox": "^1.7.1",
-    "@workflow/serde": "4.1.0-beta.2",
-    "ai": "^6.0.103",
-    "bash-tool": "^1.3.15",
-    "chat": "^4.15.0",
-    "just-bash": "^2.10.6",
-    "next": "^16.1.6",
-    "node-html-markdown": "^2.0.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "workflow": "4.1.0-beta.60",
-    "yaml": "^2.8.2",
-    "zod": "^4.3.6"
+    "dev": "pnpm --filter junior dev",
+    "build": "pnpm --filter junior build",
+    "build:pkg": "pnpm --filter junior build:pkg",
+    "start": "pnpm --filter junior start",
+    "test": "pnpm --filter junior test",
+    "test:watch": "pnpm --filter junior test:watch",
+    "preevals": "pnpm --filter junior preevals",
+    "evals": "pnpm --filter junior evals",
+    "typecheck": "pnpm --filter junior typecheck",
+    "skills:check": "pnpm --filter junior skills:check"
   },
   "pnpm": {
     "peerDependencyRules": {
@@ -48,17 +22,7 @@
       }
     },
     "patchedDependencies": {
-      "@chat-adapter/slack": "patches/@chat-adapter__slack.patch"
+      "@chat-adapter/slack": "packages/junior/patches/@chat-adapter__slack.patch"
     }
-  },
-  "devDependencies": {
-    "@types/node": "^25.3.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "msw": "^2.12.10",
-    "typescript": "^5.9.3",
-    "vercel": "^50.23.2",
-    "vitest": "^4.0.18",
-    "vitest-evals": "^0.6.0"
   }
 }

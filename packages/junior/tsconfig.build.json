@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "incremental": false,
+    "outDir": "dist"
+  },
+  "include": [
+    "src/handlers/**/*.ts",
+    "src/app/**/*.tsx",
+    "src/next-config.ts",
+    "src/instrumentation.ts"
+  ]
+}

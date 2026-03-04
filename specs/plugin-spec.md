@@ -33,17 +33,17 @@ Define a plugin model where provider integrations are self-contained directories
 
 ## Core model
 
-1. A plugin is a directory under `src/plugins/<name>/` containing a `plugin.yaml` manifest.
-2. At startup, the plugin registry scans `src/plugins/` and parses each manifest synchronously (`readFileSync`).
+1. A plugin is a directory under `plugins/<name>/` containing a `plugin.yaml` manifest.
+2. At startup, the plugin registry scans `plugins/` and parses each manifest synchronously (`readFileSync`).
 3. The registry registers capabilities, config keys, OAuth config, and skill roots from each manifest.
 4. Credential brokers are created on demand from manifest config (`oauth-bearer` or `github-app` type).
-5. Skills in `src/plugins/<name>/skills/` are auto-discovered alongside existing skill roots.
+5. Skills in `plugins/<name>/skills/` are auto-discovered alongside existing skill roots.
 6. Core infrastructure (agent loop, sandbox, jr-rpc, Slack tools, web tools) stays unchanged.
 
 ## Plugin directory structure
 
 ```
-src/plugins/sentry/
+plugins/sentry/
 ├── plugin.yaml           # manifest (required)
 └── skills/
     └── sentry/
@@ -128,7 +128,7 @@ mcp:                                 # optional — MCP server config for tool s
 | Value | Derivation |
 |-------|-----------|
 | OAuth callback path | `/api/oauth/callback/<name>` — derived from plugin name. |
-| Skill roots | `src/plugins/<name>/skills/` — auto-discovered. |
+| Skill roots | `plugins/<name>/skills/` — auto-discovered. |
 | Qualified capabilities | `<name>.<capability>` — short names prefixed with plugin name. |
 | Qualified config keys | `<name>.<key>` — short names prefixed with plugin name. |
 
@@ -149,7 +149,7 @@ mcp:                                 # optional — MCP server config for tool s
 
 ### Load sequence
 
-1. **Scan** `src/plugins/` for directories containing `plugin.yaml`.
+1. **Scan** `plugins/` for directories containing `plugin.yaml`.
 2. **Parse** each manifest and validate against the contract above.
 3. **Register** capabilities, config keys, OAuth config in internal maps.
 4. **Annotate** active span with plugin metadata per broker creation.
@@ -273,7 +273,7 @@ All existing security invariants from `security-policy.md` are preserved:
 
 ## Example: adding a new provider (Linear)
 
-1. Create `src/plugins/linear/plugin.yaml`:
+1. Create `plugins/linear/plugin.yaml`:
 
 ```yaml
 name: linear
@@ -300,7 +300,7 @@ oauth:
   scope: "read write"
 ```
 
-2. Create `src/plugins/linear/skills/linear/SKILL.md`
+2. Create `plugins/linear/skills/linear/SKILL.md`
 
 3. Register the OAuth app with Linear, set redirect URI to `<base-url>/api/oauth/callback/linear`.
 
