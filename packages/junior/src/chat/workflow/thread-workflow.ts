@@ -76,5 +76,12 @@ export async function slackThreadWorkflow(
     throw error;
   }
 
-  await processThreadPayloadStream(hook, workflowRunId);
+  try {
+    await processThreadPayloadStream(hook, workflowRunId);
+  } catch (error) {
+    if (isHookConflictError(error)) {
+      return;
+    }
+    throw error;
+  }
 }
