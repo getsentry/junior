@@ -64,6 +64,9 @@
         "vitest-evals>ai": ">=4",
         "vitest-evals>zod": ">=3"
       }
+    },
+    "patchedDependencies": {
+      "@chat-adapter/slack": "patches/@chat-adapter__slack.patch"
     }
   },
   "devDependencies": {
