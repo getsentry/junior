@@ -31,7 +31,10 @@ function writeWrapperFiles(targetDir) {
   // next.config.mjs
   fs.writeFileSync(
     path.join(targetDir, "next.config.mjs"),
-    'import { withJunior } from "junior/config";\n\nexport default withJunior();\n'
+    'import { withJunior } from "junior/config";\n' +
+      'import workflowNext from "workflow/next";\n\n' +
+      'const { withWorkflow } = workflowNext;\n\n' +
+      'export default withWorkflow(withJunior());\n'
   );
 
   // instrumentation.js
@@ -72,7 +75,8 @@ if (command === "init") {
       next: "^16.0.0",
       react: "^19.0.0",
       "react-dom": "^19.0.0",
-      "@sentry/nextjs": "^10.0.0"
+      "@sentry/nextjs": "^10.0.0",
+      workflow: "4.1.0-beta.60"
     }
   };
   fs.writeFileSync(
@@ -80,21 +84,21 @@ if (command === "init") {
     JSON.stringify(pkg, null, 2) + "\n"
   );
 
-  // data/SOUL.md
-  const dataDir = path.join(target, "data");
+  // app/data/SOUL.md
+  const dataDir = path.join(target, "app", "data");
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(
     path.join(dataDir, "SOUL.md"),
     `# ${name}\n\nYou are ${name}, a helpful assistant.\n`
   );
 
-  // skills/
-  const skillsDir = path.join(target, "skills");
+  // app/skills/
+  const skillsDir = path.join(target, "app", "skills");
   fs.mkdirSync(skillsDir, { recursive: true });
   fs.writeFileSync(path.join(skillsDir, ".gitkeep"), "");
 
-  // plugins/
-  const pluginsDir = path.join(target, "plugins");
+  // app/plugins/
+  const pluginsDir = path.join(target, "app", "plugins");
   fs.mkdirSync(pluginsDir, { recursive: true });
   fs.writeFileSync(path.join(pluginsDir, ".gitkeep"), "");
 

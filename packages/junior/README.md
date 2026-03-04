@@ -9,10 +9,10 @@ Junior responds when mentioned in Slack and can continue replying in subscribed 
 Junior uses one standard Next.js model:
 
 ```text
-data/
+app/data/
   SOUL.md           # Personality
-skills/             # Skill definitions
-plugins/            # Provider plugins (optional)
+app/skills/         # Skill definitions
+app/plugins/        # Provider plugins (optional)
 ```
 
 ## Requirements
@@ -46,7 +46,7 @@ pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
 pnpm dev
 ```
 
-This runs the app with files loaded from `data/`, `skills/`, and `plugins/` in `packages/junior/`.
+This runs the app with files loaded from `app/data/`, `app/skills/`, and `app/plugins/` in `packages/junior/`.
 
 ## Deploying your own bot
 
@@ -79,12 +79,12 @@ pnpm add junior
 pnpm add next react react-dom @sentry/nextjs workflow
 ```
 
-2. Add bot files in your project root:
+2. Add bot files under `app/`:
 
 ```text
-data/SOUL.md
-skills/
-plugins/ (optional)
+app/data/SOUL.md
+app/skills/
+app/plugins/ (optional)
 ```
 
 3. Use normal Next.js scripts:
@@ -144,7 +144,7 @@ pnpm install
 pnpm dev
 ```
 
-This scaffolds a project with `data/SOUL.md`, plus empty `skills/` and `plugins/` directories.
+This scaffolds a project with `app/data/SOUL.md`, plus empty `app/skills/` and `app/plugins/` directories.
 
 ### Vercel deployment
 

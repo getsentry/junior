@@ -1,28 +1,7 @@
-import fs from "node:fs";
 import path from "node:path";
 
-const BUNDLED_ASSETS_ROOT = path.join(".next", "server", "runtime-assets");
-
-function workspaceHomeDir(): string {
-  return path.resolve(process.cwd());
-}
-
-function bundledAssetsHomeDir(): string {
-  return path.join(workspaceHomeDir(), BUNDLED_ASSETS_ROOT);
-}
-
 export function homeDir(): string {
-  const workspaceHome = workspaceHomeDir();
-  if (fs.existsSync(path.join(workspaceHome, "data"))) {
-    return workspaceHome;
-  }
-
-  const bundledHome = bundledAssetsHomeDir();
-  if (fs.existsSync(path.join(bundledHome, "data"))) {
-    return bundledHome;
-  }
-
-  return workspaceHome;
+  return path.resolve(process.cwd(), "app");
 }
 
 export function dataDir(): string {

@@ -16,9 +16,9 @@ type NextConfigFactory = (
 ) => Promise<NextConfig> | NextConfig;
 
 function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorConfigOptions): NextConfig {
-  const dataDir = options?.dataDir ?? "./data";
-  const skillsDir = options?.skillsDir ?? "./skills";
-  const pluginsDir = options?.pluginsDir ?? "./plugins";
+  const dataDir = options?.dataDir ?? "./app/data";
+  const skillsDir = options?.skillsDir ?? "./app/skills";
+  const pluginsDir = options?.pluginsDir ?? "./app/plugins";
   const tracingIncludes = Array.from(new Set([
     `${dataDir}/**/*`,
     `${skillsDir}/**/*`,

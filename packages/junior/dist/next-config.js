@@ -2,9 +2,9 @@
 import { createRequire } from "module";
 var require2 = createRequire(import.meta.url);
 function applyJuniorConfig(nextConfig, options) {
-  const dataDir = options?.dataDir ?? "./data";
-  const skillsDir = options?.skillsDir ?? "./skills";
-  const pluginsDir = options?.pluginsDir ?? "./plugins";
+  const dataDir = options?.dataDir ?? "./app/data";
+  const skillsDir = options?.skillsDir ?? "./app/skills";
+  const pluginsDir = options?.pluginsDir ?? "./app/plugins";
   const tracingIncludes = Array.from(/* @__PURE__ */ new Set([
     `${dataDir}/**/*`,
     `${skillsDir}/**/*`,

@@ -15,29 +15,14 @@ import {
 } from "./chunk-ZVUOP46C.js";
 
 // src/chat/plugins/registry.ts
-import { existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { readFileSync, readdirSync, statSync } from "fs";
 import path2 from "path";
 import { parse as parseYaml } from "yaml";
 
 // src/chat/home.ts
 import path from "path";
-var BUNDLED_ASSETS_ROOT = path.join(".next", "server", "runtime-assets");
-function workspaceHomeDir() {
-  return path.resolve(process.cwd());
-}
-function bundledAssetsHomeDir() {
-  return path.join(workspaceHomeDir(), BUNDLED_ASSETS_ROOT);
-}
 function homeDir() {
-  const workspaceHome = workspaceHomeDir();
-  if (existsSync(path.join(workspaceHome, "data"))) {
-    return workspaceHome;
-  }
-  const bundledHome = bundledAssetsHomeDir();
-  if (existsSync(path.join(bundledHome, "data"))) {
-    return bundledHome;
-  }
-  return workspaceHome;
+  return path.resolve(process.cwd(), "app");
 }
 function dataDir() {
   return path.join(homeDir(), "data");
