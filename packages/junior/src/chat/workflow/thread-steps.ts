@@ -1,6 +1,4 @@
-import { Message, ThreadImpl } from "chat";
-import type { SerializedMessage, SerializedThread, Thread } from "chat";
-import { WORKFLOW_DESERIALIZE } from "@workflow/serde";
+import type { Message, SerializedMessage, SerializedThread, Thread } from "chat";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
 
 let stateAdapterConnected = false;
@@ -22,20 +20,6 @@ function isSerializedThread(thread: ThreadMessagePayload["thread"]): thread is S
 
 function isSerializedMessage(message: ThreadMessagePayload["message"]): message is SerializedMessage {
   return typeof message === "object" && message !== null && (message as { _type?: unknown })._type === "chat:Message";
-}
-
-function toRuntimeThread(thread: ThreadMessagePayload["thread"]): Thread {
-  if (isSerializedThread(thread)) {
-    return ThreadImpl[WORKFLOW_DESERIALIZE](thread);
-  }
-  return thread;
-}
-
-function toRuntimeMessage(message: ThreadMessagePayload["message"]): Message {
-  if (isSerializedMessage(message)) {
-    return Message[WORKFLOW_DESERIALIZE](message);
-  }
-  return message;
 }
 
 function getPayloadChannelId(payload: { thread: ThreadMessagePayload["thread"] }): string | undefined {
@@ -71,6 +55,13 @@ export async function logThreadMessageFailureStep(
 
 export async function processThreadMessageStep(payload: ThreadMessagePayload, workflowRunId?: string): Promise<void> {
   "use step";
+  const [{ Message, ThreadImpl }, { WORKFLOW_DESERIALIZE }] = await Promise.all([import("chat"), import("@workflow/serde")]);
+  const threadDeserializer = (ThreadImpl as unknown as Record<PropertyKey, (value: SerializedThread) => Thread>)[
+    WORKFLOW_DESERIALIZE
+  ];
+  const messageDeserializer = (Message as unknown as Record<PropertyKey, (value: SerializedMessage) => Message>)[
+    WORKFLOW_DESERIALIZE
+  ];
   const [
     { appSlackRuntime, bot },
     { downloadPrivateSlackFile },
@@ -120,8 +111,12 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
     await getStateAdapter().connect();
     stateAdapterConnected = true;
   }
-  const runtimeThread = toRuntimeThread(payload.thread);
-  const runtimeMessage = toRuntimeMessage(payload.message);
+  const runtimeThread = isSerializedThread(payload.thread)
+    ? threadDeserializer(payload.thread)
+    : payload.thread;
+  const runtimeMessage = isSerializedMessage(payload.message)
+    ? messageDeserializer(payload.message)
+    : payload.message;
   const runtimePayload = {
     ...payload,
     thread: runtimeThread,
