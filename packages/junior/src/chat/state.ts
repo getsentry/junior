@@ -2,7 +2,6 @@ import { createRedisState } from "@chat-adapter/state-redis";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { Lock, StateAdapter } from "chat";
 import { hasRedisConfig } from "@/chat/config";
-import { logInfo } from "@/chat/observability";
 
 const MIN_LOCK_TTL_MS = 1000 * 60 * 5;
 const WORKFLOW_INGRESS_DEDUP_PREFIX = "junior:workflow_ingress";
@@ -23,15 +22,6 @@ function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
   const acquireLock = async (threadId: string, ttlMs: number): Promise<Lock | null> => {
     const effectiveTtlMs = Math.max(ttlMs, MIN_LOCK_TTL_MS);
     const lock = await base.acquireLock(threadId, effectiveTtlMs);
-    if (!lock) return null;
-    logInfo(
-      "thread_lock_acquired",
-      {},
-      {
-        "messaging.message.conversation_id": threadId
-      },
-      "Acquired thread lock"
-    );
     return lock;
   };
 

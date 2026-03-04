@@ -64,35 +64,15 @@ export async function logThreadMessageFailureStep(
   workflowRunId?: string
 ): Promise<void> {
   "use step";
-  const { logError, withContext } = await import("@/chat/observability");
-
-  await withContext(
-    {
-      slackThreadId: payload.normalizedThreadId,
-      slackChannelId: getPayloadChannelId(payload),
-      slackUserId: getPayloadUserId(payload),
-      workflowRunId
-    },
-    async () => {
-      logError(
-        "workflow_message_failed",
-        {},
-        {
-          "app.workflow.message_kind": payload.kind,
-          "messaging.message.id": payload.message.id,
-          "error.message": errorMessage
-        },
-        "Thread workflow step failed"
-      );
-    }
-  );
+  void payload;
+  void errorMessage;
+  void workflowRunId;
 }
 
 export async function processThreadMessageStep(payload: ThreadMessagePayload, workflowRunId?: string): Promise<void> {
   "use step";
   const [
     { appSlackRuntime, bot },
-    { logInfo, withContext, withSpan },
     { downloadPrivateSlackFile },
     {
       getStateAdapter,
@@ -103,7 +83,6 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
     }
   ] = await Promise.all([
     import("@/chat/bot"),
-    import("@/chat/observability"),
     import("@/chat/slack-actions/client"),
     import("@/chat/state")
   ]);
@@ -118,49 +97,18 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
     slackUserId: userId,
     workflowRunId: resolvedWorkflowRunId
   };
+  void messageStateContext;
   const existingMessageState = await getWorkflowMessageProcessingState(payload.dedupKey);
   if (existingMessageState?.status === "completed" || existingMessageState?.status === "started") {
-    logInfo(
-      "workflow_message_state_counter",
-      messageStateContext,
-      {
-        ...(messageId ? { "messaging.message.id": messageId } : {}),
-        ...(userId ? { "enduser.id": userId } : {}),
-        "app.workflow.message_state": existingMessageState.status,
-        "app.workflow.message_outcome": "skipped"
-      },
-      "Skipping workflow message because it is already in-progress or completed"
-    );
+    void messageId;
+    void userId;
     return;
   }
   const started = await markWorkflowMessageStarted(payload.dedupKey, resolvedWorkflowRunId);
-  if (started) {
-    logInfo(
-      "workflow_message_state_counter",
-      messageStateContext,
-      {
-        ...(messageId ? { "messaging.message.id": messageId } : {}),
-        ...(userId ? { "enduser.id": userId } : {}),
-        "app.workflow.message_state": "started",
-        "app.workflow.message_outcome": "processing"
-      },
-      "Marked workflow message as started"
-    );
-  }
+  void started;
   if (!started) {
     const latestMessageState = await getWorkflowMessageProcessingState(payload.dedupKey);
     if (latestMessageState?.status === "completed" || latestMessageState?.status === "started") {
-      logInfo(
-        "workflow_message_state_counter",
-        messageStateContext,
-        {
-          ...(messageId ? { "messaging.message.id": messageId } : {}),
-          ...(userId ? { "enduser.id": userId } : {}),
-          "app.workflow.message_state": latestMessageState.status,
-          "app.workflow.message_outcome": "skipped"
-        },
-        "Skipping workflow message because processing state is already claimed"
-      );
       return;
     }
   }
@@ -182,64 +130,15 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
   rehydrateAttachmentFetchers(runtimePayload, downloadPrivateSlackFile);
 
   try {
-    await withContext(
-      {
-        slackThreadId: payload.normalizedThreadId,
-        slackChannelId: runtimeThread.channelId,
-        slackUserId: runtimeMessage.author.userId,
-        workflowRunId: resolvedWorkflowRunId
-      },
-      async () => {
-        await withSpan(
-          "workflow.thread_message",
-          "workflow.thread_message",
-          {
-            slackThreadId: payload.normalizedThreadId,
-            slackChannelId: runtimeThread.channelId,
-            slackUserId: runtimeMessage.author.userId,
-            workflowRunId: resolvedWorkflowRunId
-          },
-          async () => {
-            if (payload.kind === "new_mention") {
-              await appSlackRuntime.handleNewMention(runtimeThread, runtimeMessage);
-            } else {
-              await appSlackRuntime.handleSubscribedMessage(runtimeThread, runtimeMessage);
-            }
-          },
-          {
-            "messaging.message.id": runtimeMessage.id,
-            "app.workflow.message_kind": payload.kind
-          }
-        );
-      }
-    );
+    if (payload.kind === "new_mention") {
+      await appSlackRuntime.handleNewMention(runtimeThread, runtimeMessage);
+    } else {
+      await appSlackRuntime.handleSubscribedMessage(runtimeThread, runtimeMessage);
+    }
     await markWorkflowMessageCompleted(payload.dedupKey, resolvedWorkflowRunId);
-    logInfo(
-      "workflow_message_state_counter",
-      messageStateContext,
-      {
-        ...(messageId ? { "messaging.message.id": messageId } : {}),
-        ...(userId ? { "enduser.id": userId } : {}),
-        "app.workflow.message_state": "completed",
-        "app.workflow.message_outcome": "succeeded"
-      },
-      "Marked workflow message as completed"
-    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     await markWorkflowMessageFailed(payload.dedupKey, errorMessage, resolvedWorkflowRunId);
-    logInfo(
-      "workflow_message_state_counter",
-      messageStateContext,
-      {
-        ...(messageId ? { "messaging.message.id": messageId } : {}),
-        ...(userId ? { "enduser.id": userId } : {}),
-        "app.workflow.message_state": "failed",
-        "app.workflow.message_outcome": "failed",
-        "error.message": errorMessage
-      },
-      "Marked workflow message as failed"
-    );
     throw error;
   }
 }
@@ -251,22 +150,11 @@ export async function releaseWorkflowStartupLeaseStep(
   startupLeaseOwnerToken: string
 ): Promise<void> {
   "use step";
-  const [{ releaseWorkflowStartupLease }, { logWarn }] = await Promise.all([
-    import("@/chat/state"),
-    import("@/chat/observability")
-  ]);
+  const { releaseWorkflowStartupLease } = await import("@/chat/state");
 
   try {
     await releaseWorkflowStartupLease(normalizedThreadId, startupLeaseOwnerToken);
   } catch (error) {
-    logWarn(
-      "workflow_startup_lease_release_failed",
-      {},
-      {
-        "messaging.message.conversation_id": normalizedThreadId,
-        "error.message": error instanceof Error ? error.message : String(error)
-      },
-      "Failed to release workflow startup lease after hook registration"
-    );
+    void error;
   }
 }

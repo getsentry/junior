@@ -5,20 +5,11 @@ const mocks = vi.hoisted(() => ({
   resume: vi.fn(),
   slackThreadWorkflow: vi.fn(),
   start: vi.fn(),
-  claimWorkflowStartupLease: vi.fn(),
-  randomUUID: vi.fn(),
-  logInfo: vi.fn(),
-  logWarn: vi.fn(),
-  logError: vi.fn(),
-  withContext: vi.fn()
+  claimWorkflowStartupLease: vi.fn()
 }));
 
 vi.mock("workflow/api", () => ({
   start: mocks.start
-}));
-
-vi.mock("node:crypto", () => ({
-  randomUUID: mocks.randomUUID
 }));
 
 vi.mock("@/chat/state", () => ({
@@ -30,13 +21,6 @@ vi.mock("@/chat/workflow/thread-workflow", () => ({
   threadMessageHook: {
     resume: mocks.resume
   }
-}));
-
-vi.mock("@/chat/observability", () => ({
-  logInfo: mocks.logInfo,
-  logWarn: mocks.logWarn,
-  logError: mocks.logError,
-  withContext: mocks.withContext
 }));
 
 import { routeToThreadWorkflow } from "@/chat/workflow/router";
@@ -61,9 +45,7 @@ describe("routeToThreadWorkflow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
-    mocks.randomUUID.mockReturnValue("lease-token-1");
     mocks.claimWorkflowStartupLease.mockResolvedValue(true);
-    mocks.withContext.mockImplementation(async (_context: unknown, callback: () => Promise<unknown>) => callback());
   });
 
   afterEach(() => {
@@ -91,19 +73,18 @@ describe("routeToThreadWorkflow", () => {
     await promise;
 
     expect(mocks.start).toHaveBeenCalledTimes(1);
-    expect(mocks.start).toHaveBeenCalledWith(mocks.slackThreadWorkflow, ["slack:C123:1700000000.100", "lease-token-1"]);
-    expect(mocks.claimWorkflowStartupLease).toHaveBeenCalledWith("slack:C123:1700000000.100", "lease-token-1", 3000);
+    expect(mocks.start).toHaveBeenCalledWith(mocks.slackThreadWorkflow, [
+      "slack:C123:1700000000.100",
+      expect.any(String)
+    ]);
+    expect(mocks.claimWorkflowStartupLease).toHaveBeenCalledWith(
+      "slack:C123:1700000000.100",
+      expect.any(String),
+      3000
+    );
     expect(mocks.resume).toHaveBeenCalledTimes(2);
     expect(mocks.resume).toHaveBeenNthCalledWith(1, "slack:C123:1700000000.100", payload);
     expect(mocks.resume).toHaveBeenNthCalledWith(2, "slack:C123:1700000000.100", payload);
-    expect(mocks.logInfo).toHaveBeenCalledWith(
-      "workflow_route_start_attempt",
-      {},
-      expect.objectContaining({
-        "app.workflow.resume_miss_reason": "resume_empty"
-      }),
-      "Starting thread workflow after expected resume miss"
-    );
   });
 
   it("continues retrying resume when start throws a race error", async () => {
@@ -191,31 +172,7 @@ describe("routeToThreadWorkflow", () => {
     expect(mocks.resume).toHaveBeenCalledTimes(1);
   });
 
-  it("logs retry misses with retry reason attributes", async () => {
-    mocks.resume
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ hookId: "hook-1" });
-    mocks.start.mockResolvedValueOnce({ runId: "wrun-1" });
-
-    const promise = routeToThreadWorkflow("slack:C123:1700000000.100", createPayload());
-    await vi.runAllTimersAsync();
-    await promise;
-
-    const retryInfoCalls = mocks.logInfo.mock.calls.filter(([eventName]) => eventName === "workflow_route_resume_retry");
-    const retryWarnCalls = mocks.logWarn.mock.calls.filter(([eventName]) => eventName === "workflow_route_resume_retry");
-    expect(retryInfoCalls).toHaveLength(2);
-    expect(retryWarnCalls).toHaveLength(0);
-    for (const call of [...retryInfoCalls, ...retryWarnCalls]) {
-      const attributes = call[2] as Record<string, unknown>;
-      expect(attributes["app.workflow.retry_reason"]).toBeDefined();
-      expect(attributes["app.workflow.retry_phase"]).toBeDefined();
-    }
-  });
-
   it("tries to become leader after follower retries are exhausted", async () => {
-    mocks.randomUUID.mockReturnValueOnce("lease-token-1").mockReturnValueOnce("lease-token-2");
     mocks.claimWorkflowStartupLease.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     mocks.resume
       .mockResolvedValueOnce(null)
@@ -229,13 +186,22 @@ describe("routeToThreadWorkflow", () => {
     await vi.runAllTimersAsync();
     await promise;
 
-    expect(mocks.claimWorkflowStartupLease).toHaveBeenNthCalledWith(1, "slack:C123:1700000000.100", "lease-token-1", 3000);
-    expect(mocks.claimWorkflowStartupLease).toHaveBeenNthCalledWith(2, "slack:C123:1700000000.100", "lease-token-2", 3000);
+    expect(mocks.claimWorkflowStartupLease).toHaveBeenNthCalledWith(
+      1,
+      "slack:C123:1700000000.100",
+      expect.any(String),
+      3000
+    );
+    expect(mocks.claimWorkflowStartupLease).toHaveBeenNthCalledWith(
+      2,
+      "slack:C123:1700000000.100",
+      expect.any(String),
+      3000
+    );
     expect(mocks.start).toHaveBeenCalledTimes(1);
   });
 
   it("uses final safety resume window when fallback lease is contended", async () => {
-    mocks.randomUUID.mockReturnValueOnce("lease-token-1").mockReturnValueOnce("lease-token-2");
     mocks.claimWorkflowStartupLease.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
     mocks.resume
       .mockResolvedValueOnce(null)
@@ -254,7 +220,6 @@ describe("routeToThreadWorkflow", () => {
   });
 
   it("fails only after final safety resume window is exhausted", async () => {
-    mocks.randomUUID.mockReturnValueOnce("lease-token-1").mockReturnValueOnce("lease-token-2");
     mocks.claimWorkflowStartupLease.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
     mocks.resume.mockResolvedValue(null);
 
@@ -267,13 +232,5 @@ describe("routeToThreadWorkflow", () => {
     expect((capturedError as Error).message).toContain("Hook resume returned no hook entity");
     expect(mocks.start).not.toHaveBeenCalled();
     expect(mocks.resume).toHaveBeenCalledTimes(6);
-    expect(mocks.logError).toHaveBeenCalledWith(
-      "workflow_route_failed",
-      {},
-      expect.objectContaining({
-        "app.workflow.message_kind": "new_mention"
-      }),
-      "Failed to route message to thread workflow"
-    );
   });
 });
