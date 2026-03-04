@@ -2108,6 +2108,10 @@ function sandboxSkillDir(skillName) {
 
 // src/chat/prompt.ts
 function loadSoul() {
+  const inlineSoul = process.env.JUNIOR_SOUL?.trim();
+  if (inlineSoul && inlineSoul.length > 0) {
+    return inlineSoul;
+  }
   const resolved = soulPath();
   const raw = fs.readFileSync(resolved, "utf8").trim();
   if (raw.length === 0) {
