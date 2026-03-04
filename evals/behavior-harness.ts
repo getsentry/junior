@@ -166,7 +166,11 @@ function toPostedText(value: unknown): string {
 }
 
 function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
-  const messageTs = event.thread.thread_ts ?? event.message.id;
+  // In Slack payloads, `ts` identifies the specific message while `thread_ts`
+  // identifies the thread root. Eval fixtures provide unique `message.id` per
+  // event, so prefer it for `raw.ts` to avoid collapsing all replies to the
+  // same timestamp in multi-turn thread scenarios.
+  const messageTs = event.message.id ?? event.thread.thread_ts;
   return {
     id: event.message.id ?? "",
     text: event.message.text ?? "",
