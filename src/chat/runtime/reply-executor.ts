@@ -289,7 +289,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     slackChannelId: channelId,
                     workflowRunId,
                     assistantUserName: botConfig.userName,
-                    modelId: botConfig.routerModelId
+                    modelId: botConfig.fastModelId
                   },
                   { "error.message": error instanceof Error ? error.message : String(error) },
                   "Thread title generation failed"

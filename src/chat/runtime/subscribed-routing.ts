@@ -18,7 +18,7 @@ export async function shouldReplyInSubscribedThread(args: {
 }): Promise<{ shouldReply: boolean; reason: string }> {
   const decision = await decideSubscribedThreadReply({
     botUserName: botConfig.userName,
-    modelId: botConfig.routerModelId,
+    modelId: botConfig.fastModelId,
     input: args,
     completeObject: (input) => getBotDeps().completeObject(input),
     logClassifierFailure: (error, input) => {
@@ -30,7 +30,7 @@ export async function shouldReplyInSubscribedThread(args: {
           slackChannelId: input.context.channelId,
           workflowRunId: input.context.workflowRunId,
           assistantUserName: botConfig.userName,
-          modelId: botConfig.routerModelId
+          modelId: botConfig.fastModelId
         },
         {
           "error.message": error instanceof Error ? error.message : String(error)

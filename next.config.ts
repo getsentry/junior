@@ -1,8 +1,7 @@
-import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 import { withJunior } from "@/next-config";
 
-const nextConfig: NextConfig = withWorkflow({
+const nextConfig = withWorkflow({
   typedRoutes: true,
   turbopack: {
     root: process.cwd()

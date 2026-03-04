@@ -20,7 +20,7 @@
     "bin"
   ],
   "scripts": {
-    "dev": "JUNIOR_HOME=./jr-sentry next dev",
+    "dev": "JUNIOR_HOME=${JUNIOR_HOME:-./jr-sentry} next dev",
     "build": "next build",
     "build:pkg": "tsup",
     "start": "node bin/junior.mjs --home=./jr-sentry",

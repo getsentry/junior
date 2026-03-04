@@ -5,7 +5,12 @@ export interface JuniorConfigOptions {
   sentry?: boolean;
 }
 
-export function withJunior(nextConfig?: NextConfig, options?: JuniorConfigOptions): NextConfig {
+type NextConfigFactory = (
+  phase: string,
+  ctx: { defaultConfig: NextConfig }
+) => Promise<NextConfig> | NextConfig;
+
+function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorConfigOptions): NextConfig {
   const home = options?.home ?? ".";
 
   const config: NextConfig = {
@@ -38,4 +43,18 @@ export function withJunior(nextConfig?: NextConfig, options?: JuniorConfigOption
   }
 
   return config;
+}
+
+export function withJunior(
+  nextConfig?: NextConfig | NextConfigFactory,
+  options?: JuniorConfigOptions
+): NextConfig | NextConfigFactory {
+  if (typeof nextConfig === "function") {
+    return async (phase, ctx) => {
+      const resolved = await nextConfig(phase, ctx);
+      return applyJuniorConfig(resolved, options);
+    };
+  }
+
+  return applyJuniorConfig(nextConfig, options);
 }

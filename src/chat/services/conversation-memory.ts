@@ -187,7 +187,7 @@ async function summarizeConversationChunk(
 
   try {
     const result = await getBotDeps().completeText({
-      modelId: botConfig.routerModelId,
+      modelId: botConfig.fastModelId,
       temperature: 0,
       messages: [
         {
@@ -204,7 +204,7 @@ async function summarizeConversationChunk(
         }
       ],
       metadata: {
-        modelId: botConfig.routerModelId,
+        modelId: botConfig.fastModelId,
         threadId: context.threadId ?? "",
         channelId: context.channelId ?? "",
         requesterId: context.requesterId ?? "",
@@ -224,7 +224,7 @@ async function summarizeConversationChunk(
         slackChannelId: context.channelId,
         workflowRunId: context.workflowRunId,
         assistantUserName: botConfig.userName,
-        modelId: botConfig.routerModelId
+        modelId: botConfig.fastModelId
       },
       {
         "error.message": error instanceof Error ? error.message : String(error),
@@ -239,7 +239,7 @@ async function summarizeConversationChunk(
 
 export async function generateThreadTitle(userText: string, assistantText: string): Promise<string> {
   const result = await getBotDeps().completeText({
-    modelId: botConfig.routerModelId,
+    modelId: botConfig.fastModelId,
     temperature: 0,
     messages: [
       {
