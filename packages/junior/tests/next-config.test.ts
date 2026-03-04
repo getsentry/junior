@@ -33,6 +33,11 @@ describe("withJunior", () => {
       "./my-skills/**/*",
       "./my-plugins/**/*"
     ]);
+    expect(config.outputFileTracingIncludes?.["/.well-known/**"]).toEqual([
+      "./my-data/**/*",
+      "./my-skills/**/*",
+      "./my-plugins/**/*"
+    ]);
   });
 
   it("wraps async Next config factories", async () => {
@@ -60,6 +65,11 @@ describe("withJunior", () => {
       "./my-skills/**/*",
       "./my-plugins/**/*"
     ]);
+    expect(resolved.outputFileTracingIncludes?.["/.well-known/**"]).toEqual([
+      "./my-data/**/*",
+      "./my-skills/**/*",
+      "./my-plugins/**/*"
+    ]);
     expect(resolved.serverExternalPackages).toEqual(
       expect.arrayContaining(["@vercel/sandbox", "bash-tool", "just-bash"])
     );
@@ -71,6 +81,7 @@ describe("withJunior", () => {
       {
         outputFileTracingIncludes: {
           "/api/**": ["./existing/**/*"],
+          "/.well-known/**": ["./well-known-existing/**/*"],
           "/other/**": ["./other/**/*"]
         }
       },
@@ -83,6 +94,12 @@ describe("withJunior", () => {
 
     expect(config.outputFileTracingIncludes?.["/api/**"]).toEqual([
       "./existing/**/*",
+      "./my-data/**/*",
+      "./my-skills/**/*",
+      "./my-plugins/**/*"
+    ]);
+    expect(config.outputFileTracingIncludes?.["/.well-known/**"]).toEqual([
+      "./well-known-existing/**/*",
       "./my-data/**/*",
       "./my-skills/**/*",
       "./my-plugins/**/*"

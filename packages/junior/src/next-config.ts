@@ -26,6 +26,11 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   ]));
   const existingApiTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/api/**"] ?? [];
   const mergedApiTracingIncludes = Array.from(new Set([...existingApiTracingIncludes, ...tracingIncludes]));
+  const existingWellKnownTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/.well-known/**"] ?? [];
+  const mergedWellKnownTracingIncludes = Array.from(new Set([
+    ...existingWellKnownTracingIncludes,
+    ...tracingIncludes
+  ]));
 
   const config: NextConfig = {
     ...nextConfig,
@@ -38,7 +43,8 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     ])),
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,
-      "/api/**": mergedApiTracingIncludes
+      "/api/**": mergedApiTracingIncludes,
+      "/.well-known/**": mergedWellKnownTracingIncludes
     }
   };
 
