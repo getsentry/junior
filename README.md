@@ -52,6 +52,24 @@ This runs the app with files loaded from `data/`, `skills/`, and `plugins/` in t
 
 Junior is available as an npm package and integrates as standard Next.js wrappers.
 
+### Workspace consumer smoke app
+
+This repo includes a local consumer app at `jr-sentry/` to validate package behavior before deployment.
+
+From repo root:
+
+```bash
+pnpm install
+pnpm --filter jr-sentry build
+```
+
+If you change package code and want to refresh generated `dist/` before validating:
+
+```bash
+pnpm build:pkg
+pnpm --filter jr-sentry build
+```
+
 ### Install into an existing Next.js app
 
 1. Install dependencies:
