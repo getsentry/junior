@@ -8,3 +8,4 @@ coverage
 .vercel
 .env*.local
 /dist
+packages/junior/dist
