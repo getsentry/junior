@@ -10,11 +10,9 @@ function applyJuniorConfig(nextConfig, options) {
     `${skillsDir}/**/*`,
     `${pluginsDir}/**/*`
   ]));
-  const existingApiTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/api/**"] ?? [];
-  const mergedApiTracingIncludes = Array.from(/* @__PURE__ */ new Set([...existingApiTracingIncludes, ...tracingIncludes]));
-  const existingWellKnownTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/.well-known/**"] ?? [];
-  const mergedWellKnownTracingIncludes = Array.from(/* @__PURE__ */ new Set([
-    ...existingWellKnownTracingIncludes,
+  const existingGlobalTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/*"] ?? [];
+  const mergedGlobalTracingIncludes = Array.from(/* @__PURE__ */ new Set([
+    ...existingGlobalTracingIncludes,
     ...tracingIncludes
   ]));
   const config = {
@@ -28,8 +26,7 @@ function applyJuniorConfig(nextConfig, options) {
     ])),
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,
-      "/api/**": mergedApiTracingIncludes,
-      "/.well-known/**": mergedWellKnownTracingIncludes
+      "/*": mergedGlobalTracingIncludes
     }
   };
   if (options?.sentry) {

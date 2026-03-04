@@ -28,12 +28,7 @@ describe("withJunior", () => {
       expect.arrayContaining(["existing-package", "@vercel/sandbox", "bash-tool", "just-bash"])
     );
     expect(config.transpilePackages).toEqual(expect.arrayContaining(["junior"]));
-    expect(config.outputFileTracingIncludes?.["/api/**"]).toEqual([
-      "./my-data/**/*",
-      "./my-skills/**/*",
-      "./my-plugins/**/*"
-    ]);
-    expect(config.outputFileTracingIncludes?.["/.well-known/**"]).toEqual([
+    expect(config.outputFileTracingIncludes?.["/*"]).toEqual([
       "./my-data/**/*",
       "./my-skills/**/*",
       "./my-plugins/**/*"
@@ -60,12 +55,7 @@ describe("withJunior", () => {
     const resolved = await resolveConfig(wrapped);
 
     expect(resolved.typedRoutes).toBe(true);
-    expect(resolved.outputFileTracingIncludes?.["/api/**"]).toEqual([
-      "./my-data/**/*",
-      "./my-skills/**/*",
-      "./my-plugins/**/*"
-    ]);
-    expect(resolved.outputFileTracingIncludes?.["/.well-known/**"]).toEqual([
+    expect(resolved.outputFileTracingIncludes?.["/*"]).toEqual([
       "./my-data/**/*",
       "./my-skills/**/*",
       "./my-plugins/**/*"
@@ -76,12 +66,11 @@ describe("withJunior", () => {
     expect(resolved.transpilePackages).toEqual(expect.arrayContaining(["junior"]));
   });
 
-  it("merges existing /api/** tracing includes instead of overwriting them", async () => {
+  it("merges existing global tracing includes instead of overwriting them", async () => {
     const config = await resolveConfig(withJunior(
       {
         outputFileTracingIncludes: {
-          "/api/**": ["./existing/**/*"],
-          "/.well-known/**": ["./well-known-existing/**/*"],
+          "/*": ["./existing/**/*"],
           "/other/**": ["./other/**/*"]
         }
       },
@@ -92,14 +81,8 @@ describe("withJunior", () => {
       }
     ) as NextConfig);
 
-    expect(config.outputFileTracingIncludes?.["/api/**"]).toEqual([
+    expect(config.outputFileTracingIncludes?.["/*"]).toEqual([
       "./existing/**/*",
-      "./my-data/**/*",
-      "./my-skills/**/*",
-      "./my-plugins/**/*"
-    ]);
-    expect(config.outputFileTracingIncludes?.["/.well-known/**"]).toEqual([
-      "./well-known-existing/**/*",
       "./my-data/**/*",
       "./my-skills/**/*",
       "./my-plugins/**/*"
