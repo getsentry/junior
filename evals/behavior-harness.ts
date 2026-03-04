@@ -4,6 +4,7 @@ import type { AppRuntimeAssistantLifecycleEvent } from "@/chat/app-runtime";
 import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
 import { generateAssistantReply } from "@/chat/respond";
 import { FakeSlackAdapter, createTestThread, type TestThread } from "../tests/fixtures/slack-harness";
+import { readCapturedSlackApiCalls, type CapturedSlackApiCall } from "../tests/msw/captured-slack-api-calls";
 
 interface BehaviorEventThreadFixture {
   channel_id?: string;
@@ -91,6 +92,61 @@ export interface BehaviorCaseResult {
   slackAdapter: FakeSlackAdapter;
 }
 
+function toFirstString(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const resolved = toFirstString(entry);
+      if (resolved) return resolved;
+    }
+  }
+  return undefined;
+}
+
+export function collectSlackArtifactsFromCapturedCalls(calls: CapturedSlackApiCall[]): Pick<BehaviorCaseResult, "channelPosts" | "reactions"> {
+  const channelPosts: BehaviorCaseResult["channelPosts"] = [];
+  const reactions: BehaviorCaseResult["reactions"] = [];
+
+  for (const call of calls) {
+    if (call.method === "chat.postMessage") {
+      const channel = toFirstString(call.params.channel);
+      const text = toFirstString(call.params.text);
+      if (!channel || text === undefined) {
+        continue;
+      }
+      const threadTs = toFirstString(call.params.thread_ts);
+      channelPosts.push({
+        channel,
+        text,
+        ...(threadTs ? { thread_ts: threadTs } : {})
+      });
+      continue;
+    }
+
+    if (call.method === "reactions.add") {
+      const channel = toFirstString(call.params.channel);
+      const emoji = toFirstString(call.params.name);
+      const timestamp = toFirstString(call.params.timestamp);
+      if (!channel || !emoji || !timestamp) {
+        continue;
+      }
+      reactions.push({
+        channel,
+        emoji,
+        timestamp
+      });
+    }
+  }
+
+  return {
+    channelPosts,
+    reactions
+  };
+}
+
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -138,16 +194,6 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
 
 export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<BehaviorCaseResult> {
   const slackAdapter = new FakeSlackAdapter();
-  const channelPosts: Array<{
-    channel: string;
-    text: string;
-    thread_ts?: string;
-  }> = [];
-  const reactions: Array<{
-    channel: string;
-    emoji: string;
-    timestamp: string;
-  }> = [];
   const threadsById = new Map<string, TestThread>();
   const channelStateById = new Map<string, { value: Record<string, unknown> }>();
   const replyTexts = testCase.behavior?.reply_texts ?? [];
@@ -158,7 +204,6 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   const originalEnableTestCredentials = process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   const originalTestCredentialToken = process.env.EVAL_TEST_CREDENTIAL_TOKEN;
   const originalSlackBotToken = process.env.SLACK_BOT_TOKEN;
-  const originalFetch = globalThis.fetch;
   const configuredSkillDirs =
     testCase.behavior?.skill_dirs?.map((entry) => path.resolve(process.cwd(), entry)) ?? [];
   if (testCase.behavior?.enable_test_credentials) {
@@ -169,85 +214,6 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   }
   if (testCase.behavior?.mock_slack_api) {
     process.env.SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN ?? "xoxb-eval-test-token";
-    globalThis.fetch = (async (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      if (!url.startsWith("https://slack.com/api/")) {
-        return originalFetch(input, init);
-      }
-
-      const endpoint = new URL(url).pathname.split("/").at(-1) ?? "";
-      const body = init?.body;
-      let payload: Record<string, unknown> = {};
-      if (typeof body === "string") {
-        payload = Object.fromEntries(new URLSearchParams(body).entries());
-      } else if (body instanceof URLSearchParams) {
-        payload = Object.fromEntries(body.entries());
-      }
-
-      if (endpoint === "chat.postMessage") {
-        const channel = typeof payload.channel === "string" ? payload.channel : "C_EVAL";
-        const text = typeof payload.text === "string" ? payload.text : "";
-        const threadTs = typeof payload.thread_ts === "string" ? payload.thread_ts : undefined;
-        channelPosts.push({
-          channel,
-          text,
-          ...(threadTs ? { thread_ts: threadTs } : {})
-        });
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            channel,
-            ts: "17000000.channel-post",
-            ...(threadTs ? { thread_ts: threadTs } : {})
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" }
-          }
-        );
-      }
-
-      if (endpoint === "reactions.add") {
-        const channel = typeof payload.channel === "string" ? payload.channel : "C_EVAL";
-        const emoji = typeof payload.name === "string" ? payload.name : "";
-        const timestamp = typeof payload.timestamp === "string" ? payload.timestamp : "";
-        reactions.push({
-          channel,
-          emoji,
-          timestamp
-        });
-        return new Response(
-          JSON.stringify({
-            ok: true
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" }
-          }
-        );
-      }
-
-      if (endpoint === "chat.getPermalink") {
-        const channel = typeof payload.channel === "string" ? payload.channel : "C_EVAL";
-        const messageTs = typeof payload.message_ts === "string" ? payload.message_ts : "17000000.channel-post";
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            channel,
-            permalink: `https://slack.example.com/archives/${channel}/p${messageTs.replace(".", "")}`
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" }
-          }
-        );
-      }
-
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      });
-    }) as typeof fetch;
   }
 
   const getChannelStateRef = (channelId: string | undefined): { value: Record<string, unknown> } | undefined => {
@@ -389,7 +355,6 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   } finally {
     resetBotDepsForTests();
     (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
-    globalThis.fetch = originalFetch;
     if (originalSlackBotToken === undefined) {
       delete process.env.SLACK_BOT_TOKEN;
     } else {
@@ -410,6 +375,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   }
 
   const posts = [...threadsById.values()].flatMap((thread) => thread.posts.map(toPostedText));
+  const { channelPosts, reactions } = collectSlackArtifactsFromCapturedCalls(readCapturedSlackApiCalls());
 
   return {
     channelPosts,

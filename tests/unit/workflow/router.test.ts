@@ -112,7 +112,7 @@ describe("routeToThreadWorkflow", () => {
     const delays = setTimeoutSpy.mock.calls
       .map((call) => call[1])
       .filter((value): value is number => typeof value === "number");
-    expect(delays).toEqual(expect.arrayContaining([50, 100]));
+    expect(delays).toEqual(expect.arrayContaining([150, 300]));
     setTimeoutSpy.mockRestore();
   });
 

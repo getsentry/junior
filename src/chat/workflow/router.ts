@@ -3,7 +3,9 @@ import type { ThreadMessagePayload } from "@/chat/workflow/types";
 import { slackThreadWorkflow, threadMessageHook } from "@/chat/workflow/thread-workflow";
 import { logError, logInfo, logWarn, withContext } from "@/chat/observability";
 
-const RESUME_RETRY_DELAYS_MS = [0, 50, 100, 200, 400] as const;
+// Start with a short initial delay so the workflow hook has time to register
+// before we attempt the first retry after creating the workflow run.
+const RESUME_RETRY_DELAYS_MS = [75, 150, 300, 600, 1000] as const;
 const WARN_RETRY_ATTEMPT = 3;
 
 type StartError = Error & { code?: string; name?: string };

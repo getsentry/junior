@@ -790,7 +790,7 @@ export async function generateAssistantReply(
 
     const unsubscribe = agent.subscribe((event) => {
       // Track message boundaries so text from consecutive assistant messages
-      // is separated by "\n", matching the non-streamed join behavior.
+      // is separated by "\n\n", matching final Slack formatting.
       if (event.type === "message_start") {
         if (hasEmittedText) {
           needsSeparator = true;
@@ -811,7 +811,7 @@ export async function generateAssistantReply(
         return;
       }
 
-      const text = needsSeparator ? "\n" + deltaText : deltaText;
+      const text = needsSeparator ? "\n\n" + deltaText : deltaText;
       needsSeparator = false;
       hasEmittedText = true;
 
@@ -901,7 +901,7 @@ export async function generateAssistantReply(
 
     const primaryText = assistantMessages
       .map((message) => extractAssistantText(message))
-      .join("\n")
+      .join("\n\n")
       .trim();
 
     const toolErrorCount = toolResults.filter((result) => result.isError).length;

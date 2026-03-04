@@ -136,10 +136,10 @@ describe("createNormalizingStream", () => {
     expect(result).toBe(ensureBlockSpacing("text\n```\ncode\n```\nmore"));
   });
 
-  it("separates text from different messages with newline", async () => {
-    // Simulates two assistant messages joined by "\n" separator
+  it("separates text from different messages with blank line", async () => {
+    // Simulates two assistant messages joined by "\n\n" separator
     // (as inserted by respond.ts message boundary detection)
-    const chunks = ["Hello.", "\n", "How are you?"];
+    const chunks = ["Hello.", "\n\n", "How are you?"];
     const stream = createNormalizingStream(chunksToIterable(chunks), ensureBlockSpacing);
     const result = await collectStream(stream);
     expect(result).toBe("Hello.\n\nHow are you?");
