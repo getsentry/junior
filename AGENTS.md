@@ -1,13 +1,19 @@
 # Agent Instructions
 
 ## Package Manager
-- Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`
+Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`
 
 ## Commit Attribution
-- AI commits MUST include:
+AI commits MUST include:
 ```
 Co-Authored-By: (agent model name) <email>
 ```
+
+## File-Scoped Commands
+| Task | Command |
+|------|---------|
+| Unit test file | `pnpm --filter junior exec vitest run path/to/file.test.ts` |
+| Eval file | `pnpm --filter junior exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts` |
 
 ## Key Conventions
 - Commit to `main` only.
@@ -26,7 +32,7 @@ Co-Authored-By: (agent model name) <email>
 - Chat SDK streaming standard: pass `AsyncIterable<string>` to `thread.post(...)`.
 - Pi SDK streaming standard: consume `Agent` events (`message_update`/`text_delta`) and bridge deltas into the `AsyncIterable` shim.
 - Avoid bespoke Slack `chat.update` loops unless required by a hard platform limitation.
-- Prefer hard cutover for command/skill renames and behavior migrations unless the user explicitly requests backward compatibility.
+- Prefer hard cutover for command or skill renames and behavior migrations unless backward compatibility is explicitly requested.
 
 ## Known Specs
 - `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
