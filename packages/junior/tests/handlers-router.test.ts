@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { healthGetMock, webhooksPostMock } = vi.hoisted(() => ({
+const { healthGetMock, oauthCallbackGetMock, webhooksPostMock } = vi.hoisted(() => ({
   healthGetMock: vi.fn(async () => new Response("health", { status: 200 })),
+  oauthCallbackGetMock: vi.fn(async (_request: Request, context: { params: Promise<{ provider: string }> }) => {
+    const { provider } = await context.params;
+    return new Response(`oauth:${provider}`, { status: 200 });
+  }),
   webhooksPostMock: vi.fn(async (_request: Request, context: { params: Promise<{ platform: string }> }) => {
     const { platform } = await context.params;
     return new Response(`webhook:${platform}`, { status: 202 });
@@ -10,6 +14,10 @@ const { healthGetMock, webhooksPostMock } = vi.hoisted(() => ({
 
 vi.mock("@/handlers/health", () => ({
   GET: healthGetMock
+}));
+
+vi.mock("@/handlers/oauth-callback", () => ({
+  GET: oauthCallbackGetMock
 }));
 
 vi.mock("@/handlers/webhooks", () => ({
@@ -25,6 +33,7 @@ function routeContext(path: string[]): { params: Promise<{ path: string[] }> } {
 describe("handlers router", () => {
   beforeEach(() => {
     healthGetMock.mockClear();
+    oauthCallbackGetMock.mockClear();
     webhooksPostMock.mockClear();
   });
 
@@ -49,6 +58,27 @@ describe("handlers router", () => {
     expect(await response.text()).toBe("webhook:slack");
     expect(webhooksPostMock).toHaveBeenCalledTimes(1);
     expect(await webhooksPostMock.mock.calls[0][1].params).toEqual({ platform: "slack" });
+  });
+
+  it("routes oauth callback requests", async () => {
+    const response = await GET(
+      new Request("http://localhost/api/oauth/callback/sentry"),
+      routeContext(["oauth", "callback", "sentry"])
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("oauth:sentry");
+    expect(oauthCallbackGetMock).toHaveBeenCalledTimes(1);
+    expect(await oauthCallbackGetMock.mock.calls[0][1].params).toEqual({ provider: "sentry" });
+  });
+
+  it("accepts legacy api-prefixed oauth callback route form", async () => {
+    const response = await GET(
+      new Request("http://localhost/api/oauth/callback/sentry"),
+      routeContext(["api", "oauth", "callback", "sentry"])
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("oauth:sentry");
+    expect(oauthCallbackGetMock).toHaveBeenCalledTimes(1);
   });
 
   it("accepts legacy api-prefixed webhook route form", async () => {

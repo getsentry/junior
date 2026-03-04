@@ -1,4 +1,5 @@
 import { GET as healthGET } from "@/handlers/health";
+import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 
 type RouteContext = {
@@ -18,6 +19,14 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
 
   if (route === "health") {
     return healthGET();
+  }
+
+  const oauthCallbackMatch = route.match(/^oauth\/callback\/([^/]+)$/);
+  if (oauthCallbackMatch) {
+    const provider = oauthCallbackMatch[1];
+    return oauthCallbackGET(request, {
+      params: Promise.resolve({ provider })
+    });
   }
 
   return new Response("Not Found", { status: 404 });
