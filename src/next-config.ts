@@ -26,12 +26,12 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
 
   const config: NextConfig = {
     ...nextConfig,
-    serverExternalPackages: [
+    serverExternalPackages: Array.from(new Set([
       ...(nextConfig?.serverExternalPackages ?? []),
       "@vercel/sandbox",
       "bash-tool",
       "just-bash"
-    ],
+    ])),
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,
       "/api/**": mergedApiTracingIncludes

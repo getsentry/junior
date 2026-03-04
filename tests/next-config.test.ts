@@ -80,4 +80,22 @@ describe("withJunior", () => {
     ]);
     expect(config.outputFileTracingIncludes?.["/other/**"]).toEqual(["./other/**/*"]);
   });
+
+  it("deduplicates serverExternalPackages when consumer already includes defaults", () => {
+    const config = withJunior(
+      {
+        serverExternalPackages: ["@vercel/sandbox", "custom-package"]
+      },
+      {
+        dataDir: "./my-data",
+        skillsDir: "./my-skills",
+        pluginsDir: "./my-plugins"
+      }
+    ) as NextConfig;
+
+    expect(config.serverExternalPackages).toEqual(
+      expect.arrayContaining(["@vercel/sandbox", "bash-tool", "just-bash", "custom-package"])
+    );
+    expect(config.serverExternalPackages?.filter((pkg) => pkg === "@vercel/sandbox")).toHaveLength(1);
+  });
 });
