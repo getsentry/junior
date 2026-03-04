@@ -1,4 +1,5 @@
 import { WebClient } from "@slack/web-api";
+import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/observability";
 
 // Slack canvas/list methods are not exposed by the current chat adapter public API,
@@ -97,13 +98,28 @@ function getHeaderString(headers: unknown, name: string): string | undefined {
 
 let client: WebClient | null = null;
 
+export function normalizeSlackConversationId(channelId: string | undefined): string | undefined {
+  if (!channelId) return undefined;
+  const trimmed = channelId.trim();
+  if (!trimmed) return undefined;
+
+  if (!trimmed.startsWith("slack:")) {
+    return trimmed;
+  }
+
+  const parts = trimmed.split(":");
+  // Accept both "slack:C123" and "slack:C123:1700000000.000" and normalize
+  // to the canonical conversation ID expected by Slack Web API methods.
+  return parts[1]?.trim() || undefined;
+}
+
 function getClient(): WebClient {
   if (client) return client;
 
-  const token = process.env.SLACK_BOT_TOKEN;
+  const token = getSlackBotToken();
   if (!token) {
     throw new SlackActionError(
-      "SLACK_BOT_TOKEN is required for Slack canvas/list actions in this service",
+      "SLACK_BOT_TOKEN (or SLACK_BOT_USER_TOKEN) is required for Slack canvas/list actions in this service",
       "missing_token"
     );
   }
@@ -148,6 +164,10 @@ function mapSlackError(error: unknown): SlackActionError {
   }
 
   if (apiError === "invalid_arguments") {
+    return new SlackActionError(message, "invalid_arguments", baseOptions);
+  }
+
+  if (apiError === "invalid_name") {
     return new SlackActionError(message, "invalid_arguments", baseOptions);
   }
 
@@ -250,12 +270,24 @@ export function getSlackClient(): WebClient {
  * - D: direct message (1:1)
  */
 export function isDmChannel(channelId: string): boolean {
-  return channelId.startsWith("D");
+  const normalized = normalizeSlackConversationId(channelId);
+  return Boolean(normalized && normalized.startsWith("D"));
+}
+
+/**
+ * Conversation-scoped Slack contexts backed by a concrete conversation ID.
+ * Includes channels/groups/DMs (C/G/D).
+ */
+export function isConversationScopedChannel(channelId: string | undefined): boolean {
+  const normalized = normalizeSlackConversationId(channelId);
+  if (!normalized) return false;
+  return normalized.startsWith("C") || normalized.startsWith("G") || normalized.startsWith("D");
 }
 
 export function isConversationChannel(channelId: string | undefined): boolean {
-  if (!channelId) return false;
-  return channelId.startsWith("C") || channelId.startsWith("G");
+  const normalized = normalizeSlackConversationId(channelId);
+  if (!normalized) return false;
+  return normalized.startsWith("C") || normalized.startsWith("G");
 }
 
 export async function getFilePermalink(fileId: string): Promise<string | undefined> {
@@ -288,10 +320,10 @@ export async function uploadFilesToThread(args: {
 }
 
 export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {
-  const token = process.env.SLACK_BOT_TOKEN;
+  const token = getSlackBotToken();
   if (!token) {
     throw new SlackActionError(
-      "SLACK_BOT_TOKEN is required for Slack file downloads in this service",
+      "SLACK_BOT_TOKEN (or SLACK_BOT_USER_TOKEN) is required for Slack file downloads in this service",
       "missing_token"
     );
   }

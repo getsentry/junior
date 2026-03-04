@@ -26,18 +26,33 @@ export interface SkillInvocation {
   args: string;
 }
 
-let skillCache: { expiresAt: number; skills: SkillMetadata[] } | null = null;
+export interface DiscoverSkillsOptions {
+  additionalRoots?: string[];
+}
+
+let skillCache: { expiresAt: number; key: string; skills: SkillMetadata[] } | null = null;
 
 export function resetSkillDiscoveryCache(): void {
   skillCache = null;
 }
 
-function resolveSkillRoots(): string[] {
+function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
+  const additionalRoots = options?.additionalRoots ?? [];
   const envRoots = process.env.SKILL_DIRS?.split(path.delimiter).filter(Boolean) ?? [];
   const defaults = [path.join(process.cwd(), "src", "junior", "skills")];
   const pluginRoots = getPluginSkillRoots();
 
-  return [...envRoots, ...defaults, ...pluginRoots];
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+  for (const root of [...additionalRoots, ...envRoots, ...defaults, ...pluginRoots]) {
+    const normalized = path.resolve(root);
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    resolved.push(normalized);
+  }
+  return resolved;
 }
 
 function parseAllowedTools(value: unknown): string[] | undefined {
@@ -128,12 +143,13 @@ async function readSkillDirectory(skillDir: string): Promise<SkillMetadata | nul
   }
 }
 
-export async function discoverSkills(): Promise<SkillMetadata[]> {
-  if (skillCache && skillCache.expiresAt > Date.now()) {
+export async function discoverSkills(options?: DiscoverSkillsOptions): Promise<SkillMetadata[]> {
+  const roots = resolveSkillRoots(options);
+  const cacheKey = roots.join(path.delimiter);
+  if (skillCache && skillCache.expiresAt > Date.now() && skillCache.key === cacheKey) {
     return skillCache.skills;
   }
 
-  const roots = resolveSkillRoots();
   const discovered: SkillMetadata[] = [];
   const seen = new Set<string>();
 
@@ -162,6 +178,7 @@ export async function discoverSkills(): Promise<SkillMetadata[]> {
   const sorted = discovered.sort((a, b) => a.name.localeCompare(b.name));
   skillCache = {
     expiresAt: Date.now() + SKILL_CACHE_TTL_MS,
+    key: cacheKey,
     skills: sorted
   };
   return sorted;

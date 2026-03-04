@@ -35,21 +35,41 @@ pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
 pnpm dev
 ```
 
-## Ngrok for Slack
+## Slack tunnel (Cloudflare)
 
-1. Expose local port `3000`.
+Install `cloudflared` if you don't have it (`brew install cloudflared` on macOS).
+
+### Quick (random hostname each time)
 
 ```bash
-ngrok http 3000
+cloudflared tunnel --url http://localhost:3000
 ```
 
-2. Set Slack Event Subscriptions and Interactivity request URL to:
+### Stable hostname (one-time setup)
+
+Requires a free Cloudflare account and a domain managed through Cloudflare DNS.
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create junior-dev
+cloudflared tunnel route dns junior-dev junior-dev.yourdomain.com
+```
+
+Then each time you develop:
+
+```bash
+cloudflared tunnel run --url http://localhost:3000 junior-dev
+```
+
+### Configuring Slack
+
+Set Slack Event Subscriptions and Interactivity request URL to:
 
 ```text
-https://<ngrok-host>/api/webhooks/slack
+https://<tunnel-host>/api/webhooks/slack
 ```
 
-3. Invite `@junior` to a channel and mention it.
+With a stable hostname you only need to do this once. Invite `@junior` to a channel and mention it.
 
 ## Evals
 
@@ -57,24 +77,14 @@ Use evals for end-to-end behavior testing of Junior's reply pipeline (prompting,
 
 Evals intentionally exclude live Slack integration concerns (Slack transport, app permissions, and webhook delivery).
 
-```bash
-pnpm evals
-```
-
-Add a new eval case to `evals/slack-behaviors.eval.ts`:
-
-```typescript
-slackEval("my new case", {
-  events: [mention("<@U_APP> do the thing")],
-  assert: (result) => {
-    expect(result.posts).toHaveLength(1);
-  },
-  criteria: "Posts exactly one reply to the mention.",
-});
-```
-
-Then run:
+Authoring guidance lives in `evals/README.md` and `specs/testing/evals-spec.md`.
 
 ```bash
 pnpm evals
 ```
+
+## Test env isolation
+
+Vitest loads `.env`, `.env.local`, `.env.test`, then `.env.test.local` so test-specific values override development/prod values.
+
+Slack credentials are intentionally replaced with test values for tests/evals to prevent accidental use of real Slack tokens.

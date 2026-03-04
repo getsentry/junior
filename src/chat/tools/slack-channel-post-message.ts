@@ -4,46 +4,21 @@ import { tool } from "@/chat/tools/definition";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 
-function hasExplicitChannelPostIntent(userText: string | undefined): boolean {
-  if (!userText) {
-    return false;
-  }
-
-  const normalized = userText.toLowerCase();
-  const mentionsChannelTarget =
-    /\b(channel|main channel|public channel)\b/.test(normalized) || /(^|\s)#([a-z0-9_-]+)/.test(normalized);
-  const hasPostingVerb = /\b(post|send|share|show|tell|announce|broadcast|publish)\b/.test(normalized);
-  return mentionsChannelTarget && hasPostingVerb;
-}
-
 export function createSlackChannelPostMessageTool(context: ToolRuntimeContext, state: ToolState) {
   return tool({
     description:
-      "Post a message in a Slack channel (outside the thread). Use when the user explicitly asks to show, share, or announce something in a channel. Do not use for normal thread replies or speculative broadcasts.",
+      "Post a message in the active Slack channel context (outside the thread). Use this when the user explicitly asks to post/send/share/say something in the channel. Do not use for normal thread replies or speculative broadcasts. Do not claim a channel message was posted unless this tool succeeds in this turn.",
     inputSchema: Type.Object({
       text: Type.String({
         minLength: 1,
         maxLength: 40000,
         description: "Slack mrkdwn text to post."
-      }),
-      channel_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional destination channel ID. Defaults to the current thread channel."
-        })
-      )
+      })
     }),
-    execute: async ({ text, channel_id }) => {
-      const targetChannelId = channel_id ?? context.channelId;
+    execute: async ({ text }) => {
+      const targetChannelId = context.channelId;
       if (!targetChannelId) {
-        return { ok: false, error: "No channel_id provided and no active channel context is available" };
-      }
-
-      if (!hasExplicitChannelPostIntent(context.userText)) {
-        return {
-          ok: false,
-          error: "Blocked: posting to a channel requires explicit user intent to post/share in-channel in this turn"
-        };
+        return { ok: false, error: "No active channel context is available for posting" };
       }
 
       const operationKey = createOperationKey("slackChannelPostMessage", {

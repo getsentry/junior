@@ -8,14 +8,8 @@ import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 export function createSlackCanvasUpdateTool(state: ToolState, _context: ToolRuntimeContext) {
   return tool({
     description:
-      "Update an existing Slack canvas. Use when continuing or correcting a document already tracked in this thread. Do not use to create a brand-new long-form artifact.",
+      "Update the active Slack canvas tracked in artifact context. Use when continuing or correcting a document already tracked in this thread. Do not use to create a brand-new long-form artifact.",
     inputSchema: Type.Object({
-      canvas_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional canvas ID. Defaults to the last canvas used in this thread."
-        })
-      ),
       markdown: Type.String({
         minLength: 1,
         description: "Markdown content to insert or use as replacement text."
@@ -39,8 +33,8 @@ export function createSlackCanvasUpdateTool(state: ToolState, _context: ToolRunt
         })
       )
     }),
-    execute: async ({ canvas_id, markdown, operation, section_id, section_contains_text }) => {
-      const targetCanvasId = canvas_id ?? state.getTurnCreatedCanvasId();
+    execute: async ({ markdown, operation, section_id, section_contains_text }) => {
+      const targetCanvasId = state.getTurnCreatedCanvasId() ?? state.getCurrentCanvasId();
       const resolvedOperation = operation ?? "insert_at_end";
       if (!targetCanvasId) {
         logWarn(
@@ -56,7 +50,7 @@ export function createSlackCanvasUpdateTool(state: ToolState, _context: ToolRunt
         return {
           ok: false,
           error:
-            "No canvas_id provided. For cross-turn updates, provide explicit canvas_id."
+            "No active canvas found in artifact context"
         };
       }
       const operationKey = createOperationKey("slackCanvasUpdate", {

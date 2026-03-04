@@ -229,7 +229,46 @@ function isSandboxUnavailableError(error: unknown): boolean {
   });
 }
 
+function getFirstErrorMessage(error: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current && !seen.has(current)) {
+    if (current instanceof Error) {
+      const message = current.message.trim();
+      if (message) {
+        return message;
+      }
+    }
+    seen.add(current);
+    current = typeof current === "object" ? (current as { cause?: unknown }).cause : undefined;
+  }
+
+  return undefined;
+}
+
 function wrapSandboxSetupError(error: unknown): Error {
+  try {
+    const details = getSandboxErrorDetails(error);
+    if (details.summary) {
+      return new Error(`sandbox setup failed (${details.summary})`, { cause: error });
+    }
+  } catch {
+    // Keep fallback message below if detail extraction fails.
+  }
+
+  let causeMessage: string | undefined;
+  try {
+    causeMessage = getFirstErrorMessage(error);
+  } catch (cause) {
+    causeMessage = cause instanceof Error ? cause.message : undefined;
+  }
+
+  if (causeMessage && causeMessage.trim() && causeMessage !== "sandbox setup failed") {
+    const oneLine = causeMessage.replace(/\s+/g, " ").trim();
+    return new Error(`sandbox setup failed (${oneLine})`, { cause: error });
+  }
+
   return new Error("sandbox setup failed", { cause: error });
 }
 
@@ -332,6 +371,10 @@ export function createSandboxExecutor(options?: {
           return nextSandbox;
         };
 
+        const handleSetupFailure = (error: unknown): never => {
+          throw wrapSandboxSetupError(error);
+        };
+
         const createFreshSandbox = async (): Promise<Sandbox> => {
           let createdSandbox: Sandbox;
           try {
@@ -351,13 +394,13 @@ export function createSandboxExecutor(options?: {
                 })
             );
           } catch (error) {
-            throw wrapSandboxSetupError(error);
+            return handleSetupFailure(error);
           }
 
           try {
             await upsertSkillsToSandbox(createdSandbox);
           } catch (error) {
-            throw wrapSandboxSetupError(error);
+            return handleSetupFailure(error);
           }
           return assignSandbox(createdSandbox);
         };
@@ -396,7 +439,7 @@ export function createSandboxExecutor(options?: {
             if (isSandboxUnavailableError(error)) {
               return recoverUnavailableSandbox("memory");
             }
-            throw wrapSandboxSetupError(error);
+            return handleSetupFailure(error);
           }
         }
 
@@ -425,7 +468,7 @@ export function createSandboxExecutor(options?: {
             if (isSandboxUnavailableError(error)) {
               return recoverUnavailableSandbox("id_hint");
             }
-            throw wrapSandboxSetupError(error);
+            return handleSetupFailure(error);
           }
         }
 

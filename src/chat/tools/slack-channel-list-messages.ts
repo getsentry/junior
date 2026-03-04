@@ -6,14 +6,8 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 export function createSlackChannelListMessagesTool(context: ToolRuntimeContext) {
   return tool({
     description:
-      "List channel messages from Slack history. Use when the user asks for recent or historical channel context outside this thread. Do not use for live monitoring or when current thread context already answers the question.",
+      "List channel messages from Slack history in the active channel context. Use when the user asks for recent or historical channel context outside this thread. Do not use for live monitoring or when current thread context already answers the question.",
     inputSchema: Type.Object({
-      channel_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional channel ID. Defaults to the current thread channel."
-        })
-      ),
       limit: Type.Optional(
         Type.Integer({
           minimum: 1,
@@ -52,10 +46,10 @@ export function createSlackChannelListMessagesTool(context: ToolRuntimeContext) 
         })
       )
     }),
-    execute: async ({ channel_id, limit, cursor, oldest, latest, inclusive, max_pages }) => {
-      const targetChannelId = channel_id ?? context.channelId;
+    execute: async ({ limit, cursor, oldest, latest, inclusive, max_pages }) => {
+      const targetChannelId = context.channelId;
       if (!targetChannelId) {
-        return { ok: false, error: "No channel_id provided and no active channel context is available" };
+        return { ok: false, error: "No active channel context is available for history lookup" };
       }
 
       const result = await listChannelMessages({

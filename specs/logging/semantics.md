@@ -1,5 +1,35 @@
 # OpenTelemetry Semantics Map
 
+## Metadata
+
+- Created: 2026-02-25
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
+## Status
+
+Active
+
+## Purpose
+
+Provide the canonical semantic attribute and naming map used by logging and tracing specs.
+
+## Scope
+
+- Preferred OpenTelemetry keys.
+- `app.*` fallback policy when semantic keys do not exist.
+- Naming rules for spans, events, and operation categories.
+
+## Related Specs
+
+- [Instrumentation Specs](./index.md)
+- [Structured Logging Spec](./logging-spec.md)
+- [Tracing Spec](./tracing-spec.md)
+
 This file is the canonical attribute and naming map for instrumentation in this repo.
 
 ## Policy

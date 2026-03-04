@@ -57,4 +57,20 @@ describe("buildSystemPrompt skill paths", () => {
     expect(prompt).toContain("  - config_keys: github.repo");
     expect(prompt).toContain("github.issues.read");
   });
+
+  it("documents harness-owned Slack artifact targeting and explicit channel-post behavior", () => {
+    const prompt = buildSystemPrompt({
+      availableSkills: [],
+      activeSkills: [],
+      invocation: null
+    });
+
+    expect(prompt).toContain("`slackCanvasUpdate` targets the active artifact-context canvas automatically");
+    expect(prompt).toContain("do not ask the user for `canvas_id`");
+    expect(prompt).toContain("`slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` target the active artifact-context list automatically");
+    expect(prompt).toContain("do not ask the user for `list_id`");
+    expect(prompt).toContain(
+      "If the user explicitly asks to post/send/share/say/show/announce/broadcast in the channel (outside this thread), call `slackChannelPostMessage`"
+    );
+  });
 });

@@ -6,14 +6,8 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 export function createSlackChannelListMembersTool(context: ToolRuntimeContext) {
   return tool({
     description:
-      "List member IDs in a Slack channel. Use when the user asks who is in a channel, who to assign, or who should be notified. Do not use when thread-local participant context is sufficient.",
+      "List member IDs in the active Slack channel context. Use when the user asks who is in a channel, who to assign, or who should be notified. Do not use when thread-local participant context is sufficient.",
     inputSchema: Type.Object({
-      channel_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional channel ID. Defaults to the current thread channel."
-        })
-      ),
       limit: Type.Optional(
         Type.Integer({
           minimum: 1,
@@ -28,10 +22,10 @@ export function createSlackChannelListMembersTool(context: ToolRuntimeContext) {
         })
       )
     }),
-    execute: async ({ channel_id, limit, cursor }) => {
-      const targetChannelId = channel_id ?? context.channelId;
+    execute: async ({ limit, cursor }) => {
+      const targetChannelId = context.channelId;
       if (!targetChannelId) {
-        return { ok: false, error: "No channel_id provided and no active channel context is available" };
+        return { ok: false, error: "No active channel context is available for member lookup" };
       }
 
       const result = await listChannelMembers({

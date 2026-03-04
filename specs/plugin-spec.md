@@ -1,5 +1,15 @@
 # Plugin Architecture Spec
 
+## Metadata
+
+- Created: 2026-03-01
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
 ## Status
 
 Implemented (Sentry + GitHub migrated)
@@ -7,7 +17,7 @@ Implemented (Sentry + GitHub migrated)
 ## Related
 
 - [Skill Capabilities Spec](./skill-capabilities-spec.md)
-- [OAuth Flows Spec](./oauth-flows.md)
+- [OAuth Flows Spec](./oauth-flows-spec.md)
 - [Security Policy](./security-policy.md)
 - Plugin Registry: `src/chat/plugins/registry.ts`
 - Plugin Types: `src/chat/plugins/types.ts`
@@ -142,7 +152,7 @@ mcp:                                 # optional — MCP server config for tool s
 1. **Scan** `src/plugins/` for directories containing `plugin.yaml`.
 2. **Parse** each manifest and validate against the contract above.
 3. **Register** capabilities, config keys, OAuth config in internal maps.
-4. **Emit** `plugin_loaded` observability event per plugin (on broker creation).
+4. **Annotate** active span with plugin metadata per broker creation.
 5. Plugin skills are discovered later by `discoverSkills()` via `getPluginSkillRoots()`.
 
 ### Initialization ordering
@@ -249,7 +259,7 @@ All existing security invariants from `security-policy.md` are preserved:
 
 | Component | Reason |
 |-----------|--------|
-| Agent loop (`ToolLoopAgent`, harness) | Core orchestration, not provider-specific |
+| Agent loop (`Agent` runtime + harness) | Core orchestration, not provider-specific |
 | Sandbox and container isolation | Security boundary, shared by all providers |
 | `jr-rpc` command infrastructure | Generic RPC layer — reads config from registry |
 | Slack tools (canvas, list, channel, message) | Platform tools, not provider integrations |
@@ -300,7 +310,7 @@ oauth:
 
 ## Observability
 
-- `plugin_loaded` — per plugin at broker creation. Attributes: `app.plugin.name`, `app.plugin.capabilities`, `app.plugin.has_oauth`.
+- Plugin broker creation annotates active span with: `app.plugin.name`, `app.plugin.capabilities`, `app.plugin.has_oauth`.
 - `capability_catalog_loaded` — existing event, now includes plugin-sourced capabilities.
 
 ## Non-goals

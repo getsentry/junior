@@ -1,7 +1,15 @@
 import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { bot } from "@/chat/bot";
-import { createRequestContext, logException, setSpanAttributes, setSpanStatus, withContext, withSpan } from "@/chat/observability";
+import {
+  createRequestContext,
+  logException,
+  logWarn,
+  setSpanAttributes,
+  setSpanStatus,
+  withContext,
+  withSpan
+} from "@/chat/observability";
 
 type Platform = keyof typeof bot.webhooks;
 type WebhookRouteContext = {
@@ -36,15 +44,38 @@ export async function POST(request: Request, context: WebhookRouteContext): Prom
           try {
             const activeSpan = Sentry.getActiveSpan();
             const response = await handler(request, {
-              waitUntil: (task) => after(() => task),
-              runInBackground: (run: () => Promise<unknown>) =>
+              waitUntil: (task) =>
                 after(() => {
+                  const runTask = () => {
+                    const taskOrFactory = task as Promise<unknown> | (() => Promise<unknown>);
+                    return typeof taskOrFactory === "function" ? taskOrFactory() : taskOrFactory;
+                  };
                   if (activeSpan) {
-                    return Sentry.withActiveSpan(activeSpan, run);
+                    return Sentry.withActiveSpan(activeSpan, runTask);
                   }
-                  return run();
+                  return runTask();
                 })
             } as Parameters<typeof handler>[1]);
+            if (response.status >= 400) {
+              let responseBodySnippet: string | undefined;
+              try {
+                responseBodySnippet = (await response.clone().text()).slice(0, 300);
+              } catch {
+                responseBodySnippet = undefined;
+              }
+              logWarn(
+                "webhook_non_success_response",
+                {},
+                {
+                  "http.response.status_code": response.status,
+                  "http.request.header.x_slack_signature": request.headers.get("x-slack-signature") ?? undefined,
+                  "http.request.header.x_slack_request_timestamp":
+                    request.headers.get("x-slack-request-timestamp") ?? undefined,
+                  ...(responseBodySnippet ? { "app.webhook.response_body": responseBodySnippet } : {})
+                },
+                `Webhook ${platform} returned ${response.status}`
+              );
+            }
             setSpanAttributes({
               "http.response.status_code": response.status
             });

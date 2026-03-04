@@ -22,6 +22,10 @@ export interface AppRuntimeReplyDecision {
   shouldReply: boolean;
 }
 
+function isExplicitMentionDecision(reason: string): boolean {
+  return reason === "explicit mention" || reason === "explicit_mention" || reason.startsWith("explicit_mention:");
+}
+
 type AppRuntimeLogContext = Record<string, unknown> & {
   assistantUserName: string;
   modelId: string;
@@ -272,7 +276,7 @@ export function createAppSlackRuntime<
           }),
           async () => {
             await deps.replyToThread(thread, message, {
-              explicitMention: decision.reason === "explicit mention",
+              explicitMention: isExplicitMentionDecision(decision.reason),
               preparedState
             });
           }

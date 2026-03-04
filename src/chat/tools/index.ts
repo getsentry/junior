@@ -6,6 +6,7 @@ import { createReadFileTool } from "@/chat/tools/read-file";
 import { createSlackChannelListMembersTool } from "@/chat/tools/slack-channel-list-members";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
+import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
 import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
 import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-update";
 import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
@@ -18,6 +19,7 @@ import { createWebFetchTool } from "@/chat/tools/web-fetch";
 import { createWebSearchTool } from "@/chat/tools/web-search";
 import { createWriteFileTool } from "@/chat/tools/write-file";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import { isConversationChannel, isConversationScopedChannel } from "@/chat/slack-actions/client";
 
 function createToolState(
   hooks: ToolHooks,
@@ -94,7 +96,7 @@ export function createTools(
   context: ToolRuntimeContext
 ) {
   const state = createToolState(hooks, context);
-  return {
+  const tools: Record<string, unknown> = {
     loadSkill: wrapToolExecution(
       "loadSkill",
       createLoadSkillTool(context.sandbox, availableSkills, {
@@ -109,26 +111,6 @@ export function createTools(
     webSearch: wrapToolExecution("webSearch", createWebSearchTool(), hooks),
     webFetch: wrapToolExecution("webFetch", createWebFetchTool(hooks), hooks),
     imageGenerate: wrapToolExecution("imageGenerate", createImageGenerateTool(hooks), hooks),
-    slackChannelPostMessage: wrapToolExecution(
-      "slackChannelPostMessage",
-      createSlackChannelPostMessageTool(context, state),
-      hooks
-    ),
-    slackChannelListMembers: wrapToolExecution(
-      "slackChannelListMembers",
-      createSlackChannelListMembersTool(context),
-      hooks
-    ),
-    slackChannelListMessages: wrapToolExecution(
-      "slackChannelListMessages",
-      createSlackChannelListMessagesTool(context),
-      hooks
-    ),
-    slackCanvasCreate: wrapToolExecution(
-      "slackCanvasCreate",
-      createSlackCanvasCreateTool(context, state),
-      hooks
-    ),
     slackCanvasUpdate: wrapToolExecution("slackCanvasUpdate", createSlackCanvasUpdateTool(state, context), hooks),
     slackListCreate: wrapToolExecution("slackListCreate", createSlackListCreateTool(state), hooks),
     slackListAddItems: wrapToolExecution("slackListAddItems", createSlackListAddItemsTool(state), hooks),
@@ -139,4 +121,40 @@ export function createTools(
       hooks
     )
   };
+
+  if (isConversationScopedChannel(context.channelId)) {
+    tools.slackCanvasCreate = wrapToolExecution(
+      "slackCanvasCreate",
+      createSlackCanvasCreateTool(context, state),
+      hooks
+    );
+  }
+
+  if (isConversationChannel(context.channelId)) {
+    tools.slackChannelPostMessage = wrapToolExecution(
+      "slackChannelPostMessage",
+      createSlackChannelPostMessageTool(context, state),
+      hooks
+    );
+    tools.slackChannelListMembers = wrapToolExecution(
+      "slackChannelListMembers",
+      createSlackChannelListMembersTool(context),
+      hooks
+    );
+    tools.slackChannelListMessages = wrapToolExecution(
+      "slackChannelListMessages",
+      createSlackChannelListMessagesTool(context),
+      hooks
+    );
+  }
+
+  if (isConversationScopedChannel(context.channelId)) {
+    tools.slackMessageAddReaction = wrapToolExecution(
+      "slackMessageAddReaction",
+      createSlackMessageAddReactionTool(context, state),
+      hooks
+    );
+  }
+
+  return tools;
 }

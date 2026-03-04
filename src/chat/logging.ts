@@ -99,6 +99,14 @@ function shouldSuppressInfoLog(level: LogLevel): boolean {
   return level === "info" && getSentryEnvironment() === "production";
 }
 
+function shouldEmitConsole(level: LogLevel): boolean {
+  if (process.env.NODE_ENV === "test") {
+    return level === "error";
+  }
+
+  return getSentryEnvironment() !== "production";
+}
+
 function redactSecrets(input: string): string {
   let out = input;
   for (const pattern of SECRETS_RE) {
@@ -270,15 +278,114 @@ function emitSentry(level: LogLevel, body: string, attributes: LogAttributes): v
   });
 }
 
+function formatConsoleLevel(level: LogLevel): "DBG" | "INF" | "WRN" | "ERR" {
+  if (level === "debug") return "DBG";
+  if (level === "info") return "INF";
+  if (level === "warn") return "WRN";
+  return "ERR";
+}
+
+function quoteConsoleValue(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function formatConsoleValue(value: AttributeValue): string {
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return quoteConsoleValue(JSON.stringify(value));
+  }
+
+  // Bare values stay readable; everything else is safely quoted.
+  if (/^[A-Za-z0-9._:/@+-]+$/.test(value)) {
+    return value;
+  }
+  return quoteConsoleValue(value);
+}
+
+function formatConsoleLine(level: LogLevel, body: string, attributes: LogAttributes): string {
+  const timestamp = new Date().toISOString();
+  const useColor = process.env.NODE_ENV === "development" && Boolean(process.stdout?.isTTY);
+  const ANSI = {
+    reset: "\u001b[0m",
+    faint: "\u001b[2m",
+    red: "\u001b[31m",
+    yellow: "\u001b[33m",
+    green: "\u001b[32m",
+    blue: "\u001b[34m",
+    cyan: "\u001b[36m",
+    gray: "\u001b[90m"
+  } as const;
+  const levelColor =
+    level === "error" ? ANSI.red : level === "warn" ? ANSI.yellow : level === "info" ? ANSI.green : ANSI.blue;
+  const colorize = (text: string, color: string) => (useColor ? `${color}${text}${ANSI.reset}` : text);
+
+  const parts = [
+    `${colorize(timestamp, ANSI.gray)} ${colorize(formatConsoleLevel(level), levelColor)} ${body}`
+  ];
+  const priority = [
+    "event.name",
+    "error.message",
+    "messaging.message.id",
+    "messaging.message.conversation_id",
+    "messaging.destination.name",
+    "enduser.id",
+    "app.workflow.run_id",
+    "app.workflow.message_kind",
+    "app.trace_id",
+    "app.span_id"
+  ];
+  const priorityIndex = new Map(priority.map((key, index) => [key, index]));
+  const sortedAttributes = Object.entries(attributes).sort(([left], [right]) => {
+    const leftRank = priorityIndex.get(left);
+    const rightRank = priorityIndex.get(right);
+    if (leftRank !== undefined || rightRank !== undefined) {
+      if (leftRank === undefined) return 1;
+      if (rightRank === undefined) return -1;
+      return leftRank - rightRank;
+    }
+    return left.localeCompare(right);
+  });
+  for (const [key, value] of sortedAttributes) {
+    const rendered = `${colorize(key, ANSI.cyan)}=${colorize(formatConsoleValue(value), ANSI.faint)}`;
+    parts.push(rendered);
+  }
+  return parts.join(" ");
+}
+
+function emitConsole(level: LogLevel, _eventName: string, body: string, attributes: LogAttributes): void {
+  if (!shouldEmitConsole(level)) {
+    return;
+  }
+
+  const line = formatConsoleLine(level, body, attributes);
+  if (level === "error") {
+    console.error(line);
+    return;
+  }
+  if (level === "warn") {
+    console.warn(line);
+    return;
+  }
+  if (level === "info") {
+    console.info(line);
+    return;
+  }
+  console.debug(line);
+}
+
 function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown> = {}, body?: string): void {
   const contextAttributes = contextStorage.getStore() ?? {};
   const traceAttributes = getTraceCorrelationAttributes();
-  const message = body ? redactSecrets(body) : eventName;
+  const normalizedEventName = toSnakeCase(eventName);
+  const message = body ? redactSecrets(body) : normalizedEventName;
   const attributes = mergeAttributes(
     contextAttributes,
     traceAttributes,
     {
-      "event.name": toSnakeCase(eventName),
+      "event.name": normalizedEventName,
       ...attrs
     }
   );
@@ -287,7 +394,7 @@ function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown>
     try {
       sink({
         level,
-        eventName: toSnakeCase(eventName),
+        eventName: normalizedEventName,
         body: message,
         attributes
       });
@@ -296,6 +403,7 @@ function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown>
     }
   }
 
+  emitConsole(level, normalizedEventName, message, attributes);
   emitSentry(level, message, attributes);
 }
 

@@ -7,15 +7,9 @@ import type { ToolState } from "@/chat/tools/types";
 export function createSlackListUpdateItemTool(state: ToolState) {
   return tool({
     description:
-      "Update an existing Slack list item (title/completion). Use when the user asks to mark progress or rename a tracked task. Do not use to add new tasks.",
+      "Update an item in the active Slack list tracked in artifact context (title/completion). Use when the user asks to mark progress or rename a tracked task. Do not use to add new tasks.",
     inputSchema: Type.Object(
       {
-        list_id: Type.Optional(
-          Type.String({
-            minLength: 1,
-            description: "Optional list ID. Defaults to the last list used in this thread."
-          })
-        ),
         item_id: Type.String({
           minLength: 1,
           description: "ID of the Slack list item to update."
@@ -36,10 +30,10 @@ export function createSlackListUpdateItemTool(state: ToolState) {
         anyOf: [{ required: ["completed"] }, { required: ["title"] }]
       }
     ),
-    execute: async ({ list_id, item_id, completed, title }) => {
-      const targetListId = list_id ?? state.getCurrentListId();
+    execute: async ({ item_id, completed, title }) => {
+      const targetListId = state.getCurrentListId();
       if (!targetListId) {
-        return { ok: false, error: "No list_id provided and no prior list found in thread state" };
+        return { ok: false, error: "No active list found in artifact context" };
       }
       const operationKey = createOperationKey("slackListUpdateItem", {
         list_id: targetListId,

@@ -30,6 +30,7 @@ describe("createWebSearchTool", () => {
     delete process.env.AI_WEB_SEARCH_MODEL;
     delete process.env.AI_ROUTER_MODEL;
     delete process.env.AI_MODEL;
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -94,9 +95,15 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    await expect(tool.execute({ query: "test" }, {} as never)).rejects.toThrow(
-      "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)"
-    );
+    await expect(tool.execute({ query: "test" }, {} as never)).resolves.toEqual({
+      ok: false,
+      query: "test",
+      result_count: 0,
+      results: [],
+      error: "web search failed: Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
+      timeout: false,
+      retryable: false
+    });
   });
 
   it("wraps AI SDK errors in web search error message", async () => {
@@ -108,8 +115,43 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    await expect(tool.execute({ query: "test query" }, {} as never)).rejects.toThrow(
-      "web search failed: 400 Invalid input: expected \"function\""
+    await expect(tool.execute({ query: "test query" }, {} as never)).resolves.toEqual({
+      ok: false,
+      query: "test query",
+      result_count: 0,
+      results: [],
+      error: "web search failed: web search failed: 400 Invalid input: expected \"function\"",
+      timeout: false,
+      retryable: true
+    });
+  });
+
+  it("returns a retryable timeout error instead of throwing", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    vi.useFakeTimers();
+    vi.mocked(generateText).mockImplementation(
+      () =>
+        new Promise(() => {
+          // Intentionally unresolved to trigger tool timeout.
+        }) as never
     );
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    const pending = tool.execute({ query: "test query" }, {} as never);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      query: "test query",
+      result_count: 0,
+      results: [],
+      error: "web search failed: webSearch timed out",
+      timeout: true,
+      retryable: true
+    });
+    vi.useRealTimers();
   });
 });

@@ -1,5 +1,15 @@
 # Skill Capability and Credential Injection Spec
 
+## Metadata
+
+- Created: 2026-02-26
+- Last Edited: 2026-03-03
+
+## Changelog
+
+- 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+
+
 ## Status
 
 Draft
@@ -107,7 +117,7 @@ Rules:
 - Tokens stored per Slack user ID via `StateAdapterTokenStore` (Redis-backed).
 - Agent never sees token values — only receives `authorize_url` to post to the user.
 - Requires `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET` on host.
-- See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
+- See [OAuth Flows Spec](./oauth-flows-spec.md) for full flow details.
 
 ### Lease behavior
 

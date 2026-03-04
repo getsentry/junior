@@ -1,7 +1,9 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import { createCanvas } from "@/chat/slack-actions/canvases";
+import { isConversationScopedChannel } from "@/chat/slack-actions/client";
 import { createOperationKey } from "@/chat/tools/idempotency";
+import { logError } from "@/chat/observability";
 import type { CanvasArtifactSummary } from "@/chat/slack-actions/types";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 
@@ -28,7 +30,7 @@ export function createSlackCanvasCreateTool(
 ) {
   return tool({
     description:
-      "Create a Slack canvas for long-form output in a channel. Use when content is too long for a thread reply or needs a persistent document. Do not use for short answers that fit in-thread.",
+      "Create a Slack canvas for long-form output in the active assistant context channel. Use when content is too long for a thread reply or needs a persistent document. Do not use for short answers that fit in-thread.",
     inputSchema: Type.Object({
       title: Type.String({
         minLength: 1,
@@ -38,16 +40,28 @@ export function createSlackCanvasCreateTool(
       markdown: Type.String({
         minLength: 1,
         description: "Canvas markdown body content."
-      }),
-      channel_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional Slack channel ID. Defaults to the current thread channel."
-        })
-      )
+      })
     }),
-    execute: async ({ title, markdown, channel_id }) => {
-      const targetChannelId = channel_id ?? context.channelId;
+    execute: async ({ title, markdown }) => {
+      const targetChannelId = context.channelId;
+      // Invariant: this tool is only registered when a valid C/G/D channel context exists.
+      // If this guard triggers, runtime/tool registration drifted and we intentionally hard-fail
+      // instead of silently falling back to any broader/private target.
+      if (!isConversationScopedChannel(targetChannelId)) {
+        logError(
+          "slack_canvas_create_invalid_context",
+          {},
+          {
+            "gen_ai.tool.name": "slackCanvasCreate",
+            "messaging.destination.name": targetChannelId ?? "none",
+            "app.slack.canvas.has_channel_context": Boolean(targetChannelId)
+          },
+          "Canvas create failed due to missing or invalid assistant channel context"
+        );
+        throw new Error(
+          "Cannot create a canvas without an active assistant channel context (C/G/D)."
+        );
+      }
       const operationKey = createOperationKey("slackCanvasCreate", {
         title,
         markdown,

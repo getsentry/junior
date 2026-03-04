@@ -32,6 +32,14 @@ This policy applies to:
 
 - Production should use explicit network policy and minimal allowlists.
 
+### Harness-owned tool targeting
+
+- For context-bound tools, destination/target resolution is owned by the runtime harness, not model-supplied tool arguments.
+- Tool schemas must not expose destination override fields for context-bound operations unless explicitly approved by spec.
+- When required context is missing, tools must fail safely with structured errors; they must not silently choose alternate/private scopes.
+- Shared deliverables must not fall back to bot-private artifacts.
+- See [Harness Tool Context Spec](./harness-tool-context-spec.md).
+
 ## Credential and token policy
 
 ### Secret custody
@@ -74,7 +82,7 @@ This policy applies to:
 - Fall back to static `SENTRY_AUTH_TOKEN` env var for dev/testing only.
 - Inject `Authorization` header transform for `sentry.io` domain.
 - Set `SENTRY_AUTH_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
-- See [OAuth Flows Spec](./oauth-flows.md) for full flow details.
+- See [OAuth Flows Spec](./oauth-flows-spec.md) for full flow details.
 
 ## Logging and redaction policy
 

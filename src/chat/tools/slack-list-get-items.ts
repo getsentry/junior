@@ -6,14 +6,8 @@ import type { ToolState } from "@/chat/tools/types";
 export function createSlackListGetItemsTool(state: ToolState) {
   return tool({
     description:
-      "Read items from a Slack list. Use when the user asks for task status, open items, or list contents. Do not use when list state is already known from the immediately prior result.",
+      "Read items from the active Slack list tracked in artifact context. Use when the user asks for task status, open items, or list contents. Do not use when list state is already known from the immediately prior result.",
     inputSchema: Type.Object({
-      list_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional list ID. Defaults to the last list used in this thread."
-        })
-      ),
       limit: Type.Optional(
         Type.Integer({
           minimum: 1,
@@ -22,11 +16,11 @@ export function createSlackListGetItemsTool(state: ToolState) {
         })
       )
     }),
-    execute: async ({ list_id, limit }) => {
-      const targetListId = list_id ?? state.getCurrentListId();
+    execute: async ({ limit }) => {
+      const targetListId = state.getCurrentListId();
       const resolvedLimit = limit ?? 100;
       if (!targetListId) {
-        return { ok: false, error: "No list_id provided and no prior list found in thread state" };
+        return { ok: false, error: "No active list found in artifact context" };
       }
 
       const items = await listItems(targetListId, resolvedLimit);

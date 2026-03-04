@@ -1,7 +1,7 @@
 import { completeSimple, getEnvApiKey, getModels, type Message, type Model } from "@mariozechner/pi-ai";
 import type { ZodTypeAny, z } from "zod";
 import { extractGenAiUsageAttributes, serializeGenAiAttribute } from "@/chat/gen-ai-attributes";
-import { logException, logInfo, logWarn, setSpanAttributes } from "@/chat/observability";
+import { logException, logWarn, setSpanAttributes } from "@/chat/observability";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
@@ -112,12 +112,6 @@ export async function completeText(params: {
     "app.ai.auth_mode": apiKey ? "api_key" : "ambient"
   };
   setSpanAttributes(startAttributes);
-  logInfo(
-    "ai_completion_start",
-    {},
-    startAttributes,
-    "AI completion started"
-  );
   const message = await completeSimple(model, {
     systemPrompt: params.system,
     messages: params.messages
@@ -146,12 +140,6 @@ export async function completeText(params: {
     "app.ai.stop_reason": message.stopReason ?? "unknown"
   };
   setSpanAttributes(endAttributes);
-  logInfo(
-    "ai_completion_end",
-    {},
-    endAttributes,
-    "AI completion finished"
-  );
   if (message.stopReason === "error") {
     const providerMessage = message.errorMessage?.trim() || "Unknown provider error";
     logWarn(
@@ -236,18 +224,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     );
     throw new Error(`Model did not return valid JSON for schema: ${parsed.error.message}. Raw response: ${preview}`);
   }
-
-  logInfo(
-    "ai_completion_object_end",
-    {},
-    {
-      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-      "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-      "gen_ai.request.model": params.modelId,
-      "app.ai.duration_ms": Date.now() - startedAt
-    },
-    "AI object completion finished"
-  );
 
   return {
     object: parsed.data,

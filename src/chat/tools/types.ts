@@ -13,6 +13,7 @@ export interface ToolHooks {
 
 export interface ToolRuntimeContext {
   channelId?: string;
+  messageTs?: string;
   threadTs?: string;
   userText?: string;
   artifactState?: ThreadArtifactsState;

@@ -7,14 +7,8 @@ import type { ToolState } from "@/chat/tools/types";
 export function createSlackListAddItemsTool(state: ToolState) {
   return tool({
     description:
-      "Add tasks to a Slack list. Use when the user wants actionable items recorded in an existing or current thread list. Do not use when no list exists and list creation was not requested.",
+      "Add tasks to the active Slack list tracked in artifact context. Use when the user wants actionable items recorded in the current thread list. Do not use when no list exists and list creation was not requested.",
     inputSchema: Type.Object({
-      list_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description: "Optional list ID. Defaults to the last list used in this thread."
-        })
-      ),
       items: Type.Array(Type.String({ minLength: 1 }), {
         minItems: 1,
         maxItems: 25,
@@ -33,10 +27,10 @@ export function createSlackListAddItemsTool(state: ToolState) {
         })
       )
     }),
-    execute: async ({ list_id, items, assignee_user_id, due_date }) => {
-      const targetListId = list_id ?? state.getCurrentListId();
+    execute: async ({ items, assignee_user_id, due_date }) => {
+      const targetListId = state.getCurrentListId();
       if (!targetListId) {
-        return { ok: false, error: "No list_id provided and no prior list found in thread state" };
+        return { ok: false, error: "No active list found in artifact context" };
       }
       const operationKey = createOperationKey("slackListAddItems", {
         list_id: targetListId,

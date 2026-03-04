@@ -60,6 +60,15 @@ function formatSearchFailure(error: unknown): string {
   return "web search failed";
 }
 
+function isNonRetryableSearchFailure(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("missing ai gateway credentials");
+}
+
+function isTimeoutSearchFailure(message: string): boolean {
+  return /timed out/i.test(message);
+}
+
 export function createWebSearchTool() {
   return tool({
     description:
@@ -80,51 +89,64 @@ export function createWebSearchTool() {
     }),
     execute: async ({ query, max_results }) => {
       const maxResults = max_results ?? 3;
-      const apiKey = getGatewayApiKey();
-      if (!apiKey) {
-        throw new Error("Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)");
+      try {
+        const apiKey = getGatewayApiKey();
+        if (!apiKey) {
+          throw new Error("Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)");
+        }
+        const model =
+          process.env.AI_WEB_SEARCH_MODEL ??
+          process.env.AI_ROUTER_MODEL ??
+          process.env.AI_MODEL ??
+          DEFAULT_SEARCH_MODEL;
+
+        const provider = createGatewayProvider({ apiKey });
+        const response = await withTimeout(
+          (async () => {
+            try {
+              return await generateText({
+                model: provider.chat(model),
+                prompt: query,
+                tools: {
+                  [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+                    mode: "agentic",
+                    maxResults
+                  })
+                },
+                toolChoice: {
+                  type: "tool",
+                  toolName: SEARCH_TOOL_NAME
+                }
+              });
+            } catch (error) {
+              throw new Error(formatSearchFailure(error));
+            }
+          })(),
+          SEARCH_TIMEOUT_MS,
+          "webSearch"
+        );
+
+        const results = parseSearchResults(response.toolResults, maxResults);
+
+        return {
+          ok: true,
+          model,
+          query,
+          result_count: results.length,
+          results
+        };
+      } catch (error) {
+        const message = formatSearchFailure(error);
+        return {
+          ok: false,
+          query,
+          result_count: 0,
+          results: [],
+          error: message,
+          timeout: isTimeoutSearchFailure(message),
+          retryable: !isNonRetryableSearchFailure(message)
+        };
       }
-      const model =
-        process.env.AI_WEB_SEARCH_MODEL ??
-        process.env.AI_ROUTER_MODEL ??
-        process.env.AI_MODEL ??
-        DEFAULT_SEARCH_MODEL;
-
-      const provider = createGatewayProvider({ apiKey });
-      const response = await withTimeout(
-        (async () => {
-          try {
-            return await generateText({
-              model: provider.chat(model),
-              prompt: query,
-              tools: {
-                [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
-                  mode: "agentic",
-                  maxResults
-                })
-              },
-              toolChoice: {
-                type: "tool",
-                toolName: SEARCH_TOOL_NAME
-              }
-            });
-          } catch (error) {
-            throw new Error(formatSearchFailure(error));
-          }
-        })(),
-        SEARCH_TIMEOUT_MS,
-        "webSearch"
-      );
-
-      const results = parseSearchResults(response.toolResults, maxResults);
-
-      return {
-        ok: true,
-        model,
-        query,
-        result_count: results.length,
-        results
-      };
     }
   });
 }

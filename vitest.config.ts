@@ -2,7 +2,8 @@ import { defineConfig } from "vitest/config";
 import path from "node:path";
 import fs from "node:fs";
 
-for (const envFile of [".env.test.local", ".env.test", ".env.local", ".env"]) {
+// Load generic env first and test env last so test-specific values always win.
+for (const envFile of [".env", ".env.local", ".env.test", ".env.test.local"]) {
   const absolutePath = path.resolve(process.cwd(), envFile);
   if (!fs.existsSync(absolutePath)) continue;
   process.loadEnvFile(absolutePath);
@@ -16,6 +17,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"]
+    include: ["tests/**/*.test.ts"],
+    setupFiles: ["tests/msw/setup.ts"]
   }
 });

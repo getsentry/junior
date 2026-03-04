@@ -1,5 +1,11 @@
 import type { CanvasesSectionsLookupResponse } from "@slack/web-api";
-import { getFilePermalink, getSlackClient, isConversationChannel, withSlackRetries } from "@/chat/slack-actions/client";
+import {
+  getFilePermalink,
+  getSlackClient,
+  isConversationScopedChannel,
+  normalizeSlackConversationId,
+  withSlackRetries
+} from "@/chat/slack-actions/client";
 
 export interface CanvasCreateInput {
   title: string;
@@ -16,23 +22,19 @@ export interface CanvasUpdateInput {
 
 export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
   const client = getSlackClient();
-  const isConversationScoped = isConversationChannel(input.channelId);
-  const channelPrefix = input.channelId?.slice(0, 1) ?? "none";
-  const action = isConversationScoped ? "conversations.canvases.create" : "canvases.create";
+  const normalizedChannelId = normalizeSlackConversationId(input.channelId);
+  const isConversationScoped = isConversationScopedChannel(normalizedChannelId);
+  if (!isConversationScoped) {
+    throw new Error(
+      "Canvas creation requires an active Slack conversation context (C/G/D)."
+    );
+  }
+  const channelPrefix = normalizedChannelId?.slice(0, 1) ?? "none";
+  const action = "conversations.canvases.create";
 
   const result = await withSlackRetries(async () => {
-    if (isConversationScoped) {
-      return client.conversations.canvases.create({
-        channel_id: input.channelId as string,
-        title: input.title,
-        document_content: {
-          type: "markdown",
-          markdown: input.markdown
-        }
-      });
-    }
-
-    return client.canvases.create({
+    return client.conversations.canvases.create({
+      channel_id: normalizedChannelId as string,
       title: input.title,
       document_content: {
         type: "markdown",
