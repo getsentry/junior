@@ -82,3 +82,9 @@ Authoring guidance lives in `evals/README.md` and `specs/testing/evals-spec.md`.
 ```bash
 pnpm evals
 ```
+
+## Test env isolation
+
+Vitest loads `.env`, `.env.local`, `.env.test`, then `.env.test.local` so test-specific values override development/prod values.
+
+Slack credentials are intentionally replaced with test values for tests/evals to prevent accidental use of real Slack tokens.

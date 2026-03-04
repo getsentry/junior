@@ -217,7 +217,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     }
   }
   if (testCase.behavior?.mock_slack_api) {
-    process.env.SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN ?? "xoxb-eval-test-token";
+    process.env.SLACK_BOT_TOKEN = "xoxb-eval-test-token";
   }
 
   const getChannelStateRef = (channelId: string | undefined): { value: Record<string, unknown> } | undefined => {
