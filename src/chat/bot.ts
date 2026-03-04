@@ -1694,11 +1694,9 @@ async function replyToThread(
         }
 
         if (shouldPostThreadReply && streamedReplyPromise && replyFiles) {
-          await thread.post(
-            buildSlackOutputMessage("Attached files.", {
-              files: replyFiles
-            })
-          );
+          // Omit text properties so the adapter's file-only early-return
+          // triggers (avoids Slack `no_text` error from empty chat.postMessage)
+          await thread.post({ files: replyFiles } as Parameters<typeof thread.post>[0]);
         }
       } finally {
         textStream.end();
