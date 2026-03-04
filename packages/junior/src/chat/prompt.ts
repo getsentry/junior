@@ -9,11 +9,6 @@ import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 import { escapeXml } from "@/chat/xml";
 
 function loadSoul(): string {
-  const inlineSoul = process.env.JUNIOR_SOUL?.trim();
-  if (inlineSoul && inlineSoul.length > 0) {
-    return inlineSoul;
-  }
-
   const resolved = soulPath();
   const raw = fs.readFileSync(resolved, "utf8").trim();
   if (raw.length === 0) {

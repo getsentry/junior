@@ -6,18 +6,40 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { withWorkflow } = workflowNext;
-const soulPath = path.resolve(__dirname, "data", "SOUL.md");
-const soul = fs.readFileSync(soulPath, "utf8").trim();
+const RUNTIME_ASSETS_DIR = "runtime-assets";
+const ASSET_DIRS = ["data", "skills", "plugins"];
 
-if (soul.length === 0) {
-  throw new Error(`SOUL.md is empty: ${soulPath}`);
+class CopyRuntimeAssetsPlugin {
+  apply(compiler) {
+    compiler.hooks.afterEmit.tap("CopyRuntimeAssetsPlugin", () => {
+      const outputPath = compiler.options.output.path;
+      if (!outputPath) {
+        return;
+      }
+
+      const runtimeAssetsRoot = path.join(outputPath, RUNTIME_ASSETS_DIR);
+      fs.mkdirSync(runtimeAssetsRoot, { recursive: true });
+
+      for (const dirName of ASSET_DIRS) {
+        const sourceDir = path.join(__dirname, dirName);
+        if (!fs.existsSync(sourceDir)) {
+          continue;
+        }
+        const destinationDir = path.join(runtimeAssetsRoot, dirName);
+        fs.cpSync(sourceDir, destinationDir, { recursive: true, force: true });
+      }
+    });
+  }
 }
 
 export default withWorkflow(
   withJunior(
     {
-      env: {
-        JUNIOR_SOUL: soul
+      webpack(config, { isServer }) {
+        if (isServer) {
+          config.plugins.push(new CopyRuntimeAssetsPlugin());
+        }
+        return config;
       },
       outputFileTracingRoot: path.resolve(__dirname, "../.."),
       outputFileTracingIncludes: {
