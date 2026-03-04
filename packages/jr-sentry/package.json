@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@sentry/nextjs": "^10.0.0",
+    "chat": "4.15.0",
     "junior": "workspace:*",
     "next": "^16.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "workflow": "4.1.0-beta.60"
   }
 }
