@@ -1,4 +1,7 @@
 import type { NextConfig } from "next";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 export interface JuniorConfigOptions {
   dataDir?: string;
@@ -39,8 +42,7 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   };
 
   if (options?.sentry) {
-    // Dynamic import to avoid requiring @sentry/nextjs when not used
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // Conditionally load @sentry/nextjs only when Sentry integration is enabled.
     const { withSentryConfig } = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
     return withSentryConfig(config, {
       org: process.env.SENTRY_ORG,
