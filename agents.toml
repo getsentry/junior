@@ -13,7 +13,7 @@ name = "dotagents"
 source = "getsentry/dotagents"
 
 [[skills]]
-name = "skill-creator"
+name = "skill-writer"
 source = "getsentry/skills"
 
 [[skills]]
@@ -21,7 +21,7 @@ name = "commit"
 source = "getsentry/skills"
 
 [[skills]]
-name = "create-pr"
+name = "pr-writer"
 source = "getsentry/skills"
 
 [[skills]]
