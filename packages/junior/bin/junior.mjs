@@ -121,9 +121,6 @@ if (command === "init") {
       "AI_FAST_MODEL=",
       "REDIS_URL=",
       "NEXT_PUBLIC_SENTRY_DSN=",
-      "SENTRY_ORG=",
-      "SENTRY_PROJECT=",
-      "SENTRY_AUTH_TOKEN=",
       ""
     ].join("\n")
   );
