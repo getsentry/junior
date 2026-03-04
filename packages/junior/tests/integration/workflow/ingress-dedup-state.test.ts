@@ -139,7 +139,7 @@ describe("workflow message processing helpers", () => {
     process.env.REDIS_URL = "redis://localhost:6379";
   });
 
-  it("marks message processing started via Redis SET NX PX", async () => {
+  it("marks message processing started via ownership claim script", async () => {
     const redis = createRedisState("OK");
     vi.doMock("@chat-adapter/state-redis", () => ({
       createRedisState: vi.fn(() => redis.adapter)
@@ -158,14 +158,12 @@ describe("workflow message processing helpers", () => {
     );
 
     expect(started).toBe(true);
-    expect(redis.connect).toHaveBeenCalledTimes(1);
-    expect(redis.set).toHaveBeenCalledWith(
-      "junior:workflow_message:slack:C123:1700000000.100:1700000000.200",
-      expect.any(String),
-      expect.objectContaining({
-        NX: true
-      })
-    );
+    expect(redis.connect).toHaveBeenCalledTimes(2);
+    expect(redis.evalFn).toHaveBeenCalledTimes(1);
+    expect(redis.evalFn).toHaveBeenCalledWith(expect.any(String), {
+      keys: ["junior:workflow_message:slack:C123:1700000000.100:1700000000.200"],
+      arguments: [expect.any(String), expect.any(String), expect.any(String)]
+    });
   });
 
   it("reads message processing state from adapter state", async () => {

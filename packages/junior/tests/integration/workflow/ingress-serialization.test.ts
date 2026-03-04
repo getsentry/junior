@@ -21,7 +21,8 @@ describe("workflow ingress serialization", () => {
       detectMention: vi.fn(() => false)
     };
     const deps = {
-      claimDedup: vi.fn(async () => true),
+      hasDedup: vi.fn(async () => false),
+      markDedup: vi.fn(async () => true),
       getIsSubscribed: vi.fn(async () => true),
       logInfo: vi.fn(),
       routeToThreadWorkflow: vi.fn(async (_normalizedThreadId: string, payload: ThreadMessagePayload) => {

@@ -6,6 +6,18 @@ import { builtinModules } from "node:module";
 const projectRoot = process.cwd();
 const distRoot = path.join(projectRoot, "dist");
 const sourceExts = [".js", ".mjs", ".cjs"];
+const disallowedRuntimePatterns = [
+  { regex: /from ["']@slack\/web-api["']/, reason: "@slack/web-api import" },
+  { regex: /require\(\s*["']@slack\/web-api["']\s*\)/, reason: "@slack/web-api require" },
+  { regex: /from ["']@chat-adapter\/slack["']/, reason: "@chat-adapter/slack import" },
+  { regex: /require\(\s*["']@chat-adapter\/slack["']\s*\)/, reason: "@chat-adapter/slack require" },
+  { regex: /from ["'](?:node:)?async_hooks["']/, reason: "async_hooks import" },
+  { regex: /require\(\s*["'](?:node:)?async_hooks["']\s*\)/, reason: "async_hooks require" },
+  { regex: /\bAsyncLocalStorage\b/, reason: "AsyncLocalStorage reference" },
+  { regex: /from ["'](?:node:)?crypto["']/, reason: "crypto import" },
+  { regex: /require\(\s*["'](?:node:)?crypto["']\s*\)/, reason: "crypto require" },
+  { regex: /\brandomUUID\s*\(/, reason: "randomUUID call in workflow bundle" }
+];
 
 const builtinSet = new Set([
   ...builtinModules,
@@ -101,6 +113,7 @@ for (const file of distFiles) {
 const visited = new Set();
 const queue = [...entryFiles];
 const violations = [];
+const contentViolations = [];
 
 while (queue.length > 0) {
   const file = queue.shift();
@@ -110,6 +123,11 @@ while (queue.length > 0) {
   visited.add(file);
 
   const source = await fs.readFile(file, "utf8");
+  for (const pattern of disallowedRuntimePatterns) {
+    if (pattern.regex.test(source)) {
+      contentViolations.push({ file, reason: pattern.reason });
+    }
+  }
   const imports = extractStaticImports(source);
   for (const specifier of imports) {
     if (isNodeBuiltin(specifier)) {
@@ -126,11 +144,15 @@ while (queue.length > 0) {
   }
 }
 
-if (violations.length > 0) {
+if (violations.length > 0 || contentViolations.length > 0) {
   console.error("Workflow dist boundary check failed:\n");
   for (const violation of violations) {
     const rel = path.relative(projectRoot, violation.file);
     console.error(`- ${rel}: imports Node builtin '${violation.specifier}'`);
+  }
+  for (const violation of contentViolations) {
+    const rel = path.relative(projectRoot, violation.file);
+    console.error(`- ${rel}: contains disallowed runtime pattern (${violation.reason})`);
   }
   process.exit(1);
 }

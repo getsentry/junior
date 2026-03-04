@@ -7,12 +7,20 @@ const projectRoot = process.cwd();
 const workflowRoot = path.join(projectRoot, "src", "chat", "workflow");
 const sourceExts = [".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"];
 
-const disallowedSpecifiers = new Set([
-  "@/chat/bot",
-  "@/chat/slack-actions/client",
-  "@chat-adapter/slack",
-  "@slack/web-api"
+const allowedExactSpecifiers = new Set([
+  "chat",
+  "workflow",
+  "workflow/api",
+  "@workflow/serde",
+  "@/chat/observability",
+  "@/chat/state",
+  "@/chat/thread-runtime/process-thread-message-runtime",
+  "@/chat/workflow/thread-steps",
+  "@/chat/workflow/thread-workflow",
+  "@/chat/workflow/types"
 ]);
+const allowedPrefixSpecifiers = ["./", "../", "@/chat/workflow/"];
+const disallowedSpecifiers = new Set(["@/chat/bot", "@/chat/slack-actions/client", "@chat-adapter/slack", "@slack/web-api"]);
 
 const builtinSet = new Set([
   ...builtinModules,
@@ -21,6 +29,13 @@ const builtinSet = new Set([
 
 function isNodeBuiltin(specifier) {
   return builtinSet.has(specifier) || specifier.startsWith("node:");
+}
+
+function isAllowedSpecifier(specifier) {
+  if (allowedExactSpecifiers.has(specifier)) {
+    return true;
+  }
+  return allowedPrefixSpecifiers.some((prefix) => specifier.startsWith(prefix));
 }
 
 async function walk(dir) {
@@ -45,8 +60,9 @@ function extractImports(source) {
   const sideEffectImportRegex = /(^|\n)\s*import\s+["']([^"']+)["']/g;
   const exportFromRegex = /(^|\n)\s*export\s+[^;\n]*?from\s+["']([^"']+)["']/g;
   const dynamicImportRegex = /import\(\s*["']([^"']+)["']\s*\)/g;
+  const requireRegex = /\brequire\(\s*["']([^"']+)["']\s*\)/g;
 
-  for (const regex of [staticImportRegex, sideEffectImportRegex, exportFromRegex, dynamicImportRegex]) {
+  for (const regex of [staticImportRegex, sideEffectImportRegex, exportFromRegex, dynamicImportRegex, requireRegex]) {
     let match;
     while ((match = regex.exec(source)) !== null) {
       imports.push(match[2] ?? match[1]);
@@ -64,7 +80,7 @@ for (const file of files) {
   const imports = extractImports(source);
   for (const specifier of imports) {
     if (!specifier) continue;
-    if (disallowedSpecifiers.has(specifier) || isNodeBuiltin(specifier)) {
+    if (disallowedSpecifiers.has(specifier) || isNodeBuiltin(specifier) || !isAllowedSpecifier(specifier)) {
       violations.push({ file, specifier });
     }
   }

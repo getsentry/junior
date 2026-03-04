@@ -12,7 +12,7 @@ import {
   botConfig,
   getSlackBotToken,
   getStateAdapter
-} from "./chunk-77IYZ6LP.js";
+} from "./chunk-ZVUOP46C.js";
 
 // src/chat/plugins/registry.ts
 import { readFileSync, readdirSync, statSync } from "fs";

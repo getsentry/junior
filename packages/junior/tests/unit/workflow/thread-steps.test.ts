@@ -67,4 +67,36 @@ describe("processThreadMessageStep", () => {
       })
     );
   });
+
+  it("returns early when ownership is blocked", async () => {
+    mocks.acquireWorkflowMessageProcessingOwnership.mockResolvedValueOnce("blocked");
+
+    await processThreadMessageStep(createPayload("new_mention"), "wrun-123");
+
+    expect(mocks.refreshWorkflowMessageProcessingOwnership).not.toHaveBeenCalled();
+    expect(mocks.processThreadMessageRuntime).not.toHaveBeenCalled();
+    expect(mocks.completeWorkflowMessageProcessingOwnership).not.toHaveBeenCalled();
+  });
+
+  it("fails without executing runtime when ownership refresh fails", async () => {
+    mocks.refreshWorkflowMessageProcessingOwnership.mockResolvedValueOnce(false);
+
+    await expect(processThreadMessageStep(createPayload("new_mention"), "wrun-123")).rejects.toThrow(
+      /ownership lost during refresh/i
+    );
+
+    expect(mocks.processThreadMessageRuntime).not.toHaveBeenCalled();
+    expect(mocks.failWorkflowMessageProcessingOwnership).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails when completion update loses ownership", async () => {
+    mocks.completeWorkflowMessageProcessingOwnership.mockResolvedValueOnce(false);
+
+    await expect(processThreadMessageStep(createPayload("new_mention"), "wrun-123")).rejects.toThrow(
+      /ownership lost during complete/i
+    );
+
+    expect(mocks.processThreadMessageRuntime).toHaveBeenCalledTimes(1);
+    expect(mocks.failWorkflowMessageProcessingOwnership).toHaveBeenCalledTimes(1);
+  });
 });

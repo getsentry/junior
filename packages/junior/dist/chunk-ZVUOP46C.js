@@ -190,6 +190,12 @@ async function claimWorkflowIngressDedup(rawKey, ttlMs) {
   });
   return result === "OK";
 }
+async function hasWorkflowIngressDedup(rawKey) {
+  await getStateAdapter().connect();
+  const key = `${WORKFLOW_INGRESS_DEDUP_PREFIX}:${rawKey}`;
+  const value = await getRedisStateAdapter().getClient().get(key);
+  return typeof value === "string" && value.length > 0;
+}
 async function claimWorkflowStartupLease(normalizedThreadId, ownerToken, ttlMs) {
   await getStateAdapter().connect();
   const key = `${WORKFLOW_STARTUP_LEASE_PREFIX}:${normalizedThreadId}`;
@@ -317,6 +323,7 @@ export {
   getSlackClientSecret,
   getStateAdapter,
   claimWorkflowIngressDedup,
+  hasWorkflowIngressDedup,
   claimWorkflowStartupLease,
   releaseWorkflowStartupLease,
   getWorkflowMessageProcessingState,

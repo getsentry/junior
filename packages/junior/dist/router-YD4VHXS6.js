@@ -27,6 +27,12 @@ function getPayloadWorkflowRunId(payload) {
 function createMessageOwnerToken() {
   return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+var WorkflowMessageOwnershipError = class extends Error {
+  constructor(stage, dedupKey) {
+    super(`Workflow message ownership lost during ${stage} for dedupKey=${dedupKey}`);
+    this.name = "WorkflowMessageOwnershipError";
+  }
+};
 async function logThreadMessageFailureStep(payload, errorMessage, workflowRunId) {
   "use step";
   const { logError } = await import("./observability-Z2SJA73L.js");
@@ -62,24 +68,13 @@ async function processThreadMessageStep(payload, workflowRunId) {
       refreshWorkflowMessageProcessingOwnership
     }
   ] = await Promise.all([
-    import("./process-thread-message-runtime-EGUSQ2QN.js"),
-    import("./state-UZBB52FU.js")
+    import("./process-thread-message-runtime-BC4KVZU3.js"),
+    import("./state-HQNMBF7O.js")
   ]);
   const resolvedWorkflowRunId = workflowRunId ?? getPayloadWorkflowRunId(payload);
   const threadWasSerialized = isSerializedThread(payload.thread);
-  const messageId = toOptionalString(payload.message.id);
-  const userId = getPayloadUserId(payload);
-  const messageStateContext = {
-    slackThreadId: payload.normalizedThreadId,
-    slackChannelId: getPayloadChannelId(payload),
-    slackUserId: userId,
-    workflowRunId: resolvedWorkflowRunId
-  };
-  void messageStateContext;
   const existingMessageState = await getWorkflowMessageProcessingState(payload.dedupKey);
   if (existingMessageState?.status === "completed") {
-    void messageId;
-    void userId;
     return;
   }
   const ownerToken = createMessageOwnerToken();
@@ -89,10 +84,7 @@ async function processThreadMessageStep(payload, workflowRunId) {
     workflowRunId: resolvedWorkflowRunId
   });
   if (claimResult === "blocked") {
-    const latestMessageState = await getWorkflowMessageProcessingState(payload.dedupKey);
-    if (latestMessageState?.status === "completed" || latestMessageState?.status === "processing" || latestMessageState?.status === "started") {
-      return;
-    }
+    return;
   }
   if (threadWasSerialized && !stateAdapterConnected) {
     await getStateAdapter().connect();
@@ -106,29 +98,38 @@ async function processThreadMessageStep(payload, workflowRunId) {
     message: runtimeMessage
   };
   try {
-    await refreshWorkflowMessageProcessingOwnership({
+    const refreshed = await refreshWorkflowMessageProcessingOwnership({
       rawKey: payload.dedupKey,
       ownerToken,
       workflowRunId: resolvedWorkflowRunId
     });
+    if (!refreshed) {
+      throw new WorkflowMessageOwnershipError("refresh", payload.dedupKey);
+    }
     await processThreadMessageRuntime({
       kind: payload.kind,
       thread: runtimePayload.thread,
       message: runtimePayload.message
     });
-    await completeWorkflowMessageProcessingOwnership({
+    const completed = await completeWorkflowMessageProcessingOwnership({
       rawKey: payload.dedupKey,
       ownerToken,
       workflowRunId: resolvedWorkflowRunId
     });
+    if (!completed) {
+      throw new WorkflowMessageOwnershipError("complete", payload.dedupKey);
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    await failWorkflowMessageProcessingOwnership({
+    const failed = await failWorkflowMessageProcessingOwnership({
       rawKey: payload.dedupKey,
       ownerToken,
       errorMessage,
       workflowRunId: resolvedWorkflowRunId
     });
+    if (!failed && !(error instanceof WorkflowMessageOwnershipError)) {
+      throw new Error(`Failed to persist workflow message failure state for dedupKey=${payload.dedupKey}: ${errorMessage}`);
+    }
     throw error;
   }
 }
@@ -209,11 +210,11 @@ function createStartupLeaseToken() {
   return `lease-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 async function claimWorkflowStartupLeaseSafe(normalizedThreadId, ownerToken, ttlMs) {
-  const { claimWorkflowStartupLease } = await import("./state-UZBB52FU.js");
+  const { claimWorkflowStartupLease } = await import("./state-HQNMBF7O.js");
   return await claimWorkflowStartupLease(normalizedThreadId, ownerToken, ttlMs);
 }
 async function releaseWorkflowStartupLeaseSafe(normalizedThreadId, ownerToken) {
-  const { releaseWorkflowStartupLease } = await import("./state-UZBB52FU.js");
+  const { releaseWorkflowStartupLease } = await import("./state-HQNMBF7O.js");
   try {
     await releaseWorkflowStartupLease(normalizedThreadId, ownerToken);
   } catch {

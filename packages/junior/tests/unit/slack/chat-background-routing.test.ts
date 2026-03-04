@@ -34,13 +34,15 @@ function createRuntime() {
 }
 
 function createDeps(overrides: Partial<{
-  claimDedup: (key: string, ttlMs: number) => Promise<boolean>;
+  hasDedup: (key: string) => Promise<boolean>;
+  markDedup: (key: string, ttlMs: number) => Promise<boolean>;
   getIsSubscribed: (threadId: string) => Promise<boolean>;
   logInfo: (...args: unknown[]) => void;
   routeToThreadWorkflow: (normalizedThreadId: string, payload: ThreadMessagePayload) => Promise<string | undefined>;
 }> = {}) {
   return {
-    claimDedup: overrides.claimDedup ?? vi.fn(async () => true),
+    hasDedup: overrides.hasDedup ?? vi.fn(async () => false),
+    markDedup: overrides.markDedup ?? vi.fn(async () => true),
     getIsSubscribed: overrides.getIsSubscribed ?? vi.fn(async () => false),
     logInfo: overrides.logInfo ?? vi.fn(),
     routeToThreadWorkflow: overrides.routeToThreadWorkflow ?? vi.fn(async () => undefined)
@@ -92,15 +94,16 @@ describe("routeIncomingMessageToWorkflow", () => {
     });
 
     expect(result).toBe("ignored_unsubscribed_non_mention");
-    expect(deps.claimDedup).not.toHaveBeenCalled();
+    expect(deps.hasDedup).not.toHaveBeenCalled();
+    expect(deps.markDedup).not.toHaveBeenCalled();
     expect(deps.routeToThreadWorkflow).not.toHaveBeenCalled();
   });
 
-  it("returns duplicate result when dedupe claim fails", async () => {
+  it("returns duplicate result when dedupe key already exists", async () => {
     const runtime = createRuntime();
     const deps = createDeps({
       getIsSubscribed: vi.fn(async () => false),
-      claimDedup: vi.fn(async () => false)
+      hasDedup: vi.fn(async () => true)
     });
     const message = createMessage({
       isMention: true
@@ -116,6 +119,7 @@ describe("routeIncomingMessageToWorkflow", () => {
 
     expect(result).toBe("ignored_duplicate");
     expect(deps.routeToThreadWorkflow).not.toHaveBeenCalled();
+    expect(deps.markDedup).not.toHaveBeenCalled();
     expect(deps.logInfo).toHaveBeenCalledWith(
       "workflow_ingress_dedup_hit",
       expect.any(Object),
@@ -147,7 +151,8 @@ describe("routeIncomingMessageToWorkflow", () => {
 
     expect(result).toBe("routed");
     expect(runtime.detectMention).not.toHaveBeenCalled();
-    expect(deps.claimDedup).toHaveBeenCalledWith("slack:C123:1700000000.100:1700000000.300", WORKFLOW_INGRESS_DEDUP_TTL_MS);
+    expect(deps.hasDedup).toHaveBeenCalledWith("slack:C123:1700000000.100:1700000000.300");
+    expect(deps.markDedup).toHaveBeenCalledWith("slack:C123:1700000000.100:1700000000.300", WORKFLOW_INGRESS_DEDUP_TTL_MS);
     const [normalizedThreadId, payload] = (deps.routeToThreadWorkflow as ReturnType<typeof vi.fn>).mock.calls[0] as [
       string,
       ThreadMessagePayload
@@ -217,7 +222,8 @@ describe("routeIncomingMessageToWorkflow", () => {
 
     expect(result).toBe("routed");
     expect(deps.getIsSubscribed).toHaveBeenCalledWith("slack:C777:1700000000.555");
-    expect(deps.claimDedup).toHaveBeenCalledWith("slack:C777:1700000000.555:1700000000.777", WORKFLOW_INGRESS_DEDUP_TTL_MS);
+    expect(deps.hasDedup).toHaveBeenCalledWith("slack:C777:1700000000.555:1700000000.777");
+    expect(deps.markDedup).toHaveBeenCalledWith("slack:C777:1700000000.555:1700000000.777", WORKFLOW_INGRESS_DEDUP_TTL_MS);
     const [normalizedThreadId, payload] = (deps.routeToThreadWorkflow as ReturnType<typeof vi.fn>).mock.calls[0] as [
       string,
       ThreadMessagePayload
@@ -245,7 +251,77 @@ describe("routeIncomingMessageToWorkflow", () => {
     });
 
     expect(result).toBe("ignored_self_message");
-    expect(deps.claimDedup).not.toHaveBeenCalled();
+    expect(deps.hasDedup).not.toHaveBeenCalled();
+    expect(deps.markDedup).not.toHaveBeenCalled();
     expect(deps.routeToThreadWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("does not mark dedupe when routing fails so retries are still allowed", async () => {
+    const runtime = createRuntime();
+    const deps = createDeps({
+      getIsSubscribed: vi.fn(async () => true),
+      routeToThreadWorkflow: vi.fn(async () => {
+        throw new Error("workflow unavailable");
+      })
+    });
+    const message = createMessage({
+      id: "1700000000.901",
+      isMention: true
+    });
+
+    await expect(
+      routeIncomingMessageToWorkflow({
+        adapter: {},
+        threadId: "slack:C123:",
+        message,
+        runtime,
+        deps
+      })
+    ).rejects.toThrow("workflow unavailable");
+
+    expect(deps.markDedup).not.toHaveBeenCalled();
+  });
+
+  it("routes successfully on retry after an initial routing failure", async () => {
+    const runtime = createRuntime();
+    let dedupMarked = false;
+    const deps = createDeps({
+      getIsSubscribed: vi.fn(async () => true),
+      hasDedup: vi.fn(async () => dedupMarked),
+      markDedup: vi.fn(async () => {
+        dedupMarked = true;
+        return true;
+      }),
+      routeToThreadWorkflow: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("transient routing failure"))
+        .mockResolvedValueOnce("wrun_456")
+    });
+    const message = createMessage({
+      id: "1700000000.902",
+      isMention: true
+    });
+
+    await expect(
+      routeIncomingMessageToWorkflow({
+        adapter: {},
+        threadId: "slack:C123:",
+        message,
+        runtime,
+        deps
+      })
+    ).rejects.toThrow("transient routing failure");
+
+    const secondResult = await routeIncomingMessageToWorkflow({
+      adapter: {},
+      threadId: "slack:C123:",
+      message,
+      runtime,
+      deps
+    });
+
+    expect(secondResult).toBe("routed");
+    expect(deps.routeToThreadWorkflow).toHaveBeenCalledTimes(2);
+    expect(deps.markDedup).toHaveBeenCalledTimes(1);
   });
 });

@@ -35,6 +35,13 @@ function createMessageOwnerToken(): string {
   return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+class WorkflowMessageOwnershipError extends Error {
+  constructor(stage: "refresh" | "complete", dedupKey: string) {
+    super(`Workflow message ownership lost during ${stage} for dedupKey=${dedupKey}`);
+    this.name = "WorkflowMessageOwnershipError";
+  }
+}
+
 export async function logThreadMessageFailureStep(
   payload: Pick<ThreadMessagePayload, "kind" | "normalizedThreadId" | "message" | "thread">,
   errorMessage: string,
@@ -85,19 +92,8 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
 
   const resolvedWorkflowRunId = workflowRunId ?? getPayloadWorkflowRunId(payload);
   const threadWasSerialized = isSerializedThread(payload.thread);
-  const messageId = toOptionalString(payload.message.id);
-  const userId = getPayloadUserId(payload);
-  const messageStateContext = {
-    slackThreadId: payload.normalizedThreadId,
-    slackChannelId: getPayloadChannelId(payload),
-    slackUserId: userId,
-    workflowRunId: resolvedWorkflowRunId
-  };
-  void messageStateContext;
   const existingMessageState = await getWorkflowMessageProcessingState(payload.dedupKey);
   if (existingMessageState?.status === "completed") {
-    void messageId;
-    void userId;
     return;
   }
 
@@ -108,14 +104,7 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
     workflowRunId: resolvedWorkflowRunId
   });
   if (claimResult === "blocked") {
-    const latestMessageState = await getWorkflowMessageProcessingState(payload.dedupKey);
-    if (
-      latestMessageState?.status === "completed" ||
-      latestMessageState?.status === "processing" ||
-      latestMessageState?.status === "started"
-    ) {
-      return;
-    }
+    return;
   }
 
   // Serialized payloads require state adapter connectivity for ThreadImpl-backed state.
@@ -137,29 +126,38 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
   };
 
   try {
-    await refreshWorkflowMessageProcessingOwnership({
+    const refreshed = await refreshWorkflowMessageProcessingOwnership({
       rawKey: payload.dedupKey,
       ownerToken,
       workflowRunId: resolvedWorkflowRunId
     });
+    if (!refreshed) {
+      throw new WorkflowMessageOwnershipError("refresh", payload.dedupKey);
+    }
     await processThreadMessageRuntime({
       kind: payload.kind,
       thread: runtimePayload.thread,
       message: runtimePayload.message
     });
-    await completeWorkflowMessageProcessingOwnership({
+    const completed = await completeWorkflowMessageProcessingOwnership({
       rawKey: payload.dedupKey,
       ownerToken,
       workflowRunId: resolvedWorkflowRunId
     });
+    if (!completed) {
+      throw new WorkflowMessageOwnershipError("complete", payload.dedupKey);
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    await failWorkflowMessageProcessingOwnership({
+    const failed = await failWorkflowMessageProcessingOwnership({
       rawKey: payload.dedupKey,
       ownerToken,
       errorMessage,
       workflowRunId: resolvedWorkflowRunId
     });
+    if (!failed && !(error instanceof WorkflowMessageOwnershipError)) {
+      throw new Error(`Failed to persist workflow message failure state for dedupKey=${payload.dedupKey}: ${errorMessage}`);
+    }
     throw error;
   }
 }

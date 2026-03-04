@@ -191,6 +191,13 @@ export async function claimWorkflowIngressDedup(rawKey: string, ttlMs: number): 
   return result === "OK";
 }
 
+export async function hasWorkflowIngressDedup(rawKey: string): Promise<boolean> {
+  await getStateAdapter().connect();
+  const key = `${WORKFLOW_INGRESS_DEDUP_PREFIX}:${rawKey}`;
+  const value = await getRedisStateAdapter().getClient().get(key);
+  return typeof value === "string" && value.length > 0;
+}
+
 export async function claimWorkflowStartupLease(
   normalizedThreadId: string,
   ownerToken: string,

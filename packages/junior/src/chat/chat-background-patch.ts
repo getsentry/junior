@@ -1,7 +1,7 @@
 import { Chat } from "chat";
 import type { Message, Thread } from "chat";
 import type { ThreadMessageKind, ThreadMessagePayload } from "@/chat/workflow/types";
-import { claimWorkflowIngressDedup, getStateAdapter } from "@/chat/state";
+import { claimWorkflowIngressDedup, getStateAdapter, hasWorkflowIngressDedup } from "@/chat/state";
 import { logInfo, setSpanAttributes, withContext, withSpan } from "@/chat/observability";
 
 type WebhookOptions = {
@@ -119,14 +119,16 @@ interface WorkflowRoutingRuntime {
 }
 
 interface WorkflowRoutingDeps {
-  claimDedup: (key: string, ttlMs: number) => Promise<boolean>;
+  hasDedup: (key: string) => Promise<boolean>;
+  markDedup: (key: string, ttlMs: number) => Promise<boolean>;
   getIsSubscribed: (threadId: string) => Promise<boolean>;
   logInfo: typeof logInfo;
   routeToThreadWorkflow: (normalizedThreadId: string, payload: ThreadMessagePayload) => Promise<string | undefined>;
 }
 
 const defaultWorkflowRoutingDeps: WorkflowRoutingDeps = {
-  claimDedup: (key, ttlMs) => claimWorkflowIngressDedup(key, ttlMs),
+  hasDedup: (key) => hasWorkflowIngressDedup(key),
+  markDedup: (key, ttlMs) => claimWorkflowIngressDedup(key, ttlMs),
   getIsSubscribed: (threadId) => getStateAdapter().isSubscribed(threadId),
   logInfo,
   routeToThreadWorkflow: async (normalizedThreadId, payload) => {
@@ -187,8 +189,8 @@ export async function routeIncomingMessageToWorkflow(args: {
   }
 
   const dedupKey = buildWorkflowIngressDedupKey(normalizedThreadId, messageId);
-  const claimed = await deps.claimDedup(dedupKey, WORKFLOW_INGRESS_DEDUP_TTL_MS);
-  if (!claimed) {
+  const alreadyDeduped = await deps.hasDedup(dedupKey);
+  if (alreadyDeduped) {
     deps.logInfo(
       "workflow_ingress_dedup_hit",
       {
@@ -260,6 +262,8 @@ export async function routeIncomingMessageToWorkflow(args: {
         },
         "Routing incoming message to thread workflow"
       );
+
+      await deps.markDedup(dedupKey, WORKFLOW_INGRESS_DEDUP_TTL_MS);
     }
   );
 

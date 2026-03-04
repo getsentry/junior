@@ -17,7 +17,7 @@ import {
   publishAppHomeView,
   startOAuthFlow,
   truncateStatusText
-} from "./chunk-VA7IB7MV.js";
+} from "./chunk-UMQMFADD.js";
 import {
   logException,
   logInfo,
@@ -35,8 +35,9 @@ import {
   getSlackClientId,
   getSlackClientSecret,
   getSlackSigningSecret,
-  getStateAdapter
-} from "./chunk-77IYZ6LP.js";
+  getStateAdapter,
+  hasWorkflowIngressDedup
+} from "./chunk-ZVUOP46C.js";
 
 // src/chat/bot.ts
 import { Chat as Chat2 } from "chat";
@@ -102,11 +103,12 @@ function determineThreadMessageKind(args) {
   return void 0;
 }
 var defaultWorkflowRoutingDeps = {
-  claimDedup: (key, ttlMs) => claimWorkflowIngressDedup(key, ttlMs),
+  hasDedup: (key) => hasWorkflowIngressDedup(key),
+  markDedup: (key, ttlMs) => claimWorkflowIngressDedup(key, ttlMs),
   getIsSubscribed: (threadId) => getStateAdapter().isSubscribed(threadId),
   logInfo,
   routeToThreadWorkflow: async (normalizedThreadId, payload) => {
-    const { routeToThreadWorkflow } = await import("./router-FUIMOPW6.js");
+    const { routeToThreadWorkflow } = await import("./router-YD4VHXS6.js");
     return await routeToThreadWorkflow(normalizedThreadId, payload);
   }
 };
@@ -139,8 +141,8 @@ async function routeIncomingMessageToWorkflow(args) {
     return "ignored_unsubscribed_non_mention";
   }
   const dedupKey = buildWorkflowIngressDedupKey(normalizedThreadId, messageId);
-  const claimed = await deps.claimDedup(dedupKey, WORKFLOW_INGRESS_DEDUP_TTL_MS);
-  if (!claimed) {
+  const alreadyDeduped = await deps.hasDedup(dedupKey);
+  if (alreadyDeduped) {
     deps.logInfo(
       "workflow_ingress_dedup_hit",
       {
@@ -209,6 +211,7 @@ async function routeIncomingMessageToWorkflow(args) {
         },
         "Routing incoming message to thread workflow"
       );
+      await deps.markDedup(dedupKey, WORKFLOW_INGRESS_DEDUP_TTL_MS);
     }
   );
   return "routed";
