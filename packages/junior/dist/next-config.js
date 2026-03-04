@@ -12,6 +12,11 @@ function applyJuniorConfig(nextConfig, options) {
   ]));
   const existingApiTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/api/**"] ?? [];
   const mergedApiTracingIncludes = Array.from(/* @__PURE__ */ new Set([...existingApiTracingIncludes, ...tracingIncludes]));
+  const existingWellKnownTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/.well-known/**"] ?? [];
+  const mergedWellKnownTracingIncludes = Array.from(/* @__PURE__ */ new Set([
+    ...existingWellKnownTracingIncludes,
+    ...tracingIncludes
+  ]));
   const config = {
     ...nextConfig,
     transpilePackages: Array.from(/* @__PURE__ */ new Set([...nextConfig?.transpilePackages ?? [], "junior"])),
@@ -23,7 +28,8 @@ function applyJuniorConfig(nextConfig, options) {
     ])),
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,
-      "/api/**": mergedApiTracingIncludes
+      "/api/**": mergedApiTracingIncludes,
+      "/.well-known/**": mergedWellKnownTracingIncludes
     }
   };
   if (options?.sentry) {

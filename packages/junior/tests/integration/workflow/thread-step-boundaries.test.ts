@@ -5,25 +5,50 @@ import type { ThreadMessagePayload } from "@/chat/workflow/types";
 import type { TestThread } from "../../fixtures/slack-harness";
 import { createTestMessage, createTestThread } from "../../fixtures/slack-harness";
 
-const workflowMessageState = new Map<string, { status: "started" | "completed" | "failed"; updatedAtMs: number }>();
+const workflowMessageState = new Map<
+  string,
+  { status: "processing" | "completed" | "failed"; updatedAtMs: number; ownerToken?: string }
+>();
 
 vi.mock("@/chat/state", () => ({
   getStateAdapter: () => ({
     connect: async () => undefined
   }),
   getWorkflowMessageProcessingState: async (rawKey: string) => workflowMessageState.get(rawKey),
-  markWorkflowMessageStarted: async (rawKey: string) => {
-    if (workflowMessageState.has(rawKey)) {
+  acquireWorkflowMessageProcessingOwnership: async (args: { rawKey: string; ownerToken: string }) => {
+    if (workflowMessageState.has(args.rawKey)) {
+      return "blocked" as const;
+    }
+    workflowMessageState.set(args.rawKey, {
+      status: "processing",
+      updatedAtMs: Date.now(),
+      ownerToken: args.ownerToken
+    });
+    return "acquired" as const;
+  },
+  refreshWorkflowMessageProcessingOwnership: async (args: { rawKey: string; ownerToken: string }) => {
+    const existing = workflowMessageState.get(args.rawKey);
+    if (!existing || existing.ownerToken !== args.ownerToken) {
       return false;
     }
-    workflowMessageState.set(rawKey, { status: "started", updatedAtMs: Date.now() });
+    workflowMessageState.set(args.rawKey, { ...existing, updatedAtMs: Date.now() });
     return true;
   },
-  markWorkflowMessageCompleted: async (rawKey: string) => {
-    workflowMessageState.set(rawKey, { status: "completed", updatedAtMs: Date.now() });
+  completeWorkflowMessageProcessingOwnership: async (args: { rawKey: string; ownerToken: string }) => {
+    const existing = workflowMessageState.get(args.rawKey);
+    if (!existing || existing.ownerToken !== args.ownerToken) {
+      return false;
+    }
+    workflowMessageState.set(args.rawKey, { status: "completed", updatedAtMs: Date.now() });
+    return true;
   },
-  markWorkflowMessageFailed: async (rawKey: string) => {
-    workflowMessageState.set(rawKey, { status: "failed", updatedAtMs: Date.now() });
+  failWorkflowMessageProcessingOwnership: async (args: { rawKey: string; ownerToken: string }) => {
+    const existing = workflowMessageState.get(args.rawKey);
+    if (!existing || existing.ownerToken !== args.ownerToken) {
+      return false;
+    }
+    workflowMessageState.set(args.rawKey, { status: "failed", updatedAtMs: Date.now() });
+    return true;
   }
 }));
 

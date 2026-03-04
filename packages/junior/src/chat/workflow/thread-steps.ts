@@ -3,17 +3,6 @@ import type { ThreadMessagePayload } from "@/chat/workflow/types";
 
 let stateAdapterConnected = false;
 
-function rehydrateAttachmentFetchers(
-  payload: { message: { attachments: Array<{ fetchData?: () => Promise<Buffer>; url?: string }> } },
-  downloadPrivateFile: (url: string) => Promise<Buffer>
-): void {
-  for (const attachment of payload.message.attachments) {
-    if (!attachment.fetchData && attachment.url) {
-      attachment.fetchData = () => downloadPrivateFile(attachment.url as string);
-    }
-  }
-}
-
 function isSerializedThread(thread: ThreadMessagePayload["thread"]): thread is SerializedThread {
   return typeof thread === "object" && thread !== null && (thread as { _type?: unknown })._type === "chat:Thread";
 }
@@ -42,15 +31,32 @@ function getPayloadWorkflowRunId(payload: ThreadMessagePayload): string | undefi
   );
 }
 
+function createMessageOwnerToken(): string {
+  return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export async function logThreadMessageFailureStep(
   payload: Pick<ThreadMessagePayload, "kind" | "normalizedThreadId" | "message" | "thread">,
   errorMessage: string,
   workflowRunId?: string
 ): Promise<void> {
   "use step";
-  void payload;
-  void errorMessage;
-  void workflowRunId;
+  const { logError } = await import("@/chat/observability");
+  logError(
+    "workflow_message_failed",
+    {
+      slackThreadId: payload.normalizedThreadId,
+      slackChannelId: getPayloadChannelId(payload),
+      slackUserId: getPayloadUserId(payload),
+      workflowRunId
+    },
+    {
+      "messaging.message.id": payload.message.id,
+      "app.workflow.message_kind": payload.kind,
+      "error.message": errorMessage
+    },
+    "Thread workflow step failed"
+  );
 }
 
 export async function processThreadMessageStep(payload: ThreadMessagePayload, workflowRunId?: string): Promise<void> {
@@ -63,18 +69,17 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
     WORKFLOW_DESERIALIZE
   ];
   const [
-    { appSlackRuntime },
-    { downloadPrivateSlackFile },
+    { processThreadMessageRuntime },
     {
       getStateAdapter,
+      acquireWorkflowMessageProcessingOwnership,
+      completeWorkflowMessageProcessingOwnership,
+      failWorkflowMessageProcessingOwnership,
       getWorkflowMessageProcessingState,
-      markWorkflowMessageCompleted,
-      markWorkflowMessageFailed,
-      markWorkflowMessageStarted
+      refreshWorkflowMessageProcessingOwnership
     }
   ] = await Promise.all([
-    import("@/chat/bot"),
-    import("@/chat/slack-actions/client"),
+    import("@/chat/thread-runtime/process-thread-message-runtime"),
     import("@/chat/state")
   ]);
 
@@ -90,16 +95,25 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
   };
   void messageStateContext;
   const existingMessageState = await getWorkflowMessageProcessingState(payload.dedupKey);
-  if (existingMessageState?.status === "completed" || existingMessageState?.status === "started") {
+  if (existingMessageState?.status === "completed") {
     void messageId;
     void userId;
     return;
   }
-  const started = await markWorkflowMessageStarted(payload.dedupKey, resolvedWorkflowRunId);
-  void started;
-  if (!started) {
+
+  const ownerToken = createMessageOwnerToken();
+  const claimResult = await acquireWorkflowMessageProcessingOwnership({
+    rawKey: payload.dedupKey,
+    ownerToken,
+    workflowRunId: resolvedWorkflowRunId
+  });
+  if (claimResult === "blocked") {
     const latestMessageState = await getWorkflowMessageProcessingState(payload.dedupKey);
-    if (latestMessageState?.status === "completed" || latestMessageState?.status === "started") {
+    if (
+      latestMessageState?.status === "completed" ||
+      latestMessageState?.status === "processing" ||
+      latestMessageState?.status === "started"
+    ) {
       return;
     }
   }
@@ -121,34 +135,33 @@ export async function processThreadMessageStep(payload: ThreadMessagePayload, wo
     thread: runtimeThread,
     message: runtimeMessage
   };
-  rehydrateAttachmentFetchers(runtimePayload, downloadPrivateSlackFile);
 
   try {
-    if (payload.kind === "new_mention") {
-      await appSlackRuntime.handleNewMention(runtimeThread, runtimeMessage);
-    } else {
-      await appSlackRuntime.handleSubscribedMessage(runtimeThread, runtimeMessage);
-    }
-    await markWorkflowMessageCompleted(payload.dedupKey, resolvedWorkflowRunId);
+    await refreshWorkflowMessageProcessingOwnership({
+      rawKey: payload.dedupKey,
+      ownerToken,
+      workflowRunId: resolvedWorkflowRunId
+    });
+    await processThreadMessageRuntime({
+      kind: payload.kind,
+      thread: runtimePayload.thread,
+      message: runtimePayload.message
+    });
+    await completeWorkflowMessageProcessingOwnership({
+      rawKey: payload.dedupKey,
+      ownerToken,
+      workflowRunId: resolvedWorkflowRunId
+    });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    await markWorkflowMessageFailed(payload.dedupKey, errorMessage, resolvedWorkflowRunId);
+    await failWorkflowMessageProcessingOwnership({
+      rawKey: payload.dedupKey,
+      ownerToken,
+      errorMessage,
+      workflowRunId: resolvedWorkflowRunId
+    });
     throw error;
   }
 }
 
 Object.assign(processThreadMessageStep, { maxRetries: 1 });
-
-export async function releaseWorkflowStartupLeaseStep(
-  normalizedThreadId: string,
-  startupLeaseOwnerToken: string
-): Promise<void> {
-  "use step";
-  const { releaseWorkflowStartupLease } = await import("@/chat/state");
-
-  try {
-    await releaseWorkflowStartupLease(normalizedThreadId, startupLeaseOwnerToken);
-  } catch (error) {
-    void error;
-  }
-}

@@ -42,6 +42,15 @@ async function claimWorkflowStartupLeaseSafe(
   return await claimWorkflowStartupLease(normalizedThreadId, ownerToken, ttlMs);
 }
 
+async function releaseWorkflowStartupLeaseSafe(normalizedThreadId: string, ownerToken: string): Promise<void> {
+  const { releaseWorkflowStartupLease } = await import("@/chat/state");
+  try {
+    await releaseWorkflowStartupLease(normalizedThreadId, ownerToken);
+  } catch {
+    // Lease release is best effort and should not fail routing.
+  }
+}
+
 function classifyResumeMiss(error: unknown): "hook_not_found" | "resume_empty" | "resume_error" {
   const message = getErrorMessage(error).toLowerCase();
   if (message.includes("not found")) {
@@ -142,18 +151,17 @@ async function retryResume(
 async function startWorkflowAndRetryResume(args: {
   normalizedThreadId: string;
   payload: ThreadMessagePayload;
-  startupLeaseOwnerToken: string;
   startupRole: StartupRole;
   resumeMissReason: ReturnType<typeof classifyResumeMiss>;
   resumeMissError?: unknown;
 }): Promise<string | undefined> {
-  const { normalizedThreadId, payload, startupLeaseOwnerToken, startupRole, resumeMissReason, resumeMissError } = args;
+  const { normalizedThreadId, payload, startupRole, resumeMissReason, resumeMissError } = args;
   let startedRunId: string | undefined;
   let startError: unknown;
   let startOutcome: "started" | "raced" | "failed" = "started";
 
   try {
-    const startedRun = await start(slackThreadWorkflow, [normalizedThreadId, startupLeaseOwnerToken]);
+    const startedRun = await start(slackThreadWorkflow, [normalizedThreadId]);
     startedRunId = startedRun.runId;
   } catch (error) {
     if (isBenignStartRaceError(error)) {
@@ -206,14 +214,17 @@ export async function routeToThreadWorkflow(
     );
 
     if (claimedLeaderLease) {
-      return await startWorkflowAndRetryResume({
-        normalizedThreadId,
-        payload,
-        startupLeaseOwnerToken: leaderOwnerToken,
-        startupRole: "leader",
-        resumeMissReason: firstMissReason,
-        resumeMissError: firstResumeAttempt.error
-      });
+      try {
+        return await startWorkflowAndRetryResume({
+          normalizedThreadId,
+          payload,
+          startupRole: "leader",
+          resumeMissReason: firstMissReason,
+          resumeMissError: firstResumeAttempt.error
+        });
+      } finally {
+        await releaseWorkflowStartupLeaseSafe(normalizedThreadId, leaderOwnerToken);
+      }
     }
 
     // Scenario B: Another caller already holds the startup lease and should be
@@ -237,14 +248,17 @@ export async function routeToThreadWorkflow(
         STARTUP_LEASE_TTL_MS
       );
       if (claimedFallbackLease) {
-        return await startWorkflowAndRetryResume({
-          normalizedThreadId,
-          payload,
-          startupLeaseOwnerToken: fallbackOwnerToken,
-          startupRole: "leader",
-          resumeMissReason: classifyResumeMiss(followerRetryError),
-          resumeMissError: followerRetryError
-        });
+        try {
+          return await startWorkflowAndRetryResume({
+            normalizedThreadId,
+            payload,
+            startupRole: "leader",
+            resumeMissReason: classifyResumeMiss(followerRetryError),
+            resumeMissError: followerRetryError
+          });
+        } finally {
+          await releaseWorkflowStartupLeaseSafe(normalizedThreadId, fallbackOwnerToken);
+        }
       }
 
       // Scenario D: Fallback lease is also contended, meaning another caller is

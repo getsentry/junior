@@ -22,13 +22,14 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
-    "build:pkg": "tsup && pnpm run test:workflow-dist-boundary",
+    "build:pkg": "pnpm run test:workflow-source-boundary && tsup && pnpm run test:workflow-dist-boundary",
     "start": "next start",
-    "test": "pnpm run test:slack-boundary && pnpm run test:workflow-dist-boundary && vitest run",
+    "test": "pnpm run test:slack-boundary && pnpm run test:workflow-source-boundary && pnpm run test:workflow-dist-boundary && vitest run",
     "test:watch": "vitest",
     "preevals": "pnpm run test:slack-boundary",
     "evals": "pnpm exec vitest run -c vitest.evals.config.ts",
     "test:slack-boundary": "node scripts/check-slack-test-boundary.mjs",
+    "test:workflow-source-boundary": "node scripts/check-workflow-source-boundary.mjs",
     "test:workflow-dist-boundary": "node scripts/check-workflow-dist-boundary.mjs",
     "typecheck": "tsc --noEmit",
     "skills:check": "node scripts/check-skills.mjs"

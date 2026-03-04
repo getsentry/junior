@@ -1,10 +1,6 @@
 import { defineHook, getWorkflowMetadata } from "workflow";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
-import {
-  logThreadMessageFailureStep,
-  processThreadMessageStep,
-  releaseWorkflowStartupLeaseStep
-} from "@/chat/workflow/thread-steps";
+import { logThreadMessageFailureStep, processThreadMessageStep } from "@/chat/workflow/thread-steps";
 
 const MAX_DEDUP_KEYS = 500;
 const DEDUP_TRIM_SIZE = Math.floor(MAX_DEDUP_KEYS / 2);
@@ -63,8 +59,7 @@ export async function processThreadPayloadStream(
 }
 
 export async function slackThreadWorkflow(
-  normalizedThreadId: string,
-  startupLeaseOwnerToken?: string
+  normalizedThreadId: string
 ): Promise<void> {
   "use workflow";
   const { workflowRunId } = getWorkflowMetadata();
@@ -76,16 +71,9 @@ export async function slackThreadWorkflow(
     });
   } catch (error) {
     if (isHookConflictError(error)) {
-      if (startupLeaseOwnerToken) {
-        await releaseWorkflowStartupLeaseStep(normalizedThreadId, startupLeaseOwnerToken);
-      }
       return;
     }
     throw error;
-  }
-
-  if (startupLeaseOwnerToken) {
-    await releaseWorkflowStartupLeaseStep(normalizedThreadId, startupLeaseOwnerToken);
   }
 
   await processThreadPayloadStream(hook, workflowRunId);

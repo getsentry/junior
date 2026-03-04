@@ -2,25 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
 
 const mocks = vi.hoisted(() => ({
-  handleNewMention: vi.fn(async () => undefined),
-  handleSubscribedMessage: vi.fn(async () => undefined),
-  downloadPrivateSlackFile: vi.fn(async () => Buffer.from("")),
+  processThreadMessageRuntime: vi.fn(async () => undefined),
   getWorkflowMessageProcessingState: vi.fn(async () => undefined),
-  markWorkflowMessageStarted: vi.fn(async () => true),
-  markWorkflowMessageCompleted: vi.fn(async () => undefined),
-  markWorkflowMessageFailed: vi.fn(async () => undefined),
+  acquireWorkflowMessageProcessingOwnership: vi.fn(async () => "acquired"),
+  refreshWorkflowMessageProcessingOwnership: vi.fn(async () => true),
+  completeWorkflowMessageProcessingOwnership: vi.fn(async () => true),
+  failWorkflowMessageProcessingOwnership: vi.fn(async () => true),
   connectStateAdapter: vi.fn(async () => undefined)
 }));
 
-vi.mock("@/chat/bot", () => ({
-  appSlackRuntime: {
-    handleNewMention: mocks.handleNewMention,
-    handleSubscribedMessage: mocks.handleSubscribedMessage
-  }
-}));
-
-vi.mock("@/chat/slack-actions/client", () => ({
-  downloadPrivateSlackFile: mocks.downloadPrivateSlackFile
+vi.mock("@/chat/thread-runtime/process-thread-message-runtime", () => ({
+  processThreadMessageRuntime: mocks.processThreadMessageRuntime
 }));
 
 vi.mock("@/chat/state", () => ({
@@ -28,9 +20,10 @@ vi.mock("@/chat/state", () => ({
     connect: mocks.connectStateAdapter
   }),
   getWorkflowMessageProcessingState: mocks.getWorkflowMessageProcessingState,
-  markWorkflowMessageStarted: mocks.markWorkflowMessageStarted,
-  markWorkflowMessageCompleted: mocks.markWorkflowMessageCompleted,
-  markWorkflowMessageFailed: mocks.markWorkflowMessageFailed
+  acquireWorkflowMessageProcessingOwnership: mocks.acquireWorkflowMessageProcessingOwnership,
+  refreshWorkflowMessageProcessingOwnership: mocks.refreshWorkflowMessageProcessingOwnership,
+  completeWorkflowMessageProcessingOwnership: mocks.completeWorkflowMessageProcessingOwnership,
+  failWorkflowMessageProcessingOwnership: mocks.failWorkflowMessageProcessingOwnership
 }));
 
 import { processThreadMessageStep } from "@/chat/workflow/thread-steps";
@@ -59,16 +52,19 @@ describe("processThreadMessageStep", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getWorkflowMessageProcessingState.mockResolvedValue(undefined);
-    mocks.markWorkflowMessageStarted.mockResolvedValue(true);
+    mocks.acquireWorkflowMessageProcessingOwnership.mockResolvedValue("acquired");
   });
 
-  it("does not require bot export from @/chat/bot", async () => {
+  it("dispatches to thread runtime and marks completion via ownership API", async () => {
     await processThreadMessageStep(createPayload("new_mention"), "wrun-123");
 
-    expect(mocks.handleNewMention).toHaveBeenCalledTimes(1);
-    expect(mocks.markWorkflowMessageCompleted).toHaveBeenCalledWith(
-      "slack:C123:1700000000.100:m-1",
-      "wrun-123"
+    expect(mocks.processThreadMessageRuntime).toHaveBeenCalledTimes(1);
+    expect(mocks.completeWorkflowMessageProcessingOwnership).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rawKey: "slack:C123:1700000000.100:m-1",
+        workflowRunId: "wrun-123",
+        ownerToken: expect.any(String)
+      })
     );
   });
 });

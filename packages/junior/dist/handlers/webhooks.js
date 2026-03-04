@@ -1,7 +1,7 @@
 import {
   POST
-} from "../chunk-YNPJTKWS.js";
-import "../chunk-PZF6TC63.js";
+} from "../chunk-GVS7KUVX.js";
+import "../chunk-OXCKLXL3.js";
 export {
   POST
 };
