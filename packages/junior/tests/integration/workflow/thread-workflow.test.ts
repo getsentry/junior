@@ -1,8 +1,30 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
 import { processThreadPayloadStream } from "@/chat/workflow/thread-workflow";
 import type { ThreadMessagePayload } from "@/chat/workflow/types";
 import { createTestMessage, createTestThread } from "../../fixtures/slack-harness";
+
+const workflowMessageState = new Map<string, { status: "started" | "completed" | "failed"; updatedAtMs: number }>();
+
+vi.mock("@/chat/state", () => ({
+  getStateAdapter: () => ({
+    connect: async () => undefined
+  }),
+  getWorkflowMessageProcessingState: async (rawKey: string) => workflowMessageState.get(rawKey),
+  markWorkflowMessageStarted: async (rawKey: string) => {
+    if (workflowMessageState.has(rawKey)) {
+      return false;
+    }
+    workflowMessageState.set(rawKey, { status: "started", updatedAtMs: Date.now() });
+    return true;
+  },
+  markWorkflowMessageCompleted: async (rawKey: string) => {
+    workflowMessageState.set(rawKey, { status: "completed", updatedAtMs: Date.now() });
+  },
+  markWorkflowMessageFailed: async (rawKey: string) => {
+    workflowMessageState.set(rawKey, { status: "failed", updatedAtMs: Date.now() });
+  }
+}));
 
 function buildPayload(args: {
   dedupKey: string;
@@ -40,6 +62,7 @@ async function* toAsyncIterable(items: ThreadMessagePayload[]): AsyncIterable<Th
 describe("thread workflow integration", () => {
   afterEach(() => {
     resetBotDepsForTests();
+    workflowMessageState.clear();
   });
 
   it("processes unique payloads and skips duplicate dedup keys", async () => {

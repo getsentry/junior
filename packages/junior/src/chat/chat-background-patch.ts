@@ -35,7 +35,9 @@ type ChatLike = {
 };
 
 const PATCH_FLAG = Symbol.for("junior.chat.backgroundPatch");
-export const WORKFLOW_INGRESS_DEDUP_TTL_MS = 5 * 60 * 1000;
+// Keep ingress dedupe keys long enough to cover delayed Slack retries and
+// workflow contention windows for the same message payload.
+export const WORKFLOW_INGRESS_DEDUP_TTL_MS = 24 * 60 * 60 * 1000;
 
 function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

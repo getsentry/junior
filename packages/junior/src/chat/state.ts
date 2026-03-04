@@ -7,6 +7,10 @@ import { logInfo } from "@/chat/observability";
 const MIN_LOCK_TTL_MS = 1000 * 60 * 5;
 const WORKFLOW_INGRESS_DEDUP_PREFIX = "junior:workflow_ingress";
 const WORKFLOW_STARTUP_LEASE_PREFIX = "junior:workflow_startup";
+const WORKFLOW_MESSAGE_PROCESSING_PREFIX = "junior:workflow_message";
+const WORKFLOW_MESSAGE_STARTED_TTL_MS = 2 * 60 * 60 * 1000;
+const WORKFLOW_MESSAGE_COMPLETED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const WORKFLOW_MESSAGE_FAILED_TTL_MS = 6 * 60 * 60 * 1000;
 const COMPARE_AND_DELETE_SCRIPT = `
   if redis.call("get", KEYS[1]) == ARGV[1] then
     return redis.call("del", KEYS[1])
@@ -73,6 +77,44 @@ function getRedisStateAdapter(): RedisStateAdapter {
   return _redisStateAdapter;
 }
 
+export type WorkflowMessageProcessingStatus = "started" | "completed" | "failed";
+
+export interface WorkflowMessageProcessingState {
+  status: WorkflowMessageProcessingStatus;
+  updatedAtMs: number;
+  workflowRunId?: string;
+  errorMessage?: string;
+}
+
+function workflowMessageKey(rawKey: string): string {
+  return `${WORKFLOW_MESSAGE_PROCESSING_PREFIX}:${rawKey}`;
+}
+
+function parseWorkflowMessageState(value: unknown): WorkflowMessageProcessingState | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<WorkflowMessageProcessingState>;
+    if (
+      !parsed ||
+      (parsed.status !== "started" && parsed.status !== "completed" && parsed.status !== "failed") ||
+      typeof parsed.updatedAtMs !== "number"
+    ) {
+      return undefined;
+    }
+    return {
+      status: parsed.status,
+      updatedAtMs: parsed.updatedAtMs,
+      ...(typeof parsed.workflowRunId === "string" ? { workflowRunId: parsed.workflowRunId } : {}),
+      ...(typeof parsed.errorMessage === "string" ? { errorMessage: parsed.errorMessage } : {})
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export function getStateAdapter(): StateAdapter {
   if (!_stateAdapter) {
     _stateAdapter = createStateAdapter();
@@ -115,4 +157,52 @@ export async function releaseWorkflowStartupLease(
     arguments: [ownerToken]
   });
   return result === 1;
+}
+
+export async function getWorkflowMessageProcessingState(
+  rawKey: string
+): Promise<WorkflowMessageProcessingState | undefined> {
+  await getStateAdapter().connect();
+  const state = await getStateAdapter().get(workflowMessageKey(rawKey));
+  return parseWorkflowMessageState(state);
+}
+
+export async function markWorkflowMessageStarted(rawKey: string, workflowRunId?: string): Promise<boolean> {
+  await getStateAdapter().connect();
+  const key = workflowMessageKey(rawKey);
+  const payload = JSON.stringify({
+    status: "started",
+    updatedAtMs: Date.now(),
+    ...(workflowRunId ? { workflowRunId } : {})
+  } satisfies WorkflowMessageProcessingState);
+  const result = await getRedisStateAdapter().getClient().set(key, payload, {
+    NX: true,
+    PX: WORKFLOW_MESSAGE_STARTED_TTL_MS
+  });
+  return result === "OK";
+}
+
+export async function markWorkflowMessageCompleted(rawKey: string, workflowRunId?: string): Promise<void> {
+  await getStateAdapter().connect();
+  const payload = JSON.stringify({
+    status: "completed",
+    updatedAtMs: Date.now(),
+    ...(workflowRunId ? { workflowRunId } : {})
+  } satisfies WorkflowMessageProcessingState);
+  await getStateAdapter().set(workflowMessageKey(rawKey), payload, WORKFLOW_MESSAGE_COMPLETED_TTL_MS);
+}
+
+export async function markWorkflowMessageFailed(
+  rawKey: string,
+  errorMessage: string,
+  workflowRunId?: string
+): Promise<void> {
+  await getStateAdapter().connect();
+  const payload = JSON.stringify({
+    status: "failed",
+    updatedAtMs: Date.now(),
+    ...(workflowRunId ? { workflowRunId } : {}),
+    errorMessage
+  } satisfies WorkflowMessageProcessingState);
+  await getStateAdapter().set(workflowMessageKey(rawKey), payload, WORKFLOW_MESSAGE_FAILED_TTL_MS);
 }

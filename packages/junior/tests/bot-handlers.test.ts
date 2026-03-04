@@ -294,6 +294,48 @@ describe("bot handlers (integration)", () => {
     );
   });
 
+  it("posts terminal failure text after streamed partial output", async () => {
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    setBotDepsForTests({
+      generateAssistantReply: async (_prompt, context) => {
+        await context?.onTextDelta?.("Partial output...");
+        return {
+          text: "Error: Agent turn timed out after 900000ms",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "test-model",
+            outcome: "provider_error" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
+      },
+      listThreadReplies: async () => []
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM_FAIL:1700000000.000" });
+
+    await appSlackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-stream-fail",
+        threadId: "slack:C_STREAM_FAIL:1700000000.000",
+        text: "do work",
+        isMention: true
+      })
+    );
+
+    expect(thread.posts).toHaveLength(2);
+    expect(thread.posts[0]).toBe("Partial output...");
+    expect(thread.posts[1]).toEqual(
+      expect.objectContaining({
+        markdown: expect.stringContaining("Agent turn timed out")
+      })
+    );
+  });
+
   it("emits assistant status updates in shared channel threads", async () => {
     const { appSlackRuntime, setBotDepsForTests, bot } = await import("@/chat/bot");
     const fakeAdapter = new FakeSlackAdapter();

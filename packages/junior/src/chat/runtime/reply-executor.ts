@@ -246,6 +246,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               );
             } else {
               await streamedReplyPromise;
+              if (reply.diagnostics.outcome !== "success" && reply.text.trim().length > 0) {
+                await thread.post(buildSlackOutputMessage(reply.text));
+              }
             }
           }
 

@@ -132,3 +132,90 @@ describe("workflow startup lease helpers", () => {
     });
   });
 });
+
+describe("workflow message processing helpers", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.REDIS_URL = "redis://localhost:6379";
+  });
+
+  it("marks message processing started via Redis SET NX PX", async () => {
+    const redis = createRedisState("OK");
+    vi.doMock("@chat-adapter/state-redis", () => ({
+      createRedisState: vi.fn(() => redis.adapter)
+    }));
+    vi.doMock("@/chat/config", () => ({
+      hasRedisConfig: vi.fn(() => true)
+    }));
+    vi.doMock("@/chat/observability", () => ({
+      logInfo: vi.fn()
+    }));
+
+    const { markWorkflowMessageStarted } = await import("@/chat/state");
+    const started = await markWorkflowMessageStarted(
+      "slack:C123:1700000000.100:1700000000.200",
+      "wrun-123"
+    );
+
+    expect(started).toBe(true);
+    expect(redis.connect).toHaveBeenCalledTimes(1);
+    expect(redis.set).toHaveBeenCalledWith(
+      "junior:workflow_message:slack:C123:1700000000.100:1700000000.200",
+      expect.any(String),
+      expect.objectContaining({
+        NX: true
+      })
+    );
+  });
+
+  it("reads message processing state from adapter state", async () => {
+    const redis = createRedisState("OK");
+    redis.adapter.get = vi.fn(async () =>
+      JSON.stringify({
+        status: "completed",
+        updatedAtMs: 1700000000000,
+        workflowRunId: "wrun-456"
+      })
+    );
+    vi.doMock("@chat-adapter/state-redis", () => ({
+      createRedisState: vi.fn(() => redis.adapter)
+    }));
+    vi.doMock("@/chat/config", () => ({
+      hasRedisConfig: vi.fn(() => true)
+    }));
+    vi.doMock("@/chat/observability", () => ({
+      logInfo: vi.fn()
+    }));
+
+    const { getWorkflowMessageProcessingState } = await import("@/chat/state");
+    const state = await getWorkflowMessageProcessingState("slack:C123:1700000000.100:1700000000.200");
+
+    expect(state).toEqual({
+      status: "completed",
+      updatedAtMs: 1700000000000,
+      workflowRunId: "wrun-456"
+    });
+  });
+
+  it("marks message processing completed in adapter state", async () => {
+    const redis = createRedisState("OK");
+    vi.doMock("@chat-adapter/state-redis", () => ({
+      createRedisState: vi.fn(() => redis.adapter)
+    }));
+    vi.doMock("@/chat/config", () => ({
+      hasRedisConfig: vi.fn(() => true)
+    }));
+    vi.doMock("@/chat/observability", () => ({
+      logInfo: vi.fn()
+    }));
+
+    const { markWorkflowMessageCompleted } = await import("@/chat/state");
+    await markWorkflowMessageCompleted("slack:C123:1700000000.100:1700000000.200", "wrun-789");
+
+    expect(redis.adapter.set).toHaveBeenCalledWith(
+      "junior:workflow_message:slack:C123:1700000000.100:1700000000.200",
+      expect.any(String),
+      expect.any(Number)
+    );
+  });
+});
