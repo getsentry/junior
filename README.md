@@ -77,23 +77,7 @@ Use evals for end-to-end behavior testing of Junior's reply pipeline (prompting,
 
 Evals intentionally exclude live Slack integration concerns (Slack transport, app permissions, and webhook delivery).
 
-```bash
-pnpm evals
-```
-
-Add a new conversational eval case under `evals/conversational/*.eval.ts`:
-
-```typescript
-slackEval("my new case", {
-  events: [mention("<@U_APP> do the thing")],
-  assert: (result) => {
-    expect(result.posts).toHaveLength(1);
-  },
-  criteria: "Posts exactly one reply to the mention.",
-});
-```
-
-Then run:
+Authoring guidance lives in `evals/README.md` and `specs/testing/evals-spec.md`.
 
 ```bash
 pnpm evals
