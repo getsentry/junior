@@ -1,60 +1,7 @@
 import type { NextConfig } from "next";
 import { createRequire } from "node:module";
-import fs from "node:fs";
-import path from "node:path";
 
 const require = createRequire(import.meta.url);
-
-function toPosixPath(value: string): string {
-  return value.split(path.sep).join("/");
-}
-
-function toPnpmStoreSegment(packageName: string): string {
-  // pnpm flattens scoped packages like @scope/name to @scope+name in .pnpm store dirs.
-  return packageName.replace(/\//g, "+");
-}
-
-function getNodeModulesRoots(): string[] {
-  const roots: string[] = [];
-  let current = process.cwd();
-
-  while (true) {
-    roots.push(path.join(current, "node_modules"));
-    const parent = path.dirname(current);
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-  }
-
-  return Array.from(new Set(roots));
-}
-
-function resolveTracingPatternsForPackage(packageName: string): string[] {
-  const patterns: string[] = [];
-  const pnpmStoreSegment = toPnpmStoreSegment(packageName);
-  for (const nodeModulesRoot of getNodeModulesRoots()) {
-    const packageDir = path.join(nodeModulesRoot, packageName);
-    if (fs.existsSync(packageDir)) {
-      const relativeDir = toPosixPath(path.relative(process.cwd(), packageDir));
-      if (!relativeDir.startsWith("..")) {
-        const relativePattern = relativeDir.startsWith(".")
-          ? `${relativeDir}/**/*`
-          : `./${relativeDir}/**/*`;
-        patterns.push(relativePattern);
-      }
-    }
-    const pnpmDir = path.join(nodeModulesRoot, ".pnpm");
-    const relativePnpmPattern = toPosixPath(
-      path.relative(process.cwd(), `${toPosixPath(pnpmDir)}/${pnpmStoreSegment}@*/node_modules/${packageName}/**/*`)
-    );
-    if (!relativePnpmPattern.startsWith("..")) {
-      patterns.push(relativePnpmPattern.startsWith(".") ? relativePnpmPattern : `./${relativePnpmPattern}`);
-    }
-  }
-
-  return Array.from(new Set(patterns));
-}
 
 export interface JuniorConfigOptions {
   dataDir?: string;
@@ -76,16 +23,11 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     options?.dataDir || options?.skillsDir || options?.pluginsDir
       ? []
       : ["./data/**/*", "./skills/**/*", "./plugins/**/*"];
-  const slackRuntimeTracingIncludes = [
-    ...resolveTracingPatternsForPackage("@chat-adapter/slack"),
-    ...resolveTracingPatternsForPackage("@slack/web-api")
-  ];
   const tracingIncludes = Array.from(new Set([
     `${dataDir}/**/*`,
     `${skillsDir}/**/*`,
     `${pluginsDir}/**/*`,
-    ...fallbackTracingIncludes,
-    ...slackRuntimeTracingIncludes
+    ...fallbackTracingIncludes
   ]));
   const existingGlobalTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/*"] ?? [];
   const mergedGlobalTracingIncludes = Array.from(new Set([
@@ -95,7 +37,6 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
 
   const config: NextConfig = {
     ...nextConfig,
-    transpilePackages: Array.from(new Set([...(nextConfig?.transpilePackages ?? []), "junior"])),
     serverExternalPackages: Array.from(new Set([
       ...(nextConfig?.serverExternalPackages ?? []),
       "@vercel/sandbox",

@@ -10,13 +10,6 @@ async function resolveConfig(config: NextConfig | ((phase: string, ctx: { defaul
   return config;
 }
 
-function expectIncludesSlackTracingPatterns(patterns: string[]): void {
-  const hasChatAdapterSlack = patterns.some((entry) => entry.includes("@chat-adapter/slack") && entry.endsWith("/**/*"));
-  const hasSlackWebApi = patterns.some((entry) => entry.includes("@slack/web-api") && entry.endsWith("/**/*"));
-  expect(hasChatAdapterSlack).toBe(true);
-  expect(hasSlackWebApi).toBe(true);
-}
-
 describe("withJunior", () => {
   it("merges junior defaults into plain Next config", async () => {
     const config = await resolveConfig(withJunior(
@@ -40,11 +33,9 @@ describe("withJunior", () => {
         "@slack/web-api"
       ])
     );
-    expect(config.transpilePackages).toEqual(expect.arrayContaining(["junior"]));
     expect(config.outputFileTracingIncludes?.["/*"]).toEqual(
       expect.arrayContaining(["./my-data/**/*", "./my-skills/**/*", "./my-plugins/**/*"])
     );
-    expectIncludesSlackTracingPatterns(config.outputFileTracingIncludes?.["/*"] ?? []);
   });
 
   it("wraps async Next config factories", async () => {
@@ -70,7 +61,6 @@ describe("withJunior", () => {
     expect(resolved.outputFileTracingIncludes?.["/*"]).toEqual(
       expect.arrayContaining(["./my-data/**/*", "./my-skills/**/*", "./my-plugins/**/*"])
     );
-    expectIncludesSlackTracingPatterns(resolved.outputFileTracingIncludes?.["/*"] ?? []);
     expect(resolved.serverExternalPackages).toEqual(
       expect.arrayContaining([
         "@vercel/sandbox",
@@ -80,7 +70,6 @@ describe("withJunior", () => {
         "@slack/web-api"
       ])
     );
-    expect(resolved.transpilePackages).toEqual(expect.arrayContaining(["junior"]));
   });
 
   it("merges existing global tracing includes instead of overwriting them", async () => {
@@ -101,7 +90,6 @@ describe("withJunior", () => {
     expect(config.outputFileTracingIncludes?.["/*"]).toEqual(
       expect.arrayContaining(["./existing/**/*", "./my-data/**/*", "./my-skills/**/*", "./my-plugins/**/*"])
     );
-    expectIncludesSlackTracingPatterns(config.outputFileTracingIncludes?.["/*"] ?? []);
     expect(config.outputFileTracingIncludes?.["/other/**"]).toEqual(["./other/**/*"]);
   });
 
@@ -130,19 +118,18 @@ describe("withJunior", () => {
     expect(config.serverExternalPackages?.filter((pkg) => pkg === "@vercel/sandbox")).toHaveLength(1);
   });
 
-  it("deduplicates transpilePackages when consumer already transpiles junior", async () => {
+  it("preserves consumer transpilePackages", async () => {
     const config = await resolveConfig(withJunior({
-      transpilePackages: ["junior", "other-package"]
+      transpilePackages: ["other-package"]
     }) as NextConfig);
 
-    expect(config.transpilePackages).toEqual(expect.arrayContaining(["junior", "other-package"]));
-    expect(config.transpilePackages?.filter((pkg) => pkg === "junior")).toHaveLength(1);
+    expect(config.transpilePackages).toEqual(["other-package"]);
   });
 
   it("accepts pre-wrapped configs without changing behavior", async () => {
     const config = await resolveConfig(withJunior({ typedRoutes: true }) as NextConfig);
 
     expect(config.typedRoutes).toBe(true);
-    expect(config.transpilePackages).toEqual(expect.arrayContaining(["junior"]));
+    expect(config.transpilePackages).toBeUndefined();
   });
 });
