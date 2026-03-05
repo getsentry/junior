@@ -376,6 +376,17 @@ describe("bot handlers (integration)", () => {
     ).rejects.toThrow("simulated timeout");
 
     expect(thread.posts).toHaveLength(0);
+    const state = thread.getState();
+    const conversation = (state as {
+      conversation?: {
+        processing?: { activeTurnId?: string };
+        messages?: Array<{ meta?: { replied?: boolean; skippedReason?: string } }>;
+      };
+    }).conversation;
+    expect(conversation?.processing?.activeTurnId).toBe("turn_msg-retry");
+    const lastMessage = conversation?.messages?.[conversation.messages.length - 1];
+    expect(lastMessage?.meta?.replied).toBeUndefined();
+    expect(lastMessage?.meta?.skippedReason).toBeUndefined();
   });
 
   it("posts terminal failure text after streamed partial output", async () => {

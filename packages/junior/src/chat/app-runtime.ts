@@ -192,6 +192,19 @@ export function createAppSlackRuntime<
         );
       } catch (error) {
         if (isRetryableTurnError(error)) {
+          deps.logException(
+            error,
+            "mention_handler_retryable_failure",
+            logContext({
+              threadId: deps.getThreadId(thread, message),
+              requesterId: message.author.userId,
+              requesterUserName: message.author.userName,
+              channelId: deps.getChannelId(thread, message),
+              runId: deps.getRunId(thread, message)
+            }),
+            { "app.turn.retryable_reason": error.reason },
+            "onNewMention failed with retryable error"
+          );
           throw error;
         }
         deps.logException(
@@ -301,6 +314,19 @@ export function createAppSlackRuntime<
         );
       } catch (error) {
         if (isRetryableTurnError(error)) {
+          deps.logException(
+            error,
+            "subscribed_message_handler_retryable_failure",
+            logContext({
+              threadId: deps.getThreadId(thread, message),
+              requesterId: message.author.userId,
+              requesterUserName: message.author.userName,
+              channelId: deps.getChannelId(thread, message),
+              runId: deps.getRunId(thread, message)
+            }),
+            { "app.turn.retryable_reason": error.reason },
+            "onSubscribedMessage failed with retryable error"
+          );
           throw error;
         }
         deps.logException(

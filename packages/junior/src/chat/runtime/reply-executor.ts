@@ -17,6 +17,7 @@ import { resolveUserAttachments } from "@/chat/services/vision-context";
 import { isDmChannel } from "@/chat/slack-actions/client";
 import { type ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { resolveReplyDelivery } from "@/chat/turn/execute";
+import { isRetryableTurnError } from "@/chat/turn/errors";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 import { startActiveTurn } from "@/chat/turn/prepare";
 
@@ -178,6 +179,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         await progress.start();
         let persistedAtLeastOnce = false;
+        let shouldPersistFailureState = true;
 
         try {
           const toolChannelId = preparedState.artifacts.assistantContextChannelId ?? channelId;
@@ -386,9 +388,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (shouldPostThreadReply && resolvedAttachFiles === "followup" && replyFiles) {
             await postThreadReply({ files: replyFiles } as Parameters<typeof thread.post>[0]);
           }
+        } catch (error) {
+          shouldPersistFailureState = !isRetryableTurnError(error);
+          throw error;
         } finally {
           textStream.end();
-          if (!persistedAtLeastOnce) {
+          if (!persistedAtLeastOnce && shouldPersistFailureState) {
             markTurnFailed({
               conversation: preparedState.conversation,
               nowMs: Date.now(),
