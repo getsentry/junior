@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-04
+- Last Edited: 2026-03-05
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated runtime and test file references to repo-root paths under `packages/junior/`.
+- 2026-03-05: Added reference to canonical agent session resumability spec.
 
 
 ## Status
@@ -22,6 +23,7 @@ Accepted
 ## Related Specs
 
 - [Harness Agent Spec](./harness-agent-spec.md)
+- [Agent Session Resumability Spec](./agent-session-resumability-spec.md)
 - [Logging Spec Index](./logging/index.md)
 - [Tracing Spec](./logging/tracing-spec.md)
 - [Security Policy](./security-policy.md)

@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-05
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-05: Linked to canonical session resumability contract for multi-slice timeout recovery.
 
 
 ## Status
@@ -97,5 +98,6 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 ## Related Specs
 
 - [Harness Tool Context Spec](./harness-tool-context-spec.md)
+- [Agent Session Resumability Spec](./agent-session-resumability-spec.md)
 - [Security Policy](./security-policy.md)
 - [Tracing Spec](./logging/tracing-spec.md)

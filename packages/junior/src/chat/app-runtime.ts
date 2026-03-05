@@ -1,4 +1,5 @@
 import type { Message, Thread } from "chat";
+import { isRetryableTurnError } from "@/chat/turn/errors";
 
 export interface AppRuntimeAssistantLifecycleEvent {
   channelId: string;
@@ -190,6 +191,9 @@ export function createAppSlackRuntime<
           }
         );
       } catch (error) {
+        if (isRetryableTurnError(error)) {
+          throw error;
+        }
         deps.logException(
           error,
           "mention_handler_failed",
@@ -296,6 +300,9 @@ export function createAppSlackRuntime<
           }
         );
       } catch (error) {
+        if (isRetryableTurnError(error)) {
+          throw error;
+        }
         deps.logException(
           error,
           "subscribed_message_handler_failed",

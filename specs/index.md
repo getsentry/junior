@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-04
+- Last Edited: 2026-03-05
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Added canonical agent execution discipline spec.
+- 2026-03-05: Added canonical session resumability spec for multi-slice serverless execution.
 
 
 ## Status
@@ -44,6 +45,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/skill-capabilities-spec.md`
 - `specs/oauth-flows-spec.md`
 - `specs/harness-agent-spec.md`
+- `specs/agent-session-resumability-spec.md`
 - `specs/agent-execution-spec.md`
 - `specs/harness-tool-context-spec.md`
 - `specs/durable-workflows-spec.md`

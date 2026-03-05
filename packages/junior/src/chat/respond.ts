@@ -32,11 +32,16 @@ import { GEN_AI_PROVIDER_NAME, getGatewayApiKey, resolveGatewayModel } from "@/c
 import { createSandboxExecutor, type SandboxExecutor } from "@/chat/sandbox/sandbox";
 import { getRuntimeMetadata } from "@/chat/runtime-metadata";
 import {
+  getAgentTurnSessionCheckpoint,
+  upsertAgentTurnSessionCheckpoint
+} from "@/chat/state";
+import {
   compactStatusFilename,
   compactStatusPath,
   compactStatusText,
   extractStatusUrlDomain
 } from "@/chat/status-format";
+import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
@@ -100,12 +105,40 @@ export interface AgentTurnDiagnostics {
   usedPrimaryText: boolean;
 }
 
-const AGENT_TURN_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 let startupDiscoveryLogged = false;
 
 function shouldEmitDevAgentTrace(): boolean {
   return process.env.NODE_ENV === "development";
+}
+
+function getSessionIdentifiers(context: ReplyRequestContext): { conversationId?: string; sessionId?: string } {
+  return {
+    conversationId: context.correlation?.conversationId ?? context.correlation?.threadId ?? context.correlation?.runId,
+    sessionId: context.correlation?.turnId
+  };
+}
+
+type ResumablePiAgent = Agent & {
+  continue?: () => Promise<unknown>;
+  replaceMessages?: (messages: unknown[]) => Promise<void> | void;
+};
+
+async function maybeReplaceAgentMessages(agent: Agent, messages: unknown[]): Promise<boolean> {
+  const resumable = agent as ResumablePiAgent;
+  if (typeof resumable.replaceMessages !== "function") {
+    return false;
+  }
+  await resumable.replaceMessages(messages);
+  return true;
+}
+
+async function runAgentContinuation(agent: Agent): Promise<unknown> {
+  const resumable = agent as ResumablePiAgent;
+  if (typeof resumable.continue !== "function") {
+    throw new Error("Agent continuation is unavailable in this runtime");
+  }
+  return await resumable.continue();
 }
 
 function isExecutionDeferralResponse(text: string): boolean {
@@ -691,6 +724,11 @@ export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {}
 ): Promise<AssistantReply> {
+  let timeoutResumeConversationId: string | undefined;
+  let timeoutResumeSessionId: string | undefined;
+  let timeoutResumeSliceId = 1;
+  let timeoutResumeMessages: unknown[] = [];
+
   try {
     const shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: ObservabilityContext = {
@@ -907,6 +945,22 @@ export async function generateAssistantReply(
       }
     ]);
 
+    const { conversationId: sessionConversationId, sessionId } = getSessionIdentifiers(context);
+    const canUseTurnSession = Boolean(sessionConversationId && sessionId);
+    timeoutResumeConversationId = sessionConversationId;
+    timeoutResumeSessionId = sessionId;
+    const existingTurnCheckpoint =
+      canUseTurnSession && sessionConversationId && sessionId
+        ? await getAgentTurnSessionCheckpoint(sessionConversationId, sessionId)
+        : undefined;
+    const resumedFromCheckpoint = Boolean(
+      existingTurnCheckpoint &&
+      existingTurnCheckpoint.state === "awaiting_resume" &&
+      existingTurnCheckpoint.piMessages.length > 0
+    );
+    const currentSliceId = resumedFromCheckpoint ? existingTurnCheckpoint!.sliceId : 1;
+    timeoutResumeSliceId = currentSliceId;
+
     const agent = new Agent({
       getApiKey: () => getGatewayApiKey(),
       initialState: {
@@ -973,17 +1027,26 @@ export async function generateAssistantReply(
     let newMessages: unknown[] = [];
 
     try {
+      if (resumedFromCheckpoint) {
+        const didReplace = await maybeReplaceAgentMessages(agent, existingTurnCheckpoint!.piMessages);
+        if (!didReplace) {
+          throw new Error("Agent session resume requested but replaceMessages is unavailable");
+        }
+      }
+
       await withSpan(
         "ai.generate_assistant_reply",
         "gen_ai.invoke_agent",
         spanContext,
         async () => {
           let promptResult: unknown;
-          const promptPromise = agent.prompt({
-            role: "user",
-            content: userContentParts,
-            timestamp: Date.now()
-          });
+          const promptPromise = resumedFromCheckpoint
+            ? runAgentContinuation(agent)
+            : agent.prompt({
+                role: "user",
+                content: userContentParts,
+                timestamp: Date.now()
+              });
 
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
           let didTimeout = false;
@@ -991,14 +1054,15 @@ export async function generateAssistantReply(
             timeoutId = setTimeout(() => {
               didTimeout = true;
               agent.abort();
-              reject(new Error(`Agent turn timed out after ${AGENT_TURN_TIMEOUT_MS}ms`));
-            }, AGENT_TURN_TIMEOUT_MS);
+              reject(new Error(`Agent turn timed out after ${botConfig.turnTimeoutMs}ms`));
+            }, botConfig.turnTimeoutMs);
           });
 
           try {
             promptResult = await Promise.race([promptPromise, timeoutPromise]);
           } catch (error) {
             if (didTimeout) {
+              timeoutResumeMessages = agent.state.messages as unknown[];
               logWarn(
                 "agent_turn_timeout",
                 {},
@@ -1006,7 +1070,7 @@ export async function generateAssistantReply(
                   "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                   "gen_ai.operation.name": "invoke_agent",
                   "gen_ai.request.model": botConfig.modelId,
-                  "app.ai.turn_timeout_ms": AGENT_TURN_TIMEOUT_MS
+                  "app.ai.turn_timeout_ms": botConfig.turnTimeoutMs
                 },
                 "Agent turn timed out and was aborted"
               );
@@ -1037,6 +1101,16 @@ export async function generateAssistantReply(
       );
     } finally {
       unsubscribe();
+    }
+
+    if (canUseTurnSession && sessionConversationId && sessionId) {
+      await upsertAgentTurnSessionCheckpoint({
+        conversationId: sessionConversationId,
+        sessionId,
+        sliceId: currentSliceId,
+        state: "completed",
+        piMessages: agent.state.messages as unknown[]
+      });
     }
 
     const toolResults = newMessages.filter(isToolResultMessage);
@@ -1157,6 +1231,34 @@ export async function generateAssistantReply(
       }
     };
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes("Agent turn timed out after") &&
+      timeoutResumeConversationId &&
+      timeoutResumeSessionId
+    ) {
+      const latestCheckpoint = await getAgentTurnSessionCheckpoint(timeoutResumeConversationId, timeoutResumeSessionId);
+      const nextSliceId = timeoutResumeSliceId + 1;
+      const piMessages = timeoutResumeMessages.length > 0 ? timeoutResumeMessages : (latestCheckpoint?.piMessages ?? []);
+      await upsertAgentTurnSessionCheckpoint({
+        conversationId: timeoutResumeConversationId,
+        sessionId: timeoutResumeSessionId,
+        sliceId: nextSliceId,
+        state: "awaiting_resume",
+        piMessages,
+        resumedFromSliceId: timeoutResumeSliceId,
+        errorMessage: error.message
+      });
+      throw new RetryableTurnError(
+        "agent_turn_timeout_resume",
+        `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`
+      );
+    }
+
+    if (isRetryableTurnError(error)) {
+      throw error;
+    }
+
     logException(error, "assistant_reply_generation_failed", {
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,

@@ -349,7 +349,33 @@ describe("bot handlers (integration)", () => {
         runId: "run-123"
       })
     );
-    expect(capturedCorrelation[0].turnId).toMatch(/^turn_\d+_[a-z0-9]{8}$/);
+    expect(capturedCorrelation[0].turnId).toBe("turn_msg-correlation");
+  });
+
+  it("rethrows retryable turn errors so queue retries can resume", async () => {
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    const { RetryableTurnError } = await import("@/chat/turn/errors");
+    setBotDepsForTests({
+      generateAssistantReply: async () => {
+        throw new RetryableTurnError("agent_turn_timeout_resume", "simulated timeout");
+      },
+      listThreadReplies: async () => []
+    });
+
+    const thread = createTestThread({ id: "slack:C_RETRY:1700000000.000" });
+    await expect(
+      appSlackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-retry",
+          threadId: "slack:C_RETRY:1700000000.000",
+          text: "please continue",
+          isMention: true
+        })
+      )
+    ).rejects.toThrow("simulated timeout");
+
+    expect(thread.posts).toHaveLength(0);
   });
 
   it("posts terminal failure text after streamed partial output", async () => {
@@ -358,7 +384,7 @@ describe("bot handlers (integration)", () => {
       generateAssistantReply: async (_prompt, context) => {
         await context?.onTextDelta?.("Partial output...");
         return {
-          text: "Error: Agent turn timed out after 900000ms",
+          text: "Error: Agent turn timed out after 720000ms",
           diagnostics: {
             assistantMessageCount: 1,
             modelId: "test-model",

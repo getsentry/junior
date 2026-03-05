@@ -6,9 +6,11 @@ import { hasRedisConfig } from "@/chat/config";
 const MIN_LOCK_TTL_MS = 1000 * 60 * 5;
 const QUEUE_INGRESS_DEDUP_PREFIX = "junior:queue_ingress";
 const QUEUE_MESSAGE_PROCESSING_PREFIX = "junior:queue_message";
+const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
 const QUEUE_MESSAGE_PROCESSING_TTL_MS = 30 * 60 * 1000;
 const QUEUE_MESSAGE_COMPLETED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const QUEUE_MESSAGE_FAILED_TTL_MS = 6 * 60 * 60 * 1000;
+const AGENT_TURN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const CLAIM_OR_RECLAIM_PROCESSING_SCRIPT = `
   local key = KEYS[1]
   local nowMs = tonumber(ARGV[1])
@@ -126,6 +128,7 @@ function getRedisStateAdapter(): RedisStateAdapter {
 }
 
 export type QueueMessageProcessingStatus = "processing" | "completed" | "failed";
+export type AgentTurnSessionStatus = "running" | "awaiting_resume" | "completed" | "failed";
 
 export interface QueueMessageProcessingState {
   status: QueueMessageProcessingStatus;
@@ -133,6 +136,18 @@ export interface QueueMessageProcessingState {
   ownerToken?: string;
   queueMessageId?: string;
   errorMessage?: string;
+}
+
+export interface AgentTurnSessionCheckpoint {
+  checkpointVersion: number;
+  conversationId: string;
+  errorMessage?: string;
+  piMessages: unknown[];
+  resumedFromSliceId?: number;
+  sessionId: string;
+  sliceId: number;
+  state: AgentTurnSessionStatus;
+  updatedAtMs: number;
 }
 
 function queueMessageKey(rawKey: string): string {
@@ -159,6 +174,61 @@ function parseQueueMessageState(value: unknown): QueueMessageProcessingState | u
       ...(typeof parsed.ownerToken === "string" ? { ownerToken: parsed.ownerToken } : {}),
       ...(typeof parsed.queueMessageId === "string" ? { queueMessageId: parsed.queueMessageId } : {}),
       ...(typeof parsed.errorMessage === "string" ? { errorMessage: parsed.errorMessage } : {})
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function agentTurnSessionKey(conversationId: string, sessionId: string): string {
+  return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseAgentTurnSessionCheckpoint(value: unknown): AgentTurnSessionCheckpoint | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+
+    const status = parsed.state;
+    if (status !== "running" && status !== "awaiting_resume" && status !== "completed" && status !== "failed") {
+      return undefined;
+    }
+
+    const conversationId = parsed.conversationId;
+    const sessionId = parsed.sessionId;
+    const sliceId = parsed.sliceId;
+    const checkpointVersion = parsed.checkpointVersion;
+    const updatedAtMs = parsed.updatedAtMs;
+    if (
+      typeof conversationId !== "string" ||
+      typeof sessionId !== "string" ||
+      typeof sliceId !== "number" ||
+      typeof checkpointVersion !== "number" ||
+      typeof updatedAtMs !== "number"
+    ) {
+      return undefined;
+    }
+
+    return {
+      checkpointVersion,
+      conversationId,
+      sessionId,
+      sliceId,
+      state: status,
+      updatedAtMs,
+      piMessages: Array.isArray(parsed.piMessages) ? parsed.piMessages : [],
+      ...(typeof parsed.errorMessage === "string" ? { errorMessage: parsed.errorMessage } : {}),
+      ...(typeof parsed.resumedFromSliceId === "number" ? { resumedFromSliceId: parsed.resumedFromSliceId } : {})
     };
   } catch {
     return undefined;
@@ -285,4 +355,43 @@ export async function failQueueMessageProcessingOwnership(args: {
     arguments: [args.ownerToken, String(QUEUE_MESSAGE_FAILED_TTL_MS), payload]
   });
   return result === 1;
+}
+
+export async function getAgentTurnSessionCheckpoint(
+  conversationId: string,
+  sessionId: string
+): Promise<AgentTurnSessionCheckpoint | undefined> {
+  await getStateAdapter().connect();
+  const value = await getStateAdapter().get(agentTurnSessionKey(conversationId, sessionId));
+  return parseAgentTurnSessionCheckpoint(value);
+}
+
+export async function upsertAgentTurnSessionCheckpoint(args: {
+  conversationId: string;
+  sessionId: string;
+  sliceId: number;
+  state: AgentTurnSessionStatus;
+  piMessages: unknown[];
+  errorMessage?: string;
+  resumedFromSliceId?: number;
+  ttlMs?: number;
+}): Promise<AgentTurnSessionCheckpoint> {
+  await getStateAdapter().connect();
+
+  const existing = await getAgentTurnSessionCheckpoint(args.conversationId, args.sessionId);
+  const checkpoint: AgentTurnSessionCheckpoint = {
+    checkpointVersion: (existing?.checkpointVersion ?? 0) + 1,
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    sliceId: args.sliceId,
+    state: args.state,
+    updatedAtMs: Date.now(),
+    piMessages: Array.isArray(args.piMessages) ? args.piMessages : [],
+    ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
+    ...(typeof args.resumedFromSliceId === "number" ? { resumedFromSliceId: args.resumedFromSliceId } : {})
+  };
+
+  const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
+  await getStateAdapter().set(agentTurnSessionKey(args.conversationId, args.sessionId), JSON.stringify(checkpoint), ttlMs);
+  return checkpoint;
 }

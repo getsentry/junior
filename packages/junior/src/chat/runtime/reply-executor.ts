@@ -23,6 +23,11 @@ function shouldEmitDevAgentTrace(): boolean {
   return process.env.NODE_ENV === "development";
 }
 
+function buildDeterministicTurnId(messageId: string): string {
+  const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `turn_${sanitized}`;
+}
+
 interface ReplyExecutorDeps {
   getSlackAdapter: () => SlackAdapter;
   prepareTurnState: (args: {
@@ -93,7 +98,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
           }));
 
-        const turnId = generateConversationId("turn");
+        const turnId = buildDeterministicTurnId(message.id);
         startActiveTurn({
           conversation: preparedState.conversation,
           nextTurnId: turnId,
