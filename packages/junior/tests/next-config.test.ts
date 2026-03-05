@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { NextConfig } from "next";
 import { describe, expect, it } from "vitest";
 import { withJunior } from "@/next-config";
@@ -131,5 +134,46 @@ describe("withJunior", () => {
 
     expect(config.typedRoutes).toBe(true);
     expect(config.transpilePackages).toBeUndefined();
+  });
+
+  it("includes tracing for installed dependency plugin content", async () => {
+    const originalCwd = process.cwd();
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-next-config-"));
+
+    try {
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-app",
+          private: true,
+          dependencies: {
+            "@acme/junior-plugin-demo": "1.0.0"
+          }
+        }),
+        "utf8"
+      );
+      await fs.mkdir(path.join(tempRoot, "node_modules", "@acme", "junior-plugin-demo", "skills", "demo"), {
+        recursive: true
+      });
+      await fs.mkdir(path.join(tempRoot, "node_modules", "@acme", "junior-plugin-demo", "plugins"), {
+        recursive: true
+      });
+      await fs.writeFile(
+        path.join(tempRoot, "node_modules", "@acme", "junior-plugin-demo", "plugin.yaml"),
+        "name: demo\ndescription: Demo plugin\ncapabilities:\n  - api\nconfig-keys: []\ncredentials:\n  type: oauth-bearer\n  api-domains:\n    - api.example.com\n  auth-token-env: DEMO_TOKEN\n",
+        "utf8"
+      );
+
+      process.chdir(tempRoot);
+      const config = await resolveConfig(withJunior({}) as NextConfig);
+
+      expect(config.outputFileTracingIncludes?.["/*"]).toEqual(expect.arrayContaining([
+        "./node_modules/@acme/junior-plugin-demo/plugin.yaml",
+        "./node_modules/@acme/junior-plugin-demo/plugins/**/*",
+        "./node_modules/@acme/junior-plugin-demo/skills/**/*"
+      ]));
+    } finally {
+      process.chdir(originalCwd);
+    }
   });
 });

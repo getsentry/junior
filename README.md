@@ -4,7 +4,7 @@
 
 This repository includes:
 
-- `packages/junior`: the publishable `junior` package
+- `packages/junior`: the publishable `@sentry/junior` package
 - `packages/jr-sentry`: a workspace consumer app used as a package smoke test
 
 ## Requirements
@@ -44,10 +44,10 @@ pnpm --filter jr-sentry build
 
 ## Package Usage
 
-Use `junior` in a Next.js app with:
+Use `@sentry/junior` in a Next.js app with:
 
 ```bash
-pnpm add junior
+pnpm add @sentry/junior
 pnpm add next react react-dom @sentry/nextjs
 ```
 
@@ -56,3 +56,5 @@ See package integration details in [packages/junior/README.md](packages/junior/R
 ## Development Guide
 
 Contributor workflows and local development setup live in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Plugin authoring and distribution guidance lives in [PLUGIN.md](PLUGIN.md).

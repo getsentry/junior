@@ -34,8 +34,10 @@ Define a plugin model where provider integrations are self-contained directories
 
 ## Core model
 
-1. A plugin is a directory under `plugins/<name>/` containing a `plugin.yaml` manifest.
-2. At startup, the plugin registry scans `plugins/` and parses each manifest synchronously (`readFileSync`).
+1. A plugin is either:
+   - a directory under `plugins/<name>/` containing a `plugin.yaml` manifest, or
+   - an installed npm dependency that contains plugin content in `plugin.yaml` or `plugins/`.
+2. At startup, the plugin registry scans local plugin roots and packaged plugin roots, then parses each manifest synchronously (`readFileSync`).
 3. The registry registers capabilities, config keys, OAuth config, and skill roots from each manifest.
 4. Credential brokers are created on demand from manifest config (`oauth-bearer` or `github-app` type).
 5. Skills in `plugins/<name>/skills/` are auto-discovered alongside existing skill roots.
@@ -131,7 +133,7 @@ mcp:                                 # optional — MCP server config for tool s
 | Value | Derivation |
 |-------|-----------|
 | OAuth callback path | `/api/oauth/callback/<name>` — derived from plugin name. |
-| Skill roots | `plugins/<name>/skills/` — auto-discovered. |
+| Skill roots | `plugins/<name>/skills/` and installed package `skills/` roots — auto-discovered. |
 | Qualified capabilities | `<name>.<capability>` — short names prefixed with plugin name. |
 | Qualified config keys | `<name>.<key>` — short names prefixed with plugin name. |
 
@@ -152,11 +154,12 @@ mcp:                                 # optional — MCP server config for tool s
 
 ### Load sequence
 
-1. **Scan** `plugins/` for directories containing `plugin.yaml`.
-2. **Parse** each manifest and validate against the contract above.
-3. **Register** capabilities, config keys, OAuth config in internal maps.
-4. **Annotate** active span with plugin metadata per broker creation.
-5. Plugin skills are discovered later by `discoverSkills()` via `getPluginSkillRoots()`.
+1. **Scan local roots** in `plugins/` for directories containing `plugin.yaml`.
+2. **Scan package roots** from installed npm dependencies in root `package.json`. A package is considered plugin content when it contains `plugin.yaml`, `plugins/`, or `skills/`.
+3. **Parse** each manifest and validate against the contract above.
+4. **Register** capabilities, config keys, OAuth config in internal maps.
+5. **Annotate** active span with plugin metadata per broker creation.
+6. Plugin skills are discovered later by `discoverSkills()` via `getPluginSkillRoots()`.
 
 ### Initialization ordering
 

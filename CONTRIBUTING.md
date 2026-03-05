@@ -56,13 +56,13 @@ pnpm --filter jr-sentry build
 Run a single unit test file:
 
 ```bash
-pnpm --filter junior exec vitest run path/to/file.test.ts
+pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts
 ```
 
 Run a single eval file:
 
 ```bash
-pnpm --filter junior exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts
+pnpm --filter @sentry/junior exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts
 ```
 
 ## Evals

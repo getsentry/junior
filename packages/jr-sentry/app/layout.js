@@ -1,1 +1,1 @@
-export { default } from "junior/app/layout";
+export { default } from "@sentry/junior/app/layout";

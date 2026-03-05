@@ -4,16 +4,16 @@
   "packageManager": "pnpm@10.30.2",
   "scripts": {
     "dev": "pnpm --filter jr-sentry dev",
-    "build": "pnpm --filter junior build",
-    "build:pkg": "pnpm --filter junior build:pkg",
-    "start": "pnpm --filter junior start",
-    "test": "pnpm run test:consumer-build && pnpm --filter junior test",
-    "test:consumer-build": "pnpm --filter junior build:pkg && pnpm --filter jr-sentry build",
-    "test:watch": "pnpm --filter junior test:watch",
-    "preevals": "pnpm --filter junior preevals",
-    "evals": "pnpm --filter junior evals",
-    "typecheck": "pnpm --filter junior typecheck",
-    "skills:check": "pnpm --filter junior skills:check"
+    "build": "pnpm --filter @sentry/junior build",
+    "build:pkg": "pnpm --filter @sentry/junior build:pkg",
+    "start": "pnpm --filter @sentry/junior start",
+    "test": "pnpm run test:consumer-build && pnpm --filter @sentry/junior test",
+    "test:consumer-build": "pnpm --filter @sentry/junior build:pkg && pnpm --filter jr-sentry build",
+    "test:watch": "pnpm --filter @sentry/junior test:watch",
+    "preevals": "pnpm --filter @sentry/junior preevals",
+    "evals": "pnpm --filter @sentry/junior evals",
+    "typecheck": "pnpm --filter @sentry/junior typecheck",
+    "skills:check": "pnpm --filter @sentry/junior skills:check"
   },
   "pnpm": {
     "peerDependencyRules": {

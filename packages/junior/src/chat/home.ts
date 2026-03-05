@@ -78,7 +78,7 @@ function resolveContentRoots(subdir: "data" | "skills" | "plugins"): string[] {
   }
 
   if (subdir === "skills") {
-    return [path.join(homeDir(), "skills")];
+    return [path.join(homeDir(), "skills"), path.resolve(process.cwd(), "skills")];
   }
 
   return [path.join(homeDir(), "plugins")];

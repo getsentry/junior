@@ -9,6 +9,7 @@ import { pluginRoots } from "@/chat/home";
 import { logInfo, logWarn, setSpanAttributes } from "@/chat/observability";
 import { createGitHubAppBroker } from "./github-app-broker";
 import { createOAuthBearerBroker } from "./oauth-bearer-broker";
+import { discoverInstalledPluginPackageContent } from "./package-discovery";
 import type { GitHubAppCredentials, OAuthBearerCredentials, PluginBrokerDeps, PluginCredentials, PluginDefinition, PluginManifest } from "./types";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -167,17 +168,61 @@ const pluginDefinitions: PluginDefinition[] = [];
 const capabilityToPlugin = new Map<string, PluginDefinition>();
 const pluginConfigKeys = new Set<string>();
 const pluginsByName = new Map<string, PluginDefinition>();
+const packageSkillRoots = new Set<string>();
 
 let pluginsLoaded = false;
+
+function registerPluginManifest(raw: string, pluginDir: string): void {
+  const manifest = parseManifest(raw, pluginDir);
+
+  if (pluginsByName.has(manifest.name)) {
+    return;
+  }
+
+  for (const cap of manifest.capabilities) {
+    if (capabilityToPlugin.has(cap)) {
+      throw new Error(`Duplicate capability "${cap}" in plugin "${manifest.name}"`);
+    }
+  }
+
+  const definition: PluginDefinition = {
+    manifest,
+    dir: pluginDir,
+    skillsDir: path.join(pluginDir, "skills")
+  };
+
+  pluginDefinitions.push(definition);
+  pluginsByName.set(manifest.name, definition);
+
+  for (const cap of manifest.capabilities) {
+    capabilityToPlugin.set(cap, definition);
+  }
+  for (const key of manifest.configKeys) {
+    pluginConfigKeys.add(key);
+  }
+}
 
 function loadPlugins(): void {
   if (pluginsLoaded) return;
   pluginsLoaded = true;
 
-  const roots = pluginRoots();
+  const packagedContent = discoverInstalledPluginPackageContent();
+  const localRoots = pluginRoots();
+  const roots = [...localRoots, ...packagedContent.manifestRoots];
   for (const pluginsRoot of roots) {
     let entries: string[];
     try {
+      const rootStat = statSync(pluginsRoot);
+      if (rootStat.isDirectory()) {
+        const manifestPath = path.join(pluginsRoot, "plugin.yaml");
+        try {
+          const rawRootManifest = readFileSync(manifestPath, "utf8");
+          registerPluginManifest(rawRootManifest, pluginsRoot);
+          continue;
+        } catch {
+          // Not a root manifest package; continue scanning child directories.
+        }
+      }
       entries = readdirSync(pluginsRoot);
     } catch (error) {
       logWarn("plugin_root_read_failed", {}, {
@@ -204,43 +249,22 @@ function loadPlugins(): void {
         continue; // No manifest — skip
       }
 
-      const manifest = parseManifest(raw, pluginDir);
-
-      if (pluginsByName.has(manifest.name)) {
-        continue;
-      }
-
-      for (const cap of manifest.capabilities) {
-        if (capabilityToPlugin.has(cap)) {
-          throw new Error(`Duplicate capability "${cap}" in plugin "${manifest.name}"`);
-        }
-      }
-
-      const definition: PluginDefinition = {
-        manifest,
-        dir: pluginDir,
-        skillsDir: path.join(pluginDir, "skills")
-      };
-
-      pluginDefinitions.push(definition);
-      pluginsByName.set(manifest.name, definition);
-
-      for (const cap of manifest.capabilities) {
-        capabilityToPlugin.set(cap, definition);
-      }
-      for (const key of manifest.configKeys) {
-        pluginConfigKeys.add(key);
-      }
+      registerPluginManifest(raw, pluginDir);
     }
+  }
+
+  for (const skillRoot of packagedContent.skillRoots) {
+    packageSkillRoots.add(skillRoot);
   }
 
   logInfo(
     "plugins_loaded",
     {},
     {
-      "file.directories": roots,
+      "file.directories": [...localRoots, ...packagedContent.manifestRoots],
       "app.plugin.count": pluginDefinitions.length,
-      "app.plugin.names": pluginDefinitions.map((plugin) => plugin.manifest.name).sort()
+      "app.plugin.names": pluginDefinitions.map((plugin) => plugin.manifest.name).sort(),
+      "app.plugin.package_skill_roots": [...packageSkillRoots].sort()
     },
     "Loaded plugins"
   );
@@ -278,7 +302,7 @@ export function getPluginOAuthConfig(provider: string): OAuthProviderConfig | un
 }
 
 export function getPluginSkillRoots(): string[] {
-  return pluginDefinitions.map((plugin) => plugin.skillsDir);
+  return [...new Set([...pluginDefinitions.map((plugin) => plugin.skillsDir), ...packageSkillRoots])];
 }
 
 export function isPluginProvider(provider: string): boolean {

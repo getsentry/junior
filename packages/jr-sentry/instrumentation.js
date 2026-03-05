@@ -1,1 +1,1 @@
-export { register, onRequestError } from "junior/instrumentation";
+export { register, onRequestError } from "@sentry/junior/instrumentation";

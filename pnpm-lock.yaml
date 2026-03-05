@@ -15,15 +15,21 @@ importers:
 
   packages/jr-sentry:
     dependencies:
+      '@sentry/junior':
+        specifier: workspace:*
+        version: link:../junior
+      '@sentry/junior-github':
+        specifier: workspace:*
+        version: link:../junior-github
+      '@sentry/junior-sentry':
+        specifier: workspace:*
+        version: link:../junior-sentry
       '@sentry/nextjs':
         specifier: ^10.0.0
         version: 10.40.0(@opentelemetry/context-async-hooks@2.5.1(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.5.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.5.1(@opentelemetry/api@1.9.0))(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2)
       chat:
         specifier: 4.15.0
         version: 4.15.0
-      junior:
-        specifier: workspace:*
-        version: link:../junior
       next:
         specifier: ^16.0.0
         version: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -54,6 +60,12 @@ importers:
       '@mariozechner/pi-ai':
         specifier: ^0.55.0
         version: 0.55.0(ws@8.19.0)(zod@4.3.6)
+      '@sentry/junior-github':
+        specifier: workspace:*
+        version: link:../junior-github
+      '@sentry/junior-sentry':
+        specifier: workspace:*
+        version: link:../junior-sentry
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.48
@@ -127,6 +139,10 @@ importers:
       vitest-evals:
         specifier: ^0.6.0
         version: 0.6.0(ai@6.0.103(zod@4.3.6))(tinyrainbow@3.0.3)(vitest@4.0.18(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.0)(@types/node@25.3.3)(jiti@2.6.1)(msw@2.12.10(@types/node@25.3.3)(typescript@5.9.3))(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))(zod@4.3.6)
+
+  packages/junior-github: {}
+
+  packages/junior-sentry: {}
 
 packages:
 

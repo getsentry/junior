@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { createRequire } from "node:module";
+import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-discovery";
 
 const require = createRequire(import.meta.url);
 
@@ -22,10 +23,12 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   const defaultDataTracingIncludes = options?.dataDir
     ? [`${dataDir}/**/*`]
     : ["./app/SOUL.md", "./app/ABOUT.md"];
+  const pluginPackageTracingIncludes = discoverInstalledPluginPackageContent().tracingIncludes;
   const tracingIncludes = Array.from(new Set([
     ...defaultDataTracingIncludes,
     `${skillsDir}/**/*`,
     `${pluginsDir}/**/*`,
+    ...pluginPackageTracingIncludes,
   ]));
   const existingGlobalTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/*"] ?? [];
   const mergedGlobalTracingIncludes = Array.from(new Set([

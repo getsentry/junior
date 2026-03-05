@@ -19,8 +19,9 @@ describe("home paths", () => {
 
   it("resolves skills and plugins from canonical app root", () => {
     const canonicalSkills = path.resolve(process.cwd(), "app", "skills");
+    const packageSkills = path.resolve(process.cwd(), "skills");
     expect(skillsDir()).toBe(canonicalSkills);
-    expect(skillRoots()).toEqual([canonicalSkills]);
+    expect(skillRoots()).toEqual([canonicalSkills, packageSkills]);
 
     const canonicalPlugins = path.resolve(process.cwd(), "app", "plugins");
     expect(pluginsDir()).toBe(canonicalPlugins);

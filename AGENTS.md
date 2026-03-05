@@ -12,8 +12,8 @@ Co-Authored-By: (agent model name) <email>
 ## File-Scoped Commands
 | Task | Command |
 |------|---------|
-| Unit test file | `pnpm --filter junior exec vitest run path/to/file.test.ts` |
-| Eval file | `pnpm --filter junior exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts` |
+| Unit test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts` |
+| Eval file | `pnpm --filter @sentry/junior exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts` |
 
 ## Key Conventions
 - Commit to `main` only.

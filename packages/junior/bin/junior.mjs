@@ -17,7 +17,7 @@ function writeWrapperFiles(targetDir) {
   fs.mkdirSync(routeDir, { recursive: true });
   fs.writeFileSync(
     path.join(routeDir, "route.js"),
-    'export { GET, POST } from "junior/handler";\n' +
+    'export { GET, POST } from "@sentry/junior/handler";\n' +
       'export const runtime = "nodejs";\n'
   );
 
@@ -26,7 +26,7 @@ function writeWrapperFiles(targetDir) {
   fs.mkdirSync(queueRouteDir, { recursive: true });
   fs.writeFileSync(
     path.join(queueRouteDir, "route.js"),
-    'export { POST } from "junior/handlers/queue-callback";\n' +
+    'export { POST } from "@sentry/junior/handlers/queue-callback";\n' +
       'export const runtime = "nodejs";\n'
   );
 
@@ -34,20 +34,20 @@ function writeWrapperFiles(targetDir) {
   fs.mkdirSync(path.join(targetDir, "app"), { recursive: true });
   fs.writeFileSync(
     path.join(targetDir, "app", "layout.js"),
-    'export { default } from "junior/app/layout";\n'
+    'export { default } from "@sentry/junior/app/layout";\n'
   );
 
   // next.config.mjs
   fs.writeFileSync(
     path.join(targetDir, "next.config.mjs"),
-    'import { withJunior } from "junior/config";\n' +
+    'import { withJunior } from "@sentry/junior/config";\n' +
       'export default withJunior();\n'
   );
 
   // instrumentation.js
   fs.writeFileSync(
     path.join(targetDir, "instrumentation.js"),
-    'export { register, onRequestError } from "junior/instrumentation";\n'
+    'export { register, onRequestError } from "@sentry/junior/instrumentation";\n'
   );
 }
 
@@ -78,7 +78,7 @@ if (command === "init") {
       start: "next start"
     },
     dependencies: {
-      junior: "latest",
+      "@sentry/junior": "latest",
       next: "^16.0.0",
       react: "^19.0.0",
       "react-dom": "^19.0.0",

@@ -1,5 +1,5 @@
 {
-  "name": "junior",
+  "name": "@sentry/junior",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -36,6 +36,8 @@
     "skills:check": "node scripts/check-skills.mjs"
   },
   "dependencies": {
+    "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-sentry": "workspace:*",
     "@ai-sdk/gateway": "^3.0.57",
     "@chat-adapter/slack": "4.15.0",
     "@chat-adapter/state-memory": "4.15.0",
