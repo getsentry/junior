@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Updated code and test file references to repo-root paths under `packages/junior/`.
 
 
 ## Status
@@ -19,13 +20,13 @@ Implemented (Sentry + GitHub migrated)
 - [Skill Capabilities Spec](./skill-capabilities-spec.md)
 - [OAuth Flows Spec](./oauth-flows-spec.md)
 - [Security Policy](./security-policy.md)
-- Plugin Registry: `src/chat/plugins/registry.ts`
-- Plugin Types: `src/chat/plugins/types.ts`
-- Generic OAuth Bearer Broker: `src/chat/plugins/oauth-bearer-broker.ts`
-- GitHub App Broker: `src/chat/plugins/github-app-broker.ts`
-- Provider Catalog: `src/chat/capabilities/catalog.ts`
-- Broker Factory: `src/chat/capabilities/factory.ts`
-- OAuth Providers: `src/chat/capabilities/jr-rpc-command.ts`
+- Plugin Registry: `packages/junior/src/chat/plugins/registry.ts`
+- Plugin Types: `packages/junior/src/chat/plugins/types.ts`
+- Generic OAuth Bearer Broker: `packages/junior/src/chat/plugins/oauth-bearer-broker.ts`
+- GitHub App Broker: `packages/junior/src/chat/plugins/github-app-broker.ts`
+- Provider Catalog: `packages/junior/src/chat/capabilities/catalog.ts`
+- Broker Factory: `packages/junior/src/chat/capabilities/factory.ts`
+- OAuth Providers: `packages/junior/src/chat/capabilities/jr-rpc-command.ts`
 
 ## Purpose
 

@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Updated test fixture path references to repo-root paths under `packages/junior/`.
 
 
 ## Purpose
@@ -35,7 +36,7 @@ Use this file as the source of truth for where a test belongs and what it is all
 
 1. Tests must be deterministic and isolated.
 2. Slack network access is blocked in tests; use MSW fixtures for Slack HTTP.
-3. Use centralized fixtures/factories (`tests/fixtures/slack/*`) over ad-hoc payload literals when available.
+3. Use centralized fixtures/factories (`packages/junior/tests/fixtures/slack/*`) over ad-hoc payload literals when available.
 4. Prefer asserting user-visible behavior and external contracts over implementation details.
 5. Keep test names descriptive of outcomes, not implementation mechanics.
 6. Do not over-test: cover representative, high-risk scenarios for each contract, not every theoretical permutation.

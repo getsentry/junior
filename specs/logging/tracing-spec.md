@@ -3,12 +3,28 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Updated logging/observability file references to repo-root paths under `packages/junior/`.
+- 2026-03-04: Normalized section shape with explicit `Status`, `Purpose`, and `Scope`.
 
+## Status
+
+Active
+
+## Purpose
+
+Define the canonical tracing contract for span naming, boundaries, attributes, and error semantics.
+
+## Scope
+
+- OpenTelemetry/Sentry span conventions used by runtime and workflow execution.
+- Required correlation and GenAI attributes on spans.
+- Sandbox span boundaries and attribute policy.
+- Error/status semantics and trace-derived metrics policy.
 
 ## Goals
 - Make span instrumentation consistent, queryable, and low-noise.
@@ -47,7 +63,7 @@
 - `gen_ai.input.messages` / `gen_ai.output.messages` when safely captured.
 - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` when available from provider responses.
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` on tool execution spans when captured.
-- Keep existing context keys aligned with `src/chat/logging.ts` and `src/chat/observability.ts`.
+- Keep existing context keys aligned with `packages/junior/src/chat/logging.ts` and `packages/junior/src/chat/observability.ts`.
 
 ### Error Attributes
 - `error.type`

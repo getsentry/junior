@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-03-02
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Updated MSW and fixture path references to repo-root paths under `packages/junior/`.
 
 
 ## Purpose
@@ -46,14 +47,14 @@ This spec is subordinate to `specs/testing/integration-spec.md`.
 
 ### 1) Global MSW lifecycle
 
-- `tests/msw/setup.ts` starts and stops MSW for test/eval runs.
-- `tests/msw/server.ts` configures strict unhandled Slack request behavior.
+- `packages/junior/tests/msw/setup.ts` starts and stops MSW for test/eval runs.
+- `packages/junior/tests/msw/server.ts` configures strict unhandled Slack request behavior.
 - Setup is wired in `vitest.config.ts` and `vitest.evals.config.ts`.
 
 ### 2) Centralized Slack handlers
 
-- `tests/msw/handlers/slack-api.ts`
-- `tests/msw/handlers/slack-webhooks.ts`
+- `packages/junior/tests/msw/handlers/slack-api.ts`
+- `packages/junior/tests/msw/handlers/slack-webhooks.ts`
 
 Handlers support:
 - success responses
@@ -63,9 +64,9 @@ Handlers support:
 
 ### 3) Shared fixture/factory layer
 
-- `tests/fixtures/slack/factories/api.ts`
-- `tests/fixtures/slack/factories/events.ts`
-- `tests/fixtures/slack/factories/ids.ts`
+- `packages/junior/tests/fixtures/slack/factories/api.ts`
+- `packages/junior/tests/fixtures/slack/factories/events.ts`
+- `packages/junior/tests/fixtures/slack/factories/ids.ts`
 
 Conventions:
 - deterministic defaults

@@ -3,11 +3,13 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Updated unit test path references to repo-root paths under `packages/junior/`.
+- 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
 
 
 ## Intent
@@ -21,7 +23,8 @@ In scope:
 - Module-level invariants (retry/backoff calculations, dedupe trimming, normalization helpers).
 - Small adapter wrappers where behavior is deterministic without network contracts.
 
-Out of scope:
+## Non-Goals
+
 - Slack HTTP request/response contract validation.
 - Full runtime Slack event handling behavior.
 - Conversational quality and multi-turn judge-scored outcomes.
@@ -43,7 +46,7 @@ Recommended:
 
 ## Naming and Placement
 
-- Preferred path: `tests/unit/**`.
+- Preferred path: `packages/junior/tests/unit/**`.
 - Test titles should describe observable unit behavior.
 
 ## Required Characteristics

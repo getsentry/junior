@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Updated code and test file references to repo-root paths under `packages/junior/`.
 
 
 ## Status
@@ -42,13 +43,13 @@ Define the canonical structured logging contract for application events, context
 - Shipping a separate log backend in this phase.
 
 ## Current State (Audit)
-- Core logging helper exists: `src/chat/observability.ts`.
+- Core logging helper exists: `packages/junior/src/chat/observability.ts`.
 - Callsites are concentrated in:
-  - `src/chat/bot.ts`
-  - `src/chat/respond.ts`
-  - `src/chat/skills.ts`
-  - `src/chat/output.ts`
-  - `app/api/webhooks/[platform]/route.ts`
+  - `packages/junior/src/chat/bot.ts`
+  - `packages/junior/src/chat/respond.ts`
+  - `packages/junior/src/chat/skills.ts`
+  - `packages/junior/src/chat/output.ts`
+  - `packages/junior/app/api/webhooks/[platform]/route.ts`
 - Key inconsistencies today:
   - Mixed naming styles (`media_type`, `error`, `request.id`, `gen_ai.request.model`).
   - Message text is often prose, not stable event names.
@@ -86,7 +87,7 @@ Each emitted log record follows this logical shape (transport can vary):
   - no ambiguous placeholders like "something failed"
 - Do not use `event.name` as a prose sentence and do not omit `event.name` in favor of only text.
 
-### API Surface (`src/chat/logging.ts`)
+### API Surface (`packages/junior/src/chat/logging.ts`)
 - `log.debug(eventName, attrs?, body?)`
 - `log.info(eventName, attrs?, body?)`
 - `log.warn(eventName, attrs?, body?)`
@@ -95,7 +96,7 @@ Each emitted log record follows this logical shape (transport can vary):
 - `withLogContext(context, fn)` using `AsyncLocalStorage`
 - `createLogContextFromRequest(...)`
 
-Compatibility shims in `src/chat/observability.ts` remain supported:
+Compatibility shims in `packages/junior/src/chat/observability.ts` remain supported:
 - `logInfo(eventName, context?, attributes?, body?)`
 - `logWarn(eventName, context?, attributes?, body?)`
 - `logError(eventName, context?, attributes?, body?)`
@@ -210,7 +211,7 @@ Only when no semantic key exists:
 - Track concrete migration and hardening items in `Logging TODOs`.
 
 ### Phase 1: Foundation
-- Add `src/chat/logging.ts` with:
+- Add `packages/junior/src/chat/logging.ts` with:
   - typed event names (string union + fallback string)
   - semantic key helpers
   - context propagation via `AsyncLocalStorage`
@@ -221,7 +222,7 @@ Only when no semantic key exists:
   - attribute sanitizer/redactor
 
 ### Phase 2: Context Wiring
-- Wire request context in `app/api/webhooks/[platform]/route.ts`.
+- Wire request context in `packages/junior/app/api/webhooks/[platform]/route.ts`.
 - Ensure `trace_id`/`span_id` are attached when spans are active.
 - Remove manual repeated context blocks in `bot.ts` and `respond.ts` by using `withLogContext`.
 
@@ -245,7 +246,7 @@ Only when no semantic key exists:
 - Validate logs in Sentry queries and dashboards.
 
 ## Acceptance Criteria
-- 100% of application logs go through `src/chat/logging.ts`.
+- 100% of application logs go through `packages/junior/src/chat/logging.ts`.
 - 0 mixed key style for migrated callsites (no `media_type` / ad-hoc keys).
 - Every warning/error log has stable `event.name` and semantic attributes.
 - Every emitted log has both structured `event.name` and human-readable `body`.
@@ -253,24 +254,24 @@ Only when no semantic key exists:
 - Secret redaction tests pass.
 
 ## Migration Matrix (Initial)
-- `app/api/webhooks/[platform]/route.ts`
+- `packages/junior/app/api/webhooks/[platform]/route.ts`
   - unknown platform, handler failures, request lifecycle
-- `src/chat/bot.ts`
+- `packages/junior/src/chat/bot.ts`
   - attachment handling, thread lifecycle, handler failures
-- `src/chat/respond.ts`
+- `packages/junior/src/chat/respond.ts`
   - empty/fallback behaviors, retries, model/tool anomalies
   - per-turn diagnostics are captured on turn spans (not required as info logs)
-- `src/chat/skills.ts`
+- `packages/junior/src/chat/skills.ts`
   - skill discovery/read/frontmatter parse issues
-- `src/chat/output.ts`
+- `packages/junior/src/chat/output.ts`
   - output normalization fallback
 
 ## Logging TODOs
-- [ ] Migrate duplicated per-turn context in `src/chat/bot.ts` to ambient `withContext`/`withLogContext`.
-- [ ] Migrate duplicated per-turn context in `src/chat/respond.ts` to ambient `withContext`/`withLogContext`.
-- [ ] Update `src/chat/app-runtime.ts` logging call patterns to rely on ambient context by default.
-- [ ] Normalize remaining ad-hoc context passing in `src/chat/capabilities/*`, `src/chat/workflow/*`, and `src/chat/slack-actions/*`.
-- [ ] Add unit tests for context merge precedence and async propagation in `src/chat/logging.ts`.
+- [ ] Migrate duplicated per-turn context in `packages/junior/src/chat/bot.ts` to ambient `withContext`/`withLogContext`.
+- [ ] Migrate duplicated per-turn context in `packages/junior/src/chat/respond.ts` to ambient `withContext`/`withLogContext`.
+- [ ] Update `packages/junior/src/chat/app-runtime.ts` logging call patterns to rely on ambient context by default.
+- [ ] Normalize remaining ad-hoc context passing in `packages/junior/src/chat/capabilities/*`, `packages/junior/src/chat/workflow/*`, and `packages/junior/src/chat/slack-actions/*`.
+- [ ] Add unit tests for context merge precedence and async propagation in `packages/junior/src/chat/logging.ts`.
 - [ ] Add regression tests to verify optional context behavior for `logInfo`, `logWarn`, `logError`, and `logException`.
 - [ ] Add a lint/check rule that flags repeated baseline context keys when ambient context is already bound.
 - [ ] Audit noisy or low-value events after migration and reduce log volume where possible.
@@ -278,7 +279,7 @@ Only when no semantic key exists:
 - [ ] Investigate and fix duplicate Sentry emission in logger transport path (`emitSentry` currently invokes logger twice).
 
 ## Decision Record
-- Keep current logging stack (`src/chat/logging.ts` + `AsyncLocalStorage` + Sentry transport) for this migration.
+- Keep current logging stack (`packages/junior/src/chat/logging.ts` + `AsyncLocalStorage` + Sentry transport) for this migration.
 - Do not adopt LogTape in this phase.
 - Revisit LogTape (or another logger) only if one or more become true:
   - We need multi-sink fanout not reasonably supported in current transport.

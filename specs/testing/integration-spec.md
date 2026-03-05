@@ -3,11 +3,13 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Updated integration fixture and MSW path references to repo-root paths under `packages/junior/`.
+- 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
 
 
 ## Intent
@@ -22,7 +24,8 @@ In scope:
 - Slack HTTP contracts (request shape, retries, error mapping) through MSW.
 - Behavior outcomes from real runtime flow using deterministic fake-agent outputs.
 
-Out of scope:
+## Non-Goals
+
 - Pure algorithmic invariants better covered by unit tests.
 - Judge-scored conversational quality (belongs to evals).
 
@@ -43,8 +46,8 @@ Disallowed in integration behavior tests:
 
 ## Fixture and Harness Rules
 
-1. Use `tests/fixtures/slack/*` factories and harness helpers.
-2. Use `tests/msw/*` handler utilities for Slack API sequencing and assertions.
+1. Use `packages/junior/tests/fixtures/slack/*` factories and harness helpers.
+2. Use `packages/junior/tests/msw/*` handler utilities for Slack API sequencing and assertions.
 3. Prefer scenario-style tests that drive events and assert resulting user-visible outputs + captured Slack API calls.
 
 ## Classification Guidance

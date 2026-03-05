@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Updated repo-root file paths and aligned OAuth URL visibility contract with security policy.
 
 
 ## Status
@@ -17,7 +18,7 @@ Draft
 ## Related
 
 - [Security Policy](./security-policy.md)
-- Provider Catalog: `src/chat/capabilities/catalog.ts`
+- Provider Catalog: `packages/junior/src/chat/capabilities/catalog.ts`
 
 ## Purpose
 
@@ -115,7 +116,7 @@ Rules:
 - Uses Authorization Code Grant (RFC 6749 §4.1) via `jr-rpc oauth-start sentry`.
 - Callback handler at `/api/oauth/callback/sentry` exchanges code for tokens server-side.
 - Tokens stored per Slack user ID via `StateAdapterTokenStore` (Redis-backed).
-- Agent never sees token values — only receives `authorize_url` to post to the user.
+- Agent never sees token values or raw authorization URLs; `oauth-start` delivers URLs privately via Slack transport.
 - Requires `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET` on host.
 - See [OAuth Flows Spec](./oauth-flows-spec.md) for full flow details.
 

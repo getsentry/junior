@@ -8,7 +8,7 @@ Active policy for Junior runtime, sandbox execution, credential handling, and da
 
 This policy applies to:
 
-- Host runtime code (`src/chat/**`, `app/**`, `scripts/**`).
+- Host runtime code (`packages/junior/src/chat/**`, `packages/junior/app/**`, `packages/junior/scripts/**`).
 - Sandbox/container execution paths.
 - External provider credentials and token issuance.
 - Skill execution and capability-gated access.

@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Updated runtime and test file references to repo-root paths under `packages/junior/`.
 
 
 ## Status
@@ -176,7 +177,7 @@ export interface ThreadMessagePayload {
 12. Call router `routeToThreadWorkflow(threadId, payload)`.
 13. On router error, log and rethrow so background task logs capture failure.
 
-### B. Router (`src/chat/workflow/router.ts`)
+### B. Router (`packages/junior/src/chat/workflow/router.ts`)
 
 ```ts
 export async function routeToThreadWorkflow(threadId, payload) {
@@ -215,7 +216,7 @@ Start/resume state machine:
 4. Retry `resume` with bounded backoff.
 5. If all retries fail, throw and emit `workflow_route_failed`.
 
-### C. Workflow (`src/chat/workflow/thread-workflow.ts`)
+### C. Workflow (`packages/junior/src/chat/workflow/thread-workflow.ts`)
 
 ```ts
 export async function slackThreadWorkflow(threadId: string) {
@@ -292,17 +293,17 @@ Required correlation attributes when available:
 | File | Change |
 |------|--------|
 | `next.config.ts` | Wrap Next config with `withWorkflow()` before `withSentryConfig(...)`. |
-| `src/chat/bot.ts` | Register Chat singleton at construction-time (with test-safe compatibility for mocked Chat instances). |
-| `src/chat/state.ts` | Expose helper for atomic ingress dedupe claim using Redis `SET NX`. |
-| `src/chat/workflow/types.ts` | Add payload contract types. |
-| `src/chat/workflow/thread-workflow.ts` | Keep workflow-only orchestration: hook definition, dedupe loop, direct calls to explicit step functions. |
-| `src/chat/workflow/thread-steps.ts` | Add all step IO: singleton registration, attachment rehydration, runtime dispatch, and failure logging. |
-| `src/chat/workflow/router.ts` | Add resume-or-start router with bounded retry. |
-| `src/chat/chat-background-patch.ts` | Replace `handleIncomingMessage` call path in `processMessage` with routing algorithm above. |
-| `tests/unit/workflow/router.test.ts` | Unit tests for resume/start race paths and retry behavior. |
-| `tests/integration/workflow/thread-workflow.test.ts` | Validate orchestration ordering/dedupe/keep-alive behavior through real runtime step execution with fake agent output only. |
-| `tests/integration/workflow/thread-step-boundaries.test.ts` | Validate step-level Slack/runtime side effects through real runtime wiring. |
-| `tests/unit/slack/chat-background-routing.test.ts` | Extend with routing classification and dedupe coverage. |
+| `packages/junior/src/chat/bot.ts` | Register Chat singleton at construction-time (with test-safe compatibility for mocked Chat instances). |
+| `packages/junior/src/chat/state.ts` | Expose helper for atomic ingress dedupe claim using Redis `SET NX`. |
+| `packages/junior/src/chat/workflow/types.ts` | Add payload contract types. |
+| `packages/junior/src/chat/workflow/thread-workflow.ts` | Keep workflow-only orchestration: hook definition, dedupe loop, direct calls to explicit step functions. |
+| `packages/junior/src/chat/workflow/thread-steps.ts` | Add all step IO: singleton registration, attachment rehydration, runtime dispatch, and failure logging. |
+| `packages/junior/src/chat/workflow/router.ts` | Add resume-or-start router with bounded retry. |
+| `packages/junior/src/chat/chat-background-patch.ts` | Replace `handleIncomingMessage` call path in `processMessage` with routing algorithm above. |
+| `packages/junior/tests/unit/workflow/router.test.ts` | Unit tests for resume/start race paths and retry behavior. |
+| `packages/junior/tests/integration/workflow/thread-workflow.test.ts` | Validate orchestration ordering/dedupe/keep-alive behavior through real runtime step execution with fake agent output only. |
+| `packages/junior/tests/integration/workflow/thread-step-boundaries.test.ts` | Validate step-level Slack/runtime side effects through real runtime wiring. |
+| `packages/junior/tests/unit/slack/chat-background-routing.test.ts` | Extend with routing classification and dedupe coverage. |
 
 ## Verification Plan
 

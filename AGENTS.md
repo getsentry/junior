@@ -34,12 +34,21 @@ Co-Authored-By: (agent model name) <email>
 - Avoid bespoke Slack `chat.update` loops unless required by a hard platform limitation.
 - Prefer hard cutover for command or skill renames and behavior migrations unless backward compatibility is explicitly requested.
 
+## Codex Execution Checklist
+- Read local contracts first: `AGENTS.md`, relevant `specs/*`, and required `SKILL.md` files.
+- Derive explicit invariants before editing and keep them stable through implementation.
+- Use an explicit sequence for non-trivial tasks: discover -> minimal vertical slice -> verify -> summarize.
+- Falsify risky assumptions early using the narrowest deterministic check.
+- Reuse existing repository patterns before introducing new abstractions.
+- Treat completion as gated: typecheck/build checks, targeted tests, and contract/spec updates when behavior changes.
+
 ## Known Specs
 - `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
 - `specs/security-policy.md` (global runtime/container/token security policy)
 - `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
 - `specs/oauth-flows-spec.md` (OAuth authorization code flow + Slack UX contract)
 - `specs/harness-agent-spec.md` (agent loop and output contract)
+- `specs/agent-execution-spec.md` (agent execution rubric and completion gates)
 - `specs/logging/index.md` (logging/tracing spec index)
 - `specs/plugin-spec.md` (plugin architecture for self-contained provider integrations)
 - `specs/testing/index.md` (testing taxonomy and layer boundaries: unit/integration/eval)

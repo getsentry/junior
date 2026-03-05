@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-04
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
 
 
 ## Intent
@@ -21,7 +22,8 @@ In scope:
 - User-visible response quality and continuity.
 - Lifecycle/resilience behavior as observed by users.
 
-Out of scope:
+## Non-Goals
+
 - Low-level Slack Web API request payload shape assertions.
 - Internal implementation details not observable to end users.
 
