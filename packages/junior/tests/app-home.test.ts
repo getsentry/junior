@@ -1,7 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SectionBlock } from "@slack/web-api";
+import fs from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { KnownBlock, SectionBlock } from "@slack/web-api";
 import { buildHomeView, publishAppHomeView } from "@/chat/app-home";
 import type { UserTokenStore, StoredTokens } from "@/chat/credentials/user-token-store";
+import { discoverSkills } from "@/chat/skills";
 
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginProviders: () => [
@@ -26,6 +28,14 @@ vi.mock("@/chat/plugins/registry", () => ({
   ]
 }));
 
+vi.mock("@/chat/home", () => ({
+  homeDir: () => "/mock/app"
+}));
+
+vi.mock("@/chat/skills", () => ({
+  discoverSkills: vi.fn(async () => [])
+}));
+
 function createMockTokenStore(tokens: Record<string, StoredTokens | undefined>): UserTokenStore {
   return {
     get: vi.fn(async (_userId: string, provider: string) => tokens[provider]),
@@ -46,9 +56,43 @@ const expiredToken: StoredTokens = {
   expiresAt: Date.now() - 1000
 };
 
+function findSection(blocks: KnownBlock[], predicate: (section: SectionBlock) => boolean): SectionBlock | undefined {
+  return blocks.find((block) => {
+    const section = block as SectionBlock;
+    return section.type === "section" && predicate(section);
+  }) as SectionBlock | undefined;
+}
+
+function getVersionText(view: Awaited<ReturnType<typeof buildHomeView>>): string | undefined {
+  const versionBlock = view.blocks[view.blocks.length - 1] as {
+    type: string;
+    elements?: Array<{ text?: string }>;
+  };
+  if (versionBlock.type !== "context") {
+    return undefined;
+  }
+  return versionBlock.elements?.[0]?.text;
+}
+
+function getAllSectionText(blocks: KnownBlock[]): string {
+  return blocks
+    .map((block) => block as SectionBlock)
+    .filter((block) => block.type === "section")
+    .map((block) => block.text?.text ?? "")
+    .join("\n");
+}
+
 describe("buildHomeView", () => {
+  let readFileSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    readFileSpy = vi.spyOn(fs, "readFileSync").mockReturnValue("About text");
+  });
+
   afterEach(() => {
     delete process.env.VERCEL_GIT_COMMIT_SHA;
+    vi.restoreAllMocks();
+    vi.mocked(discoverSkills).mockResolvedValue([]);
   });
 
   it("shows version metadata from VERCEL_GIT_COMMIT_SHA", async () => {
@@ -56,26 +100,14 @@ describe("buildHomeView", () => {
     const store = createMockTokenStore({});
     const view = await buildHomeView("U123", store);
 
-    expect(view.blocks[0]).toMatchObject({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*junior version:* `abc123def456`"
-      }
-    });
+    expect(getVersionText(view)).toBe("*junior version:* `abc123def456`");
   });
 
   it("shows unknown version metadata when VERCEL_GIT_COMMIT_SHA is missing", async () => {
     const store = createMockTokenStore({});
     const view = await buildHomeView("U123", store);
 
-    expect(view.blocks[0]).toMatchObject({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*junior version:* `unknown`"
-      }
-    });
+    expect(getVersionText(view)).toBe("*junior version:* `unknown`");
   });
 
   it("shows connected oauth-bearer provider with Unlink button", async () => {
@@ -83,11 +115,13 @@ describe("buildHomeView", () => {
     const view = await buildHomeView("U123", store);
 
     expect(view.type).toBe("home");
-    expect(view.blocks).toHaveLength(2);
-
-    const section = view.blocks[1] as SectionBlock;
-    expect(section.type).toBe("section");
-    expect(section.text!.text).toContain("sentry");
+    const section = findSection(view.blocks, (candidate) =>
+      candidate.text?.text.includes("sentry") ?? false
+    );
+    expect(section).toBeDefined();
+    if (!section) {
+      throw new Error("Expected connected account section for sentry");
+    }
 
     const accessory = section.accessory as { action_id: string; value: string };
     expect(accessory.action_id).toBe("app_home_disconnect");
@@ -99,19 +133,20 @@ describe("buildHomeView", () => {
     const view = await buildHomeView("U123", store);
 
     expect(view.type).toBe("home");
-    expect(view.blocks).toHaveLength(2);
-
-    const section = view.blocks[1] as SectionBlock;
-    expect(section.text!.text).toBe("No connected accounts");
+    const noAccountsSection = findSection(view.blocks, (candidate) =>
+      candidate.text?.text === "No connected accounts"
+    );
+    expect(noAccountsSection).toBeDefined();
   });
 
   it("shows providers with expired access tokens (refresh token keeps connection alive)", async () => {
     const store = createMockTokenStore({ sentry: expiredToken });
     const view = await buildHomeView("U123", store);
 
-    expect(view.blocks).toHaveLength(2);
-    const section = view.blocks[1] as SectionBlock;
-    expect(section.text!.text).toContain("sentry");
+    const section = findSection(view.blocks, (candidate) =>
+      candidate.text?.text.includes("sentry") ?? false
+    );
+    expect(section?.text?.text).toContain("sentry");
   });
 
   it("excludes github-app providers (no per-user auth)", async () => {
@@ -120,10 +155,47 @@ describe("buildHomeView", () => {
     const store = createMockTokenStore({ github: validToken });
     const view = await buildHomeView("U123", store);
 
-    const section = view.blocks[1] as SectionBlock;
-    expect(section.text!.text).toBe("No connected accounts");
+    const noAccountsSection = findSection(view.blocks, (candidate) =>
+      candidate.text?.text === "No connected accounts"
+    );
+    expect(noAccountsSection).toBeDefined();
     // github provider is github-app type, so store.get should not be called for it
     expect(store.get).not.toHaveBeenCalledWith("U123", "github");
+  });
+
+  it("loads ABOUT.md from app root for home intro text", async () => {
+    readFileSpy.mockReturnValue("Custom app home intro");
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    expect(getAllSectionText(view.blocks)).toContain("Custom app home intro");
+    expect(fs.readFileSync).toHaveBeenCalledWith("/mock/app/ABOUT.md", "utf8");
+  });
+
+  it("falls back to default intro text when ABOUT.md is missing", async () => {
+    readFileSpy.mockImplementation(() => {
+      throw new Error("missing");
+    });
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    expect(getAllSectionText(view.blocks)).toContain(
+      "I help your team investigate, summarize, and act on work in Slack."
+    );
+  });
+
+  it("shows available skills as read-only list", async () => {
+    vi.mocked(discoverSkills).mockResolvedValue([
+      { name: "incident-summary", description: "Summarize incidents", skillPath: "/skills/incident-summary" },
+      { name: "release-check", description: "Check release health", skillPath: "/skills/release-check" }
+    ]);
+
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    const content = getAllSectionText(view.blocks);
+    expect(content).toContain("`/incident-summary`");
+    expect(content).toContain("`/release-check`");
   });
 });
 

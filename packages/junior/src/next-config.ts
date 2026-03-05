@@ -19,7 +19,9 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   const dataDir = options?.dataDir ?? "./app/data";
   const skillsDir = options?.skillsDir ?? "./app/skills";
   const pluginsDir = options?.pluginsDir ?? "./app/plugins";
-  const defaultDataTracingIncludes = options?.dataDir ? [`${dataDir}/**/*`] : ["./app/SOUL.md"];
+  const defaultDataTracingIncludes = options?.dataDir
+    ? [`${dataDir}/**/*`]
+    : ["./app/SOUL.md", "./app/ABOUT.md"];
   const tracingIncludes = Array.from(new Set([
     ...defaultDataTracingIncludes,
     `${skillsDir}/**/*`,
