@@ -1082,7 +1082,7 @@ export async function generateAssistantReply(
                 "Agent turn timed out and was aborted"
               );
               await promptPromise.catch(() => {});
-              timeoutResumeMessages = agent.state.messages as unknown[];
+              timeoutResumeMessages = [...(agent.state.messages as unknown[])];
             }
             throw error;
           } finally {
