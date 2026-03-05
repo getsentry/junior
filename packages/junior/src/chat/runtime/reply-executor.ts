@@ -2,7 +2,7 @@ import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
-import { logError, logException, logWarn, setSpanAttributes, setTags, withSpan } from "@/chat/observability";
+import { logError, logException, logInfo, logWarn, setSpanAttributes, setTags, withSpan } from "@/chat/observability";
 import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/progress-reporter";
@@ -18,6 +18,10 @@ import { type ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { resolveReplyDelivery } from "@/chat/turn/execute";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 import { startActiveTurn } from "@/chat/turn/prepare";
+
+function shouldEmitDevAgentTrace(): boolean {
+  return process.env.NODE_ENV === "development";
+}
 
 interface ReplyExecutorDeps {
   getSlackAdapter: () => SlackAdapter;
@@ -54,11 +58,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const threadTs = getThreadTs(threadId);
     const messageTs = getMessageTs(message);
     const runId = getRunId(thread, message);
+    const conversationId = threadId ?? runId;
 
     await withSpan(
       "chat.reply",
       "chat.reply",
       {
+        conversationId,
         slackThreadId: threadId,
         slackUserId: message.author.userId,
         slackChannelId: channelId,
@@ -87,11 +93,40 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
           }));
 
+        const turnId = generateConversationId("turn");
         startActiveTurn({
           conversation: preparedState.conversation,
-          nextTurnId: generateConversationId("turn"),
+          nextTurnId: turnId,
           updateConversationStats
         });
+        const turnStartedAtMs = Date.now();
+        const turnTraceContext = {
+          conversationId,
+          turnId,
+          agentId: turnId,
+          slackThreadId: threadId,
+          slackUserId: message.author.userId,
+          slackChannelId: channelId,
+          runId,
+          assistantUserName: botConfig.userName,
+          modelId: botConfig.modelId
+        };
+        setTags({
+          conversationId,
+          turnId,
+          agentId: turnId
+        });
+        if (shouldEmitDevAgentTrace()) {
+          logInfo(
+            "agent_turn_started",
+            turnTraceContext,
+            {
+              "app.message.id": message.id,
+              ...(messageTs ? { "messaging.message.id": messageTs } : {})
+            },
+            "Agent turn started"
+          );
+        }
         await persistThreadState(thread, {
           conversation: preparedState.conversation
         });
@@ -159,7 +194,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             channelConfiguration: preparedState.channelConfiguration,
             userAttachments,
             correlation: {
+              conversationId,
               threadId,
+              turnId,
               threadTs,
               messageTs,
               runId,
@@ -284,6 +321,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             sandboxId: reply.sandboxId
           });
           persistedAtLeastOnce = true;
+          if (shouldEmitDevAgentTrace()) {
+            logInfo(
+              "agent_turn_completed",
+              turnTraceContext,
+              {
+                "app.turn.duration_ms": Date.now() - turnStartedAtMs,
+                "app.ai.outcome": reply.diagnostics.outcome,
+                "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
+                "app.ai.tool_error_results": reply.diagnostics.toolErrorCount
+              },
+              "Agent turn completed"
+            );
+          }
 
           const isFirstAssistantReply =
             preparedState.conversation.stats.compactedMessageCount === 0 &&
@@ -349,6 +399,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             await persistThreadState(thread, {
               conversation: preparedState.conversation
             });
+            if (shouldEmitDevAgentTrace()) {
+              logWarn(
+                "agent_turn_failed",
+                turnTraceContext,
+                {
+                  "app.turn.duration_ms": Date.now() - turnStartedAtMs
+                },
+                "Agent turn failed"
+              );
+            }
           }
           await progress.stop();
         }

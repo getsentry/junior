@@ -13,6 +13,9 @@ export interface EmittedLogRecord {
 }
 
 export interface LogContext {
+  conversationId?: string;
+  turnId?: string;
+  agentId?: string;
   platform?: string;
   requestId?: string;
   slackThreadId?: string;
@@ -93,6 +96,9 @@ const ANSI = {
   gray: "\u001b[90m"
 } as const;
 const CONSOLE_PRIORITY_KEYS = [
+  "app.conversation.id",
+  "app.turn.id",
+  "app.agent.id",
   "event.name",
   "error.message",
   "messaging.message.id",
@@ -223,6 +229,9 @@ function sanitizeValue(value: unknown): AttributeValue | undefined {
 
 function contextToAttributes(context: LogContext): LogAttributes {
   const attributes: Record<string, unknown> = {
+    "app.conversation.id": context.conversationId,
+    "app.turn.id": context.turnId,
+    "app.agent.id": context.agentId,
     "app.platform": context.platform,
     "app.request.id": context.requestId,
     "messaging.system": context.platform === "slack" ? "slack" : context.platform,

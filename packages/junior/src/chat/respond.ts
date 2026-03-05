@@ -50,7 +50,9 @@ export interface ReplyRequestContext {
     fullName?: string;
   };
   correlation?: {
+    conversationId?: string;
     threadId?: string;
+    turnId?: string;
     runId?: string;
     channelId?: string;
     messageTs?: string;
@@ -101,6 +103,10 @@ export interface AgentTurnDiagnostics {
 const AGENT_TURN_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 let startupDiscoveryLogged = false;
+
+function shouldEmitDevAgentTrace(): boolean {
+  return process.env.NODE_ENV === "development";
+}
 
 function isExecutionDeferralResponse(text: string): boolean {
   return /\b(want me to proceed|do you want me to proceed|shall i proceed|can i proceed|should i proceed|let me do that now|give me a moment|tag me again|fresh invocation)\b/i.test(
@@ -293,6 +299,14 @@ function toObservablePromptPart(
   };
 }
 
+function summarizeMessageText(text: string): string {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return "[empty]";
+  }
+  return normalized.length > 1_200 ? `${normalized.slice(0, 1_200)}...` : normalized;
+}
+
 function buildUserTurnText(userInput: string, conversationContext?: string): string {
   const trimmedContext = conversationContext?.trim();
   if (!trimmedContext) {
@@ -423,6 +437,7 @@ function createAgentTools(
     onToolCall?: (toolName: string) => void;
   }
 ): AgentTool[] {
+  const shouldTrace = shouldEmitDevAgentTrace();
   return Object.entries(tools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
@@ -433,6 +448,26 @@ function createAgentTools(
       const toolArgumentsAttribute = serializeGenAiAttribute(params);
       hooks?.onToolCall?.(toolName);
       const toolStartedAt = Date.now();
+      const traceToolContext = {
+        ...spanContext,
+        conversationId: spanContext.conversationId,
+        turnId: spanContext.turnId,
+        agentId: spanContext.agentId
+      };
+      if (shouldTrace) {
+        logInfo(
+          "agent_tool_call_started",
+          traceToolContext,
+          {
+            "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+            "gen_ai.operation.name": "execute_tool",
+            "gen_ai.tool.name": toolName,
+            ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
+            ...(toolArgumentsAttribute ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute } : {})
+          },
+          "Agent tool call started"
+        );
+      }
       await onStatus?.(`${formatToolStatusWithInput(toolName, params)}...`);
       return withSpan(
         `execute_tool ${toolName}`,
@@ -492,6 +527,22 @@ function createAgentTools(
               });
               setSpanStatus("ok");
               await onStatus?.(`${formatToolResultStatusWithInput(toolName, parsed)}...`);
+              if (shouldTrace) {
+                logInfo(
+                  "agent_tool_call_completed",
+                  traceToolContext,
+                  {
+                    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                    "gen_ai.operation.name": "execute_tool",
+                    "gen_ai.tool.name": toolName,
+                    ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
+                    "app.ai.tool_duration_ms": durationMs,
+                    "app.ai.tool_outcome": "success",
+                    ...(toolResultAttribute ? { "gen_ai.tool.call.result": toolResultAttribute } : {})
+                  },
+                  "Agent tool call completed"
+                );
+              }
               return {
                 content: [{ type: "text", text: "ok" }],
                 details: resultDetails
@@ -562,6 +613,22 @@ function createAgentTools(
             });
             setSpanStatus("ok");
             await onStatus?.(`${formatToolResultStatusWithInput(toolName, parsed)}...`);
+            if (shouldTrace) {
+              logInfo(
+                "agent_tool_call_completed",
+                traceToolContext,
+                {
+                  "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                  "gen_ai.operation.name": "execute_tool",
+                  "gen_ai.tool.name": toolName,
+                  ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
+                  "app.ai.tool_duration_ms": durationMs,
+                  "app.ai.tool_outcome": "success",
+                  ...(toolResultAttribute ? { "gen_ai.tool.call.result": toolResultAttribute } : {})
+                },
+                "Agent tool call completed"
+              );
+            }
             return {
               content: [{ type: "text", text: toToolContentText(resultDetails) }],
               details: resultDetails
@@ -574,6 +641,23 @@ function createAgentTools(
               "error.type": error instanceof Error ? error.name : "tool_execution_error"
             });
             setSpanStatus("error");
+            if (shouldTrace) {
+              logWarn(
+                "agent_tool_call_failed",
+                traceToolContext,
+                {
+                  "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                  "gen_ai.operation.name": "execute_tool",
+                  "gen_ai.tool.name": toolName,
+                  ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
+                  "app.ai.tool_duration_ms": durationMs,
+                  "app.ai.tool_outcome": "error",
+                  "error.type": error instanceof Error ? error.name : "tool_execution_error",
+                  "error.message": error instanceof Error ? error.message : String(error)
+                },
+                "Agent tool call failed"
+              );
+            }
             logException(
               error,
               "agent_tool_call_failed",
@@ -608,7 +692,11 @@ export async function generateAssistantReply(
   context: ReplyRequestContext = {}
 ): Promise<AssistantReply> {
   try {
+    const shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: ObservabilityContext = {
+      conversationId: context.correlation?.conversationId ?? context.correlation?.threadId ?? context.correlation?.runId,
+      turnId: context.correlation?.turnId,
+      agentId: context.correlation?.turnId,
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
@@ -639,6 +727,20 @@ export async function generateAssistantReply(
       ...(context.configuration ?? {})
     };
     const userInput = messageText;
+    if (shouldTrace) {
+      logInfo(
+        "agent_message_in",
+        spanContext,
+        {
+          "app.message.kind": "user_inbound",
+          "app.message.length": userInput.length,
+          "app.message.input": summarizeMessageText(userInput),
+          "app.message.attachment_count": context.userAttachments?.length ?? 0,
+          "messaging.message.id": context.correlation?.messageTs ?? ""
+        },
+        "Agent message received"
+      );
+    }
     const explicitInvocation = parseSkillInvocation(userInput, availableSkills);
     const explicitSkill = explicitInvocation
       ? findSkillByName(explicitInvocation.skillName, availableSkills)
@@ -711,6 +813,9 @@ export async function generateAssistantReply(
     const toolCalls: string[] = [];
 
     setTags({
+      conversationId: spanContext.conversationId,
+      turnId: spanContext.turnId,
+      agentId: spanContext.agentId,
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
@@ -991,6 +1096,21 @@ export async function generateAssistantReply(
       primaryText ? (stopReason === "error" ? "provider_error" : "success") : "execution_failure";
 
     const resolvedText = primaryText || buildExecutionFailureMessage(toolErrorCount);
+    if (shouldTrace) {
+      logInfo(
+        "agent_message_out",
+        spanContext,
+        {
+          "app.message.kind": "assistant_outbound",
+          "app.message.length": resolvedText.length,
+          "app.message.output": summarizeMessageText(resolvedText),
+          "app.ai.outcome": outcome,
+          "app.ai.assistant_messages": assistantMessages.length,
+          ...(stopReason ? { "app.ai.stop_reason": stopReason } : {})
+        },
+        "Agent message sent"
+      );
+    }
     if (isExecutionEscapeResponse(resolvedText) || isRawToolPayloadResponse(resolvedText)) {
       return {
         text: buildExecutionFailureMessage(toolErrorCount),

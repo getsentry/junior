@@ -294,6 +294,64 @@ describe("bot handlers (integration)", () => {
     );
   });
 
+  it("passes conversation and turn correlation IDs into assistant reply context", async () => {
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    const capturedCorrelation: Array<{
+      conversationId?: string;
+      threadId?: string;
+      turnId?: string;
+      runId?: string;
+    }> = [];
+    setBotDepsForTests({
+      generateAssistantReply: async (_prompt, context) => {
+        capturedCorrelation.push({
+          conversationId: context?.correlation?.conversationId,
+          threadId: context?.correlation?.threadId,
+          turnId: context?.correlation?.turnId,
+          runId: context?.correlation?.runId
+        });
+        return {
+          text: "Done.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "test-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true
+          }
+        };
+      },
+      listThreadReplies: async () => []
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_CORRELATION:1700000000.000",
+      runId: "run-123"
+    });
+
+    await appSlackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-correlation",
+        threadId: "slack:C_CORRELATION:1700000000.000",
+        text: "trace this turn",
+        isMention: true
+      })
+    );
+
+    expect(capturedCorrelation).toHaveLength(1);
+    expect(capturedCorrelation[0]).toEqual(
+      expect.objectContaining({
+        conversationId: "slack:C_CORRELATION:1700000000.000",
+        threadId: "slack:C_CORRELATION:1700000000.000",
+        runId: "run-123"
+      })
+    );
+    expect(capturedCorrelation[0].turnId).toMatch(/^turn_\d+_[a-z0-9]{8}$/);
+  });
+
   it("posts terminal failure text after streamed partial output", async () => {
     const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     setBotDepsForTests({
