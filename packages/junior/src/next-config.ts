@@ -40,16 +40,16 @@ function resolveTracingPatternsForPackage(packageName: string): string[] {
       const relativePattern = relativeDir.startsWith(".") || relativeDir.startsWith("..")
         ? `${relativeDir}/**/*`
         : `./${relativeDir}/**/*`;
-      const absolutePattern = `${toPosixPath(packageDir)}/**/*`;
-      patterns.push(relativePattern, absolutePattern);
+      patterns.push(relativePattern);
     }
-    const pnpmPattern = `${toPosixPath(nodeModulesRoot)}/.pnpm/${pnpmStoreSegment}@*/node_modules/${packageName}/**/*`;
-    const relativePnpmPattern = toPosixPath(path.relative(process.cwd(), pnpmPattern));
+    const pnpmDir = path.join(nodeModulesRoot, ".pnpm");
+    const relativePnpmPattern = toPosixPath(
+      path.relative(process.cwd(), `${toPosixPath(pnpmDir)}/${pnpmStoreSegment}@*/node_modules/${packageName}/**/*`)
+    );
     patterns.push(
       relativePnpmPattern.startsWith(".") || relativePnpmPattern.startsWith("..")
         ? relativePnpmPattern
-        : `./${relativePnpmPattern}`,
-      pnpmPattern
+        : `./${relativePnpmPattern}`
     );
   }
 
