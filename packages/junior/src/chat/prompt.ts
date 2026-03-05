@@ -1,20 +1,39 @@
 import fs from "node:fs";
 import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import { botConfig } from "@/chat/config";
-import { soulPath } from "@/chat/home";
+import { soulPathCandidates } from "@/chat/home";
+import { logWarn } from "@/chat/observability";
 import { slackOutputPolicy } from "@/chat/output";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 import { escapeXml } from "@/chat/xml";
 
+const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
+
 function loadSoul(): string {
-  const resolved = soulPath();
-  const raw = fs.readFileSync(resolved, "utf8").trim();
-  if (raw.length === 0) {
-    throw new Error(`SOUL.md is empty: ${resolved}`);
+  const attempted: string[] = [];
+  for (const resolved of soulPathCandidates()) {
+    attempted.push(resolved);
+    try {
+      const raw = fs.readFileSync(resolved, "utf8").trim();
+      if (raw.length > 0) {
+        return raw;
+      }
+    } catch {
+      continue;
+    }
   }
-  return raw;
+
+  logWarn(
+    "soul_load_fallback",
+    {},
+    {
+      "file.candidates": attempted
+    },
+    "SOUL.md not found; using built-in default personality"
+  );
+  return DEFAULT_SOUL;
 }
 
 export const JUNIOR_PERSONALITY = loadSoul();

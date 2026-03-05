@@ -5,9 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   discoverSkills,
   parseSkillInvocation,
-  resetSkillDiscoveryCache,
-  renderActiveSkillsXml,
-  renderSkillMetadataXml
+  resetSkillDiscoveryCache
 } from "@/chat/skills";
 import type { SkillMetadata } from "@/chat/skills";
 import * as observability from "@/chat/observability";
@@ -63,31 +61,6 @@ describe("skills", () => {
 
   it("returns null when no skills are available", () => {
     expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
-  });
-
-  it("renders available and active skill XML blocks", () => {
-    const metadataXml = renderSkillMetadataXml([
-      {
-        name: "brief",
-        description: "Candidate brief <profiles> & references",
-        skillPath: "/tmp/brief"
-      }
-    ]);
-
-    const activeXml = renderActiveSkillsXml([
-      {
-        name: "brief",
-        description: "Candidate brief profiles",
-        skillPath: "/tmp/brief",
-        body: "# Instructions"
-      }
-    ]);
-
-    expect(metadataXml).toContain("<available_skills>");
-    expect(metadataXml).toContain("&lt;profiles&gt;");
-    expect(metadataXml).toContain("&amp; references");
-    expect(metadataXml).toContain("<location>/tmp/brief/SKILL.md</location>");
-    expect(activeXml).toContain("<active_skills>");
   });
 
   it("skips skills with unknown capability/config metadata and logs warnings", async () => {

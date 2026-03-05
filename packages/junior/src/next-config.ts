@@ -37,20 +37,20 @@ function resolveTracingPatternsForPackage(packageName: string): string[] {
     const packageDir = path.join(nodeModulesRoot, packageName);
     if (fs.existsSync(packageDir)) {
       const relativeDir = toPosixPath(path.relative(process.cwd(), packageDir));
-      const relativePattern = relativeDir.startsWith(".") || relativeDir.startsWith("..")
-        ? `${relativeDir}/**/*`
-        : `./${relativeDir}/**/*`;
-      patterns.push(relativePattern);
+      if (!relativeDir.startsWith("..")) {
+        const relativePattern = relativeDir.startsWith(".")
+          ? `${relativeDir}/**/*`
+          : `./${relativeDir}/**/*`;
+        patterns.push(relativePattern);
+      }
     }
     const pnpmDir = path.join(nodeModulesRoot, ".pnpm");
     const relativePnpmPattern = toPosixPath(
       path.relative(process.cwd(), `${toPosixPath(pnpmDir)}/${pnpmStoreSegment}@*/node_modules/${packageName}/**/*`)
     );
-    patterns.push(
-      relativePnpmPattern.startsWith(".") || relativePnpmPattern.startsWith("..")
-        ? relativePnpmPattern
-        : `./${relativePnpmPattern}`
-    );
+    if (!relativePnpmPattern.startsWith("..")) {
+      patterns.push(relativePnpmPattern.startsWith(".") ? relativePnpmPattern : `./${relativePnpmPattern}`);
+    }
   }
 
   return Array.from(new Set(patterns));
@@ -72,6 +72,10 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   const dataDir = options?.dataDir ?? "./app/data";
   const skillsDir = options?.skillsDir ?? "./app/skills";
   const pluginsDir = options?.pluginsDir ?? "./app/plugins";
+  const fallbackTracingIncludes =
+    options?.dataDir || options?.skillsDir || options?.pluginsDir
+      ? []
+      : ["./data/**/*", "./skills/**/*", "./plugins/**/*"];
   const slackRuntimeTracingIncludes = [
     ...resolveTracingPatternsForPackage("@chat-adapter/slack"),
     ...resolveTracingPatternsForPackage("@slack/web-api")
@@ -80,6 +84,7 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     `${dataDir}/**/*`,
     `${skillsDir}/**/*`,
     `${pluginsDir}/**/*`,
+    ...fallbackTracingIncludes,
     ...slackRuntimeTracingIncludes
   ]));
   const existingGlobalTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/*"] ?? [];

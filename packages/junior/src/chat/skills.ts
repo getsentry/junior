@@ -1,11 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { isKnownCapability, isKnownConfigKey } from "@/chat/capabilities/catalog";
-import { skillsDir } from "@/chat/home";
+import { skillRoots } from "@/chat/home";
 import { logWarn } from "@/chat/observability";
 import { getPluginSkillRoots } from "@/chat/plugins/registry";
 import { parseAndValidateSkillFrontmatter, stripFrontmatter } from "@/chat/skill-frontmatter";
-import { escapeXml } from "@/chat/xml";
 
 const SKILL_CACHE_TTL_MS = 5000;
 
@@ -40,7 +39,7 @@ export function resetSkillDiscoveryCache(): void {
 function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
   const additionalRoots = options?.additionalRoots ?? [];
   const envRoots = process.env.SKILL_DIRS?.split(path.delimiter).filter(Boolean) ?? [];
-  const defaults = [skillsDir()];
+  const defaults = skillRoots();
   const pluginRoots = getPluginSkillRoots();
 
   const seen = new Set<string>();
@@ -231,53 +230,4 @@ export async function loadSkillsByName(skillNames: string[], available: SkillMet
   }
 
   return skills;
-}
-
-export function renderSkillMetadataXml(skills: SkillMetadata[]): string {
-  const items = skills
-    .map((skill) => {
-      return [
-        "  <skill>",
-        `    <name>${escapeXml(skill.name)}</name>`,
-        `    <description>${escapeXml(skill.description)}</description>`,
-        `    <location>${escapeXml(path.join(skill.skillPath, "SKILL.md"))}</location>`,
-        ...(skill.usesConfig && skill.usesConfig.length > 0
-          ? [`    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`]
-          : []),
-        "  </skill>"
-      ].join("\n");
-    })
-    .join("\n");
-
-  return `<available_skills>\n${items}\n</available_skills>`;
-}
-
-
-export function renderActiveSkillsXml(skills: Skill[]): string {
-  if (skills.length === 0) {
-    return "<active_skills />";
-  }
-
-  const items = skills
-    .map((skill) => {
-      return [
-        "  <skill>",
-        `    <name>${escapeXml(skill.name)}</name>`,
-        `    <description>${escapeXml(skill.description)}</description>`,
-        `    <location>${escapeXml(path.join(skill.skillPath, "SKILL.md"))}</location>`,
-        ...(skill.usesConfig && skill.usesConfig.length > 0
-          ? [`    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`]
-          : []),
-        "    <instructions>",
-        skill.body
-          .split("\n")
-          .map((line) => `      ${escapeXml(line)}`)
-          .join("\n"),
-        "    </instructions>",
-        "  </skill>"
-      ].join("\n");
-    })
-    .join("\n");
-
-  return `<active_skills>\n${items}\n</active_skills>`;
 }

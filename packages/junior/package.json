@@ -24,7 +24,7 @@
     "prepare": "pnpm run build:pkg",
     "prepack": "pnpm run build:pkg",
     "dev": "next dev",
-    "build": "next build --webpack",
+    "build": "next build",
     "build:pkg": "tsup",
     "start": "next start",
     "test": "pnpm run test:slack-boundary && vitest run",

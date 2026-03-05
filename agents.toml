@@ -47,7 +47,3 @@ source = "vercel/chat"
 [[skills]]
 name = "ai-sdk"
 source = "vercel/ai"
-
-[[skills]]
-name = "*"
-source = "vercel/workflow"

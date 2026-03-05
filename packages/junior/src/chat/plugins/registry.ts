@@ -5,8 +5,8 @@ import type { CapabilityProviderDefinition } from "@/chat/capabilities/catalog";
 import type { OAuthProviderConfig } from "@/chat/capabilities/jr-rpc-command";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
-import { pluginsDir } from "@/chat/home";
-import { setSpanAttributes } from "@/chat/observability";
+import { pluginRoots } from "@/chat/home";
+import { logWarn, setSpanAttributes } from "@/chat/observability";
 import { createGitHubAppBroker } from "./github-app-broker";
 import { createOAuthBearerBroker } from "./oauth-bearer-broker";
 import type { GitHubAppCredentials, OAuthBearerCredentials, PluginBrokerDeps, PluginCredentials, PluginDefinition, PluginManifest } from "./types";
@@ -158,58 +158,63 @@ function loadPlugins(): void {
   if (pluginsLoaded) return;
   pluginsLoaded = true;
 
-  const pluginsRoot = pluginsDir();
-
-  let entries: string[];
-  try {
-    entries = readdirSync(pluginsRoot);
-  } catch {
-    return; // No plugins directory — nothing to load
-  }
-
-  for (const entry of entries.sort()) {
-    const pluginDir = path.join(pluginsRoot, entry);
+  const roots = pluginRoots();
+  for (const pluginsRoot of roots) {
+    let entries: string[];
     try {
-      const stat = statSync(pluginDir);
-      if (!stat.isDirectory()) continue;
-    } catch {
+      entries = readdirSync(pluginsRoot);
+    } catch (error) {
+      logWarn("plugin_root_read_failed", {}, {
+        "file.directory": pluginsRoot,
+        "error.message": error instanceof Error ? error.message : String(error)
+      }, "Failed to read plugin root");
       continue;
     }
 
-    const manifestPath = path.join(pluginDir, "plugin.yaml");
-    let raw: string;
-    try {
-      raw = readFileSync(manifestPath, "utf8");
-    } catch {
-      continue; // No manifest — skip
-    }
-
-    const manifest = parseManifest(raw, pluginDir);
-
-    if (pluginsByName.has(manifest.name)) {
-      throw new Error(`Duplicate plugin name: "${manifest.name}"`);
-    }
-
-    for (const cap of manifest.capabilities) {
-      if (capabilityToPlugin.has(cap)) {
-        throw new Error(`Duplicate capability "${cap}" in plugin "${manifest.name}"`);
+    for (const entry of entries.sort()) {
+      const pluginDir = path.join(pluginsRoot, entry);
+      try {
+        const stat = statSync(pluginDir);
+        if (!stat.isDirectory()) continue;
+      } catch {
+        continue;
       }
-    }
 
-    const definition: PluginDefinition = {
-      manifest,
-      dir: pluginDir,
-      skillsDir: path.join(pluginDir, "skills")
-    };
+      const manifestPath = path.join(pluginDir, "plugin.yaml");
+      let raw: string;
+      try {
+        raw = readFileSync(manifestPath, "utf8");
+      } catch {
+        continue; // No manifest — skip
+      }
 
-    pluginDefinitions.push(definition);
-    pluginsByName.set(manifest.name, definition);
+      const manifest = parseManifest(raw, pluginDir);
 
-    for (const cap of manifest.capabilities) {
-      capabilityToPlugin.set(cap, definition);
-    }
-    for (const key of manifest.configKeys) {
-      pluginConfigKeys.add(key);
+      if (pluginsByName.has(manifest.name)) {
+        continue;
+      }
+
+      for (const cap of manifest.capabilities) {
+        if (capabilityToPlugin.has(cap)) {
+          throw new Error(`Duplicate capability "${cap}" in plugin "${manifest.name}"`);
+        }
+      }
+
+      const definition: PluginDefinition = {
+        manifest,
+        dir: pluginDir,
+        skillsDir: path.join(pluginDir, "skills")
+      };
+
+      pluginDefinitions.push(definition);
+      pluginsByName.set(manifest.name, definition);
+
+      for (const cap of manifest.capabilities) {
+        capabilityToPlugin.set(cap, definition);
+      }
+      for (const key of manifest.configKeys) {
+        pluginConfigKeys.add(key);
+      }
     }
   }
 }

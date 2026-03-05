@@ -9,26 +9,41 @@ const MAX_NAME_LENGTH = 64;
 const SKILL_DESCRIPTION_MAX = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
 
-async function resolvePluginSkillRoots() {
-  const pluginsRoot = path.resolve(process.cwd(), "plugins");
-  const roots = [];
-  let entries;
-  try {
-    entries = await fs.readdir(pluginsRoot, { withFileTypes: true });
-  } catch {
-    return roots;
+function unique(values) {
+  return [...new Set(values)];
+}
+
+function resolveContentRoots(subdir) {
+  const canonical = path.resolve(process.cwd(), "app", subdir);
+  const legacy = path.resolve(process.cwd(), subdir);
+  if (canonical === legacy) {
+    return [canonical];
   }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const manifestPath = path.join(pluginsRoot, entry.name, "plugin.yaml");
+
+  return unique([canonical, legacy]);
+}
+
+async function resolvePluginSkillRoots() {
+  const roots = [];
+  for (const pluginsRoot of resolveContentRoots("plugins")) {
+    let entries;
     try {
-      await fs.access(manifestPath);
-      roots.push(path.join(pluginsRoot, entry.name, "skills"));
+      entries = await fs.readdir(pluginsRoot, { withFileTypes: true });
     } catch {
       continue;
     }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const manifestPath = path.join(pluginsRoot, entry.name, "plugin.yaml");
+      try {
+        await fs.access(manifestPath);
+        roots.push(path.join(pluginsRoot, entry.name, "skills"));
+      } catch {
+        continue;
+      }
+    }
   }
-  return roots;
+  return unique(roots);
 }
 
 function resolveSkillRoots() {
@@ -38,7 +53,7 @@ function resolveSkillRoots() {
     .filter(Boolean)
     .map((value) => path.resolve(value));
 
-  return [...envRoots, path.resolve(process.cwd(), "skills")];
+  return unique([...envRoots, ...resolveContentRoots("skills")]);
 }
 
 function parseFrontmatter(raw) {

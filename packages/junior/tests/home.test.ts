@@ -1,19 +1,38 @@
+import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { dataDir, homeDir, pluginsDir, skillsDir, soulPath } from "@/chat/home";
+import { dataDir, dataRoots, homeDir, pluginRoots, pluginsDir, skillRoots, skillsDir, soulPath, soulPathCandidates } from "@/chat/home";
 
 describe("home paths", () => {
   it("uses app as project root", () => {
     expect(homeDir()).toBe(path.resolve(process.cwd(), "app"));
   });
 
-  it("resolves data/SOUL.md under app", () => {
-    expect(dataDir()).toBe(path.resolve(process.cwd(), "app", "data"));
-    expect(soulPath()).toBe(path.resolve(process.cwd(), "app", "data", "SOUL.md"));
+  it("resolves data/SOUL.md with canonical-first fallback", () => {
+    const canonical = path.resolve(process.cwd(), "app", "data");
+    const legacy = path.resolve(process.cwd(), "data");
+    const expected = fs.existsSync(canonical) ? canonical : fs.existsSync(legacy) ? legacy : canonical;
+    expect(dataDir()).toBe(expected);
+    expect(soulPath()).toBe(path.join(expected, "SOUL.md"));
+    expect(dataRoots()).toEqual(expect.arrayContaining([canonical, legacy]));
+    expect(soulPathCandidates()).toEqual(expect.arrayContaining([path.join(canonical, "SOUL.md"), path.join(legacy, "SOUL.md")]));
   });
 
-  it("resolves skills and plugins directories under app", () => {
-    expect(skillsDir()).toBe(path.resolve(process.cwd(), "app", "skills"));
-    expect(pluginsDir()).toBe(path.resolve(process.cwd(), "app", "plugins"));
+  it("resolves skills and plugins with canonical-first fallback", () => {
+    const canonicalSkills = path.resolve(process.cwd(), "app", "skills");
+    const legacySkills = path.resolve(process.cwd(), "skills");
+    const expectedSkills = fs.existsSync(canonicalSkills) ? canonicalSkills : fs.existsSync(legacySkills) ? legacySkills : canonicalSkills;
+    expect(skillsDir()).toBe(expectedSkills);
+    expect(skillRoots()).toEqual(expect.arrayContaining([canonicalSkills, legacySkills]));
+
+    const canonicalPlugins = path.resolve(process.cwd(), "app", "plugins");
+    const legacyPlugins = path.resolve(process.cwd(), "plugins");
+    const expectedPlugins = fs.existsSync(canonicalPlugins)
+      ? canonicalPlugins
+      : fs.existsSync(legacyPlugins)
+        ? legacyPlugins
+        : canonicalPlugins;
+    expect(pluginsDir()).toBe(expectedPlugins);
+    expect(pluginRoots()).toEqual(expect.arrayContaining([canonicalPlugins, legacyPlugins]));
   });
 });

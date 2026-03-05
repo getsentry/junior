@@ -263,7 +263,19 @@ export async function routeIncomingMessageToQueue(args: {
         "Routing incoming message to queue"
       );
 
-      await deps.markDedup(dedupKey, QUEUE_INGRESS_DEDUP_TTL_MS);
+      const marked = await deps.markDedup(dedupKey, QUEUE_INGRESS_DEDUP_TTL_MS);
+      if (!marked) {
+        deps.logInfo(
+          "queue_ingress_dedup_mark_failed",
+          {},
+          {
+            "messaging.message.id": messageId,
+            "app.queue.message_kind": kind,
+            "app.queue.dedup_key": dedupKey
+          },
+          "Queue ingress dedup state write failed after enqueue"
+        );
+      }
     }
   );
 

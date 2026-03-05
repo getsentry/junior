@@ -76,7 +76,7 @@ pnpm --filter jr-sentry build
 
 ```bash
 pnpm add junior
-pnpm add next react react-dom @sentry/nextjs workflow
+pnpm add next react react-dom @sentry/nextjs
 ```
 
 2. Add bot files under `app/`:
