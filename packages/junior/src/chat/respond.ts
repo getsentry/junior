@@ -1240,6 +1240,7 @@ export async function generateAssistantReply(
     };
   } catch (error) {
     if (error instanceof AgentTurnTimeoutError && timeoutResumeConversationId && timeoutResumeSessionId) {
+      const nextSliceId = timeoutResumeSliceId + 1;
       logException(
         error,
         "agent_turn_timeout_resume_triggered",
@@ -1255,22 +1256,44 @@ export async function generateAssistantReply(
           "app.ai.turn_timeout_ms": error.timeoutMs,
           "app.ai.resume_conversation_id": timeoutResumeConversationId,
           "app.ai.resume_session_id": timeoutResumeSessionId,
-          "app.ai.resume_from_slice_id": timeoutResumeSliceId
+          "app.ai.resume_from_slice_id": timeoutResumeSliceId,
+          "app.ai.resume_next_slice_id": nextSliceId
         },
         "Agent turn timed out and will be resumed"
       );
-      const latestCheckpoint = await getAgentTurnSessionCheckpoint(timeoutResumeConversationId, timeoutResumeSessionId);
-      const nextSliceId = timeoutResumeSliceId + 1;
-      const piMessages = timeoutResumeMessages.length > 0 ? timeoutResumeMessages : (latestCheckpoint?.piMessages ?? []);
-      await upsertAgentTurnSessionCheckpoint({
-        conversationId: timeoutResumeConversationId,
-        sessionId: timeoutResumeSessionId,
-        sliceId: nextSliceId,
-        state: "awaiting_resume",
-        piMessages,
-        resumedFromSliceId: timeoutResumeSliceId,
-        errorMessage: error.message
-      });
+      try {
+        const latestCheckpoint = await getAgentTurnSessionCheckpoint(timeoutResumeConversationId, timeoutResumeSessionId);
+        const piMessages = timeoutResumeMessages.length > 0 ? timeoutResumeMessages : (latestCheckpoint?.piMessages ?? []);
+        await upsertAgentTurnSessionCheckpoint({
+          conversationId: timeoutResumeConversationId,
+          sessionId: timeoutResumeSessionId,
+          sliceId: nextSliceId,
+          state: "awaiting_resume",
+          piMessages,
+          resumedFromSliceId: timeoutResumeSliceId,
+          errorMessage: error.message
+        });
+      } catch (checkpointError) {
+        logException(
+          checkpointError,
+          "agent_turn_timeout_resume_checkpoint_failed",
+          {
+            slackThreadId: context.correlation?.threadId,
+            slackUserId: context.correlation?.requesterId,
+            slackChannelId: context.correlation?.channelId,
+            runId: context.correlation?.runId,
+            assistantUserName: context.assistant?.userName,
+            modelId: botConfig.modelId
+          },
+          {
+            "app.ai.resume_conversation_id": timeoutResumeConversationId,
+            "app.ai.resume_session_id": timeoutResumeSessionId,
+            "app.ai.resume_from_slice_id": timeoutResumeSliceId,
+            "app.ai.resume_next_slice_id": nextSliceId
+          },
+          "Failed to persist timeout checkpoint before retry"
+        );
+      }
       throw new RetryableTurnError(
         "agent_turn_timeout_resume",
         `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`
