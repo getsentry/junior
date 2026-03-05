@@ -7,6 +7,7 @@ import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/progress-reporter";
 import { getBotDeps } from "@/chat/runtime/deps";
+import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { createTextStreamBridge, createNormalizingStream } from "@/chat/runtime/streaming";
 import { getChannelId, getMessageTs, getSlackApiErrorCode, getThreadId, getThreadTs, getRunId, isSlackTitlePermissionError, stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import { persistThreadState, mergeArtifactsState } from "@/chat/runtime/thread-state";
@@ -18,10 +19,6 @@ import { type ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { resolveReplyDelivery } from "@/chat/turn/execute";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 import { startActiveTurn } from "@/chat/turn/prepare";
-
-function shouldEmitDevAgentTrace(): boolean {
-  return process.env.NODE_ENV === "development";
-}
 
 function buildDeterministicTurnId(messageId: string): string {
   const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");

@@ -31,6 +31,7 @@ import type { ToolDefinition } from "@/chat/tools/definition";
 import { GEN_AI_PROVIDER_NAME, getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { createSandboxExecutor, type SandboxExecutor } from "@/chat/sandbox/sandbox";
 import { getRuntimeMetadata } from "@/chat/runtime-metadata";
+import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   getAgentTurnSessionCheckpoint,
   upsertAgentTurnSessionCheckpoint
@@ -107,10 +108,6 @@ export interface AgentTurnDiagnostics {
 
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 let startupDiscoveryLogged = false;
-
-function shouldEmitDevAgentTrace(): boolean {
-  return process.env.NODE_ENV === "development";
-}
 
 function getSessionIdentifiers(context: ReplyRequestContext): { conversationId?: string; sessionId?: string } {
   return {
@@ -1023,7 +1020,7 @@ export async function generateAssistantReply(
       });
     });
 
-    const beforeMessageCount = agent.state.messages.length;
+    let beforeMessageCount = agent.state.messages.length;
     let newMessages: unknown[] = [];
 
     try {
@@ -1033,6 +1030,7 @@ export async function generateAssistantReply(
           throw new Error("Agent session resume requested but replaceMessages is unavailable");
         }
       }
+      beforeMessageCount = agent.state.messages.length;
 
       await withSpan(
         "ai.generate_assistant_reply",
