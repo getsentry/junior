@@ -9,7 +9,7 @@ vi.mock("@/chat/slack-actions/client", () => ({
   withSlackRetries: (...args: unknown[]) => withSlackRetries(...args)
 }));
 
-import { addReactionToMessage } from "@/chat/slack-actions/channel";
+import { addReactionToMessage, removeReactionFromMessage } from "@/chat/slack-actions/channel";
 
 describe("slack channel action context", () => {
   beforeEach(() => {
@@ -35,6 +35,27 @@ describe("slack channel action context", () => {
 
     expect(withSlackRetries).toHaveBeenCalledWith(expect.any(Function), 3, {
       action: "reactions.add"
+    });
+  });
+
+  it("passes reaction removal action context into retry wrapper", async () => {
+    const reactionsRemove = vi.fn(async () => ({ ok: true }));
+    getSlackClient.mockReturnValue({
+      reactions: {
+        remove: reactionsRemove
+      }
+    });
+
+    withSlackRetries.mockImplementation(async (task: () => Promise<unknown>) => await task());
+
+    await removeReactionFromMessage({
+      channelId: "C123",
+      timestamp: "1700000000.100",
+      emoji: "eyes"
+    });
+
+    expect(withSlackRetries).toHaveBeenCalledWith(expect.any(Function), 3, {
+      action: "reactions.remove"
     });
   });
 });

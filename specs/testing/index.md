@@ -9,6 +9,8 @@
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated test fixture path references to repo-root paths under `packages/junior/`.
+- 2026-03-04: Clarified layering: baseline behavior coverage belongs in integration tests; unit tests are for local regressions and edge cases.
+- 2026-03-04: Elevated layer selection to mandatory policy before adding/updating tests.
 
 
 ## Purpose
@@ -20,8 +22,8 @@ Use this file as the source of truth for where a test belongs and what it is all
 
 | Layer | Primary Goal | Scope | Allowed Substitutions | Disallowed |
 | --- | --- | --- | --- | --- |
-| Unit | Validate local logic/invariants | Single module/function and tight collaborators | Local stubs/mocks (`vi.mock`, fakes) | Slack HTTP contract assertions and end-to-end conversational quality scoring |
-| Integration | Validate runtime behavior and Slack contracts | Real app wiring + Slack-facing behavior + persistence/routing boundaries | Deterministic fake agent at the agent boundary only | Runtime module/function mocks for behavior paths |
+| Unit | Validate local regressions/edge-case invariants | Single module/function and tight collaborators | Local stubs/mocks (`vi.mock`, fakes) | Baseline behavior coverage, Slack HTTP contract assertions, and end-to-end conversational quality scoring |
+| Integration | Validate baseline runtime behavior and Slack contracts | Real app wiring + Slack-facing behavior + persistence/routing boundaries | Deterministic fake agent at the agent boundary only | Runtime module/function mocks for behavior paths |
 | Eval (E2E Behavior) | Validate conversational outcomes | End-to-end harnessed conversation flows scored by judge criteria | Case-level behavior fixtures and controlled environment flags | Low-level HTTP payload-shape assertions and internals-only checks |
 
 ## Canonical Specs
@@ -33,6 +35,8 @@ Use this file as the source of truth for where a test belongs and what it is all
 - Harness tool-targeting rules: `specs/harness-tool-context-spec.md`
 
 ## Shared Rules Across All Layers
+
+Layer selection is mandatory: classify the test contract first and choose `unit` vs `integration` vs `eval` before writing assertions.
 
 1. Tests must be deterministic and isolated.
 2. Slack network access is blocked in tests; use MSW fixtures for Slack HTTP.
@@ -56,11 +60,14 @@ If a proposed test does not add a new contract guarantee, do not add it.
 
 ## Layer Selection Guide
 
+This section is mandatory policy, not guidance.
+
 Use unit tests when:
-- You are validating retry math, parsing/normalization logic, or pure state transitions.
+- You are validating retry math, parsing/normalization logic, pure state transitions, and regression/edge-case handling in local logic.
+- The contract is not baseline runtime behavior.
 
 Use integration tests when:
-- You need confidence in Slack event handling, routing, runtime orchestration, and emitted Slack-side effects.
+- You need baseline confidence in Slack event handling, routing, runtime orchestration, and emitted Slack-side effects.
 - You can keep runtime wiring real and only control the agent output deterministically.
 
 Use evals when:

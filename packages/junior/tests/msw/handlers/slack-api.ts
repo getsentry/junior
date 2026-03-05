@@ -27,6 +27,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "chat.postMessage",
   "chat.getPermalink",
   "reactions.add",
+  "reactions.remove",
   "conversations.history",
   "conversations.members",
   "conversations.replies",
@@ -164,6 +165,8 @@ function defaultSlackApiResponse(method: SlackApiMethod): SlackMockHttpResponse 
     case "chat.getPermalink":
       return { body: chatGetPermalinkOk() };
     case "reactions.add":
+      return { body: reactionsAddOk() };
+    case "reactions.remove":
       return { body: reactionsAddOk() };
     case "conversations.history":
       return { body: conversationsHistoryPage() };

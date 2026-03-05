@@ -109,6 +109,37 @@ export async function addReactionToMessage(input: {
   return { ok: true };
 }
 
+export async function removeReactionFromMessage(input: {
+  channelId: string;
+  timestamp: string;
+  emoji: string;
+}): Promise<{ ok: true }> {
+  const client = getSlackClient();
+  const channelId = normalizeSlackConversationId(input.channelId);
+  if (!channelId) {
+    throw new Error("Slack reaction requires a valid channel ID");
+  }
+  const timestamp = input.timestamp.trim();
+  if (!timestamp) {
+    throw new Error("Slack reaction requires a target message timestamp");
+  }
+  const emoji = input.emoji.trim().replaceAll(":", "");
+  if (!emoji) {
+    throw new Error("Slack reaction requires a non-empty emoji name");
+  }
+
+  await withSlackRetries(() =>
+    client.reactions.remove({
+      channel: channelId,
+      timestamp,
+      name: emoji
+    }),
+    3,
+    { action: "reactions.remove" }
+  );
+  return { ok: true };
+}
+
 export async function listChannelMessages(input: {
   channelId: string;
   limit: number;

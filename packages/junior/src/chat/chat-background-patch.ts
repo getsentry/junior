@@ -2,7 +2,7 @@ import { Chat } from "chat";
 import type { Message, Thread } from "chat";
 import type { ThreadMessageKind, ThreadMessagePayload } from "@/chat/queue/types";
 import { claimQueueIngressDedup, getStateAdapter, hasQueueIngressDedup } from "@/chat/state";
-import { logInfo, setSpanAttributes, withContext, withSpan } from "@/chat/observability";
+import { logInfo, logWarn, setSpanAttributes, withContext, withSpan } from "@/chat/observability";
 
 type WebhookOptions = {
   waitUntil?: (task: () => Promise<unknown>) => void;
@@ -122,7 +122,10 @@ interface QueueRoutingDeps {
   markDedup: (key: string, ttlMs: number) => Promise<boolean>;
   getIsSubscribed: (threadId: string) => Promise<boolean>;
   logInfo: typeof logInfo;
+  logWarn: typeof logWarn;
   enqueueThreadMessage: (payload: ThreadMessagePayload, dedupKey: string) => Promise<string | undefined>;
+  addProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
+  removeProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
 }
 
 const defaultQueueRoutingDeps: QueueRoutingDeps = {
@@ -130,10 +133,27 @@ const defaultQueueRoutingDeps: QueueRoutingDeps = {
   markDedup: (key, ttlMs) => claimQueueIngressDedup(key, ttlMs),
   getIsSubscribed: (threadId) => getStateAdapter().isSubscribed(threadId),
   logInfo,
+  logWarn,
   enqueueThreadMessage: async (payload, dedupKey) => {
     const { enqueueThreadMessage } = await import("@/chat/queue/client");
     return await enqueueThreadMessage(payload, {
       idempotencyKey: dedupKey
+    });
+  },
+  addProcessingReaction: async ({ channelId, timestamp }) => {
+    const { addReactionToMessage } = await import("@/chat/slack-actions/channel");
+    await addReactionToMessage({
+      channelId,
+      timestamp,
+      emoji: "eyes"
+    });
+  },
+  removeProcessingReaction: async ({ channelId, timestamp }) => {
+    const { removeReactionFromMessage } = await import("@/chat/slack-actions/channel");
+    await removeReactionFromMessage({
+      channelId,
+      timestamp,
+      emoji: "eyes"
     });
   }
 };
@@ -227,28 +247,73 @@ export async function routeIncomingMessageToQueue(args: {
       slackUserId: (message as Message).author.userId
     },
     async () => {
+      let processingReactionAdded = false;
       let queueMessageId: string | undefined;
-      await withSpan(
-        "queue.enqueue_message",
-        "queue.enqueue_message",
-        {
-          slackThreadId: normalizedThreadId,
-          slackChannelId: thread.channelId,
-          slackUserId: (message as Message).author.userId
-        },
-        async () => {
-          queueMessageId = await deps.enqueueThreadMessage(payload, dedupKey);
-          if (queueMessageId) {
-            setSpanAttributes({
-              "app.queue.message_id": queueMessageId
-            });
+      try {
+        await deps.addProcessingReaction({
+          channelId: thread.channelId,
+          timestamp: messageId
+        });
+        processingReactionAdded = true;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        deps.logWarn(
+          "queue_ingress_reaction_add_failed",
+          {},
+          {
+            "messaging.message.id": messageId,
+            "app.queue.message_kind": kind,
+            "error.message": errorMessage
+          },
+          "Failed to add ingress processing reaction"
+        );
+      }
+
+      try {
+        await withSpan(
+          "queue.enqueue_message",
+          "queue.enqueue_message",
+          {
+            slackThreadId: normalizedThreadId,
+            slackChannelId: thread.channelId,
+            slackUserId: (message as Message).author.userId
+          },
+          async () => {
+            queueMessageId = await deps.enqueueThreadMessage(payload, dedupKey);
+            if (queueMessageId) {
+              setSpanAttributes({
+                "app.queue.message_id": queueMessageId
+              });
+            }
+          },
+          {
+            "messaging.message.id": messageId,
+            "app.queue.message_kind": kind
           }
-        },
-        {
-          "messaging.message.id": messageId,
-          "app.queue.message_kind": kind
+        );
+      } catch (error) {
+        if (processingReactionAdded) {
+          try {
+            await deps.removeProcessingReaction({
+              channelId: thread.channelId,
+              timestamp: messageId
+            });
+          } catch (cleanupError) {
+            const cleanupErrorMessage = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+            deps.logWarn(
+              "queue_ingress_reaction_cleanup_failed",
+              {},
+              {
+                "messaging.message.id": messageId,
+                "app.queue.message_kind": kind,
+                "error.message": cleanupErrorMessage
+              },
+              "Failed to remove ingress processing reaction after enqueue failure"
+            );
+          }
         }
-      );
+        throw error;
+      }
 
       deps.logInfo(
         "queue_ingress_enqueued",

@@ -5,12 +5,16 @@ const {
   enqueueThreadMessageMock,
   hasQueueIngressDedupMock,
   claimQueueIngressDedupMock,
-  isSubscribedMock
+  isSubscribedMock,
+  addReactionToMessageMock,
+  removeReactionFromMessageMock
 } = vi.hoisted(() => ({
   enqueueThreadMessageMock: vi.fn(async () => "msg_abc123"),
   hasQueueIngressDedupMock: vi.fn(async () => false),
   claimQueueIngressDedupMock: vi.fn(async () => true),
-  isSubscribedMock: vi.fn(async () => true)
+  isSubscribedMock: vi.fn(async () => true),
+  addReactionToMessageMock: vi.fn(async () => ({ ok: true })),
+  removeReactionFromMessageMock: vi.fn(async () => ({ ok: true }))
 }));
 
 vi.mock("@/chat/queue/client", () => ({
@@ -25,6 +29,11 @@ vi.mock("@/chat/state", () => ({
   })
 }));
 
+vi.mock("@/chat/slack-actions/channel", () => ({
+  addReactionToMessage: addReactionToMessageMock,
+  removeReactionFromMessage: removeReactionFromMessageMock
+}));
+
 import "@/chat/chat-background-patch";
 
 describe("chat background queue enqueue", () => {
@@ -33,6 +42,8 @@ describe("chat background queue enqueue", () => {
     hasQueueIngressDedupMock.mockClear();
     claimQueueIngressDedupMock.mockClear();
     isSubscribedMock.mockClear();
+    addReactionToMessageMock.mockClear();
+    removeReactionFromMessageMock.mockClear();
   });
 
   it("enqueues subscribed messages through default queue routing", async () => {
@@ -102,6 +113,12 @@ describe("chat background queue enqueue", () => {
     expect(hasQueueIngressDedupMock).toHaveBeenCalledWith("slack:C123:1700000000.100:1700000000.200");
 
     expect(enqueueThreadMessageMock).toHaveBeenCalledTimes(1);
+    expect(addReactionToMessageMock).toHaveBeenCalledWith({
+      channelId: "C123",
+      timestamp: "1700000000.200",
+      emoji: "eyes"
+    });
+    expect(removeReactionFromMessageMock).not.toHaveBeenCalled();
     expect(enqueueThreadMessageMock).toHaveBeenCalledWith(
       expect.objectContaining({
         dedupKey: "slack:C123:1700000000.100:1700000000.200",
@@ -118,5 +135,73 @@ describe("chat background queue enqueue", () => {
       24 * 60 * 60 * 1000
     );
     expect(fakeChat.logger.error).not.toHaveBeenCalled();
+  });
+
+  it("cleans up :eyes: when enqueue fails", async () => {
+    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const processMessage = (Chat.prototype as unknown as { processMessage: Function }).processMessage;
+
+    enqueueThreadMessageMock.mockRejectedValueOnce(new Error("queue unavailable"));
+
+    const fakeChat = {
+      logger: {
+        error: vi.fn()
+      },
+      createThread: vi.fn(async () => ({
+        id: "slack:C123:1700000000.100",
+        channelId: "C123",
+        isDM: false,
+        toJSON: () => ({
+          _type: "chat:Thread",
+          id: "slack:C123:1700000000.100",
+          channelId: "C123",
+          adapterName: "slack",
+          isDM: false
+        })
+      })),
+      detectMention: vi.fn(() => true)
+    };
+
+    processMessage.call(
+      fakeChat,
+      {},
+      "slack:C123:1700000000.100",
+      {
+        id: "1700000000.250",
+        text: "hello",
+        isMention: true,
+        raw: {
+          channel: "C123",
+          thread_ts: "1700000000.100",
+          ts: "1700000000.250"
+        },
+        attachments: [],
+        author: {
+          userId: "U_TEST",
+          isMe: false
+        }
+      },
+      {
+        waitUntil(taskFactory: () => Promise<unknown>) {
+          waitUntilTasks.push(taskFactory());
+        }
+      }
+    );
+
+    expect(waitUntilTasks).toHaveLength(1);
+    await expect(waitUntilTasks[0]).resolves.toBeUndefined();
+
+    expect(addReactionToMessageMock).toHaveBeenCalledWith({
+      channelId: "C123",
+      timestamp: "1700000000.250",
+      emoji: "eyes"
+    });
+    expect(removeReactionFromMessageMock).toHaveBeenCalledWith({
+      channelId: "C123",
+      timestamp: "1700000000.250",
+      emoji: "eyes"
+    });
+    expect(claimQueueIngressDedupMock).not.toHaveBeenCalled();
+    expect(fakeChat.logger.error).toHaveBeenCalled();
   });
 });

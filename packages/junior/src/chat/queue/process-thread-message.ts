@@ -1,6 +1,6 @@
 import { Message, ThreadImpl } from "chat";
 import type { Message as ChatMessage, SerializedMessage, SerializedThread, Thread } from "chat";
-import { logError } from "@/chat/observability";
+import { logError, logWarn } from "@/chat/observability";
 import {
   acquireQueueMessageProcessingOwnership,
   completeQueueMessageProcessingOwnership,
@@ -41,6 +41,25 @@ class QueueMessageOwnershipError extends Error {
   }
 }
 
+interface ProcessQueuedThreadMessageDeps {
+  clearProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
+  logWarn: typeof logWarn;
+  processRuntime: typeof processThreadMessageRuntime;
+}
+
+const defaultProcessQueuedThreadMessageDeps: ProcessQueuedThreadMessageDeps = {
+  clearProcessingReaction: async ({ channelId, timestamp }) => {
+    const { removeReactionFromMessage } = await import("@/chat/slack-actions/channel");
+    await removeReactionFromMessage({
+      channelId,
+      timestamp,
+      emoji: "eyes"
+    });
+  },
+  logWarn,
+  processRuntime: processThreadMessageRuntime
+};
+
 function deserializeThread(thread: ThreadMessagePayload["thread"]): Thread {
   if (isSerializedThread(thread)) {
     return ThreadImpl.fromJSON(thread);
@@ -75,7 +94,10 @@ export async function logThreadMessageFailure(payload: ThreadMessagePayload, err
   );
 }
 
-export async function processQueuedThreadMessage(payload: ThreadMessagePayload): Promise<void> {
+export async function processQueuedThreadMessage(
+  payload: ThreadMessagePayload,
+  deps: ProcessQueuedThreadMessageDeps = defaultProcessQueuedThreadMessageDeps
+): Promise<void> {
   const existingMessageState = await getQueueMessageProcessingState(payload.dedupKey);
   if (existingMessageState?.status === "completed") {
     return;
@@ -116,7 +138,31 @@ export async function processQueuedThreadMessage(payload: ThreadMessagePayload):
       throw new QueueMessageOwnershipError("refresh", payload.dedupKey);
     }
 
-    await processThreadMessageRuntime({
+    try {
+      await deps.clearProcessingReaction({
+        channelId: runtimePayload.thread.channelId,
+        timestamp: runtimePayload.message.id
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      deps.logWarn(
+        "queue_processing_reaction_clear_failed",
+        {
+          slackThreadId: payload.normalizedThreadId,
+          slackChannelId: getPayloadChannelId(payload),
+          slackUserId: getPayloadUserId(payload)
+        },
+        {
+          "messaging.message.id": payload.message.id,
+          "app.queue.message_kind": payload.kind,
+          "app.queue.message_id": payload.queueMessageId,
+          "error.message": errorMessage
+        },
+        "Failed to remove processing reaction before queue turn execution"
+      );
+    }
+
+    await deps.processRuntime({
       kind: runtimePayload.kind,
       thread: runtimePayload.thread,
       message: runtimePayload.message

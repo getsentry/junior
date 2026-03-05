@@ -36,6 +36,7 @@ Co-Authored-By: (agent model name) <email>
 
 ## Codex Execution Checklist
 - Read local contracts first: `AGENTS.md`, relevant `specs/*`, and required `SKILL.md` files.
+- For any test addition/update, you MUST read `specs/testing/index.md` first, then apply the correct layer contract (`unit` vs `integration` vs `eval`) before writing tests.
 - Derive explicit invariants before editing and keep them stable through implementation.
 - Use an explicit sequence for non-trivial tasks: discover -> minimal vertical slice -> verify -> summarize.
 - Falsify risky assumptions early using the narrowest deterministic check.

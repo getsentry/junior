@@ -38,14 +38,20 @@ function createDeps(overrides: Partial<{
   markDedup: (key: string, ttlMs: number) => Promise<boolean>;
   getIsSubscribed: (threadId: string) => Promise<boolean>;
   logInfo: (...args: unknown[]) => void;
+  logWarn: (...args: unknown[]) => void;
   enqueueThreadMessage: (payload: ThreadMessagePayload, dedupKey: string) => Promise<string | undefined>;
+  addProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
+  removeProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
 }> = {}) {
   return {
     hasDedup: overrides.hasDedup ?? vi.fn(async () => false),
     markDedup: overrides.markDedup ?? vi.fn(async () => true),
     getIsSubscribed: overrides.getIsSubscribed ?? vi.fn(async () => false),
     logInfo: overrides.logInfo ?? vi.fn(),
-    enqueueThreadMessage: overrides.enqueueThreadMessage ?? vi.fn(async () => undefined)
+    logWarn: overrides.logWarn ?? vi.fn(),
+    enqueueThreadMessage: overrides.enqueueThreadMessage ?? vi.fn(async () => undefined),
+    addProcessingReaction: overrides.addProcessingReaction ?? vi.fn(async () => undefined),
+    removeProcessingReaction: overrides.removeProcessingReaction ?? vi.fn(async () => undefined)
   };
 }
 
@@ -68,6 +74,10 @@ describe("routeIncomingMessageToQueue", () => {
     });
 
     expect(result).toBe("routed");
+    expect(deps.addProcessingReaction).toHaveBeenCalledWith({
+      channelId: "slack:C123",
+      timestamp: "1700000000.100"
+    });
     expect(deps.enqueueThreadMessage).toHaveBeenCalledTimes(1);
     const [payload] = (deps.enqueueThreadMessage as ReturnType<typeof vi.fn>).mock.calls[0] as [ThreadMessagePayload, string];
     expect(payload.kind).toBe("subscribed_message");
@@ -93,6 +103,7 @@ describe("routeIncomingMessageToQueue", () => {
     expect(result).toBe("ignored_unsubscribed_non_mention");
     expect(deps.hasDedup).not.toHaveBeenCalled();
     expect(deps.markDedup).not.toHaveBeenCalled();
+    expect(deps.addProcessingReaction).not.toHaveBeenCalled();
     expect(deps.enqueueThreadMessage).not.toHaveBeenCalled();
   });
 
@@ -115,6 +126,7 @@ describe("routeIncomingMessageToQueue", () => {
     });
 
     expect(result).toBe("ignored_duplicate");
+    expect(deps.addProcessingReaction).not.toHaveBeenCalled();
     expect(deps.enqueueThreadMessage).not.toHaveBeenCalled();
     expect(deps.markDedup).not.toHaveBeenCalled();
     expect(deps.logInfo).toHaveBeenCalledWith(
@@ -156,6 +168,10 @@ describe("routeIncomingMessageToQueue", () => {
     ];
     expect(dedupKey).toBe("slack:C123:1700000000.100:1700000000.300");
     expect(payload.kind).toBe("new_mention");
+    expect(deps.addProcessingReaction).toHaveBeenCalledWith({
+      channelId: "slack:C123",
+      timestamp: "1700000000.300"
+    });
     expect(deps.logInfo).toHaveBeenCalledWith(
       "queue_ingress_enqueued",
       {},
@@ -243,6 +259,7 @@ describe("routeIncomingMessageToQueue", () => {
     expect(result).toBe("ignored_self_message");
     expect(deps.hasDedup).not.toHaveBeenCalled();
     expect(deps.markDedup).not.toHaveBeenCalled();
+    expect(deps.addProcessingReaction).not.toHaveBeenCalled();
     expect(deps.enqueueThreadMessage).not.toHaveBeenCalled();
   });
 
@@ -269,7 +286,52 @@ describe("routeIncomingMessageToQueue", () => {
       })
     ).rejects.toThrow("queue unavailable");
 
+    expect(deps.addProcessingReaction).toHaveBeenCalledWith({
+      channelId: "slack:C123",
+      timestamp: "1700000000.901"
+    });
+    expect(deps.removeProcessingReaction).toHaveBeenCalledWith({
+      channelId: "slack:C123",
+      timestamp: "1700000000.901"
+    });
     expect(deps.markDedup).not.toHaveBeenCalled();
+  });
+
+  it("continues routing when ingress reaction add fails", async () => {
+    const runtime = createRuntime();
+    const deps = createDeps({
+      getIsSubscribed: vi.fn(async () => true),
+      addProcessingReaction: vi.fn(async () => {
+        throw new Error("reaction unavailable");
+      }),
+      enqueueThreadMessage: vi.fn(async () => "msg_eyes")
+    });
+    const message = createMessage({
+      id: "1700000000.950",
+      isMention: true
+    });
+
+    const result = await routeIncomingMessageToQueue({
+      adapter: {},
+      threadId: "slack:C123:",
+      message,
+      runtime,
+      deps
+    });
+
+    expect(result).toBe("routed");
+    expect(deps.enqueueThreadMessage).toHaveBeenCalledTimes(1);
+    expect(deps.removeProcessingReaction).not.toHaveBeenCalled();
+    expect(deps.logWarn).toHaveBeenCalledWith(
+      "queue_ingress_reaction_add_failed",
+      {},
+      expect.objectContaining({
+        "messaging.message.id": "1700000000.950",
+        "app.queue.message_kind": "subscribed_message",
+        "error.message": "reaction unavailable"
+      }),
+      "Failed to add ingress processing reaction"
+    );
   });
 
   it("routes successfully on retry after an initial routing failure", async () => {
