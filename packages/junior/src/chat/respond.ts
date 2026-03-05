@@ -1060,7 +1060,6 @@ export async function generateAssistantReply(
             promptResult = await Promise.race([promptPromise, timeoutPromise]);
           } catch (error) {
             if (didTimeout) {
-              timeoutResumeMessages = agent.state.messages as unknown[];
               logWarn(
                 "agent_turn_timeout",
                 {},
@@ -1073,6 +1072,7 @@ export async function generateAssistantReply(
                 "Agent turn timed out and was aborted"
               );
               await promptPromise.catch(() => {});
+              timeoutResumeMessages = agent.state.messages as unknown[];
             }
             throw error;
           } finally {
