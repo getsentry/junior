@@ -15,7 +15,7 @@ import { resetBotDepsForTests, setBotDepsForTests } from "@/chat/runtime/deps";
 import { createReplyToThread } from "@/chat/runtime/reply-executor";
 import { createNormalizingStream } from "@/chat/runtime/streaming";
 import { shouldReplyInSubscribedThread } from "@/chat/runtime/subscribed-routing";
-import { getChannelId, getThreadId, getWorkflowRunId, stripLeadingBotMention } from "@/chat/runtime/thread-context";
+import { getChannelId, getThreadId, getRunId, stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import { persistThreadState } from "@/chat/runtime/thread-state";
 import { prepareTurnState, type PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import { markConversationMessage, updateConversationStats } from "@/chat/services/conversation-memory";
@@ -69,7 +69,7 @@ export const appSlackRuntime = createAppSlackRuntime<
   now: () => Date.now(),
   getThreadId,
   getChannelId,
-  getWorkflowRunId,
+  getRunId,
   stripLeadingBotMention,
   withSpan,
   logWarn,

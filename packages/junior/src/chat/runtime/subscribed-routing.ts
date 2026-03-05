@@ -13,7 +13,7 @@ export async function shouldReplyInSubscribedThread(args: {
     threadId?: string;
     requesterId?: string;
     channelId?: string;
-    workflowRunId?: string;
+    runId?: string;
   };
 }): Promise<{ shouldReply: boolean; reason: string }> {
   const decision = await decideSubscribedThreadReply({
@@ -28,7 +28,7 @@ export async function shouldReplyInSubscribedThread(args: {
           slackThreadId: input.context.threadId,
           slackUserId: input.context.requesterId,
           slackChannelId: input.context.channelId,
-          workflowRunId: input.context.workflowRunId,
+          runId: input.context.runId,
           assistantUserName: botConfig.userName,
           modelId: botConfig.fastModelId
         },

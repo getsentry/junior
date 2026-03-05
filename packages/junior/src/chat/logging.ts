@@ -19,7 +19,7 @@ export interface LogContext {
   slackUserId?: string;
   slackUserName?: string;
   slackChannelId?: string;
-  workflowRunId?: string;
+  runId?: string;
   assistantUserName?: string;
   modelId?: string;
   skillName?: string;
@@ -205,7 +205,7 @@ function contextToAttributes(context: LogContext): LogAttributes {
     "messaging.destination.name": context.slackChannelId,
     "enduser.id": context.slackUserId,
     "enduser.pseudo_id": context.slackUserName,
-    "app.workflow.run_id": context.workflowRunId,
+    "app.run.id": context.runId,
     "app.assistant.username": context.assistantUserName,
     "gen_ai.request.model": context.modelId,
     "app.skill.name": context.skillName,
@@ -332,8 +332,8 @@ function formatConsoleLine(level: LogLevel, body: string, attributes: LogAttribu
     "messaging.message.conversation_id",
     "messaging.destination.name",
     "enduser.id",
-    "app.workflow.run_id",
-    "app.workflow.message_kind",
+    "app.run.id",
+    "app.message.kind",
     "app.trace_id",
     "app.span_id"
   ];

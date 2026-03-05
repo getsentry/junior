@@ -42,6 +42,8 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "tests/unit/workflow/**/*.test.ts",
+    "tests/integration/workflow/**/*.test.ts"
   ]
 }

@@ -23,7 +23,7 @@ export interface SubscribedDecisionInput {
     threadId?: string;
     requesterId?: string;
     channelId?: string;
-    workflowRunId?: string;
+    runId?: string;
   };
 }
 
@@ -199,7 +199,7 @@ export async function decideSubscribedThreadReply(args: {
         threadId: args.input.context.threadId ?? "",
         channelId: args.input.context.channelId ?? "",
         requesterId: args.input.context.requesterId ?? "",
-        workflowRunId: args.input.context.workflowRunId ?? ""
+        runId: args.input.context.runId ?? ""
       }
     });
 

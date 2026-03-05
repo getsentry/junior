@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildWorkflowIngressDedupKey,
+  buildQueueIngressDedupKey,
   determineThreadMessageKind,
   normalizeIncomingSlackThreadId
 } from "@/chat/chat-background-patch";
@@ -52,9 +52,9 @@ describe("normalizeIncomingSlackThreadId", () => {
   });
 });
 
-describe("buildWorkflowIngressDedupKey", () => {
+describe("buildQueueIngressDedupKey", () => {
   it("uses thread and message identifiers", () => {
-    expect(buildWorkflowIngressDedupKey("slack:C123:1700000000.100", "1700000000.200")).toBe(
+    expect(buildQueueIngressDedupKey("slack:C123:1700000000.100", "1700000000.200")).toBe(
       "slack:C123:1700000000.100:1700000000.200"
     );
   });

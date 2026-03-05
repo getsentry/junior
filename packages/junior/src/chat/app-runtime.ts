@@ -14,7 +14,7 @@ export interface AppRuntimeThreadContext {
   channelId?: string;
   requesterId?: string;
   threadId?: string;
-  workflowRunId?: string;
+  runId?: string;
 }
 
 export interface AppRuntimeReplyDecision {
@@ -33,7 +33,7 @@ type AppRuntimeLogContext = Record<string, unknown> & {
   slackThreadId?: string;
   slackUserId?: string;
   slackUserName?: string;
-  workflowRunId?: string;
+  runId?: string;
 };
 
 export interface AppSlackRuntimeDependencies<TPreparedState> {
@@ -41,7 +41,7 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
   getChannelId: (thread: Thread, message: Message) => string | undefined;
   getPreparedConversationContext: (preparedState: TPreparedState) => string | undefined;
   getThreadId: (thread: Thread, message: Message) => string | undefined;
-  getWorkflowRunId: (thread: Thread, message: Message) => string | undefined;
+  getRunId: (thread: Thread, message: Message) => string | undefined;
   initializeAssistantThread: (event: {
     channelId: string;
     sourceChannelId?: string;
@@ -128,7 +128,7 @@ function buildLogContext(
     requesterId?: string;
     requesterUserName?: string;
     threadId?: string;
-    workflowRunId?: string;
+    runId?: string;
   }
 ): AppRuntimeLogContext {
   return {
@@ -136,7 +136,7 @@ function buildLogContext(
     slackUserId: args.requesterId,
     slackUserName: args.requesterUserName,
     slackChannelId: args.channelId,
-    workflowRunId: args.workflowRunId,
+    runId: args.runId,
     assistantUserName: deps.assistantUserName,
     modelId: deps.modelId
   };
@@ -153,7 +153,7 @@ export function createAppSlackRuntime<
     requesterId?: string;
     requesterUserName?: string;
     threadId?: string;
-    workflowRunId?: string;
+    runId?: string;
   }): AppRuntimeLogContext =>
     buildLogContext(deps, args);
 
@@ -162,18 +162,18 @@ export function createAppSlackRuntime<
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
-        const workflowRunId = deps.getWorkflowRunId(thread, message);
+        const runId = deps.getRunId(thread, message);
         const context = logContext({
           threadId,
           channelId,
           requesterId: message.author.userId,
           requesterUserName: message.author.userName,
-          workflowRunId
+          runId
         });
 
         await deps.withSpan(
-          "workflow.chat_turn",
-          "workflow.chat_turn",
+          "chat.turn",
+          "chat.turn",
           context,
           async () => {
             await thread.subscribe();
@@ -191,7 +191,7 @@ export function createAppSlackRuntime<
             requesterId: message.author.userId,
             requesterUserName: message.author.userName,
             channelId: deps.getChannelId(thread, message),
-            workflowRunId: deps.getWorkflowRunId(thread, message)
+            runId: deps.getRunId(thread, message)
           }),
           {},
           "onNewMention failed"
@@ -205,7 +205,7 @@ export function createAppSlackRuntime<
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
-        const workflowRunId = deps.getWorkflowRunId(thread, message);
+        const runId = deps.getRunId(thread, message);
         const rawUserText = message.text;
         const userText = deps.stripLeadingBotMention(rawUserText, {
           stripLeadingSlackMentionToken: Boolean(message.isMention)
@@ -214,7 +214,7 @@ export function createAppSlackRuntime<
           threadId,
           requesterId: message.author.userId,
           channelId,
-          workflowRunId
+          runId
         };
 
         const preparedState = await deps.prepareTurnState({
@@ -247,7 +247,7 @@ export function createAppSlackRuntime<
               requesterId: message.author.userId,
               requesterUserName: message.author.userName,
               channelId,
-              workflowRunId
+              runId
             }),
             {
               "app.decision.reason": decision.reason
@@ -265,14 +265,14 @@ export function createAppSlackRuntime<
         }
 
         await deps.withSpan(
-          "workflow.chat_turn",
-          "workflow.chat_turn",
+          "chat.turn",
+          "chat.turn",
           logContext({
             threadId,
             requesterId: message.author.userId,
             requesterUserName: message.author.userName,
             channelId,
-            workflowRunId
+            runId
           }),
           async () => {
             await deps.replyToThread(thread, message, {
@@ -290,7 +290,7 @@ export function createAppSlackRuntime<
             requesterId: message.author.userId,
             requesterUserName: message.author.userName,
             channelId: deps.getChannelId(thread, message),
-            workflowRunId: deps.getWorkflowRunId(thread, message)
+            runId: deps.getRunId(thread, message)
           }),
           {},
           "onSubscribedMessage failed"

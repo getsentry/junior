@@ -1,6 +1,5 @@
 import { withJunior } from "@/next-config";
 import path from "node:path";
-import { withWorkflow } from "workflow/next";
 
 const nextConfig = {
   typedRoutes: true,
@@ -9,4 +8,4 @@ const nextConfig = {
   }
 };
 
-export default withWorkflow(withJunior(nextConfig, { sentry: true }));
+export default withJunior(nextConfig, { sentry: true });

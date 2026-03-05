@@ -108,18 +108,19 @@ export { GET, POST } from "junior/handler";
 export const runtime = "nodejs";
 ```
 
+`app/api/queue/callback/route.js`:
+
+```js
+export { POST } from "junior/handlers/queue-callback";
+export const runtime = "nodejs";
+```
+
 `next.config.mjs`:
 
 ```js
 import { withJunior } from "junior/config";
-import workflowNext from "workflow/next";
-
-const { withWorkflow } = workflowNext;
-
-export default withWorkflow(withJunior());
+export default withJunior();
 ```
-
-`workflow/next` is currently a CommonJS export, so use the default import form shown above.
 
 `instrumentation.js`:
 
@@ -152,6 +153,22 @@ This scaffolds a project with `app/data/SOUL.md`, plus empty `app/skills/` and `
 2. Import the repo in Vercel.
 3. Set **Build Command** to `pnpm build` and **Framework** to "Next.js".
 4. Add environment variables: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `REDIS_URL`, and optionally `NEXT_PUBLIC_SENTRY_DSN`, `JUNIOR_BOT_NAME`, `AI_MODEL`, and `AI_FAST_MODEL`.
+5. Add a `vercel.json` trigger for queue callbacks:
+
+```json
+{
+  "functions": {
+    "app/api/queue/callback/route.js": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "junior-thread-message"
+        }
+      ]
+    }
+  }
+}
+```
 
 ## Slack tunnel (Cloudflare)
 

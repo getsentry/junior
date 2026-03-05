@@ -24,8 +24,8 @@ export function registerBotHandlers(args: {
 
   bot.onSlashCommand("/jr", (event) =>
     withSpan(
-      "workflow.slash_command",
-      "workflow.slash_command",
+      "chat.slash_command",
+      "chat.slash_command",
       { slackUserId: event.user.userId },
       async () => {
         try {
@@ -40,8 +40,8 @@ export function registerBotHandlers(args: {
 
   bot.onAppHomeOpened((event) =>
     withSpan(
-      "workflow.app_home_opened",
-      "workflow.app_home_opened",
+      "chat.app_home_opened",
+      "chat.app_home_opened",
       { slackUserId: event.userId },
       async () => {
         try {
@@ -58,8 +58,8 @@ export function registerBotHandlers(args: {
     if (!provider) return;
     const userId = event.user.userId;
     await withSpan(
-      "workflow.app_home_disconnect",
-      "workflow.app_home_disconnect",
+      "chat.app_home_disconnect",
+      "chat.app_home_disconnect",
       { slackUserId: userId },
       async () => {
         try {

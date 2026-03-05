@@ -8,5 +8,5 @@ export interface ThreadMessagePayload {
   message: Message | SerializedMessage;
   normalizedThreadId: string;
   thread: Thread | SerializedThread;
-  workflowRunId?: string;
+  queueMessageId?: string;
 }

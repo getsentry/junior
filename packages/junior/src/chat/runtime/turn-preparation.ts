@@ -29,7 +29,7 @@ export async function prepareTurnState(args: {
     threadId?: string;
     requesterId?: string;
     channelId?: string;
-    workflowRunId?: string;
+    runId?: string;
   };
 }): Promise<PreparedTurnState> {
   const existingState = await args.thread.state;
@@ -79,7 +79,7 @@ export async function prepareTurnState(args: {
       threadId: args.context.threadId,
       channelId: args.context.channelId,
       requesterId: args.context.requesterId,
-      workflowRunId: args.context.workflowRunId,
+      runId: args.context.runId,
       threadTs: getThreadTs(args.context.threadId)
     });
   }
@@ -88,7 +88,7 @@ export async function prepareTurnState(args: {
     threadId: args.context.threadId,
     channelId: args.context.channelId,
     requesterId: args.context.requesterId,
-    workflowRunId: args.context.workflowRunId
+    runId: args.context.runId
   });
 
   const conversationContext = buildConversationContext(conversation);

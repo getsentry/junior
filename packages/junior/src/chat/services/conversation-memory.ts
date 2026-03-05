@@ -180,7 +180,7 @@ async function summarizeConversationChunk(
     threadId?: string;
     channelId?: string;
     requesterId?: string;
-    workflowRunId?: string;
+    runId?: string;
   }
 ): Promise<string> {
   const transcript = messages.map((message) => renderConversationMessageLine(message, conversation)).join("\n");
@@ -208,7 +208,7 @@ async function summarizeConversationChunk(
         threadId: context.threadId ?? "",
         channelId: context.channelId ?? "",
         requesterId: context.requesterId ?? "",
-        workflowRunId: context.workflowRunId ?? ""
+        runId: context.runId ?? ""
       }
     });
     const summary = result.text.trim();
@@ -222,7 +222,7 @@ async function summarizeConversationChunk(
         slackThreadId: context.threadId,
         slackUserId: context.requesterId,
         slackChannelId: context.channelId,
-        workflowRunId: context.workflowRunId,
+        runId: context.runId,
         assistantUserName: botConfig.userName,
         modelId: botConfig.fastModelId
       },
@@ -263,7 +263,7 @@ export async function compactConversationIfNeeded(
     threadId?: string;
     channelId?: string;
     requesterId?: string;
-    workflowRunId?: string;
+    runId?: string;
   }
 ): Promise<void> {
   updateConversationStats(conversation);

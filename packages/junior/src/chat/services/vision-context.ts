@@ -27,7 +27,7 @@ export async function resolveUserAttachments(
     threadId?: string;
     requesterId?: string;
     channelId?: string;
-    workflowRunId?: string;
+    runId?: string;
   }
 ): Promise<UserInputAttachment[]> {
   if (!attachments || attachments.length === 0) {
@@ -58,7 +58,7 @@ export async function resolveUserAttachments(
             slackThreadId: context.threadId,
             slackUserId: context.requesterId,
             slackChannelId: context.channelId,
-            workflowRunId: context.workflowRunId,
+            runId: context.runId,
             assistantUserName: botConfig.userName,
             modelId: botConfig.modelId
           },
@@ -83,7 +83,7 @@ export async function resolveUserAttachments(
           slackThreadId: context.threadId,
           slackUserId: context.requesterId,
           slackChannelId: context.channelId,
-          workflowRunId: context.workflowRunId,
+          runId: context.runId,
           assistantUserName: botConfig.userName,
           modelId: botConfig.modelId
         },
@@ -107,7 +107,7 @@ async function summarizeConversationImage(args: {
     threadId?: string;
     channelId?: string;
     requesterId?: string;
-    workflowRunId?: string;
+    runId?: string;
   };
 }): Promise<string | undefined> {
   try {
@@ -142,7 +142,7 @@ async function summarizeConversationImage(args: {
         threadId: args.context.threadId ?? "",
         channelId: args.context.channelId ?? "",
         requesterId: args.context.requesterId ?? "",
-        workflowRunId: args.context.workflowRunId ?? "",
+        runId: args.context.runId ?? "",
         fileId: args.fileId
       }
     });
@@ -158,7 +158,7 @@ async function summarizeConversationImage(args: {
         slackThreadId: args.context.threadId,
         slackUserId: args.context.requesterId,
         slackChannelId: args.context.channelId,
-        workflowRunId: args.context.workflowRunId,
+        runId: args.context.runId,
         assistantUserName: botConfig.userName,
         modelId: botConfig.modelId
       },
@@ -179,7 +179,7 @@ export async function hydrateConversationVisionContext(
     threadId?: string;
     channelId?: string;
     requesterId?: string;
-    workflowRunId?: string;
+    runId?: string;
     threadTs?: string;
   }
 ): Promise<void> {
@@ -215,7 +215,7 @@ export async function hydrateConversationVisionContext(
         slackThreadId: context.threadId,
         slackUserId: context.requesterId,
         slackChannelId: context.channelId,
-        workflowRunId: context.workflowRunId,
+        runId: context.runId,
         assistantUserName: botConfig.userName,
         modelId: botConfig.modelId
       },
@@ -286,7 +286,7 @@ export async function hydrateConversationVisionContext(
             slackThreadId: context.threadId,
             slackUserId: context.requesterId,
             slackChannelId: context.channelId,
-            workflowRunId: context.workflowRunId,
+            runId: context.runId,
             assistantUserName: botConfig.userName,
             modelId: botConfig.modelId
           },
@@ -315,7 +315,7 @@ export async function hydrateConversationVisionContext(
             slackThreadId: context.threadId,
             slackUserId: context.requesterId,
             slackChannelId: context.channelId,
-            workflowRunId: context.workflowRunId,
+            runId: context.runId,
             assistantUserName: botConfig.userName,
             modelId: botConfig.modelId
           },
@@ -336,7 +336,7 @@ export async function hydrateConversationVisionContext(
             slackThreadId: context.threadId,
             slackUserId: context.requesterId,
             slackChannelId: context.channelId,
-            workflowRunId: context.workflowRunId,
+            runId: context.runId,
             assistantUserName: botConfig.userName,
             modelId: botConfig.modelId
           },
@@ -380,7 +380,7 @@ export async function hydrateConversationVisionContext(
         slackThreadId: context.threadId,
         slackUserId: context.requesterId,
         slackChannelId: context.channelId,
-        workflowRunId: context.workflowRunId,
+        runId: context.runId,
         assistantUserName: botConfig.userName,
         modelId: botConfig.modelId
       },

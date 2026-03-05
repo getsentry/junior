@@ -21,7 +21,7 @@ function createMockDeps(
     now: () => 1700000000000,
     getChannelId: (_thread, message) => message.threadId?.split(":")[1],
     getThreadId: (_thread, message) => message.threadId,
-    getWorkflowRunId: () => undefined,
+    getRunId: () => undefined,
     initializeAssistantThread: vi.fn().mockResolvedValue(undefined),
     logException: vi.fn(),
     logWarn: vi.fn(),
@@ -67,8 +67,8 @@ describe("createAppSlackRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(deps.withSpan).toHaveBeenCalledWith(
-        "workflow.chat_turn",
-        "workflow.chat_turn",
+        "chat.turn",
+        "chat.turn",
         expect.objectContaining({
           assistantUserName: "test-bot",
           modelId: "test-model",

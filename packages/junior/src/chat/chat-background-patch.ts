@@ -1,7 +1,7 @@
 import { Chat } from "chat";
 import type { Message, Thread } from "chat";
-import type { ThreadMessageKind, ThreadMessagePayload } from "@/chat/workflow/types";
-import { claimWorkflowIngressDedup, getStateAdapter, hasWorkflowIngressDedup } from "@/chat/state";
+import type { ThreadMessageKind, ThreadMessagePayload } from "@/chat/queue/types";
+import { claimQueueIngressDedup, getStateAdapter, hasQueueIngressDedup } from "@/chat/state";
 import { logInfo, setSpanAttributes, withContext, withSpan } from "@/chat/observability";
 
 type WebhookOptions = {
@@ -35,9 +35,8 @@ type ChatLike = {
 };
 
 const PATCH_FLAG = Symbol.for("junior.chat.backgroundPatch");
-// Keep ingress dedupe keys long enough to cover delayed Slack retries and
-// workflow contention windows for the same message payload.
-export const WORKFLOW_INGRESS_DEDUP_TTL_MS = 24 * 60 * 60 * 1000;
+// Keep ingress dedupe keys long enough to cover delayed Slack retries.
+export const QUEUE_INGRESS_DEDUP_TTL_MS = 24 * 60 * 60 * 1000;
 
 function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -45,7 +44,7 @@ function nonEmptyString(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
-function serializeMessageForWorkflow(message: Message): ThreadMessagePayload["message"] {
+function serializeMessageForQueue(message: Message): ThreadMessagePayload["message"] {
   const candidate = message as Message & { toJSON?: () => unknown };
   if (typeof candidate.toJSON === "function") {
     return candidate.toJSON() as ThreadMessagePayload["message"];
@@ -57,7 +56,7 @@ function serializeMessageForWorkflow(message: Message): ThreadMessagePayload["me
   } as ThreadMessagePayload["message"];
 }
 
-function serializeThreadForWorkflow(thread: Thread): ThreadMessagePayload["thread"] {
+function serializeThreadForQueue(thread: Thread): ThreadMessagePayload["thread"] {
   const candidate = thread as Thread & { toJSON?: () => unknown };
   if (typeof candidate.toJSON === "function") {
     return candidate.toJSON() as ThreadMessagePayload["thread"];
@@ -94,7 +93,7 @@ export function normalizeIncomingSlackThreadId(threadId: string, message: unknow
   return `slack:${channelId}:${threadTs}`;
 }
 
-export function buildWorkflowIngressDedupKey(normalizedThreadId: string, messageId: string): string {
+export function buildQueueIngressDedupKey(normalizedThreadId: string, messageId: string): string {
   return `${normalizedThreadId}:${messageId}`;
 }
 
@@ -113,31 +112,33 @@ export function determineThreadMessageKind(args: {
   return undefined;
 }
 
-interface WorkflowRoutingRuntime {
+interface QueueRoutingRuntime {
   createThread: ChatLike["createThread"];
   detectMention?: ChatLike["detectMention"];
 }
 
-interface WorkflowRoutingDeps {
+interface QueueRoutingDeps {
   hasDedup: (key: string) => Promise<boolean>;
   markDedup: (key: string, ttlMs: number) => Promise<boolean>;
   getIsSubscribed: (threadId: string) => Promise<boolean>;
   logInfo: typeof logInfo;
-  routeToThreadWorkflow: (normalizedThreadId: string, payload: ThreadMessagePayload) => Promise<string | undefined>;
+  enqueueThreadMessage: (payload: ThreadMessagePayload, dedupKey: string) => Promise<string | undefined>;
 }
 
-const defaultWorkflowRoutingDeps: WorkflowRoutingDeps = {
-  hasDedup: (key) => hasWorkflowIngressDedup(key),
-  markDedup: (key, ttlMs) => claimWorkflowIngressDedup(key, ttlMs),
+const defaultQueueRoutingDeps: QueueRoutingDeps = {
+  hasDedup: (key) => hasQueueIngressDedup(key),
+  markDedup: (key, ttlMs) => claimQueueIngressDedup(key, ttlMs),
   getIsSubscribed: (threadId) => getStateAdapter().isSubscribed(threadId),
   logInfo,
-  routeToThreadWorkflow: async (normalizedThreadId, payload) => {
-    const { routeToThreadWorkflow } = await import("@/chat/workflow/router");
-    return await routeToThreadWorkflow(normalizedThreadId, payload);
+  enqueueThreadMessage: async (payload, dedupKey) => {
+    const { enqueueThreadMessage } = await import("@/chat/queue/client");
+    return await enqueueThreadMessage(payload, {
+      idempotencyKey: dedupKey
+    });
   }
 };
 
-export type WorkflowIngressRouteResult =
+export type QueueIngressRouteResult =
   | "ignored_non_object"
   | "ignored_self_message"
   | "ignored_missing_message_id"
@@ -145,14 +146,14 @@ export type WorkflowIngressRouteResult =
   | "ignored_duplicate"
   | "routed";
 
-export async function routeIncomingMessageToWorkflow(args: {
+export async function routeIncomingMessageToQueue(args: {
   adapter: unknown;
   message: unknown;
-  runtime: WorkflowRoutingRuntime;
+  runtime: QueueRoutingRuntime;
   threadId: string;
-  deps?: WorkflowRoutingDeps;
-}): Promise<WorkflowIngressRouteResult> {
-  const deps = args.deps ?? defaultWorkflowRoutingDeps;
+  deps?: QueueRoutingDeps;
+}): Promise<QueueIngressRouteResult> {
+  const deps = args.deps ?? defaultQueueRoutingDeps;
   const { adapter, runtime } = args;
   const message = args.message;
   if (!message || typeof message !== "object") {
@@ -188,29 +189,29 @@ export async function routeIncomingMessageToWorkflow(args: {
     return "ignored_unsubscribed_non_mention";
   }
 
-  const dedupKey = buildWorkflowIngressDedupKey(normalizedThreadId, messageId);
+  const dedupKey = buildQueueIngressDedupKey(normalizedThreadId, messageId);
   const alreadyDeduped = await deps.hasDedup(dedupKey);
   if (alreadyDeduped) {
     deps.logInfo(
-      "workflow_ingress_dedup_hit",
+      "queue_ingress_dedup_hit",
       {
         slackThreadId: normalizedThreadId,
         slackUserId: (message as Message).author.userId
       },
       {
         "messaging.message.id": messageId,
-        "app.workflow.message_kind": kind,
-        "app.workflow.dedup_key": dedupKey,
-        "app.workflow.dedup_outcome": "duplicate"
+        "app.queue.message_kind": kind,
+        "app.queue.dedup_key": dedupKey,
+        "app.queue.dedup_outcome": "duplicate"
       },
-      "Skipping duplicate incoming message before workflow routing"
+      "Skipping duplicate incoming message before queue enqueue"
     );
     return "ignored_duplicate";
   }
 
   const thread = (await runtime.createThread(adapter, normalizedThreadId, message, isSubscribed)) as Thread;
-  const serializedMessage = serializeMessageForWorkflow(message as Message);
-  const serializedThread = serializeThreadForWorkflow(thread);
+  const serializedMessage = serializeMessageForQueue(message as Message);
+  const serializedThread = serializeThreadForQueue(thread);
   const payload: ThreadMessagePayload = {
     dedupKey,
     kind,
@@ -226,68 +227,55 @@ export async function routeIncomingMessageToWorkflow(args: {
       slackUserId: (message as Message).author.userId
     },
     async () => {
-      let routedRunId: string | undefined;
+      let queueMessageId: string | undefined;
       await withSpan(
-        "workflow.route_message",
-        "workflow.route_message",
+        "queue.enqueue_message",
+        "queue.enqueue_message",
         {
           slackThreadId: normalizedThreadId,
           slackChannelId: thread.channelId,
-          slackUserId: (message as Message).author.userId,
-          workflowRunId: routedRunId
+          slackUserId: (message as Message).author.userId
         },
         async () => {
-          routedRunId = await deps.routeToThreadWorkflow(normalizedThreadId, payload);
-          if (routedRunId) {
+          queueMessageId = await deps.enqueueThreadMessage(payload, dedupKey);
+          if (queueMessageId) {
             setSpanAttributes({
-              "app.workflow.run_id": routedRunId
+              "app.queue.message_id": queueMessageId
             });
           }
         },
         {
           "messaging.message.id": messageId,
-          "app.workflow.message_kind": kind
+          "app.queue.message_kind": kind
         }
       );
 
       deps.logInfo(
-        "workflow_ingress_enqueued",
+        "queue_ingress_enqueued",
         {},
         {
           "messaging.message.id": messageId,
-          "app.workflow.message_kind": kind,
-          "app.workflow.dedup_key": dedupKey,
-          "app.workflow.dedup_outcome": "primary",
-          ...(routedRunId ? { "app.workflow.run_id": routedRunId } : {})
+          "app.queue.message_kind": kind,
+          "app.queue.dedup_key": dedupKey,
+          "app.queue.dedup_outcome": "primary",
+          ...(queueMessageId ? { "app.queue.message_id": queueMessageId } : {})
         },
-        "Routing incoming message to thread workflow"
+        "Routing incoming message to queue"
       );
 
-      await deps.markDedup(dedupKey, WORKFLOW_INGRESS_DEDUP_TTL_MS);
+      await deps.markDedup(dedupKey, QUEUE_INGRESS_DEDUP_TTL_MS);
     }
   );
 
   return "routed";
 }
 
-function scheduleBackgroundWork(
-  options: WebhookOptions | undefined,
-  run: () => Promise<void>,
-  onUnhandledError?: (error: unknown) => void
-): void {
-  if (options?.waitUntil) {
-    options.waitUntil(run);
-    return;
+function scheduleBackgroundWork(options: WebhookOptions | undefined, run: () => Promise<void>): void {
+  if (!options?.waitUntil) {
+    throw new Error("Chat background processing requires waitUntil");
   }
-
-  const task = run();
-
-  // Some invocations may not provide waitUntil (non-webhook/test contexts).
-  // In that case we still surface failures instead of letting promise rejections
-  // disappear without structured logging.
-  void task.catch((error) => {
-    onUnhandledError?.(error);
-  });
+  options.waitUntil(run);
+  return;
 }
 
 export function installChatBackgroundPatch(): void {
@@ -312,7 +300,7 @@ export function installChatBackgroundPatch(): void {
           typeof messageOrFactory === "function"
             ? await (messageOrFactory as () => Promise<unknown>)()
             : messageOrFactory;
-        const result = await routeIncomingMessageToWorkflow({
+        const result = await routeIncomingMessageToQueue({
           adapter,
           threadId,
           message,
@@ -355,13 +343,7 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run, (error) => {
-      this.logger?.error?.("Reaction processing error", {
-        error,
-        emoji: event.emoji,
-        messageId: event.messageId
-      });
-    });
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processAction: unknown }).processAction = function processAction(
@@ -381,13 +363,7 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run, (error) => {
-      this.logger?.error?.("Action processing error", {
-        error,
-        actionId: event.actionId,
-        messageId: event.messageId
-      });
-    });
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processModalClose: unknown }).processModalClose = function processModalClose(
@@ -413,12 +389,7 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run, (error) => {
-      this.logger?.error?.("Modal close handler error", {
-        error,
-        callbackId: event.callbackId
-      });
-    });
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processSlashCommand: unknown }).processSlashCommand = function processSlashCommand(
@@ -438,13 +409,7 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run, (error) => {
-      this.logger?.error?.("Slash command processing error", {
-        error,
-        command: event.command,
-        text: event.text
-      });
-    });
+    scheduleBackgroundWork(options, run);
   };
 
   (chatProto as unknown as { processAssistantThreadStarted: unknown }).processAssistantThreadStarted =
@@ -466,12 +431,7 @@ export function installChatBackgroundPatch(): void {
         }
       };
 
-      scheduleBackgroundWork(options, run, (error) => {
-        this.logger?.error?.("Assistant thread started handler error", {
-          error,
-          threadId: event.threadId
-        });
-      });
+      scheduleBackgroundWork(options, run);
     };
 
   (chatProto as unknown as { processAssistantContextChanged: unknown }).processAssistantContextChanged =
@@ -493,12 +453,7 @@ export function installChatBackgroundPatch(): void {
         }
       };
 
-      scheduleBackgroundWork(options, run, (error) => {
-        this.logger?.error?.("Assistant context changed handler error", {
-          error,
-          threadId: event.threadId
-        });
-      });
+      scheduleBackgroundWork(options, run);
     };
 
   (chatProto as unknown as { processAppHomeOpened: unknown }).processAppHomeOpened = function processAppHomeOpened(
@@ -519,12 +474,7 @@ export function installChatBackgroundPatch(): void {
       }
     };
 
-    scheduleBackgroundWork(options, run, (error) => {
-      this.logger?.error?.("App home opened handler error", {
-        error,
-        userId: event.userId
-      });
-    });
+    scheduleBackgroundWork(options, run);
   };
 }
 

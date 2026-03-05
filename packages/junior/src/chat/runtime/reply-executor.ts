@@ -8,7 +8,7 @@ import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/progress-reporter";
 import { getBotDeps } from "@/chat/runtime/deps";
 import { createTextStreamBridge, createNormalizingStream } from "@/chat/runtime/streaming";
-import { getChannelId, getMessageTs, getSlackApiErrorCode, getThreadId, getThreadTs, getWorkflowRunId, isSlackTitlePermissionError, stripLeadingBotMention } from "@/chat/runtime/thread-context";
+import { getChannelId, getMessageTs, getSlackApiErrorCode, getThreadId, getThreadTs, getRunId, isSlackTitlePermissionError, stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import { persistThreadState, mergeArtifactsState } from "@/chat/runtime/thread-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import { generateThreadTitle, markConversationMessage, normalizeConversationText, upsertConversationMessage, generateConversationId, updateConversationStats } from "@/chat/services/conversation-memory";
@@ -30,7 +30,7 @@ interface ReplyExecutorDeps {
       threadId?: string;
       requesterId?: string;
       channelId?: string;
-      workflowRunId?: string;
+      runId?: string;
     };
   }) => Promise<PreparedTurnState>;
 }
@@ -52,16 +52,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const channelId = getChannelId(thread, message);
     const threadTs = getThreadTs(threadId);
     const messageTs = getMessageTs(message);
-    const workflowRunId = getWorkflowRunId(thread, message);
+    const runId = getRunId(thread, message);
 
     await withSpan(
-      "workflow.reply",
-      "workflow.reply",
+      "chat.reply",
+      "chat.reply",
       {
         slackThreadId: threadId,
         slackUserId: message.author.userId,
         slackChannelId: channelId,
-        workflowRunId,
+        runId,
         assistantUserName: botConfig.userName,
         modelId: botConfig.modelId
       },
@@ -82,7 +82,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               threadId,
               requesterId: message.author.userId,
               channelId,
-              workflowRunId
+              runId
             }
           }));
 
@@ -104,7 +104,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           threadId,
           requesterId: message.author.userId,
           channelId,
-          workflowRunId
+          runId
         });
 
         const progress = createProgressReporter({
@@ -145,7 +145,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               threadId,
               threadTs,
               messageTs,
-              workflowRunId,
+              runId,
               channelId,
               requesterId: message.author.userId
             },
@@ -167,7 +167,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             slackThreadId: threadId,
             slackUserId: message.author.userId,
             slackChannelId: channelId,
-            workflowRunId,
+            runId,
             assistantUserName: botConfig.userName,
             modelId: botConfig.modelId
           };
@@ -290,7 +290,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     slackThreadId: threadId,
                     slackUserId: message.author.userId,
                     slackChannelId: channelId,
-                    workflowRunId,
+                    runId,
                     assistantUserName: botConfig.userName,
                     modelId: botConfig.fastModelId
                   },

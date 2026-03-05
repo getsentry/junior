@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     "handlers/router": "src/handlers/router.ts",
     "handlers/webhooks": "src/handlers/webhooks.ts",
+    "handlers/queue-callback": "src/handlers/queue-callback.ts",
     "handlers/health": "src/handlers/health.ts",
     "next-config": "src/next-config.ts",
     instrumentation: "src/instrumentation.ts",
@@ -30,14 +31,13 @@ export default defineConfig({
     "@mariozechner/pi-ai",
     "@sinclair/typebox",
     "@slack/web-api",
+    "@vercel/queue",
     "@vercel/sandbox",
     "ai",
     "bash-tool",
     "chat",
     "just-bash",
     "node-html-markdown",
-    "workflow",
-    "@workflow/serde",
     "yaml",
     "zod"
   ]

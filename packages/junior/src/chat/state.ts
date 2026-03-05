@@ -4,19 +4,11 @@ import type { Lock, StateAdapter } from "chat";
 import { hasRedisConfig } from "@/chat/config";
 
 const MIN_LOCK_TTL_MS = 1000 * 60 * 5;
-const WORKFLOW_INGRESS_DEDUP_PREFIX = "junior:workflow_ingress";
-const WORKFLOW_STARTUP_LEASE_PREFIX = "junior:workflow_startup";
-const WORKFLOW_MESSAGE_PROCESSING_PREFIX = "junior:workflow_message";
-const WORKFLOW_MESSAGE_PROCESSING_TTL_MS = 30 * 60 * 1000;
-const WORKFLOW_MESSAGE_COMPLETED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const WORKFLOW_MESSAGE_FAILED_TTL_MS = 6 * 60 * 60 * 1000;
-const COMPARE_AND_DELETE_SCRIPT = `
-  if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-  else
-    return 0
-  end
-`;
+const QUEUE_INGRESS_DEDUP_PREFIX = "junior:queue_ingress";
+const QUEUE_MESSAGE_PROCESSING_PREFIX = "junior:queue_message";
+const QUEUE_MESSAGE_PROCESSING_TTL_MS = 30 * 60 * 1000;
+const QUEUE_MESSAGE_COMPLETED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const QUEUE_MESSAGE_FAILED_TTL_MS = 6 * 60 * 60 * 1000;
 const CLAIM_OR_RECLAIM_PROCESSING_SCRIPT = `
   local key = KEYS[1]
   local nowMs = tonumber(ARGV[1])
@@ -35,7 +27,11 @@ const CLAIM_OR_RECLAIM_PROCESSING_SCRIPT = `
   end
 
   local status = parsed["status"]
-  if status ~= "processing" and status ~= "started" then
+  if status == "failed" then
+    redis.call("set", key, payload, "PX", ttlMs)
+    return 3
+  end
+  if status ~= "processing" then
     return 0
   end
 
@@ -72,7 +68,7 @@ const UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT = `
   if currentOwner ~= ownerToken then
     return 0
   end
-  if status ~= "processing" and status ~= "started" then
+  if status ~= "processing" then
     return 0
   end
 
@@ -123,40 +119,36 @@ function getRedisStateAdapter(): RedisStateAdapter {
   }
 
   if (!_redisStateAdapter) {
-    throw new Error("Redis state adapter is unavailable for workflow ingress dedupe");
+    throw new Error("Redis state adapter is unavailable for queue ingress dedupe");
   }
 
   return _redisStateAdapter;
 }
 
-export type WorkflowMessageProcessingStatus = "processing" | "started" | "completed" | "failed";
+export type QueueMessageProcessingStatus = "processing" | "completed" | "failed";
 
-export interface WorkflowMessageProcessingState {
-  status: WorkflowMessageProcessingStatus;
+export interface QueueMessageProcessingState {
+  status: QueueMessageProcessingStatus;
   updatedAtMs: number;
-  startedAtMs?: number;
   ownerToken?: string;
-  workflowRunId?: string;
+  queueMessageId?: string;
   errorMessage?: string;
 }
 
-function workflowMessageKey(rawKey: string): string {
-  return `${WORKFLOW_MESSAGE_PROCESSING_PREFIX}:${rawKey}`;
+function queueMessageKey(rawKey: string): string {
+  return `${QUEUE_MESSAGE_PROCESSING_PREFIX}:${rawKey}`;
 }
 
-function parseWorkflowMessageState(value: unknown): WorkflowMessageProcessingState | undefined {
+function parseQueueMessageState(value: unknown): QueueMessageProcessingState | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(value) as Partial<WorkflowMessageProcessingState>;
+    const parsed = JSON.parse(value) as Partial<QueueMessageProcessingState>;
     if (
       !parsed ||
-      (parsed.status !== "processing" &&
-        parsed.status !== "started" &&
-        parsed.status !== "completed" &&
-        parsed.status !== "failed") ||
+      (parsed.status !== "processing" && parsed.status !== "completed" && parsed.status !== "failed") ||
       typeof parsed.updatedAtMs !== "number"
     ) {
       return undefined;
@@ -164,9 +156,8 @@ function parseWorkflowMessageState(value: unknown): WorkflowMessageProcessingSta
     return {
       status: parsed.status,
       updatedAtMs: parsed.updatedAtMs,
-      ...(typeof parsed.startedAtMs === "number" ? { startedAtMs: parsed.startedAtMs } : {}),
       ...(typeof parsed.ownerToken === "string" ? { ownerToken: parsed.ownerToken } : {}),
-      ...(typeof parsed.workflowRunId === "string" ? { workflowRunId: parsed.workflowRunId } : {}),
+      ...(typeof parsed.queueMessageId === "string" ? { queueMessageId: parsed.queueMessageId } : {}),
       ...(typeof parsed.errorMessage === "string" ? { errorMessage: parsed.errorMessage } : {})
     };
   } catch {
@@ -181,9 +172,9 @@ export function getStateAdapter(): StateAdapter {
   return _stateAdapter;
 }
 
-export async function claimWorkflowIngressDedup(rawKey: string, ttlMs: number): Promise<boolean> {
+export async function claimQueueIngressDedup(rawKey: string, ttlMs: number): Promise<boolean> {
   await getStateAdapter().connect();
-  const key = `${WORKFLOW_INGRESS_DEDUP_PREFIX}:${rawKey}`;
+  const key = `${QUEUE_INGRESS_DEDUP_PREFIX}:${rawKey}`;
   const result = await getRedisStateAdapter().getClient().set(key, "1", {
     NX: true,
     PX: ttlMs
@@ -191,66 +182,38 @@ export async function claimWorkflowIngressDedup(rawKey: string, ttlMs: number): 
   return result === "OK";
 }
 
-export async function hasWorkflowIngressDedup(rawKey: string): Promise<boolean> {
+export async function hasQueueIngressDedup(rawKey: string): Promise<boolean> {
   await getStateAdapter().connect();
-  const key = `${WORKFLOW_INGRESS_DEDUP_PREFIX}:${rawKey}`;
+  const key = `${QUEUE_INGRESS_DEDUP_PREFIX}:${rawKey}`;
   const value = await getRedisStateAdapter().getClient().get(key);
   return typeof value === "string" && value.length > 0;
 }
 
-export async function claimWorkflowStartupLease(
-  normalizedThreadId: string,
-  ownerToken: string,
-  ttlMs: number
-): Promise<boolean> {
-  await getStateAdapter().connect();
-  const key = `${WORKFLOW_STARTUP_LEASE_PREFIX}:${normalizedThreadId}`;
-  const result = await getRedisStateAdapter().getClient().set(key, ownerToken, {
-    NX: true,
-    PX: ttlMs
-  });
-  return result === "OK";
-}
-
-export async function releaseWorkflowStartupLease(
-  normalizedThreadId: string,
-  ownerToken: string
-): Promise<boolean> {
-  await getStateAdapter().connect();
-  const key = `${WORKFLOW_STARTUP_LEASE_PREFIX}:${normalizedThreadId}`;
-  const result = await getRedisStateAdapter().getClient().eval(COMPARE_AND_DELETE_SCRIPT, {
-    keys: [key],
-    arguments: [ownerToken]
-  });
-  return result === 1;
-}
-
-export async function getWorkflowMessageProcessingState(
+export async function getQueueMessageProcessingState(
   rawKey: string
-): Promise<WorkflowMessageProcessingState | undefined> {
+): Promise<QueueMessageProcessingState | undefined> {
   await getStateAdapter().connect();
-  const state = await getStateAdapter().get(workflowMessageKey(rawKey));
-  return parseWorkflowMessageState(state);
+  const state = await getStateAdapter().get(queueMessageKey(rawKey));
+  return parseQueueMessageState(state);
 }
 
-export async function acquireWorkflowMessageProcessingOwnership(args: {
+export async function acquireQueueMessageProcessingOwnership(args: {
   rawKey: string;
   ownerToken: string;
-  workflowRunId?: string;
-}): Promise<"acquired" | "reclaimed" | "blocked"> {
+  queueMessageId?: string;
+}): Promise<"acquired" | "reclaimed" | "recovered" | "blocked"> {
   await getStateAdapter().connect();
-  const key = workflowMessageKey(args.rawKey);
+  const key = queueMessageKey(args.rawKey);
   const nowMs = Date.now();
   const payload = JSON.stringify({
     status: "processing",
-    startedAtMs: nowMs,
     updatedAtMs: nowMs,
     ownerToken: args.ownerToken,
-    ...(args.workflowRunId ? { workflowRunId: args.workflowRunId } : {})
-  } satisfies WorkflowMessageProcessingState);
+    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {})
+  } satisfies QueueMessageProcessingState);
   const result = await getRedisStateAdapter().getClient().eval(CLAIM_OR_RECLAIM_PROCESSING_SCRIPT, {
     keys: [key],
-    arguments: [String(nowMs), String(WORKFLOW_MESSAGE_PROCESSING_TTL_MS), payload]
+    arguments: [String(nowMs), String(QUEUE_MESSAGE_PROCESSING_TTL_MS), payload]
   });
   if (result === 1) {
     return "acquired";
@@ -258,13 +221,16 @@ export async function acquireWorkflowMessageProcessingOwnership(args: {
   if (result === 2) {
     return "reclaimed";
   }
+  if (result === 3) {
+    return "recovered";
+  }
   return "blocked";
 }
 
-export async function refreshWorkflowMessageProcessingOwnership(args: {
+export async function refreshQueueMessageProcessingOwnership(args: {
   rawKey: string;
   ownerToken: string;
-  workflowRunId?: string;
+  queueMessageId?: string;
 }): Promise<boolean> {
   await getStateAdapter().connect();
   const nowMs = Date.now();
@@ -272,39 +238,39 @@ export async function refreshWorkflowMessageProcessingOwnership(args: {
     status: "processing",
     updatedAtMs: nowMs,
     ownerToken: args.ownerToken,
-    ...(args.workflowRunId ? { workflowRunId: args.workflowRunId } : {})
-  } satisfies WorkflowMessageProcessingState);
+    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {})
+  } satisfies QueueMessageProcessingState);
   const result = await getRedisStateAdapter().getClient().eval(UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT, {
-    keys: [workflowMessageKey(args.rawKey)],
-    arguments: [args.ownerToken, String(WORKFLOW_MESSAGE_PROCESSING_TTL_MS), payload]
+    keys: [queueMessageKey(args.rawKey)],
+    arguments: [args.ownerToken, String(QUEUE_MESSAGE_PROCESSING_TTL_MS), payload]
   });
   return result === 1;
 }
 
-export async function completeWorkflowMessageProcessingOwnership(args: {
+export async function completeQueueMessageProcessingOwnership(args: {
   rawKey: string;
   ownerToken: string;
-  workflowRunId?: string;
+  queueMessageId?: string;
 }): Promise<boolean> {
   await getStateAdapter().connect();
   const payload = JSON.stringify({
     status: "completed",
     updatedAtMs: Date.now(),
     ownerToken: args.ownerToken,
-    ...(args.workflowRunId ? { workflowRunId: args.workflowRunId } : {})
-  } satisfies WorkflowMessageProcessingState);
+    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {})
+  } satisfies QueueMessageProcessingState);
   const result = await getRedisStateAdapter().getClient().eval(UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT, {
-    keys: [workflowMessageKey(args.rawKey)],
-    arguments: [args.ownerToken, String(WORKFLOW_MESSAGE_COMPLETED_TTL_MS), payload]
+    keys: [queueMessageKey(args.rawKey)],
+    arguments: [args.ownerToken, String(QUEUE_MESSAGE_COMPLETED_TTL_MS), payload]
   });
   return result === 1;
 }
 
-export async function failWorkflowMessageProcessingOwnership(args: {
+export async function failQueueMessageProcessingOwnership(args: {
   rawKey: string;
   ownerToken: string;
   errorMessage: string;
-  workflowRunId?: string;
+  queueMessageId?: string;
 }): Promise<boolean> {
   await getStateAdapter().connect();
   const payload = JSON.stringify({
@@ -312,46 +278,11 @@ export async function failWorkflowMessageProcessingOwnership(args: {
     updatedAtMs: Date.now(),
     ownerToken: args.ownerToken,
     errorMessage: args.errorMessage,
-    ...(args.workflowRunId ? { workflowRunId: args.workflowRunId } : {})
-  } satisfies WorkflowMessageProcessingState);
+    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {})
+  } satisfies QueueMessageProcessingState);
   const result = await getRedisStateAdapter().getClient().eval(UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT, {
-    keys: [workflowMessageKey(args.rawKey)],
-    arguments: [args.ownerToken, String(WORKFLOW_MESSAGE_FAILED_TTL_MS), payload]
+    keys: [queueMessageKey(args.rawKey)],
+    arguments: [args.ownerToken, String(QUEUE_MESSAGE_FAILED_TTL_MS), payload]
   });
   return result === 1;
-}
-
-export async function markWorkflowMessageStarted(rawKey: string, workflowRunId?: string): Promise<boolean> {
-  await getStateAdapter().connect();
-  const claimResult = await acquireWorkflowMessageProcessingOwnership({
-    rawKey,
-    ownerToken: `legacy-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    workflowRunId
-  });
-  return claimResult !== "blocked";
-}
-
-export async function markWorkflowMessageCompleted(rawKey: string, workflowRunId?: string): Promise<void> {
-  await getStateAdapter().connect();
-  const payload = JSON.stringify({
-    status: "completed",
-    updatedAtMs: Date.now(),
-    ...(workflowRunId ? { workflowRunId } : {})
-  } satisfies WorkflowMessageProcessingState);
-  await getStateAdapter().set(workflowMessageKey(rawKey), payload, WORKFLOW_MESSAGE_COMPLETED_TTL_MS);
-}
-
-export async function markWorkflowMessageFailed(
-  rawKey: string,
-  errorMessage: string,
-  workflowRunId?: string
-): Promise<void> {
-  await getStateAdapter().connect();
-  const payload = JSON.stringify({
-    status: "failed",
-    updatedAtMs: Date.now(),
-    ...(workflowRunId ? { workflowRunId } : {}),
-    errorMessage
-  } satisfies WorkflowMessageProcessingState);
-  await getStateAdapter().set(workflowMessageKey(rawKey), payload, WORKFLOW_MESSAGE_FAILED_TTL_MS);
 }

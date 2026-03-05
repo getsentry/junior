@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "app/api/queue/callback/route.js": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "junior-thread-message"
+        }
+      ]
+    }
+  }
+}

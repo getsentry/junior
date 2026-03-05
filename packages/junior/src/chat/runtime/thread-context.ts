@@ -36,7 +36,7 @@ export function getThreadId(thread: Thread, _message: Message): string | undefin
   return toOptionalString(thread.id);
 }
 
-export function getWorkflowRunId(thread: Thread, message: Message): string | undefined {
+export function getRunId(thread: Thread, message: Message): string | undefined {
   return (
     toOptionalString((thread as unknown as { runId?: unknown }).runId) ??
     toOptionalString((message as unknown as { runId?: unknown }).runId)

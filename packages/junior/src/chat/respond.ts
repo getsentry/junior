@@ -48,7 +48,7 @@ export interface ReplyRequestContext {
   };
   correlation?: {
     threadId?: string;
-    workflowRunId?: string;
+    runId?: string;
     channelId?: string;
     messageTs?: string;
     threadTs?: string;
@@ -593,7 +593,7 @@ export async function generateAssistantReply(
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
-      workflowRunId: context.correlation?.workflowRunId,
+      runId: context.correlation?.runId,
       assistantUserName: context.assistant?.userName,
       modelId: botConfig.modelId
     };
@@ -678,7 +678,7 @@ export async function generateAssistantReply(
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
-      workflowRunId: context.correlation?.workflowRunId,
+      runId: context.correlation?.runId,
       assistantUserName: context.assistant?.userName,
       modelId: botConfig.modelId
     });
@@ -933,7 +933,7 @@ export async function generateAssistantReply(
           slackThreadId: context.correlation?.threadId,
           slackUserId: context.correlation?.requesterId,
           slackChannelId: context.correlation?.channelId,
-          workflowRunId: context.correlation?.workflowRunId,
+          runId: context.correlation?.runId,
           assistantUserName: context.assistant?.userName,
           modelId: botConfig.modelId
         },
@@ -1004,7 +1004,7 @@ export async function generateAssistantReply(
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
-      workflowRunId: context.correlation?.workflowRunId,
+      runId: context.correlation?.runId,
       assistantUserName: context.assistant?.userName,
       modelId: botConfig.modelId
     }, {}, "generateAssistantReply failed");

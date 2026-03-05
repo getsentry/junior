@@ -23,6 +23,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    exclude: ["tests/unit/workflow/**/*.test.ts", "tests/integration/workflow/**/*.test.ts"],
     setupFiles: ["tests/msw/setup.ts"]
   }
 });

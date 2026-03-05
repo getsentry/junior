@@ -1,7 +1,52 @@
 import type { NextConfig } from "next";
 import { createRequire } from "node:module";
+import fs from "node:fs";
+import path from "node:path";
 
 const require = createRequire(import.meta.url);
+
+function toPosixPath(value: string): string {
+  return value.split(path.sep).join("/");
+}
+
+function getNodeModulesRoots(): string[] {
+  const roots: string[] = [];
+  let current = process.cwd();
+
+  while (true) {
+    roots.push(path.join(current, "node_modules"));
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+
+  return Array.from(new Set(roots));
+}
+
+function resolveTracingPatternsForPackage(packageName: string): string[] {
+  const patterns: string[] = [];
+  for (const nodeModulesRoot of getNodeModulesRoots()) {
+    const packageDir = path.join(nodeModulesRoot, packageName);
+    if (!fs.existsSync(packageDir)) {
+      continue;
+    }
+
+    const relativeDir = toPosixPath(path.relative(process.cwd(), packageDir));
+    const relativePattern = relativeDir.startsWith(".") || relativeDir.startsWith("..")
+      ? `${relativeDir}/**/*`
+      : `./${relativeDir}/**/*`;
+    const absolutePattern = `${toPosixPath(packageDir)}/**/*`;
+    patterns.push(relativePattern, absolutePattern);
+  }
+
+  if (patterns.length === 0) {
+    throw new Error(`Unable to resolve package directory for output tracing: ${packageName}`);
+  }
+
+  return Array.from(new Set(patterns));
+}
 
 export interface JuniorConfigOptions {
   dataDir?: string;
@@ -20,8 +65,8 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   const skillsDir = options?.skillsDir ?? "./app/skills";
   const pluginsDir = options?.pluginsDir ?? "./app/plugins";
   const slackRuntimeTracingIncludes = [
-    "node_modules/.pnpm/@chat-adapter+slack@*/node_modules/@chat-adapter/slack/dist/**/*",
-    "node_modules/.pnpm/@slack+web-api@*/node_modules/@slack/web-api/dist/**/*"
+    ...resolveTracingPatternsForPackage("@chat-adapter/slack"),
+    ...resolveTracingPatternsForPackage("@slack/web-api")
   ];
   const tracingIncludes = Array.from(new Set([
     `${dataDir}/**/*`,

@@ -21,6 +21,15 @@ function writeWrapperFiles(targetDir) {
       'export const runtime = "nodejs";\n'
   );
 
+  // app/api/queue/callback/route.js
+  const queueRouteDir = path.join(targetDir, "app", "api", "queue", "callback");
+  fs.mkdirSync(queueRouteDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(queueRouteDir, "route.js"),
+    'export { POST } from "junior/handlers/queue-callback";\n' +
+      'export const runtime = "nodejs";\n'
+  );
+
   // app/layout.js
   fs.mkdirSync(path.join(targetDir, "app"), { recursive: true });
   fs.writeFileSync(
@@ -32,9 +41,7 @@ function writeWrapperFiles(targetDir) {
   fs.writeFileSync(
     path.join(targetDir, "next.config.mjs"),
     'import { withJunior } from "junior/config";\n' +
-      'import workflowNext from "workflow/next";\n\n' +
-      'const { withWorkflow } = workflowNext;\n\n' +
-      'export default withWorkflow(withJunior());\n'
+      'export default withJunior();\n'
   );
 
   // instrumentation.js
@@ -75,8 +82,7 @@ if (command === "init") {
       next: "^16.0.0",
       react: "^19.0.0",
       "react-dom": "^19.0.0",
-      "@sentry/nextjs": "^10.0.0",
-      workflow: "4.1.0-beta.60"
+      "@sentry/nextjs": "^10.0.0"
     }
   };
   fs.writeFileSync(

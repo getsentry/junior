@@ -1,5 +1,5 @@
 import type { Message, Thread } from "chat";
-import type { ThreadMessageKind } from "@/chat/workflow/types";
+import type { ThreadMessageKind } from "@/chat/queue/types";
 import { appSlackRuntime } from "@/chat/bot";
 import { downloadPrivateSlackFile } from "@/chat/slack-actions/client";
 
@@ -31,4 +31,3 @@ export async function processThreadMessageRuntime(args: {
 
   await appSlackRuntime.handleSubscribedMessage(args.thread, args.message);
 }
-
