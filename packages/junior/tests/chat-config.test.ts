@@ -29,4 +29,35 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.fastModelId).toBe("anthropic/custom-fast-model");
   });
+
+  it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {
+    delete process.env.AGENT_TURN_TIMEOUT_MS;
+    const { botConfig } = await loadConfig();
+    expect(botConfig.turnTimeoutMs).toBe(720000);
+  });
+
+  it("uses AGENT_TURN_TIMEOUT_MS from env var when valid", async () => {
+    process.env.AGENT_TURN_TIMEOUT_MS = "600000";
+    const { botConfig } = await loadConfig();
+    expect(botConfig.turnTimeoutMs).toBe(600000);
+  });
+
+  it("falls back to default AGENT_TURN_TIMEOUT_MS when env var is invalid", async () => {
+    process.env.AGENT_TURN_TIMEOUT_MS = "not-a-number";
+    const { botConfig } = await loadConfig();
+    expect(botConfig.turnTimeoutMs).toBe(720000);
+  });
+
+  it("caps AGENT_TURN_TIMEOUT_MS to configured max", async () => {
+    process.env.AGENT_TURN_TIMEOUT_MS = "999999";
+    const { botConfig } = await loadConfig();
+    expect(botConfig.turnTimeoutMs).toBe(780000);
+  });
+
+  it("derives AGENT_TURN_TIMEOUT_MS cap from QUEUE_CALLBACK_MAX_DURATION_SECONDS", async () => {
+    process.env.QUEUE_CALLBACK_MAX_DURATION_SECONDS = "500";
+    process.env.AGENT_TURN_TIMEOUT_MS = "999999";
+    const { botConfig } = await loadConfig();
+    expect(botConfig.turnTimeoutMs).toBe(480000);
+  });
 });
