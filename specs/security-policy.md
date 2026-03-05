@@ -52,8 +52,9 @@ This policy applies to:
 
 - Runtime issues short-lived, scoped credentials for skill-declared capabilities.
 - Credential enablement is explicit via bash custom command `jr-rpc issue-credential <capability>`.
+- Credential issuance must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Real tokens are delivered exclusively via host-level header transforms — the host proxies `Authorization` headers for matching API domains (e.g. `api.github.com`, `sentry.io`). The sandbox never sees real token values.
-- When CLI tools require an auth env var (e.g. `SENTRY_AUTH_TOKEN`), set it to a non-secret placeholder so the tool proceeds to make HTTP requests. The host authenticates those requests via header transforms.
+- When CLI tools require an auth env var (e.g. `SENTRY_AUTH_TOKEN`), set it to a non-secret placeholder so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
 - Never inject real tokens into sandbox env vars, files, or command arguments.
 
 ### GitHub baseline

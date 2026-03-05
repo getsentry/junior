@@ -15,6 +15,7 @@ credentials:
   api-domains:
     - api.github.com
   auth-token-env: GITHUB_TOKEN
+  auth-token-placeholder: ghp_host_managed_credential
   app-id-env: GITHUB_APP_ID
   private-key-env: GITHUB_APP_PRIVATE_KEY
   installation-id-env: GITHUB_INSTALLATION_ID

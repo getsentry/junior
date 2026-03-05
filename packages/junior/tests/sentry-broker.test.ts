@@ -298,4 +298,23 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     expect(lease.env.SENTRY_AUTH_TOKEN).toBe("host_managed_credential");
     expect(lease.env.SENTRY_AUTH_TOKEN).not.toBe("real-secret-token");
   });
+
+  it("uses configured auth token placeholder when provided by plugin config", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "real-secret-token";
+    const broker = createOAuthBearerBroker(
+      SENTRY_MANIFEST,
+      {
+        ...(SENTRY_MANIFEST.credentials as OAuthBearerCredentials),
+        authTokenPlaceholder: "sntr_fake_cli_token"
+      },
+      { userTokenStore: createMockTokenStore() }
+    );
+    const lease = await broker.issue({
+      capability: "sentry.api",
+      reason: "test:custom-placeholder"
+    });
+
+    expect(lease.env.SENTRY_AUTH_TOKEN).toBe("sntr_fake_cli_token");
+    expect(lease.env.SENTRY_AUTH_TOKEN).not.toBe("real-secret-token");
+  });
 });

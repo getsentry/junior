@@ -1,4 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/chat/capabilities/catalog", () => ({
+  getCapabilityProvider: (capability: string) =>
+    capability === "github.issues.write"
+      ? {
+          provider: "github",
+          capabilities: ["github.issues.write"],
+          configKeys: ["github.repo"],
+          target: { type: "repo" as const, configKey: "github.repo" }
+        }
+      : undefined,
+  listCapabilityProviders: () => [
+    { provider: "github", capabilities: ["github.issues.write"], configKeys: ["github.repo"] },
+    { provider: "sentry", capabilities: ["sentry.api"], configKeys: ["sentry.org", "sentry.project"] }
+  ]
+}));
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
@@ -50,7 +66,11 @@ function makeRuntime(options: { failIssue?: boolean; invocationArgs?: string } =
       };
     }
   };
-  return new SkillCapabilityRuntime({ broker, invocationArgs: options.invocationArgs ?? "--repo getsentry/junior" });
+  return new SkillCapabilityRuntime({
+    broker,
+    invocationArgs: options.invocationArgs ?? "--repo getsentry/junior",
+    requesterId: "U123"
+  });
 }
 
 describe("jr-rpc custom command", () => {
@@ -95,7 +115,7 @@ describe("jr-rpc custom command", () => {
         };
       }
     };
-    const runtime = new SkillCapabilityRuntime({ broker });
+    const runtime = new SkillCapabilityRuntime({ broker, requesterId: "U123" });
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc issue-credential github.issues.write --repo getsentry/junior",
       {

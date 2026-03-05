@@ -1,6 +1,7 @@
 import { createPrivateKey, createSign, randomUUID } from "node:crypto";
 import type { CapabilityTarget } from "@/chat/capabilities/types";
 import type { CredentialBroker, CredentialLease } from "@/chat/credentials/broker";
+import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
 import type { GitHubAppCredentials, PluginManifest } from "./types";
 
 const MAX_LEASE_MS = 60 * 60 * 1000;
@@ -163,7 +164,7 @@ export function createGitHubAppBroker(
   const provider = manifest.name;
   const { apiDomains, authTokenEnv, appIdEnv, privateKeyEnv, installationIdEnv } = credentials;
   const apiBase = `https://${apiDomains[0]}`;
-  const placeholder = "ghp_host_managed_credential";
+  const placeholder = resolveAuthTokenPlaceholder(credentials);
 
   return {
     async issue(input: {

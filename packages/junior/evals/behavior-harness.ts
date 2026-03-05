@@ -187,7 +187,7 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
       thread_ts: event.thread.thread_ts
     },
     author: {
-      userId: event.message.author?.user_id ?? "",
+      userId: event.message.author?.user_id ?? "U-eval",
       userName: event.message.author?.user_name ?? "",
       fullName: event.message.author?.full_name ?? "",
       isMe: event.message.author?.is_me ?? false,
@@ -347,7 +347,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         threadId: event.thread.id,
         channelId: event.thread.channel_id ?? "C_EVAL",
         threadTs: event.thread.thread_ts ?? "0",
-        userId: event.user_id
+        userId: event.user_id ?? "U-eval"
       };
       if (event.type === "assistant_thread_started") {
         await appSlackRuntime.handleAssistantThreadStarted(lifecycleEvent);

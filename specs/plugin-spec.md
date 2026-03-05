@@ -72,6 +72,7 @@ credentials:                         # how tokens are delivered to the sandbox
     - us.sentry.io
     - de.sentry.io
   auth-token-env: SENTRY_AUTH_TOKEN  # env var for static fallback + sandbox placeholder
+  auth-token-placeholder: host_managed_credential # optional placeholder value for CLI env checks
 
 oauth:                               # optional — omit for non-OAuth providers
   client-id-env: SENTRY_CLIENT_ID
@@ -105,6 +106,7 @@ mcp:                                 # optional — MCP server config for tool s
 | `credentials.type` | `string` | `"oauth-bearer"` or `"github-app"`. |
 | `credentials.api-domains` | `string[]` | Domains for `Authorization: Bearer` header transforms. At least one required. |
 | `credentials.auth-token-env` | `string` | Env var name for static token fallback and sandbox placeholder. |
+| `credentials.auth-token-placeholder` | `string` | Optional non-secret placeholder injected into sandbox env for CLI compatibility. |
 
 ### Optional fields
 

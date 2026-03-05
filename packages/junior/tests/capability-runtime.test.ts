@@ -1,4 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/chat/capabilities/catalog", () => ({
+  getCapabilityProvider: (capability: string) =>
+    capability === "github.issues.write"
+      ? {
+          provider: "github",
+          capabilities: ["github.issues.write"],
+          configKeys: ["github.repo"],
+          target: { type: "repo" as const, configKey: "github.repo" }
+        }
+      : undefined
+}));
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { Skill } from "@/chat/skills";
@@ -35,7 +47,7 @@ describe("skill capability runtime", () => {
       }
     };
 
-    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/junior" });
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/junior", requesterId: "U123" });
     await expect(
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
@@ -84,7 +96,7 @@ describe("skill capability runtime", () => {
       }
     };
 
-    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/junior" });
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/junior", requesterId: "U123" });
     await expect(
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
@@ -115,7 +127,7 @@ describe("skill capability runtime", () => {
       })
     };
 
-    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/junior" });
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/junior", requesterId: "U123" });
 
     await expect(
       runtime.issueCapabilityLease({
@@ -139,7 +151,7 @@ describe("skill capability runtime", () => {
       }
     };
 
-    const runtime = new SkillCapabilityRuntime({ broker });
+    const runtime = new SkillCapabilityRuntime({ broker, requesterId: "U123" });
     await expect(
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
@@ -172,7 +184,7 @@ describe("skill capability runtime", () => {
       }
     };
 
-    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/ignored" });
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "--repo getsentry/ignored", requesterId: "U123" });
     await expect(
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
@@ -192,7 +204,7 @@ describe("skill capability runtime", () => {
       }
     };
 
-    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "" });
+    const runtime = new SkillCapabilityRuntime({ broker, invocationArgs: "", requesterId: "U123" });
     await expect(
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
@@ -228,6 +240,7 @@ describe("skill capability runtime", () => {
     const runtime = new SkillCapabilityRuntime({
       broker,
       invocationArgs: "",
+      requesterId: "U123",
       resolveConfiguration: async (key) => (key === "github.repo" ? "getsentry/junior" : undefined)
     });
 
@@ -270,6 +283,7 @@ describe("skill capability runtime", () => {
     const runtime = new SkillCapabilityRuntime({
       broker,
       invocationArgs: "",
+      requesterId: "U123",
       resolveConfiguration: async () => "getsentry/junior"
     });
 

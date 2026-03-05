@@ -15,7 +15,10 @@ const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 
-function parseBaseCredentialFields(data: Record<string, unknown>, name: string): { apiDomains: string[]; authTokenEnv: string } {
+function parseBaseCredentialFields(
+  data: Record<string, unknown>,
+  name: string
+): { apiDomains: string[]; authTokenEnv: string; authTokenPlaceholder?: string } {
   const rawDomains = data["api-domains"];
   if (!Array.isArray(rawDomains) || rawDomains.length === 0 || !rawDomains.every((d) => typeof d === "string" && d.trim())) {
     throw new Error(`Plugin ${name} credentials.api-domains must be a non-empty array of strings`);
@@ -24,7 +27,20 @@ function parseBaseCredentialFields(data: Record<string, unknown>, name: string):
   if (typeof authTokenEnv !== "string" || !authTokenEnv.trim()) {
     throw new Error(`Plugin ${name} credentials.auth-token-env must be a non-empty string`);
   }
-  return { apiDomains: rawDomains as string[], authTokenEnv };
+  const authTokenPlaceholderRaw = data["auth-token-placeholder"];
+  if (
+    authTokenPlaceholderRaw !== undefined &&
+    (typeof authTokenPlaceholderRaw !== "string" || !authTokenPlaceholderRaw.trim())
+  ) {
+    throw new Error(`Plugin ${name} credentials.auth-token-placeholder must be a non-empty string when provided`);
+  }
+  return {
+    apiDomains: rawDomains as string[],
+    authTokenEnv,
+    ...(typeof authTokenPlaceholderRaw === "string"
+      ? { authTokenPlaceholder: authTokenPlaceholderRaw.trim() }
+      : {})
+  };
 }
 
 function parseCredentials(data: Record<string, unknown>, name: string): PluginCredentials {

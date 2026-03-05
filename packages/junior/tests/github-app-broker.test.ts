@@ -79,6 +79,23 @@ describe("github app credential broker", () => {
     expect(lease.env.GITHUB_TOKEN).not.toBe("real-secret-token");
   });
 
+  it("uses configured auth token placeholder when provided by plugin config", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint("real-secret-token");
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, {
+      ...TEST_CREDENTIALS,
+      authTokenPlaceholder: "github_host_managed_credential"
+    });
+    const lease = await broker.issue({
+      capability: "github.issues.read",
+      reason: "test:custom-placeholder"
+    });
+
+    expect(lease.env.GITHUB_TOKEN).toBe("github_host_managed_credential");
+    expect(lease.env.GITHUB_TOKEN).not.toBe("real-secret-token");
+  });
+
   it("scopes token to repository when target is provided", async () => {
     setupValidEnv();
     mockGitHubTokenEndpoint();

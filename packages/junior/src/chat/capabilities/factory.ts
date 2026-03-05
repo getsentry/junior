@@ -5,6 +5,7 @@ import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-s
 import { TestCredentialBroker } from "@/chat/credentials/test-broker";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth-token-placeholder";
 import { createPluginBroker, getPluginProviders } from "@/chat/plugins/registry";
 import { getStateAdapter } from "@/chat/state";
 
@@ -34,8 +35,9 @@ export function createSkillCapabilityRuntime(options: {
   // Plugin providers
   for (const plugin of getPluginProviders()) {
     const { credentials, name } = plugin.manifest;
+    const placeholder = resolveAuthTokenPlaceholder(credentials);
     brokersByProvider[name] = useTestBroker
-      ? new TestCredentialBroker({ provider: name, domains: credentials.apiDomains, envKey: credentials.authTokenEnv, placeholder: "host_managed_credential" })
+      ? new TestCredentialBroker({ provider: name, domains: credentials.apiDomains, envKey: credentials.authTokenEnv, placeholder })
       : createPluginBroker(name, { userTokenStore });
   }
 

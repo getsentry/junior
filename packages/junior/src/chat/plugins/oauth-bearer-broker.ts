@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 import type { CredentialBroker, CredentialLease } from "@/chat/credentials/broker";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
 import type { OAuthBearerCredentials, PluginManifest } from "./types";
 
 const MAX_LEASE_MS = 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
-const AUTH_TOKEN_PLACEHOLDER = "host_managed_credential";
 
 async function refreshAccessToken(
   refreshToken: string,
@@ -58,13 +58,14 @@ export function createOAuthBearerBroker(
   const provider = manifest.name;
   const supportedCapabilities = new Set(manifest.capabilities);
   const { apiDomains, authTokenEnv } = credentials;
+  const authTokenPlaceholder = resolveAuthTokenPlaceholder(credentials);
 
   function buildLease(token: string, capability: string, expiresAtMs: number, reason: string): CredentialLease {
     return {
       id: randomUUID(),
       provider,
       capability,
-      env: { [authTokenEnv]: AUTH_TOKEN_PLACEHOLDER },
+      env: { [authTokenEnv]: authTokenPlaceholder },
       headerTransforms: apiDomains.map((domain) => ({
         domain,
         headers: { Authorization: `Bearer ${token}` }

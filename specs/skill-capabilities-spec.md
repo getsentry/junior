@@ -63,11 +63,13 @@ Rules:
 - Use provider-specific broker implementations.
 - Return short-lived leases only.
 - Keep lease reuse in memory only.
+- Require requester context for runtime `issue-credential` enablement; do not issue credentials in ambiguous/no-requester contexts.
 
 ### Injection behavior
 
 - Enablement happens on explicit `jr-rpc issue-credential` bash custom command, not at skill-load time.
 - Delivery uses sandbox header transforms for matching domains.
+- Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
 - Do not inject privileged credentials into sandbox env vars.
 - Do not write long-lived credentials into sandbox files.
 

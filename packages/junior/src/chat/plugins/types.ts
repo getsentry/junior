@@ -4,12 +4,14 @@ export interface OAuthBearerCredentials {
   type: "oauth-bearer";
   apiDomains: string[];
   authTokenEnv: string;
+  authTokenPlaceholder?: string;
 }
 
 export interface GitHubAppCredentials {
   type: "github-app";
   apiDomains: string[];
   authTokenEnv: string;
+  authTokenPlaceholder?: string;
   appIdEnv: string;
   privateKeyEnv: string;
   installationIdEnv: string;

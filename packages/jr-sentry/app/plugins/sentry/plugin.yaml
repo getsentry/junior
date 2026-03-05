@@ -15,6 +15,7 @@ credentials:
     - us.sentry.io
     - de.sentry.io
   auth-token-env: SENTRY_AUTH_TOKEN
+  auth-token-placeholder: host_managed_credential
 
 oauth:
   client-id-env: SENTRY_CLIENT_ID

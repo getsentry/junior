@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import path from "node:path";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/chat/home", () => ({
+  pluginRoots: () => [path.resolve(process.cwd(), "plugins")]
+}));
 import {
   createPluginBroker,
   getPluginCapabilityProviders,
@@ -20,6 +25,9 @@ describe("plugin registry", () => {
       "sentry.api"
     ]);
     expect(sentry!.manifest.configKeys).toEqual(["sentry.org", "sentry.project"]);
+    expect(sentry!.manifest.credentials).toMatchObject({
+      authTokenPlaceholder: "host_managed_credential"
+    });
   });
 
   it("discovers github plugin from manifest", () => {
@@ -34,6 +42,9 @@ describe("plugin registry", () => {
     ]);
     expect(github!.manifest.configKeys).toEqual(["github.repo"]);
     expect(github!.manifest.credentials.type).toBe("github-app");
+    expect(github!.manifest.credentials).toMatchObject({
+      authTokenPlaceholder: "ghp_host_managed_credential"
+    });
   });
 
   it("registers plugin capabilities", () => {

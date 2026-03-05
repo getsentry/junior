@@ -154,6 +154,9 @@ export class SkillCapabilityRuntime {
     repoRef?: string;
     reason: string;
   }): Promise<{ reused: boolean; expiresAt: string }> {
+    if (!this.requesterId) {
+      throw new Error("jr-rpc issue-credential requires requester context");
+    }
     const capability = input.capability.trim();
     if (!capability) {
       throw new Error("jr-rpc issue-credential requires a capability argument");
