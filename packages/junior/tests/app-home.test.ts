@@ -1,7 +1,30 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SectionBlock } from "@slack/web-api";
 import { buildHomeView, publishAppHomeView } from "@/chat/app-home";
 import type { UserTokenStore, StoredTokens } from "@/chat/credentials/user-token-store";
+
+vi.mock("@/chat/plugins/registry", () => ({
+  getPluginProviders: () => [
+    {
+      manifest: {
+        name: "sentry",
+        description: "Sentry provider",
+        credentials: {
+          type: "oauth-bearer"
+        }
+      }
+    },
+    {
+      manifest: {
+        name: "github",
+        description: "GitHub provider",
+        credentials: {
+          type: "github-app"
+        }
+      }
+    }
+  ]
+}));
 
 function createMockTokenStore(tokens: Record<string, StoredTokens | undefined>): UserTokenStore {
   return {
@@ -24,14 +47,45 @@ const expiredToken: StoredTokens = {
 };
 
 describe("buildHomeView", () => {
+  afterEach(() => {
+    delete process.env.VERCEL_GIT_COMMIT_SHA;
+  });
+
+  it("shows version metadata from VERCEL_GIT_COMMIT_SHA", async () => {
+    process.env.VERCEL_GIT_COMMIT_SHA = "abc123def456";
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    expect(view.blocks[0]).toMatchObject({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*junior version:* `abc123def456`"
+      }
+    });
+  });
+
+  it("shows unknown version metadata when VERCEL_GIT_COMMIT_SHA is missing", async () => {
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    expect(view.blocks[0]).toMatchObject({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*junior version:* `unknown`"
+      }
+    });
+  });
+
   it("shows connected oauth-bearer provider with Unlink button", async () => {
     const store = createMockTokenStore({ sentry: validToken });
     const view = await buildHomeView("U123", store);
 
     expect(view.type).toBe("home");
-    expect(view.blocks).toHaveLength(1);
+    expect(view.blocks).toHaveLength(2);
 
-    const section = view.blocks[0] as SectionBlock;
+    const section = view.blocks[1] as SectionBlock;
     expect(section.type).toBe("section");
     expect(section.text!.text).toContain("sentry");
 
@@ -45,9 +99,9 @@ describe("buildHomeView", () => {
     const view = await buildHomeView("U123", store);
 
     expect(view.type).toBe("home");
-    expect(view.blocks).toHaveLength(1);
+    expect(view.blocks).toHaveLength(2);
 
-    const section = view.blocks[0] as SectionBlock;
+    const section = view.blocks[1] as SectionBlock;
     expect(section.text!.text).toBe("No connected accounts");
   });
 
@@ -55,8 +109,8 @@ describe("buildHomeView", () => {
     const store = createMockTokenStore({ sentry: expiredToken });
     const view = await buildHomeView("U123", store);
 
-    expect(view.blocks).toHaveLength(1);
-    const section = view.blocks[0] as SectionBlock;
+    expect(view.blocks).toHaveLength(2);
+    const section = view.blocks[1] as SectionBlock;
     expect(section.text!.text).toContain("sentry");
   });
 
@@ -66,7 +120,7 @@ describe("buildHomeView", () => {
     const store = createMockTokenStore({ github: validToken });
     const view = await buildHomeView("U123", store);
 
-    const section = view.blocks[0] as SectionBlock;
+    const section = view.blocks[1] as SectionBlock;
     expect(section.text!.text).toBe("No connected accounts");
     // github provider is github-app type, so store.get should not be called for it
     expect(store.get).not.toHaveBeenCalledWith("U123", "github");

@@ -29,6 +29,7 @@ import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { GEN_AI_PROVIDER_NAME, getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { createSandboxExecutor, type SandboxExecutor } from "@/chat/sandbox/sandbox";
+import { getRuntimeMetadata } from "@/chat/runtime-metadata";
 import {
   compactStatusFilename,
   compactStatusPath,
@@ -751,7 +752,8 @@ export async function generateAssistantReply(
       requester: context.requester,
       artifactState: context.artifactState,
       configuration: configurationValues,
-      relevantConfigurationKeys: collectRelevantConfigurationKeys(activeSkills, explicitSkill)
+      relevantConfigurationKeys: collectRelevantConfigurationKeys(activeSkills, explicitSkill),
+      runtimeMetadata: getRuntimeMetadata()
     });
 
     const userContentParts: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [

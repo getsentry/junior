@@ -4,6 +4,7 @@ import { botConfig } from "@/chat/config";
 import { soulPathCandidates } from "@/chat/home";
 import { logInfo, logWarn } from "@/chat/observability";
 import { slackOutputPolicy } from "@/chat/output";
+import type { RuntimeMetadata } from "@/chat/runtime-metadata";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
@@ -198,6 +199,7 @@ export function buildSystemPrompt(params: {
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
   relevantConfigurationKeys?: string[];
+  runtimeMetadata?: RuntimeMetadata;
 }): string {
   const {
     availableSkills,
@@ -207,7 +209,8 @@ export function buildSystemPrompt(params: {
     assistant,
     artifactState,
     configuration,
-    relevantConfigurationKeys
+    relevantConfigurationKeys,
+    runtimeMetadata
   } = params;
   // Core harness contract:
   // - See specs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
@@ -310,6 +313,13 @@ export function buildSystemPrompt(params: {
       ].join("\n")
     ),
     renderTag("configuration-context", configurationSection),
+    renderTag(
+      "runtime-metadata",
+      [
+        "Use this for runtime version questions about the deployed assistant.",
+        `- version: ${escapeXml(runtimeMetadata?.version ?? "unknown")}`
+      ].join("\n")
+    ),
     renderTag(
       "provider-capabilities",
       [

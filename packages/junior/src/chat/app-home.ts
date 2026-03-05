@@ -2,6 +2,7 @@ import type { WebClient, KnownBlock, SectionBlock } from "@slack/web-api";
 import { logInfo } from "@/chat/observability";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import { getRuntimeMetadata } from "@/chat/runtime-metadata";
 
 interface HomeView {
   type: "home";
@@ -12,8 +13,16 @@ export async function buildHomeView(
   userId: string,
   userTokenStore: UserTokenStore
 ): Promise<HomeView> {
+  const runtimeMetadata = getRuntimeMetadata();
   const providers = getPluginProviders();
   const connectedSections: SectionBlock[] = [];
+  const versionSection: SectionBlock = {
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `*junior version:* \`${runtimeMetadata.version ?? "unknown"}\``
+    }
+  };
 
   for (const plugin of providers) {
     if (plugin.manifest.credentials.type !== "oauth-bearer") continue;
@@ -41,6 +50,7 @@ export async function buildHomeView(
     return {
       type: "home",
       blocks: [
+        versionSection,
         {
           type: "section",
           text: {
@@ -54,7 +64,7 @@ export async function buildHomeView(
 
   return {
     type: "home",
-    blocks: connectedSections
+    blocks: [versionSection, ...connectedSections]
   };
 }
 

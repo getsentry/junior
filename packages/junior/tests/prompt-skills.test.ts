@@ -1,7 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildSystemPrompt } from "@/chat/prompt";
 import { sandboxSkillFile, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { Skill, SkillMetadata } from "@/chat/skills";
+
+vi.mock("@/chat/capabilities/catalog", () => ({
+  listCapabilityProviders: () => [
+    {
+      provider: "github",
+      configKeys: ["github.repo"],
+      capabilities: ["github.issues.read"]
+    }
+  ]
+}));
 
 describe("buildSystemPrompt skill paths", () => {
   it("renders available and loaded skill locations in sandbox workspace paths", () => {
@@ -72,5 +82,30 @@ describe("buildSystemPrompt skill paths", () => {
     expect(prompt).toContain(
       "If the user explicitly asks to post/send/share/say/show/announce/broadcast in the channel (outside this thread), call `slackChannelPostMessage`"
     );
+  });
+
+  it("renders runtime-metadata with provided version", () => {
+    const prompt = buildSystemPrompt({
+      availableSkills: [],
+      activeSkills: [],
+      invocation: null,
+      runtimeMetadata: {
+        version: "deadbeef"
+      }
+    });
+
+    expect(prompt).toContain("<runtime-metadata>");
+    expect(prompt).toContain("- version: deadbeef");
+  });
+
+  it("renders runtime-metadata with unknown when version is unavailable", () => {
+    const prompt = buildSystemPrompt({
+      availableSkills: [],
+      activeSkills: [],
+      invocation: null
+    });
+
+    expect(prompt).toContain("<runtime-metadata>");
+    expect(prompt).toContain("- version: unknown");
   });
 });
