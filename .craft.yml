@@ -1,0 +1,13 @@
+minVersion: 0.23.1
+changelogPolicy: none
+preReleaseCommand: bash scripts/craft-pre-release.sh
+targets:
+  - name: npm
+    id: "@sentry/junior"
+    includeNames: /^sentry-junior-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-github"
+    includeNames: /^sentry-junior-github-\d.*\.tgz$/
+  - name: npm
+    id: "@sentry/junior-sentry"
+    includeNames: /^sentry-junior-sentry-\d.*\.tgz$/

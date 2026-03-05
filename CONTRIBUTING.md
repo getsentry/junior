@@ -51,6 +51,26 @@ pnpm build:pkg
 pnpm --filter jr-sentry build
 ```
 
+## Releasing
+
+This repo uses Craft for manual lockstep npm releases of:
+
+- `@sentry/junior`
+- `@sentry/junior-github`
+- `@sentry/junior-sentry`
+
+Trigger releases from GitHub Actions:
+
+1. Open `Actions` -> `Release`.
+2. Run workflow with `bump` (`patch`, `minor`, or `major`).
+3. Set `force=true` only when intentionally bypassing release blockers.
+
+Required repository/org configuration:
+
+- Variable: `SENTRY_RELEASE_BOT_CLIENT_ID`
+- Secret: `SENTRY_RELEASE_BOT_PRIVATE_KEY`
+- npm publish credentials available to Craft/action-prepare-release runtime.
+
 ## File-Scoped Tests
 
 Run a single unit test file:
