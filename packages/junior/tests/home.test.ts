@@ -7,27 +7,24 @@ describe("home paths", () => {
     expect(homeDir()).toBe(path.resolve(process.cwd(), "app"));
   });
 
-  it("resolves data/SOUL.md with canonical-first fallback", () => {
+  it("resolves data/SOUL.md from canonical app root", () => {
     const canonical = path.resolve(process.cwd(), "app", "data");
-    const legacy = path.resolve(process.cwd(), "data");
     const expected = canonical;
     expect(dataDir()).toBe(expected);
     expect(soulPath()).toBe(path.join(expected, "SOUL.md"));
-    expect(dataRoots()).toEqual(expect.arrayContaining([canonical, legacy]));
-    expect(soulPathCandidates()).toEqual(expect.arrayContaining([path.join(canonical, "SOUL.md"), path.join(legacy, "SOUL.md")]));
+    expect(dataRoots()).toEqual([canonical]);
+    expect(soulPathCandidates()).toEqual([path.join(canonical, "SOUL.md")]);
   });
 
-  it("resolves skills and plugins with canonical-first fallback", () => {
+  it("resolves skills and plugins from canonical app root", () => {
     const canonicalSkills = path.resolve(process.cwd(), "app", "skills");
-    const legacySkills = path.resolve(process.cwd(), "skills");
     const expectedSkills = canonicalSkills;
     expect(skillsDir()).toBe(expectedSkills);
-    expect(skillRoots()).toEqual(expect.arrayContaining([canonicalSkills, legacySkills]));
+    expect(skillRoots()).toEqual([canonicalSkills]);
 
     const canonicalPlugins = path.resolve(process.cwd(), "app", "plugins");
-    const legacyPlugins = path.resolve(process.cwd(), "plugins");
     const expectedPlugins = canonicalPlugins;
     expect(pluginsDir()).toBe(expectedPlugins);
-    expect(pluginRoots()).toEqual(expect.arrayContaining([canonicalPlugins, legacyPlugins]));
+    expect(pluginRoots()).toEqual([canonicalPlugins]);
   });
 });

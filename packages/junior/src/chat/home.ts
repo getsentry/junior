@@ -5,24 +5,13 @@ export function homeDir(): string {
   return path.resolve(process.cwd(), "app");
 }
 
-function legacyHomeDir(): string {
-  return path.resolve(process.cwd());
-}
-
 function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
 function resolveContentRoots(subdir: "data" | "skills" | "plugins"): string[] {
   const canonical = path.join(homeDir(), subdir);
-  const legacy = path.join(legacyHomeDir(), subdir);
-  if (canonical === legacy) {
-    return [canonical];
-  }
-
-  // Always prefer canonical app roots; legacy roots are compatibility-only.
-  // Runtime callers that need fallback behavior should iterate all roots.
-  return [canonical, legacy];
+  return [canonical];
 }
 
 export function dataDir(): string {

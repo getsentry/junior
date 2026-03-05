@@ -36,7 +36,21 @@ function loadSoul(): string {
   return DEFAULT_SOUL;
 }
 
-export const JUNIOR_PERSONALITY = loadSoul();
+export const JUNIOR_PERSONALITY = (() => {
+  try {
+    return loadSoul();
+  } catch (error) {
+    logWarn(
+      "soul_load_failed",
+      {},
+      {
+        "error.message": error instanceof Error ? error.message : String(error)
+      },
+      "Failed to load SOUL.md; using built-in default personality"
+    );
+    return DEFAULT_SOUL;
+  }
+})();
 
 function workspaceSkillDir(skillName: string): string {
   return sandboxSkillDir(skillName);
