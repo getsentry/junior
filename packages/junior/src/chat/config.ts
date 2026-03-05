@@ -2,7 +2,7 @@ function buildBotConfig() {
   return {
     userName: process.env.JUNIOR_BOT_NAME ?? "junior",
     modelId: process.env.AI_MODEL ?? "anthropic/claude-sonnet-4.6",
-    fastModelId: process.env.AI_FAST_MODEL ?? process.env.AI_MODEL ?? "anthropic/claude-haiku-4-5"
+    fastModelId: process.env.AI_FAST_MODEL ?? process.env.AI_MODEL ?? "anthropic/claude-haiku-4.5"
   };
 }
 
