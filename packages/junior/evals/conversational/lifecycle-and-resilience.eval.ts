@@ -13,7 +13,7 @@ describe("Conversational Evals: Lifecycle and Resilience", () => {
     criteria: "A single error reply is posted when response generation fails.",
   });
 
-  slackEval("resilience: retryable timeout resumes without user-visible failure", {
+  slackEval("resilience: retryable timeout-shaped failure retries cleanly", {
     behavior: {
       retryable_timeout_calls: [1],
       retryable_max_attempts: 2,

@@ -56,6 +56,9 @@ Harness behavior knobs (in `BehaviorCaseConfig`):
 - `retryable_max_attempts`: max retries for retryable timeout-shaped failures during one event.
 - `reply_texts`: override returned reply text per call.
 
+`retryable_timeout_calls` validates handler-level retry propagation only. It does not validate
+checkpoint save/restore semantics in the core resumability path.
+
 ## Running
 
 - `pnpm evals`: Run all eval cases
