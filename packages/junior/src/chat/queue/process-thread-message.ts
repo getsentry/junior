@@ -138,34 +138,42 @@ export async function processQueuedThreadMessage(
       throw new QueueMessageOwnershipError("refresh", payload.dedupKey);
     }
 
-    try {
-      await deps.clearProcessingReaction({
-        channelId: runtimePayload.thread.channelId,
-        timestamp: runtimePayload.message.id
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      deps.logWarn(
-        "queue_processing_reaction_clear_failed",
-        {
-          slackThreadId: payload.normalizedThreadId,
-          slackChannelId: getPayloadChannelId(payload),
-          slackUserId: getPayloadUserId(payload)
-        },
-        {
-          "messaging.message.id": payload.message.id,
-          "app.queue.message_kind": payload.kind,
-          "app.queue.message_id": payload.queueMessageId,
-          "error.message": errorMessage
-        },
-        "Failed to remove processing reaction before queue turn execution"
-      );
-    }
+    let reactionCleared = false;
+    const clearReactionBeforeFirstResponsePost = async (): Promise<void> => {
+      if (reactionCleared) {
+        return;
+      }
+      reactionCleared = true;
+      try {
+        await deps.clearProcessingReaction({
+          channelId: runtimePayload.thread.channelId,
+          timestamp: runtimePayload.message.id
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        deps.logWarn(
+          "queue_processing_reaction_clear_failed",
+          {
+            slackThreadId: payload.normalizedThreadId,
+            slackChannelId: getPayloadChannelId(payload),
+            slackUserId: getPayloadUserId(payload)
+          },
+          {
+            "messaging.message.id": payload.message.id,
+            "app.queue.message_kind": payload.kind,
+            "app.queue.message_id": payload.queueMessageId,
+            "error.message": errorMessage
+          },
+          "Failed to remove processing reaction before sending queue response"
+        );
+      }
+    };
 
     await deps.processRuntime({
       kind: runtimePayload.kind,
       thread: runtimePayload.thread,
-      message: runtimePayload.message
+      message: runtimePayload.message,
+      beforeFirstResponsePost: clearReactionBeforeFirstResponsePost
     });
 
     const completed = await completeQueueMessageProcessingOwnership({

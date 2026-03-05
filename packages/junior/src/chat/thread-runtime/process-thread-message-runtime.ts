@@ -13,6 +13,7 @@ function rehydrateAttachmentFetchers(
 }
 
 export async function processThreadMessageRuntime(args: {
+  beforeFirstResponsePost?: () => Promise<void>;
   kind: ThreadMessageKind;
   message: Message;
   thread: Thread;
@@ -25,9 +26,13 @@ export async function processThreadMessageRuntime(args: {
   rehydrateAttachmentFetchers(runtimePayload);
 
   if (args.kind === "new_mention") {
-    await appSlackRuntime.handleNewMention(args.thread, args.message);
+    await appSlackRuntime.handleNewMention(args.thread, args.message, {
+      beforeFirstResponsePost: args.beforeFirstResponsePost
+    });
     return;
   }
 
-  await appSlackRuntime.handleSubscribedMessage(args.thread, args.message);
+  await appSlackRuntime.handleSubscribedMessage(args.thread, args.message, {
+    beforeFirstResponsePost: args.beforeFirstResponsePost
+  });
 }

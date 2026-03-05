@@ -40,6 +40,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     thread: Thread,
     message: Message,
     options: {
+      beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
       preparedState?: PreparedTurnState;
     } = {}
@@ -115,12 +116,28 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         });
         const textStream = createTextStreamBridge();
         let streamedReplyPromise: Promise<SentMessage> | undefined;
+        let beforeFirstResponsePostCalled = false;
+        const beforeFirstResponsePost = async (): Promise<void> => {
+          if (beforeFirstResponsePostCalled) {
+            return;
+          }
+          beforeFirstResponsePostCalled = true;
+          await options.beforeFirstResponsePost?.();
+        };
         const startStreamingReply = () => {
           if (!streamedReplyPromise) {
-            streamedReplyPromise = thread.post(
-              createNormalizingStream(textStream.iterable, ensureBlockSpacing)
-            );
+            const streamingReply = (async () => {
+              await beforeFirstResponsePost();
+              return await thread.post(
+                createNormalizingStream(textStream.iterable, ensureBlockSpacing)
+              );
+            })();
+            streamedReplyPromise = streamingReply;
           }
+        };
+        const postThreadReply = async (payload: Parameters<typeof thread.post>[0]): Promise<unknown> => {
+          await beforeFirstResponsePost();
+          return await thread.post(payload);
         };
         await progress.start();
         let persistedAtLeastOnce = false;
@@ -239,7 +256,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
-              await thread.post(
+              await postThreadReply(
                 buildSlackOutputMessage(reply.text, {
                   files: resolvedAttachFiles === "inline" ? replyFiles : undefined
                 })
@@ -247,7 +264,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             } else {
               await streamedReplyPromise;
               if (reply.diagnostics.outcome !== "success" && reply.text.trim().length > 0) {
-                await thread.post(buildSlackOutputMessage(reply.text));
+                await postThreadReply(buildSlackOutputMessage(reply.text));
               }
             }
           }
@@ -301,7 +318,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           if (shouldPostThreadReply && resolvedAttachFiles === "followup" && replyFiles) {
-            await thread.post({ files: replyFiles } as Parameters<typeof thread.post>[0]);
+            await postThreadReply({ files: replyFiles } as Parameters<typeof thread.post>[0]);
           }
         } finally {
           textStream.end();

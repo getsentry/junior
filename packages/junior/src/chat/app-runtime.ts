@@ -22,6 +22,10 @@ export interface AppRuntimeReplyDecision {
   shouldReply: boolean;
 }
 
+export interface AppRuntimeReplyHooks {
+  beforeFirstResponsePost?: () => Promise<void>;
+}
+
 function isExplicitMentionDecision(reason: string): boolean {
   return reason === "explicit mention" || reason === "explicit_mention" || reason.startsWith("explicit_mention:");
 }
@@ -85,6 +89,7 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
     thread: Thread,
     message: Message,
     options?: {
+      beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
       preparedState?: TPreparedState;
     }
@@ -117,8 +122,8 @@ export interface AppSlackRuntime<
 > {
   handleAssistantContextChanged: (event: TAssistantEvent) => Promise<void>;
   handleAssistantThreadStarted: (event: TAssistantEvent) => Promise<void>;
-  handleNewMention: (thread: Thread, message: Message) => Promise<void>;
-  handleSubscribedMessage: (thread: Thread, message: Message) => Promise<void>;
+  handleNewMention: (thread: Thread, message: Message, hooks?: AppRuntimeReplyHooks) => Promise<void>;
+  handleSubscribedMessage: (thread: Thread, message: Message, hooks?: AppRuntimeReplyHooks) => Promise<void>;
 }
 
 function buildLogContext(
@@ -158,7 +163,7 @@ export function createAppSlackRuntime<
     buildLogContext(deps, args);
 
   return {
-    async handleNewMention(thread: Thread, message: Message): Promise<void> {
+    async handleNewMention(thread: Thread, message: Message, hooks?: AppRuntimeReplyHooks): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
@@ -178,7 +183,8 @@ export function createAppSlackRuntime<
           async () => {
             await thread.subscribe();
             await deps.replyToThread(thread, message, {
-              explicitMention: true
+              explicitMention: true,
+              beforeFirstResponsePost: hooks?.beforeFirstResponsePost
             });
           }
         );
@@ -197,11 +203,12 @@ export function createAppSlackRuntime<
           "onNewMention failed"
         );
         const errorMessage = error instanceof Error ? error.message : String(error);
+        await hooks?.beforeFirstResponsePost?.();
         await thread.post(`Error: ${errorMessage}`);
       }
     },
 
-    async handleSubscribedMessage(thread: Thread, message: Message): Promise<void> {
+    async handleSubscribedMessage(thread: Thread, message: Message, hooks?: AppRuntimeReplyHooks): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
@@ -277,7 +284,8 @@ export function createAppSlackRuntime<
           async () => {
             await deps.replyToThread(thread, message, {
               explicitMention: isExplicitMentionDecision(decision.reason),
-              preparedState
+              preparedState,
+              beforeFirstResponsePost: hooks?.beforeFirstResponsePost
             });
           }
         );
@@ -296,6 +304,7 @@ export function createAppSlackRuntime<
           "onSubscribedMessage failed"
         );
         const errorMessage = error instanceof Error ? error.message : String(error);
+        await hooks?.beforeFirstResponsePost?.();
         await thread.post(`Error: ${errorMessage}`);
       }
     },
