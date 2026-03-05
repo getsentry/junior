@@ -50,6 +50,15 @@ For each case (`slackEval()` call):
 2. Return observed artifacts as JSON for LLM judgment.
 3. `vitest-evals` scores the output against `criteria` (A–E → 1.0–0.0).
 
+Harness behavior knobs (in `BehaviorCaseConfig`):
+- `fail_reply_call`: force a non-retryable reply failure on a specific call.
+- `retryable_timeout_calls`: force retryable timeout-shaped failures on selected reply calls.
+- `retryable_max_attempts`: max retries for retryable timeout-shaped failures during one event.
+- `reply_texts`: override returned reply text per call.
+
+`retryable_timeout_calls` validates handler-level retry propagation only. It does not validate
+checkpoint save/restore semantics in the core resumability path.
+
 ## Running
 
 - `pnpm evals`: Run all eval cases

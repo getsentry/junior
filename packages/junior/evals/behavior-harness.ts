@@ -3,6 +3,7 @@ import type { Message } from "chat";
 import type { AppRuntimeAssistantLifecycleEvent } from "@/chat/app-runtime";
 import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
 import { generateAssistantReply } from "@/chat/respond";
+import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
 import { FakeSlackAdapter, createTestThread, type TestThread } from "../tests/fixtures/slack-harness";
 import { readCapturedSlackApiCalls, type CapturedSlackApiCall } from "../tests/msw/captured-slack-api-calls";
 
@@ -64,6 +65,9 @@ interface SubscribedDecisionFixture {
 export interface BehaviorCaseConfig {
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
+  retryable_timeout_calls?: number[];
+  retryable_timeout_message?: string;
+  retryable_max_attempts?: number;
   mock_slack_api?: boolean;
   skill_dirs?: string[];
   test_credential_token?: string;
@@ -201,6 +205,9 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   const threadsById = new Map<string, TestThread>();
   const channelStateById = new Map<string, { value: Record<string, unknown> }>();
   const replyTexts = testCase.behavior?.reply_texts ?? [];
+  const retryableTimeoutCalls = new Set(testCase.behavior?.retryable_timeout_calls ?? []);
+  const retryableTimeoutMessage = testCase.behavior?.retryable_timeout_message ?? "simulated eval timeout";
+  const retryableMaxAttempts = Math.max(1, testCase.behavior?.retryable_max_attempts ?? 3);
   const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
   const replyTimeoutMs = Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000", 10);
   let replyCallCount = 0;
@@ -279,6 +286,9 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     },
     generateAssistantReply: async (text, context) => {
       replyCallCount += 1;
+      if (retryableTimeoutCalls.has(replyCallCount)) {
+        throw new RetryableTurnError("agent_turn_timeout_resume", retryableTimeoutMessage);
+      }
       if (testCase.behavior?.fail_reply_call === replyCallCount) {
         throw new Error(`forced reply failure on call ${replyCallCount}`);
       }
@@ -330,16 +340,36 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
   });
 
   try {
+    const runWithRetryableTurnHandling = async (run: () => Promise<void>): Promise<void> => {
+      for (let attempt = 1; attempt <= retryableMaxAttempts; attempt += 1) {
+        try {
+          await run();
+          return;
+        } catch (error) {
+          if (!isRetryableTurnError(error, "agent_turn_timeout_resume")) {
+            throw error;
+          }
+          if (attempt >= retryableMaxAttempts) {
+            throw error;
+          }
+        }
+      }
+    };
+
     for (const event of testCase.events) {
       if (event.type === "new_mention") {
         const thread = getThread(event.thread);
-        await appSlackRuntime.handleNewMention(thread, toIncomingMessage(event) as any);
+        await runWithRetryableTurnHandling(async () => {
+          await appSlackRuntime.handleNewMention(thread, toIncomingMessage(event) as any);
+        });
         continue;
       }
 
       if (event.type === "subscribed_message") {
         const thread = getThread(event.thread);
-        await appSlackRuntime.handleSubscribedMessage(thread, toIncomingMessage(event) as any);
+        await runWithRetryableTurnHandling(async () => {
+          await appSlackRuntime.handleSubscribedMessage(thread, toIncomingMessage(event) as any);
+        });
         continue;
       }
 
