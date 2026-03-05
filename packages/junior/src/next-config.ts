@@ -9,6 +9,11 @@ function toPosixPath(value: string): string {
   return value.split(path.sep).join("/");
 }
 
+function toPnpmStoreSegment(packageName: string): string {
+  // pnpm flattens scoped packages like @scope/name to @scope+name in .pnpm store dirs.
+  return packageName.replace(/\//g, "+");
+}
+
 function getNodeModulesRoots(): string[] {
   const roots: string[] = [];
   let current = process.cwd();
@@ -27,22 +32,25 @@ function getNodeModulesRoots(): string[] {
 
 function resolveTracingPatternsForPackage(packageName: string): string[] {
   const patterns: string[] = [];
+  const pnpmStoreSegment = toPnpmStoreSegment(packageName);
   for (const nodeModulesRoot of getNodeModulesRoots()) {
     const packageDir = path.join(nodeModulesRoot, packageName);
-    if (!fs.existsSync(packageDir)) {
-      continue;
+    if (fs.existsSync(packageDir)) {
+      const relativeDir = toPosixPath(path.relative(process.cwd(), packageDir));
+      const relativePattern = relativeDir.startsWith(".") || relativeDir.startsWith("..")
+        ? `${relativeDir}/**/*`
+        : `./${relativeDir}/**/*`;
+      const absolutePattern = `${toPosixPath(packageDir)}/**/*`;
+      patterns.push(relativePattern, absolutePattern);
     }
-
-    const relativeDir = toPosixPath(path.relative(process.cwd(), packageDir));
-    const relativePattern = relativeDir.startsWith(".") || relativeDir.startsWith("..")
-      ? `${relativeDir}/**/*`
-      : `./${relativeDir}/**/*`;
-    const absolutePattern = `${toPosixPath(packageDir)}/**/*`;
-    patterns.push(relativePattern, absolutePattern);
-  }
-
-  if (patterns.length === 0) {
-    throw new Error(`Unable to resolve package directory for output tracing: ${packageName}`);
+    const pnpmPattern = `${toPosixPath(nodeModulesRoot)}/.pnpm/${pnpmStoreSegment}@*/node_modules/${packageName}/**/*`;
+    const relativePnpmPattern = toPosixPath(path.relative(process.cwd(), pnpmPattern));
+    patterns.push(
+      relativePnpmPattern.startsWith(".") || relativePnpmPattern.startsWith("..")
+        ? relativePnpmPattern
+        : `./${relativePnpmPattern}`,
+      pnpmPattern
+    );
   }
 
   return Array.from(new Set(patterns));
