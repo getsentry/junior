@@ -23,6 +23,7 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { buildReplyDeliveryPlan, type ReplyDeliveryPlan } from "@/chat/delivery/plan";
 import { SkillSandbox } from "@/chat/skill-sandbox";
 import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
+import { getPluginProviders } from "@/chat/plugins/registry";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
@@ -97,6 +98,7 @@ export interface AgentTurnDiagnostics {
 
 const AGENT_TURN_TIMEOUT_MS = 15 * 60 * 1000;
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
+let startupDiscoveryLogged = false;
 
 function isExecutionDeferralResponse(text: string): boolean {
   return /\b(want me to proceed|do you want me to proceed|shall i proceed|can i proceed|should i proceed|let me do that now|give me a moment|tag me again|fresh invocation)\b/i.test(
@@ -599,6 +601,23 @@ export async function generateAssistantReply(
     };
 
     const availableSkills = await discoverSkills({ additionalRoots: context.skillDirs });
+    if (!startupDiscoveryLogged) {
+      startupDiscoveryLogged = true;
+      const plugins = getPluginProviders();
+      const roots = [...new Set(availableSkills.map((skill) => skill.skillPath))].sort();
+      logInfo(
+        "startup_discovery_summary",
+        spanContext,
+        {
+          "app.skill.count": availableSkills.length,
+          "app.skill.names": availableSkills.map((skill) => skill.name).sort(),
+          "file.directories": roots,
+          "app.plugin.count": plugins.length,
+          "app.plugin.names": plugins.map((plugin) => plugin.manifest.name).sort()
+        },
+        "Discovered startup SOUL/skills/plugins"
+      );
+    }
     const configurationValues: Record<string, unknown> = {
       ...(context.configuration ?? {})
     };

@@ -6,7 +6,7 @@ import type { OAuthProviderConfig } from "@/chat/capabilities/jr-rpc-command";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { pluginRoots } from "@/chat/home";
-import { logWarn, setSpanAttributes } from "@/chat/observability";
+import { logInfo, logWarn, setSpanAttributes } from "@/chat/observability";
 import { createGitHubAppBroker } from "./github-app-broker";
 import { createOAuthBearerBroker } from "./oauth-bearer-broker";
 import type { GitHubAppCredentials, OAuthBearerCredentials, PluginBrokerDeps, PluginCredentials, PluginDefinition, PluginManifest } from "./types";
@@ -217,6 +217,17 @@ function loadPlugins(): void {
       }
     }
   }
+
+  logInfo(
+    "plugins_loaded",
+    {},
+    {
+      "file.directories": roots,
+      "app.plugin.count": pluginDefinitions.length,
+      "app.plugin.names": pluginDefinitions.map((plugin) => plugin.manifest.name).sort()
+    },
+    "Loaded plugins"
+  );
 }
 
 loadPlugins();

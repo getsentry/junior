@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import { botConfig } from "@/chat/config";
 import { soulPathCandidates } from "@/chat/home";
-import { logWarn } from "@/chat/observability";
+import { logInfo, logWarn } from "@/chat/observability";
 import { slackOutputPolicy } from "@/chat/output";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
@@ -18,6 +18,14 @@ function loadSoul(): string {
     try {
       const raw = fs.readFileSync(resolved, "utf8").trim();
       if (raw.length > 0) {
+        logInfo(
+          "soul_loaded",
+          {},
+          {
+            "file.path": resolved
+          },
+          "Loaded SOUL.md"
+        );
         return raw;
       }
     } catch {

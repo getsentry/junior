@@ -95,8 +95,8 @@ function getSentryEnvironment(): string {
     .toLowerCase();
 }
 
-function shouldSuppressInfoLog(level: LogLevel): boolean {
-  return level === "info" && getSentryEnvironment() === "production";
+function shouldSuppressInfoLog(_level: LogLevel): boolean {
+  return false;
 }
 
 function shouldEmitConsole(level: LogLevel): boolean {
