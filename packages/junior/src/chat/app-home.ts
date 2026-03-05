@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import type { WebClient, KnownBlock, SectionBlock } from "@slack/web-api";
 import { homeDir } from "@/chat/home";
-import { logInfo } from "@/chat/observability";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import { discoverSkills } from "@/chat/skills";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -156,5 +155,4 @@ export async function publishAppHomeView(
 ): Promise<void> {
   const view = await buildHomeView(userId, userTokenStore);
   await slackClient.views.publish({ user_id: userId, view });
-  logInfo("app_home_published", {}, { "app.user_id": userId });
 }
