@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.30.2",
   "scripts": {
-    "dev": "pnpm --filter jr-sentry dev",
+    "dev": "node scripts/dev-with-root-env.mjs",
     "build": "pnpm --filter @sentry/junior build",
     "build:pkg": "pnpm --filter @sentry/junior build:pkg",
     "start": "pnpm --filter @sentry/junior start",

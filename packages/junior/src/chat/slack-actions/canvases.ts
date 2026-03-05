@@ -20,6 +20,24 @@ export interface CanvasUpdateInput {
   sectionId?: string;
 }
 
+export function normalizeCanvasMarkdown(markdown: string): { markdown: string; normalizedHeadingCount: number } {
+  let normalizedHeadingCount = 0;
+  const normalized = markdown
+    .split("\n")
+    .map((line) =>
+      line.replace(/^(#{4,})(?=\s)/, () => {
+        normalizedHeadingCount += 1;
+        return "###";
+      })
+    )
+    .join("\n");
+
+  return {
+    markdown: normalized,
+    normalizedHeadingCount
+  };
+}
+
 export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId: string; permalink?: string }> {
   const client = getSlackClient();
   const normalizedChannelId = normalizeSlackConversationId(input.channelId);
@@ -31,6 +49,7 @@ export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId
   }
   const channelPrefix = normalizedChannelId?.slice(0, 1) ?? "none";
   const action = "conversations.canvases.create";
+  const normalizedContent = normalizeCanvasMarkdown(input.markdown);
 
   const result = await withSlackRetries(async () => {
     return client.conversations.canvases.create({
@@ -38,7 +57,7 @@ export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId
       title: input.title,
       document_content: {
         type: "markdown",
-        markdown: input.markdown
+        markdown: normalizedContent.markdown
       }
     });
   }, 3, {
@@ -47,7 +66,9 @@ export async function createCanvas(input: CanvasCreateInput): Promise<{ canvasId
       "app.slack.canvas.channel_id_prefix": channelPrefix,
       "app.slack.canvas.has_channel_id": Boolean(input.channelId),
       "app.slack.canvas.title_length": input.title.length,
-      "app.slack.canvas.markdown_length": input.markdown.length
+      "app.slack.canvas.markdown_length": normalizedContent.markdown.length,
+      "app.slack.canvas.markdown_normalized": normalizedContent.normalizedHeadingCount > 0,
+      "app.slack.canvas.normalized_heading_count": normalizedContent.normalizedHeadingCount
     }
   });
 
@@ -93,6 +114,7 @@ export async function lookupCanvasSection(canvasId: string, containsText: string
 
 export async function updateCanvas(input: CanvasUpdateInput): Promise<void> {
   const client = getSlackClient();
+  const normalizedContent = normalizeCanvasMarkdown(input.markdown);
 
   await withSlackRetries(
     () =>
@@ -104,7 +126,7 @@ export async function updateCanvas(input: CanvasUpdateInput): Promise<void> {
             section_id: input.sectionId,
             document_content: {
               type: "markdown",
-              markdown: input.markdown
+              markdown: normalizedContent.markdown
             }
           }
         ]
@@ -115,7 +137,9 @@ export async function updateCanvas(input: CanvasUpdateInput): Promise<void> {
       attributes: {
         "app.slack.canvas.canvas_id_prefix": input.canvasId.slice(0, 1),
         "app.slack.canvas.operation": input.operation,
-        "app.slack.canvas.markdown_length": input.markdown.length
+        "app.slack.canvas.markdown_length": normalizedContent.markdown.length,
+        "app.slack.canvas.markdown_normalized": normalizedContent.normalizedHeadingCount > 0,
+        "app.slack.canvas.normalized_heading_count": normalizedContent.normalizedHeadingCount
       }
     }
   );

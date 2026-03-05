@@ -24,6 +24,7 @@ import { buildReplyDeliveryPlan, type ReplyDeliveryPlan } from "@/chat/delivery/
 import { SkillSandbox } from "@/chat/skill-sandbox";
 import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
 import { getPluginProviders } from "@/chat/plugins/registry";
+import { SlackActionError } from "@/chat/slack-actions/client";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
@@ -395,6 +396,20 @@ function collectRelevantConfigurationKeys(
   return [...keys].sort((a, b) => a.localeCompare(b));
 }
 
+function getToolErrorAttributes(error: unknown): Record<string, string | number> {
+  if (!(error instanceof SlackActionError)) {
+    return {};
+  }
+
+  return {
+    "app.slack.error_code": error.code,
+    ...(error.apiError ? { "app.slack.api_error": error.apiError } : {}),
+    ...(error.detail ? { "app.slack.detail": error.detail } : {}),
+    ...(error.detailLine !== undefined ? { "app.slack.detail_line": error.detailLine } : {}),
+    ...(error.detailRule ? { "app.slack.detail_rule": error.detailRule } : {})
+  };
+}
+
 function createAgentTools(
   tools: Record<string, ToolDefinition<any>>,
   sandbox: SkillSandbox,
@@ -568,7 +583,8 @@ function createAgentTools(
                 "gen_ai.operation.name": "execute_tool",
                 "gen_ai.tool.name": toolName,
                 ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
-                "app.ai.tool_duration_ms": durationMs
+                "app.ai.tool_duration_ms": durationMs,
+                ...getToolErrorAttributes(error)
               },
               "Agent tool call failed"
             );

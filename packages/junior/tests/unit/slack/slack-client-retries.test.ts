@@ -77,6 +77,27 @@ describe("withSlackRetries", () => {
     expect(task).toHaveBeenCalledTimes(1);
   });
 
+  it("extracts structured canvas validation detail from Slack errors", async () => {
+    const task = vi.fn<() => Promise<string>>().mockRejectedValue({
+      data: {
+        error: "canvas_creation_failed",
+        detail: "'content' error: line 55: Unsupported heading depth (4)"
+      },
+      message: "An API error occurred: canvas_creation_failed"
+    });
+
+    await expect(withSlackRetries(task, 3)).rejects.toEqual(
+      expect.objectContaining<Partial<SlackActionError>>({
+        name: "SlackActionError",
+        code: "canvas_creation_failed",
+        detail: "'content' error: line 55: Unsupported heading depth (4)",
+        detailLine: 55,
+        detailRule: "unsupported_heading_depth"
+      })
+    );
+    expect(task).toHaveBeenCalledTimes(1);
+  });
+
   it("maps canvas_editing_failed as a dedicated non-retryable error", async () => {
     const task = vi.fn<() => Promise<string>>().mockRejectedValue({
       data: {

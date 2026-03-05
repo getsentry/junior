@@ -68,6 +68,30 @@ describe("createCanvas", () => {
     expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
   });
 
+  it("normalizes unsupported heading depth before canvas create", async () => {
+    queueSlackApiResponse("conversations.canvases.create", {
+      body: conversationsCanvasesCreateOk({ canvasId: "F_NORM" })
+    });
+    queueSlackApiResponse("files.info", {
+      body: filesInfoOk({ fileId: "F_NORM", permalink: "https://example.invalid/files/F_NORM" })
+    });
+
+    await createCanvas({
+      title: "Title",
+      markdown: "#### Deep heading\nBody",
+      channelId: "C12345"
+    });
+
+    const conversationCanvasCalls = getCapturedSlackApiCalls("conversations.canvases.create");
+    expect(conversationCanvasCalls).toHaveLength(1);
+    expect(conversationCanvasCalls[0]?.params).toMatchObject({
+      document_content: {
+        type: "markdown",
+        markdown: "### Deep heading\nBody"
+      }
+    });
+  });
+
   it("rejects canvas creation when channel id is not provided", async () => {
     await expect(
       createCanvas({

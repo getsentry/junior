@@ -25,6 +25,9 @@ export class SlackActionError extends Error {
   requestId?: string;
   errorData?: string;
   retryAfterSeconds?: number;
+  detail?: string;
+  detailLine?: number;
+  detailRule?: string;
 
   constructor(
     message: string,
@@ -37,6 +40,9 @@ export class SlackActionError extends Error {
       requestId?: string;
       errorData?: string;
       retryAfterSeconds?: number;
+      detail?: string;
+      detailLine?: number;
+      detailRule?: string;
     } = {}
   ) {
     super(message);
@@ -49,6 +55,9 @@ export class SlackActionError extends Error {
     this.requestId = options.requestId;
     this.errorData = options.errorData;
     this.retryAfterSeconds = options.retryAfterSeconds;
+    this.detail = options.detail;
+    this.detailLine = options.detailLine;
+    this.detailRule = options.detailRule;
   }
 }
 
@@ -94,6 +103,42 @@ function getHeaderString(headers: unknown, name: string): string | undefined {
   }
 
   return undefined;
+}
+
+function parseSlackCanvasDetail(detail: unknown): {
+  detail?: string;
+  detailLine?: number;
+  detailRule?: string;
+} {
+  if (typeof detail !== "string") {
+    return {};
+  }
+
+  const trimmed = detail.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  const parsed: {
+    detail?: string;
+    detailLine?: number;
+    detailRule?: string;
+  } = {
+    detail: trimmed
+  };
+  const lineMatch = trimmed.match(/line\s+(\d+):/i);
+  if (lineMatch) {
+    const line = Number.parseInt(lineMatch[1] ?? "", 10);
+    if (Number.isFinite(line)) {
+      parsed.detailLine = line;
+    }
+  }
+
+  if (/unsupported heading depth/i.test(trimmed)) {
+    parsed.detailRule = "unsupported_heading_depth";
+  }
+
+  return parsed;
 }
 
 let client: WebClient | null = null;
@@ -148,7 +193,8 @@ function mapSlackError(error: unknown): SlackActionError {
     apiError,
     statusCode: candidate.statusCode,
     requestId: getHeaderString(candidate.headers, "x-slack-req-id"),
-    errorData: serializeSlackErrorData(candidate.data)
+    errorData: serializeSlackErrorData(candidate.data),
+    ...parseSlackCanvasDetail(candidate.data?.detail)
   };
 
   if (apiError === "missing_scope") {
@@ -219,6 +265,9 @@ export async function withSlackRetries<T>(
         "app.slack.action": context.action ?? "unknown",
         "app.slack.error_code": mapped.code,
         ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : {}),
+        ...(mapped.detail ? { "app.slack.detail": mapped.detail } : {}),
+        ...(mapped.detailLine !== undefined ? { "app.slack.detail_line": mapped.detailLine } : {}),
+        ...(mapped.detailRule ? { "app.slack.detail_rule": mapped.detailRule } : {}),
         ...(mapped.requestId ? { "app.slack.request_id": mapped.requestId } : {}),
         ...(mapped.statusCode !== undefined ? { "http.response.status_code": mapped.statusCode } : {}),
         ...(context.attributes ?? {})
