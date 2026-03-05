@@ -19,22 +19,17 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   const dataDir = options?.dataDir ?? "./app/data";
   const skillsDir = options?.skillsDir ?? "./app/skills";
   const pluginsDir = options?.pluginsDir ?? "./app/plugins";
-  const fallbackTracingIncludes =
-    options?.dataDir || options?.skillsDir || options?.pluginsDir
-      ? []
-      : ["./data/**/*", "./skills/**/*", "./plugins/**/*"];
+  const defaultDataTracingIncludes = options?.dataDir ? [`${dataDir}/**/*`] : ["./app/SOUL.md"];
   const tracingIncludes = Array.from(new Set([
-    `${dataDir}/**/*`,
+    ...defaultDataTracingIncludes,
     `${skillsDir}/**/*`,
     `${pluginsDir}/**/*`,
-    ...fallbackTracingIncludes
   ]));
   const existingGlobalTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/*"] ?? [];
   const mergedGlobalTracingIncludes = Array.from(new Set([
     ...existingGlobalTracingIncludes,
     ...tracingIncludes
   ]));
-
   const config: NextConfig = {
     ...nextConfig,
     serverExternalPackages: Array.from(new Set([

@@ -8,23 +8,22 @@ describe("home paths", () => {
   });
 
   it("resolves data/SOUL.md from canonical app root", () => {
-    const canonical = path.resolve(process.cwd(), "app", "data");
-    const expected = canonical;
-    expect(dataDir()).toBe(expected);
-    expect(soulPath()).toBe(path.join(expected, "SOUL.md"));
-    expect(dataRoots()).toEqual([canonical]);
-    expect(soulPathCandidates()).toEqual([path.join(canonical, "SOUL.md")]);
+    const appRoot = path.resolve(process.cwd(), "app");
+    expect(dataDir()).toBe(appRoot);
+    expect(soulPath()).toBe(path.join(appRoot, "SOUL.md"));
+    expect(dataRoots()).toEqual([appRoot]);
+    expect(soulPathCandidates()).toEqual([
+      path.join(appRoot, "SOUL.md")
+    ]);
   });
 
   it("resolves skills and plugins from canonical app root", () => {
     const canonicalSkills = path.resolve(process.cwd(), "app", "skills");
-    const expectedSkills = canonicalSkills;
-    expect(skillsDir()).toBe(expectedSkills);
+    expect(skillsDir()).toBe(canonicalSkills);
     expect(skillRoots()).toEqual([canonicalSkills]);
 
     const canonicalPlugins = path.resolve(process.cwd(), "app", "plugins");
-    const expectedPlugins = canonicalPlugins;
-    expect(pluginsDir()).toBe(expectedPlugins);
+    expect(pluginsDir()).toBe(canonicalPlugins);
     expect(pluginRoots()).toEqual([canonicalPlugins]);
   });
 });

@@ -1,0 +1,24 @@
+name: github
+description: GitHub issue management via GitHub App
+
+capabilities:
+  - issues.read
+  - issues.write
+  - issues.comment
+  - labels.write
+
+config-keys:
+  - repo
+
+credentials:
+  type: github-app
+  api-domains:
+    - api.github.com
+  auth-token-env: GITHUB_TOKEN
+  app-id-env: GITHUB_APP_ID
+  private-key-env: GITHUB_APP_PRIVATE_KEY
+  installation-id-env: GITHUB_INSTALLATION_ID
+
+target:
+  type: repo
+  config-key: repo
