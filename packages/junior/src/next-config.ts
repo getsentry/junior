@@ -19,10 +19,15 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   const dataDir = options?.dataDir ?? "./app/data";
   const skillsDir = options?.skillsDir ?? "./app/skills";
   const pluginsDir = options?.pluginsDir ?? "./app/plugins";
+  const slackRuntimeTracingIncludes = [
+    "node_modules/.pnpm/@chat-adapter+slack@*/node_modules/@chat-adapter/slack/dist/**/*",
+    "node_modules/.pnpm/@slack+web-api@*/node_modules/@slack/web-api/dist/**/*"
+  ];
   const tracingIncludes = Array.from(new Set([
     `${dataDir}/**/*`,
     `${skillsDir}/**/*`,
-    `${pluginsDir}/**/*`
+    `${pluginsDir}/**/*`,
+    ...slackRuntimeTracingIncludes
   ]));
   const existingGlobalTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/*"] ?? [];
   const mergedGlobalTracingIncludes = Array.from(new Set([
@@ -37,7 +42,9 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
       ...(nextConfig?.serverExternalPackages ?? []),
       "@vercel/sandbox",
       "bash-tool",
-      "just-bash"
+      "just-bash",
+      "@chat-adapter/slack",
+      "@slack/web-api"
     ])),
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,

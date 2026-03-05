@@ -25,13 +25,22 @@ describe("withJunior", () => {
     ) as NextConfig);
 
     expect(config.serverExternalPackages).toEqual(
-      expect.arrayContaining(["existing-package", "@vercel/sandbox", "bash-tool", "just-bash"])
+      expect.arrayContaining([
+        "existing-package",
+        "@vercel/sandbox",
+        "bash-tool",
+        "just-bash",
+        "@chat-adapter/slack",
+        "@slack/web-api"
+      ])
     );
     expect(config.transpilePackages).toEqual(expect.arrayContaining(["junior"]));
     expect(config.outputFileTracingIncludes?.["/*"]).toEqual([
       "./my-data/**/*",
       "./my-skills/**/*",
-      "./my-plugins/**/*"
+      "./my-plugins/**/*",
+      "node_modules/.pnpm/@chat-adapter+slack@*/node_modules/@chat-adapter/slack/dist/**/*",
+      "node_modules/.pnpm/@slack+web-api@*/node_modules/@slack/web-api/dist/**/*"
     ]);
   });
 
@@ -58,10 +67,18 @@ describe("withJunior", () => {
     expect(resolved.outputFileTracingIncludes?.["/*"]).toEqual([
       "./my-data/**/*",
       "./my-skills/**/*",
-      "./my-plugins/**/*"
+      "./my-plugins/**/*",
+      "node_modules/.pnpm/@chat-adapter+slack@*/node_modules/@chat-adapter/slack/dist/**/*",
+      "node_modules/.pnpm/@slack+web-api@*/node_modules/@slack/web-api/dist/**/*"
     ]);
     expect(resolved.serverExternalPackages).toEqual(
-      expect.arrayContaining(["@vercel/sandbox", "bash-tool", "just-bash"])
+      expect.arrayContaining([
+        "@vercel/sandbox",
+        "bash-tool",
+        "just-bash",
+        "@chat-adapter/slack",
+        "@slack/web-api"
+      ])
     );
     expect(resolved.transpilePackages).toEqual(expect.arrayContaining(["junior"]));
   });
@@ -85,7 +102,9 @@ describe("withJunior", () => {
       "./existing/**/*",
       "./my-data/**/*",
       "./my-skills/**/*",
-      "./my-plugins/**/*"
+      "./my-plugins/**/*",
+      "node_modules/.pnpm/@chat-adapter+slack@*/node_modules/@chat-adapter/slack/dist/**/*",
+      "node_modules/.pnpm/@slack+web-api@*/node_modules/@slack/web-api/dist/**/*"
     ]);
     expect(config.outputFileTracingIncludes?.["/other/**"]).toEqual(["./other/**/*"]);
   });
@@ -103,7 +122,14 @@ describe("withJunior", () => {
     ) as NextConfig);
 
     expect(config.serverExternalPackages).toEqual(
-      expect.arrayContaining(["@vercel/sandbox", "bash-tool", "just-bash", "custom-package"])
+      expect.arrayContaining([
+        "@vercel/sandbox",
+        "bash-tool",
+        "just-bash",
+        "@chat-adapter/slack",
+        "@slack/web-api",
+        "custom-package"
+      ])
     );
     expect(config.serverExternalPackages?.filter((pkg) => pkg === "@vercel/sandbox")).toHaveLength(1);
   });
