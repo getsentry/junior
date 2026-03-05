@@ -104,12 +104,12 @@ type JrRpcDeps = {
 };
 
 function commandResult(input: { stdout?: unknown; stderr?: string; exitCode: number }) {
-  const stdout =
-    input.stdout === undefined
-      ? ""
-      : typeof input.stdout === "string"
-        ? input.stdout
-        : `${JSON.stringify(input.stdout, null, 2)}\n`;
+  let stdout = "";
+  if (typeof input.stdout === "string") {
+    stdout = input.stdout;
+  } else if (input.stdout !== undefined) {
+    stdout = `${JSON.stringify(input.stdout, null, 2)}\n`;
+  }
   return {
     stdout,
     stderr: input.stderr ?? "",

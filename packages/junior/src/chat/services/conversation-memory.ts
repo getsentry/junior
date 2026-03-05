@@ -373,16 +373,12 @@ export async function seedConversationBackfill(
     if (seeded.length > 0) {
       source = "thread_fetch";
     }
-  } catch {
-    // Fallback below.
-  }
+  } catch {}
 
   if (seeded.length === 0) {
     try {
       await thread.refresh();
-    } catch {
-      // Best effort only.
-    }
+    } catch {}
 
     const fromRecent = thread.recentMessages.slice(-BACKFILL_MESSAGE_LIMIT);
     for (const entry of fromRecent) {

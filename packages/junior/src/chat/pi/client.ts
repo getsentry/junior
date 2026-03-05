@@ -51,9 +51,7 @@ function parseJsonCandidate(text: string): unknown {
     for (const block of fencedBlocks) {
       try {
         return JSON.parse(block[1]) as unknown;
-      } catch {
-        // continue
-      }
+      } catch {}
     }
 
     const openBraceIndex = trimmed.indexOf("{");

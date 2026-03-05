@@ -82,6 +82,31 @@ const LEGACY_KEY_MAP: Record<string, string> = {
 
 const contextStorage = new AsyncLocalStorage<LogAttributes>();
 const logRecordSinks = new Set<(record: EmittedLogRecord) => void>();
+const ANSI = {
+  reset: "\u001b[0m",
+  faint: "\u001b[2m",
+  red: "\u001b[31m",
+  yellow: "\u001b[33m",
+  green: "\u001b[32m",
+  blue: "\u001b[34m",
+  cyan: "\u001b[36m",
+  gray: "\u001b[90m"
+} as const;
+const CONSOLE_PRIORITY_KEYS = [
+  "event.name",
+  "error.message",
+  "messaging.message.id",
+  "messaging.message.conversation_id",
+  "messaging.destination.name",
+  "enduser.id",
+  "app.run.id",
+  "app.message.kind",
+  "app.trace_id",
+  "app.span_id"
+] as const;
+const CONSOLE_PRIORITY_INDEX: Map<string, number> = new Map(
+  CONSOLE_PRIORITY_KEYS.map((key, index) => [key, index])
+);
 
 function getSentryEnvironment(): string {
   return (
@@ -285,6 +310,13 @@ function formatConsoleLevel(level: LogLevel): "DBG" | "INF" | "WRN" | "ERR" {
   return "ERR";
 }
 
+function consoleLevelColor(level: LogLevel): string {
+  if (level === "error") return ANSI.red;
+  if (level === "warn") return ANSI.yellow;
+  if (level === "info") return ANSI.green;
+  return ANSI.blue;
+}
+
 function quoteConsoleValue(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
@@ -308,39 +340,15 @@ function formatConsoleValue(value: AttributeValue): string {
 function formatConsoleLine(level: LogLevel, body: string, attributes: LogAttributes): string {
   const timestamp = new Date().toISOString();
   const useColor = process.env.NODE_ENV === "development" && Boolean(process.stdout?.isTTY);
-  const ANSI = {
-    reset: "\u001b[0m",
-    faint: "\u001b[2m",
-    red: "\u001b[31m",
-    yellow: "\u001b[33m",
-    green: "\u001b[32m",
-    blue: "\u001b[34m",
-    cyan: "\u001b[36m",
-    gray: "\u001b[90m"
-  } as const;
-  const levelColor =
-    level === "error" ? ANSI.red : level === "warn" ? ANSI.yellow : level === "info" ? ANSI.green : ANSI.blue;
+  const levelColor = consoleLevelColor(level);
   const colorize = (text: string, color: string) => (useColor ? `${color}${text}${ANSI.reset}` : text);
 
   const parts = [
     `${colorize(timestamp, ANSI.gray)} ${colorize(formatConsoleLevel(level), levelColor)} ${body}`
   ];
-  const priority = [
-    "event.name",
-    "error.message",
-    "messaging.message.id",
-    "messaging.message.conversation_id",
-    "messaging.destination.name",
-    "enduser.id",
-    "app.run.id",
-    "app.message.kind",
-    "app.trace_id",
-    "app.span_id"
-  ];
-  const priorityIndex = new Map(priority.map((key, index) => [key, index]));
   const sortedAttributes = Object.entries(attributes).sort(([left], [right]) => {
-    const leftRank = priorityIndex.get(left);
-    const rightRank = priorityIndex.get(right);
+    const leftRank = CONSOLE_PRIORITY_INDEX.get(left);
+    const rightRank = CONSOLE_PRIORITY_INDEX.get(right);
     if (leftRank !== undefined || rightRank !== undefined) {
       if (leftRank === undefined) return 1;
       if (rightRank === undefined) return -1;

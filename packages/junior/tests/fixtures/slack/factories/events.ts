@@ -160,6 +160,13 @@ export interface SlackEventsApiEnvelope {
   };
 }
 
+function deriveChannelType(channel: string): "channel" | "group" | "im" | undefined {
+  if (channel.startsWith("D")) return "im";
+  if (channel.startsWith("G")) return "group";
+  if (channel.startsWith("C")) return "channel";
+  return undefined;
+}
+
 /**
  * Raw Slack Events API wrapper fixture for transport-level webhook tests.
  * Docs:
@@ -179,13 +186,7 @@ export function slackEventsApiEnvelope(input: {
 } = {}): SlackEventsApiEnvelope {
   const ts = input.ts ?? TEST_THREAD_TS;
   const channel = input.channel ?? TEST_CHANNEL_ID;
-  const channelType = channel.startsWith("D")
-    ? "im"
-    : channel.startsWith("G")
-      ? "group"
-      : channel.startsWith("C")
-        ? "channel"
-        : undefined;
+  const channelType = deriveChannelType(channel);
 
   return {
     token: "test-token",

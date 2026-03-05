@@ -37,9 +37,7 @@ export function createProgressReporter(args: {
     lastStatusAt = now();
     try {
       await args.setAssistantStatus(args.channelId, args.threadTs, text, [text]);
-    } catch {
-      // Best effort only.
-    }
+    } catch {}
   };
 
   const clearPending = () => {
