@@ -191,17 +191,18 @@ export function createAppSlackRuntime<
           }
         );
       } catch (error) {
+        const errorContext = logContext({
+          threadId: deps.getThreadId(thread, message),
+          requesterId: message.author.userId,
+          requesterUserName: message.author.userName,
+          channelId: deps.getChannelId(thread, message),
+          runId: deps.getRunId(thread, message)
+        });
         if (isRetryableTurnError(error)) {
           deps.logException(
             error,
             "mention_handler_retryable_failure",
-            logContext({
-              threadId: deps.getThreadId(thread, message),
-              requesterId: message.author.userId,
-              requesterUserName: message.author.userName,
-              channelId: deps.getChannelId(thread, message),
-              runId: deps.getRunId(thread, message)
-            }),
+            errorContext,
             { "app.turn.retryable_reason": error.reason },
             "onNewMention failed with retryable error"
           );
@@ -210,13 +211,7 @@ export function createAppSlackRuntime<
         deps.logException(
           error,
           "mention_handler_failed",
-          logContext({
-            threadId: deps.getThreadId(thread, message),
-            requesterId: message.author.userId,
-            requesterUserName: message.author.userName,
-            channelId: deps.getChannelId(thread, message),
-            runId: deps.getRunId(thread, message)
-          }),
+          errorContext,
           {},
           "onNewMention failed"
         );
@@ -313,17 +308,18 @@ export function createAppSlackRuntime<
           }
         );
       } catch (error) {
+        const errorContext = logContext({
+          threadId: deps.getThreadId(thread, message),
+          requesterId: message.author.userId,
+          requesterUserName: message.author.userName,
+          channelId: deps.getChannelId(thread, message),
+          runId: deps.getRunId(thread, message)
+        });
         if (isRetryableTurnError(error)) {
           deps.logException(
             error,
             "subscribed_message_handler_retryable_failure",
-            logContext({
-              threadId: deps.getThreadId(thread, message),
-              requesterId: message.author.userId,
-              requesterUserName: message.author.userName,
-              channelId: deps.getChannelId(thread, message),
-              runId: deps.getRunId(thread, message)
-            }),
+            errorContext,
             { "app.turn.retryable_reason": error.reason },
             "onSubscribedMessage failed with retryable error"
           );
@@ -332,13 +328,7 @@ export function createAppSlackRuntime<
         deps.logException(
           error,
           "subscribed_message_handler_failed",
-          logContext({
-            threadId: deps.getThreadId(thread, message),
-            requesterId: message.author.userId,
-            requesterUserName: message.author.userName,
-            channelId: deps.getChannelId(thread, message),
-            runId: deps.getRunId(thread, message)
-          }),
+          errorContext,
           {},
           "onSubscribedMessage failed"
         );

@@ -1235,6 +1235,24 @@ export async function generateAssistantReply(
       timeoutResumeConversationId &&
       timeoutResumeSessionId
     ) {
+      logException(
+        error,
+        "agent_turn_timeout_resume_triggered",
+        {
+          slackThreadId: context.correlation?.threadId,
+          slackUserId: context.correlation?.requesterId,
+          slackChannelId: context.correlation?.channelId,
+          runId: context.correlation?.runId,
+          assistantUserName: context.assistant?.userName,
+          modelId: botConfig.modelId
+        },
+        {
+          "app.ai.resume_conversation_id": timeoutResumeConversationId,
+          "app.ai.resume_session_id": timeoutResumeSessionId,
+          "app.ai.resume_from_slice_id": timeoutResumeSliceId
+        },
+        "Agent turn timed out and will be resumed"
+      );
       const latestCheckpoint = await getAgentTurnSessionCheckpoint(timeoutResumeConversationId, timeoutResumeSessionId);
       const nextSliceId = timeoutResumeSliceId + 1;
       const piMessages = timeoutResumeMessages.length > 0 ? timeoutResumeMessages : (latestCheckpoint?.piMessages ?? []);
