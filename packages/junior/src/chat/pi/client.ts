@@ -6,9 +6,30 @@ import { logException, logWarn, setSpanAttributes } from "@/chat/observability";
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
+const MISSING_GATEWAY_CREDENTIALS_ERROR =
+  "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
+
+function toOptionalTrimmed(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isVercelRuntime(): boolean {
+  return process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV) || Boolean(process.env.VERCEL_REGION);
+}
 
 export function getGatewayApiKey(): string | undefined {
-  return getEnvApiKey("vercel-ai-gateway") || process.env.VERCEL_OIDC_TOKEN;
+  const explicitApiKey = toOptionalTrimmed(getEnvApiKey("vercel-ai-gateway"));
+  if (explicitApiKey) {
+    return explicitApiKey;
+  }
+  if (!isVercelRuntime()) {
+    return undefined;
+  }
+  return toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN);
 }
 
 function extractText(message: { content?: Array<{ type: string; text?: string }> }): string {
@@ -83,7 +104,18 @@ function parseJsonCandidate(text: string): unknown {
 }
 
 export function resolveGatewayModel(modelId: string): Model<any> {
-  const models = getModels(GATEWAY_PROVIDER);
+  let models: Model<any>[];
+  try {
+    models = getModels(GATEWAY_PROVIDER);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('missing "key" field')) {
+      throw new Error(
+        "Invalid AI gateway credentials: Vercel API did not return a key. Set AI_GATEWAY_API_KEY, or ensure VERCEL_OIDC_TOKEN is valid in a Vercel runtime."
+      );
+    }
+    throw error;
+  }
   const matched = models.find((model: Model<any>) => model.id === modelId);
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
@@ -101,6 +133,9 @@ export async function completeText(params: {
   metadata?: Record<string, unknown>;
 }) {
   const startedAt = Date.now();
+  if (!getGatewayApiKey()) {
+    throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
+  }
   const model = resolveGatewayModel(params.modelId);
   const apiKey = getGatewayApiKey();
   const requestMessagesAttribute = serializeGenAiAttribute(params.messages);

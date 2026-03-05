@@ -13,7 +13,7 @@ describe("chat background processMessage", () => {
     }
   });
 
-  it("rejects the background task when workflow routing fails", async () => {
+  it("logs workflow routing failures without rejecting the background task", async () => {
     delete process.env.REDIS_URL;
 
     const waitUntilTasks: Array<Promise<unknown>> = [];
@@ -52,7 +52,7 @@ describe("chat background processMessage", () => {
     );
 
     expect(waitUntilTasks).toHaveLength(1);
-    await expect(waitUntilTasks[0]).rejects.toThrow("REDIS_URL is required for durable Slack thread state");
+    await expect(waitUntilTasks[0]).resolves.toBeUndefined();
     expect(fakeChat.logger.error).toHaveBeenCalledWith("Message processing error", {
       error: expect.any(Error),
       threadId: "slack:C123:1700000000.100"
