@@ -32,6 +32,14 @@ export async function processThreadMessageRuntime(args: {
     return;
   }
 
+  if (args.kind === "subscribed_reply") {
+    await appSlackRuntime.handleSubscribedMessage(args.thread, args.message, {
+      beforeFirstResponsePost: args.beforeFirstResponsePost,
+      preApprovedReply: true
+    });
+    return;
+  }
+
   await appSlackRuntime.handleSubscribedMessage(args.thread, args.message, {
     beforeFirstResponsePost: args.beforeFirstResponsePost
   });

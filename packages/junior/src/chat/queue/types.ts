@@ -1,6 +1,6 @@
 import type { Message, SerializedMessage, SerializedThread, Thread } from "chat";
 
-export type ThreadMessageKind = "new_mention" | "subscribed_message";
+export type ThreadMessageKind = "new_mention" | "subscribed_message" | "subscribed_reply";
 
 export interface ThreadMessagePayload {
   dedupKey: string;

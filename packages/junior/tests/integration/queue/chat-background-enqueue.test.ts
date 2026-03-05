@@ -34,6 +34,13 @@ vi.mock("@/chat/slack-actions/channel", () => ({
   removeReactionFromMessage: removeReactionFromMessageMock
 }));
 
+vi.mock("@/chat/runtime/subscribed-routing", () => ({
+  shouldReplyInSubscribedThread: vi.fn(async () => ({
+    shouldReply: true,
+    reason: "explicit_ask"
+  }))
+}));
+
 import "@/chat/chat-background-patch";
 
 describe("chat background queue enqueue", () => {
@@ -123,7 +130,7 @@ describe("chat background queue enqueue", () => {
       expect.objectContaining({
         dedupKey: "slack:C123:1700000000.100:1700000000.200",
         normalizedThreadId: "slack:C123:1700000000.100",
-        kind: "subscribed_message"
+        kind: "subscribed_reply"
       }),
       {
         idempotencyKey: "slack:C123:1700000000.100:1700000000.200"

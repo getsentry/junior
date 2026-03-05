@@ -40,6 +40,7 @@ function createDeps(overrides: Partial<{
   logInfo: (...args: unknown[]) => void;
   logWarn: (...args: unknown[]) => void;
   enqueueThreadMessage: (payload: ThreadMessagePayload, dedupKey: string) => Promise<string | undefined>;
+  shouldReplyInSubscribedThread: (args: unknown) => Promise<{ shouldReply: boolean; reason: string }>;
   addProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
   removeProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
 }> = {}) {
@@ -50,6 +51,12 @@ function createDeps(overrides: Partial<{
     logInfo: overrides.logInfo ?? vi.fn(),
     logWarn: overrides.logWarn ?? vi.fn(),
     enqueueThreadMessage: overrides.enqueueThreadMessage ?? vi.fn(async () => undefined),
+    shouldReplyInSubscribedThread:
+      overrides.shouldReplyInSubscribedThread ??
+      vi.fn(async () => ({
+        shouldReply: true,
+        reason: "explicit_ask"
+      })),
     addProcessingReaction: overrides.addProcessingReaction ?? vi.fn(async () => undefined),
     removeProcessingReaction: overrides.removeProcessingReaction ?? vi.fn(async () => undefined)
   };
@@ -80,7 +87,7 @@ describe("routeIncomingMessageToQueue", () => {
     });
     expect(deps.enqueueThreadMessage).toHaveBeenCalledTimes(1);
     const [payload] = (deps.enqueueThreadMessage as ReturnType<typeof vi.fn>).mock.calls[0] as [ThreadMessagePayload, string];
-    expect(payload.kind).toBe("subscribed_message");
+    expect(payload.kind).toBe("subscribed_reply");
   });
 
   it("does not claim dedupe key for unsubscribed non-mention messages", async () => {
@@ -332,6 +339,34 @@ describe("routeIncomingMessageToQueue", () => {
       }),
       "Failed to add ingress processing reaction"
     );
+  });
+
+  it("skips enqueue and reaction when webhook passive routing decides no reply", async () => {
+    const runtime = createRuntime();
+    const deps = createDeps({
+      getIsSubscribed: vi.fn(async () => true),
+      shouldReplyInSubscribedThread: vi.fn(async () => ({
+        shouldReply: false,
+        reason: "side_conversation"
+      }))
+    });
+    const message = createMessage({
+      id: "1700000000.951",
+      isMention: false
+    });
+
+    const result = await routeIncomingMessageToQueue({
+      adapter: {},
+      threadId: "slack:C123:",
+      message,
+      runtime,
+      deps
+    });
+
+    expect(result).toBe("ignored_passive_no_reply");
+    expect(deps.enqueueThreadMessage).not.toHaveBeenCalled();
+    expect(deps.addProcessingReaction).not.toHaveBeenCalled();
+    expect(deps.markDedup).not.toHaveBeenCalled();
   });
 
   it("routes successfully on retry after an initial routing failure", async () => {

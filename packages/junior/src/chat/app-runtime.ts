@@ -24,6 +24,7 @@ export interface AppRuntimeReplyDecision {
 
 export interface AppRuntimeReplyHooks {
   beforeFirstResponsePost?: () => Promise<void>;
+  preApprovedReply?: boolean;
 }
 
 function isExplicitMentionDecision(reason: string): boolean {
@@ -237,14 +238,19 @@ export function createAppSlackRuntime<
           preparedState
         });
 
-        const decision = await deps.shouldReplyInSubscribedThread({
-          rawText: rawUserText,
-          text: userText,
-          conversationContext: deps.getPreparedConversationContext(preparedState),
-          hasAttachments: message.attachments.length > 0,
-          isExplicitMention: Boolean(message.isMention),
-          context
-        });
+        const decision = hooks?.preApprovedReply
+          ? {
+              shouldReply: true,
+              reason: "pre_approved_reply"
+            }
+          : await deps.shouldReplyInSubscribedThread({
+              rawText: rawUserText,
+              text: userText,
+              conversationContext: deps.getPreparedConversationContext(preparedState),
+              hasAttachments: message.attachments.length > 0,
+              isExplicitMention: Boolean(message.isMention),
+              context
+            });
 
         if (!decision.shouldReply) {
           deps.logWarn(

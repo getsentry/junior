@@ -1,6 +1,9 @@
 import { Chat } from "chat";
 import type { Message, Thread } from "chat";
+import { coerceThreadConversationState, type ThreadConversationState } from "@/chat/conversation-state";
 import type { ThreadMessageKind, ThreadMessagePayload } from "@/chat/queue/types";
+import { shouldReplyInSubscribedThread } from "@/chat/runtime/subscribed-routing";
+import { getChannelId, getRunId, stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import { claimQueueIngressDedup, getStateAdapter, hasQueueIngressDedup } from "@/chat/state";
 import { logInfo, logWarn, setSpanAttributes, withContext, withSpan } from "@/chat/observability";
 
@@ -42,6 +45,37 @@ function nonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed || undefined;
+}
+
+function buildRoutingConversationContext(conversation: ThreadConversationState): string | undefined {
+  if (conversation.messages.length === 0 && conversation.compactions.length === 0) {
+    return undefined;
+  }
+
+  const lines: string[] = [];
+  if (conversation.compactions.length > 0) {
+    lines.push("<thread-compactions>");
+    for (const [index, compaction] of conversation.compactions.entries()) {
+      lines.push(
+        [
+          `summary_${index + 1}:`,
+          compaction.summary,
+          `covered_messages: ${compaction.coveredMessageIds.length}`,
+          `created_at: ${new Date(compaction.createdAtMs).toISOString()}`
+        ].join(" ")
+      );
+    }
+    lines.push("</thread-compactions>");
+    lines.push("");
+  }
+
+  lines.push("<thread-transcript>");
+  for (const message of conversation.messages) {
+    const displayName = message.author?.fullName || message.author?.userName || message.role;
+    lines.push(`[${message.role}] ${displayName}: ${message.text}`);
+  }
+  lines.push("</thread-transcript>");
+  return lines.join("\n");
 }
 
 function serializeMessageForQueue(message: Message): ThreadMessagePayload["message"] {
@@ -124,6 +158,11 @@ interface QueueRoutingDeps {
   logInfo: typeof logInfo;
   logWarn: typeof logWarn;
   enqueueThreadMessage: (payload: ThreadMessagePayload, dedupKey: string) => Promise<string | undefined>;
+  shouldReplyInSubscribedThread: (args: {
+    message: Message;
+    normalizedThreadId: string;
+    thread: Thread;
+  }) => Promise<{ shouldReply: boolean; reason: string }>;
   addProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
   removeProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
 }
@@ -138,6 +177,29 @@ const defaultQueueRoutingDeps: QueueRoutingDeps = {
     const { enqueueThreadMessage } = await import("@/chat/queue/client");
     return await enqueueThreadMessage(payload, {
       idempotencyKey: dedupKey
+    });
+  },
+  shouldReplyInSubscribedThread: async ({ message, normalizedThreadId, thread }) => {
+    const rawText = message.text;
+    const text = stripLeadingBotMention(rawText, {
+      stripLeadingSlackMentionToken: Boolean(message.isMention)
+    });
+    const conversation = coerceThreadConversationState(await thread.state);
+    const conversationContext = buildRoutingConversationContext(conversation);
+    const channelId = getChannelId(thread, message);
+    const runId = getRunId(thread, message);
+    return await shouldReplyInSubscribedThread({
+      rawText,
+      text,
+      conversationContext,
+      hasAttachments: message.attachments.length > 0,
+      isExplicitMention: Boolean(message.isMention),
+      context: {
+        threadId: normalizedThreadId,
+        requesterId: message.author.userId,
+        channelId,
+        runId
+      }
     });
   },
   addProcessingReaction: async ({ channelId, timestamp }) => {
@@ -163,6 +225,7 @@ export type QueueIngressRouteResult =
   | "ignored_self_message"
   | "ignored_missing_message_id"
   | "ignored_unsubscribed_non_mention"
+  | "ignored_passive_no_reply"
   | "ignored_duplicate"
   | "routed";
 
@@ -232,9 +295,22 @@ export async function routeIncomingMessageToQueue(args: {
   const thread = (await runtime.createThread(adapter, normalizedThreadId, message, isSubscribed)) as Thread;
   const serializedMessage = serializeMessageForQueue(message as Message);
   const serializedThread = serializeThreadForQueue(thread);
+  let payloadKind: ThreadMessageKind = kind;
+  if (kind === "subscribed_message" && !isMention) {
+    const decision = await deps.shouldReplyInSubscribedThread({
+      message: message as Message,
+      normalizedThreadId,
+      thread
+    });
+    if (!decision.shouldReply) {
+      return "ignored_passive_no_reply";
+    }
+    payloadKind = "subscribed_reply";
+  }
+
   const payload: ThreadMessagePayload = {
     dedupKey,
-    kind,
+    kind: payloadKind,
     message: serializedMessage,
     normalizedThreadId,
     thread: serializedThread
@@ -262,7 +338,7 @@ export async function routeIncomingMessageToQueue(args: {
           {},
           {
             "messaging.message.id": messageId,
-            "app.queue.message_kind": kind,
+            "app.queue.message_kind": payloadKind,
             "error.message": errorMessage
           },
           "Failed to add ingress processing reaction"
@@ -288,7 +364,7 @@ export async function routeIncomingMessageToQueue(args: {
           },
           {
             "messaging.message.id": messageId,
-            "app.queue.message_kind": kind
+            "app.queue.message_kind": payloadKind
           }
         );
       } catch (error) {
@@ -305,7 +381,7 @@ export async function routeIncomingMessageToQueue(args: {
               {},
               {
                 "messaging.message.id": messageId,
-                "app.queue.message_kind": kind,
+                "app.queue.message_kind": payloadKind,
                 "error.message": cleanupErrorMessage
               },
               "Failed to remove ingress processing reaction after enqueue failure"
@@ -320,7 +396,7 @@ export async function routeIncomingMessageToQueue(args: {
         {},
         {
           "messaging.message.id": messageId,
-          "app.queue.message_kind": kind,
+          "app.queue.message_kind": payloadKind,
           "app.queue.dedup_key": dedupKey,
           "app.queue.dedup_outcome": "primary",
           ...(queueMessageId ? { "app.queue.message_id": queueMessageId } : {})
@@ -335,7 +411,7 @@ export async function routeIncomingMessageToQueue(args: {
           {},
           {
             "messaging.message.id": messageId,
-            "app.queue.message_kind": kind,
+            "app.queue.message_kind": payloadKind,
             "app.queue.dedup_key": dedupKey
           },
           "Queue ingress dedup state write failed after enqueue"
