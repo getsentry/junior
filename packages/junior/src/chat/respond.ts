@@ -121,6 +121,16 @@ type ResumablePiAgent = Agent & {
   replaceMessages?: (messages: unknown[]) => Promise<void> | void;
 };
 
+class AgentTurnTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`Agent turn timed out after ${timeoutMs}ms`);
+    this.name = "AgentTurnTimeoutError";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 async function maybeReplaceAgentMessages(agent: Agent, messages: unknown[]): Promise<boolean> {
   const resumable = agent as ResumablePiAgent;
   if (typeof resumable.replaceMessages !== "function") {
@@ -1052,7 +1062,7 @@ export async function generateAssistantReply(
             timeoutId = setTimeout(() => {
               didTimeout = true;
               agent.abort();
-              reject(new Error(`Agent turn timed out after ${botConfig.turnTimeoutMs}ms`));
+              reject(new AgentTurnTimeoutError(botConfig.turnTimeoutMs));
             }, botConfig.turnTimeoutMs);
           });
 
@@ -1229,12 +1239,7 @@ export async function generateAssistantReply(
       }
     };
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.includes("Agent turn timed out after") &&
-      timeoutResumeConversationId &&
-      timeoutResumeSessionId
-    ) {
+    if (error instanceof AgentTurnTimeoutError && timeoutResumeConversationId && timeoutResumeSessionId) {
       logException(
         error,
         "agent_turn_timeout_resume_triggered",
@@ -1247,6 +1252,7 @@ export async function generateAssistantReply(
           modelId: botConfig.modelId
         },
         {
+          "app.ai.turn_timeout_ms": error.timeoutMs,
           "app.ai.resume_conversation_id": timeoutResumeConversationId,
           "app.ai.resume_session_id": timeoutResumeSessionId,
           "app.ai.resume_from_slice_id": timeoutResumeSliceId
