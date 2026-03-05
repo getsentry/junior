@@ -2,7 +2,7 @@ import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
-import { logException, logWarn, setSpanAttributes, setTags, withSpan } from "@/chat/observability";
+import { logError, logException, logWarn, setSpanAttributes, setTags, withSpan } from "@/chat/observability";
 import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/progress-reporter";
@@ -293,11 +293,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               .then((title) => deps.getSlackAdapter().setAssistantTitle(channelId, threadTs, title))
               .catch((error) => {
                 const slackErrorCode = getSlackApiErrorCode(error);
+                const assistantTitleErrorAttributes = {
+                  "app.slack.assistant_title.outcome": "permission_denied",
+                  ...(slackErrorCode ? { "app.slack.assistant_title.error_code": slackErrorCode } : {})
+                };
                 if (isSlackTitlePermissionError(error)) {
-                  setSpanAttributes({
-                    "app.slack.assistant_title.outcome": "permission_denied",
-                    ...(slackErrorCode ? { "app.slack.assistant_title.error_code": slackErrorCode } : {})
-                  });
+                  setSpanAttributes(assistantTitleErrorAttributes);
+                  logError(
+                    "thread_title_generation_permission_denied",
+                    {
+                      slackThreadId: threadId,
+                      slackUserId: message.author.userId,
+                      slackChannelId: channelId,
+                      runId,
+                      assistantUserName: botConfig.userName,
+                      modelId: botConfig.fastModelId
+                    },
+                    assistantTitleErrorAttributes,
+                    "Skipping thread title update due to Slack permission error"
+                  );
                   return;
                 }
 
