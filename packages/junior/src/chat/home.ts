@@ -20,17 +20,8 @@ function resolveContentRoots(subdir: "data" | "skills" | "plugins"): string[] {
     return [canonical];
   }
 
-  // Canonical `app/*` always takes precedence.
-  if (fs.existsSync(canonical)) {
-    return [canonical, legacy];
-  }
-
-  // If only legacy exists, keep backward compatibility.
-  if (fs.existsSync(legacy)) {
-    return [legacy, canonical];
-  }
-
-  // If neither exists yet (fresh scaffold), default to canonical.
+  // Always prefer canonical app roots; legacy roots are compatibility-only.
+  // Runtime callers that need fallback behavior should iterate all roots.
   return [canonical, legacy];
 }
 

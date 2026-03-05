@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { dataDir, dataRoots, homeDir, pluginRoots, pluginsDir, skillRoots, skillsDir, soulPath, soulPathCandidates } from "@/chat/home";
@@ -11,7 +10,7 @@ describe("home paths", () => {
   it("resolves data/SOUL.md with canonical-first fallback", () => {
     const canonical = path.resolve(process.cwd(), "app", "data");
     const legacy = path.resolve(process.cwd(), "data");
-    const expected = fs.existsSync(canonical) ? canonical : fs.existsSync(legacy) ? legacy : canonical;
+    const expected = canonical;
     expect(dataDir()).toBe(expected);
     expect(soulPath()).toBe(path.join(expected, "SOUL.md"));
     expect(dataRoots()).toEqual(expect.arrayContaining([canonical, legacy]));
@@ -21,17 +20,13 @@ describe("home paths", () => {
   it("resolves skills and plugins with canonical-first fallback", () => {
     const canonicalSkills = path.resolve(process.cwd(), "app", "skills");
     const legacySkills = path.resolve(process.cwd(), "skills");
-    const expectedSkills = fs.existsSync(canonicalSkills) ? canonicalSkills : fs.existsSync(legacySkills) ? legacySkills : canonicalSkills;
+    const expectedSkills = canonicalSkills;
     expect(skillsDir()).toBe(expectedSkills);
     expect(skillRoots()).toEqual(expect.arrayContaining([canonicalSkills, legacySkills]));
 
     const canonicalPlugins = path.resolve(process.cwd(), "app", "plugins");
     const legacyPlugins = path.resolve(process.cwd(), "plugins");
-    const expectedPlugins = fs.existsSync(canonicalPlugins)
-      ? canonicalPlugins
-      : fs.existsSync(legacyPlugins)
-        ? legacyPlugins
-        : canonicalPlugins;
+    const expectedPlugins = canonicalPlugins;
     expect(pluginsDir()).toBe(expectedPlugins);
     expect(pluginRoots()).toEqual(expect.arrayContaining([canonicalPlugins, legacyPlugins]));
   });
