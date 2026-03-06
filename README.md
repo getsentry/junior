@@ -1,63 +1,41 @@
-# junior Monorepo
+# junior
 
-`junior` is a Slack bot built with Next.js and Chat SDK.
+Junior is a Slack bot runtime for Next.js apps.
 
-This repository includes:
+Use it to investigate issues, summarize context, and take action from Slack with connected tools.
 
-- `packages/junior`: the publishable `@sentry/junior` package
-- `packages/junior-github`: GitHub plugin package for `@sentry/junior`
-- `packages/junior-sentry`: Sentry plugin package for `@sentry/junior`
+## Quick Start
 
-## Requirements
+Requirements:
 
 - Node.js 20+
 - pnpm
 
-## Quick Start
-
-Install dependencies from the repo root:
+Create a new app:
 
 ```bash
-make
-# or: make install
-```
-
-This runs `pnpm install` and `dotagents install`.
-
-Run the local app:
-
-```bash
+npx junior init my-bot
+cd my-bot
+pnpm install
 pnpm dev
 ```
 
-Run checks:
+## Use with an Existing App
 
-```bash
-pnpm test
-pnpm evals
-pnpm typecheck
-pnpm skills:check
-```
+Install `@sentry/junior` and wire route handlers/config in your app.
 
-Validate the published package build:
+See integration details in [packages/junior/README.md](packages/junior/README.md).
 
-```bash
-pnpm build:pkg
-```
+## Packages
 
-## Package Usage
+| Package | Purpose | Docs |
+| --- | --- | --- |
+| `@sentry/junior` | Core Slack bot runtime for Next.js | [packages/junior/README.md](packages/junior/README.md) |
+| `@sentry/junior-github` | GitHub plugin package for issue workflows | [packages/junior-github/README.md](packages/junior-github/README.md) |
+| `@sentry/junior-sentry` | Sentry plugin package for issue workflows | [packages/junior-sentry/README.md](packages/junior-sentry/README.md) |
 
-Use `@sentry/junior` in a Next.js app with:
+## Contributing
 
-```bash
-pnpm add @sentry/junior
-pnpm add next react react-dom @sentry/nextjs
-```
+For local development workflows, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-See package integration details in [packages/junior/README.md](packages/junior/README.md).
-
-## Development Guide
-
-Contributor workflows and local development setup live in [CONTRIBUTING.md](CONTRIBUTING.md).
-
-Plugin authoring and distribution guidance lives in [PLUGIN.md](PLUGIN.md).
+For plugin authoring and distribution, see [PLUGIN.md](PLUGIN.md).
