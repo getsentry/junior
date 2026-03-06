@@ -23,3 +23,8 @@ oauth:
   authorize-endpoint: https://sentry.io/oauth/authorize/
   token-endpoint: https://sentry.io/oauth/token/
   scope: "event:read org:read project:read"
+
+runtime-dependencies:
+  - type: npm
+    package: "sentry"
+    version: "^2"

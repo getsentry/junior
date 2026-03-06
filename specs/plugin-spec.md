@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-03-04
+- Last Edited: 2026-03-06
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated code and test file references to repo-root paths under `packages/junior/`.
+- 2026-03-06: Added runtime dependency declarations and linked sandbox snapshot lifecycle contract.
 
 
 ## Status
@@ -20,6 +21,7 @@ Implemented (Sentry + GitHub migrated)
 - [Skill Capabilities Spec](./skill-capabilities-spec.md)
 - [OAuth Flows Spec](./oauth-flows-spec.md)
 - [Security Policy](./security-policy.md)
+- [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md)
 - Plugin Registry: `packages/junior/src/chat/plugins/registry.ts`
 - Plugin Types: `packages/junior/src/chat/plugins/types.ts`
 - Generic OAuth Bearer Broker: `packages/junior/src/chat/plugins/oauth-bearer-broker.ts`
@@ -87,6 +89,13 @@ target:                              # optional — omit for org-scoped provider
   type: repo
   config-key: sentry.project
 
+runtime-dependencies:                # optional — preinstalled CLI dependencies for sandbox snapshots
+  - type: npm
+    package: sentry
+    version: "^2"
+  - type: system
+    package: gh
+
 mcp:                                 # optional — MCP server config for tool sources
   command: npx
   args: ["-y", "@sentry/mcp-server"]
@@ -126,7 +135,13 @@ mcp:                                 # optional — MCP server config for tool s
 | `target` | `object` | Capability target for scoped credentials. |
 | `target.type` | `string` | Currently only `"repo"`. |
 | `target.config-key` | `string` | Must appear in `config-keys`. |
+| `runtime-dependencies` | `object[]` | Optional sandbox dependency declarations used to build reusable snapshots. |
+| `runtime-dependencies[].type` | `string` | `"npm"` or `"system"`. |
+| `runtime-dependencies[].package` | `string` | Package identifier (npm package name or system package name). |
+| `runtime-dependencies[].version` | `string` | Required for `npm` dependencies only; omitted for `system` dependencies. |
 | `mcp` | `object` | MCP server configuration for external tool sources. Reserved — not yet parsed by the registry. |
+
+Snapshot build/reuse and invalidation behavior for `runtime-dependencies` is defined in [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md).
 
 ### Derived values
 

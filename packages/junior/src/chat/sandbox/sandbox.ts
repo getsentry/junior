@@ -5,6 +5,7 @@ import { createBashTool } from "bash-tool";
 import { extractHttpErrorDetails } from "@/chat/http-error-details";
 import { setSpanAttributes, setSpanStatus, withSpan, type ObservabilityContext } from "@/chat/observability";
 import { SANDBOX_SKILLS_ROOT, SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
+import { isSnapshotMissingError, resolveRuntimeDependencySnapshot } from "@/chat/sandbox/runtime-dependency-snapshots";
 import type { SkillMetadata } from "@/chat/skills";
 
 // Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
@@ -376,6 +377,8 @@ export function createSandboxExecutor(options?: {
         };
 
         const createFreshSandbox = async (): Promise<Sandbox> => {
+          const runtime = "node22";
+
           let createdSandbox: Sandbox;
           try {
             createdSandbox = await withSandboxSpan(
@@ -383,15 +386,64 @@ export function createSandboxExecutor(options?: {
               "sandbox.create",
               {
                 "app.sandbox.reused": false,
-                "app.sandbox.source": "created",
                 "app.sandbox.timeout_ms": timeoutMs,
-                "app.sandbox.runtime": "node22"
+                "app.sandbox.runtime": runtime
               },
-              async () =>
-                Sandbox.create({
-                  timeout: timeoutMs,
-                  runtime: "node22"
-                })
+              async () => {
+                const snapshot = await resolveRuntimeDependencySnapshot({
+                  runtime,
+                  timeoutMs
+                });
+
+                setSpanAttributes({
+                  "app.sandbox.source": snapshot.snapshotId ? "snapshot" : "created",
+                  "app.sandbox.snapshot.cache_hit": Boolean(snapshot.snapshotId),
+                  ...(snapshot.profileHash ? { "app.sandbox.snapshot.profile_hash": snapshot.profileHash } : {}),
+                  "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount
+                });
+
+                if (!snapshot.snapshotId) {
+                  return await Sandbox.create({
+                    timeout: timeoutMs,
+                    runtime
+                  });
+                }
+
+                try {
+                  return await Sandbox.create({
+                    timeout: timeoutMs,
+                    source: {
+                      type: "snapshot",
+                      snapshotId: snapshot.snapshotId
+                    }
+                  });
+                } catch (error) {
+                  if (!isSnapshotMissingError(error)) {
+                    throw error;
+                  }
+
+                  setSpanAttributes({
+                    "app.sandbox.snapshot.rebuild_after_missing": true
+                  });
+                  const rebuiltSnapshot = await resolveRuntimeDependencySnapshot({
+                    runtime,
+                    timeoutMs,
+                    forceRebuild: true,
+                    staleSnapshotId: snapshot.snapshotId
+                  });
+                  if (!rebuiltSnapshot.snapshotId) {
+                    throw error;
+                  }
+
+                  return await Sandbox.create({
+                    timeout: timeoutMs,
+                    source: {
+                      type: "snapshot",
+                      snapshotId: rebuiltSnapshot.snapshotId
+                    }
+                  });
+                }
+              }
             );
           } catch (error) {
             return handleSetupFailure(error);

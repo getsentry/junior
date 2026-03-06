@@ -42,6 +42,7 @@ All issue operations should go through:
 ## Behavior Notes
 
 - Outputs JSON for machine-friendly consumption.
+- Uses `gh api` under the hood, so `gh` CLI must be available in the sandbox.
 - Uses GitHub App installation tokens, so actions are attributed to the app identity.
 - Returns actionable errors for auth, permission, not-found, and validation failures.
 - In harness runtime, auth should come from scoped header transforms, not raw token env injection.

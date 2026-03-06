@@ -10,7 +10,17 @@ import { logInfo, logWarn, setSpanAttributes } from "@/chat/observability";
 import { createGitHubAppBroker } from "./github-app-broker";
 import { createOAuthBearerBroker } from "./oauth-bearer-broker";
 import { discoverInstalledPluginPackageContent } from "./package-discovery";
-import type { GitHubAppCredentials, OAuthBearerCredentials, PluginBrokerDeps, PluginCredentials, PluginDefinition, PluginManifest } from "./types";
+import type {
+  GitHubAppCredentials,
+  OAuthBearerCredentials,
+  PluginBrokerDeps,
+  PluginCredentials,
+  PluginDefinition,
+  PluginManifest,
+  PluginNpmRuntimeDependency,
+  PluginSystemRuntimeDependency,
+  PluginRuntimeDependency
+} from "./types";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
@@ -71,18 +81,83 @@ function parseCredentials(data: Record<string, unknown>, name: string): PluginCr
   throw new Error(`Plugin ${name} has unsupported credentials.type: "${type}"`);
 }
 
+function parseRuntimeDependencies(data: unknown, name: string): PluginRuntimeDependency[] | undefined {
+  if (data === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(data)) {
+    throw new Error(`Plugin ${name} runtime-dependencies must be an array`);
+  }
+
+  const parsed: PluginRuntimeDependency[] = [];
+  const seen = new Set<string>();
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`Plugin ${name} runtime-dependencies entries must be objects`);
+    }
+
+    const record = entry as Record<string, unknown>;
+    const type = record.type;
+    const packageName = record.package;
+    const version = record.version;
+    if (typeof type !== "string" || (type !== "npm" && type !== "system")) {
+      throw new Error(`Plugin ${name} runtime dependency type must be "npm" or "system"`);
+    }
+    if (typeof packageName !== "string" || !packageName.trim()) {
+      throw new Error(`Plugin ${name} runtime dependency package must be a non-empty string`);
+    }
+
+    const normalizedPackage = packageName.trim();
+    if (type === "npm") {
+      const normalizedVersion = typeof version === "string" ? version.trim() : undefined;
+      if (!normalizedVersion) {
+        throw new Error(`Plugin ${name} runtime dependency version must be a non-empty string for npm dependencies`);
+      }
+      const dedupeKey = `${type}:${normalizedPackage}:${normalizedVersion}`;
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      parsed.push({
+        type: "npm",
+        package: normalizedPackage,
+        version: normalizedVersion
+      } satisfies PluginNpmRuntimeDependency);
+      continue;
+    }
+
+    if (version !== undefined) {
+      throw new Error(`Plugin ${name} system runtime dependencies must not include a version`);
+    }
+    const dedupeKey = `${type}:${normalizedPackage}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    parsed.push({
+      type: "system",
+      package: normalizedPackage
+    } satisfies PluginSystemRuntimeDependency);
+  }
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 function parseManifest(raw: string, dir: string): PluginManifest {
   const data = parseYaml(raw) as Record<string, unknown>;
 
-  const name = data.name;
-  if (typeof name !== "string" || !PLUGIN_NAME_RE.test(name)) {
-    throw new Error(`Invalid plugin name in ${dir}: "${name}"`);
+  const rawName = data.name;
+  if (typeof rawName !== "string" || !PLUGIN_NAME_RE.test(rawName)) {
+    throw new Error(`Invalid plugin name in ${dir}: "${rawName}"`);
   }
+  const name = rawName;
 
-  const description = data.description;
-  if (typeof description !== "string" || !description.trim()) {
+  const rawDescription = data.description;
+  if (typeof rawDescription !== "string" || !rawDescription.trim()) {
     throw new Error(`Invalid plugin description in ${dir}`);
   }
+  const description = rawDescription;
 
   // Capabilities are declared as short names (e.g. "issues.read") and
   // qualified with the plugin name prefix (e.g. "sentry.api").
@@ -118,12 +193,15 @@ function parseManifest(raw: string, dir: string): PluginManifest {
   }
   const credentials = parseCredentials(credentialsRaw as Record<string, unknown>, name);
 
+  const runtimeDependencies = parseRuntimeDependencies(data["runtime-dependencies"], name);
+
   const manifest: PluginManifest = {
-    name: name as string,
-    description: description as string,
+    name,
+    description,
     capabilities,
     configKeys,
-    credentials
+    credentials,
+    ...(runtimeDependencies ? { runtimeDependencies } : {})
   };
 
   const oauthRaw = data.oauth as Record<string, unknown> | undefined;
@@ -285,6 +363,34 @@ export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
 
 export function getPluginProviders(): PluginDefinition[] {
   return [...pluginDefinitions];
+}
+
+export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
+  const seen = new Set<string>();
+  const deps: PluginRuntimeDependency[] = [];
+  for (const plugin of pluginDefinitions) {
+    for (const dep of plugin.manifest.runtimeDependencies ?? []) {
+      const key = dep.type === "npm" ? `${dep.type}:${dep.package}:${dep.version}` : `${dep.type}:${dep.package}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      deps.push(dep);
+    }
+  }
+
+  return deps.sort((left, right) => {
+    if (left.type !== right.type) {
+      return left.type.localeCompare(right.type);
+    }
+    if (left.package !== right.package) {
+      return left.package.localeCompare(right.package);
+    }
+    if (left.type === "npm" && right.type === "npm") {
+      return left.version.localeCompare(right.version);
+    }
+    return 0;
+  });
 }
 
 export function getPluginOAuthConfig(provider: string): OAuthProviderConfig | undefined {

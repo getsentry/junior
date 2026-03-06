@@ -27,6 +27,18 @@ vi.mock("@/chat/observability", () => ({
   setSpanStatus: vi.fn()
 }));
 
+const { resolveRuntimeDependencySnapshotMock, isSnapshotMissingErrorMock } = vi.hoisted(() => ({
+  resolveRuntimeDependencySnapshotMock: vi.fn<
+    (...args: any[]) => Promise<{ snapshotId?: string; profileHash?: string; dependencyCount: number }>
+  >(async () => ({ dependencyCount: 0 })),
+  isSnapshotMissingErrorMock: vi.fn<(error: unknown) => boolean>(() => false)
+}));
+
+vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
+  resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
+  isSnapshotMissingError: isSnapshotMissingErrorMock
+}));
+
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
 import { createBashTool } from "bash-tool";
 
@@ -97,6 +109,10 @@ describe("createSandboxExecutor", () => {
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
     vi.mocked(createBashTool).mockReset();
+    resolveRuntimeDependencySnapshotMock.mockReset();
+    resolveRuntimeDependencySnapshotMock.mockResolvedValue({ dependencyCount: 0 });
+    isSnapshotMissingErrorMock.mockReset();
+    isSnapshotMissingErrorMock.mockReturnValue(false);
   });
 
   it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
@@ -342,5 +358,79 @@ describe("createSandboxExecutor", () => {
       ok: true,
       exit_code: 0
     });
+  });
+
+  it("creates fresh sandboxes from dependency snapshots when available", async () => {
+    const snapshotSandbox = makeSandbox("sbx_snapshot");
+    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+      snapshotId: "snap_123",
+      profileHash: "hash_123",
+      dependencyCount: 2
+    });
+    sandboxCreateMock.mockResolvedValue(snapshotSandbox);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    const sandbox = await executor.createSandbox();
+
+    expect(sandbox).toBe(snapshotSandbox);
+    expect(sandboxCreateMock).toHaveBeenCalledWith({
+      timeout: 1000 * 60 * 30,
+      source: {
+        type: "snapshot",
+        snapshotId: "snap_123"
+      }
+    });
+  });
+
+  it("rebuilds snapshot when cached snapshot is missing", async () => {
+    const rebuiltSandbox = makeSandbox("sbx_rebuilt");
+    resolveRuntimeDependencySnapshotMock
+      .mockResolvedValueOnce({
+        snapshotId: "snap_missing",
+        profileHash: "hash_1",
+        dependencyCount: 2
+      })
+      .mockResolvedValueOnce({
+        snapshotId: "snap_rebuilt",
+        profileHash: "hash_1",
+        dependencyCount: 2
+      });
+    const missingError = new Error("snapshot not found");
+    sandboxCreateMock
+      .mockRejectedValueOnce(missingError)
+      .mockResolvedValueOnce(rebuiltSandbox);
+    isSnapshotMissingErrorMock.mockImplementation((error: unknown) => error === missingError);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    const sandbox = await executor.createSandbox();
+
+    expect(sandbox).toBe(rebuiltSandbox);
+    expect(resolveRuntimeDependencySnapshotMock).toHaveBeenNthCalledWith(2, {
+      runtime: "node22",
+      timeoutMs: 1000 * 60 * 30,
+      forceRebuild: true,
+      staleSnapshotId: "snap_missing"
+    });
+    expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
+      timeout: 1000 * 60 * 30,
+      source: {
+        type: "snapshot",
+        snapshotId: "snap_rebuilt"
+      }
+    });
+  });
+
+  it("wraps snapshot resolution failures as sandbox setup errors", async () => {
+    resolveRuntimeDependencySnapshotMock.mockRejectedValueOnce(new Error("lock timeout"));
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await expect(executor.createSandbox()).rejects.toThrow("sandbox setup failed");
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 });

@@ -19,12 +19,26 @@ export interface GitHubAppCredentials {
 
 export type PluginCredentials = OAuthBearerCredentials | GitHubAppCredentials;
 
+export interface PluginNpmRuntimeDependency {
+  type: "npm";
+  package: string;
+  version: string;
+}
+
+export interface PluginSystemRuntimeDependency {
+  type: "system";
+  package: string;
+}
+
+export type PluginRuntimeDependency = PluginNpmRuntimeDependency | PluginSystemRuntimeDependency;
+
 export interface PluginManifest {
   name: string;
   description: string;
   capabilities: string[];
   configKeys: string[];
   credentials: PluginCredentials;
+  runtimeDependencies?: PluginRuntimeDependency[];
   oauth?: {
     clientIdEnv: string;
     clientSecretEnv: string;

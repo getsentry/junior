@@ -23,3 +23,7 @@ credentials:
 target:
   type: repo
   config-key: repo
+
+runtime-dependencies:
+  - type: system
+    package: gh

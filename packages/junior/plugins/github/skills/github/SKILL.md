@@ -48,7 +48,7 @@ Use this skill for `/github` workflows in the harness. Issues are the primary su
   - Create/update/state changes: `jr-rpc issue-credential github.issues.write`
   - Comments: `jr-rpc issue-credential github.issues.comment`
   - Labels: `jr-rpc issue-credential github.labels.write`
-- Call the API helper script. Read [references/github-issue-api.md](references/github-issue-api.md) for command shapes.
+- Call the API helper script (gh-backed). Read [references/github-issue-api.md](references/github-issue-api.md) for command shapes.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) for credential delivery details.
 
 5. Report result:

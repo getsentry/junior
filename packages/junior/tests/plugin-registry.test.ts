@@ -28,6 +28,13 @@ describe("plugin registry", () => {
     expect(sentry!.manifest.credentials).toMatchObject({
       authTokenPlaceholder: "host_managed_credential"
     });
+    expect(sentry!.manifest.runtimeDependencies).toEqual([
+      {
+        type: "npm",
+        package: "sentry",
+        version: "^2"
+      }
+    ]);
   });
 
   it("discovers github plugin from manifest", () => {
@@ -45,6 +52,12 @@ describe("plugin registry", () => {
     expect(github!.manifest.credentials).toMatchObject({
       authTokenPlaceholder: "ghp_host_managed_credential"
     });
+    expect(github!.manifest.runtimeDependencies).toEqual([
+      {
+        type: "system",
+        package: "gh"
+      }
+    ]);
   });
 
   it("registers plugin capabilities", () => {

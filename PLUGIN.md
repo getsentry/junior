@@ -61,6 +61,13 @@ oauth:
   authorize-endpoint: https://linear.app/oauth/authorize
   token-endpoint: https://api.linear.app/oauth/token
   scope: read,write
+
+runtime-dependencies:
+  - type: npm
+    package: sentry
+    version: "^2"
+  - type: system
+    package: gh
 ```
 
 ## Manifest Rules
@@ -71,6 +78,8 @@ oauth:
   - `issues.read` becomes `<name>.issues.read`
   - `org` becomes `<name>.org`
 - `credentials.type` must be `oauth-bearer` or `github-app`
+- `runtime-dependencies` is optional and supports `npm` and `system` installers
+- `runtime-dependencies[].version` is required for `npm` and must be omitted for `system`
 - `plugin.yaml` is required
 
 ## Distribute Plugins as npm Packages
