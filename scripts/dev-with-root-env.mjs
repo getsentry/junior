@@ -22,7 +22,7 @@ for (const relativePath of envCandidates) {
   process.loadEnvFile(absolutePath);
 }
 
-const child = spawn("pnpm", ["--filter", "jr-sentry", "dev"], {
+const child = spawn("pnpm", ["--filter", "@sentry/junior", "dev"], {
   stdio: "inherit",
   env: process.env
 });

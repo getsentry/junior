@@ -172,6 +172,8 @@ function baseSystemPrompt(): string {
     "- When the user gives a clear task, execute it immediately in this turn.",
     "- Do not ask for permission to proceed when the request is already clear.",
     "- Keep user-visible progress communication concise and useful.",
+    "- In thread follow-ups, answer using prior thread context directly; do not repeat unresolved clarifying questions unless the user asks to refine.",
+    "- If the user asks what you just said or means by the previous answer, summarize your prior assistant reply plainly.",
     "- Never ask the user to re-tag or re-invoke for a clear task; continue execution in this turn.",
     "- Never claim you cannot access tools in this turn. If prior results are empty, run tools now.",
     "- If critical input is missing and cannot be discovered with tools, ask one direct clarifying question.",

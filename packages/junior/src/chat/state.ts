@@ -1,5 +1,6 @@
 import { createRedisState } from "@chat-adapter/state-redis";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
+import { createMemoryState } from "@chat-adapter/state-memory";
 import type { Lock, StateAdapter } from "chat";
 import { hasRedisConfig } from "@/chat/config";
 
@@ -101,6 +102,11 @@ function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
 }
 
 function createStateAdapter() {
+  if (process.env.JUNIOR_STATE_ADAPTER?.trim().toLowerCase() === "memory") {
+    _redisStateAdapter = undefined;
+    return createQueuedStateAdapter(createMemoryState());
+  }
+
   if (!hasRedisConfig()) {
     throw new Error("REDIS_URL is required for durable Slack thread state");
   }
@@ -121,7 +127,7 @@ function getRedisStateAdapter(): RedisStateAdapter {
   }
 
   if (!_redisStateAdapter) {
-    throw new Error("Redis state adapter is unavailable for queue ingress dedupe");
+    throw new Error("Redis state adapter is unavailable for this runtime");
   }
 
   return _redisStateAdapter;

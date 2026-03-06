@@ -1,8 +1,66 @@
 import type { NextConfig } from "next";
 import { createRequire } from "node:module";
-import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-discovery";
+import { readFileSync, statSync } from "node:fs";
+import path from "node:path";
 
 const require = createRequire(import.meta.url);
+
+interface RootPackageJson {
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+}
+
+function isDirectory(targetPath: string): boolean {
+  try {
+    return statSync(targetPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isFile(targetPath: string): boolean {
+  try {
+    return statSync(targetPath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function discoverInstalledPluginPackageTracingIncludes(cwd: string = process.cwd()): string[] {
+  const rootPackageJsonPath = path.join(cwd, "package.json");
+  let rootPackageJson: RootPackageJson | undefined;
+  try {
+    rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, "utf8")) as RootPackageJson;
+  } catch {
+    return [];
+  }
+
+  const dependencies = [
+    ...Object.keys(rootPackageJson.dependencies ?? {}),
+    ...Object.keys(rootPackageJson.optionalDependencies ?? {})
+  ];
+  const tracingIncludes: string[] = [];
+
+  for (const dependency of dependencies) {
+    const packageDir = path.join(cwd, "node_modules", ...dependency.split("/"));
+    if (!isDirectory(packageDir)) {
+      continue;
+    }
+
+    const base = `./node_modules/${dependency}`;
+    if (isFile(path.join(packageDir, "plugin.yaml"))) {
+      tracingIncludes.push(`${base}/plugin.yaml`);
+    }
+    if (isDirectory(path.join(packageDir, "plugins"))) {
+      tracingIncludes.push(`${base}/plugins/**/*`);
+    }
+    if (isDirectory(path.join(packageDir, "skills"))) {
+      tracingIncludes.push(`${base}/skills/**/*`);
+    }
+  }
+
+  return [...new Set(tracingIncludes)].sort((left, right) => left.localeCompare(right));
+}
 
 export interface JuniorConfigOptions {
   dataDir?: string;
@@ -23,7 +81,7 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   const defaultDataTracingIncludes = options?.dataDir
     ? [`${dataDir}/**/*`]
     : ["./app/SOUL.md", "./app/ABOUT.md"];
-  const pluginPackageTracingIncludes = discoverInstalledPluginPackageContent().tracingIncludes;
+  const pluginPackageTracingIncludes = discoverInstalledPluginPackageTracingIncludes();
   const tracingIncludes = Array.from(new Set([
     ...defaultDataTracingIncludes,
     `${skillsDir}/**/*`,

@@ -30,7 +30,7 @@
     "test": "pnpm run test:slack-boundary && vitest run",
     "test:watch": "vitest",
     "preevals": "pnpm run test:slack-boundary",
-    "evals": "pnpm exec vitest run -c vitest.evals.config.ts",
+    "evals": "JUNIOR_STATE_ADAPTER=memory pnpm exec vitest run -c vitest.evals.config.ts",
     "test:slack-boundary": "node scripts/check-slack-test-boundary.mjs",
     "typecheck": "tsc --noEmit",
     "skills:check": "node scripts/check-skills.mjs"

@@ -21,6 +21,7 @@ Co-Authored-By: (agent model name) <email>
 - Use `/create-pr` skill for any PR creation operation.
 - Use `/skill-creator` skill when creating or updating skills.
 - Use evals for end-to-end behavior testing (excluding live Slack transport/integration). See `evals/README.md`.
+- Evals cannot be run reliably inside Codex due to sandbox/network limits; run eval commands outside Codex.
 - Use instrumentation conventions from `specs/logging/index.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
 - Minimize defensive programming — no fallbacks when systems are expected to work. Ensure errors are captured correctly. Use retries for expected network failures, nothing more.
