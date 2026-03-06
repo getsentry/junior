@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
+import { withSpan } from "@/chat/observability";
 import { getPluginRuntimeDependencies } from "@/chat/plugins/registry";
 import type { PluginRuntimeDependency } from "@/chat/plugins/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
@@ -28,10 +29,28 @@ interface DependencyProfile {
   dependencies: PluginRuntimeDependency[];
 }
 
+export type SnapshotResolveOutcome =
+  | "no_profile"
+  | "cache_hit"
+  | "cache_hit_after_lock_wait"
+  | "rebuilt"
+  | "forced_rebuild";
+
+export type SnapshotRebuildReason = "cache_miss" | "floating_stale" | "force_rebuild" | "snapshot_missing";
+
 export interface RuntimeDependencySnapshot {
   snapshotId?: string;
   profileHash?: string;
   dependencyCount: number;
+  cacheHit: boolean;
+  resolveOutcome: SnapshotResolveOutcome;
+  rebuildReason?: SnapshotRebuildReason;
+}
+
+interface BuildLockResult {
+  snapshotId: string;
+  source: "wait_cache" | "callback_cache" | "built";
+  waitedForLock: boolean;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -135,6 +154,15 @@ async function setCachedSnapshot(entry: CachedSnapshotEntry): Promise<void> {
   await state.set(profileCacheKey(entry.profileHash), JSON.stringify(entry), SNAPSHOT_CACHE_TTL_MS);
 }
 
+async function withSnapshotSpan<T>(
+  name: string,
+  op: string,
+  attributes: Record<string, unknown>,
+  callback: () => Promise<T>
+): Promise<T> {
+  return await withSpan(name, op, {}, callback, attributes);
+}
+
 async function runOrThrow(sandbox: Sandbox, params: {
   cmd: string;
   args?: string[];
@@ -214,70 +242,108 @@ async function installGhCliViaDnf(sandbox: Sandbox): Promise<void> {
 }
 
 async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeDependency[]): Promise<void> {
-  const npmPackages: string[] = [];
+  const systemDeps = deps.filter((dep): dep is Extract<PluginRuntimeDependency, { type: "system" }> => dep.type === "system");
+  const npmPackages = deps
+    .filter((dep): dep is Extract<PluginRuntimeDependency, { type: "npm" }> => dep.type === "npm")
+    .map((dep) => `${dep.package}@${dep.version}`);
 
-  for (const dep of deps) {
-    if (dep.type === "system") {
-      if (dep.package === "gh") {
-        await installGhCliViaDnf(sandbox);
-        continue;
+  if (systemDeps.length > 0) {
+    await withSnapshotSpan(
+      "sandbox.snapshot.install_system",
+      "sandbox.snapshot.install.system",
+      {
+        "app.sandbox.snapshot.install.system_count": systemDeps.length
+      },
+      async () => {
+        for (const dep of systemDeps) {
+          if (dep.package === "gh") {
+            await installGhCliViaDnf(sandbox);
+            continue;
+          }
+          await runOrThrow(
+            sandbox,
+            {
+              cmd: "dnf",
+              args: ["install", "-y", dep.package],
+              sudo: true
+            },
+            `dnf install ${dep.package}`
+          );
+        }
       }
-      await runOrThrow(
-        sandbox,
-        {
-          cmd: "dnf",
-          args: ["install", "-y", dep.package],
-          sudo: true
-        },
-        `dnf install ${dep.package}`
-      );
-      continue;
-    }
-    npmPackages.push(`${dep.package}@${dep.version}`);
+    );
   }
 
   if (npmPackages.length > 0) {
-    await runOrThrow(
-      sandbox,
+    await withSnapshotSpan(
+      "sandbox.snapshot.install_npm",
+      "sandbox.snapshot.install.npm",
       {
-        cmd: "npm",
-        args: [
-          "install",
-          "--global",
-          "--prefix",
-          `${SANDBOX_WORKSPACE_ROOT}/.junior`,
-          ...npmPackages
-        ]
+        "app.sandbox.snapshot.install.npm_count": npmPackages.length
       },
-      "npm install"
+      async () => {
+        await runOrThrow(
+          sandbox,
+          {
+            cmd: "npm",
+            args: [
+              "install",
+              "--global",
+              "--prefix",
+              `${SANDBOX_WORKSPACE_ROOT}/.junior`,
+              ...npmPackages
+            ]
+          },
+          "npm install"
+        );
+      }
     );
   }
 }
 
 async function createDependencySnapshot(profile: DependencyProfile, runtime: string, timeoutMs: number): Promise<string> {
-  const sandbox = await Sandbox.create({
-    timeout: timeoutMs,
-    runtime
-  });
+  return await withSnapshotSpan(
+    "sandbox.snapshot.build",
+    "sandbox.snapshot.build",
+    {
+      "app.sandbox.runtime": runtime,
+      "app.sandbox.snapshot.dependency_count": profile.dependencyCount
+    },
+    async () => {
+      const sandbox = await Sandbox.create({
+        timeout: timeoutMs,
+        runtime
+      });
 
-  try {
-    await installRuntimeDependencies(sandbox, profile.dependencies);
-    const snapshot = await sandbox.snapshot();
-    return snapshot.snapshotId;
-  } finally {
-    try {
-      await sandbox.stop({ blocking: true });
-    } catch {
-      // Snapshot creation may already finalize the sandbox; cleanup stays best-effort.
+      try {
+        await installRuntimeDependencies(sandbox, profile.dependencies);
+        return await withSnapshotSpan(
+          "sandbox.snapshot.capture",
+          "sandbox.snapshot.capture",
+          {
+            "app.sandbox.snapshot.dependency_count": profile.dependencyCount
+          },
+          async () => {
+            const snapshot = await sandbox.snapshot();
+            return snapshot.snapshotId;
+          }
+        );
+      } finally {
+        try {
+          await sandbox.stop({ blocking: true });
+        } catch {
+          // Snapshot creation may already finalize the sandbox; cleanup stays best-effort.
+        }
+      }
     }
-  }
+  );
 }
 
 async function withBuildLock(
   profileHash: string,
-  callback: () => Promise<string>,
+  callback: () => Promise<{ snapshotId: string; source: "callback_cache" | "built" }>,
   canUseCachedSnapshot: (cached: CachedSnapshotEntry) => boolean
-): Promise<string> {
+): Promise<BuildLockResult> {
   const state = getStateAdapter();
   await state.connect();
   const lockKey = profileLockKey(profileHash);
@@ -286,37 +352,96 @@ async function withBuildLock(
   let lock = await tryAcquireLock();
   if (lock) {
     try {
-      return await callback();
+      const result = await callback();
+      return {
+        snapshotId: result.snapshotId,
+        source: result.source,
+        waitedForLock: false
+      };
     } finally {
       await state.releaseLock(lock);
     }
   }
 
-  const waitUntil = Date.now() + SNAPSHOT_WAIT_FOR_LOCK_MS;
-  while (Date.now() < waitUntil) {
-    const cached = await getCachedSnapshot(profileHash);
-    if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
-      return cached.snapshotId;
-    }
+  return await withSnapshotSpan(
+    "sandbox.snapshot.lock_wait",
+    "sandbox.snapshot.lock_wait",
+    {
+      "app.sandbox.snapshot.profile_hash": profileHash
+    },
+    async () => {
+      const waitUntil = Date.now() + SNAPSHOT_WAIT_FOR_LOCK_MS;
+      while (Date.now() < waitUntil) {
+        const cached = await getCachedSnapshot(profileHash);
+        if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
+          return {
+            snapshotId: cached.snapshotId,
+            source: "wait_cache" as const,
+            waitedForLock: true
+          };
+        }
 
-    lock = await tryAcquireLock();
-    if (lock) {
-      try {
-        return await callback();
-      } finally {
-        await state.releaseLock(lock);
+        lock = await tryAcquireLock();
+        if (lock) {
+          try {
+            const result = await callback();
+            return {
+              snapshotId: result.snapshotId,
+              source: result.source,
+              waitedForLock: true
+            };
+          } finally {
+            await state.releaseLock(lock);
+          }
+        }
+
+        await sleep(500);
       }
+
+      const cached = await getCachedSnapshot(profileHash);
+      if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
+        return {
+          snapshotId: cached.snapshotId,
+          source: "wait_cache" as const,
+          waitedForLock: true
+        };
+      }
+
+      throw new Error("Timed out waiting for snapshot build lock");
     }
+  );
+}
 
-    await sleep(500);
+function toResolveOutcome(
+  forceRebuild: boolean,
+  source: BuildLockResult["source"],
+  waitedForLock: boolean
+): SnapshotResolveOutcome {
+  if (source === "built") {
+    return forceRebuild ? "forced_rebuild" : "rebuilt";
   }
-
-  const cached = await getCachedSnapshot(profileHash);
-  if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
-    return cached.snapshotId;
+  if (waitedForLock || source === "wait_cache") {
+    return "cache_hit_after_lock_wait";
   }
+  return "cache_hit";
+}
 
-  throw new Error("Timed out waiting for snapshot build lock");
+function getRebuildReason(params: {
+  forceRebuild?: boolean;
+  staleSnapshotId?: string;
+  cached?: CachedSnapshotEntry | null;
+  shouldRebuildCached: boolean;
+}): SnapshotRebuildReason | undefined {
+  if (params.forceRebuild) {
+    return params.staleSnapshotId ? "snapshot_missing" : "force_rebuild";
+  }
+  if (params.cached?.snapshotId && params.shouldRebuildCached) {
+    return "floating_stale";
+  }
+  if (!params.cached?.snapshotId) {
+    return "cache_miss";
+  }
+  return undefined;
 }
 
 export async function resolveRuntimeDependencySnapshot(params: {
@@ -325,57 +450,83 @@ export async function resolveRuntimeDependencySnapshot(params: {
   forceRebuild?: boolean;
   staleSnapshotId?: string;
 }): Promise<RuntimeDependencySnapshot> {
-  const resolveStartedAtMs = Date.now();
-  const profile = buildDependencyProfile(params.runtime);
-  if (!profile) {
-    return { dependencyCount: 0 };
-  }
+  return await withSnapshotSpan(
+    "sandbox.snapshot.resolve",
+    "sandbox.snapshot.resolve",
+    {
+      "app.sandbox.runtime": params.runtime,
+      "app.sandbox.snapshot.force_rebuild": Boolean(params.forceRebuild)
+    },
+    async () => {
+      const resolveStartedAtMs = Date.now();
+      const profile = buildDependencyProfile(params.runtime);
+      if (!profile) {
+        return {
+          dependencyCount: 0,
+          cacheHit: false,
+          resolveOutcome: "no_profile"
+        };
+      }
 
-  if (!params.forceRebuild) {
-    const cached = await getCachedSnapshot(profile.profileHash);
-    if (cached?.snapshotId && !shouldRebuildCachedSnapshot(profile, cached)) {
+      const cached = await getCachedSnapshot(profile.profileHash);
+      const cachedNeedsRebuild = Boolean(cached?.snapshotId && shouldRebuildCachedSnapshot(profile, cached));
+
+      if (!params.forceRebuild && cached?.snapshotId && !cachedNeedsRebuild) {
+        return {
+          snapshotId: cached.snapshotId,
+          profileHash: profile.profileHash,
+          dependencyCount: profile.dependencyCount,
+          cacheHit: true,
+          resolveOutcome: "cache_hit"
+        };
+      }
+
+      const rebuildReason = getRebuildReason({
+        forceRebuild: params.forceRebuild,
+        staleSnapshotId: params.staleSnapshotId,
+        cached,
+        shouldRebuildCached: cachedNeedsRebuild
+      });
+
+      const canUseCachedSnapshot = (candidate: CachedSnapshotEntry): boolean => {
+        if (params.forceRebuild) {
+          if (params.staleSnapshotId) {
+            return candidate.snapshotId !== params.staleSnapshotId;
+          }
+          // Force rebuild requests should ignore snapshots that existed before this
+          // call but can reuse a fresh snapshot produced by a concurrent builder.
+          return candidate.createdAtMs > resolveStartedAtMs;
+        }
+        return !shouldRebuildCachedSnapshot(profile, candidate);
+      };
+
+      const lockResult = await withBuildLock(profile.profileHash, async () => {
+        const latest = await getCachedSnapshot(profile.profileHash);
+        if (latest?.snapshotId && canUseCachedSnapshot(latest)) {
+          return { snapshotId: latest.snapshotId, source: "callback_cache" as const };
+        }
+
+        const nextSnapshotId = await createDependencySnapshot(profile, params.runtime, params.timeoutMs);
+        await setCachedSnapshot({
+          profileHash: profile.profileHash,
+          snapshotId: nextSnapshotId,
+          runtime: params.runtime,
+          createdAtMs: Date.now(),
+          dependencyCount: profile.dependencyCount
+        });
+        return { snapshotId: nextSnapshotId, source: "built" as const };
+      }, canUseCachedSnapshot);
+
       return {
-        snapshotId: cached.snapshotId,
+        snapshotId: lockResult.snapshotId,
         profileHash: profile.profileHash,
-        dependencyCount: profile.dependencyCount
+        dependencyCount: profile.dependencyCount,
+        cacheHit: lockResult.source !== "built",
+        resolveOutcome: toResolveOutcome(Boolean(params.forceRebuild), lockResult.source, lockResult.waitedForLock),
+        ...(rebuildReason ? { rebuildReason } : {})
       };
     }
-  }
-
-  const canUseCachedSnapshot = (cached: CachedSnapshotEntry): boolean => {
-    if (params.forceRebuild) {
-      if (params.staleSnapshotId) {
-        return cached.snapshotId !== params.staleSnapshotId;
-      }
-      // Force rebuild requests should ignore snapshots that existed before this
-      // call but can reuse a fresh snapshot produced by a concurrent builder.
-      return cached.createdAtMs > resolveStartedAtMs;
-    }
-    return !shouldRebuildCachedSnapshot(profile, cached);
-  };
-
-  const snapshotId = await withBuildLock(profile.profileHash, async () => {
-    const cached = await getCachedSnapshot(profile.profileHash);
-    if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
-      return cached.snapshotId;
-    }
-
-    const nextSnapshotId = await createDependencySnapshot(profile, params.runtime, params.timeoutMs);
-    await setCachedSnapshot({
-      profileHash: profile.profileHash,
-      snapshotId: nextSnapshotId,
-      runtime: params.runtime,
-      createdAtMs: Date.now(),
-      dependencyCount: profile.dependencyCount
-    });
-    return nextSnapshotId;
-  }, canUseCachedSnapshot);
-
-  return {
-    snapshotId,
-    profileHash: profile.profileHash,
-    dependencyCount: profile.dependencyCount
-  };
+  );
 }
 
 export function isSnapshotMissingError(error: unknown): boolean {

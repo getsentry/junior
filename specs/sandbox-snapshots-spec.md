@@ -8,6 +8,7 @@
 ## Changelog
 
 - 2026-03-06: Added canonical snapshot lifecycle contract for plugin runtime dependencies.
+- 2026-03-06: Added snapshot resolve outcome/rebuild reason telemetry and clarified cache-hit semantics.
 
 ## Status
 
@@ -100,10 +101,13 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 - Sandbox spans annotate snapshot source and profile metadata in `packages/junior/src/chat/sandbox/sandbox.ts`.
 - Required attributes include:
   - `app.sandbox.source` (`created|snapshot|memory|id_hint`)
-  - `app.sandbox.snapshot.cache_hit` (boolean)
+  - `app.sandbox.snapshot.cache_hit` (boolean, true only when the resolver reused an existing cached snapshot)
+  - `app.sandbox.snapshot.resolve_outcome` (`no_profile|cache_hit|cache_hit_after_lock_wait|rebuilt|forced_rebuild`)
+  - `app.sandbox.snapshot.rebuild_reason` (`cache_miss|floating_stale|force_rebuild|snapshot_missing`) when rebuilt/forced paths run
   - `app.sandbox.snapshot.profile_hash` (when available)
   - `app.sandbox.snapshot.dependency_count`
   - `app.sandbox.snapshot.rebuild_after_missing` (when stale/missing path is taken)
+  - `app.sandbox.snapshot.install.system_count` / `app.sandbox.snapshot.install.npm_count` (when install phases run)
 - No secret or token material is emitted in snapshot attributes or logs.
 
 ## Verification

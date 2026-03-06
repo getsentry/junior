@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-06
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-06: Added sandbox snapshot lifecycle attribute mappings.
 
 
 ## Status
@@ -94,6 +95,14 @@ Use `app.*` only for data with no current semantic key:
 - `app.sandbox.stderr_bytes`
 - `app.sandbox.sync.files_written`
 - `app.sandbox.sync.bytes_written`
+- `app.sandbox.snapshot.cache_hit`
+- `app.sandbox.snapshot.resolve_outcome`
+- `app.sandbox.snapshot.rebuild_reason`
+- `app.sandbox.snapshot.profile_hash`
+- `app.sandbox.snapshot.dependency_count`
+- `app.sandbox.snapshot.rebuild_after_missing`
+- `app.sandbox.snapshot.install.system_count`
+- `app.sandbox.snapshot.install.npm_count`
 
 ## Error Semantics
 - `error.type` for low-cardinality error class.

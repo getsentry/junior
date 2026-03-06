@@ -397,9 +397,11 @@ export function createSandboxExecutor(options?: {
 
                 setSpanAttributes({
                   "app.sandbox.source": snapshot.snapshotId ? "snapshot" : "created",
-                  "app.sandbox.snapshot.cache_hit": Boolean(snapshot.snapshotId),
+                  "app.sandbox.snapshot.cache_hit": snapshot.cacheHit,
+                  "app.sandbox.snapshot.resolve_outcome": snapshot.resolveOutcome,
                   ...(snapshot.profileHash ? { "app.sandbox.snapshot.profile_hash": snapshot.profileHash } : {}),
-                  "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount
+                  "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount,
+                  ...(snapshot.rebuildReason ? { "app.sandbox.snapshot.rebuild_reason": snapshot.rebuildReason } : {})
                 });
 
                 if (!snapshot.snapshotId) {

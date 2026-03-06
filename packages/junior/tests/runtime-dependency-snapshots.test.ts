@@ -4,6 +4,14 @@ const { sandboxCreateMock, getPluginRuntimeDependenciesMock } = vi.hoisted(() =>
   sandboxCreateMock: vi.fn(),
   getPluginRuntimeDependenciesMock: vi.fn()
 }));
+const { withSpanMock } = vi.hoisted(() => ({
+  withSpanMock: vi.fn(async (
+    _name: string,
+    _op: string,
+    _context: unknown,
+    callback: () => Promise<unknown>
+  ) => callback())
+}));
 
 vi.mock("@vercel/sandbox", () => ({
   Sandbox: {
@@ -13,6 +21,9 @@ vi.mock("@vercel/sandbox", () => ({
 
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginRuntimeDependencies: getPluginRuntimeDependenciesMock
+}));
+vi.mock("@/chat/observability", () => ({
+  withSpan: withSpanMock
 }));
 
 const store = new Map<string, string>();
@@ -67,6 +78,13 @@ describe("runtime dependency snapshots", () => {
     store.clear();
     lockHeld = false;
     sandboxCreateMock.mockReset();
+    withSpanMock.mockReset();
+    withSpanMock.mockImplementation(async (
+      _name: string,
+      _op: string,
+      _context: unknown,
+      callback: () => Promise<unknown>
+    ) => await callback());
     getPluginRuntimeDependenciesMock.mockReset();
     delete process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH;
     delete process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
@@ -87,6 +105,9 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000
     });
     expect(first.snapshotId).toBe("snap_1");
+    expect(first.cacheHit).toBe(false);
+    expect(first.resolveOutcome).toBe("rebuilt");
+    expect(first.rebuildReason).toBe("cache_miss");
 
     vi.setSystemTime(new Date("2026-03-10T00:00:00.000Z"));
 
@@ -95,6 +116,9 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000
     });
     expect(second.snapshotId).toBe("snap_2");
+    expect(second.cacheHit).toBe(false);
+    expect(second.resolveOutcome).toBe("rebuilt");
+    expect(second.rebuildReason).toBe("floating_stale");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
 
@@ -112,6 +136,8 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000
     });
     expect(first.snapshotId).toBe("snap_epoch_a");
+    expect(first.cacheHit).toBe(false);
+    expect(first.resolveOutcome).toBe("rebuilt");
 
     process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH = "epoch-b";
     const second = await resolveRuntimeDependencySnapshot({
@@ -119,6 +145,8 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000
     });
     expect(second.snapshotId).toBe("snap_epoch_b");
+    expect(second.cacheHit).toBe(false);
+    expect(second.resolveOutcome).toBe("rebuilt");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
 
@@ -133,6 +161,8 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000
     });
     expect(first.snapshotId).toBe("snap_new");
+    expect(first.cacheHit).toBe(false);
+    expect(first.resolveOutcome).toBe("rebuilt");
 
     const forced = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
@@ -141,6 +171,9 @@ describe("runtime dependency snapshots", () => {
       staleSnapshotId: "snap_old"
     });
     expect(forced.snapshotId).toBe("snap_new");
+    expect(forced.cacheHit).toBe(true);
+    expect(forced.resolveOutcome).toBe("cache_hit");
+    expect(forced.rebuildReason).toBe("snapshot_missing");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 
@@ -236,6 +269,8 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000
     });
     expect(first.snapshotId).toBe("snap_old");
+    expect(first.cacheHit).toBe(false);
+    expect(first.resolveOutcome).toBe("rebuilt");
 
     lockHeld = true;
     setTimeout(() => {
@@ -249,6 +284,9 @@ describe("runtime dependency snapshots", () => {
       staleSnapshotId: "snap_old"
     });
     expect(second.snapshotId).toBe("snap_new");
+    expect(second.cacheHit).toBe(false);
+    expect(second.resolveOutcome).toBe("forced_rebuild");
+    expect(second.rebuildReason).toBe("snapshot_missing");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
 
@@ -265,6 +303,8 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000
     });
     expect(first.snapshotId).toBe("snap_initial");
+    expect(first.cacheHit).toBe(false);
+    expect(first.resolveOutcome).toBe("rebuilt");
 
     const forced = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
@@ -272,6 +312,9 @@ describe("runtime dependency snapshots", () => {
       forceRebuild: true
     });
     expect(forced.snapshotId).toBe("snap_forced");
+    expect(forced.cacheHit).toBe(false);
+    expect(forced.resolveOutcome).toBe("forced_rebuild");
+    expect(forced.rebuildReason).toBe("force_rebuild");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
 
@@ -288,6 +331,8 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000
     });
     expect(first.snapshotId).toBe("snap_initial");
+    expect(first.cacheHit).toBe(false);
+    expect(first.resolveOutcome).toBe("rebuilt");
 
     const [cacheKey] = [...store.keys()];
     const initialCached = JSON.parse(store.get(cacheKey) ?? "") as {
@@ -322,6 +367,47 @@ describe("runtime dependency snapshots", () => {
     await vi.advanceTimersByTimeAsync(2_000);
     const snapshot = await concurrent;
     expect(snapshot.snapshotId).toBe("snap_from_other_worker");
+    expect(snapshot.cacheHit).toBe(true);
+    expect(snapshot.resolveOutcome).toBe("cache_hit_after_lock_wait");
+    expect(snapshot.rebuildReason).toBe("force_rebuild");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns no_profile metadata when runtime dependency profile is empty", async () => {
+    getPluginRuntimeDependenciesMock.mockReturnValue([]);
+
+    const snapshot = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000
+    });
+
+    expect(snapshot).toMatchObject({
+      dependencyCount: 0,
+      cacheHit: false,
+      resolveOutcome: "no_profile"
+    });
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("emits lifecycle snapshot spans for build and install", async () => {
+    getPluginRuntimeDependenciesMock.mockReturnValue([
+      { type: "system", package: "gh" },
+      { type: "npm", package: "sentry-cli", version: "2.0.0" }
+    ]);
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_observability"));
+
+    await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000
+    });
+
+    const spanNames = withSpanMock.mock.calls.map((call) => call[0]);
+    expect(spanNames).toEqual(expect.arrayContaining([
+      "sandbox.snapshot.resolve",
+      "sandbox.snapshot.build",
+      "sandbox.snapshot.install_system",
+      "sandbox.snapshot.install_npm",
+      "sandbox.snapshot.capture"
+    ]));
   });
 });

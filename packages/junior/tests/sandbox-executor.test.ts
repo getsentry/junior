@@ -4,6 +4,10 @@ const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
   sandboxCreateMock: vi.fn()
 }));
+const { setSpanAttributesMock, setSpanStatusMock } = vi.hoisted(() => ({
+  setSpanAttributesMock: vi.fn(),
+  setSpanStatusMock: vi.fn()
+}));
 
 vi.mock("@vercel/sandbox", () => ({
   Sandbox: {
@@ -23,14 +27,21 @@ vi.mock("@/chat/observability", () => ({
     _context: unknown,
     callback: () => Promise<unknown>
   ) => callback(),
-  setSpanAttributes: vi.fn(),
-  setSpanStatus: vi.fn()
+  setSpanAttributes: setSpanAttributesMock,
+  setSpanStatus: setSpanStatusMock
 }));
 
 const { resolveRuntimeDependencySnapshotMock, isSnapshotMissingErrorMock } = vi.hoisted(() => ({
   resolveRuntimeDependencySnapshotMock: vi.fn<
-    (...args: any[]) => Promise<{ snapshotId?: string; profileHash?: string; dependencyCount: number }>
-  >(async () => ({ dependencyCount: 0 })),
+    (...args: any[]) => Promise<{
+      snapshotId?: string;
+      profileHash?: string;
+      dependencyCount: number;
+      cacheHit: boolean;
+      resolveOutcome: string;
+      rebuildReason?: string;
+    }>
+  >(async () => ({ dependencyCount: 0, cacheHit: false, resolveOutcome: "no_profile" })),
   isSnapshotMissingErrorMock: vi.fn<(error: unknown) => boolean>(() => false)
 }));
 
@@ -108,9 +119,15 @@ describe("createSandboxExecutor", () => {
   beforeEach(() => {
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
+    setSpanAttributesMock.mockReset();
+    setSpanStatusMock.mockReset();
     vi.mocked(createBashTool).mockReset();
     resolveRuntimeDependencySnapshotMock.mockReset();
-    resolveRuntimeDependencySnapshotMock.mockResolvedValue({ dependencyCount: 0 });
+    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+      dependencyCount: 0,
+      cacheHit: false,
+      resolveOutcome: "no_profile"
+    });
     isSnapshotMissingErrorMock.mockReset();
     isSnapshotMissingErrorMock.mockReturnValue(false);
   });
@@ -365,7 +382,9 @@ describe("createSandboxExecutor", () => {
     resolveRuntimeDependencySnapshotMock.mockResolvedValue({
       snapshotId: "snap_123",
       profileHash: "hash_123",
-      dependencyCount: 2
+      dependencyCount: 2,
+      cacheHit: true,
+      resolveOutcome: "cache_hit"
     });
     sandboxCreateMock.mockResolvedValue(snapshotSandbox);
 
@@ -382,6 +401,12 @@ describe("createSandboxExecutor", () => {
         snapshotId: "snap_123"
       }
     });
+    expect(setSpanAttributesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "app.sandbox.snapshot.cache_hit": true,
+        "app.sandbox.snapshot.resolve_outcome": "cache_hit"
+      })
+    );
   });
 
   it("rebuilds snapshot when cached snapshot is missing", async () => {
@@ -390,12 +415,17 @@ describe("createSandboxExecutor", () => {
       .mockResolvedValueOnce({
         snapshotId: "snap_missing",
         profileHash: "hash_1",
-        dependencyCount: 2
+        dependencyCount: 2,
+        cacheHit: true,
+        resolveOutcome: "cache_hit"
       })
       .mockResolvedValueOnce({
         snapshotId: "snap_rebuilt",
         profileHash: "hash_1",
-        dependencyCount: 2
+        dependencyCount: 2,
+        cacheHit: false,
+        resolveOutcome: "forced_rebuild",
+        rebuildReason: "snapshot_missing"
       });
     const missingError = new Error("snapshot not found");
     sandboxCreateMock

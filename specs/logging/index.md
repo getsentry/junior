@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-06
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-03-06: Added pointer to telemetry usage runbooks.
 
 
 ## Status
@@ -36,3 +37,6 @@ This directory is the source of truth for application instrumentation.
 - [Structured Logging Spec](./logging-spec.md)
 - [Tracing Spec](./tracing-spec.md)
 - [Semantics Map](./semantics.md)
+
+## Operational Guides (Non-Normative)
+- [Telemetry Usage Runbooks](../../docs/operations/telemetry-runbooks.md)

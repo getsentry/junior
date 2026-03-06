@@ -3,13 +3,14 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-03-04
+- Last Edited: 2026-03-06
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated logging/observability file references to repo-root paths under `packages/junior/`.
 - 2026-03-04: Normalized section shape with explicit `Status`, `Purpose`, and `Scope`.
+- 2026-03-06: Added snapshot lifecycle span requirements and aligned sandbox snapshot attributes.
 
 ## Status
 
@@ -95,6 +96,12 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - `sandbox.acquire` with `op: sandbox.acquire`
 - `sandbox.get` with `op: sandbox.get` when reusing `sandboxId`
 - `sandbox.create` with `op: sandbox.create` when provisioning
+- `sandbox.snapshot.resolve` with `op: sandbox.snapshot.resolve` when dependency snapshot resolution is attempted
+- `sandbox.snapshot.lock_wait` with `op: sandbox.snapshot.lock_wait` when snapshot build lock contention occurs
+- `sandbox.snapshot.build` with `op: sandbox.snapshot.build` when creating a new dependency snapshot
+- `sandbox.snapshot.install_system` with `op: sandbox.snapshot.install.system` when installing system dependencies
+- `sandbox.snapshot.install_npm` with `op: sandbox.snapshot.install.npm` when installing npm dependencies
+- `sandbox.snapshot.capture` with `op: sandbox.snapshot.capture` when calling `sandbox.snapshot()`
 - `sandbox.sync_skills` with `op: sandbox.sync`
 - `sandbox.bash_tool.init` with `op: sandbox.tool.init`
 - `bash` with `op: process.exec` for sandbox command execution
@@ -103,12 +110,20 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 
 ### Required Sandbox Attributes
 - `app.sandbox.reused` (boolean)
-- `app.sandbox.source` (`memory|id_hint|created`)
+- `app.sandbox.source` (`memory|id_hint|created|snapshot`)
 - `app.sandbox.timeout_ms` (number)
 - `app.sandbox.runtime` (string)
 - `app.sandbox.skills_count` (number)
 - `app.sandbox.sync.files_written` (number)
 - `app.sandbox.sync.bytes_written` (number)
+- `app.sandbox.snapshot.cache_hit` (boolean)
+- `app.sandbox.snapshot.resolve_outcome` (`no_profile|cache_hit|cache_hit_after_lock_wait|rebuilt|forced_rebuild`)
+- `app.sandbox.snapshot.rebuild_reason` (`cache_miss|floating_stale|force_rebuild|snapshot_missing`) when rebuilt/forced paths occur
+- `app.sandbox.snapshot.profile_hash` (string) when dependency profile is present
+- `app.sandbox.snapshot.dependency_count` (number)
+- `app.sandbox.snapshot.rebuild_after_missing` (boolean) when stale snapshot fallback path is taken
+- `app.sandbox.snapshot.install.system_count` (number) when system installs occur
+- `app.sandbox.snapshot.install.npm_count` (number) when npm installs occur
 - `process.executable.name` (string)
 - `process.exit.code` (number)
 - `process.pid` (number) when available
@@ -133,6 +148,7 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 
 ## Acceptance Criteria
 - Sandbox create/reuse/sync/execute timing is visible in traces.
+- Snapshot resolve/build/install/capture timing is visible in traces.
 - Span attributes are stable and low-cardinality.
 - Trace and log correlation remains intact (`trace_id`, `span_id`, shared workflow attributes).
 - No sensitive raw command or content payloads are emitted to spans.
