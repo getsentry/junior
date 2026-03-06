@@ -381,7 +381,10 @@ export async function resolveRuntimeDependencySnapshot(params: {
 
   const canUseCachedSnapshot = (cached: CachedSnapshotEntry): boolean => {
     if (params.forceRebuild) {
-      return !params.staleSnapshotId || cached.snapshotId !== params.staleSnapshotId;
+      if (params.staleSnapshotId) {
+        return cached.snapshotId !== params.staleSnapshotId;
+      }
+      return false;
     }
     return !shouldRebuildCachedSnapshot(profile, cached);
   };

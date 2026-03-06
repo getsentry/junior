@@ -423,4 +423,14 @@ describe("createSandboxExecutor", () => {
       }
     });
   });
+
+  it("wraps snapshot resolution failures as sandbox setup errors", async () => {
+    resolveRuntimeDependencySnapshotMock.mockRejectedValueOnce(new Error("lock timeout"));
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await expect(executor.createSandbox()).rejects.toThrow("sandbox setup failed");
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
 });

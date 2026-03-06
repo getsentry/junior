@@ -378,10 +378,6 @@ export function createSandboxExecutor(options?: {
 
         const createFreshSandbox = async (): Promise<Sandbox> => {
           const runtime = "node22";
-          const snapshot = await resolveRuntimeDependencySnapshot({
-            runtime,
-            timeoutMs
-          });
 
           let createdSandbox: Sandbox;
           try {
@@ -390,14 +386,22 @@ export function createSandboxExecutor(options?: {
               "sandbox.create",
               {
                 "app.sandbox.reused": false,
-                "app.sandbox.source": snapshot.snapshotId ? "snapshot" : "created",
-                "app.sandbox.snapshot.cache_hit": Boolean(snapshot.snapshotId),
-                ...(snapshot.profileHash ? { "app.sandbox.snapshot.profile_hash": snapshot.profileHash } : {}),
-                "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount,
                 "app.sandbox.timeout_ms": timeoutMs,
                 "app.sandbox.runtime": runtime
               },
               async () => {
+                const snapshot = await resolveRuntimeDependencySnapshot({
+                  runtime,
+                  timeoutMs
+                });
+
+                setSpanAttributes({
+                  "app.sandbox.source": snapshot.snapshotId ? "snapshot" : "created",
+                  "app.sandbox.snapshot.cache_hit": Boolean(snapshot.snapshotId),
+                  ...(snapshot.profileHash ? { "app.sandbox.snapshot.profile_hash": snapshot.profileHash } : {}),
+                  "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount
+                });
+
                 if (!snapshot.snapshotId) {
                   return await Sandbox.create({
                     timeout: timeoutMs,

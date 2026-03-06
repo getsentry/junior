@@ -215,4 +215,27 @@ describe("runtime dependency snapshots", () => {
     expect(second.snapshotId).toBe("snap_new");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
+
+  it("rebuilds when forceRebuild is true without stale snapshot id", async () => {
+    getPluginRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "^2" }
+    ]);
+    sandboxCreateMock
+      .mockResolvedValueOnce(makeSandbox("snap_initial"))
+      .mockResolvedValueOnce(makeSandbox("snap_forced"));
+
+    const first = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000
+    });
+    expect(first.snapshotId).toBe("snap_initial");
+
+    const forced = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+      forceRebuild: true
+    });
+    expect(forced.snapshotId).toBe("snap_forced");
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+  });
 });
