@@ -5,7 +5,12 @@ permissions:
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - release/**
+      - releases/**
+      - release-*
+      - auto-release/**
   pull_request:
     branches: [main]
 

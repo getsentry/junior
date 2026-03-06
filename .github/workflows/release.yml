@@ -21,6 +21,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  checks: read
+  statuses: read
 
 jobs:
   release:
@@ -33,6 +35,10 @@ jobs:
         with:
           app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
           private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}
+          permission-checks: read
+          permission-statuses: read
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Checkout
         uses: actions/checkout@v4
