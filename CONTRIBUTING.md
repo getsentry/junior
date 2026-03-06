@@ -47,11 +47,10 @@ pnpm typecheck
 pnpm skills:check
 ```
 
-Build and validate package behavior in the consumer app:
+Build and validate the published package artifacts:
 
 ```bash
 pnpm build:pkg
-pnpm --filter jr-sentry build
 ```
 
 ## Releasing

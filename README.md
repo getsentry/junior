@@ -5,7 +5,8 @@
 This repository includes:
 
 - `packages/junior`: the publishable `@sentry/junior` package
-- `packages/jr-sentry`: a workspace consumer app used as a package smoke test
+- `packages/junior-github`: GitHub plugin package for `@sentry/junior`
+- `packages/junior-sentry`: Sentry plugin package for `@sentry/junior`
 
 ## Requirements
 
@@ -38,11 +39,10 @@ pnpm typecheck
 pnpm skills:check
 ```
 
-Validate the published package against the consumer app:
+Validate the published package build:
 
 ```bash
 pnpm build:pkg
-pnpm --filter jr-sentry build
 ```
 
 ## Package Usage
