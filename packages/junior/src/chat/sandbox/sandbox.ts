@@ -424,7 +424,8 @@ export function createSandboxExecutor(options?: {
                   const rebuiltSnapshot = await resolveRuntimeDependencySnapshot({
                     runtime,
                     timeoutMs,
-                    forceRebuild: true
+                    forceRebuild: true,
+                    staleSnapshotId: snapshot.snapshotId
                   });
                   if (!rebuiltSnapshot.snapshotId) {
                     throw error;

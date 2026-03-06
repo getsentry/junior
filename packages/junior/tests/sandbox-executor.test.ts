@@ -36,8 +36,7 @@ const { resolveRuntimeDependencySnapshotMock, isSnapshotMissingErrorMock } = vi.
 
 vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
   resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
-  isSnapshotMissingError: isSnapshotMissingErrorMock,
-  logSnapshotBuildWarning: vi.fn()
+  isSnapshotMissingError: isSnapshotMissingErrorMock
 }));
 
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
@@ -413,7 +412,8 @@ describe("createSandboxExecutor", () => {
     expect(resolveRuntimeDependencySnapshotMock).toHaveBeenNthCalledWith(2, {
       runtime: "node22",
       timeoutMs: 1000 * 60 * 30,
-      forceRebuild: true
+      forceRebuild: true,
+      staleSnapshotId: "snap_missing"
     });
     expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
       timeout: 1000 * 60 * 30,

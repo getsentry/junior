@@ -322,6 +322,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
   runtime: string;
   timeoutMs: number;
   forceRebuild?: boolean;
+  staleSnapshotId?: string;
 }): Promise<RuntimeDependencySnapshot> {
   const profile = buildDependencyProfile(params.runtime);
   if (!profile) {
@@ -340,9 +341,13 @@ export async function resolveRuntimeDependencySnapshot(params: {
   }
 
   const snapshotId = await withBuildLock(profile.profileHash, async () => {
-    if (!params.forceRebuild) {
-      const cached = await getCachedSnapshot(profile.profileHash);
-      if (cached?.snapshotId && !shouldRebuildCachedSnapshot(profile, cached)) {
+    const cached = await getCachedSnapshot(profile.profileHash);
+    if (cached?.snapshotId) {
+      if (params.forceRebuild) {
+        if (!params.staleSnapshotId || cached.snapshotId !== params.staleSnapshotId) {
+          return cached.snapshotId;
+        }
+      } else if (!shouldRebuildCachedSnapshot(profile, cached)) {
         return cached.snapshotId;
       }
     }
