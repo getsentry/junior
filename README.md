@@ -17,8 +17,11 @@ This repository includes:
 Install dependencies from the repo root:
 
 ```bash
-pnpm install
+make
+# or: make install
 ```
+
+This runs `pnpm install` and `dotagents install`.
 
 Run the local app:
 

@@ -15,8 +15,11 @@ Use this guide for local development in the `junior` monorepo.
 1. Install dependencies:
 
 ```bash
-pnpm install
+make
+# or: make install
 ```
+
+This runs `pnpm install` and `dotagents install`.
 
 2. Link the repo to Vercel and pull development env vars:
 
