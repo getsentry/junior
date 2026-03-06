@@ -65,8 +65,17 @@ async function maybeReadBody(options) {
 }
 
 async function runGh(args, input) {
+  const childEnv = { ...process.env };
+  for (const tokenName of ["GITHUB_TOKEN", "GH_TOKEN"]) {
+    const tokenValue = childEnv[tokenName];
+    if (typeof tokenValue === "string" && tokenValue.endsWith("host_managed_credential")) {
+      delete childEnv[tokenName];
+    }
+  }
+
   return await new Promise((resolve, reject) => {
     const child = spawn("gh", args, {
+      env: childEnv,
       stdio: [input ? "pipe" : "ignore", "pipe", "pipe"]
     });
 

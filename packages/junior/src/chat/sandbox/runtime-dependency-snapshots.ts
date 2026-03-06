@@ -164,13 +164,52 @@ function normalizeInstalledVersion(raw: string): string {
   return withoutEpoch.split("-")[0] ?? withoutEpoch;
 }
 
+function parseNumericVersionParts(version: string): number[] | null {
+  if (!/^\d+(?:\.\d+)*$/.test(version)) {
+    return null;
+  }
+  return version.split(".").map((part) => Number.parseInt(part, 10));
+}
+
+function compareVersionParts(left: number[], right: number[]): number {
+  const maxLen = Math.max(left.length, right.length);
+  for (let index = 0; index < maxLen; index += 1) {
+    const leftPart = left[index] ?? 0;
+    const rightPart = right[index] ?? 0;
+    if (leftPart < rightPart) {
+      return -1;
+    }
+    if (leftPart > rightPart) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+function matchesCaretSelector(installed: string, selector: string): boolean {
+  const installedParts = parseNumericVersionParts(installed);
+  const selectorParts = parseNumericVersionParts(selector);
+  if (!installedParts || !selectorParts) {
+    return false;
+  }
+
+  const pivotIndex = selectorParts.findIndex((part) => part !== 0);
+  const boundedIndex = pivotIndex >= 0 ? pivotIndex : selectorParts.length - 1;
+  const upperBound = [...selectorParts];
+  upperBound[boundedIndex] = (upperBound[boundedIndex] ?? 0) + 1;
+  for (let index = boundedIndex + 1; index < upperBound.length; index += 1) {
+    upperBound[index] = 0;
+  }
+
+  return compareVersionParts(installedParts, selectorParts) >= 0 && compareVersionParts(installedParts, upperBound) < 0;
+}
+
 function versionSelectorMatches(installed: string, selector: string): boolean {
   const normalizedInstalled = normalizeInstalledVersion(installed);
   const normalizedSelector = selector.trim();
 
   if (normalizedSelector.startsWith("^")) {
-    const major = normalizedSelector.slice(1);
-    return normalizedInstalled === major || normalizedInstalled.startsWith(`${major}.`);
+    return matchesCaretSelector(normalizedInstalled, normalizedSelector.slice(1));
   }
 
   if (/^\d+$/.test(normalizedSelector)) {
@@ -259,19 +298,15 @@ async function createDependencySnapshot(profile: DependencyProfile, runtime: str
     runtime
   });
 
-  let completed = false;
   try {
     await installRuntimeDependencies(sandbox, profile.dependencies);
     const snapshot = await sandbox.snapshot();
-    completed = true;
     return snapshot.snapshotId;
   } finally {
-    if (!completed) {
-      try {
-        await sandbox.stop({ blocking: true });
-      } catch {
-        // Best effort cleanup on failed snapshot build.
-      }
+    try {
+      await sandbox.stop({ blocking: true });
+    } catch {
+      // Snapshot creation may already finalize the sandbox; cleanup stays best-effort.
     }
   }
 }

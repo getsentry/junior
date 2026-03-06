@@ -40,22 +40,23 @@ vi.mock("@/chat/state", () => ({
 
 import { resolveRuntimeDependencySnapshot } from "@/chat/sandbox/runtime-dependency-snapshots";
 
-function makeSandbox(snapshotId: string) {
+function makeSandbox(
+  snapshotId: string,
+  runCommandImpl?: (params: { cmd: string; args?: string[] }) => Promise<{
+    exitCode: number;
+    stdout: () => Promise<string>;
+    stderr: () => Promise<string>;
+  }>
+) {
   return {
-    runCommand: vi.fn(async (params: { cmd: string }) => {
-      if (params.cmd === "npm") {
-        return {
+    runCommand: vi.fn(
+      runCommandImpl ??
+        (async () => ({
           exitCode: 0,
           stdout: async () => "",
           stderr: async () => ""
-        };
-      }
-      return {
-        exitCode: 0,
-        stdout: async () => "",
-        stderr: async () => ""
-      };
-    }),
+        }))
+    ),
     snapshot: vi.fn(async () => ({ snapshotId })),
     stop: vi.fn(async () => {})
   };
@@ -141,5 +142,47 @@ describe("runtime dependency snapshots", () => {
     });
     expect(forced.snapshotId).toBe("snap_new");
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops the build sandbox after snapshot creation succeeds", async () => {
+    getPluginRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "^2" }
+    ]);
+    const sandbox = makeSandbox("snap_stopped");
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const snapshot = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000
+    });
+    expect(snapshot.snapshotId).toBe("snap_stopped");
+    expect(sandbox.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts multi-part caret apt selectors across minor versions", async () => {
+    getPluginRuntimeDependenciesMock.mockReturnValue([
+      { type: "apt", package: "gh", version: "^2.1" }
+    ]);
+    const sandbox = makeSandbox("snap_apt", async (params) => {
+      if (params.cmd === "dpkg-query") {
+        return {
+          exitCode: 0,
+          stdout: async () => "2.2.0",
+          stderr: async () => ""
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => ""
+      };
+    });
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const snapshot = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000
+    });
+    expect(snapshot.snapshotId).toBe("snap_apt");
   });
 });
