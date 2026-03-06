@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
-
-const API_BASE = "https://api.github.com";
+import { spawn } from "node:child_process";
 
 function usage() {
   console.error(`Usage:
@@ -12,10 +11,6 @@ function usage() {
   gh_issue_api.mjs remove-labels --repo owner/repo --number 123 --labels triage
   gh_issue_api.mjs get --repo owner/repo --number 123
   gh_issue_api.mjs list-comments --repo owner/repo --number 123
-
-Environment:
-  Optional GITHUB_TOKEN=<installation token>
-  (sandbox network policy may inject Authorization headers automatically)
 `);
 }
 
@@ -51,38 +46,12 @@ function splitRepo(repo) {
   return { owner, repo: name };
 }
 
-async function ghRequest(path, { method = "GET", token, body } = {}) {
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
-  const response = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      Accept: "application/vnd.github+json",
-      ...authHeader,
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(body ? { "Content-Type": "application/json" } : {})
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
-
-  const text = await response.text();
-  let parsed = null;
-  if (text) {
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = { raw: text };
+function assertRequired(options, ...keys) {
+  for (const key of keys) {
+    if (!options[key]) {
+      throw new Error(`Missing required option --${key}`);
     }
   }
-
-  if (!response.ok) {
-    const message = parsed?.message ?? `GitHub API error ${response.status}`;
-    const error = new Error(message);
-    error.status = response.status;
-    error.payload = parsed;
-    throw error;
-  }
-
-  return parsed;
 }
 
 async function maybeReadBody(options) {
@@ -95,11 +64,64 @@ async function maybeReadBody(options) {
   return undefined;
 }
 
-function assertRequired(options, ...keys) {
-  for (const key of keys) {
-    if (!options[key]) {
-      throw new Error(`Missing required option --${key}`);
+async function runGh(args, input) {
+  return await new Promise((resolve, reject) => {
+    const child = spawn("gh", args, {
+      stdio: [input ? "pipe" : "ignore", "pipe", "pipe"]
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+      const error = new Error(stderr.trim() || `gh exited with code ${code}`);
+      error.code = code;
+      error.stderr = stderr;
+      error.stdout = stdout;
+      reject(error);
+    });
+
+    if (input) {
+      child.stdin.write(input);
+      child.stdin.end();
     }
+  });
+}
+
+async function ghApi(path, { method = "GET", body } = {}) {
+  const args = [
+    "api",
+    path,
+    "--method",
+    method,
+    "--header",
+    "Accept: application/vnd.github+json"
+  ];
+
+  if (body) {
+    args.push("--input", "-");
+  }
+
+  const response = await runGh(args, body ? JSON.stringify(body) : undefined);
+  if (!response.stdout.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(response.stdout);
+  } catch {
+    return { raw: response.stdout.trim() };
   }
 }
 
@@ -112,17 +134,13 @@ async function run() {
 
   assertRequired(options, "repo");
   const { owner, repo } = splitRepo(options.repo);
-
-  const installationToken = process.env.GITHUB_TOKEN?.trim();
-
   let result;
 
   if (command === "create") {
     assertRequired(options, "title");
     const body = await maybeReadBody(options);
-    result = await ghRequest(`/repos/${owner}/${repo}/issues`, {
+    result = await ghApi(`/repos/${owner}/${repo}/issues`, {
       method: "POST",
-      token: installationToken,
       body: {
         title: options.title,
         ...(body ? { body } : {})
@@ -141,9 +159,8 @@ async function run() {
       throw new Error("Update requires at least one of --title, --body-file/--body, or --state");
     }
 
-    result = await ghRequest(`/repos/${owner}/${repo}/issues/${options.number}`, {
+    result = await ghApi(`/repos/${owner}/${repo}/issues/${options.number}`, {
       method: "PATCH",
-      token: installationToken,
       body: patch
     });
   } else if (command === "comment") {
@@ -151,9 +168,8 @@ async function run() {
     const body = await maybeReadBody(options);
     if (!body) throw new Error("Comment requires --body-file or --body");
 
-    result = await ghRequest(`/repos/${owner}/${repo}/issues/${options.number}/comments`, {
+    result = await ghApi(`/repos/${owner}/${repo}/issues/${options.number}/comments`, {
       method: "POST",
-      token: installationToken,
       body: { body }
     });
   } else if (command === "add-labels") {
@@ -164,9 +180,8 @@ async function run() {
       .filter(Boolean);
     if (labels.length === 0) throw new Error("--labels must include at least one label");
 
-    result = await ghRequest(`/repos/${owner}/${repo}/issues/${options.number}/labels`, {
+    result = await ghApi(`/repos/${owner}/${repo}/issues/${options.number}/labels`, {
       method: "POST",
-      token: installationToken,
       body: { labels }
     });
   } else if (command === "remove-labels") {
@@ -179,9 +194,8 @@ async function run() {
 
     const removed = [];
     for (const label of labels) {
-      await ghRequest(`/repos/${owner}/${repo}/issues/${options.number}/labels/${encodeURIComponent(label)}`, {
-        method: "DELETE",
-        token: installationToken
+      await ghApi(`/repos/${owner}/${repo}/issues/${options.number}/labels/${encodeURIComponent(label)}`, {
+        method: "DELETE"
       });
       removed.push(label);
     }
@@ -189,16 +203,14 @@ async function run() {
   } else if (command === "get") {
     assertRequired(options, "number");
 
-    result = await ghRequest(`/repos/${owner}/${repo}/issues/${options.number}`, {
-      method: "GET",
-      token: installationToken
+    result = await ghApi(`/repos/${owner}/${repo}/issues/${options.number}`, {
+      method: "GET"
     });
   } else if (command === "list-comments") {
     assertRequired(options, "number");
 
-    result = await ghRequest(`/repos/${owner}/${repo}/issues/${options.number}/comments`, {
-      method: "GET",
-      token: installationToken
+    result = await ghApi(`/repos/${owner}/${repo}/issues/${options.number}/comments`, {
+      method: "GET"
     });
   } else {
     throw new Error(`Unknown command '${command}'`);
@@ -208,15 +220,15 @@ async function run() {
 }
 
 run().catch((error) => {
-  const status = error?.status;
-  const payload = error?.payload;
   process.stderr.write(
     `${JSON.stringify(
       {
         ok: false,
         error: error instanceof Error ? error.message : String(error),
-        ...(status ? { status } : {}),
-        ...(payload ? { payload } : {})
+        ...(typeof error?.code === "number" ? { exit_code: error.code } : {}),
+        ...(typeof error?.stderr === "string" && error.stderr.trim().length > 0
+          ? { stderr: error.stderr.trim() }
+          : {})
       },
       null,
       2

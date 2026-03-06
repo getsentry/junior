@@ -5,6 +5,7 @@ This skill runs in the harness sandbox (`node22`) and scripts execute via the `b
 ## What is currently available
 
 - Node runtime in sandbox (`node22` image).
+- GitHub CLI (`gh`) preinstalled via runtime dependencies.
 - Writable workspace under `/vercel/sandbox`.
 - Outbound network access (default allow-all unless harness sets a network policy).
 - Skill files are synchronized into `/vercel/sandbox/skills/<skill-name>`.

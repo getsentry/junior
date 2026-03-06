@@ -10,7 +10,17 @@ import { logInfo, logWarn, setSpanAttributes } from "@/chat/observability";
 import { createGitHubAppBroker } from "./github-app-broker";
 import { createOAuthBearerBroker } from "./oauth-bearer-broker";
 import { discoverInstalledPluginPackageContent } from "./package-discovery";
-import type { GitHubAppCredentials, OAuthBearerCredentials, PluginBrokerDeps, PluginCredentials, PluginDefinition, PluginManifest } from "./types";
+import type {
+  GitHubAppCredentials,
+  OAuthBearerCredentials,
+  PluginAptRuntimeDependency,
+  PluginBrokerDeps,
+  PluginCredentials,
+  PluginDefinition,
+  PluginManifest,
+  PluginNpmRuntimeDependency,
+  PluginRuntimeDependency
+} from "./types";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
@@ -71,6 +81,63 @@ function parseCredentials(data: Record<string, unknown>, name: string): PluginCr
   throw new Error(`Plugin ${name} has unsupported credentials.type: "${type}"`);
 }
 
+function parseRuntimeDependencies(data: unknown, name: string): PluginRuntimeDependency[] | undefined {
+  if (data === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(data)) {
+    throw new Error(`Plugin ${name} runtime-dependencies must be an array`);
+  }
+
+  const parsed: PluginRuntimeDependency[] = [];
+  const seen = new Set<string>();
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`Plugin ${name} runtime-dependencies entries must be objects`);
+    }
+
+    const record = entry as Record<string, unknown>;
+    const type = record.type;
+    const packageName = record.package;
+    const version = record.version;
+    if (typeof type !== "string" || (type !== "npm" && type !== "apt")) {
+      throw new Error(`Plugin ${name} runtime dependency type must be "npm" or "apt"`);
+    }
+    if (typeof packageName !== "string" || !packageName.trim()) {
+      throw new Error(`Plugin ${name} runtime dependency package must be a non-empty string`);
+    }
+    if (typeof version !== "string" || !version.trim()) {
+      throw new Error(`Plugin ${name} runtime dependency version must be a non-empty string`);
+    }
+
+    const normalizedPackage = packageName.trim();
+    const normalizedVersion = version.trim();
+    const dedupeKey = `${type}:${normalizedPackage}:${normalizedVersion}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+
+    if (type === "npm") {
+      parsed.push({
+        type: "npm",
+        package: normalizedPackage,
+        version: normalizedVersion
+      } satisfies PluginNpmRuntimeDependency);
+      continue;
+    }
+
+    parsed.push({
+      type: "apt",
+      package: normalizedPackage,
+      version: normalizedVersion
+    } satisfies PluginAptRuntimeDependency);
+  }
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 function parseManifest(raw: string, dir: string): PluginManifest {
   const data = parseYaml(raw) as Record<string, unknown>;
 
@@ -118,12 +185,15 @@ function parseManifest(raw: string, dir: string): PluginManifest {
   }
   const credentials = parseCredentials(credentialsRaw as Record<string, unknown>, name);
 
+  const runtimeDependencies = parseRuntimeDependencies(data["runtime-dependencies"], name as string);
+
   const manifest: PluginManifest = {
     name: name as string,
     description: description as string,
     capabilities,
     configKeys,
-    credentials
+    credentials,
+    ...(runtimeDependencies ? { runtimeDependencies } : {})
   };
 
   const oauthRaw = data.oauth as Record<string, unknown> | undefined;
@@ -285,6 +355,31 @@ export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
 
 export function getPluginProviders(): PluginDefinition[] {
   return [...pluginDefinitions];
+}
+
+export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
+  const seen = new Set<string>();
+  const deps: PluginRuntimeDependency[] = [];
+  for (const plugin of pluginDefinitions) {
+    for (const dep of plugin.manifest.runtimeDependencies ?? []) {
+      const key = `${dep.type}:${dep.package}:${dep.version}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      deps.push(dep);
+    }
+  }
+
+  return deps.sort((left, right) => {
+    if (left.type !== right.type) {
+      return left.type.localeCompare(right.type);
+    }
+    if (left.package !== right.package) {
+      return left.package.localeCompare(right.package);
+    }
+    return left.version.localeCompare(right.version);
+  });
 }
 
 export function getPluginOAuthConfig(provider: string): OAuthProviderConfig | undefined {
