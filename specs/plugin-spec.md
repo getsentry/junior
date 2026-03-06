@@ -143,6 +143,11 @@ mcp:                                 # optional — MCP server config for tool s
 
 Snapshot build/reuse and invalidation behavior for `runtime-dependencies` is defined in [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md).
 
+System runtime dependency execution environment:
+- Sandbox OS is Amazon Linux 2023.
+- System installs run via `dnf`.
+- Install commands must run with root privileges (`sudo: true` at sandbox command execution).
+
 ### Derived values
 
 | Value | Derivation |

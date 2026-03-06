@@ -53,20 +53,17 @@ Repeat for `preview` and `development` as needed. After env changes, redeploy so
 - Issued credentials are reused for the rest of the current turn.
 - Sandbox does not receive raw tokens via env; host applies scoped Authorization header transforms for GitHub API calls.
 
-## 4) Script usage
+## 4) CLI usage
 
 Run as a regular sandbox `bash` command while this skill is active:
 
 ```bash
 jr-rpc issue-credential github.issues.write
-node /vercel/sandbox/skills/github/scripts/gh_issue_api.mjs create \
-  --repo owner/repo \
-  --title "Example issue" \
-  --body-file /vercel/sandbox/tmp/issue.md
+gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sandbox/tmp/issue.md
 ```
 
-`gh_issue_api.mjs` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
-Use `github.issues.read` for read-only commands (`get`, `list-comments`), `github.issues.comment` for comments, and `github.labels.write` for label updates.
+`gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
+Use `github.issues.read` for read-only commands (`view`, comment reads via `gh api`), `github.issues.comment` for comments, and `github.labels.write` for label updates.
 
 Optional: set a default repository once per channel/thread context so `--repo` is not needed each turn:
 
@@ -79,7 +76,7 @@ jr-rpc config set github.repo getsentry/junior
 - `pnpm skills:check`
 - Create issue in a test repo.
 - Update/comment/label the same issue.
-- Use read-only commands (`get`, `list-comments`) for issue inspection.
+- Use read-only commands (`gh issue view`, `gh api .../comments`) for issue inspection.
 
 ## 6) Production verification (step-by-step)
 

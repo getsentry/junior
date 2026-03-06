@@ -178,6 +178,50 @@ describe("runtime dependency snapshots", () => {
     });
   });
 
+  it("falls back to gh-cli repo bootstrap when dnf cannot resolve gh directly", async () => {
+    getPluginRuntimeDependenciesMock.mockReturnValue([
+      { type: "system", package: "gh" }
+    ]);
+    const sandbox = makeSandbox("snap_system_fallback", async (params) => {
+      if (params.cmd !== "dnf") {
+        return { exitCode: 1, stdout: async () => "", stderr: async () => "unsupported command" };
+      }
+
+      const joined = (params.args ?? []).join(" ");
+      if (joined === "install -y gh") {
+        return {
+          exitCode: 1,
+          stdout: async () => "",
+          stderr: async () => "Unable to find a match: gh"
+        };
+      }
+
+      return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
+    });
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const snapshot = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000
+    });
+    expect(snapshot.snapshotId).toBe("snap_system_fallback");
+    expect(sandbox.runCommand).toHaveBeenCalledWith({
+      cmd: "dnf",
+      args: ["install", "-y", "gh"],
+      sudo: true
+    });
+    expect(sandbox.runCommand).toHaveBeenCalledWith({
+      cmd: "dnf",
+      args: ["config-manager", "addrepo", "--from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo"],
+      sudo: true
+    });
+    expect(sandbox.runCommand).toHaveBeenCalledWith({
+      cmd: "dnf",
+      args: ["install", "-y", "gh", "--repo", "gh-cli"],
+      sudo: true
+    });
+  });
+
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
     vi.useRealTimers();
     getPluginRuntimeDependenciesMock.mockReturnValue([

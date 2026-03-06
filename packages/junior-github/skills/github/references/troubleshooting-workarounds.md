@@ -1,0 +1,21 @@
+# GitHub Issue CLI Troubleshooting
+
+Use this table to recover quickly while keeping operations deterministic.
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| `unknown command "issue"` from `gh` | CLI version too old or wrong binary. | Verify `gh --version`; ensure GitHub CLI from `gh-cli` repo is installed. |
+| `Missing required option --repo` | Repo not passed and no default was resolved. | Resolve with `jr-rpc config get github.repo`; pass `--repo owner/repo` explicitly when missing. |
+| `GraphQL: Could not resolve to a Repository` | Repo slug is wrong or inaccessible. | Validate `owner/repo` and confirm app installation on target repository. |
+| 401 Unauthorized | Credential not issued for current command scope. | Run `jr-rpc issue-credential <capability>` for the exact command and retry once. |
+| 403 Forbidden | App lacks required permission on repo. | Confirm GitHub App permissions and installation scope. |
+| 404 Not Found | Issue number or repo is wrong. | Validate repo + issue ID with `gh issue view NUMBER --repo owner/repo`. |
+| `sandbox setup failed (dnf install gh failed ...)` | `gh` package not available in default repos. | Configure/install from GitHub RPM repo (`gh-cli`) in sandbox dependency bootstrap, then retry. |
+| `gh issue edit` does not change labels | Wrong flag usage or missing label capability context. | Use repeated `--add-label/--remove-label` flags and issue `github.labels.write` credential first. |
+| Comment command fails with empty body | Body file missing/empty. | Ensure comment file exists and has content before `gh issue comment`. |
+
+## Retry guidance
+
+- Retry once for transient auth/transport failures after reissuing credentials.
+- Do not loop retries on repeated 401/403/404 validation errors.
+- For persistent permission problems, return explicit remediation and stop.

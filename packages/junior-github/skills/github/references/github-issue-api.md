@@ -1,48 +1,54 @@
-# GitHub Issue API Helper
+# GitHub CLI Command Reference
 
-All issue operations should go through:
-
-`node /vercel/sandbox/skills/github/scripts/gh_issue_api.mjs <command> [options]`
+All issue operations should go through `gh` CLI commands.
 
 ## Authentication
 
 - Preferred: sandbox network policy injects Authorization headers for `api.github.com`.
 - Optional local fallback: `GITHUB_TOKEN` (short-lived GitHub App installation token).
+- If `GITHUB_TOKEN` is a host placeholder value, rely on header transforms and do not override it.
 
-## Commands
+## Command shapes
 
 ### Create issue
 
-`node .../gh_issue_api.mjs create --repo owner/repo --title "..." --body-file /tmp/issue.md`
+`gh issue create --repo owner/repo --title "..." [--body-file /tmp/issue.md]`
 
-### Update issue fields
+### Update title/body
 
-`node .../gh_issue_api.mjs update --repo owner/repo --number 123 --title "..." --body-file /tmp/issue.md --state open|closed`
+`gh issue edit 123 --repo owner/repo [--title "..."] [--body-file /tmp/issue.md]`
 
-### Add comment
+### Close issue
 
-`node .../gh_issue_api.mjs comment --repo owner/repo --number 123 --body-file /tmp/comment.md`
+`gh issue close 123 --repo owner/repo [--comment "..."]`
+
+### Reopen issue
+
+`gh issue reopen 123 --repo owner/repo`
 
 ### Add labels
 
-`node .../gh_issue_api.mjs add-labels --repo owner/repo --number 123 --labels bug,regression`
+`gh issue edit 123 --repo owner/repo --add-label bug --add-label regression`
 
 ### Remove labels
 
-`node .../gh_issue_api.mjs remove-labels --repo owner/repo --number 123 --labels triage`
+`gh issue edit 123 --repo owner/repo --remove-label triage`
 
-### Get issue (read-only)
+### Add comment
 
-`node .../gh_issue_api.mjs get --repo owner/repo --number 123`
+`gh issue comment 123 --repo owner/repo --body-file /tmp/comment.md`
 
-### List issue comments (read-only)
+### Get issue JSON
 
-`node .../gh_issue_api.mjs list-comments --repo owner/repo --number 123`
+`gh issue view 123 --repo owner/repo --json number,title,state,labels,assignees,author,url,body`
 
-## Behavior Notes
+### List comments JSON (read-only)
 
-- Outputs JSON for machine-friendly consumption.
-- Uses `gh api` under the hood, so `gh` CLI must be available in the sandbox.
-- Uses GitHub App installation tokens, so actions are attributed to the app identity.
-- Returns actionable errors for auth, permission, not-found, and validation failures.
-- In harness runtime, auth should come from scoped header transforms, not raw token env injection.
+`gh api /repos/owner/repo/issues/123/comments --method GET --header "Accept: application/vnd.github+json"`
+
+## Behavior notes
+
+- Prefer `--json` output for machine-readable parsing where available.
+- Use `gh api` for endpoints not fully covered by `gh issue` subcommands.
+- Commands should be deterministic and non-interactive in harness usage.
+- Return actionable errors for auth, permission, not-found, and validation failures.

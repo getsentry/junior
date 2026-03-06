@@ -1,8 +1,9 @@
 ---
 name: github
-description: Manage GitHub issue workflows via GitHub App identity with concise, evidence-backed content. Use when users ask to open, edit, label, comment on, close/reopen, or inspect GitHub issues via /github.
+description: Manage GitHub issue workflows via GitHub App identity with concise, evidence-backed content. Use when users ask to open, edit, label, comment on, close/reopen, or inspect GitHub issues via /github, especially when command-level CLI guidance is needed.
 requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write
 uses-config: github.repo
+allowed-tools: bash
 ---
 
 # GitHub Operations
@@ -44,11 +45,14 @@ Use this skill for `/github` workflows in the harness. Issues are the primary su
 
 4. Execute operation:
 - Issue credential for the required capability before API calls:
-  - Read-only (`get`, `list-comments`): `jr-rpc issue-credential github.issues.read`
+  - Read-only (`gh issue view`, comment reads via `gh api`): `jr-rpc issue-credential github.issues.read`
   - Create/update/state changes: `jr-rpc issue-credential github.issues.write`
   - Comments: `jr-rpc issue-credential github.issues.comment`
   - Labels: `jr-rpc issue-credential github.labels.write`
-- Call the API helper script (gh-backed). Read [references/github-issue-api.md](references/github-issue-api.md) for command shapes.
+- Resolve command and flags from [references/api-surface.md](references/api-surface.md).
+- Execute using `gh` CLI directly. Use [references/github-issue-api.md](references/github-issue-api.md) for exact command shapes.
+- Use [references/common-use-cases.md](references/common-use-cases.md) for ready-to-run operation patterns.
+- If an operation fails, follow [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) before retrying.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) for credential delivery details.
 
 5. Report result:
@@ -63,3 +67,4 @@ Use this skill for `/github` workflows in the harness. Issues are the primary su
 - For `bug` issues, do not present a fix as definitive unless root-cause evidence is explicit.
 - Do not overwrite issue fields unless explicitly requested. Prefer partial updates over full body replacement.
 - If repository or installation access is missing, stop and return a concrete remediation message.
+- Scope is issue workflows only. Do not execute pull-request or repository admin mutations in this skill.

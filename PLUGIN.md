@@ -82,6 +82,12 @@ runtime-dependencies:
 - `runtime-dependencies[].version` is required for `npm` and must be omitted for `system`
 - `plugin.yaml` is required
 
+## System Runtime Dependency Notes
+
+- Sandbox OS is Amazon Linux 2023.
+- System dependencies are installed with `dnf`.
+- System package installs require root privileges; sandbox commands must set `sudo: true` for those install steps.
+
 ## Distribute Plugins as npm Packages
 
 You can publish plugin content as an npm package and Junior will auto-detect it.

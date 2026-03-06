@@ -151,11 +151,77 @@ async function runOrThrow(sandbox: Sandbox, params: {
   throw new Error(`${label} failed: ${detail}`);
 }
 
+async function tryRun(sandbox: Sandbox, params: {
+  cmd: string;
+  args?: string[];
+  sudo?: boolean;
+}): Promise<{ ok: true } | { ok: false; detail: string }> {
+  const result = await sandbox.runCommand(params);
+  if (result.exitCode === 0) {
+    return { ok: true };
+  }
+
+  const stderr = (await result.stderr()).trim();
+  const stdout = (await result.stdout()).trim();
+  return { ok: false, detail: stderr || stdout || "command failed" };
+}
+
+async function installGhCliViaDnf(sandbox: Sandbox): Promise<void> {
+  const direct = await tryRun(sandbox, {
+    cmd: "dnf",
+    args: ["install", "-y", "gh"],
+    sudo: true
+  });
+  if (direct.ok) {
+    return;
+  }
+
+  const dnf5Repo = await tryRun(sandbox, {
+    cmd: "dnf",
+    args: ["config-manager", "addrepo", "--from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo"],
+    sudo: true
+  });
+  if (!dnf5Repo.ok) {
+    await runOrThrow(
+      sandbox,
+      {
+        cmd: "dnf",
+        args: ["install", "-y", "dnf-command(config-manager)"],
+        sudo: true
+      },
+      "dnf install dnf-command(config-manager)"
+    );
+    await runOrThrow(
+      sandbox,
+      {
+        cmd: "dnf",
+        args: ["config-manager", "--add-repo", "https://cli.github.com/packages/rpm/gh-cli.repo"],
+        sudo: true
+      },
+      "dnf config-manager --add-repo gh-cli.repo"
+    );
+  }
+
+  await runOrThrow(
+    sandbox,
+    {
+      cmd: "dnf",
+      args: ["install", "-y", "gh", "--repo", "gh-cli"],
+      sudo: true
+    },
+    "dnf install gh --repo gh-cli"
+  );
+}
+
 async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeDependency[]): Promise<void> {
   const npmPackages: string[] = [];
 
   for (const dep of deps) {
     if (dep.type === "system") {
+      if (dep.package === "gh") {
+        await installGhCliViaDnf(sandbox);
+        continue;
+      }
       await runOrThrow(
         sandbox,
         {

@@ -110,7 +110,7 @@ describe("plugin registry", () => {
   it("includes plugin skill roots", () => {
     const roots = getPluginSkillRoots();
     expect(roots.some((r) => r.includes("plugins/sentry/skills"))).toBe(true);
-    expect(roots.some((r) => r.includes("plugins/github/skills"))).toBe(true);
+    expect(roots.some((r) => r.includes("node_modules/@sentry/junior-github/skills"))).toBe(true);
   });
 
   it("creates a credential broker from sentry plugin manifest", () => {

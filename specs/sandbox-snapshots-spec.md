@@ -67,7 +67,8 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
   3. Installs npm global dependencies under `/vercel/sandbox/.junior`.
   4. Captures snapshot with `sandbox.snapshot()`.
   5. Stores resulting `snapshotId` in registry.
-- System dependency install uses package name via `dnf install -y`.
+- Sandbox base image is Amazon Linux 2023.
+- System dependency install uses package name via `dnf install -y` and must run with `sudo: true`.
 - Npm dependency install uses `<package>@<version>` to resolve versions.
 
 ### Sandbox Create Contract
