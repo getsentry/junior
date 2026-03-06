@@ -27,4 +27,3 @@ oauth:
 runtime-dependencies:
   - type: npm
     package: "sentry"
-    version: "^2"

@@ -76,7 +76,7 @@ describe("runtime dependency snapshots", () => {
 
   it("rebuilds stale snapshots for floating dependency selectors", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "^2" }
+      { type: "npm", package: "sentry", version: "latest" }
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_1"))
@@ -100,7 +100,7 @@ describe("runtime dependency snapshots", () => {
 
   it("rebuilds when rebuild epoch changes", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "^2" }
+      { type: "npm", package: "sentry", version: "latest" }
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_epoch_a"))
@@ -124,7 +124,7 @@ describe("runtime dependency snapshots", () => {
 
   it("reuses cached rebuilt snapshot during force rebuild when stale id differs", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "^2" }
+      { type: "npm", package: "sentry", version: "latest" }
     ]);
     sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_new"));
 
@@ -146,7 +146,7 @@ describe("runtime dependency snapshots", () => {
 
   it("stops the build sandbox after snapshot creation succeeds", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "^2" }
+      { type: "npm", package: "sentry", version: "latest" }
     ]);
     const sandbox = makeSandbox("snap_stopped");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
@@ -225,7 +225,7 @@ describe("runtime dependency snapshots", () => {
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
     vi.useRealTimers();
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "^2" }
+      { type: "npm", package: "sentry", version: "latest" }
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_old"))
@@ -254,7 +254,7 @@ describe("runtime dependency snapshots", () => {
 
   it("rebuilds when forceRebuild is true without stale snapshot id", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "^2" }
+      { type: "npm", package: "sentry", version: "latest" }
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_initial"))
@@ -277,7 +277,7 @@ describe("runtime dependency snapshots", () => {
 
   it("reuses a concurrent rebuilt snapshot while waiting on force rebuild lock without stale id", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "^2" }
+      { type: "npm", package: "sentry", version: "latest" }
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_initial"))

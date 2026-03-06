@@ -110,9 +110,9 @@ function parseRuntimeDependencies(data: unknown, name: string): PluginRuntimeDep
 
     const normalizedPackage = packageName.trim();
     if (type === "npm") {
-      const normalizedVersion = typeof version === "string" ? version.trim() : undefined;
+      const normalizedVersion = typeof version === "string" ? version.trim() : "latest";
       if (!normalizedVersion) {
-        throw new Error(`Plugin ${name} runtime dependency version must be a non-empty string for npm dependencies`);
+        throw new Error(`Plugin ${name} runtime dependency version must be a non-empty string when provided`);
       }
       const dedupeKey = `${type}:${normalizedPackage}:${normalizedVersion}`;
       if (seen.has(dedupeKey)) {

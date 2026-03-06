@@ -23,8 +23,95 @@ function resolveContentRoots(subdir) {
   return unique([canonical, legacy]);
 }
 
-async function resolvePluginSkillRoots() {
+async function pathIsDirectory(targetPath) {
+  try {
+    return (await fs.stat(targetPath)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function pathIsFile(targetPath) {
+  try {
+    return (await fs.stat(targetPath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function readRootPackageJson(cwd) {
+  const rootPackageJsonPath = path.join(cwd, "package.json");
+  try {
+    const raw = await fs.readFile(rootPackageJsonPath, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function readInstalledDependencyNames(cwd) {
+  const rootPackageJson = await readRootPackageJson(cwd);
+  if (!rootPackageJson) {
+    return [];
+  }
+
+  const dependencies = Object.keys(rootPackageJson.dependencies ?? {});
+  const optionalDependencies = Object.keys(rootPackageJson.optionalDependencies ?? {});
+  return unique([...dependencies, ...optionalDependencies]).sort((left, right) => left.localeCompare(right));
+}
+
+function packageInstallDir(cwd, packageName) {
+  return path.join(cwd, "node_modules", ...packageName.split("/"));
+}
+
+async function resolvePackagedPluginSkillRoots() {
+  const cwd = process.cwd();
+  const dependencies = await readInstalledDependencyNames(cwd);
   const roots = [];
+
+  for (const dependency of dependencies) {
+    const packageDir = packageInstallDir(cwd, dependency);
+    const hasRootPluginManifest = await pathIsFile(path.join(packageDir, "plugin.yaml"));
+    const hasPluginsDir = await pathIsDirectory(path.join(packageDir, "plugins"));
+    const hasSkillsDir = await pathIsDirectory(path.join(packageDir, "skills"));
+    if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
+      continue;
+    }
+
+    if (hasSkillsDir) {
+      roots.push(path.join(packageDir, "skills"));
+    }
+
+    if (!hasPluginsDir) {
+      continue;
+    }
+
+    let pluginEntries;
+    try {
+      pluginEntries = await fs.readdir(path.join(packageDir, "plugins"), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of pluginEntries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+
+      const pluginDir = path.join(packageDir, "plugins", entry.name);
+      if (!(await pathIsFile(path.join(pluginDir, "plugin.yaml")))) {
+        continue;
+      }
+
+      roots.push(path.join(pluginDir, "skills"));
+    }
+  }
+
+  return unique(roots);
+}
+
+async function resolvePluginSkillRoots() {
+  const localRoots = [];
   for (const pluginsRoot of resolveContentRoots("plugins")) {
     let entries;
     try {
@@ -37,13 +124,15 @@ async function resolvePluginSkillRoots() {
       const manifestPath = path.join(pluginsRoot, entry.name, "plugin.yaml");
       try {
         await fs.access(manifestPath);
-        roots.push(path.join(pluginsRoot, entry.name, "skills"));
+        localRoots.push(path.join(pluginsRoot, entry.name, "skills"));
       } catch {
         continue;
       }
     }
   }
-  return unique(roots);
+
+  const packagedRoots = await resolvePackagedPluginSkillRoots();
+  return unique([...localRoots, ...packagedRoots]);
 }
 
 function resolveSkillRoots() {

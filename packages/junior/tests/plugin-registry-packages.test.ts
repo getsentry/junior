@@ -28,6 +28,32 @@ async function writePackagedPlugin(tempRoot: string): Promise<void> {
   );
 }
 
+async function writePackagedPluginWithImplicitLatest(tempRoot: string): Promise<void> {
+  const packageRoot = path.join(tempRoot, "node_modules", "@acme", "junior-plugin-implicit-version");
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo plugin",
+      "capabilities:",
+      "  - api",
+      "config-keys:",
+      "  - org",
+      "credentials:",
+      "  type: oauth-bearer",
+      "  api-domains:",
+      "    - api.example.com",
+      "  auth-token-env: DEMO_AUTH_TOKEN",
+      "runtime-dependencies:",
+      "  - type: npm",
+      "    package: sentry"
+    ].join("\n"),
+    "utf8"
+  );
+}
+
 afterEach(() => {
   process.chdir(originalCwd);
   vi.resetModules();
@@ -65,5 +91,34 @@ describe("plugin registry package discovery", () => {
       path.join(tempRoot, "node_modules", "@acme", "junior-plugin-demo", "skills")
     ]);
     expect(registry.isPluginProvider("demo")).toBe(true);
+  });
+
+  it("defaults npm runtime dependency version to latest when omitted", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-plugin-package-"));
+    await writePackagedPluginWithImplicitLatest(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-implicit-version": "1.0.0"
+        }
+      }),
+      "utf8"
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => []
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+    const providers = registry.getPluginProviders();
+    expect(providers).toHaveLength(1);
+    expect(providers[0]?.manifest.runtimeDependencies).toEqual([
+      { type: "npm", package: "sentry", version: "latest" }
+    ]);
   });
 });

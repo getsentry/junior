@@ -1,8 +1,7 @@
-import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/home", () => ({
-  pluginRoots: () => [path.resolve(process.cwd(), "plugins")]
+  pluginRoots: () => []
 }));
 import {
   createPluginBroker,
@@ -32,7 +31,7 @@ describe("plugin registry", () => {
       {
         type: "npm",
         package: "sentry",
-        version: "^2"
+        version: "latest"
       }
     ]);
   });
@@ -109,7 +108,7 @@ describe("plugin registry", () => {
 
   it("includes plugin skill roots", () => {
     const roots = getPluginSkillRoots();
-    expect(roots.some((r) => r.includes("plugins/sentry/skills"))).toBe(true);
+    expect(roots.some((r) => r.includes("node_modules/@sentry/junior-sentry/skills"))).toBe(true);
     expect(roots.some((r) => r.includes("node_modules/@sentry/junior-github/skills"))).toBe(true);
   });
 

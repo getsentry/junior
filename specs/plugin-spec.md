@@ -92,7 +92,7 @@ target:                              # optional — omit for org-scoped provider
 runtime-dependencies:                # optional — preinstalled CLI dependencies for sandbox snapshots
   - type: npm
     package: sentry
-    version: "^2"
+    # version omitted => latest
   - type: system
     package: gh
 
@@ -138,7 +138,7 @@ mcp:                                 # optional — MCP server config for tool s
 | `runtime-dependencies` | `object[]` | Optional sandbox dependency declarations used to build reusable snapshots. |
 | `runtime-dependencies[].type` | `string` | `"npm"` or `"system"`. |
 | `runtime-dependencies[].package` | `string` | Package identifier (npm package name or system package name). |
-| `runtime-dependencies[].version` | `string` | Required for `npm` dependencies only; omitted for `system` dependencies. |
+| `runtime-dependencies[].version` | `string` | Optional for `npm` dependencies. When omitted, runtime uses `latest`. Must be omitted for `system` dependencies. |
 | `mcp` | `object` | MCP server configuration for external tool sources. Reserved — not yet parsed by the registry. |
 
 Snapshot build/reuse and invalidation behavior for `runtime-dependencies` is defined in [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md).

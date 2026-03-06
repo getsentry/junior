@@ -65,7 +65,7 @@ oauth:
 runtime-dependencies:
   - type: npm
     package: sentry
-    version: "^2"
+    # version omitted => latest
   - type: system
     package: gh
 ```
@@ -79,7 +79,7 @@ runtime-dependencies:
   - `org` becomes `<name>.org`
 - `credentials.type` must be `oauth-bearer` or `github-app`
 - `runtime-dependencies` is optional and supports `npm` and `system` installers
-- `runtime-dependencies[].version` is required for `npm` and must be omitted for `system`
+- `runtime-dependencies[].version` is optional for `npm` (`latest` when omitted) and must be omitted for `system`
 - `plugin.yaml` is required
 
 ## System Runtime Dependency Notes

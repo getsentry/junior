@@ -37,7 +37,7 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 
 - Plugin manifests may declare `runtime-dependencies` in `plugin.yaml`.
 - Supported dependency types:
-  - `npm` (`package`, `version`)
+  - `npm` (`package`, optional `version`; omitted means `latest`)
   - `system` (`package`)
 - Runtime declarations are parsed and validated in:
   - `packages/junior/src/chat/plugins/registry.ts`
@@ -69,7 +69,7 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
   5. Stores resulting `snapshotId` in registry.
 - Sandbox base image is Amazon Linux 2023.
 - System dependency install uses package name via `dnf install -y` and must run with `sudo: true`.
-- Npm dependency install uses `<package>@<version>` to resolve versions.
+- Npm dependency install uses `<package>@<version>`. Omitted manifest versions are normalized to `latest` before install.
 
 ### Sandbox Create Contract
 
