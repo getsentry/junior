@@ -28,6 +28,7 @@ import { SlackActionError } from "@/chat/slack-actions/client";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
+import type { QueueResumeContext } from "@/chat/queue/types";
 import { GEN_AI_PROVIDER_NAME, getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
 import { createSandboxExecutor, type SandboxExecutor } from "@/chat/sandbox/sandbox";
 import { getRuntimeMetadata } from "@/chat/runtime-metadata";
@@ -80,6 +81,8 @@ export interface ReplyRequestContext {
   };
   onStatus?: (status: string) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
+  queueContext?: QueueResumeContext;
+  isSubagentExecution?: boolean;
 }
 
 export interface AssistantReply {
@@ -221,6 +224,7 @@ function formatToolStatus(toolName: string): string {
     writeFile: "Writing file in sandbox",
     webSearch: "Searching public sources",
     webFetch: "Reading source pages",
+    taskSubagent: "Delegating task to subagent queue",
     slackChannelPostMessage: "Posting message to channel",
     slackMessageAddReaction: "Adding emoji reaction",
     slackChannelListMembers: "Listing channel members",
@@ -468,6 +472,11 @@ function createAgentTools(
   tools: Record<string, ToolDefinition<any>>,
   sandbox: SkillSandbox,
   spanContext: ObservabilityContext,
+  turnContext: {
+    conversationId?: string;
+    sessionId?: string;
+    queueContext?: QueueResumeContext;
+  },
   onStatus?: (status: string) => void | Promise<void>,
   sandboxExecutor?: SandboxExecutor,
   capabilityRuntime?: SkillCapabilityRuntime,
@@ -627,7 +636,11 @@ function createAgentTools(
                         : parsed
                   })
                 : await toolDef.execute(parsed as never, {
-                    experimental_context: sandbox
+                    experimental_context: sandbox,
+                    toolCallId: normalizedToolCallId,
+                    conversationId: turnContext.conversationId,
+                    sessionId: turnContext.sessionId,
+                    queueContext: turnContext.queueContext
                   });
             const resultDetails =
               sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
@@ -735,6 +748,7 @@ export async function generateAssistantReply(
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
   let timeoutResumeMessages: unknown[] = [];
+  let latestPiMessages: unknown[] = [];
 
   try {
     const shouldTrace = shouldEmitDevAgentTrace();
@@ -902,6 +916,7 @@ export async function generateAssistantReply(
       },
       {
         channelId: context.toolChannelId ?? context.correlation?.channelId,
+        isSubagentExecution: context.isSubagentExecution,
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
         userText: userInput,
@@ -977,6 +992,11 @@ export async function generateAssistantReply(
           tools as Record<string, ToolDefinition<any>>,
           skillSandbox,
           spanContext,
+          {
+            conversationId: sessionConversationId,
+            sessionId,
+            queueContext: context.queueContext
+          },
           context.onStatus,
           sandboxExecutor,
           capabilityRuntime,
@@ -1108,6 +1128,7 @@ export async function generateAssistantReply(
         }
       );
     } finally {
+      latestPiMessages = [...(agent.state.messages as unknown[])];
       unsubscribe();
     }
 
@@ -1296,6 +1317,52 @@ export async function generateAssistantReply(
       }
       throw new RetryableTurnError(
         "agent_turn_timeout_resume",
+        `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`
+      );
+    }
+
+    if (
+      isRetryableTurnError(error, "subagent_task_deferred") &&
+      timeoutResumeConversationId &&
+      timeoutResumeSessionId
+    ) {
+      const nextSliceId = timeoutResumeSliceId + 1;
+      try {
+        await upsertAgentTurnSessionCheckpoint({
+          conversationId: timeoutResumeConversationId,
+          sessionId: timeoutResumeSessionId,
+          sliceId: nextSliceId,
+          state: "awaiting_resume",
+          piMessages:
+            latestPiMessages.length > 0
+              ? latestPiMessages
+              : timeoutResumeMessages,
+          resumedFromSliceId: timeoutResumeSliceId,
+          errorMessage: error.message
+        });
+      } catch (checkpointError) {
+        logException(
+          checkpointError,
+          "subagent_deferred_resume_checkpoint_failed",
+          {
+            slackThreadId: context.correlation?.threadId,
+            slackUserId: context.correlation?.requesterId,
+            slackChannelId: context.correlation?.channelId,
+            runId: context.correlation?.runId,
+            assistantUserName: context.assistant?.userName,
+            modelId: botConfig.modelId
+          },
+          {
+            "app.ai.resume_conversation_id": timeoutResumeConversationId,
+            "app.ai.resume_session_id": timeoutResumeSessionId,
+            "app.ai.resume_from_slice_id": timeoutResumeSliceId,
+            "app.ai.resume_next_slice_id": nextSliceId
+          },
+          "Failed to persist deferred subagent checkpoint"
+        );
+      }
+      throw new RetryableTurnError(
+        "subagent_task_deferred",
         `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`
       );
     }

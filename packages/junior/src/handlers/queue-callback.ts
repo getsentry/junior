@@ -1,6 +1,7 @@
-import { createQueueCallbackHandler, getThreadMessageTopic } from "@/chat/queue/client";
+import { createQueueCallbackHandler, getSubagentTaskTopic, getThreadMessageTopic } from "@/chat/queue/client";
 import { processQueuedThreadMessage } from "@/chat/queue/process-thread-message";
-import type { ThreadMessagePayload } from "@/chat/queue/types";
+import { processSubagentTask } from "@/chat/subagent/process-task";
+import type { QueuePayload, SubagentTaskPayload, ThreadMessagePayload } from "@/chat/queue/types";
 import {
   createRequestContext,
   logError,
@@ -10,35 +11,59 @@ import {
   withSpan
 } from "@/chat/observability";
 
-const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(async (message, metadata) => {
-  const payload = {
-    ...message,
-    queueMessageId: metadata.messageId
-  } satisfies ThreadMessagePayload;
+const callbackHandler = createQueueCallbackHandler<QueuePayload>(async (message, metadata) => {
+  if (metadata.topicName === getThreadMessageTopic()) {
+    const payload = {
+      ...(message as ThreadMessagePayload),
+      queueMessageId: metadata.messageId
+    } satisfies ThreadMessagePayload;
 
-  if (metadata.topicName !== getThreadMessageTopic()) {
-    throw new Error(`Unexpected queue topic: ${metadata.topicName}`);
+    await withSpan(
+      "queue.process_message",
+      "queue.process_message",
+      {
+        slackThreadId: payload.normalizedThreadId,
+        slackChannelId: payload.thread.channelId,
+        slackUserId: payload.message.author?.userId
+      },
+      async () => {
+        await processQueuedThreadMessage(payload);
+      },
+      {
+        "messaging.message.id": payload.message.id,
+        "app.queue.message_kind": payload.kind,
+        "app.queue.message_id": payload.queueMessageId,
+        "app.queue.delivery_count": metadata.deliveryCount,
+        "app.queue.topic": metadata.topicName
+      }
+    );
+    return;
   }
 
-  await withSpan(
-    "queue.process_message",
-    "queue.process_message",
-    {
-      slackThreadId: payload.normalizedThreadId,
-      slackChannelId: payload.thread.channelId,
-      slackUserId: payload.message.author?.userId
-    },
-    async () => {
-      await processQueuedThreadMessage(payload);
-    },
-    {
-      "messaging.message.id": payload.message.id,
-      "app.queue.message_kind": payload.kind,
-      "app.queue.message_id": payload.queueMessageId,
-      "app.queue.delivery_count": metadata.deliveryCount,
-      "app.queue.topic": metadata.topicName
-    }
-  );
+  if (metadata.topicName === getSubagentTaskTopic()) {
+    const payload = message as SubagentTaskPayload;
+    await withSpan(
+      "queue.process_subagent_task",
+      "queue.process_subagent_task",
+      {
+        slackThreadId: payload.queueContext.normalizedThreadId,
+        slackChannelId: payload.queueContext.thread.channelId,
+        slackUserId: payload.queueContext.message.author?.userId
+      },
+      async () => {
+        await processSubagentTask(payload);
+      },
+      {
+        "app.queue.message_id": metadata.messageId,
+        "app.queue.delivery_count": metadata.deliveryCount,
+        "app.queue.topic": metadata.topicName,
+        "app.ai.subagent.call_key": payload.callKey
+      }
+    );
+    return;
+  }
+
+  throw new Error(`Unexpected queue topic: ${metadata.topicName}`);
 });
 
 export async function POST(request: Request): Promise<Response> {

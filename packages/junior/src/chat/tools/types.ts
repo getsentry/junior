@@ -13,6 +13,7 @@ export interface ToolHooks {
 
 export interface ToolRuntimeContext {
   channelId?: string;
+  isSubagentExecution?: boolean;
   messageTs?: string;
   threadTs?: string;
   userText?: string;

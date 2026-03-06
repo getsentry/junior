@@ -1,4 +1,4 @@
-export type RetryableTurnReason = "agent_turn_timeout_resume";
+export type RetryableTurnReason = "agent_turn_timeout_resume" | "subagent_task_deferred";
 
 export class RetryableTurnError extends Error {
   readonly code = "retryable_turn";

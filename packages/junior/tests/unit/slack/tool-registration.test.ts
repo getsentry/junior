@@ -12,6 +12,7 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackMessageAddReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
+    expect(tools).toHaveProperty("taskSubagent");
   });
 
   it("registers channel-scope tools in shared channel context", () => {
@@ -22,6 +23,7 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackMessageAddReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
+    expect(tools).toHaveProperty("taskSubagent");
   });
 
   it("does not register canvas create when channel context is unavailable", () => {
@@ -32,5 +34,21 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("slackChannelListMembers");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).not.toHaveProperty("slackMessageAddReaction");
+    expect(tools).toHaveProperty("taskSubagent");
+  });
+
+  it("does not register slack tools or recursive subagent tool in subagent execution mode", () => {
+    const tools = createTools([], {}, {
+      channelId: "C12345",
+      isSubagentExecution: true,
+      sandbox: noopSandbox
+    });
+
+    expect(tools).not.toHaveProperty("slackCanvasCreate");
+    expect(tools).not.toHaveProperty("slackCanvasUpdate");
+    expect(tools).not.toHaveProperty("slackListCreate");
+    expect(tools).not.toHaveProperty("slackChannelPostMessage");
+    expect(tools).not.toHaveProperty("slackMessageAddReaction");
+    expect(tools).not.toHaveProperty("taskSubagent");
   });
 });

@@ -1,16 +1,19 @@
 import { createRedisState } from "@chat-adapter/state-redis";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
 import type { Lock, StateAdapter } from "chat";
+import type { QueueResumeContext } from "@/chat/queue/types";
 import { hasRedisConfig } from "@/chat/config";
 
 const MIN_LOCK_TTL_MS = 1000 * 60 * 5;
 const QUEUE_INGRESS_DEDUP_PREFIX = "junior:queue_ingress";
 const QUEUE_MESSAGE_PROCESSING_PREFIX = "junior:queue_message";
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
+const SUBAGENT_TASK_PREFIX = "junior:subagent_task";
 const QUEUE_MESSAGE_PROCESSING_TTL_MS = 30 * 60 * 1000;
 const QUEUE_MESSAGE_COMPLETED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const QUEUE_MESSAGE_FAILED_TTL_MS = 6 * 60 * 60 * 1000;
 const AGENT_TURN_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const SUBAGENT_TASK_TTL_MS = 24 * 60 * 60 * 1000;
 const CLAIM_OR_RECLAIM_PROCESSING_SCRIPT = `
   local key = KEYS[1]
   local nowMs = tonumber(ARGV[1])
@@ -129,6 +132,7 @@ function getRedisStateAdapter(): RedisStateAdapter {
 
 export type QueueMessageProcessingStatus = "processing" | "completed" | "failed";
 export type AgentTurnSessionStatus = "running" | "awaiting_resume" | "completed" | "failed";
+export type SubagentTaskStatus = "queued" | "running" | "completed" | "failed";
 
 export interface QueueMessageProcessingState {
   status: QueueMessageProcessingStatus;
@@ -148,6 +152,21 @@ export interface AgentTurnSessionCheckpoint {
   sliceId: number;
   state: AgentTurnSessionStatus;
   updatedAtMs: number;
+}
+
+export interface SubagentTaskRecord {
+  callKey: string;
+  conversationId: string;
+  dedupKey: string;
+  message: QueueResumeContext["message"];
+  normalizedThreadId: string;
+  resultText?: string;
+  sessionId: string;
+  status: SubagentTaskStatus;
+  task: string;
+  thread: QueueResumeContext["thread"];
+  updatedAtMs: number;
+  errorMessage?: string;
 }
 
 function queueMessageKey(rawKey: string): string {
@@ -182,6 +201,10 @@ function parseQueueMessageState(value: unknown): QueueMessageProcessingState | u
 
 function agentTurnSessionKey(conversationId: string, sessionId: string): string {
   return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
+}
+
+function subagentTaskKey(callKey: string): string {
+  return `${SUBAGENT_TASK_PREFIX}:${callKey}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -229,6 +252,60 @@ function parseAgentTurnSessionCheckpoint(value: unknown): AgentTurnSessionCheckp
       piMessages: Array.isArray(parsed.piMessages) ? parsed.piMessages : [],
       ...(typeof parsed.errorMessage === "string" ? { errorMessage: parsed.errorMessage } : {}),
       ...(typeof parsed.resumedFromSliceId === "number" ? { resumedFromSliceId: parsed.resumedFromSliceId } : {})
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function parseSubagentTaskRecord(value: unknown): SubagentTaskRecord | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+
+    const status = parsed.status;
+    if (status !== "queued" && status !== "running" && status !== "completed" && status !== "failed") {
+      return undefined;
+    }
+
+    const callKey = parsed.callKey;
+    const task = parsed.task;
+    const conversationId = parsed.conversationId;
+    const sessionId = parsed.sessionId;
+    const dedupKey = parsed.dedupKey;
+    const normalizedThreadId = parsed.normalizedThreadId;
+    const updatedAtMs = parsed.updatedAtMs;
+    if (
+      typeof callKey !== "string" ||
+      typeof task !== "string" ||
+      typeof conversationId !== "string" ||
+      typeof sessionId !== "string" ||
+      typeof dedupKey !== "string" ||
+      typeof normalizedThreadId !== "string" ||
+      typeof updatedAtMs !== "number"
+    ) {
+      return undefined;
+    }
+
+    return {
+      callKey,
+      task,
+      conversationId,
+      sessionId,
+      dedupKey,
+      normalizedThreadId,
+      status,
+      updatedAtMs,
+      message: parsed.message as QueueResumeContext["message"],
+      thread: parsed.thread as QueueResumeContext["thread"],
+      ...(typeof parsed.resultText === "string" ? { resultText: parsed.resultText } : {}),
+      ...(typeof parsed.errorMessage === "string" ? { errorMessage: parsed.errorMessage } : {})
     };
   } catch {
     return undefined;
@@ -394,4 +471,45 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
   await getStateAdapter().set(agentTurnSessionKey(args.conversationId, args.sessionId), JSON.stringify(checkpoint), ttlMs);
   return checkpoint;
+}
+
+export async function getSubagentTaskRecord(callKey: string): Promise<SubagentTaskRecord | undefined> {
+  await getStateAdapter().connect();
+  const value = await getStateAdapter().get(subagentTaskKey(callKey));
+  return parseSubagentTaskRecord(value);
+}
+
+export async function upsertSubagentTaskRecord(args: {
+  callKey: string;
+  conversationId: string;
+  dedupKey: string;
+  message: QueueResumeContext["message"];
+  normalizedThreadId: string;
+  resultText?: string;
+  sessionId: string;
+  status: SubagentTaskStatus;
+  task: string;
+  thread: QueueResumeContext["thread"];
+  errorMessage?: string;
+  ttlMs?: number;
+}): Promise<SubagentTaskRecord> {
+  await getStateAdapter().connect();
+  const record: SubagentTaskRecord = {
+    callKey: args.callKey,
+    conversationId: args.conversationId,
+    dedupKey: args.dedupKey,
+    message: args.message,
+    normalizedThreadId: args.normalizedThreadId,
+    sessionId: args.sessionId,
+    status: args.status,
+    task: args.task,
+    thread: args.thread,
+    updatedAtMs: Date.now(),
+    ...(args.resultText ? { resultText: args.resultText } : {}),
+    ...(args.errorMessage ? { errorMessage: args.errorMessage } : {})
+  };
+
+  const ttlMs = Math.max(1, args.ttlMs ?? SUBAGENT_TASK_TTL_MS);
+  await getStateAdapter().set(subagentTaskKey(args.callKey), JSON.stringify(record), ttlMs);
+  return record;
 }
