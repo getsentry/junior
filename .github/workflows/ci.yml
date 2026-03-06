@@ -2,6 +2,7 @@ name: CI
 
 permissions:
   contents: read
+  actions: write
 
 on:
   push:
@@ -40,3 +41,21 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+
+      - name: Pack release artifacts
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p artifacts
+          pnpm --filter @sentry/junior pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-github pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
+          ls -la artifacts
+
+      - name: Upload release artifacts
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts-${{ github.sha }}
+          path: artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 7
