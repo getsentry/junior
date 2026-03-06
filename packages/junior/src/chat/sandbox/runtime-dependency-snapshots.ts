@@ -311,7 +311,11 @@ async function createDependencySnapshot(profile: DependencyProfile, runtime: str
   }
 }
 
-async function withBuildLock(profileHash: string, callback: () => Promise<string>): Promise<string> {
+async function withBuildLock(
+  profileHash: string,
+  callback: () => Promise<string>,
+  canUseCachedSnapshot: (cached: CachedSnapshotEntry) => boolean
+): Promise<string> {
   const state = getStateAdapter();
   await state.connect();
   const lockKey = profileLockKey(profileHash);
@@ -329,7 +333,7 @@ async function withBuildLock(profileHash: string, callback: () => Promise<string
   const waitUntil = Date.now() + SNAPSHOT_WAIT_FOR_LOCK_MS;
   while (Date.now() < waitUntil) {
     const cached = await getCachedSnapshot(profileHash);
-    if (cached?.snapshotId) {
+    if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
       return cached.snapshotId;
     }
 
@@ -346,7 +350,7 @@ async function withBuildLock(profileHash: string, callback: () => Promise<string
   }
 
   const cached = await getCachedSnapshot(profileHash);
-  if (cached?.snapshotId) {
+  if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
     return cached.snapshotId;
   }
 
@@ -375,16 +379,17 @@ export async function resolveRuntimeDependencySnapshot(params: {
     }
   }
 
+  const canUseCachedSnapshot = (cached: CachedSnapshotEntry): boolean => {
+    if (params.forceRebuild) {
+      return !params.staleSnapshotId || cached.snapshotId !== params.staleSnapshotId;
+    }
+    return !shouldRebuildCachedSnapshot(profile, cached);
+  };
+
   const snapshotId = await withBuildLock(profile.profileHash, async () => {
     const cached = await getCachedSnapshot(profile.profileHash);
-    if (cached?.snapshotId) {
-      if (params.forceRebuild) {
-        if (!params.staleSnapshotId || cached.snapshotId !== params.staleSnapshotId) {
-          return cached.snapshotId;
-        }
-      } else if (!shouldRebuildCachedSnapshot(profile, cached)) {
-        return cached.snapshotId;
-      }
+    if (cached?.snapshotId && canUseCachedSnapshot(cached)) {
+      return cached.snapshotId;
     }
 
     const nextSnapshotId = await createDependencySnapshot(profile, params.runtime, params.timeoutMs);
@@ -396,7 +401,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
       dependencyCount: profile.dependencyCount
     });
     return nextSnapshotId;
-  });
+  }, canUseCachedSnapshot);
 
   return {
     snapshotId,

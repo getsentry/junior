@@ -185,4 +185,34 @@ describe("runtime dependency snapshots", () => {
     });
     expect(snapshot.snapshotId).toBe("snap_apt");
   });
+
+  it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
+    vi.useRealTimers();
+    getPluginRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "^2" }
+    ]);
+    sandboxCreateMock
+      .mockResolvedValueOnce(makeSandbox("snap_old"))
+      .mockResolvedValueOnce(makeSandbox("snap_new"));
+
+    const first = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000
+    });
+    expect(first.snapshotId).toBe("snap_old");
+
+    lockHeld = true;
+    setTimeout(() => {
+      lockHeld = false;
+    }, 50);
+
+    const second = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+      forceRebuild: true,
+      staleSnapshotId: "snap_old"
+    });
+    expect(second.snapshotId).toBe("snap_new");
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+  });
 });
