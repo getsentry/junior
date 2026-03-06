@@ -97,6 +97,7 @@ function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
     extendLock: (lock, ttlMs) => base.extendLock(lock, Math.max(ttlMs, MIN_LOCK_TTL_MS)),
     get: (key) => base.get(key),
     set: (key, value, ttlMs) => base.set(key, value, ttlMs),
+    setIfNotExists: (key, value, ttlMs) => base.setIfNotExists(key, value, ttlMs),
     delete: (key) => base.delete(key)
   };
 }
