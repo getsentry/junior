@@ -259,6 +259,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
   forceRebuild?: boolean;
   staleSnapshotId?: string;
 }): Promise<RuntimeDependencySnapshot> {
+  const resolveStartedAtMs = Date.now();
   const profile = buildDependencyProfile(params.runtime);
   if (!profile) {
     return { dependencyCount: 0 };
@@ -280,7 +281,9 @@ export async function resolveRuntimeDependencySnapshot(params: {
       if (params.staleSnapshotId) {
         return cached.snapshotId !== params.staleSnapshotId;
       }
-      return false;
+      // Force rebuild requests should ignore snapshots that existed before this
+      // call but can reuse a fresh snapshot produced by a concurrent builder.
+      return cached.createdAtMs > resolveStartedAtMs;
     }
     return !shouldRebuildCachedSnapshot(profile, cached);
   };
