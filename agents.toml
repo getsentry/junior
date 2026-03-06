@@ -38,7 +38,7 @@ source = "getsentry/skills"
 
 [[mcp]]
 name = "sentry"
-url = "https://mcp.sentry.dev/mcp?experimental=1"
+url = "https://mcp.sentry.dev/mcp/sentry/junior?experimental=1"
 
 [[skills]]
 name = "chat-sdk"
@@ -47,3 +47,7 @@ source = "vercel/chat"
 [[skills]]
 name = "ai-sdk"
 source = "vercel/ai"
+
+[[skills]]
+name = "doc-coauthoring"
+source = "getsentry/skills"
