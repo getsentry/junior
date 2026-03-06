@@ -38,7 +38,7 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 - Plugin manifests may declare `runtime-dependencies` in `plugin.yaml`.
 - Supported dependency types:
   - `npm` (`package`, `version`)
-  - `apt` (`package`, `version`)
+  - `system` (`package`)
 - Runtime declarations are parsed and validated in:
   - `packages/junior/src/chat/plugins/registry.ts`
   - `packages/junior/src/chat/plugins/types.ts`
@@ -63,11 +63,11 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 
 - On cache miss (or forced rebuild), runtime:
   1. Creates a base sandbox.
-  2. Installs apt dependencies.
+  2. Installs system dependencies.
   3. Installs npm global dependencies under `/vercel/sandbox/.junior`.
   4. Captures snapshot with `sandbox.snapshot()`.
   5. Stores resulting `snapshotId` in registry.
-- Apt dependency install uses package name; version selector is enforced by post-install version check.
+- System dependency install uses package name via `dnf install -y`.
 - Npm dependency install uses `<package>@<version>` to resolve versions.
 
 ### Sandbox Create Contract

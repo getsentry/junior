@@ -159,31 +159,23 @@ describe("runtime dependency snapshots", () => {
     expect(sandbox.stop).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts multi-part caret apt selectors across minor versions", async () => {
+  it("installs system dependencies via dnf", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "apt", package: "gh", version: "^2.1" }
+      { type: "system", package: "gh" }
     ]);
-    const sandbox = makeSandbox("snap_apt", async (params) => {
-      if (params.cmd === "dpkg-query") {
-        return {
-          exitCode: 0,
-          stdout: async () => "2.2.0",
-          stderr: async () => ""
-        };
-      }
-      return {
-        exitCode: 0,
-        stdout: async () => "",
-        stderr: async () => ""
-      };
-    });
+    const sandbox = makeSandbox("snap_system");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
 
     const snapshot = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
       timeoutMs: 60_000
     });
-    expect(snapshot.snapshotId).toBe("snap_apt");
+    expect(snapshot.snapshotId).toBe("snap_system");
+    expect(sandbox.runCommand).toHaveBeenCalledWith({
+      cmd: "dnf",
+      args: ["install", "-y", "gh"],
+      sudo: true
+    });
   });
 
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {

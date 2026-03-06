@@ -25,6 +25,5 @@ target:
   config-key: repo
 
 runtime-dependencies:
-  - type: apt
+  - type: system
     package: gh
-    version: "2"

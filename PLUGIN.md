@@ -66,9 +66,8 @@ runtime-dependencies:
   - type: npm
     package: sentry
     version: "^2"
-  - type: apt
+  - type: system
     package: gh
-    version: "2"
 ```
 
 ## Manifest Rules
@@ -79,7 +78,8 @@ runtime-dependencies:
   - `issues.read` becomes `<name>.issues.read`
   - `org` becomes `<name>.org`
 - `credentials.type` must be `oauth-bearer` or `github-app`
-- `runtime-dependencies` is optional and supports `npm` and `apt` installers
+- `runtime-dependencies` is optional and supports `npm` and `system` installers
+- `runtime-dependencies[].version` is required for `npm` and must be omitted for `system`
 - `plugin.yaml` is required
 
 ## Distribute Plugins as npm Packages

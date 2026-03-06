@@ -25,13 +25,12 @@ export interface PluginNpmRuntimeDependency {
   version: string;
 }
 
-export interface PluginAptRuntimeDependency {
-  type: "apt";
+export interface PluginSystemRuntimeDependency {
+  type: "system";
   package: string;
-  version: string;
 }
 
-export type PluginRuntimeDependency = PluginNpmRuntimeDependency | PluginAptRuntimeDependency;
+export type PluginRuntimeDependency = PluginNpmRuntimeDependency | PluginSystemRuntimeDependency;
 
 export interface PluginManifest {
   name: string;

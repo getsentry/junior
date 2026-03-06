@@ -54,9 +54,8 @@ describe("plugin registry", () => {
     });
     expect(github!.manifest.runtimeDependencies).toEqual([
       {
-        type: "apt",
-        package: "gh",
-        version: "2"
+        type: "system",
+        package: "gh"
       }
     ]);
   });

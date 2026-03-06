@@ -52,15 +52,8 @@ function isExactNpmVersion(version: string): boolean {
   return /^\d+\.\d+\.\d+(?:[-+][a-z0-9.]+)?$/i.test(version.trim());
 }
 
-function isExactAptVersion(version: string): boolean {
-  return /^\d+(?:\.\d+){2,}(?:[-+~][a-z0-9.:+-]+)?$/i.test(version.trim());
-}
-
 function hasFloatingSelector(dep: PluginRuntimeDependency): boolean {
-  if (dep.type === "npm") {
-    return !isExactNpmVersion(dep.version);
-  }
-  return !isExactAptVersion(dep.version);
+  return dep.type === "npm" && !isExactNpmVersion(dep.version);
 }
 
 function parseFloatingDepMaxAgeMs(): number {
@@ -158,123 +151,26 @@ async function runOrThrow(sandbox: Sandbox, params: {
   throw new Error(`${label} failed: ${detail}`);
 }
 
-function normalizeInstalledVersion(raw: string): string {
-  const trimmed = raw.trim();
-  const withoutEpoch = trimmed.includes(":") ? trimmed.slice(trimmed.lastIndexOf(":") + 1) : trimmed;
-  return withoutEpoch.split("-")[0] ?? withoutEpoch;
-}
-
-function parseNumericVersionParts(version: string): number[] | null {
-  if (!/^\d+(?:\.\d+)*$/.test(version)) {
-    return null;
-  }
-  return version.split(".").map((part) => Number.parseInt(part, 10));
-}
-
-function compareVersionParts(left: number[], right: number[]): number {
-  const maxLen = Math.max(left.length, right.length);
-  for (let index = 0; index < maxLen; index += 1) {
-    const leftPart = left[index] ?? 0;
-    const rightPart = right[index] ?? 0;
-    if (leftPart < rightPart) {
-      return -1;
-    }
-    if (leftPart > rightPart) {
-      return 1;
-    }
-  }
-  return 0;
-}
-
-function matchesCaretSelector(installed: string, selector: string): boolean {
-  const installedParts = parseNumericVersionParts(installed);
-  const selectorParts = parseNumericVersionParts(selector);
-  if (!installedParts || !selectorParts) {
-    return false;
-  }
-
-  const pivotIndex = selectorParts.findIndex((part) => part !== 0);
-  const boundedIndex = pivotIndex >= 0 ? pivotIndex : selectorParts.length - 1;
-  const upperBound = [...selectorParts];
-  upperBound[boundedIndex] = (upperBound[boundedIndex] ?? 0) + 1;
-  for (let index = boundedIndex + 1; index < upperBound.length; index += 1) {
-    upperBound[index] = 0;
-  }
-
-  return compareVersionParts(installedParts, selectorParts) >= 0 && compareVersionParts(installedParts, upperBound) < 0;
-}
-
-function versionSelectorMatches(installed: string, selector: string): boolean {
-  const normalizedInstalled = normalizeInstalledVersion(installed);
-  const normalizedSelector = selector.trim();
-
-  if (normalizedSelector.startsWith("^")) {
-    return matchesCaretSelector(normalizedInstalled, normalizedSelector.slice(1));
-  }
-
-  if (/^\d+$/.test(normalizedSelector)) {
-    return normalizedInstalled === normalizedSelector || normalizedInstalled.startsWith(`${normalizedSelector}.`);
-  }
-
-  if (/^\d+\.\d+$/.test(normalizedSelector)) {
-    return normalizedInstalled === normalizedSelector || normalizedInstalled.startsWith(`${normalizedSelector}.`);
-  }
-
-  return normalizedInstalled === normalizedSelector;
-}
-
-async function verifyAptDependencyVersion(
-  sandbox: Sandbox,
-  dep: Extract<PluginRuntimeDependency, { type: "apt" }>
-): Promise<void> {
-  const response = await sandbox.runCommand({
-    cmd: "dpkg-query",
-    args: ["-W", "-f=${Version}", dep.package]
-  });
-  if (response.exitCode !== 0) {
-    const stderr = (await response.stderr()).trim();
-    throw new Error(`verify ${dep.package} version failed: ${stderr || "dpkg-query failed"}`);
-  }
-
-  const installedVersion = (await response.stdout()).trim();
-  if (!versionSelectorMatches(installedVersion, dep.version)) {
-    throw new Error(
-      `verify ${dep.package} version failed: expected selector ${dep.version}, got ${installedVersion}`
-    );
-  }
-}
-
 async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeDependency[]): Promise<void> {
-  const aptDeps = deps.filter((dep): dep is Extract<PluginRuntimeDependency, { type: "apt" }> => dep.type === "apt");
-  const npmDeps = deps.filter((dep): dep is Extract<PluginRuntimeDependency, { type: "npm" }> => dep.type === "npm");
+  const npmPackages: string[] = [];
 
-  if (aptDeps.length > 0) {
-    await runOrThrow(
-      sandbox,
-      {
-        cmd: "apt-get",
-        args: ["update"],
-        sudo: true
-      },
-      "apt-get update"
-    );
-
-    for (const dep of aptDeps) {
+  for (const dep of deps) {
+    if (dep.type === "system") {
       await runOrThrow(
         sandbox,
         {
-          cmd: "apt-get",
+          cmd: "dnf",
           args: ["install", "-y", dep.package],
           sudo: true
         },
-        `apt-get install ${dep.package}`
+        `dnf install ${dep.package}`
       );
-
-      await verifyAptDependencyVersion(sandbox, dep);
+      continue;
     }
+    npmPackages.push(`${dep.package}@${dep.version}`);
   }
 
-  if (npmDeps.length > 0) {
+  if (npmPackages.length > 0) {
     await runOrThrow(
       sandbox,
       {
@@ -284,7 +180,7 @@ async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeD
           "--global",
           "--prefix",
           `${SANDBOX_WORKSPACE_ROOT}/.junior`,
-          ...npmDeps.map((dep) => `${dep.package}@${dep.version}`)
+          ...npmPackages
         ]
       },
       "npm install"

@@ -13,12 +13,12 @@ import { discoverInstalledPluginPackageContent } from "./package-discovery";
 import type {
   GitHubAppCredentials,
   OAuthBearerCredentials,
-  PluginAptRuntimeDependency,
   PluginBrokerDeps,
   PluginCredentials,
   PluginDefinition,
   PluginManifest,
   PluginNpmRuntimeDependency,
+  PluginSystemRuntimeDependency,
   PluginRuntimeDependency
 } from "./types";
 
@@ -101,25 +101,24 @@ function parseRuntimeDependencies(data: unknown, name: string): PluginRuntimeDep
     const type = record.type;
     const packageName = record.package;
     const version = record.version;
-    if (typeof type !== "string" || (type !== "npm" && type !== "apt")) {
-      throw new Error(`Plugin ${name} runtime dependency type must be "npm" or "apt"`);
+    if (typeof type !== "string" || (type !== "npm" && type !== "system")) {
+      throw new Error(`Plugin ${name} runtime dependency type must be "npm" or "system"`);
     }
     if (typeof packageName !== "string" || !packageName.trim()) {
       throw new Error(`Plugin ${name} runtime dependency package must be a non-empty string`);
     }
-    if (typeof version !== "string" || !version.trim()) {
-      throw new Error(`Plugin ${name} runtime dependency version must be a non-empty string`);
-    }
 
     const normalizedPackage = packageName.trim();
-    const normalizedVersion = version.trim();
-    const dedupeKey = `${type}:${normalizedPackage}:${normalizedVersion}`;
-    if (seen.has(dedupeKey)) {
-      continue;
-    }
-    seen.add(dedupeKey);
-
     if (type === "npm") {
+      const normalizedVersion = typeof version === "string" ? version.trim() : undefined;
+      if (!normalizedVersion) {
+        throw new Error(`Plugin ${name} runtime dependency version must be a non-empty string for npm dependencies`);
+      }
+      const dedupeKey = `${type}:${normalizedPackage}:${normalizedVersion}`;
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
       parsed.push({
         type: "npm",
         package: normalizedPackage,
@@ -128,11 +127,18 @@ function parseRuntimeDependencies(data: unknown, name: string): PluginRuntimeDep
       continue;
     }
 
+    if (version !== undefined) {
+      throw new Error(`Plugin ${name} system runtime dependencies must not include a version`);
+    }
+    const dedupeKey = `${type}:${normalizedPackage}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
     parsed.push({
-      type: "apt",
-      package: normalizedPackage,
-      version: normalizedVersion
-    } satisfies PluginAptRuntimeDependency);
+      type: "system",
+      package: normalizedPackage
+    } satisfies PluginSystemRuntimeDependency);
   }
 
   return parsed.length > 0 ? parsed : undefined;
@@ -141,15 +147,17 @@ function parseRuntimeDependencies(data: unknown, name: string): PluginRuntimeDep
 function parseManifest(raw: string, dir: string): PluginManifest {
   const data = parseYaml(raw) as Record<string, unknown>;
 
-  const name = data.name;
-  if (typeof name !== "string" || !PLUGIN_NAME_RE.test(name)) {
-    throw new Error(`Invalid plugin name in ${dir}: "${name}"`);
+  const rawName = data.name;
+  if (typeof rawName !== "string" || !PLUGIN_NAME_RE.test(rawName)) {
+    throw new Error(`Invalid plugin name in ${dir}: "${rawName}"`);
   }
+  const name = rawName;
 
-  const description = data.description;
-  if (typeof description !== "string" || !description.trim()) {
+  const rawDescription = data.description;
+  if (typeof rawDescription !== "string" || !rawDescription.trim()) {
     throw new Error(`Invalid plugin description in ${dir}`);
   }
+  const description = rawDescription;
 
   // Capabilities are declared as short names (e.g. "issues.read") and
   // qualified with the plugin name prefix (e.g. "sentry.api").
@@ -185,11 +193,11 @@ function parseManifest(raw: string, dir: string): PluginManifest {
   }
   const credentials = parseCredentials(credentialsRaw as Record<string, unknown>, name);
 
-  const runtimeDependencies = parseRuntimeDependencies(data["runtime-dependencies"], name as string);
+  const runtimeDependencies = parseRuntimeDependencies(data["runtime-dependencies"], name);
 
   const manifest: PluginManifest = {
-    name: name as string,
-    description: description as string,
+    name,
+    description,
     capabilities,
     configKeys,
     credentials,
@@ -362,7 +370,7 @@ export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
   const deps: PluginRuntimeDependency[] = [];
   for (const plugin of pluginDefinitions) {
     for (const dep of plugin.manifest.runtimeDependencies ?? []) {
-      const key = `${dep.type}:${dep.package}:${dep.version}`;
+      const key = dep.type === "npm" ? `${dep.type}:${dep.package}:${dep.version}` : `${dep.type}:${dep.package}`;
       if (seen.has(key)) {
         continue;
       }
@@ -378,7 +386,10 @@ export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
     if (left.package !== right.package) {
       return left.package.localeCompare(right.package);
     }
-    return left.version.localeCompare(right.version);
+    if (left.type === "npm" && right.type === "npm") {
+      return left.version.localeCompare(right.version);
+    }
+    return 0;
   });
 }
 
