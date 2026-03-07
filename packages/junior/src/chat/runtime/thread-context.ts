@@ -90,6 +90,59 @@ export function getSlackApiErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
+function getSlackHeaderString(headers: unknown, name: string): string | undefined {
+  if (!headers || typeof headers !== "object") {
+    return undefined;
+  }
+
+  const normalizedName = name.toLowerCase();
+  const record = headers as Record<string, unknown>;
+  for (const [key, value] of Object.entries(record)) {
+    if (key.toLowerCase() !== normalizedName) {
+      continue;
+    }
+    if (typeof value === "string") {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      const first = value.find((entry) => typeof entry === "string");
+      return typeof first === "string" ? first : undefined;
+    }
+  }
+
+  return undefined;
+}
+
+export function getSlackErrorObservabilityAttributes(error: unknown): Record<string, string | number> {
+  if (!error || typeof error !== "object") {
+    return {};
+  }
+
+  const candidate = error as {
+    code?: unknown;
+    data?: { error?: unknown };
+    headers?: unknown;
+    statusCode?: unknown;
+  };
+
+  const attributes: Record<string, string | number> = {};
+  if (typeof candidate.code === "string" && candidate.code.trim().length > 0) {
+    attributes["app.slack.error_code"] = candidate.code;
+  }
+  if (typeof candidate.data?.error === "string" && candidate.data.error.trim().length > 0) {
+    attributes["app.slack.api_error"] = candidate.data.error;
+  }
+  const requestId = getSlackHeaderString(candidate.headers, "x-slack-req-id");
+  if (requestId) {
+    attributes["app.slack.request_id"] = requestId;
+  }
+  if (typeof candidate.statusCode === "number" && Number.isFinite(candidate.statusCode)) {
+    attributes["http.response.status_code"] = candidate.statusCode;
+  }
+
+  return attributes;
+}
+
 export function isSlackTitlePermissionError(error: unknown): boolean {
   const code = getSlackApiErrorCode(error);
   return code === "no_permission" || code === "missing_scope" || code === "not_allowed_token_type";

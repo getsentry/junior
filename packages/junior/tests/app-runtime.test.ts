@@ -12,6 +12,15 @@ interface TestState {
   conversationContext?: string;
 }
 
+function createSlackInternalError(requestId: string): Error {
+  return Object.assign(new Error("An API error occurred: internal_error"), {
+    code: "slack_webapi_platform_error",
+    data: { error: "internal_error" },
+    statusCode: 500,
+    headers: { "x-slack-req-id": requestId }
+  });
+}
+
 function createMockDeps(
   overrides?: Partial<AppSlackRuntimeDependencies<TestState>>
 ): AppSlackRuntimeDependencies<TestState> {
@@ -161,6 +170,39 @@ describe("createAppSlackRuntime", () => {
 
       expect(thread.posts).toContain(
         "I ran into an internal error while processing that. Reference: `trace_id=trace_123`."
+      );
+    });
+
+    it("logs fallback-post failure with Slack attributes when posting error reply fails", async () => {
+      const replyError = new Error("reply failed");
+      const slackPostError = createSlackInternalError("req-123");
+      const logException = vi.fn(() => "evt_primary");
+      const deps = createMockDeps({
+        replyToThread: vi.fn().mockRejectedValue(replyError),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
+        logException
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      thread.post = vi.fn().mockRejectedValue(slackPostError) as unknown as typeof thread.post;
+      const message = createTestMessage({});
+
+      await expect(runtime.handleNewMention(thread, message)).rejects.toBe(slackPostError);
+
+      expect(logException).toHaveBeenNthCalledWith(
+        2,
+        slackPostError,
+        "mention_handler_failure_reply_post_failed",
+        expect.any(Object),
+        expect.objectContaining({
+          "app.slack.reply_stage": "error_fallback_post",
+          "app.error.original_event_id": "evt_primary",
+          "app.slack.error_code": "slack_webapi_platform_error",
+          "app.slack.api_error": "internal_error",
+          "app.slack.request_id": "req-123",
+          "http.response.status_code": 500
+        }),
+        "Failed to post fallback error reply for mention handler"
       );
     });
   });
@@ -344,6 +386,38 @@ describe("createAppSlackRuntime", () => {
         "onSubscribedMessage failed"
       );
       expect(thread.posts).toContain("I ran into an internal error while processing that. Please try again.");
+    });
+
+    it("logs fallback-post failure with Slack attributes when posting subscribed error reply fails", async () => {
+      const primaryError = new Error("handler boom");
+      const slackPostError = createSlackInternalError("req-456");
+      const logException = vi.fn(() => "evt_subscribed");
+      const deps = createMockDeps({
+        prepareTurnState: vi.fn().mockRejectedValue(primaryError),
+        logException
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      thread.post = vi.fn().mockRejectedValue(slackPostError) as unknown as typeof thread.post;
+      const message = createTestMessage({});
+
+      await expect(runtime.handleSubscribedMessage(thread, message)).rejects.toBe(slackPostError);
+
+      expect(logException).toHaveBeenNthCalledWith(
+        2,
+        slackPostError,
+        "subscribed_message_handler_failure_reply_post_failed",
+        expect.any(Object),
+        expect.objectContaining({
+          "app.slack.reply_stage": "error_fallback_post",
+          "app.error.original_event_id": "evt_subscribed",
+          "app.slack.error_code": "slack_webapi_platform_error",
+          "app.slack.api_error": "internal_error",
+          "app.slack.request_id": "req-456",
+          "http.response.status_code": 500
+        }),
+        "Failed to post fallback error reply for subscribed message handler"
+      );
     });
   });
 

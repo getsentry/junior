@@ -9,7 +9,17 @@ import { createProgressReporter } from "@/chat/progress-reporter";
 import { getBotDeps } from "@/chat/runtime/deps";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { createTextStreamBridge, createNormalizingStream } from "@/chat/runtime/streaming";
-import { getChannelId, getMessageTs, getSlackApiErrorCode, getThreadId, getThreadTs, getRunId, isSlackTitlePermissionError, stripLeadingBotMention } from "@/chat/runtime/thread-context";
+import {
+  getChannelId,
+  getMessageTs,
+  getSlackApiErrorCode,
+  getSlackErrorObservabilityAttributes,
+  getThreadId,
+  getThreadTs,
+  getRunId,
+  isSlackTitlePermissionError,
+  stripLeadingBotMention
+} from "@/chat/runtime/thread-context";
 import { persistThreadState, mergeArtifactsState } from "@/chat/runtime/thread-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import { generateThreadTitle, markConversationMessage, normalizeConversationText, upsertConversationMessage, generateConversationId, updateConversationStats } from "@/chat/services/conversation-memory";
@@ -25,6 +35,12 @@ function buildDeterministicTurnId(messageId: string): string {
   const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");
   return `turn_${sanitized}`;
 }
+
+type SlackReplyPostStage =
+  | "streaming_initial_post"
+  | "thread_reply"
+  | "thread_reply_after_stream_failure"
+  | "thread_reply_files_followup";
 
 interface ReplyExecutorDeps {
   getSlackAdapter: () => SlackAdapter;
@@ -165,17 +181,35 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const startStreamingReply = () => {
           if (!streamedReplyPromise) {
             const streamingReply = (async () => {
-              await beforeFirstResponsePost();
-              return await thread.post(
-                createNormalizingStream(textStream.iterable, ensureBlockSpacing)
+              return await postThreadReply(
+                createNormalizingStream(textStream.iterable, ensureBlockSpacing),
+                "streaming_initial_post"
               );
             })();
             streamedReplyPromise = streamingReply;
           }
         };
-        const postThreadReply = async (payload: Parameters<typeof thread.post>[0]): Promise<unknown> => {
+        const postThreadReply = async (
+          payload: Parameters<typeof thread.post>[0],
+          stage: SlackReplyPostStage
+        ): Promise<SentMessage> => {
           await beforeFirstResponsePost();
-          return await thread.post(payload);
+          try {
+            return await thread.post(payload);
+          } catch (error) {
+            logException(
+              error,
+              "slack_thread_post_failed",
+              turnTraceContext,
+              {
+                "app.slack.reply_stage": stage,
+                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                ...getSlackErrorObservabilityAttributes(error)
+              },
+              "Failed to post Slack thread reply"
+            );
+            throw error;
+          }
         };
         await progress.start();
         let persistedAtLeastOnce = false;
@@ -300,12 +334,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await postThreadReply(
                 buildSlackOutputMessage(reply.text, {
                   files: resolvedAttachFiles === "inline" ? replyFiles : undefined
-                })
+                }),
+                "thread_reply"
               );
             } else {
               await streamedReplyPromise;
               if (reply.diagnostics.outcome !== "success" && reply.text.trim().length > 0) {
-                await postThreadReply(buildSlackOutputMessage(reply.text));
+                await postThreadReply(buildSlackOutputMessage(reply.text), "thread_reply_after_stream_failure");
               }
             }
           }
@@ -386,7 +421,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           if (shouldPostThreadReply && resolvedAttachFiles === "followup" && replyFiles) {
-            await postThreadReply({ files: replyFiles } as Parameters<typeof thread.post>[0]);
+            await postThreadReply(
+              { files: replyFiles } as Parameters<typeof thread.post>[0],
+              "thread_reply_files_followup"
+            );
           }
         } catch (error) {
           shouldPersistFailureState = !isRetryableTurnError(error);

@@ -1,6 +1,7 @@
 import type { Message, Thread } from "chat";
 import { isRetryableTurnError } from "@/chat/turn/errors";
 import type { ErrorReference } from "@/chat/observability";
+import { getSlackErrorObservabilityAttributes } from "@/chat/runtime/thread-context";
 
 export interface AppRuntimeAssistantLifecycleEvent {
   channelId: string;
@@ -176,6 +177,32 @@ export function createAppSlackRuntime<
   }): AppRuntimeLogContext =>
     buildLogContext(deps, args);
 
+  const postFallbackErrorReplyWithLogging = async (args: {
+    thread: Thread;
+    reference: ErrorReference | null;
+    errorContext: AppRuntimeLogContext;
+    eventId?: string;
+    postFailureEventName: string;
+    postFailureBody: string;
+  }): Promise<void> => {
+    try {
+      await args.thread.post(buildFailureMessage(args.reference));
+    } catch (postError) {
+      deps.logException(
+        postError,
+        args.postFailureEventName,
+        args.errorContext,
+        {
+          "app.slack.reply_stage": "error_fallback_post",
+          ...(args.eventId ? { "app.error.original_event_id": args.eventId } : {}),
+          ...getSlackErrorObservabilityAttributes(postError)
+        },
+        args.postFailureBody
+      );
+      throw postError;
+    }
+  };
+
   return {
     async handleNewMention(thread: Thread, message: Message, hooks?: AppRuntimeReplyHooks): Promise<void> {
       try {
@@ -229,7 +256,14 @@ export function createAppSlackRuntime<
         );
         await hooks?.beforeFirstResponsePost?.();
         const reference = deps.getErrorReference(eventId);
-        await thread.post(buildFailureMessage(reference));
+        await postFallbackErrorReplyWithLogging({
+          thread,
+          reference,
+          errorContext,
+          eventId,
+          postFailureEventName: "mention_handler_failure_reply_post_failed",
+          postFailureBody: "Failed to post fallback error reply for mention handler"
+        });
       }
     },
 
@@ -346,7 +380,14 @@ export function createAppSlackRuntime<
         );
         await hooks?.beforeFirstResponsePost?.();
         const reference = deps.getErrorReference(eventId);
-        await thread.post(buildFailureMessage(reference));
+        await postFallbackErrorReplyWithLogging({
+          thread,
+          reference,
+          errorContext,
+          eventId,
+          postFailureEventName: "subscribed_message_handler_failure_reply_post_failed",
+          postFailureBody: "Failed to post fallback error reply for subscribed message handler"
+        });
       }
     },
 
