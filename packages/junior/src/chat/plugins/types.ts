@@ -37,7 +37,7 @@ export interface PluginManifest {
   description: string;
   capabilities: string[];
   configKeys: string[];
-  credentials: PluginCredentials;
+  credentials?: PluginCredentials;
   runtimeDependencies?: PluginRuntimeDependency[];
   oauth?: {
     clientIdEnv: string;

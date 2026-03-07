@@ -35,6 +35,9 @@ export function createSkillCapabilityRuntime(options: {
   // Plugin providers
   for (const plugin of getPluginProviders()) {
     const { credentials, name } = plugin.manifest;
+    if (!credentials) {
+      continue;
+    }
     const placeholder = resolveAuthTokenPlaceholder(credentials);
     brokersByProvider[name] = useTestBroker
       ? new TestCredentialBroker({ provider: name, domains: credentials.apiDomains, envKey: credentials.authTokenEnv, placeholder })

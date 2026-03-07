@@ -6,7 +6,7 @@ description: How local skills and plugin-provided capabilities are composed.
 ## Mental model
 
 - Skills define focused instruction bundles.
-- Plugins declare capabilities, credentials, and optional skills.
+- Plugins declare optional capabilities, optional credentials, and optional skills.
 - Runtime selects and executes skills based on task context plus capability access.
 
 ## Skill sources

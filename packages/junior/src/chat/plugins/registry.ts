@@ -162,11 +162,11 @@ function parseManifest(raw: string, dir: string): PluginManifest {
   // Capabilities are declared as short names (e.g. "issues.read") and
   // qualified with the plugin name prefix (e.g. "sentry.api").
   const rawCapabilities = data.capabilities;
-  if (!Array.isArray(rawCapabilities) || rawCapabilities.length === 0) {
-    throw new Error(`Plugin ${name} must declare at least one capability`);
+  if (rawCapabilities !== undefined && !Array.isArray(rawCapabilities)) {
+    throw new Error(`Plugin ${name} capabilities must be an array when provided`);
   }
   const capabilities: string[] = [];
-  for (const cap of rawCapabilities) {
+  for (const cap of rawCapabilities ?? []) {
     if (typeof cap !== "string" || !SHORT_CAPABILITY_RE.test(cap)) {
       throw new Error(`Invalid capability token "${cap}" in plugin ${name}`);
     }
@@ -176,11 +176,11 @@ function parseManifest(raw: string, dir: string): PluginManifest {
   // Config keys are declared as short names (e.g. "org") and
   // qualified with the plugin name prefix (e.g. "sentry.org").
   const rawConfigKeys = data["config-keys"];
-  if (!Array.isArray(rawConfigKeys)) {
-    throw new Error(`Plugin ${name} must declare config-keys`);
+  if (rawConfigKeys !== undefined && !Array.isArray(rawConfigKeys)) {
+    throw new Error(`Plugin ${name} config-keys must be an array when provided`);
   }
   const configKeys: string[] = [];
-  for (const key of rawConfigKeys) {
+  for (const key of rawConfigKeys ?? []) {
     if (typeof key !== "string" || !SHORT_CONFIG_KEY_RE.test(key)) {
       throw new Error(`Invalid config key "${key}" in plugin ${name}`);
     }
@@ -188,10 +188,15 @@ function parseManifest(raw: string, dir: string): PluginManifest {
   }
 
   const credentialsRaw = data.credentials;
-  if (!credentialsRaw || typeof credentialsRaw !== "object" || Array.isArray(credentialsRaw)) {
-    throw new Error(`Plugin ${name} must declare credentials`);
+  if (
+    credentialsRaw !== undefined &&
+    (!credentialsRaw || typeof credentialsRaw !== "object" || Array.isArray(credentialsRaw))
+  ) {
+    throw new Error(`Plugin ${name} credentials must be an object when provided`);
   }
-  const credentials = parseCredentials(credentialsRaw as Record<string, unknown>, name);
+  const credentials = credentialsRaw
+    ? parseCredentials(credentialsRaw as Record<string, unknown>, name)
+    : undefined;
 
   const runtimeDependencies = parseRuntimeDependencies(data["runtime-dependencies"], name);
 
@@ -200,12 +205,18 @@ function parseManifest(raw: string, dir: string): PluginManifest {
     description,
     capabilities,
     configKeys,
-    credentials,
+    ...(credentials ? { credentials } : {}),
     ...(runtimeDependencies ? { runtimeDependencies } : {})
   };
 
   const oauthRaw = data.oauth as Record<string, unknown> | undefined;
   if (oauthRaw) {
+    if (!credentials) {
+      throw new Error(`Plugin ${name} oauth requires credentials`);
+    }
+    if (credentials.type !== "oauth-bearer") {
+      throw new Error(`Plugin ${name} oauth requires credentials.type "oauth-bearer"`);
+    }
     const oauthFields = ["client-id-env", "client-secret-env", "authorize-endpoint", "token-endpoint", "scope"] as const;
     for (const field of oauthFields) {
       if (typeof oauthRaw[field] !== "string" || !(oauthRaw[field] as string).trim()) {
@@ -435,6 +446,9 @@ export function createPluginBroker(
   }
 
   const { credentials, name } = plugin.manifest;
+  if (!credentials) {
+    throw new Error(`Provider "${name}" has no credentials configured`);
+  }
   let broker: CredentialBroker;
 
   if (credentials.type === "oauth-bearer") {

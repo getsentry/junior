@@ -22,7 +22,7 @@ async function handleLink(event: SlashCommandEvent, provider: string): Promise<v
   if (!getOAuthProviderConfig(provider)) {
     await postEphemeral(
       event,
-      `${providerLabel(provider)} uses app-level authentication and doesn't require account linking.`
+      `${providerLabel(provider)} doesn't support account linking.`
     );
     return;
   }
@@ -57,7 +57,7 @@ async function handleUnlink(event: SlashCommandEvent, provider: string): Promise
   if (!getOAuthProviderConfig(provider)) {
     await postEphemeral(
       event,
-      `${providerLabel(provider)} uses app-level authentication and can't be unlinked.`
+      `${providerLabel(provider)} doesn't support account unlinking.`
     );
     return;
   }

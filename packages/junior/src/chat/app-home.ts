@@ -61,7 +61,7 @@ export async function buildHomeView(
   const connectedSections: SectionBlock[] = [];
 
   for (const plugin of providers) {
-    if (plugin.manifest.credentials.type !== "oauth-bearer") continue;
+    if (plugin.manifest.credentials?.type !== "oauth-bearer") continue;
 
     const tokens = await userTokenStore.get(userId, plugin.manifest.name);
     if (!tokens) continue;

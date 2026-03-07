@@ -6,9 +6,9 @@ Use this guide to create a plugin for your own Junior repository.
 
 A plugin adds:
 
-- Capabilities (for `requires-capabilities`)
-- Config keys (for `uses-config`)
-- Credential broker configuration
+- Optional capabilities (for `requires-capabilities`)
+- Optional config keys (for `uses-config`)
+- Optional credential broker configuration
 - Optional OAuth provider configuration
 - Skills under the plugin's `skills/` directory
 
@@ -34,7 +34,16 @@ app/plugins/linear/
       SKILL.md
 ```
 
-## `plugin.yaml` Template
+## `plugin.yaml` Templates
+
+### Bundle-only plugin (skills only)
+
+```yaml
+name: linear
+description: Linear helper workflows
+```
+
+### Credentialed provider plugin
 
 ```yaml
 name: linear
@@ -73,11 +82,13 @@ runtime-dependencies:
 ## Manifest Rules
 
 - `name` must match `^[a-z][a-z0-9-]*$`
-- `capabilities` and `config-keys` use short names in YAML
+- `capabilities` and `config-keys` are optional; when present they use short names in YAML
 - Junior qualifies them automatically:
   - `issues.read` becomes `<name>.issues.read`
   - `org` becomes `<name>.org`
-- `credentials.type` must be `oauth-bearer` or `github-app`
+- `credentials` is optional; when present, `credentials.type` must be `oauth-bearer` or `github-app`
+- `oauth` requires `credentials.type: oauth-bearer`
+- Plugins can declare capabilities without credentials, but `jr-rpc issue-credential` will fail with a clear no-credentials error.
 - `runtime-dependencies` is optional and supports `npm` and `system` installers
 - `runtime-dependencies[].version` is optional for `npm` (`latest` when omitted) and must be omitted for `system`
 - `plugin.yaml` is required

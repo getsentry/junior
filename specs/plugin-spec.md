@@ -10,6 +10,7 @@
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated code and test file references to repo-root paths under `packages/junior/`.
 - 2026-03-06: Added runtime dependency declarations and linked sandbox snapshot lifecycle contract.
+- 2026-03-06: Made plugin credentials/capabilities/config-keys optional to support bundle-only plugins.
 
 
 ## Status
@@ -32,7 +33,7 @@ Implemented (Sentry + GitHub migrated)
 
 ## Purpose
 
-Define a plugin model where provider integrations are self-contained directories that bundle capabilities, credentials, and skills — so that adding a new provider requires zero changes to core runtime files.
+Define a plugin model where provider integrations are self-contained directories that bundle optional capabilities, optional credentials, and skills — so that adding a new provider requires zero changes to core runtime files.
 
 ## Core model
 
@@ -41,7 +42,7 @@ Define a plugin model where provider integrations are self-contained directories
    - an installed npm dependency that contains plugin content in `plugin.yaml` or `plugins/`.
 2. At startup, the plugin registry scans local plugin roots and packaged plugin roots, then parses each manifest synchronously (`readFileSync`).
 3. The registry registers capabilities, config keys, OAuth config, and skill roots from each manifest.
-4. Credential brokers are created on demand from manifest config (`oauth-bearer` or `github-app` type).
+4. Credential brokers are created on demand only for plugins that declare credentials (`oauth-bearer` or `github-app` type).
 5. Skills in `plugins/<name>/skills/` are auto-discovered alongside existing skill roots.
 6. Core infrastructure (agent loop, sandbox, jr-rpc, Slack tools, web tools) stays unchanged.
 
@@ -58,7 +59,13 @@ plugins/sentry/
 ## Plugin manifest format
 
 ```yaml
-# plugin.yaml — annotated example
+# plugin.yaml — bundle-only example
+name: sentry                         # unique plugin identifier
+description: Sentry helper workflows # human-readable summary
+```
+
+```yaml
+# plugin.yaml — credentialed provider example
 name: sentry                         # unique plugin identifier
 description: Sentry issue tracking   # human-readable summary
 
@@ -111,22 +118,22 @@ mcp:                                 # optional — MCP server config for tool s
 |-------|------|-------|
 | `name` | `string` | Must match `^[a-z][a-z0-9-]*$`. Unique across all plugins. |
 | `description` | `string` | Non-empty. |
-| `capabilities` | `string[]` | Short names (e.g. `issues.read`). Qualified to `<name>.issues.read` by the registry. At least one required. No qualified capability may appear in more than one plugin. |
+
+### Optional fields
+
+| Field | Type | Rules |
+|-------|------|-------|
+| `capabilities` | `string[]` | Short names (e.g. `issues.read`). Qualified to `<name>.issues.read` by the registry. No qualified capability may appear in more than one plugin. |
 | `config-keys` | `string[]` | Short names (e.g. `org`). Qualified to `<name>.org` by the registry. |
 | `credentials` | `object` | Credential delivery configuration. |
 | `credentials.type` | `string` | `"oauth-bearer"` or `"github-app"`. |
 | `credentials.api-domains` | `string[]` | Domains for `Authorization: Bearer` header transforms. At least one required. |
 | `credentials.auth-token-env` | `string` | Env var name for static token fallback and sandbox placeholder. |
 | `credentials.auth-token-placeholder` | `string` | Optional non-secret placeholder injected into sandbox env for CLI compatibility. |
-
-### Optional fields
-
-| Field | Type | Rules |
-|-------|------|-------|
 | `credentials.app-id-env` | `string` | Env var name for GitHub App ID. Required when `credentials.type` is `"github-app"`. |
 | `credentials.private-key-env` | `string` | Env var name for GitHub App private key (PEM). Required when `credentials.type` is `"github-app"`. |
 | `credentials.installation-id-env` | `string` | Env var name for GitHub App installation ID. Required when `credentials.type` is `"github-app"`. |
-| `oauth` | `object` | OAuth provider configuration. All sub-fields required when present. |
+| `oauth` | `object` | OAuth provider configuration. All sub-fields required when present. Requires `credentials.type` = `"oauth-bearer"`. |
 | `oauth.client-id-env` | `string` | Env var name for client ID. |
 | `oauth.client-secret-env` | `string` | Env var name for client secret. |
 | `oauth.authorize-endpoint` | `string` | Valid HTTPS URL. |
@@ -163,6 +170,7 @@ System runtime dependency execution environment:
 - No two plugins may declare the same capability token.
 - No two plugins may use the same `name`.
 - If `target.config-key` is set, it must be listed in `config-keys`.
+- If a plugin declares capabilities without credentials, manifest load succeeds and `jr-rpc issue-credential` fails with an explicit no-credentials error.
 
 ## Discovery and loading
 
@@ -170,7 +178,7 @@ System runtime dependency execution environment:
 
 **Sync phase** (module load): Read `plugin.yaml` manifests via `readFileSync`, register capabilities, config keys, OAuth config, and skill roots. This keeps `catalog.ts` sync-compatible.
 
-**On-demand phase**: Create credential brokers when `factory.ts` constructs the runtime. The generic `oauth-bearer` broker is created from manifest config — no dynamic imports needed.
+**On-demand phase**: Create credential brokers when `factory.ts` constructs the runtime for plugins that declare credentials. The generic `oauth-bearer` broker is created from manifest config — no dynamic imports needed.
 
 ### Load sequence
 
@@ -191,6 +199,7 @@ The registry provides `createPluginBroker(provider, deps)` which constructs the 
 
 - `oauth-bearer`: Creates a generic `OAuthBearerBroker` that handles per-user OAuth tokens, token refresh, static env fallback, and header transforms — all parameterized from the manifest.
 - `github-app`: Creates a `GitHubAppBroker` that signs JWTs with an RSA private key and exchanges them for short-lived installation tokens via the GitHub App API. No `UserTokenStore` dependency — tokens are per-installation, not per-user.
+- no-credentials plugins: broker creation fails with a provider-scoped no-credentials error.
 
 ### Plugin registry exports
 
@@ -229,6 +238,7 @@ All existing functions (`getCapabilityProvider`, `isKnownCapability`, etc.) work
 ```typescript
 for (const plugin of getPluginProviders()) {
   const { credentials, name } = plugin.manifest;
+  if (!credentials) continue;
   brokersByProvider[name] = useTestBroker
     ? new TestCredentialBroker({ provider: name, domains: credentials.apiDomains, envKey: credentials.authTokenEnv, placeholder: "host_managed_credential" })
     : createPluginBroker(name, { userTokenStore });

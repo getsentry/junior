@@ -9,7 +9,7 @@ Junior’s extension model is simple: keep runtime wiring stable, and add behavi
 
 A plugin bundles two things:
 
-- A manifest (`plugin.yaml`) that declares capabilities, config keys, and credential behavior.
+- A manifest (`plugin.yaml`) that declares optional capabilities, optional config keys, and optional credential behavior.
 - Skills (`SKILL.md`) that consume those capabilities at runtime.
 
 This keeps provider-specific behavior out of core runtime files.

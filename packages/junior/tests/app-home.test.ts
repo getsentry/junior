@@ -24,6 +24,12 @@ vi.mock("@/chat/plugins/registry", () => ({
           type: "github-app"
         }
       }
+    },
+    {
+      manifest: {
+        name: "example-bundle",
+        description: "Bundle-only plugin"
+      }
     }
   ]
 }));
@@ -161,6 +167,7 @@ describe("buildHomeView", () => {
     expect(noAccountsSection).toBeDefined();
     // github provider is github-app type, so store.get should not be called for it
     expect(store.get).not.toHaveBeenCalledWith("U123", "github");
+    expect(store.get).not.toHaveBeenCalledWith("U123", "example-bundle");
   });
 
   it("loads ABOUT.md from app root for home intro text", async () => {

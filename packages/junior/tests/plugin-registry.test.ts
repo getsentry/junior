@@ -20,6 +20,7 @@ describe("plugin registry", () => {
     expect(providers.length).toBeGreaterThanOrEqual(2);
     const sentry = providers.find((p) => p.manifest.name === "sentry");
     expect(sentry).toBeDefined();
+    expect(sentry!.manifest.credentials).toBeDefined();
     expect(sentry!.manifest.capabilities).toEqual([
       "sentry.api"
     ]);
@@ -40,6 +41,7 @@ describe("plugin registry", () => {
     const providers = getPluginProviders();
     const github = providers.find((p) => p.manifest.name === "github");
     expect(github).toBeDefined();
+    expect(github!.manifest.credentials).toBeDefined();
     expect(github!.manifest.capabilities).toEqual([
       "github.issues.read",
       "github.issues.write",
@@ -47,7 +49,7 @@ describe("plugin registry", () => {
       "github.labels.write"
     ]);
     expect(github!.manifest.configKeys).toEqual(["github.repo"]);
-    expect(github!.manifest.credentials.type).toBe("github-app");
+    expect(github!.manifest.credentials!.type).toBe("github-app");
     expect(github!.manifest.credentials).toMatchObject({
       authTokenPlaceholder: "ghp_host_managed_credential"
     });

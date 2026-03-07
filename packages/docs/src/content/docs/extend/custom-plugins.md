@@ -1,6 +1,6 @@
 ---
 title: Custom Plugins
-description: Create and package your own Junior plugin with capabilities, credentials, and skills.
+description: Create and package your own Junior plugin with optional capabilities, optional credentials, and skills.
 ---
 
 Custom plugins are declarative: they bundle a manifest (`plugin.yaml`) plus skills. The runtime discovers and wires capabilities from the manifest, so most integrations need little or no custom runtime code.
@@ -16,7 +16,16 @@ my-junior-plugin/
         └── SKILL.md
 ```
 
-## Manifest example
+## Manifest examples
+
+### Bundle-only plugin
+
+```yaml
+name: my-provider
+description: Internal workflow bundles
+```
+
+### Credentialed provider plugin
 
 ```yaml
 name: my-provider
@@ -59,15 +68,15 @@ runtime-dependencies:
 
 ## `capabilities`
 
-`capabilities` are short names that the runtime qualifies as `<plugin>.<capability>`. Use this list to define what credentials and actions skills may request.
+`capabilities` are optional short names that the runtime qualifies as `<plugin>.<capability>`. Use this list to define what credentials and actions skills may request.
 
 ## `config-keys`
 
-`config-keys` declare provider-specific runtime configuration keys. They are qualified as `<plugin>.<key>`.
+`config-keys` are optional provider-specific runtime configuration keys. They are qualified as `<plugin>.<key>`.
 
 ## `credentials`
 
-`credentials` defines how auth is delivered to tools. Supported `type` values are:
+`credentials` is optional. When present, it defines how auth is delivered to tools. Supported `type` values are:
 
 - `oauth-bearer`
 - `github-app`
@@ -90,7 +99,7 @@ Use this section when the provider supports user OAuth. Include:
 - `token-endpoint`
 - `scope`
 
-If omitted, plugin auth is treated as non-OAuth.
+If omitted, plugin auth is treated as non-OAuth. `oauth` requires `credentials.type: oauth-bearer`.
 
 ## `target`
 
