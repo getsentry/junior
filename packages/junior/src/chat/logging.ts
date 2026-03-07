@@ -437,7 +437,7 @@ export const log = {
   error(eventName: string, attrs: Record<string, unknown> = {}, body?: string): void {
     emit("error", eventName, attrs, body);
   },
-  exception(eventName: string, error: unknown, attrs: Record<string, unknown> = {}, body?: string): void {
+  exception(eventName: string, error: unknown, attrs: Record<string, unknown> = {}, body?: string): string | undefined {
     const normalizedError = error instanceof Error ? error : new Error(String(error));
     emit("error", eventName, {
       ...attrs,
@@ -448,12 +448,14 @@ export const log = {
       "exception.stacktrace": normalizedError.stack
     }, body ?? normalizedError.message);
 
+    let eventId: string | undefined;
     Sentry.withScope((scope) => {
       for (const [key, value] of Object.entries(mergeAttributes(contextStorage.getStore(), attrs))) {
         scope.setExtra(key, value);
       }
-      Sentry.captureException(normalizedError);
+      eventId = Sentry.captureException(normalizedError);
     });
+    return eventId;
   }
 };
 

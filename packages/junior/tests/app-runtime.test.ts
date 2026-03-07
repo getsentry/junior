@@ -19,6 +19,7 @@ function createMockDeps(
     assistantUserName: "test-bot",
     modelId: "test-model",
     now: () => 1700000000000,
+    getErrorReference: () => null,
     getChannelId: (_thread, message) => message.threadId?.split(":")[1],
     getThreadId: (_thread, message) => message.threadId,
     getRunId: () => undefined,
@@ -78,7 +79,7 @@ describe("createAppSlackRuntime", () => {
       );
     });
 
-    it("on replyToThread failure: posts error and calls logException", async () => {
+    it("on replyToThread failure: posts safe error and calls logException", async () => {
       const replyError = new Error("reply failed");
       const deps = createMockDeps({
         replyToThread: vi.fn().mockRejectedValue(replyError),
@@ -97,10 +98,10 @@ describe("createAppSlackRuntime", () => {
         {},
         "onNewMention failed"
       );
-      expect(thread.posts).toContain("Error: reply failed");
+      expect(thread.posts).toContain("I ran into an internal error while processing that. Please try again.");
     });
 
-    it("on subscribe failure: posts error and calls logException", async () => {
+    it("on subscribe failure: posts safe error and calls logException", async () => {
       const subscribeError = new Error("subscribe failed");
       const deps = createMockDeps({
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb())
@@ -122,7 +123,45 @@ describe("createAppSlackRuntime", () => {
         {},
         "onNewMention failed"
       );
-      expect(thread.posts).toContain("Error: subscribe failed");
+      expect(thread.posts).toContain("I ran into an internal error while processing that. Please try again.");
+    });
+
+    it("includes sentry event id when available", async () => {
+      const replyError = new Error("reply failed");
+      const deps = createMockDeps({
+        replyToThread: vi.fn().mockRejectedValue(replyError),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
+        logException: vi.fn(() => "evt_123"),
+        getErrorReference: () => ({ eventId: "evt_123", traceId: "trace_ignored" })
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({});
+
+      await runtime.handleNewMention(thread, message);
+
+      expect(thread.posts).toContain(
+        "I ran into an internal error while processing that. Reference: `event_id=evt_123 trace_id=trace_ignored`."
+      );
+    });
+
+    it("falls back to trace id when sentry event id is unavailable", async () => {
+      const replyError = new Error("reply failed");
+      const deps = createMockDeps({
+        replyToThread: vi.fn().mockRejectedValue(replyError),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
+        logException: vi.fn(() => undefined),
+        getErrorReference: () => ({ traceId: "trace_123" })
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      const message = createTestMessage({});
+
+      await runtime.handleNewMention(thread, message);
+
+      expect(thread.posts).toContain(
+        "I ran into an internal error while processing that. Reference: `trace_id=trace_123`."
+      );
     });
   });
 
@@ -286,7 +325,7 @@ describe("createAppSlackRuntime", () => {
       );
     });
 
-    it("on failure: posts error message and calls logException", async () => {
+    it("on failure: posts safe error message and calls logException", async () => {
       const err = new Error("handler boom");
       const deps = createMockDeps({
         prepareTurnState: vi.fn().mockRejectedValue(err)
@@ -304,7 +343,7 @@ describe("createAppSlackRuntime", () => {
         {},
         "onSubscribedMessage failed"
       );
-      expect(thread.posts).toContain("Error: handler boom");
+      expect(thread.posts).toContain("I ran into an internal error while processing that. Please try again.");
     });
   });
 

@@ -11,6 +11,10 @@ import {
 } from "@/chat/logging";
 
 export interface ObservabilityContext extends LogContext {}
+export interface ErrorReference {
+  traceId: string;
+  eventId?: string;
+}
 
 type SpanAttributePrimitive = string | number | boolean;
 type SpanAttributeValue = SpanAttributePrimitive | string[];
@@ -93,9 +97,9 @@ export function logException(
   context: ObservabilityContext = {},
   attributes: Record<string, unknown> = {},
   body?: string
-): void {
+): string | undefined {
   const normalizedError = error instanceof Error ? error : new Error(String(error));
-  log.exception(eventName, normalizedError, toContextAndAttributes(context, attributes), body);
+  return log.exception(eventName, normalizedError, toContextAndAttributes(context, attributes), body);
 }
 
 export function setTags(context: ObservabilityContext = {}): void {
@@ -186,4 +190,40 @@ export function captureExceptionInScope(error: unknown, context: ObservabilityCo
 
 export function toOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+export function getActiveTraceId(): string | undefined {
+  const sentry = Sentry as unknown as {
+    getActiveSpan?: () => unknown;
+    spanToJSON?: (span: unknown) => { trace_id?: string };
+  };
+  if (typeof sentry.getActiveSpan !== "function" || typeof sentry.spanToJSON !== "function") {
+    return undefined;
+  }
+
+  try {
+    const span = sentry.getActiveSpan();
+    if (!span) {
+      return undefined;
+    }
+    return toOptionalString(sentry.spanToJSON(span).trace_id);
+  } catch {
+    return undefined;
+  }
+}
+
+export function resolveErrorReference(eventId?: string): ErrorReference | null {
+  const traceId = getActiveTraceId();
+  if (!eventId && !traceId) {
+    return null;
+  }
+
+  if (!traceId) {
+    return null;
+  }
+
+  return {
+    traceId,
+    ...(eventId ? { eventId } : {})
+  };
 }

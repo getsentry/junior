@@ -1,5 +1,6 @@
 import type { Message, Thread } from "chat";
 import { isRetryableTurnError } from "@/chat/turn/errors";
+import type { ErrorReference } from "@/chat/observability";
 
 export interface AppRuntimeAssistantLifecycleEvent {
   channelId: string;
@@ -60,7 +61,7 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
     context?: Record<string, unknown>,
     attributes?: Record<string, unknown>,
     body?: string
-  ) => void;
+  ) => string | undefined;
   logWarn: (
     eventName: string,
     context?: Record<string, unknown>,
@@ -69,6 +70,7 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
   ) => void;
   modelId: string;
   now: () => number;
+  getErrorReference: (eventId?: string) => ErrorReference | null;
   onSubscribedMessageSkipped: (args: {
     completedAtMs: number;
     decision: AppRuntimeReplyDecision;
@@ -116,6 +118,16 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
     context: Record<string, unknown>,
     callback: () => Promise<void>
   ) => Promise<void>;
+}
+
+function buildFailureMessage(reference: ErrorReference | null): string {
+  if (!reference) {
+    return "I ran into an internal error while processing that. Please try again.";
+  }
+  if (reference.eventId) {
+    return `I ran into an internal error while processing that. Reference: \`event_id=${reference.eventId} trace_id=${reference.traceId}\`.`;
+  }
+  return `I ran into an internal error while processing that. Reference: \`trace_id=${reference.traceId}\`.`;
 }
 
 export interface AppSlackRuntime<
@@ -208,16 +220,16 @@ export function createAppSlackRuntime<
           );
           throw error;
         }
-        deps.logException(
+        const eventId = deps.logException(
           error,
           "mention_handler_failed",
           errorContext,
           {},
           "onNewMention failed"
         );
-        const errorMessage = error instanceof Error ? error.message : String(error);
         await hooks?.beforeFirstResponsePost?.();
-        await thread.post(`Error: ${errorMessage}`);
+        const reference = deps.getErrorReference(eventId);
+        await thread.post(buildFailureMessage(reference));
       }
     },
 
@@ -325,16 +337,16 @@ export function createAppSlackRuntime<
           );
           throw error;
         }
-        deps.logException(
+        const eventId = deps.logException(
           error,
           "subscribed_message_handler_failed",
           errorContext,
           {},
           "onSubscribedMessage failed"
         );
-        const errorMessage = error instanceof Error ? error.message : String(error);
         await hooks?.beforeFirstResponsePost?.();
-        await thread.post(`Error: ${errorMessage}`);
+        const reference = deps.getErrorReference(eventId);
+        await thread.post(buildFailureMessage(reference));
       }
     },
 

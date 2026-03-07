@@ -8,7 +8,7 @@ import {
 } from "@/chat/app-runtime";
 import { registerBotHandlers } from "@/chat/bootstrap/register-handlers";
 import { botConfig, getSlackBotToken, getSlackClientId, getSlackClientSecret, getSlackSigningSecret } from "@/chat/config";
-import { logException, logWarn, withSpan } from "@/chat/observability";
+import { logException, logWarn, resolveErrorReference, withSpan } from "@/chat/observability";
 import { getStateAdapter } from "@/chat/state";
 import { initializeAssistantThread as initializeAssistantThreadImpl } from "@/chat/runtime/assistant-lifecycle";
 import { resetBotDepsForTests, setBotDepsForTests } from "@/chat/runtime/deps";
@@ -67,6 +67,7 @@ export const appSlackRuntime = createAppSlackRuntime<
   assistantUserName: botConfig.userName,
   modelId: botConfig.modelId,
   now: () => Date.now(),
+  getErrorReference: resolveErrorReference,
   getThreadId,
   getChannelId,
   getRunId,
