@@ -8,4 +8,5 @@ coverage
 .vercel
 .env*.local
 /dist
+/packages/docs/.astro
 packages/junior/dist
