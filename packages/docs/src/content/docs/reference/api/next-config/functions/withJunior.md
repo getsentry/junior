@@ -7,7 +7,7 @@ title: "withJunior"
 
 > **withJunior**(`nextConfig?`, `options?`): `NextConfig` \| `NextConfigFactory`
 
-Defined in: [next-config.ts:137](https://github.com/getsentry/junior/blob/d10f23a338adf19a5bcb5c5720a182dc8e05b5a5/packages/junior/src/next-config.ts#L137)
+Defined in: [next-config.ts:137](https://github.com/getsentry/junior/blob/a6f3331e28b1f6197b4b4c511429d71b54bf5258/packages/junior/src/next-config.ts#L137)
 
 Extends a Next.js config with Junior runtime defaults.
 

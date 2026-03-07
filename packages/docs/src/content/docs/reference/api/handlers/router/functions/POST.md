@@ -7,7 +7,7 @@ title: "POST"
 
 > **POST**(`request`, `context`): `Promise`\<`Response`\>
 
-Defined in: [handlers/router.ts:48](https://github.com/getsentry/junior/blob/d10f23a338adf19a5bcb5c5720a182dc8e05b5a5/packages/junior/src/handlers/router.ts#L48)
+Defined in: [handlers/router.ts:48](https://github.com/getsentry/junior/blob/a6f3331e28b1f6197b4b4c511429d71b54bf5258/packages/junior/src/handlers/router.ts#L48)
 
 Handles all POST requests routed through `@sentry/junior/handler`.
 

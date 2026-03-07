@@ -7,7 +7,7 @@ title: "onRequestError"
 
 > `const` **onRequestError**: (`error`, `request`, `errorContext`) => `void` = `Sentry.captureRequestError`
 
-Defined in: [instrumentation.ts:56](https://github.com/getsentry/junior/blob/d10f23a338adf19a5bcb5c5720a182dc8e05b5a5/packages/junior/src/instrumentation.ts#L56)
+Defined in: [instrumentation.ts:56](https://github.com/getsentry/junior/blob/a6f3331e28b1f6197b4b4c511429d71b54bf5258/packages/junior/src/instrumentation.ts#L56)
 
 Re-export of Sentry request error handler for Next.js instrumentation wiring.
 

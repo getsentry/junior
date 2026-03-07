@@ -7,7 +7,7 @@ title: "default"
 
 > **default**(`__namedParameters`): `Element`
 
-Defined in: [app/layout.tsx:6](https://github.com/getsentry/junior/blob/d10f23a338adf19a5bcb5c5720a182dc8e05b5a5/packages/junior/src/app/layout.tsx#L6)
+Defined in: [app/layout.tsx:6](https://github.com/getsentry/junior/blob/a6f3331e28b1f6197b4b4c511429d71b54bf5258/packages/junior/src/app/layout.tsx#L6)
 
 Minimal root layout export for apps that do not provide one yet.
 
