@@ -214,7 +214,7 @@ describe("bot handlers (integration)", () => {
     }
   });
 
-  it("error recovery: posts error message when generateAssistantReply throws", async () => {
+  it("error recovery: posts safe error message when generateAssistantReply throws", async () => {
     const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     setBotDepsForTests({
       generateAssistantReply: async () => {
@@ -235,11 +235,11 @@ describe("bot handlers (integration)", () => {
       })
     );
 
-    const errorPost = thread.posts.find(
-      (p) => typeof p === "string" && p.includes("Error:")
+    const errorPost = thread.posts.find((p) =>
+      typeof p === "string" && p.includes("I ran into an internal error while processing that.")
     );
     expect(errorPost).toBeDefined();
-    expect(String(errorPost)).toContain("LLM unavailable");
+    expect(String(errorPost)).not.toContain("LLM unavailable");
   });
 
   it("posts non-empty fallback text when streaming reply includes files", async () => {

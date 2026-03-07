@@ -73,8 +73,6 @@ describe("skills", () => {
         "---",
         "name: tmp-valid-metadata",
         "description: Valid metadata skill.",
-        "requires-capabilities: github.issues.read",
-        "uses-config: github.repo",
         "---",
         "",
         "# Body"
