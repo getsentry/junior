@@ -1,6 +1,7 @@
 import { Message, ThreadImpl } from "chat";
 import type { Message as ChatMessage, SerializedMessage, SerializedThread, Thread } from "chat";
 import { logError, logWarn } from "@/chat/observability";
+import { removeReactionFromMessage } from "@/chat/slack-actions/channel";
 import {
   acquireQueueMessageProcessingOwnership,
   completeQueueMessageProcessingOwnership,
@@ -49,7 +50,6 @@ interface ProcessQueuedThreadMessageDeps {
 
 const defaultProcessQueuedThreadMessageDeps: ProcessQueuedThreadMessageDeps = {
   clearProcessingReaction: async ({ channelId, timestamp }) => {
-    const { removeReactionFromMessage } = await import("@/chat/slack-actions/channel");
     await removeReactionFromMessage({
       channelId,
       timestamp,

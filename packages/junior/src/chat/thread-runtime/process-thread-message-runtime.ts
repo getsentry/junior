@@ -1,5 +1,6 @@
 import type { Message, Thread } from "chat";
 import type { ThreadMessageKind } from "@/chat/queue/types";
+import { appSlackRuntime } from "@/chat/bot";
 import { downloadPrivateSlackFile } from "@/chat/slack-actions/client";
 
 function rehydrateAttachmentFetchers(
@@ -18,7 +19,6 @@ export async function processThreadMessageRuntime(args: {
   message: Message;
   thread: Thread;
 }): Promise<void> {
-  const { appSlackRuntime } = await import("@/chat/bot");
   const runtimePayload = {
     message: args.message,
     thread: args.thread

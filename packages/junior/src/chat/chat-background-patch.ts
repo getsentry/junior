@@ -1,9 +1,11 @@
 import { Chat } from "chat";
 import type { Message, Thread } from "chat";
 import { coerceThreadConversationState, type ThreadConversationState } from "@/chat/conversation-state";
+import { enqueueThreadMessage } from "@/chat/queue/client";
 import type { ThreadMessageKind, ThreadMessagePayload } from "@/chat/queue/types";
 import { shouldReplyInSubscribedThread } from "@/chat/runtime/subscribed-routing";
 import { getChannelId, getRunId, stripLeadingBotMention } from "@/chat/runtime/thread-context";
+import { addReactionToMessage, removeReactionFromMessage } from "@/chat/slack-actions/channel";
 import { claimQueueIngressDedup, getStateAdapter, hasQueueIngressDedup } from "@/chat/state";
 import { logInfo, logWarn, setSpanAttributes, withContext, withSpan } from "@/chat/observability";
 
@@ -173,12 +175,10 @@ const defaultQueueRoutingDeps: QueueRoutingDeps = {
   getIsSubscribed: (threadId) => getStateAdapter().isSubscribed(threadId),
   logInfo,
   logWarn,
-  enqueueThreadMessage: async (payload, dedupKey) => {
-    const { enqueueThreadMessage } = await import("@/chat/queue/client");
-    return await enqueueThreadMessage(payload, {
+  enqueueThreadMessage: async (payload, dedupKey) =>
+    await enqueueThreadMessage(payload, {
       idempotencyKey: dedupKey
-    });
-  },
+    }),
   shouldReplyInSubscribedThread: async ({ message, normalizedThreadId, thread }) => {
     const rawText = message.text;
     const text = stripLeadingBotMention(rawText, {
@@ -203,7 +203,6 @@ const defaultQueueRoutingDeps: QueueRoutingDeps = {
     });
   },
   addProcessingReaction: async ({ channelId, timestamp }) => {
-    const { addReactionToMessage } = await import("@/chat/slack-actions/channel");
     await addReactionToMessage({
       channelId,
       timestamp,
@@ -211,7 +210,6 @@ const defaultQueueRoutingDeps: QueueRoutingDeps = {
     });
   },
   removeProcessingReaction: async ({ channelId, timestamp }) => {
-    const { removeReactionFromMessage } = await import("@/chat/slack-actions/channel");
     await removeReactionFromMessage({
       channelId,
       timestamp,
