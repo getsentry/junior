@@ -8,7 +8,6 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, { channelId: "D12345", sandbox: noopSandbox });
 
     expect(tools).not.toHaveProperty("slackChannelPostMessage");
-    expect(tools).not.toHaveProperty("slackChannelListMembers");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackMessageAddReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
@@ -18,7 +17,6 @@ describe("Slack tool registration", () => {
     const tools = createTools([], {}, { channelId: "C12345", sandbox: noopSandbox });
 
     expect(tools).toHaveProperty("slackChannelPostMessage");
-    expect(tools).toHaveProperty("slackChannelListMembers");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackMessageAddReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
@@ -29,7 +27,6 @@ describe("Slack tool registration", () => {
 
     expect(tools).not.toHaveProperty("slackCanvasCreate");
     expect(tools).not.toHaveProperty("slackChannelPostMessage");
-    expect(tools).not.toHaveProperty("slackChannelListMembers");
     expect(tools).not.toHaveProperty("slackChannelListMessages");
     expect(tools).not.toHaveProperty("slackMessageAddReaction");
   });

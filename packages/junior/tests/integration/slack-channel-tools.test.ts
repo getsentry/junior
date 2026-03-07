@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createSlackChannelListMembersTool } from "@/chat/tools/slack-channel-list-members";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
@@ -8,7 +7,6 @@ import {
   chatGetPermalinkOk,
   chatPostMessageOk,
   conversationsHistoryPage,
-  conversationsMembersPage,
   reactionsAddOk
 } from "../fixtures/slack/factories/api";
 import { getCapturedSlackApiCalls, queueSlackApiError, queueSlackApiResponse } from "../msw/handlers/slack-api";
@@ -120,37 +118,6 @@ describe("slack channel tools", () => {
     });
     expect(postCalls[0]?.params).toHaveProperty("mrkdwn");
     expect(getCapturedSlackApiCalls("chat.getPermalink")).toHaveLength(1);
-  });
-
-  it("lists channel members and forwards request parameters", async () => {
-    queueSlackApiResponse("conversations.members", {
-      body: conversationsMembersPage({
-        members: ["U1"],
-        nextCursor: "next-members"
-      })
-    });
-    const tool = createSlackChannelListMembersTool(createContext("who is in this channel?"));
-
-    const result = await executeTool(tool, {
-      limit: 25
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      channel_id: "C123",
-      count: 1,
-      next_cursor: "next-members"
-    });
-    expect(result).toMatchObject({
-      members: [{ user_id: "U1" }]
-    });
-
-    const memberCalls = getCapturedSlackApiCalls("conversations.members");
-    expect(memberCalls).toHaveLength(1);
-    expect(memberCalls[0]?.params).toMatchObject({
-      channel: "C123"
-    });
-    expect(String(memberCalls[0]?.params.limit)).toBe("25");
   });
 
   it("lists channel messages across history parameters and forwards filters", async () => {
@@ -306,23 +273,4 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(1);
   });
 
-  it("propagates missing_scope when members API fails", async () => {
-    queueSlackApiError("conversations.members", {
-      error: "missing_scope",
-      needed: "channels:read",
-      provided: "chat:write"
-    });
-    const tool = createSlackChannelListMembersTool(createContext("who is in this channel?"));
-
-    await expect(
-      executeTool(tool, {
-        limit: 10
-      })
-    ).rejects.toMatchObject({
-      name: "SlackActionError",
-      code: "missing_scope",
-      needed: "channels:read",
-      provided: "chat:write"
-    });
-  });
 });

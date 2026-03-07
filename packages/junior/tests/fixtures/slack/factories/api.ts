@@ -61,19 +61,6 @@ export function conversationsHistoryPage(input: {
   });
 }
 
-export function conversationsMembersPage(input: { members?: string[]; nextCursor?: string } = {}): {
-  ok: true;
-  members: string[];
-  response_metadata: { next_cursor: string };
-} {
-  return slackOk({
-    members: input.members ?? [TEST_USER_ID],
-    response_metadata: {
-      next_cursor: input.nextCursor ?? ""
-    }
-  });
-}
-
 export function conversationsRepliesPage(input: {
   messages?: Array<Record<string, unknown>>;
   nextCursor?: string;

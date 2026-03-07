@@ -7,7 +7,6 @@ import {
   chatPostMessageOk,
   conversationsCanvasesCreateOk,
   conversationsHistoryPage,
-  conversationsMembersPage,
   conversationsRepliesPage,
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
@@ -29,7 +28,6 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "reactions.add",
   "reactions.remove",
   "conversations.history",
-  "conversations.members",
   "conversations.replies",
   "canvases.create",
   "conversations.canvases.create",
@@ -170,8 +168,6 @@ function defaultSlackApiResponse(method: SlackApiMethod): SlackMockHttpResponse 
       return { body: reactionsAddOk() };
     case "conversations.history":
       return { body: conversationsHistoryPage() };
-    case "conversations.members":
-      return { body: conversationsMembersPage() };
     case "conversations.replies":
       return { body: conversationsRepliesPage() };
     case "canvases.create":

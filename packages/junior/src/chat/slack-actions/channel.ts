@@ -30,10 +30,6 @@ export interface SlackThreadReply {
   files?: SlackFileRef[];
 }
 
-export interface SlackChannelMemberProfile {
-  user_id: string;
-}
-
 export async function postMessageToChannel(input: {
   channelId: string;
   text: string;
@@ -188,34 +184,6 @@ export async function listChannelMessages(input: {
   return {
     messages: messages.slice(0, targetLimit),
     nextCursor: cursor
-  };
-}
-
-export async function listChannelMembers(input: {
-  channelId: string;
-  limit: number;
-  cursor?: string;
-}): Promise<{ members: SlackChannelMemberProfile[]; nextCursor?: string }> {
-  const client = getSlackClient();
-  const channelId = normalizeSlackConversationId(input.channelId);
-  if (!channelId) {
-    throw new Error("Slack channel member lookup requires a valid channel ID");
-  }
-  const targetLimit = Math.max(1, Math.min(input.limit, 200));
-  const response = await withSlackRetries(() =>
-    client.conversations.members({
-      channel: channelId,
-      limit: targetLimit,
-      cursor: input.cursor
-    }),
-    3,
-    { action: "conversations.members" }
-  );
-
-  const members = (response.members ?? []).slice(0, targetLimit);
-  return {
-    members: members.map((userId) => ({ user_id: userId })),
-    nextCursor: response.response_metadata?.next_cursor || undefined
   };
 }
 

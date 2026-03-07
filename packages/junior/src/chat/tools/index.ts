@@ -3,7 +3,6 @@ import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
 import { createReadFileTool } from "@/chat/tools/read-file";
-import { createSlackChannelListMembersTool } from "@/chat/tools/slack-channel-list-members";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
@@ -134,11 +133,6 @@ export function createTools(
     tools.slackChannelPostMessage = wrapToolExecution(
       "slackChannelPostMessage",
       createSlackChannelPostMessageTool(context, state),
-      hooks
-    );
-    tools.slackChannelListMembers = wrapToolExecution(
-      "slackChannelListMembers",
-      createSlackChannelListMembersTool(context),
       hooks
     );
     tools.slackChannelListMessages = wrapToolExecution(
