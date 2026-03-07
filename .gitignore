@@ -7,6 +7,6 @@ coverage
 *.tsbuildinfo
 .vercel
 .env*.local
-/dist
+dist/
 /packages/docs/.astro
 packages/junior/dist

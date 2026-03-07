@@ -62,6 +62,9 @@ function discoverInstalledPluginPackageTracingIncludes(cwd: string = process.cwd
   return [...new Set(tracingIncludes)].sort((left, right) => left.localeCompare(right));
 }
 
+/**
+ * Optional overrides for `withJunior`.
+ */
 export interface JuniorConfigOptions {
   dataDir?: string;
   skillsDir?: string;
@@ -126,6 +129,11 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   return config;
 }
 
+/**
+ * Extends a Next.js config with Junior runtime defaults.
+ *
+ * Supports both object and function-style Next config exports.
+ */
 export function withJunior(
   nextConfig?: NextConfig | NextConfigFactory,
   options?: JuniorConfigOptions

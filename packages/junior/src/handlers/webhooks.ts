@@ -21,6 +21,12 @@ async function loadBot() {
   return bot;
 }
 
+/**
+ * Handles platform webhook POST requests for Junior.
+ *
+ * This endpoint resolves a platform adapter from the route context and delegates
+ * request handling to the adapter webhook handler.
+ */
 export async function POST(request: Request, context: WebhookRouteContext): Promise<Response> {
   const bot = await loadBot();
   const { platform } = await context.params;

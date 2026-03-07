@@ -28,6 +28,9 @@ function getCommonOptions() {
   };
 }
 
+/**
+ * Initializes Sentry for Next.js runtime contexts used by Junior.
+ */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     Sentry.init({
@@ -47,4 +50,7 @@ export async function register(): Promise<void> {
   }
 }
 
+/**
+ * Re-export of Sentry request error handler for Next.js instrumentation wiring.
+ */
 export const onRequestError = Sentry.captureRequestError;

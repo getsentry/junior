@@ -6,6 +6,9 @@
     "dev": "node scripts/dev-with-root-env.mjs",
     "build": "pnpm --filter @sentry/junior build",
     "build:pkg": "pnpm --filter @sentry/junior build:pkg",
+    "docs:dev": "pnpm --filter @sentry/junior-docs dev",
+    "docs:build": "pnpm --filter @sentry/junior-docs build",
+    "docs:check": "pnpm --filter @sentry/junior-docs check",
     "start": "pnpm --filter @sentry/junior start",
     "test": "pnpm --filter @sentry/junior build:pkg && pnpm --filter @sentry/junior test",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
@@ -21,5 +24,8 @@
         "vitest-evals>zod": ">=3"
       }
     }
+  },
+  "devDependencies": {
+    "agent-browser": "^0.16.3"
   }
 }

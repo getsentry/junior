@@ -13,6 +13,13 @@ function normalizeRoutePath(pathParts: string[]): string {
   return route.startsWith("api/") ? route.slice("api/".length) : route;
 }
 
+/**
+ * Handles all GET requests routed through `@sentry/junior/handler`.
+ *
+ * Supported routes:
+ * - `api/health`
+ * - `api/oauth/callback/:provider`
+ */
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
   const { path } = await context.params;
   const route = normalizeRoutePath(path);
@@ -32,6 +39,12 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   return new Response("Not Found", { status: 404 });
 }
 
+/**
+ * Handles all POST requests routed through `@sentry/junior/handler`.
+ *
+ * Supported routes:
+ * - `api/webhooks/:platform`
+ */
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   const { path } = await context.params;
   const route = normalizeRoutePath(path);

@@ -41,6 +41,9 @@ const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(async (
   );
 });
 
+/**
+ * Handles queue callback POST requests for asynchronous thread processing.
+ */
 export async function POST(request: Request): Promise<Response> {
   const requestContext = createRequestContext(request, { platform: "queue" });
 

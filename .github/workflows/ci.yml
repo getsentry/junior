@@ -41,6 +41,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      - run: pnpm docs:check
 
       - name: Pack release artifacts
         if: github.event_name == 'push'
