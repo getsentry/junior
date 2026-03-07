@@ -1,6 +1,14 @@
 ---
 title: Config & Environment
 description: Required and optional environment variables for runtime and plugins.
+type: reference
+summary: Reference required and optional environment variables for core runtime and built-in plugins.
+prerequisites:
+  - /start-here/quickstart/
+related:
+  - /extend/github-plugin/
+  - /extend/sentry-plugin/
+  - /operate/security-hardening/
 ---
 
 ## Core runtime
@@ -36,3 +44,7 @@ description: Required and optional environment variables for runtime and plugins
 - Validate required variables exist in deployment environment.
 - Redeploy after variable changes.
 - Run one end-to-end Slack thread action per enabled integration.
+
+## Next step
+
+Use [Runtime Commands](/reference/runtime-commands/) to verify credentialed workflows after env changes, then monitor with [Observability](/operate/observability/).

@@ -101,7 +101,8 @@ export default defineConfig({
             excludePrivate: true,
             excludeProtected: true,
             hideBreadcrumbs: true,
-            readme: "none"
+            readme: "none",
+            gitRevision: "main"
           }
         })
       ]

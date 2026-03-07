@@ -1,6 +1,13 @@
 ---
 title: Development
 description: Local development workflow for the Junior monorepo.
+type: tutorial
+summary: Set up local development for Junior, run the app, and validate core checks.
+prerequisites: []
+related:
+  - /contribute/testing/
+  - /contribute/releasing/
+  - /start-here/quickstart/
 ---
 
 ## Prerequisites
@@ -20,9 +27,11 @@ pnpm install
 ```bash
 pnpm dlx vercel@latest login
 pnpm dlx vercel@latest switch
-pnpm dlx vercel@latest link --yes --scope sentry
-pnpm dlx vercel@latest env pull .env --environment=development --scope sentry
+pnpm dlx vercel@latest link --yes
+pnpm dlx vercel@latest env pull .env --environment=development
 ```
+
+If your team account requires an explicit Vercel scope, add `--scope <team-slug>` to the `link` and `env pull` commands.
 
 ## Run
 
@@ -50,3 +59,7 @@ Set Event Subscriptions and Interactivity URL to:
 ```text
 https://<tunnel-host>/api/webhooks/slack
 ```
+
+## Next step
+
+Run focused checks from [Testing](/contribute/testing/), then verify behavior in [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/).

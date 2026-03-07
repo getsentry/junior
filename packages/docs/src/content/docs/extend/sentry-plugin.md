@@ -1,6 +1,13 @@
 ---
 title: Sentry Plugin
 description: Configure Sentry OAuth for per-user investigation workflows.
+type: tutorial
+summary: Set up Sentry OAuth for per-user access and verify re-auth behavior for investigation workflows.
+prerequisites:
+  - /extend/plugins-overview/
+related:
+  - /concepts/credentials-and-oauth/
+  - /operate/security-hardening/
 ---
 
 The Sentry plugin enables per-user OAuth so Slack users can run Sentry investigations through capability-scoped access.

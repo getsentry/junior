@@ -40,6 +40,6 @@ If extending Junior requires touching core runtime files for every new use case,
 
 Junior is a strong fit for teams that already operate in Slack threads and want a controllable way to add incident, ops, or engineering workflows over time. If your primary goal is a generic web chat interface, Junior is usually not the first tool to reach for.
 
-## Start path
+## Next step
 
 Start with [Quickstart](/start-here/quickstart/) to wire runtime and production deployment in one flow. Then move to [Plugins Overview](/extend/plugins-overview/) and [Custom Plugins](/extend/custom-plugins/) to extend Junior with your own capabilities.

@@ -1,6 +1,13 @@
 ---
 title: Reliability Runbooks
 description: Symptom-driven runbooks for production incidents.
+type: troubleshooting
+summary: Triage incidents by symptom across webhook ingress, queue processing, turn execution, and tool failures.
+prerequisites:
+  - /operate/observability/
+related:
+  - /start-here/verify-and-troubleshoot/
+  - /reference/handler-surface/
 ---
 
 ## Webhook ingress failures
@@ -49,3 +56,7 @@ Check:
 2. Triage highest-error symptom first (webhook, queue, turn, tool).
 3. Apply rollback/hotfix.
 4. Re-run health + Slack-thread verification.
+
+## Next step
+
+Use [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) for first-response checks, then return to [Observability](/operate/observability/) to confirm recovery.

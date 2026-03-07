@@ -1,6 +1,13 @@
 ---
 title: Custom Plugins
 description: Create and package your own Junior plugin with optional capabilities, optional credentials, and skills.
+type: tutorial
+summary: Build a custom Junior plugin manifest with optional credentials and ship skills for runtime discovery.
+prerequisites:
+  - /extend/plugins-overview/
+related:
+  - /reference/runtime-commands/
+  - /concepts/skills-and-plugins/
 ---
 
 Custom plugins are declarative: they bundle a manifest (`plugin.yaml`) plus skills. The runtime discovers and wires capabilities from the manifest, so most integrations need little or no custom runtime code.
@@ -145,3 +152,7 @@ pnpm add @acme/junior-example
 ```
 
 After install, runtime discovery registers plugin capabilities/config keys and loads skills automatically.
+
+## Next step
+
+Test plugin behavior in a thread using [Runtime Commands](/reference/runtime-commands/), then harden provider auth with [Security Hardening](/operate/security-hardening/).

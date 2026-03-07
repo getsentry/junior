@@ -1,6 +1,14 @@
 ---
 title: Plugins Overview
 description: Extend Junior with plugins and skills, either locally in your app or as npm packages.
+type: conceptual
+summary: Choose between local and npm-distributed plugins and understand how plugin manifests and skills are discovered.
+prerequisites:
+  - /start-here/quickstart/
+related:
+  - /extend/custom-plugins/
+  - /extend/github-plugin/
+  - /extend/sentry-plugin/
 ---
 
 Junior’s extension model is simple: keep runtime wiring stable, and add behavior through plugin manifests plus skills. You can do this locally in your app or ship plugins as npm packages.

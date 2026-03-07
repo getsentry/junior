@@ -1,6 +1,13 @@
 ---
 title: GitHub Plugin
 description: Configure GitHub App credentials for issue workflows.
+type: tutorial
+summary: Configure the GitHub plugin with app credentials and verify capability-scoped issue workflows.
+prerequisites:
+  - /extend/plugins-overview/
+related:
+  - /reference/config-and-env/
+  - /reference/runtime-commands/
 ---
 
 The GitHub plugin uses GitHub App credentials so Junior can run repository workflows with explicit capability scoping.

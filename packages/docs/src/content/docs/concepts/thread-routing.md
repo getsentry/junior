@@ -1,6 +1,13 @@
 ---
 title: Thread Routing
 description: How mentions, thread replies, and continuity decisions are handled.
+type: conceptual
+summary: Learn how Junior maintains Slack thread identity, continuity, and failure handling across queued turns.
+prerequisites:
+  - /concepts/execution-model/
+related:
+  - /operate/observability/
+  - /operate/reliability-runbooks/
 ---
 
 ## Routing rules (high-level)

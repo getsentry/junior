@@ -23,7 +23,7 @@ related:
 ### Create a new app
 
 ```bash
-npx junior init my-bot
+npx @sentry/junior init my-bot
 cd my-bot
 pnpm install
 ```

@@ -1,6 +1,13 @@
 ---
 title: Releasing
 description: Package and docs release process.
+type: tutorial
+summary: Run package releases and docs preflight checks before publishing Junior updates.
+prerequisites:
+  - /contribute/testing/
+related:
+  - /contribute/development/
+  - /start-here/verify-and-troubleshoot/
 ---
 
 Junior uses lockstep package releases for:
@@ -30,3 +37,7 @@ Recommended preflight:
 ```bash
 pnpm docs:check
 ```
+
+## Next step
+
+After release, run smoke checks from [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) and monitor with [Observability](/operate/observability/).
