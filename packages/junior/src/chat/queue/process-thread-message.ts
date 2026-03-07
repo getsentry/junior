@@ -12,6 +12,7 @@ import {
 } from "@/chat/state";
 import { processThreadMessageRuntime } from "@/chat/thread-runtime/process-thread-message-runtime";
 import type { ThreadMessagePayload } from "@/chat/queue/types";
+import { isRetryableTurnError } from "@/chat/turn/errors";
 
 let stateAdapterConnected = false;
 
@@ -186,6 +187,19 @@ export async function processQueuedThreadMessage(
       throw new QueueMessageOwnershipError("complete", payload.dedupKey);
     }
   } catch (error) {
+    if (isRetryableTurnError(error, "subagent_task_deferred")) {
+      const completed = await completeQueueMessageProcessingOwnership({
+        rawKey: payload.dedupKey,
+        ownerToken,
+        queueMessageId: payload.queueMessageId
+      });
+
+      if (!completed) {
+        throw new QueueMessageOwnershipError("complete", payload.dedupKey);
+      }
+      return;
+    }
+
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     await logThreadMessageFailure(payload, errorMessage);

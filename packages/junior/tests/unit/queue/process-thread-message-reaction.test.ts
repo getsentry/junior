@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadMessagePayload } from "@/chat/queue/types";
+import { RetryableTurnError } from "@/chat/turn/errors";
 
 const {
   getQueueMessageProcessingStateMock,
@@ -119,5 +120,20 @@ describe("processQueuedThreadMessage reaction regressions", () => {
       }),
       "Failed to remove processing reaction before sending queue response"
     );
+  });
+
+  it("acks queue ownership for deferred subagent turns", async () => {
+    const payload = createPayload();
+
+    await processQueuedThreadMessage(payload, {
+      clearProcessingReaction: vi.fn(async () => undefined),
+      processRuntime: vi.fn(async () => {
+        throw new RetryableTurnError("subagent_task_deferred", "pending child task");
+      }),
+      logWarn: vi.fn()
+    });
+
+    expect(completeQueueMessageProcessingOwnershipMock).toHaveBeenCalledTimes(1);
+    expect(failQueueMessageProcessingOwnershipMock).not.toHaveBeenCalled();
   });
 });

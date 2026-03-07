@@ -1,7 +1,12 @@
 import type { Static, TSchema } from "@sinclair/typebox";
+import type { QueueResumeContext } from "@/chat/queue/types";
 
 export interface ToolCallOptions {
   experimental_context?: unknown;
+  toolCallId?: string;
+  conversationId?: string;
+  sessionId?: string;
+  queueContext?: QueueResumeContext;
 }
 
 export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {

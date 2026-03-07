@@ -16,6 +16,7 @@ import { generateThreadTitle, markConversationMessage, normalizeConversationText
 import { resolveUserAttachments } from "@/chat/services/vision-context";
 import { isDmChannel } from "@/chat/slack-actions/client";
 import { type ThreadArtifactsState } from "@/chat/slack-actions/types";
+import type { ThreadMessagePayload } from "@/chat/queue/types";
 import { resolveReplyDelivery } from "@/chat/turn/execute";
 import { isRetryableTurnError } from "@/chat/turn/errors";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
@@ -24,6 +25,22 @@ import { startActiveTurn } from "@/chat/turn/prepare";
 function buildDeterministicTurnId(messageId: string): string {
   const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");
   return `turn_${sanitized}`;
+}
+
+function buildQueueResumePayload(thread: Thread, message: Message, threadId: string): ThreadMessagePayload {
+  const threadLike = thread as unknown as { toJSON?: () => ThreadMessagePayload["thread"] };
+  const messageLike = message as unknown as { toJSON?: () => ThreadMessagePayload["message"] };
+  return {
+    dedupKey: `${threadId}:${message.id}`,
+    kind: "subscribed_reply",
+    normalizedThreadId: threadId,
+    thread: typeof threadLike.toJSON === "function"
+      ? threadLike.toJSON()
+      : (thread as unknown as ThreadMessagePayload["thread"]),
+    message: typeof messageLike.toJSON === "function"
+      ? messageLike.toJSON()
+      : (message as unknown as ThreadMessagePayload["message"])
+  };
 }
 
 interface ReplyExecutorDeps {
@@ -61,7 +78,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const threadTs = getThreadTs(threadId);
     const messageTs = getMessageTs(message);
     const runId = getRunId(thread, message);
-    const conversationId = threadId ?? runId;
+        const conversationId = threadId ?? runId;
+        const queueResumePayload = threadId ? buildQueueResumePayload(thread, message, threadId) : undefined;
 
     await withSpan(
       "chat.reply",
@@ -207,6 +225,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               channelId,
               requesterId: message.author.userId
             },
+            queueContext: queueResumePayload
+              ? {
+                  dedupKey: queueResumePayload.dedupKey,
+                  normalizedThreadId: queueResumePayload.normalizedThreadId,
+                  message: queueResumePayload.message,
+                  thread: queueResumePayload.thread
+                }
+              : undefined,
             toolChannelId,
             sandbox: {
               sandboxId: preparedState.sandboxId

@@ -14,6 +14,7 @@ import { createSlackListCreateTool } from "@/chat/tools/slack-list-create";
 import { createSlackListGetItemsTool } from "@/chat/tools/slack-list-get-items";
 import { createSlackListUpdateItemTool } from "@/chat/tools/slack-list-update-item";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { createTaskSubagentTool } from "@/chat/tools/task-subagent";
 import type { ToolHooks, ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 import { createWebFetchTool } from "@/chat/tools/web-fetch";
 import { createWebSearchTool } from "@/chat/tools/web-search";
@@ -95,6 +96,7 @@ export function createTools(
   hooks: ToolHooks = {},
   context: ToolRuntimeContext
 ) {
+  const isSubagentExecution = context.isSubagentExecution === true;
   const state = createToolState(hooks, context);
   const tools: Record<string, unknown> = {
     loadSkill: wrapToolExecution(
@@ -110,19 +112,23 @@ export function createTools(
     writeFile: wrapToolExecution("writeFile", createWriteFileTool(), hooks),
     webSearch: wrapToolExecution("webSearch", createWebSearchTool(), hooks),
     webFetch: wrapToolExecution("webFetch", createWebFetchTool(hooks), hooks),
-    imageGenerate: wrapToolExecution("imageGenerate", createImageGenerateTool(hooks), hooks),
-    slackCanvasUpdate: wrapToolExecution("slackCanvasUpdate", createSlackCanvasUpdateTool(state, context), hooks),
-    slackListCreate: wrapToolExecution("slackListCreate", createSlackListCreateTool(state), hooks),
-    slackListAddItems: wrapToolExecution("slackListAddItems", createSlackListAddItemsTool(state), hooks),
-    slackListGetItems: wrapToolExecution("slackListGetItems", createSlackListGetItemsTool(state), hooks),
-    slackListUpdateItem: wrapToolExecution(
+    imageGenerate: wrapToolExecution("imageGenerate", createImageGenerateTool(hooks), hooks)
+  };
+
+  if (!isSubagentExecution) {
+    tools.taskSubagent = wrapToolExecution("taskSubagent", createTaskSubagentTool(), hooks);
+    tools.slackCanvasUpdate = wrapToolExecution("slackCanvasUpdate", createSlackCanvasUpdateTool(state, context), hooks);
+    tools.slackListCreate = wrapToolExecution("slackListCreate", createSlackListCreateTool(state), hooks);
+    tools.slackListAddItems = wrapToolExecution("slackListAddItems", createSlackListAddItemsTool(state), hooks);
+    tools.slackListGetItems = wrapToolExecution("slackListGetItems", createSlackListGetItemsTool(state), hooks);
+    tools.slackListUpdateItem = wrapToolExecution(
       "slackListUpdateItem",
       createSlackListUpdateItemTool(state),
       hooks
-    )
-  };
+    );
+  }
 
-  if (isConversationScopedChannel(context.channelId)) {
+  if (!isSubagentExecution && isConversationScopedChannel(context.channelId)) {
     tools.slackCanvasCreate = wrapToolExecution(
       "slackCanvasCreate",
       createSlackCanvasCreateTool(context, state),
@@ -130,7 +136,7 @@ export function createTools(
     );
   }
 
-  if (isConversationChannel(context.channelId)) {
+  if (!isSubagentExecution && isConversationChannel(context.channelId)) {
     tools.slackChannelPostMessage = wrapToolExecution(
       "slackChannelPostMessage",
       createSlackChannelPostMessageTool(context, state),
@@ -148,7 +154,7 @@ export function createTools(
     );
   }
 
-  if (isConversationScopedChannel(context.channelId)) {
+  if (!isSubagentExecution && isConversationScopedChannel(context.channelId)) {
     tools.slackMessageAddReaction = wrapToolExecution(
       "slackMessageAddReaction",
       createSlackMessageAddReactionTool(context, state),
