@@ -45,8 +45,6 @@
     "@chat-adapter/state-redis": "4.17.0",
     "@mariozechner/pi-agent-core": "^0.56.3",
     "@mariozechner/pi-ai": "^0.56.3",
-    "@sentry/junior-github": "workspace:*",
-    "@sentry/junior-sentry": "workspace:*",
     "@sinclair/typebox": "^0.34.48",
     "@slack/web-api": "^7.14.1",
     "@vercel/queue": "^0.1.3",
