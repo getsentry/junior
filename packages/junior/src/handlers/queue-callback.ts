@@ -11,34 +11,35 @@ import {
 } from "@/chat/observability";
 
 const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(async (message, metadata) => {
-  const payload = {
-    ...message,
-    queueMessageId: metadata.messageId
-  } satisfies ThreadMessagePayload;
+  if (metadata.topicName === getThreadMessageTopic()) {
+    const payload = {
+      ...message,
+      queueMessageId: metadata.messageId
+    } satisfies ThreadMessagePayload;
 
-  if (metadata.topicName !== getThreadMessageTopic()) {
-    throw new Error(`Unexpected queue topic: ${metadata.topicName}`);
+    await withSpan(
+      "queue.process_message",
+      "queue.process_message",
+      {
+        slackThreadId: payload.normalizedThreadId,
+        slackChannelId: payload.thread.channelId,
+        slackUserId: payload.message.author?.userId
+      },
+      async () => {
+        await processQueuedThreadMessage(payload);
+      },
+      {
+        "messaging.message.id": payload.message.id,
+        "app.queue.message_kind": payload.kind,
+        "app.queue.message_id": payload.queueMessageId,
+        "app.queue.delivery_count": metadata.deliveryCount,
+        "app.queue.topic": metadata.topicName
+      }
+    );
+    return;
   }
 
-  await withSpan(
-    "queue.process_message",
-    "queue.process_message",
-    {
-      slackThreadId: payload.normalizedThreadId,
-      slackChannelId: payload.thread.channelId,
-      slackUserId: payload.message.author?.userId
-    },
-    async () => {
-      await processQueuedThreadMessage(payload);
-    },
-    {
-      "messaging.message.id": payload.message.id,
-      "app.queue.message_kind": payload.kind,
-      "app.queue.message_id": payload.queueMessageId,
-      "app.queue.delivery_count": metadata.deliveryCount,
-      "app.queue.topic": metadata.topicName
-    }
-  );
+  throw new Error(`Unexpected queue topic: ${metadata.topicName}`);
 });
 
 /**

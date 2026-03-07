@@ -79,7 +79,7 @@ vi.mock("@/chat/observability", () => ({
   logInfo: vi.fn()
 }));
 
-import { GET } from "@/../app/api/oauth/callback/[provider]/route";
+import { GET } from "@/handlers/oauth-callback";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;

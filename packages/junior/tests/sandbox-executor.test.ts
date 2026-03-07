@@ -439,12 +439,15 @@ describe("createSandboxExecutor", () => {
     const sandbox = await executor.createSandbox();
 
     expect(sandbox).toBe(rebuiltSandbox);
-    expect(resolveRuntimeDependencySnapshotMock).toHaveBeenNthCalledWith(2, {
-      runtime: "node22",
-      timeoutMs: 1000 * 60 * 30,
-      forceRebuild: true,
-      staleSnapshotId: "snap_missing"
-    });
+    expect(resolveRuntimeDependencySnapshotMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        runtime: "node22",
+        timeoutMs: 1000 * 60 * 30,
+        forceRebuild: true,
+        staleSnapshotId: "snap_missing"
+      })
+    );
     expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
       timeout: 1000 * 60 * 30,
       source: {
@@ -462,5 +465,41 @@ describe("createSandboxExecutor", () => {
 
     await expect(executor.createSandbox()).rejects.toThrow("sandbox setup failed");
     expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("emits sandbox phase status updates and caps at four", async () => {
+    const sandbox = makeSandbox("sbx_status");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    const statuses: string[] = [];
+    resolveRuntimeDependencySnapshotMock.mockImplementationOnce(async (params: { onProgress?: (phase: string) => Promise<void> }) => {
+      await params.onProgress?.("resolve_start");
+      await params.onProgress?.("waiting_for_lock");
+      await params.onProgress?.("building_snapshot");
+      await params.onProgress?.("cache_hit");
+      await params.onProgress?.("build_complete");
+      return {
+        snapshotId: "snap_status",
+        profileHash: "hash_status",
+        dependencyCount: 2,
+        cacheHit: false,
+        resolveOutcome: "rebuilt"
+      };
+    });
+
+    const executor = createSandboxExecutor({
+      onStatus: async (status) => {
+        statuses.push(status);
+      }
+    });
+    executor.configureSkills([]);
+
+    await executor.createSandbox();
+
+    expect(statuses).toEqual([
+      "Preparing sandbox runtime...",
+      "Checking sandbox snapshot cache...",
+      "Waiting for sandbox snapshot build...",
+      "Building sandbox snapshot..."
+    ]);
   });
 });

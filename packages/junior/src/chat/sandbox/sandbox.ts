@@ -5,7 +5,11 @@ import { createBashTool } from "bash-tool";
 import { extractHttpErrorDetails } from "@/chat/http-error-details";
 import { setSpanAttributes, setSpanStatus, withSpan, type ObservabilityContext } from "@/chat/observability";
 import { SANDBOX_SKILLS_ROOT, SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
-import { isSnapshotMissingError, resolveRuntimeDependencySnapshot } from "@/chat/sandbox/runtime-dependency-snapshots";
+import {
+  isSnapshotMissingError,
+  resolveRuntimeDependencySnapshot,
+  type RuntimeDependencySnapshotProgressPhase
+} from "@/chat/sandbox/runtime-dependency-snapshots";
 import type { SkillMetadata } from "@/chat/skills";
 
 // Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
@@ -295,6 +299,7 @@ export function createSandboxExecutor(options?: {
   sandboxId?: string;
   timeoutMs?: number;
   traceContext?: ObservabilityContext;
+  onStatus?: (status: string) => void | Promise<void>;
   runBashCustomCommand?: (command: string) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
 }): SandboxExecutor {
   let sandbox: Sandbox | null = null;
@@ -304,6 +309,7 @@ export function createSandboxExecutor(options?: {
 
   const timeoutMs = options?.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options?.traceContext ?? {};
+  const emitStatus = options?.onStatus;
 
   const withSandboxSpan = <T>(
     name: string,
@@ -378,6 +384,33 @@ export function createSandboxExecutor(options?: {
 
         const createFreshSandbox = async (): Promise<Sandbox> => {
           const runtime = "node22";
+          let statusCount = 0;
+          const sentStatuses = new Set<string>();
+          const emitSandboxStatus = async (status: string): Promise<void> => {
+            if (!emitStatus || statusCount >= 4 || sentStatuses.has(status)) {
+              return;
+            }
+            sentStatuses.add(status);
+            statusCount += 1;
+            await emitStatus(status);
+          };
+          const reportSnapshotPhase = async (phase: RuntimeDependencySnapshotProgressPhase): Promise<void> => {
+            if (phase === "resolve_start") {
+              await emitSandboxStatus("Checking sandbox snapshot cache...");
+              return;
+            }
+            if (phase === "waiting_for_lock") {
+              await emitSandboxStatus("Waiting for sandbox snapshot build...");
+              return;
+            }
+            if (phase === "building_snapshot") {
+              await emitSandboxStatus("Building sandbox snapshot...");
+              return;
+            }
+            if (phase === "cache_hit") {
+              await emitSandboxStatus("Using cached sandbox snapshot...");
+            }
+          };
 
           let createdSandbox: Sandbox;
           try {
@@ -390,9 +423,11 @@ export function createSandboxExecutor(options?: {
                 "app.sandbox.runtime": runtime
               },
               async () => {
+                await emitSandboxStatus("Preparing sandbox runtime...");
                 const snapshot = await resolveRuntimeDependencySnapshot({
                   runtime,
-                  timeoutMs
+                  timeoutMs,
+                  onProgress: reportSnapshotPhase
                 });
 
                 setSpanAttributes({
@@ -405,6 +440,7 @@ export function createSandboxExecutor(options?: {
                 });
 
                 if (!snapshot.snapshotId) {
+                  await emitSandboxStatus("Starting sandbox...");
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     runtime
@@ -412,6 +448,7 @@ export function createSandboxExecutor(options?: {
                 }
 
                 try {
+                  await emitSandboxStatus("Starting sandbox from snapshot...");
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     source: {
@@ -431,12 +468,14 @@ export function createSandboxExecutor(options?: {
                     runtime,
                     timeoutMs,
                     forceRebuild: true,
-                    staleSnapshotId: snapshot.snapshotId
+                    staleSnapshotId: snapshot.snapshotId,
+                    onProgress: reportSnapshotPhase
                   });
                   if (!rebuiltSnapshot.snapshotId) {
                     throw error;
                   }
 
+                  await emitSandboxStatus("Retrying sandbox startup with a fresh snapshot...");
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     source: {

@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@sentry/junior": "workspace:*",
+    "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-sentry": "workspace:*",
     "@sentry/nextjs": "^10.42.0",
     "next": "^16.1.6",
     "react": "^19.2.4",

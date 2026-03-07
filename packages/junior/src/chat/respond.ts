@@ -798,6 +798,7 @@ export async function generateAssistantReply(
     const sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       traceContext: spanContext,
+      onStatus: context.onStatus,
       runBashCustomCommand: async (command) => {
         const result = await maybeExecuteJrRpcCustomCommand(command, {
           capabilityRuntime,

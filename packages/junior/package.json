@@ -24,12 +24,9 @@
     "bin"
   ],
   "scripts": {
-    "prepare": "pnpm run build:pkg",
-    "prepack": "pnpm run build:pkg",
-    "dev": "next dev",
-    "build": "next build",
-    "build:pkg": "tsup",
-    "start": "next start",
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
+    "build": "tsup",
     "test": "pnpm run test:slack-boundary && vitest run",
     "test:watch": "vitest",
     "preevals": "pnpm run test:slack-boundary",

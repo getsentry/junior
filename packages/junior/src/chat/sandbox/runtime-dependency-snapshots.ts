@@ -48,6 +48,13 @@ export interface RuntimeDependencySnapshot {
   rebuildReason?: SnapshotRebuildReason;
 }
 
+export type RuntimeDependencySnapshotProgressPhase =
+  | "resolve_start"
+  | "cache_hit"
+  | "waiting_for_lock"
+  | "building_snapshot"
+  | "build_complete";
+
 interface BuildLockResult {
   snapshotId: string;
   source: "wait_cache" | "callback_cache" | "built";
@@ -380,11 +387,14 @@ async function runRuntimePostinstall(
     },
     async () => {
       for (const command of commands) {
+        const quotedArgs = (command.args ?? []).map((arg) => JSON.stringify(arg)).join(" ");
+        const invocation = [command.cmd, quotedArgs].filter(Boolean).join(" ");
+        const pathPrefix = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`;
         await runOrThrow(
           sandbox,
           {
-            cmd: command.cmd,
-            ...(command.args ? { args: command.args } : {}),
+            cmd: "bash",
+            args: ["-lc", `export PATH="${pathPrefix}" && ${invocation}`],
             ...(command.sudo !== undefined ? { sudo: command.sudo } : {})
           },
           `runtime-postinstall ${command.cmd}`
@@ -436,7 +446,10 @@ async function createDependencySnapshot(profile: DependencyProfile, runtime: str
 async function withBuildLock(
   profileHash: string,
   callback: () => Promise<{ snapshotId: string; source: "callback_cache" | "built" }>,
-  canUseCachedSnapshot: (cached: CachedSnapshotEntry) => boolean
+  canUseCachedSnapshot: (cached: CachedSnapshotEntry) => boolean,
+  hooks?: {
+    onWaitingForLock?: () => void | Promise<void>;
+  }
 ): Promise<BuildLockResult> {
   const state = getStateAdapter();
   await state.connect();
@@ -464,6 +477,7 @@ async function withBuildLock(
       "app.sandbox.snapshot.profile_hash": profileHash
     },
     async () => {
+      await hooks?.onWaitingForLock?.();
       const waitUntil = Date.now() + SNAPSHOT_WAIT_FOR_LOCK_MS;
       while (Date.now() < waitUntil) {
         const cached = await getCachedSnapshot(profileHash);
@@ -543,6 +557,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
   timeoutMs: number;
   forceRebuild?: boolean;
   staleSnapshotId?: string;
+  onProgress?: (phase: RuntimeDependencySnapshotProgressPhase) => void | Promise<void>;
 }): Promise<RuntimeDependencySnapshot> {
   return await withSnapshotSpan(
     "sandbox.snapshot.resolve",
@@ -552,6 +567,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
       "app.sandbox.snapshot.force_rebuild": Boolean(params.forceRebuild)
     },
     async () => {
+      await params.onProgress?.("resolve_start");
       const resolveStartedAtMs = Date.now();
       const profile = buildDependencyProfile(params.runtime);
       if (!profile) {
@@ -566,6 +582,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
       const cachedNeedsRebuild = Boolean(cached?.snapshotId && shouldRebuildCachedSnapshot(profile, cached));
 
       if (!params.forceRebuild && cached?.snapshotId && !cachedNeedsRebuild) {
+        await params.onProgress?.("cache_hit");
         return {
           snapshotId: cached.snapshotId,
           profileHash: profile.profileHash,
@@ -597,9 +614,11 @@ export async function resolveRuntimeDependencySnapshot(params: {
       const lockResult = await withBuildLock(profile.profileHash, async () => {
         const latest = await getCachedSnapshot(profile.profileHash);
         if (latest?.snapshotId && canUseCachedSnapshot(latest)) {
+          await params.onProgress?.("cache_hit");
           return { snapshotId: latest.snapshotId, source: "callback_cache" as const };
         }
 
+        await params.onProgress?.("building_snapshot");
         const nextSnapshotId = await createDependencySnapshot(profile, params.runtime, params.timeoutMs);
         await setCachedSnapshot({
           profileHash: profile.profileHash,
@@ -608,8 +627,13 @@ export async function resolveRuntimeDependencySnapshot(params: {
           createdAtMs: Date.now(),
           dependencyCount: profile.dependencyCount
         });
+        await params.onProgress?.("build_complete");
         return { snapshotId: nextSnapshotId, source: "built" as const };
-      }, canUseCachedSnapshot);
+      }, canUseCachedSnapshot, {
+        onWaitingForLock: async () => {
+          await params.onProgress?.("waiting_for_lock");
+        }
+      });
 
       return {
         snapshotId: lockResult.snapshotId,

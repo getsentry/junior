@@ -475,8 +475,8 @@ describe("runtime dependency snapshots", () => {
       args: ["install", "--global", "--prefix", "/vercel/sandbox/.junior", "agent-browser@latest"]
     });
     expect(sandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "agent-browser",
-      args: ["install"]
+      cmd: "bash",
+      args: ["-lc", "export PATH=\"/vercel/sandbox/.junior/bin:$PATH\" && agent-browser \"install\""]
     });
   });
 });
