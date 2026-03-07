@@ -32,6 +32,8 @@ describe("withJunior", () => {
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",
+        "@mariozechner/pi-agent-core",
+        "@mariozechner/pi-ai",
         "@chat-adapter/slack",
         "@slack/web-api"
       ])
@@ -69,6 +71,8 @@ describe("withJunior", () => {
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",
+        "@mariozechner/pi-agent-core",
+        "@mariozechner/pi-ai",
         "@chat-adapter/slack",
         "@slack/web-api"
       ])
@@ -113,6 +117,8 @@ describe("withJunior", () => {
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",
+        "@mariozechner/pi-agent-core",
+        "@mariozechner/pi-ai",
         "@chat-adapter/slack",
         "@slack/web-api",
         "custom-package"

@@ -103,6 +103,8 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
       "@vercel/sandbox",
       "bash-tool",
       "just-bash",
+      "@mariozechner/pi-agent-core",
+      "@mariozechner/pi-ai",
       "@chat-adapter/slack",
       "@slack/web-api"
     ])),
