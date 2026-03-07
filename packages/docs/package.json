@@ -1,0 +1,23 @@
+{
+  "name": "@sentry/junior-docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check && astro build"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.6",
+    "@astrojs/starlight": "^0.37.7",
+    "@fontsource-variable/space-grotesk": "^5.2.10",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "astro": "^5.18.0",
+    "starlight-typedoc": "^0.21.5",
+    "typedoc": "^0.28.17",
+    "typedoc-plugin-markdown": "^4.9.0",
+    "typescript": "^5.9.3"
+  }
+}

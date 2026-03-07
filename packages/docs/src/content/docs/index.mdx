@@ -1,0 +1,98 @@
+---
+title: Junior
+description: Production-ready docs for the Junior Slack bot runtime.
+template: splash
+hero:
+  title: '<span class="jr-home-mega-inline">Junior</span><span class="jr-home-headline">Slack thread in. <span class="jr-highlight">Useful context out.</span></span>'
+  tagline: "Junior is the intern you never knew you wanted."
+  actions:
+    - text: Get Started
+      link: /start-here/quickstart/
+      icon: right-arrow
+---
+
+<div class="jr-home">
+<section class="slack-mock">
+  <header class="slack-mock-header">
+    <div class="slack-channel">
+      <strong>#incident-ops</strong>
+    </div>
+    <div class="slack-meta">
+      <span>12:03 PM</span>
+      <span class="slack-dot" aria-hidden="true"></span>
+      <span>9 replies</span>
+    </div>
+  </header>
+
+  <div class="slack-thread">
+    <article class="msg user">
+      <div class="msg-head">
+        <span class="avatar" aria-hidden="true">Y</span>
+        <span class="who">You</span>
+        <span class="when">12:03</span>
+      </div>
+      <div class="bubble">
+        <p>
+          Need context on the 5xx spike after deploy. Pull the likely cause and give me a rollback call if this is the
+          auth change.
+        </p>
+      </div>
+    </article>
+
+    <article class="msg junior">
+      <div class="msg-head">
+        <span class="avatar" aria-hidden="true">J</span>
+        <span class="who">Junior</span>
+        <span class="when">12:03</span>
+      </div>
+      <div class="bubble">
+        <p>
+          On it. I am pulling deploy diff, recent error groups, and queue callback failures for the last 30 min.
+        </p>
+      </div>
+    </article>
+
+    <p class="automation-note">automation: deployed commit mapped • suspect routes identified • rollback drafted</p>
+
+    <article class="msg junior">
+      <div class="msg-head">
+        <span class="avatar" aria-hidden="true">J</span>
+        <span class="who">Junior</span>
+        <span class="when">12:04</span>
+      </div>
+      <div class="bubble">
+        <p>
+          Found it. Error rate jumped 7x immediately after commit `9f4e2c` in auth middleware. 87% of failures are
+          `invalid_signature` from webhook verification.
+        </p>
+      </div>
+    </article>
+
+    <article class="msg user">
+      <div class="msg-head">
+        <span class="avatar" aria-hidden="true">Y</span>
+        <span class="who">You</span>
+        <span class="when">12:04</span>
+      </div>
+      <div class="bubble">
+        <p>Roll it back and drop the status update text for #eng-incidents.</p>
+      </div>
+    </article>
+
+    <article class="msg junior">
+      <div class="msg-head">
+        <span class="avatar" aria-hidden="true">J</span>
+        <span class="who">Junior</span>
+        <span class="when">12:05</span>
+      </div>
+      <div class="bubble">
+        <p>
+          Done. Rollback is live. Error rate is trending down. Draft posted:
+          “Rolled back auth middleware regression from `9f4e2c`; webhook 5xx recovering.”
+        </p>
+      </div>
+    </article>
+  </div>
+
+</section>
+</div>

@@ -39,4 +39,4 @@ This directory is the source of truth for application instrumentation.
 - [Semantics Map](./semantics.md)
 
 ## Operational Guides (Non-Normative)
-- [Telemetry Usage Runbooks](../../docs/operations/telemetry-runbooks.md)
+- [Telemetry Usage Runbooks](../../packages/docs/src/content/docs/operate/telemetry-runbooks.md)

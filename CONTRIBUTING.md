@@ -45,6 +45,7 @@ pnpm test
 pnpm evals
 pnpm typecheck
 pnpm skills:check
+pnpm docs:check
 ```
 
 Build and validate the published package artifacts:

@@ -8,4 +8,4 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-github
 ```
 
-For full setup, configuration, and verification steps, see [skills/github/README.md](skills/github/README.md).
+Full setup guide: https://junior.sentry.dev/extend/github-plugin/
