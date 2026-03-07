@@ -2,7 +2,7 @@
   "mcpServers": {
     "sentry": {
       "type": "http",
-      "url": "https://mcp.sentry.dev/mcp?experimental=1"
+      "url": "https://mcp.sentry.dev/mcp/sentry/junior?experimental=1"
     }
   }
 }

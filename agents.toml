@@ -51,3 +51,11 @@ source = "vercel/ai"
 [[skills]]
 name = "doc-coauthoring"
 source = "getsentry/skills"
+
+[[skills]]
+name = "agent-browser"
+source = "vercel-labs/agent-browser"
+
+[[skills]]
+name = "dogfood"
+source = "vercel-labs/agent-browser"
