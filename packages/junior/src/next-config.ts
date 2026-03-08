@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 import { createRequire } from "node:module";
+import path from "node:path";
+import { discoverNodeModulesDirs } from "@/chat/discovery-roots";
+import { isDirectory } from "@/chat/fs-utils";
 import { discoverInstalledPluginPackageContent } from "./chat/plugins/package-discovery";
 
 const require = createRequire(import.meta.url);
@@ -27,6 +30,13 @@ function sentryConfigured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN);
 }
 
+function isPackageInstalled(cwd: string, packageName: string): boolean {
+  const nodeModulesDirs = discoverNodeModulesDirs(cwd);
+  return nodeModulesDirs.some((nodeModulesDir) =>
+    isDirectory(path.join(nodeModulesDir, ...packageName.split("/")))
+  );
+}
+
 function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorConfigOptions): NextConfig {
   const existingServerRuntimeConfig = (nextConfig as { serverRuntimeConfig?: Record<string, unknown> } | undefined)
     ?.serverRuntimeConfig ?? {};
@@ -38,9 +48,20 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   const unresolvedConfiguredPackages = configuredPluginPackages.filter(
     (packageName) => !discoveredPlugins.packageNames.includes(packageName)
   );
-  if (unresolvedConfiguredPackages.length > 0) {
+  const invalidPluginPackages = unresolvedConfiguredPackages.filter((packageName) =>
+    isPackageInstalled(process.cwd(), packageName)
+  );
+  const missingPluginPackages = unresolvedConfiguredPackages.filter(
+    (packageName) => !invalidPluginPackages.includes(packageName)
+  );
+  if (invalidPluginPackages.length > 0) {
     throw new Error(
-      `withJunior pluginPackages contains unresolved packages: ${unresolvedConfiguredPackages.join(", ")}`
+      `withJunior pluginPackages contains installed packages that are not valid Junior plugins: ${invalidPluginPackages.join(", ")}`
+    );
+  }
+  if (missingPluginPackages.length > 0) {
+    throw new Error(
+      `withJunior pluginPackages contains unresolved packages: ${missingPluginPackages.join(", ")}`
     );
   }
   const defaultDataTracingIncludes = options?.dataDir

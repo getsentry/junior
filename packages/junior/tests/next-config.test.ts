@@ -277,4 +277,35 @@ describe("withJunior", () => {
       process.chdir(originalCwd);
     }
   });
+
+  it("throws when explicit pluginPackages contains installed packages without Junior plugin content", async () => {
+    const originalCwd = process.cwd();
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-next-config-"));
+
+    try {
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-app",
+          private: true
+        }),
+        "utf8"
+      );
+      await fs.mkdir(path.join(tempRoot, "node_modules", "@acme", "not-a-junior-plugin"), {
+        recursive: true
+      });
+      await fs.writeFile(
+        path.join(tempRoot, "node_modules", "@acme", "not-a-junior-plugin", "package.json"),
+        JSON.stringify({ name: "@acme/not-a-junior-plugin", version: "1.0.0" }),
+        "utf8"
+      );
+      process.chdir(tempRoot);
+
+      expect(() =>
+        withJunior({ pluginPackages: ["@acme/not-a-junior-plugin"] }, {})
+      ).toThrow("installed packages that are not valid Junior plugins");
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
 });
