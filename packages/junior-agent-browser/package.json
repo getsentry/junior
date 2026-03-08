@@ -1,0 +1,13 @@
+{
+  "name": "@sentry/junior-agent-browser",
+  "version": "0.1.1",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "files": [
+    "plugin.yaml",
+    "skills"
+  ]
+}

@@ -19,6 +19,7 @@ export default defineConfig({
     "/get-started/index": "/start-here/overview",
     "/get-started/quickstart": "/start-here/quickstart",
     "/plugins/overview": "/extend/plugins-overview",
+    "/plugins/agent-browser": "/extend/agent-browser-plugin",
     "/plugins/github": "/extend/github-plugin",
     "/plugins/sentry": "/extend/sentry-plugin",
     "/operate/telemetry-runbooks": "/operate/reliability-runbooks",
@@ -59,6 +60,7 @@ export default defineConfig({
           items: [
             { label: "Plugins Overview", link: "/extend/plugins-overview/" },
             { label: "Custom Plugins", link: "/extend/custom-plugins/" },
+            { label: "Agent Browser Plugin", link: "/extend/agent-browser-plugin/" },
             { label: "GitHub Plugin", link: "/extend/github-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" }
           ]
