@@ -7,6 +7,7 @@ export default defineConfig({
     "handlers/queue-callback": "src/handlers/queue-callback.ts",
     "handlers/health": "src/handlers/health.ts",
     "cli/init": "src/cli/init.ts",
+    "cli/run": "src/cli/run.ts",
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
     "next-config": "src/next-config.ts",
     instrumentation: "src/instrumentation.ts",

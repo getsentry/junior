@@ -10,7 +10,6 @@ const { positionals } = parseArgs({
 });
 
 const command = positionals[0];
-const subcommand = positionals[1];
 
 async function loadCliFunction(moduleName, exportName, unavailableMessage) {
   const currentFile = fileURLToPath(import.meta.url);
@@ -38,23 +37,18 @@ async function runInit(dir) {
 }
 
 async function main() {
-  if (command === "init") {
-    const dir = positionals[1];
-    if (!dir) {
-      console.error("usage: junior init <dir>");
-      process.exit(1);
-    }
-    await runInit(dir);
-    return;
+  const runCli = await loadCliFunction(
+    "run",
+    "runCli",
+    "CLI dispatcher module is unavailable; reinstall @sentry/junior and retry."
+  );
+  const exitCode = await runCli(positionals, {
+    runInit,
+    runSnapshotCreate
+  });
+  if (exitCode !== 0) {
+    process.exit(exitCode);
   }
-
-  if (command === "snapshot" && subcommand === "create") {
-    await runSnapshotCreate();
-    return;
-  }
-
-  console.error("usage: junior init <dir>\n       junior snapshot create");
-  process.exit(1);
 }
 
 main().catch((error) => {

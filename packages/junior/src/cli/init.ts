@@ -42,7 +42,17 @@ export async function runInit(dir: string, log: (line: string) => void = console
   }
 
   const target = path.resolve(targetDir);
-  fs.mkdirSync(target, { recursive: true });
+  if (fs.existsSync(target)) {
+    const stat = fs.statSync(target);
+    if (!stat.isDirectory()) {
+      throw new Error(`refusing to initialize non-directory path: ${target}`);
+    }
+    if (fs.readdirSync(target).length > 0) {
+      throw new Error(`refusing to initialize non-empty directory: ${target}`);
+    }
+  } else {
+    fs.mkdirSync(target, { recursive: true });
+  }
 
   const name = path.basename(target);
   const pkg = {

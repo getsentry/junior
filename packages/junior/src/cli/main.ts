@@ -1,24 +1,23 @@
-import { runInit } from "./init";
-import { runSnapshotCreate } from "./snapshot-warmup";
+import { runCli } from "./run";
+
+async function runInit(dir: string): Promise<void> {
+  const mod = await import("./init");
+  await mod.runInit(dir);
+}
+
+async function runSnapshotCreate(): Promise<void> {
+  const mod = await import("./snapshot-warmup");
+  await mod.runSnapshotCreate();
+}
 
 async function main(argv: string[]): Promise<void> {
-  const [command, subcommand] = argv;
-
-  if (command === "init") {
-    if (!subcommand) {
-      throw new Error("usage: junior init <dir>");
-    }
-    await runInit(subcommand);
-    return;
+  const exitCode = await runCli(argv, {
+    runInit,
+    runSnapshotCreate
+  });
+  if (exitCode !== 0) {
+    process.exit(exitCode);
   }
-
-  if (command === "snapshot" && subcommand === "create") {
-    await runSnapshotCreate();
-    return;
-  }
-
-  console.error("usage: junior init <dir>\n       junior snapshot create");
-  process.exit(1);
 }
 
 main(process.argv.slice(2)).catch((error) => {
