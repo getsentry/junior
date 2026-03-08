@@ -3,11 +3,15 @@ import path from "node:path";
 
 export default withJunior(
   {
-    pluginPackages: ["@sentry/junior-github", "@sentry/junior-sentry"]
+    pluginPackages: [
+      "@sentry/junior-agent-browser",
+      "@sentry/junior-github",
+      "@sentry/junior-sentry",
+    ],
   },
   {
     turbopack: {
-      root: path.resolve(__dirname, "../..")
-    }
-  }
+      root: path.resolve(__dirname, "../.."),
+    },
+  },
 );
