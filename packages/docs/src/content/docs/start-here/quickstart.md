@@ -43,6 +43,11 @@ export { GET, POST } from "@sentry/junior/handler";
 export const runtime = "nodejs";
 ```
 
+```ts title="app/api/queue/callback/route.ts"
+export { POST } from "@sentry/junior/handlers/queue-callback";
+export const runtime = "nodejs";
+```
+
 ### Enable Next.js runtime config
 
 ```ts title="next.config.mjs"
@@ -94,7 +99,7 @@ pnpm dlx vercel@latest link
 ```json title="vercel.json"
 {
   "functions": {
-    "app/api/[...path]/route.ts": {
+    "app/api/queue/callback/route.ts": {
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
@@ -160,9 +165,9 @@ https://<your-domain>/api/webhooks/slack
 ## Common failures
 
 - `401` or signature failures: verify `SLACK_SIGNING_SECRET`.
-- No thread processing: confirm the catch-all route exists.
+- No thread processing: confirm both catch-all and queue callback routes exist.
 - No bot post: verify bot token scopes and Slack app installation.
-- Slack timeouts in production: check `vercel.json` queue trigger and catch-all route path.
+- Slack timeouts in production: check `vercel.json` queue trigger and callback route path.
 - OAuth callback issues for plugins: set `JUNIOR_BASE_URL` to production URL.
 - Snapshot warmup build failures: verify `REDIS_URL` is available to builds and OIDC is enabled for `VERCEL_OIDC_TOKEN`.
 

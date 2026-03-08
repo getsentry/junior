@@ -10,6 +10,14 @@ function writeWrapperFiles(targetDir: string): void {
       'export const runtime = "nodejs";\n'
   );
 
+  const queueRouteDir = path.join(targetDir, "app", "api", "queue", "callback");
+  fs.mkdirSync(queueRouteDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(queueRouteDir, "route.js"),
+    'export { POST } from "@sentry/junior/handlers/queue-callback";\n' +
+      'export const runtime = "nodejs";\n'
+  );
+
   fs.mkdirSync(path.join(targetDir, "app"), { recursive: true });
   fs.writeFileSync(
     path.join(targetDir, "app", "layout.js"),
