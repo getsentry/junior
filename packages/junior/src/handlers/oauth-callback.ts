@@ -229,7 +229,7 @@ export async function GET(
     }
     return htmlErrorResponse(
       "Authorization failed",
-      `${providerLabel} returned an error: ${escapeXml(errorParam)}. Return to Slack and try again.`,
+      `${providerLabel} returned an error: ${errorParam}. Return to Slack and try again.`,
       400
     );
   }

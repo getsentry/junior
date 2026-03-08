@@ -312,7 +312,7 @@ describe("oauth callback handler", () => {
     expect(response.status).toBe(400);
     const body = await response.text();
     expect(body).not.toContain("<script>");
-    expect(body).toContain("&amp;lt;script&amp;gt;");
+    expect(body).toContain("&lt;script&gt;");
   });
 
   it("escapes HTML in error message content to prevent XSS", async () => {
@@ -324,7 +324,7 @@ describe("oauth callback handler", () => {
     expect(response.status).toBe(400);
     const body = await response.text();
     expect(body).not.toContain("<img");
-    expect(body).toContain("&amp;lt;img");
+    expect(body).toContain("&lt;img");
   });
 
   it("shows pending-message status in success page", async () => {
