@@ -1,0 +1,10 @@
+name: agent-browser
+description: Browser automation workflows powered by agent-browser CLI
+
+runtime-dependencies:
+  - type: npm
+    package: agent-browser
+
+runtime-postinstall:
+  - cmd: agent-browser
+    args: [install]
