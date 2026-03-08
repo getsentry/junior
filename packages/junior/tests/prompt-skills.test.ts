@@ -108,4 +108,5 @@ describe("buildSystemPrompt skill paths", () => {
     expect(prompt).toContain("<runtime-metadata>");
     expect(prompt).toContain("- version: unknown");
   });
+
 });

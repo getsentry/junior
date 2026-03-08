@@ -792,14 +792,14 @@ export async function generateAssistantReply(
         "Agent message received"
       );
     }
-    const explicitInvocation = parseSkillInvocation(userInput, availableSkills);
-    const explicitSkill = explicitInvocation
-      ? findSkillByName(explicitInvocation.skillName, availableSkills)
+    const skillInvocation = parseSkillInvocation(userInput, availableSkills);
+    const invokedSkill = skillInvocation
+      ? findSkillByName(skillInvocation.skillName, availableSkills)
       : null;
     const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
     const capabilityRuntime = createSkillCapabilityRuntime({
-      invocationArgs: explicitInvocation?.args,
+      invocationArgs: skillInvocation?.args,
       requesterId: context.requester?.userId,
       resolveConfiguration: async (key) => configurationValues[key]
     });
@@ -833,8 +833,8 @@ export async function generateAssistantReply(
     sandboxExecutor.configureSkills(availableSkills);
     const sandbox = await sandboxExecutor.createSandbox();
 
-    if (explicitSkill) {
-      const preloaded = await skillSandbox.loadSkill(explicitSkill.name);
+    if (invokedSkill && skillInvocation?.source === "hard_bang") {
+      const preloaded = await skillSandbox.loadSkill(invokedSkill.name);
       if (preloaded) {
         activeSkills.push(preloaded);
       }
@@ -920,12 +920,12 @@ export async function generateAssistantReply(
     const baseInstructions = buildSystemPrompt({
       availableSkills,
       activeSkills,
-      invocation: explicitInvocation,
+      invocation: skillInvocation,
       assistant: context.assistant,
       requester: context.requester,
       artifactState: context.artifactState,
       configuration: configurationValues,
-      relevantConfigurationKeys: collectRelevantConfigurationKeys(activeSkills, explicitSkill),
+      relevantConfigurationKeys: collectRelevantConfigurationKeys(activeSkills, invokedSkill),
       runtimeMetadata: getRuntimeMetadata()
     });
 

@@ -194,15 +194,17 @@ describe("buildHomeView", () => {
   it("shows available skills as read-only list", async () => {
     vi.mocked(discoverSkills).mockResolvedValue([
       { name: "incident-summary", description: "Summarize incidents", skillPath: "/skills/incident-summary" },
-      { name: "release-check", description: "Check release health", skillPath: "/skills/release-check" }
+      { name: "release-check", description: "Check release health", skillPath: "/skills/release-check" },
+      { name: "jr-rpc", description: "Internal credential ops", skillPath: "/skills/jr-rpc" }
     ]);
 
     const store = createMockTokenStore({});
     const view = await buildHomeView("U123", store);
 
     const content = getAllSectionText(view.blocks);
-    expect(content).toContain("`/incident-summary`");
-    expect(content).toContain("`/release-check`");
+    expect(content).toContain("`!incident-summary`");
+    expect(content).toContain("`!release-check`");
+    expect(content).not.toContain("jr-rpc");
   });
 });
 
