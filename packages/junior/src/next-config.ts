@@ -1,65 +1,11 @@
 import type { NextConfig } from "next";
 import { createRequire } from "node:module";
-import { readFileSync, statSync } from "node:fs";
-import path from "node:path";
+import { discoverInstalledPluginPackageContent } from "./chat/plugins/package-discovery";
 
 const require = createRequire(import.meta.url);
 
-interface RootPackageJson {
-  dependencies?: Record<string, string>;
-  optionalDependencies?: Record<string, string>;
-}
-
-function isDirectory(targetPath: string): boolean {
-  try {
-    return statSync(targetPath).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function isFile(targetPath: string): boolean {
-  try {
-    return statSync(targetPath).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function discoverInstalledPluginPackageTracingIncludes(cwd: string = process.cwd()): string[] {
-  const rootPackageJsonPath = path.join(cwd, "package.json");
-  let rootPackageJson: RootPackageJson | undefined;
-  try {
-    rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, "utf8")) as RootPackageJson;
-  } catch {
-    return [];
-  }
-
-  const dependencies = [
-    ...Object.keys(rootPackageJson.dependencies ?? {}),
-    ...Object.keys(rootPackageJson.optionalDependencies ?? {})
-  ];
-  const tracingIncludes: string[] = [];
-
-  for (const dependency of dependencies) {
-    const packageDir = path.join(cwd, "node_modules", ...dependency.split("/"));
-    if (!isDirectory(packageDir)) {
-      continue;
-    }
-
-    const base = `./node_modules/${dependency}`;
-    if (isFile(path.join(packageDir, "plugin.yaml"))) {
-      tracingIncludes.push(`${base}/plugin.yaml`);
-    }
-    if (isDirectory(path.join(packageDir, "plugins"))) {
-      tracingIncludes.push(`${base}/plugins/**/*`);
-    }
-    if (isDirectory(path.join(packageDir, "skills"))) {
-      tracingIncludes.push(`${base}/skills/**/*`);
-    }
-  }
-
-  return [...new Set(tracingIncludes)].sort((left, right) => left.localeCompare(right));
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 /**
@@ -69,7 +15,7 @@ export interface JuniorConfigOptions {
   dataDir?: string;
   skillsDir?: string;
   pluginsDir?: string;
-  sentry?: boolean;
+  pluginPackages?: string[];
 }
 
 type NextConfigFactory = (
@@ -78,13 +24,25 @@ type NextConfigFactory = (
 ) => Promise<NextConfig> | NextConfig;
 
 function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorConfigOptions): NextConfig {
+  const existingServerRuntimeConfig = (nextConfig as { serverRuntimeConfig?: Record<string, unknown> } | undefined)
+    ?.serverRuntimeConfig ?? {};
   const dataDir = options?.dataDir ?? "./app/data";
   const skillsDir = options?.skillsDir ?? "./app/skills";
   const pluginsDir = options?.pluginsDir ?? "./app/plugins";
+  const configuredPluginPackages = unique(options?.pluginPackages ?? []);
+  const discoveredPlugins = discoverInstalledPluginPackageContent(process.cwd(), { packageNames: configuredPluginPackages });
+  const unresolvedConfiguredPackages = configuredPluginPackages.filter(
+    (packageName) => !discoveredPlugins.packageNames.includes(packageName)
+  );
+  if (unresolvedConfiguredPackages.length > 0) {
+    throw new Error(
+      `withJunior pluginPackages contains unresolved packages: ${unresolvedConfiguredPackages.join(", ")}`
+    );
+  }
   const defaultDataTracingIncludes = options?.dataDir
     ? [`${dataDir}/**/*`]
     : ["./app/SOUL.md", "./app/ABOUT.md"];
-  const pluginPackageTracingIncludes = discoverInstalledPluginPackageTracingIncludes();
+  const pluginPackageTracingIncludes = discoveredPlugins.tracingIncludes;
   const tracingIncludes = Array.from(new Set([
     ...defaultDataTracingIncludes,
     `${skillsDir}/**/*`,
@@ -96,7 +54,7 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     ...existingGlobalTracingIncludes,
     ...tracingIncludes
   ]));
-  const config: NextConfig = {
+  const config = {
     ...nextConfig,
     serverExternalPackages: Array.from(new Set([
       ...(nextConfig?.serverExternalPackages ?? []),
@@ -112,24 +70,23 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,
       "/*": mergedGlobalTracingIncludes
+    },
+    serverRuntimeConfig: {
+      ...existingServerRuntimeConfig,
+      juniorPluginPackages: configuredPluginPackages
     }
-  };
+  } as NextConfig;
 
-  if (options?.sentry) {
-    // Conditionally load @sentry/nextjs only when Sentry integration is enabled.
-    const { withSentryConfig } = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
-    return withSentryConfig(config, {
-      org: process.env.SENTRY_ORG,
-      project: process.env.SENTRY_PROJECT,
-      authToken: process.env.SENTRY_AUTH_TOKEN,
-      silent: !process.env.CI,
-      sourcemaps: {
-        disable: false
-      }
-    });
-  }
-
-  return config;
+  const { withSentryConfig } = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
+  return withSentryConfig(config, {
+    org: process.env.SENTRY_ORG,
+    project: process.env.SENTRY_PROJECT,
+    authToken: process.env.SENTRY_AUTH_TOKEN,
+    silent: !process.env.CI,
+    sourcemaps: {
+      disable: false
+    }
+  });
 }
 
 /**
@@ -138,8 +95,8 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
  * Supports both object and function-style Next config exports.
  */
 export function withJunior(
-  nextConfig?: NextConfig | NextConfigFactory,
-  options?: JuniorConfigOptions
+  options?: JuniorConfigOptions,
+  nextConfig?: NextConfig | NextConfigFactory
 ): NextConfig | NextConfigFactory {
   if (typeof nextConfig === "function") {
     return async (phase, ctx) => {

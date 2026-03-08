@@ -17,12 +17,12 @@ describe("withJunior", () => {
   it("merges junior defaults into plain Next config", async () => {
     const config = await resolveConfig(withJunior(
       {
-        serverExternalPackages: ["existing-package"]
-      },
-      {
         dataDir: "./my-data",
         skillsDir: "./my-skills",
         pluginsDir: "./my-plugins"
+      },
+      {
+        serverExternalPackages: ["existing-package"]
       }
     ) as NextConfig);
 
@@ -46,14 +46,14 @@ describe("withJunior", () => {
 
   it("wraps async Next config factories", async () => {
     const wrapped = withJunior(
-      async () => ({
-        typedRoutes: true
-      }),
       {
         dataDir: "./my-data",
         skillsDir: "./my-skills",
         pluginsDir: "./my-plugins"
-      }
+      },
+      async () => ({
+        typedRoutes: true
+      })
     );
 
     expect(typeof wrapped).toBe("function");
@@ -84,15 +84,15 @@ describe("withJunior", () => {
   it("merges existing global tracing includes instead of overwriting them", async () => {
     const config = await resolveConfig(withJunior(
       {
+        dataDir: "./my-data",
+        skillsDir: "./my-skills",
+        pluginsDir: "./my-plugins"
+      },
+      {
         outputFileTracingIncludes: {
           "/*": ["./existing/**/*"],
           "/other/**": ["./other/**/*"]
         }
-      },
-      {
-        dataDir: "./my-data",
-        skillsDir: "./my-skills",
-        pluginsDir: "./my-plugins"
       }
     ) as NextConfig);
 
@@ -105,12 +105,12 @@ describe("withJunior", () => {
   it("deduplicates serverExternalPackages when consumer already includes defaults", async () => {
     const config = await resolveConfig(withJunior(
       {
-        serverExternalPackages: ["@vercel/queue", "@vercel/sandbox", "custom-package"]
-      },
-      {
         dataDir: "./my-data",
         skillsDir: "./my-skills",
         pluginsDir: "./my-plugins"
+      },
+      {
+        serverExternalPackages: ["@vercel/queue", "@vercel/sandbox", "custom-package"]
       }
     ) as NextConfig);
 
@@ -132,7 +132,7 @@ describe("withJunior", () => {
   });
 
   it("preserves consumer transpilePackages", async () => {
-    const config = await resolveConfig(withJunior({
+    const config = await resolveConfig(withJunior({}, {
       transpilePackages: ["other-package"]
     }) as NextConfig);
 
@@ -140,13 +140,13 @@ describe("withJunior", () => {
   });
 
   it("accepts pre-wrapped configs without changing behavior", async () => {
-    const config = await resolveConfig(withJunior({ typedRoutes: true }) as NextConfig);
+    const config = await resolveConfig(withJunior({}, { typedRoutes: true }) as NextConfig);
 
     expect(config.typedRoutes).toBe(true);
     expect(config.transpilePackages).toBeUndefined();
   });
 
-  it("includes tracing for installed dependency plugin content", async () => {
+  it("does not auto-include installed dependency plugin content without explicit pluginPackages", async () => {
     const originalCwd = process.cwd();
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-next-config-"));
 
@@ -177,11 +177,102 @@ describe("withJunior", () => {
       process.chdir(tempRoot);
       const config = await resolveConfig(withJunior({}) as NextConfig);
 
-      expect(config.outputFileTracingIncludes?.["/*"]).toEqual(expect.arrayContaining([
+      expect(config.outputFileTracingIncludes?.["/*"]).not.toEqual(expect.arrayContaining([
         "./node_modules/@acme/junior-plugin-demo/plugin.yaml",
         "./node_modules/@acme/junior-plugin-demo/plugins/**/*",
         "./node_modules/@acme/junior-plugin-demo/skills/**/*"
       ]));
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("does not auto-include node_modules plugin content without explicit pluginPackages", async () => {
+    const originalCwd = process.cwd();
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-next-config-"));
+
+    try {
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-app",
+          private: true
+        }),
+        "utf8"
+      );
+      await fs.mkdir(path.join(tempRoot, "node_modules", "@acme", "junior-plugin-demo", "skills", "demo"), {
+        recursive: true
+      });
+      await fs.writeFile(
+        path.join(tempRoot, "node_modules", "@acme", "junior-plugin-demo", "plugin.yaml"),
+        "name: demo\ndescription: Demo plugin\n",
+        "utf8"
+      );
+
+      process.chdir(tempRoot);
+      const config = await resolveConfig(withJunior({}) as NextConfig);
+
+      expect(config.outputFileTracingIncludes?.["/*"]).not.toEqual(expect.arrayContaining([
+        "./node_modules/@acme/junior-plugin-demo/plugin.yaml",
+        "./node_modules/@acme/junior-plugin-demo/skills/**/*"
+      ]));
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("accepts explicit pluginPackages option", async () => {
+    const originalCwd = process.cwd();
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-next-config-"));
+
+    try {
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-app",
+          private: true
+        }),
+        "utf8"
+      );
+      await fs.mkdir(path.join(tempRoot, "node_modules", "@acme", "junior-plugin-explicit", "skills", "demo"), {
+        recursive: true
+      });
+      await fs.writeFile(
+        path.join(tempRoot, "node_modules", "@acme", "junior-plugin-explicit", "plugin.yaml"),
+        "name: demo\ndescription: Demo plugin\n",
+        "utf8"
+      );
+
+      process.chdir(tempRoot);
+      const config = await resolveConfig(withJunior({ pluginPackages: ["@acme/junior-plugin-explicit"] }, {}) as NextConfig);
+
+      expect(config.outputFileTracingIncludes?.["/*"]).toEqual(expect.arrayContaining([
+        "./node_modules/@acme/junior-plugin-explicit/plugin.yaml",
+        "./node_modules/@acme/junior-plugin-explicit/skills/**/*"
+      ]));
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("throws when explicit pluginPackages contains unresolved packages", async () => {
+    const originalCwd = process.cwd();
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-next-config-"));
+
+    try {
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-app",
+          private: true
+        }),
+        "utf8"
+      );
+      process.chdir(tempRoot);
+
+      expect(() =>
+        withJunior({ pluginPackages: ["@acme/does-not-exist"] }, {})
+      ).toThrow("withJunior pluginPackages contains unresolved packages");
     } finally {
       process.chdir(originalCwd);
     }

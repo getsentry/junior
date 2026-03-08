@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import { discoverProjectRoots } from "@/chat/discovery-roots";
 
 export function homeDir(): string {
-  return detectAppDir();
+  return resolveHomeDir();
 }
 
 function unique(values: string[]): string[] {
@@ -22,50 +23,69 @@ function hasAnyDataMarkers(appDir: string): boolean {
   return pathExists(path.join(appDir, "SOUL.md"));
 }
 
-function detectAppDir(): string {
-  const cwd = process.cwd();
-  const directApp = path.resolve(cwd, "app");
-  if (pathExists(directApp)) {
-    return directApp;
+function scoreAppCandidate(appDir: string): number {
+  let score = 0;
+  if (pathExists(path.join(appDir, "SOUL.md"))) {
+    score += 4;
   }
-
-  const candidates: string[] = [];
-  const packageRoots: string[] = [];
-  const localPackagesDir = path.join(cwd, "packages");
-  if (pathExists(localPackagesDir)) {
-    for (const entry of fs.readdirSync(localPackagesDir)) {
-      packageRoots.push(path.join(localPackagesDir, entry));
-    }
+  if (pathExists(path.join(appDir, "ABOUT.md"))) {
+    score += 2;
   }
-
-  for (const entry of fs.readdirSync(cwd)) {
-    const child = path.join(cwd, entry);
-    const nestedPackages = path.join(child, "packages");
-    if (!pathExists(nestedPackages)) {
-      continue;
-    }
-    for (const nestedEntry of fs.readdirSync(nestedPackages)) {
-      packageRoots.push(path.join(nestedPackages, nestedEntry));
-    }
+  if (pathExists(path.join(appDir, "skills"))) {
+    score += 1;
   }
+  if (pathExists(path.join(appDir, "plugins"))) {
+    score += 1;
+  }
+  return score;
+}
 
-  for (const root of packageRoots) {
-    const appDir = path.join(root, "app");
+function resolveCandidateAppDirs(cwd: string, projectRoots?: string[]): string[] {
+  const roots = projectRoots ?? discoverProjectRoots(cwd);
+  const resolved: string[] = [];
+  const seen = new Set<string>();
+
+  for (const root of roots) {
+    const appDir = path.resolve(root, "app");
     if (!pathExists(appDir)) {
       continue;
     }
-    candidates.push(appDir);
+    if (seen.has(appDir)) {
+      continue;
+    }
+    seen.add(appDir);
+    resolved.push(appDir);
   }
 
+  return resolved;
+}
+
+export interface ResolveHomeDirOptions {
+  projectRoots?: string[];
+}
+
+export function resolveHomeDir(cwd: string = process.cwd(), options?: ResolveHomeDirOptions): string {
+  const resolvedCwd = path.resolve(cwd);
+  const directApp = path.resolve(resolvedCwd, "app");
+  if (pathExists(directApp) && hasAnyDataMarkers(directApp)) {
+    return directApp;
+  }
+
+  const candidates = resolveCandidateAppDirs(resolvedCwd, options?.projectRoots);
   if (candidates.length === 0) {
     return directApp;
   }
 
   candidates.sort((left, right) => {
-    const leftScore = Number(hasAnyDataMarkers(left));
-    const rightScore = Number(hasAnyDataMarkers(right));
+    const leftScore = scoreAppCandidate(left);
+    const rightScore = scoreAppCandidate(right);
     if (leftScore !== rightScore) {
       return rightScore - leftScore;
+    }
+    const leftDistance = path.relative(resolvedCwd, left).split(path.sep).length;
+    const rightDistance = path.relative(resolvedCwd, right).split(path.sep).length;
+    if (leftDistance !== rightDistance) {
+      return leftDistance - rightDistance;
     }
     return left.localeCompare(right);
   });
