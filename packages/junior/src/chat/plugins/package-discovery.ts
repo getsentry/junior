@@ -5,8 +5,6 @@ import {
 } from "@/chat/discovery-roots";
 import { isDirectory, isFile } from "@/chat/fs-utils";
 
-const JUNIOR_PLUGIN_PACKAGES_ENV = "JUNIOR_PLUGIN_PACKAGES";
-
 interface InstalledJuniorContentPackage {
   name: string;
   dir: string;
@@ -60,7 +58,7 @@ function parseRuntimeConfiguredPackageNames(value: unknown): string[] | null {
 }
 
 function readNextRuntimeConfiguredPackageNames(): string[] | null {
-  const raw = process.env[JUNIOR_PLUGIN_PACKAGES_ENV];
+  const raw = process.env.JUNIOR_PLUGIN_PACKAGES;
   if (raw === undefined) {
     return null;
   }
