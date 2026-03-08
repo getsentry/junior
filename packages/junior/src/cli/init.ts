@@ -1,21 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
 
+function writeRouteModule(filePath: string, exportLine: string): void {
+  fs.writeFileSync(filePath, `${exportLine}\nexport const runtime = "nodejs";\n`);
+}
+
 function writeWrapperFiles(targetDir: string): void {
   const routeDir = path.join(targetDir, "app", "api", "[...path]");
   fs.mkdirSync(routeDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(routeDir, "route.js"),
-    'export { GET, POST } from "@sentry/junior/handler";\n' +
-      'export const runtime = "nodejs";\n'
-  );
+  writeRouteModule(path.join(routeDir, "route.js"), 'export { GET, POST } from "@sentry/junior/handler";');
 
   const queueRouteDir = path.join(targetDir, "app", "api", "queue", "callback");
   fs.mkdirSync(queueRouteDir, { recursive: true });
-  fs.writeFileSync(
+  writeRouteModule(
     path.join(queueRouteDir, "route.js"),
-    'export { POST } from "@sentry/junior/handlers/queue-callback";\n' +
-      'export const runtime = "nodejs";\n'
+    'export { POST } from "@sentry/junior/handlers/queue-callback";'
   );
 
   fs.mkdirSync(path.join(targetDir, "app"), { recursive: true });
