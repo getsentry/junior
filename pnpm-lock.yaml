@@ -28,6 +28,9 @@ importers:
       "@sentry/junior":
         specifier: workspace:*
         version: link:../../packages/junior
+      "@sentry/junior-agent-browser":
+        specifier: workspace:*
+        version: link:../../packages/junior-agent-browser
       "@sentry/junior-github":
         specifier: workspace:*
         version: link:../../packages/junior-github
@@ -36,7 +39,7 @@ importers:
         version: link:../../packages/junior-sentry
       "@sentry/nextjs":
         specifier: ^10.42.0
-        version: 10.42.0(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(next@16.1.6(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2)
+        version: 10.42.0(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2)
       next:
         specifier: ^16.1.6
         version: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -146,7 +149,7 @@ importers:
     devDependencies:
       "@sentry/nextjs":
         specifier: ^10.42.0
-        version: 10.42.0(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2(@swc/core@1.15.3)(esbuild@0.27.3))
+        version: 10.42.0(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(next@16.1.6(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2(@swc/core@1.15.3)(esbuild@0.27.3))
       "@types/node":
         specifier: ^25.3.5
         version: 25.3.5
@@ -13422,32 +13425,7 @@ snapshots:
 
   "@sentry/core@10.42.0": {}
 
-  "@sentry/nextjs@10.42.0(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2(@swc/core@1.15.3)(esbuild@0.27.3))":
-    dependencies:
-      "@opentelemetry/api": 1.9.0
-      "@opentelemetry/semantic-conventions": 1.40.0
-      "@rollup/plugin-commonjs": 28.0.1(rollup@4.59.0)
-      "@sentry-internal/browser-utils": 10.42.0
-      "@sentry/bundler-plugin-core": 5.1.1
-      "@sentry/core": 10.42.0
-      "@sentry/node": 10.42.0
-      "@sentry/opentelemetry": 10.42.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)
-      "@sentry/react": 10.42.0(react@19.2.4)
-      "@sentry/vercel-edge": 10.42.0
-      "@sentry/webpack-plugin": 5.1.1(webpack@5.105.2(@swc/core@1.15.3)(esbuild@0.27.3))
-      next: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      rollup: 4.59.0
-      stacktrace-parser: 0.1.11
-    transitivePeerDependencies:
-      - "@opentelemetry/context-async-hooks"
-      - "@opentelemetry/core"
-      - "@opentelemetry/sdk-trace-base"
-      - encoding
-      - react
-      - supports-color
-      - webpack
-
-  "@sentry/nextjs@10.42.0(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(next@16.1.6(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2)":
+  "@sentry/nextjs@10.42.0(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(next@16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2)":
     dependencies:
       "@opentelemetry/api": 1.9.0
       "@opentelemetry/semantic-conventions": 1.40.0
@@ -13460,6 +13438,31 @@ snapshots:
       "@sentry/react": 10.42.0(react@19.2.4)
       "@sentry/vercel-edge": 10.42.0
       "@sentry/webpack-plugin": 5.1.1(webpack@5.105.2)
+      next: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      rollup: 4.59.0
+      stacktrace-parser: 0.1.11
+    transitivePeerDependencies:
+      - "@opentelemetry/context-async-hooks"
+      - "@opentelemetry/core"
+      - "@opentelemetry/sdk-trace-base"
+      - encoding
+      - react
+      - supports-color
+      - webpack
+
+  "@sentry/nextjs@10.42.0(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(next@16.1.6(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(webpack@5.105.2(@swc/core@1.15.3)(esbuild@0.27.3))":
+    dependencies:
+      "@opentelemetry/api": 1.9.0
+      "@opentelemetry/semantic-conventions": 1.40.0
+      "@rollup/plugin-commonjs": 28.0.1(rollup@4.59.0)
+      "@sentry-internal/browser-utils": 10.42.0
+      "@sentry/bundler-plugin-core": 5.1.1
+      "@sentry/core": 10.42.0
+      "@sentry/node": 10.42.0
+      "@sentry/opentelemetry": 10.42.0(@opentelemetry/api@1.9.0)(@opentelemetry/context-async-hooks@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/core@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.6.0(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.40.0)
+      "@sentry/react": 10.42.0(react@19.2.4)
+      "@sentry/vercel-edge": 10.42.0
+      "@sentry/webpack-plugin": 5.1.1(webpack@5.105.2(@swc/core@1.15.3)(esbuild@0.27.3))
       next: 16.1.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       rollup: 4.59.0
       stacktrace-parser: 0.1.11
