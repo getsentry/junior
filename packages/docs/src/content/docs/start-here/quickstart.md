@@ -111,6 +111,20 @@ pnpm dlx vercel@latest link
 }
 ```
 
+### Configure build command
+
+Set the Vercel build command to run snapshot warmup after app build.
+
+```json title="package.json"
+{
+  "scripts": {
+    "build": "next build && junior snapshot create"
+  }
+}
+```
+
+If you prefer `postbuild`, ensure Vercel runs `pnpm build` as the build command.
+
 ### Configure production environment
 
 Required:
@@ -118,6 +132,10 @@ Required:
 - `SLACK_SIGNING_SECRET`
 - `SLACK_BOT_TOKEN` (or `SLACK_BOT_USER_TOKEN`)
 - `REDIS_URL`
+
+Also required for build-time snapshot warmup:
+
+- Vercel OIDC enabled so `VERCEL_OIDC_TOKEN` is available during build
 
 Recommended:
 
@@ -151,6 +169,7 @@ https://<your-domain>/api/webhooks/slack
 - No bot post: verify bot token scopes and Slack app installation.
 - Slack timeouts in production: check `vercel.json` queue trigger and callback route path.
 - OAuth callback issues for plugins: set `JUNIOR_BASE_URL` to production URL.
+- Snapshot warmup build failures: verify `REDIS_URL` is available to builds and OIDC is enabled for `VERCEL_OIDC_TOKEN`.
 
 ## Next step
 

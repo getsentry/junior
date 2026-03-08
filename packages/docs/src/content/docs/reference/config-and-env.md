@@ -24,6 +24,13 @@ related:
 | `JUNIOR_BASE_URL` | No | Canonical base URL for callback/auth URL generation. |
 | `AI_GATEWAY_API_KEY` | No | AI gateway auth if used in your setup. |
 
+## Build-time snapshot warmup
+
+If your build command runs `junior snapshot create`:
+
+- `REDIS_URL` must be available during build.
+- `VERCEL_OIDC_TOKEN` must be available during build (via Vercel OIDC settings).
+
 ## GitHub plugin
 
 | Variable | Required | Purpose |

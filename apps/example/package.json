@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && junior snapshot create",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },

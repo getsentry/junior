@@ -303,13 +303,25 @@ function emitSentry(level: LogLevel, body: string, attributes: LogAttributes): v
     return;
   }
 
-  Sentry.withScope((scope) => {
-    for (const [key, value] of Object.entries(attributes)) {
-      scope.setExtra(key, value);
-    }
-    const sentryLevel = level === "warn" ? "warning" : level;
-    Sentry.captureMessage(body, sentryLevel);
-  });
+  const sentryWithScope = (sentry as unknown as { withScope?: (callback: (scope: Sentry.Scope) => void) => void }).withScope;
+  const sentryCaptureMessage = (sentry as unknown as {
+    captureMessage?: (message: string, level?: "debug" | "info" | "warning" | "error") => void;
+  }).captureMessage;
+  const sentryLevel = level === "warn" ? "warning" : level;
+
+  if (typeof sentryWithScope === "function" && typeof sentryCaptureMessage === "function") {
+    sentryWithScope((scope) => {
+      for (const [key, value] of Object.entries(attributes)) {
+        scope.setExtra(key, value);
+      }
+      sentryCaptureMessage(body, sentryLevel);
+    });
+    return;
+  }
+
+  if (typeof sentryCaptureMessage === "function") {
+    sentryCaptureMessage(body, sentryLevel);
+  }
 }
 
 function formatConsoleLevel(level: LogLevel): "DBG" | "INF" | "WRN" | "ERR" {
@@ -449,12 +461,26 @@ export const log = {
     }, body ?? normalizedError.message);
 
     let eventId: string | undefined;
-    Sentry.withScope((scope) => {
-      for (const [key, value] of Object.entries(mergeAttributes(contextStorage.getStore(), attrs))) {
-        scope.setExtra(key, value);
-      }
-      eventId = Sentry.captureException(normalizedError);
-    });
+    const sentryWithScope = (Sentry as unknown as {
+      withScope?: (callback: (scope: Sentry.Scope) => void) => void;
+    }).withScope;
+    const sentryCaptureException = (Sentry as unknown as {
+      captureException?: (error: unknown) => string | undefined;
+    }).captureException;
+
+    if (typeof sentryWithScope === "function" && typeof sentryCaptureException === "function") {
+      sentryWithScope((scope) => {
+        for (const [key, value] of Object.entries(mergeAttributes(contextStorage.getStore(), attrs))) {
+          scope.setExtra(key, value);
+        }
+        eventId = sentryCaptureException(normalizedError);
+      });
+      return eventId;
+    }
+
+    if (typeof sentryCaptureException === "function") {
+      eventId = sentryCaptureException(normalizedError);
+    }
     return eventId;
   }
 };

@@ -249,6 +249,19 @@ export function getStateAdapter(): StateAdapter {
   return _stateAdapter;
 }
 
+export async function disconnectStateAdapter(): Promise<void> {
+  if (!_stateAdapter) {
+    return;
+  }
+
+  try {
+    await _stateAdapter.disconnect();
+  } finally {
+    _stateAdapter = undefined;
+    _redisStateAdapter = undefined;
+  }
+}
+
 export async function claimQueueIngressDedup(rawKey: string, ttlMs: number): Promise<boolean> {
   await getStateAdapter().connect();
   const key = `${QUEUE_INGRESS_DEDUP_PREFIX}:${rawKey}`;

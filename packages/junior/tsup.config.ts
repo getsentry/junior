@@ -6,6 +6,8 @@ export default defineConfig({
     "handlers/webhooks": "src/handlers/webhooks.ts",
     "handlers/queue-callback": "src/handlers/queue-callback.ts",
     "handlers/health": "src/handlers/health.ts",
+    "cli/init": "src/cli/init.ts",
+    "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
     "next-config": "src/next-config.ts",
     instrumentation: "src/instrumentation.ts",
     "app/layout": "src/app/layout.tsx"

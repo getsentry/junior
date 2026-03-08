@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.30.2",
   "scripts": {
     "dev": "node scripts/dev-with-root-env.mjs",
+    "cli": "node scripts/cli-with-root-env.mjs",
     "build": "pnpm --filter @sentry/junior build",
     "build:example": "pnpm --filter @sentry/junior-example build",
     "docs:dev": "pnpm --filter @sentry/junior-docs dev",
@@ -26,6 +27,7 @@
     }
   },
   "devDependencies": {
-    "agent-browser": "^0.16.3"
+    "agent-browser": "^0.16.3",
+    "tsx": "^4.21.0"
   }
 }

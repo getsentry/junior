@@ -181,11 +181,25 @@ export function setSpanStatus(status: "ok" | "error"): void {
 }
 
 export function captureExceptionInScope(error: unknown, context: ObservabilityContext = {}): void {
-  Sentry.withScope((scope) => {
-    setSentryScopeContext(scope, context);
-    const normalizedError = error instanceof Error ? error : new Error(String(error));
-    Sentry.captureException(normalizedError);
-  });
+  const sentryWithScope = (Sentry as unknown as {
+    withScope?: (callback: (scope: Sentry.Scope) => void) => void;
+  }).withScope;
+  const sentryCaptureException = (Sentry as unknown as {
+    captureException?: (error: unknown) => unknown;
+  }).captureException;
+  const normalizedError = error instanceof Error ? error : new Error(String(error));
+
+  if (typeof sentryWithScope === "function" && typeof sentryCaptureException === "function") {
+    sentryWithScope((scope) => {
+      setSentryScopeContext(scope, context);
+      sentryCaptureException(normalizedError);
+    });
+    return;
+  }
+
+  if (typeof sentryCaptureException === "function") {
+    sentryCaptureException(normalizedError);
+  }
 }
 
 export function toOptionalString(value: unknown): string | undefined {
