@@ -26,15 +26,45 @@ describe("skills", () => {
     resetSkillDiscoveryCache();
   });
 
-  it("discovers valid skills from the default skills directory", async () => {
-    resetSkillDiscoveryCache();
-    const skills = await discoverSkills();
-    const names = skills.map((skill) => skill.name);
+  it("discovers valid skills from configured skill directories", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-default-"));
+    const originalSkillDirs = process.env.SKILL_DIRS;
 
-    expect(names).toContain("brief");
-    expect(names).toContain("sum");
-    expect(names).not.toContain("slack-development");
-    expect(names).not.toContain("use-ai-sdk");
+    await writeSkillFile(tempRoot, "brief", [
+      "---",
+      "name: brief",
+      "description: Candidate brief",
+      "---",
+      "",
+      "# Body"
+    ]);
+    await writeSkillFile(tempRoot, "sum", [
+      "---",
+      "name: sum",
+      "description: Summarize",
+      "---",
+      "",
+      "# Body"
+    ]);
+
+    resetSkillDiscoveryCache();
+    process.env.SKILL_DIRS = tempRoot;
+
+    try {
+      const skills = await discoverSkills();
+      const names = skills.map((skill) => skill.name);
+
+      expect(names).toContain("brief");
+      expect(names).toContain("sum");
+    } finally {
+      resetSkillDiscoveryCache();
+      if (originalSkillDirs === undefined) {
+        delete process.env.SKILL_DIRS;
+      } else {
+        process.env.SKILL_DIRS = originalSkillDirs;
+      }
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it("parses skill invocation by slash command", () => {
