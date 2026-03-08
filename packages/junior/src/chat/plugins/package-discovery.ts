@@ -1,7 +1,7 @@
-import { statSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { discoverNodeModulesDirs, listTopLevelPackages } from "@/chat/discovery-roots";
+import { isDirectory, isFile } from "@/chat/fs-utils";
 
 const require = createRequire(import.meta.url);
 
@@ -21,27 +21,11 @@ export interface InstalledPluginPackageContent {
   tracingIncludes: string[];
 }
 
-function isDirectory(targetPath: string): boolean {
-  try {
-    return statSync(targetPath).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function isFile(targetPath: string): boolean {
-  try {
-    return statSync(targetPath).isFile();
-  } catch {
-    return false;
-  }
-}
-
 function normalizeForGlob(targetPath: string): string {
   return targetPath.split(path.sep).join("/");
 }
 
-function uniqueInOrder(values: string[]): string[] {
+function uniqueStringsInOrder(values: string[]): string[] {
   const seen = new Set<string>();
   const resolved: string[] = [];
   for (const value of values) {
@@ -67,7 +51,7 @@ function parseRuntimeConfiguredPackageNames(value: unknown): string[] | null {
     return null;
   }
   const parsed = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
-  return uniqueInOrder(parsed.map((entry) => entry.trim()));
+  return uniqueStringsInOrder(parsed.map((entry) => entry.trim()));
 }
 
 function readNextRuntimeConfiguredPackageNames(): string[] | null {
@@ -261,9 +245,9 @@ export function discoverInstalledPluginPackageContent(
   }
 
   return {
-    packageNames: uniqueInOrder(discoveredPackages.map((pkg) => pkg.name)),
-    manifestRoots: uniqueInOrder(manifestRoots),
-    skillRoots: uniqueInOrder(skillRoots),
-    tracingIncludes: uniqueInOrder(tracingIncludes)
+    packageNames: uniqueStringsInOrder(discoveredPackages.map((pkg) => pkg.name)),
+    manifestRoots: uniqueStringsInOrder(manifestRoots),
+    skillRoots: uniqueStringsInOrder(skillRoots),
+    tracingIncludes: uniqueStringsInOrder(tracingIncludes)
   };
 }

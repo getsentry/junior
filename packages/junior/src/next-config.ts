@@ -23,6 +23,10 @@ type NextConfigFactory = (
   ctx: { defaultConfig: NextConfig }
 ) => Promise<NextConfig> | NextConfig;
 
+function sentryConfigured(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN);
+}
+
 function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorConfigOptions): NextConfig {
   const existingServerRuntimeConfig = (nextConfig as { serverRuntimeConfig?: Record<string, unknown> } | undefined)
     ?.serverRuntimeConfig ?? {};
@@ -76,6 +80,10 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
       juniorPluginPackages: configuredPluginPackages
     }
   } as NextConfig;
+
+  if (!sentryConfigured()) {
+    return config;
+  }
 
   const { withSentryConfig } = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
   return withSentryConfig(config, {

@@ -1,28 +1,13 @@
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-function isDirectory(targetPath: string): boolean {
-  try {
-    return statSync(targetPath).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function isFile(targetPath: string): boolean {
-  try {
-    return statSync(targetPath).isFile();
-  } catch {
-    return false;
-  }
-}
+import { isDirectory, isFile } from "@/chat/fs-utils";
 
 function normalizePath(targetPath: string): string {
   return path.resolve(targetPath);
 }
 
-function uniqueInOrder(values: string[]): string[] {
+function uniqueResolvedPathsInOrder(values: string[]): string[] {
   const seen = new Set<string>();
   const resolved: string[] = [];
   for (const value of values) {
@@ -108,10 +93,10 @@ export function discoverNodeModulesDirs(
 ): string[] {
   const explicit = options?.candidateDirs?.filter((dir) => isDirectory(dir)) ?? [];
   if (explicit.length > 0) {
-    return uniqueInOrder(explicit);
+    return uniqueResolvedPathsInOrder(explicit);
   }
 
-  return uniqueInOrder([
+  return uniqueResolvedPathsInOrder([
     ...listInstalledPackageNodeModulesDirs(),
     ...listCwdAncestorNodeModulesDirs(cwd)
   ]);
@@ -128,7 +113,7 @@ export function discoverProjectRoots(
   const roots = discoverNodeModulesDirs(cwd, options?.nodeModulesDirs ? { candidateDirs: options.nodeModulesDirs } : undefined)
     .map((nodeModulesDir) => path.dirname(nodeModulesDir));
 
-  return uniqueInOrder([cwd, ...roots]);
+  return uniqueResolvedPathsInOrder([cwd, ...roots]);
 }
 
 export function listTopLevelPackages(nodeModulesDir: string): Array<{ name: string; dir: string }> {
