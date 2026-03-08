@@ -2,7 +2,9 @@ import { withJunior } from "@sentry/junior/config";
 import path from "node:path";
 
 export default withJunior(
-  {},
+  {
+    pluginPackages: ["@sentry/junior-github", "@sentry/junior-sentry"]
+  },
   {
     turbopack: {
       root: path.resolve(__dirname, "../..")
