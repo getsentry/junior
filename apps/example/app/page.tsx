@@ -15,8 +15,6 @@ export default function HomePage() {
         {" "}
         <code>/example-bundle-help</code>,
         {" "}
-        <code>/agent-browser</code>,
-        {" "}
         <code>/github</code>,
         {" "}
         <code>/sentry</code>

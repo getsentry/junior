@@ -83,9 +83,9 @@ async function writePackagedPluginWithRuntimePostinstall(tempRoot: string): Prom
       "description: Demo plugin",
       "runtime-dependencies:",
       "  - type: npm",
-      "    package: agent-browser",
+      "    package: example-cli",
       "runtime-postinstall:",
-      "  - cmd: agent-browser",
+      "  - cmd: example-cli",
       "    args: [install]"
     ].join("\n"),
     "utf8"
@@ -272,7 +272,7 @@ describe("plugin registry package discovery", () => {
     expect(providers).toHaveLength(1);
     expect(providers[0]?.manifest.runtimePostinstall).toEqual([
       {
-        cmd: "agent-browser",
+        cmd: "example-cli",
         args: ["install"]
       }
     ]);

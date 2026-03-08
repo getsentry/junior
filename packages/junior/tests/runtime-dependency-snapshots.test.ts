@@ -457,10 +457,10 @@ describe("runtime dependency snapshots", () => {
 
   it("runs runtime-postinstall commands after dependency install", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "agent-browser", version: "latest" }
+      { type: "npm", package: "example-cli", version: "latest" }
     ]);
     getPluginRuntimePostinstallMock.mockReturnValue([
-      { cmd: "agent-browser", args: ["install"] }
+      { cmd: "example-cli", args: ["install"] }
     ]);
     const sandbox = makeSandbox("snap_postinstall");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
@@ -472,11 +472,11 @@ describe("runtime dependency snapshots", () => {
     expect(snapshot.snapshotId).toBe("snap_postinstall");
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "npm",
-      args: ["install", "--global", "--prefix", "/vercel/sandbox/.junior", "agent-browser@latest"]
+      args: ["install", "--global", "--prefix", "/vercel/sandbox/.junior", "example-cli@latest"]
     });
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "bash",
-      args: ["-lc", "export PATH=\"/vercel/sandbox/.junior/bin:$PATH\" && agent-browser \"install\""]
+      args: ["-lc", "export PATH=\"/vercel/sandbox/.junior/bin:$PATH\" && example-cli \"install\""]
     });
   });
 });

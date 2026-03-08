@@ -82,7 +82,7 @@ runtime-dependencies:
     sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
 runtime-postinstall:
-  - cmd: agent-browser
+  - cmd: example-cli
     args: [install]
 ```
 

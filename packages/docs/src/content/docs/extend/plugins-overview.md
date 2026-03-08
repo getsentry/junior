@@ -7,7 +7,6 @@ prerequisites:
   - /start-here/quickstart/
 related:
   - /extend/custom-plugins/
-  - /extend/agent-browser-plugin/
   - /extend/github-plugin/
   - /extend/sentry-plugin/
 ---
@@ -42,7 +41,7 @@ Use this path when you want fast iteration inside a single app without publishin
 For reuse across apps or teams, package plugin manifests + skills as npm packages and install them next to `@sentry/junior`.
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-agent-browser @sentry/junior-github @sentry/junior-sentry
+pnpm add @sentry/junior @sentry/junior-github @sentry/junior-sentry
 ```
 
 If you publish your own package, include `plugin.yaml` and `skills` in package `files` so runtime discovery works.
@@ -65,6 +64,5 @@ pnpm skills:check
 ## Next step
 
 - [Custom Plugins](/extend/custom-plugins/)
-- [Agent Browser Plugin](/extend/agent-browser-plugin/)
 - [GitHub Plugin](/extend/github-plugin/)
 - [Sentry Plugin](/extend/sentry-plugin/)

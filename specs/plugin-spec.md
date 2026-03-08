@@ -107,7 +107,7 @@ runtime-dependencies:                # optional — preinstalled CLI dependencie
     sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
 runtime-postinstall:                # optional — post-install commands executed before snapshot capture
-  - cmd: agent-browser
+  - cmd: example-cli
     args: ["install"]
 
 mcp:                                 # optional — MCP server config for tool sources
