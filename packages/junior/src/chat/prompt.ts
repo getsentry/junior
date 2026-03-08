@@ -358,10 +358,11 @@ export function buildSystemPrompt(params: {
     renderTag(
       "skills",
       [
-        "- For explicit slash commands, treat `/skill-name` as authoritative intent for that skill.",
-        "- If slash-invoked skill instructions are already present in <loaded_skills>, apply them immediately.",
-        "- Otherwise, for slash-invoked skills, call `loadSkill` for that exact skill before applying skill-specific behavior.",
-        "- For non-slash requests where a skill clearly matches, call `loadSkill` before applying skill-specific behavior.",
+        "- Treat `!skill-name` as the authoritative explicit skill trigger for that skill.",
+        "- If `!skill`-invoked instructions are already present in <loaded_skills>, apply them immediately.",
+        "- Otherwise, for `!skill` invocations, call `loadSkill` for that exact skill before applying skill-specific behavior.",
+        "- A `/skill-name` token is legacy fallback intent only; it is a hint, not an authoritative trigger.",
+        "- For requests without an explicit trigger where a skill clearly matches, call `loadSkill` before applying skill-specific behavior.",
         "- Do not claim to have used a skill unless it is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Never apply skill-specific behavior unless the skill is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",
@@ -387,7 +388,11 @@ export function buildSystemPrompt(params: {
     activeSkillsSection,
     renderTag(
       "invocation-context",
-      invocation ? `Slash invocation detected: /${invocation.skillName}` : "No slash invocation detected."
+      invocation
+        ? invocation.source === "hard_bang"
+          ? `Explicit skill trigger detected: !${invocation.skillName}`
+          : `Legacy slash hint detected: /${invocation.skillName} (non-authoritative)`
+        : "No explicit skill trigger detected."
     )
   ];
 

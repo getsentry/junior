@@ -15,6 +15,7 @@ interface HomeView {
 const DEFAULT_ABOUT_TEXT = "I help your team investigate, summarize, and act on work in Slack.";
 const MAX_HOME_SKILLS = 6;
 const MAX_SECTION_TEXT_CHARS = 3000;
+const HIDDEN_HOME_SKILLS = new Set(["jr-rpc"]);
 
 function clampSectionText(text: string): string {
   if (text.length <= MAX_SECTION_TEXT_CHARS) {
@@ -37,13 +38,13 @@ function loadAboutText(): string {
 }
 
 async function buildSkillsSummaryText(): Promise<string> {
-  const skills = await discoverSkills();
+  const skills = (await discoverSkills()).filter((skill) => !HIDDEN_HOME_SKILLS.has(skill.name));
   if (skills.length === 0) {
     return "No skills installed.";
   }
 
   const visible = skills.slice(0, MAX_HOME_SKILLS);
-  const lines = visible.map((skill) => `• \`/${skill.name}\` — ${skill.description}`);
+  const lines = visible.map((skill) => `• \`!${skill.name}\` — ${skill.description}`);
   if (skills.length > visible.length) {
     lines.push(`• …and ${skills.length - visible.length} more`);
   }
