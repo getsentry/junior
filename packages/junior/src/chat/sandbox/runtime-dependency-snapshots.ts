@@ -102,7 +102,9 @@ function buildDependencyProfile(runtime: string): DependencyProfile | null {
     return null;
   }
   const rebuildEpoch = process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH?.trim() ?? "";
-  const hasFloatingVersions = dependencies.some((dep) => hasFloatingSelector(dep));
+  // Runtime postinstall commands may install mutable "latest" artifacts.
+  // Treat those profiles as stale-able just like floating dependency selectors.
+  const hasFloatingVersions = dependencies.some((dep) => hasFloatingSelector(dep)) || postinstall.length > 0;
 
   const hashInput = JSON.stringify({
     version: SNAPSHOT_PROFILE_VERSION,

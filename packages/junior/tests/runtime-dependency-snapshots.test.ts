@@ -126,6 +126,35 @@ describe("runtime dependency snapshots", () => {
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
 
+  it("rebuilds stale snapshots for postinstall-only profiles", async () => {
+    getPluginRuntimeDependenciesMock.mockReturnValue([]);
+    getPluginRuntimePostinstallMock.mockReturnValue([{ cmd: "agent-browser", args: ["install"] }]);
+    sandboxCreateMock
+      .mockResolvedValueOnce(makeSandbox("snap_post_1"))
+      .mockResolvedValueOnce(makeSandbox("snap_post_2"));
+
+    const first = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000
+    });
+    expect(first.snapshotId).toBe("snap_post_1");
+    expect(first.cacheHit).toBe(false);
+    expect(first.resolveOutcome).toBe("rebuilt");
+    expect(first.rebuildReason).toBe("cache_miss");
+
+    vi.setSystemTime(new Date("2026-03-10T00:00:00.000Z"));
+
+    const second = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000
+    });
+    expect(second.snapshotId).toBe("snap_post_2");
+    expect(second.cacheHit).toBe(false);
+    expect(second.resolveOutcome).toBe("rebuilt");
+    expect(second.rebuildReason).toBe("floating_stale");
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+  });
+
   it("rebuilds when rebuild epoch changes", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
       { type: "npm", package: "sentry", version: "latest" }
