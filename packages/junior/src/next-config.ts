@@ -23,7 +23,7 @@ export interface JuniorConfigOptions {
 
 type NextConfigFactory = (
   phase: string,
-  ctx: { defaultConfig: NextConfig }
+  ctx: { defaultConfig: NextConfig },
 ) => Promise<NextConfig> | NextConfig;
 
 function sentryConfigured(): boolean {
@@ -33,88 +33,99 @@ function sentryConfigured(): boolean {
 function isPackageInstalled(cwd: string, packageName: string): boolean {
   const nodeModulesDirs = discoverNodeModulesDirs(cwd);
   return nodeModulesDirs.some((nodeModulesDir) =>
-    isDirectory(path.join(nodeModulesDir, ...packageName.split("/")))
+    isDirectory(path.join(nodeModulesDir, ...packageName.split("/"))),
   );
 }
 
-function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorConfigOptions): NextConfig {
-  const existingServerRuntimeConfig = (nextConfig as { serverRuntimeConfig?: Record<string, unknown> } | undefined)
-    ?.serverRuntimeConfig ?? {};
+function applyJuniorConfig(
+  nextConfig: NextConfig | undefined,
+  options?: JuniorConfigOptions,
+): NextConfig {
+  const existingEnv =
+    (nextConfig as { env?: Record<string, string> } | undefined)?.env ?? {};
   const dataDir = options?.dataDir ?? "./app/data";
   const skillsDir = options?.skillsDir ?? "./app/skills";
   const pluginsDir = options?.pluginsDir ?? "./app/plugins";
   const configuredPluginPackages = unique(options?.pluginPackages ?? []);
-  const discoveredPlugins = discoverInstalledPluginPackageContent(process.cwd(), { packageNames: configuredPluginPackages });
-  const unresolvedConfiguredPackages = configuredPluginPackages.filter(
-    (packageName) => !discoveredPlugins.packageNames.includes(packageName)
+  const discoveredPlugins = discoverInstalledPluginPackageContent(
+    process.cwd(),
+    { packageNames: configuredPluginPackages },
   );
-  const invalidPluginPackages = unresolvedConfiguredPackages.filter((packageName) =>
-    isPackageInstalled(process.cwd(), packageName)
+  const unresolvedConfiguredPackages = configuredPluginPackages.filter(
+    (packageName) => !discoveredPlugins.packageNames.includes(packageName),
+  );
+  const invalidPluginPackages = unresolvedConfiguredPackages.filter(
+    (packageName) => isPackageInstalled(process.cwd(), packageName),
   );
   const missingPluginPackages = unresolvedConfiguredPackages.filter(
-    (packageName) => !invalidPluginPackages.includes(packageName)
+    (packageName) => !invalidPluginPackages.includes(packageName),
   );
   if (invalidPluginPackages.length > 0) {
     throw new Error(
-      `withJunior pluginPackages contains installed packages that are not valid Junior plugins: ${invalidPluginPackages.join(", ")}`
+      `withJunior pluginPackages contains installed packages that are not valid Junior plugins: ${invalidPluginPackages.join(", ")}`,
     );
   }
   if (missingPluginPackages.length > 0) {
     throw new Error(
-      `withJunior pluginPackages contains unresolved packages: ${missingPluginPackages.join(", ")}`
+      `withJunior pluginPackages contains unresolved packages: ${missingPluginPackages.join(", ")}`,
     );
   }
   const defaultDataTracingIncludes = options?.dataDir
     ? [`${dataDir}/**/*`]
     : ["./app/SOUL.md", "./app/ABOUT.md"];
   const pluginPackageTracingIncludes = discoveredPlugins.tracingIncludes;
-  const tracingIncludes = Array.from(new Set([
-    ...defaultDataTracingIncludes,
-    `${skillsDir}/**/*`,
-    `${pluginsDir}/**/*`,
-    ...pluginPackageTracingIncludes,
-  ]));
-  const existingGlobalTracingIncludes = nextConfig?.outputFileTracingIncludes?.["/*"] ?? [];
-  const mergedGlobalTracingIncludes = Array.from(new Set([
-    ...existingGlobalTracingIncludes,
-    ...tracingIncludes
-  ]));
+  const tracingIncludes = Array.from(
+    new Set([
+      ...defaultDataTracingIncludes,
+      `${skillsDir}/**/*`,
+      `${pluginsDir}/**/*`,
+      ...pluginPackageTracingIncludes,
+    ]),
+  );
+  const existingGlobalTracingIncludes =
+    nextConfig?.outputFileTracingIncludes?.["/*"] ?? [];
+  const mergedGlobalTracingIncludes = Array.from(
+    new Set([...existingGlobalTracingIncludes, ...tracingIncludes]),
+  );
   const config = {
     ...nextConfig,
-    serverExternalPackages: Array.from(new Set([
-      ...(nextConfig?.serverExternalPackages ?? []),
-      "@vercel/queue",
-      "@vercel/sandbox",
-      "bash-tool",
-      "just-bash",
-      "@mariozechner/pi-agent-core",
-      "@mariozechner/pi-ai",
-      "@chat-adapter/slack",
-      "@slack/web-api"
-    ])),
+    serverExternalPackages: Array.from(
+      new Set([
+        ...(nextConfig?.serverExternalPackages ?? []),
+        "@vercel/queue",
+        "@vercel/sandbox",
+        "bash-tool",
+        "just-bash",
+        "@mariozechner/pi-agent-core",
+        "@mariozechner/pi-ai",
+        "@chat-adapter/slack",
+        "@slack/web-api",
+      ]),
+    ),
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,
-      "/*": mergedGlobalTracingIncludes
+      "/*": mergedGlobalTracingIncludes,
     },
-    serverRuntimeConfig: {
-      ...existingServerRuntimeConfig,
-      juniorPluginPackages: configuredPluginPackages
-    }
+    env: {
+      ...existingEnv,
+      JUNIOR_PLUGIN_PACKAGES: JSON.stringify(configuredPluginPackages),
+    },
   } as NextConfig;
 
   if (!sentryConfigured()) {
     return config;
   }
 
-  const { withSentryConfig } = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
+  const { withSentryConfig } =
+    require("@sentry/nextjs") as typeof import("@sentry/nextjs");
   return withSentryConfig(config, {
     org: process.env.SENTRY_ORG,
     project: process.env.SENTRY_PROJECT,
     authToken: process.env.SENTRY_AUTH_TOKEN,
     silent: !process.env.CI,
     sourcemaps: {
-      disable: false
-    }
+      disable: false,
+    },
   });
 }
 
@@ -125,7 +136,7 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
  */
 export function withJunior(
   options?: JuniorConfigOptions,
-  nextConfig?: NextConfig | NextConfigFactory
+  nextConfig?: NextConfig | NextConfigFactory,
 ): NextConfig | NextConfigFactory {
   if (typeof nextConfig === "function") {
     return async (phase, ctx) => {
