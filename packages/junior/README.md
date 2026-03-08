@@ -29,7 +29,10 @@ export const runtime = "nodejs";
 
 ```js
 import { withJunior } from "@sentry/junior/config";
-export default withJunior();
+
+export default withJunior({
+  pluginPackages: ["@sentry/junior-github", "@sentry/junior-sentry"]
+});
 ```
 
 ## Full docs
