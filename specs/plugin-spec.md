@@ -102,6 +102,13 @@ runtime-dependencies:                # optional — preinstalled CLI dependencie
     # version omitted => latest
   - type: system
     package: gh
+  - type: system
+    url: https://example.com/tool.rpm
+    sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+runtime-postinstall:                # optional — post-install commands executed before snapshot capture
+  - cmd: example-cli
+    args: ["install"]
 
 mcp:                                 # optional — MCP server config for tool sources
   command: npx
@@ -144,8 +151,14 @@ mcp:                                 # optional — MCP server config for tool s
 | `target.config-key` | `string` | Must appear in `config-keys`. |
 | `runtime-dependencies` | `object[]` | Optional sandbox dependency declarations used to build reusable snapshots. |
 | `runtime-dependencies[].type` | `string` | `"npm"` or `"system"`. |
-| `runtime-dependencies[].package` | `string` | Package identifier (npm package name or system package name). |
+| `runtime-dependencies[].package` | `string` | Package identifier (npm package name or system package name). Required for `npm`; optional for `system` when `url` is used. |
 | `runtime-dependencies[].version` | `string` | Optional for `npm` dependencies. When omitted, runtime uses `latest`. Must be omitted for `system` dependencies. |
+| `runtime-dependencies[].url` | `string` | HTTPS URL for direct system package install (RPM). Allowed only for `system` dependencies. |
+| `runtime-dependencies[].sha256` | `string` | Required with `url`. Lowercase or uppercase hex SHA-256 checksum used for integrity verification before install. |
+| `runtime-postinstall` | `object[]` | Optional post-install command declarations executed after dependency install and before snapshot capture. |
+| `runtime-postinstall[].cmd` | `string` | Non-empty command name. |
+| `runtime-postinstall[].args` | `string[]` | Optional command arguments. |
+| `runtime-postinstall[].sudo` | `boolean` | Optional sudo flag for commands requiring elevated privileges. |
 | `mcp` | `object` | MCP server configuration for external tool sources. Reserved — not yet parsed by the registry. |
 
 Snapshot build/reuse and invalidation behavior for `runtime-dependencies` is defined in [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md).
@@ -154,6 +167,8 @@ System runtime dependency execution environment:
 - Sandbox OS is Amazon Linux 2023.
 - System installs run via `dnf`.
 - Install commands must run with root privileges (`sudo: true` at sandbox command execution).
+- `system` URL dependencies are downloaded with `curl`, verified with `sha256sum`, then installed via `dnf install -y <local-rpm>`.
+- `runtime-postinstall` commands execute after dependency installation and before snapshot capture.
 
 ### Derived values
 

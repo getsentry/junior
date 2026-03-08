@@ -1,11 +1,11 @@
 import { handleCallback, send } from "@vercel/queue";
 
-const DEFAULT_TOPIC_NAME = "junior-thread-message";
+const THREAD_MESSAGE_TOPIC = "junior-thread-message";
 
 const MAX_DELIVERY_ATTEMPTS = 10;
 
 export function getThreadMessageTopic(): string {
-  return DEFAULT_TOPIC_NAME;
+  return THREAD_MESSAGE_TOPIC;
 }
 
 export async function enqueueThreadMessage(

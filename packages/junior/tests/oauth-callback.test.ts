@@ -79,7 +79,7 @@ vi.mock("@/chat/observability", () => ({
   logInfo: vi.fn()
 }));
 
-import { GET } from "@/../app/api/oauth/callback/[provider]/route";
+import { GET } from "@/handlers/oauth-callback";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -313,6 +313,18 @@ describe("oauth callback handler", () => {
     const body = await response.text();
     expect(body).not.toContain("<script>");
     expect(body).toContain("&lt;script&gt;");
+  });
+
+  it("escapes HTML in error message content to prevent XSS", async () => {
+    const response = await GET(
+      makeRequest("https://example.com/api/oauth/callback/sentry?error=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E&state=xss-msg-test"),
+      makeContext("sentry")
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).not.toContain("<img");
+    expect(body).toContain("&lt;img");
   });
 
   it("shows pending-message status in success page", async () => {

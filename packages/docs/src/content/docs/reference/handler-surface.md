@@ -22,13 +22,6 @@ Handled `GET` routes:
 Handled `POST` routes:
 
 - `/api/webhooks/:platform` (Slack path is `/api/webhooks/slack`)
-
-## `@sentry/junior/handlers/queue-callback`
-
-Route this in `app/api/queue/callback/route.ts`.
-
-Handled `POST` route:
-
 - `/api/queue/callback`
 
 ## Expected behavior

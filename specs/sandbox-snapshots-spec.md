@@ -21,6 +21,7 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 ## Scope
 
 - Runtime dependency declarations from plugin manifests.
+- Runtime post-install command declarations from plugin manifests.
 - Dependency profile hashing and snapshot cache-key generation.
 - Redis-backed snapshot registry and build locking.
 - Sandbox creation behavior for cache hit/miss/stale snapshot paths.
@@ -37,13 +38,15 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 ### Runtime Dependency Source of Truth
 
 - Plugin manifests may declare `runtime-dependencies` in `plugin.yaml`.
+- Plugin manifests may declare `runtime-postinstall` commands in `plugin.yaml`.
 - Supported dependency types:
   - `npm` (`package`, optional `version`; omitted means `latest`)
-  - `system` (`package`)
+  - `system` (`package`) or (`url` + `sha256`)
 - Runtime declarations are parsed and validated in:
   - `packages/junior/src/chat/plugins/registry.ts`
   - `packages/junior/src/chat/plugins/types.ts`
 - Runtime computes one merged, de-duplicated dependency profile from all loaded plugins via `getPluginRuntimeDependencies()`.
+- Runtime computes one ordered post-install command list via `getPluginRuntimePostinstall()`.
 
 ### Profile Hash Contract
 
@@ -51,6 +54,7 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
   - hash schema version constant
   - sandbox runtime (`node22`)
   - merged dependency declarations
+  - ordered runtime post-install command declarations
   - optional manual rebuild epoch (`SANDBOX_SNAPSHOT_REBUILD_EPOCH`)
 - Any change in those inputs must produce a new `profileHash` and trigger a fresh snapshot build.
 
@@ -66,11 +70,14 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
   1. Creates a base sandbox.
   2. Installs system dependencies.
   3. Installs npm global dependencies under `/vercel/sandbox/.junior`.
-  4. Captures snapshot with `sandbox.snapshot()`.
-  5. Stores resulting `snapshotId` in registry.
+  4. Executes plugin `runtime-postinstall` commands.
+  5. Captures snapshot with `sandbox.snapshot()`.
+  6. Stores resulting `snapshotId` in registry.
 - Sandbox base image is Amazon Linux 2023.
 - System dependency install uses package name via `dnf install -y` and must run with `sudo: true`.
+- System URL dependencies are downloaded with `curl`, verified with `sha256sum`, then installed via `dnf install -y <local-rpm>` with `sudo: true`.
 - Npm dependency install uses `<package>@<version>`. Omitted manifest versions are normalized to `latest` before install.
+- Runtime post-install commands run in declaration order and fail snapshot build on non-zero exit.
 
 ### Sandbox Create Contract
 

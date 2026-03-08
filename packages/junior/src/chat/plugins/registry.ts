@@ -18,6 +18,8 @@ import type {
   PluginDefinition,
   PluginManifest,
   PluginNpmRuntimeDependency,
+  PluginRuntimePostinstallCommand,
+  PluginSystemRuntimeDependencyFromUrl,
   PluginSystemRuntimeDependency,
   PluginRuntimeDependency
 } from "./types";
@@ -100,16 +102,21 @@ function parseRuntimeDependencies(data: unknown, name: string): PluginRuntimeDep
     const record = entry as Record<string, unknown>;
     const type = record.type;
     const packageName = record.package;
+    const packageUrl = record.url;
     const version = record.version;
+    const sha256 = record.sha256;
     if (typeof type !== "string" || (type !== "npm" && type !== "system")) {
       throw new Error(`Plugin ${name} runtime dependency type must be "npm" or "system"`);
     }
-    if (typeof packageName !== "string" || !packageName.trim()) {
-      throw new Error(`Plugin ${name} runtime dependency package must be a non-empty string`);
-    }
-
-    const normalizedPackage = packageName.trim();
+    const normalizedPackage = typeof packageName === "string" ? packageName.trim() : "";
+    const normalizedUrl = typeof packageUrl === "string" ? packageUrl.trim() : "";
     if (type === "npm") {
+      if (!normalizedPackage) {
+        throw new Error(`Plugin ${name} runtime dependency package must be a non-empty string`);
+      }
+      if (packageUrl !== undefined || sha256 !== undefined) {
+        throw new Error(`Plugin ${name} npm runtime dependencies must only include package/version fields`);
+      }
       const normalizedVersion = typeof version === "string" ? version.trim() : "latest";
       if (!normalizedVersion) {
         throw new Error(`Plugin ${name} runtime dependency version must be a non-empty string when provided`);
@@ -130,15 +137,94 @@ function parseRuntimeDependencies(data: unknown, name: string): PluginRuntimeDep
     if (version !== undefined) {
       throw new Error(`Plugin ${name} system runtime dependencies must not include a version`);
     }
-    const dedupeKey = `${type}:${normalizedPackage}`;
+
+    if (normalizedPackage && normalizedUrl) {
+      throw new Error(`Plugin ${name} system runtime dependencies must specify either package or url, not both`);
+    }
+    if (!normalizedPackage && !normalizedUrl) {
+      throw new Error(`Plugin ${name} system runtime dependencies must specify package or url`);
+    }
+
+    if (normalizedPackage) {
+      if (sha256 !== undefined) {
+        throw new Error(`Plugin ${name} system runtime dependency package entries must not include sha256`);
+      }
+      const dedupeKey = `${type}:package:${normalizedPackage}`;
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      parsed.push({
+        type: "system",
+        package: normalizedPackage
+      } satisfies PluginSystemRuntimeDependency);
+      continue;
+    }
+
+    if (!/^https:\/\//i.test(normalizedUrl)) {
+      throw new Error(`Plugin ${name} system runtime dependency url must be an https URL`);
+    }
+    const normalizedSha256 = typeof sha256 === "string" ? sha256.trim().toLowerCase() : "";
+    if (!/^[a-f0-9]{64}$/.test(normalizedSha256)) {
+      throw new Error(`Plugin ${name} system runtime dependency url entries must include a valid sha256`);
+    }
+    const dedupeKey = `${type}:url:${normalizedUrl}:${normalizedSha256}`;
     if (seen.has(dedupeKey)) {
       continue;
     }
     seen.add(dedupeKey);
     parsed.push({
       type: "system",
-      package: normalizedPackage
-    } satisfies PluginSystemRuntimeDependency);
+      url: normalizedUrl,
+      sha256: normalizedSha256
+    } satisfies PluginSystemRuntimeDependencyFromUrl);
+  }
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
+function parseRuntimePostinstall(
+  data: unknown,
+  name: string
+): PluginRuntimePostinstallCommand[] | undefined {
+  if (data === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(data)) {
+    throw new Error(`Plugin ${name} runtime-postinstall must be an array`);
+  }
+
+  const parsed: PluginRuntimePostinstallCommand[] = [];
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`Plugin ${name} runtime-postinstall entries must be objects`);
+    }
+    const record = entry as Record<string, unknown>;
+    const cmd = typeof record.cmd === "string" ? record.cmd.trim() : "";
+    if (!cmd) {
+      throw new Error(`Plugin ${name} runtime-postinstall cmd must be a non-empty string`);
+    }
+
+    const argsRaw = record.args;
+    if (argsRaw !== undefined && (!Array.isArray(argsRaw) || !argsRaw.every((arg) => typeof arg === "string"))) {
+      throw new Error(`Plugin ${name} runtime-postinstall args must be an array of strings when provided`);
+    }
+
+    const sudoRaw = record.sudo;
+    if (sudoRaw !== undefined && typeof sudoRaw !== "boolean") {
+      throw new Error(`Plugin ${name} runtime-postinstall sudo must be a boolean when provided`);
+    }
+
+    const normalizedArgs = Array.isArray(argsRaw)
+      ? argsRaw.map((arg) => arg.trim()).filter((arg) => arg.length > 0)
+      : undefined;
+
+    parsed.push({
+      cmd,
+      ...(normalizedArgs && normalizedArgs.length > 0 ? { args: normalizedArgs } : {}),
+      ...(typeof sudoRaw === "boolean" ? { sudo: sudoRaw } : {})
+    });
   }
 
   return parsed.length > 0 ? parsed : undefined;
@@ -199,6 +285,7 @@ function parseManifest(raw: string, dir: string): PluginManifest {
     : undefined;
 
   const runtimeDependencies = parseRuntimeDependencies(data["runtime-dependencies"], name);
+  const runtimePostinstall = parseRuntimePostinstall(data["runtime-postinstall"], name);
 
   const manifest: PluginManifest = {
     name,
@@ -206,7 +293,8 @@ function parseManifest(raw: string, dir: string): PluginManifest {
     capabilities,
     configKeys,
     ...(credentials ? { credentials } : {}),
-    ...(runtimeDependencies ? { runtimeDependencies } : {})
+    ...(runtimeDependencies ? { runtimeDependencies } : {}),
+    ...(runtimePostinstall ? { runtimePostinstall } : {})
   };
 
   const oauthRaw = data.oauth as Record<string, unknown> | undefined;
@@ -381,7 +469,12 @@ export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
   const deps: PluginRuntimeDependency[] = [];
   for (const plugin of pluginDefinitions) {
     for (const dep of plugin.manifest.runtimeDependencies ?? []) {
-      const key = dep.type === "npm" ? `${dep.type}:${dep.package}:${dep.version}` : `${dep.type}:${dep.package}`;
+      const key =
+        dep.type === "npm"
+          ? `${dep.type}:${dep.package}:${dep.version}`
+          : "package" in dep
+            ? `${dep.type}:package:${dep.package}`
+            : `${dep.type}:url:${dep.url}:${dep.sha256}`;
       if (seen.has(key)) {
         continue;
       }
@@ -394,14 +487,31 @@ export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
     if (left.type !== right.type) {
       return left.type.localeCompare(right.type);
     }
-    if (left.package !== right.package) {
-      return left.package.localeCompare(right.package);
+    const leftIdentity = "package" in left ? `package:${left.package}` : `url:${left.url}:${left.sha256}`;
+    const rightIdentity = "package" in right ? `package:${right.package}` : `url:${right.url}:${right.sha256}`;
+    if (leftIdentity !== rightIdentity) {
+      return leftIdentity.localeCompare(rightIdentity);
     }
     if (left.type === "npm" && right.type === "npm") {
       return left.version.localeCompare(right.version);
     }
     return 0;
   });
+}
+
+export function getPluginRuntimePostinstall(): PluginRuntimePostinstallCommand[] {
+  const commands: PluginRuntimePostinstallCommand[] = [];
+  for (const plugin of pluginDefinitions) {
+    for (const command of plugin.manifest.runtimePostinstall ?? []) {
+      commands.push({
+        cmd: command.cmd,
+        ...(command.args ? { args: [...command.args] } : {}),
+        ...(command.sudo !== undefined ? { sudo: command.sudo } : {})
+      });
+    }
+  }
+
+  return commands;
 }
 
 export function getPluginOAuthConfig(provider: string): OAuthProviderConfig | undefined {
