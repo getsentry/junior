@@ -86,7 +86,7 @@ export function createLoadSkillTool(
 ) {
   return tool({
     description:
-      "Load a skill by name so its instructions are available for this turn. Use when a request clearly matches a known skill or an explicit !skill trigger references one. Legacy /skill tokens are hints only. Do not use when no skill is relevant.",
+      "Load a skill by name so its instructions are available for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,

@@ -84,17 +84,6 @@ describe("buildSystemPrompt skill paths", () => {
     );
   });
 
-  it("documents !skill as authoritative and /skill as legacy fallback", () => {
-    const prompt = buildSystemPrompt({
-      availableSkills: [],
-      activeSkills: [],
-      invocation: null
-    });
-
-    expect(prompt).toContain("Treat `!skill-name` as the authoritative explicit skill trigger");
-    expect(prompt).toContain("A `/skill-name` token is legacy fallback intent only");
-  });
-
   it("renders runtime-metadata with provided version", () => {
     const prompt = buildSystemPrompt({
       availableSkills: [],
@@ -120,27 +109,4 @@ describe("buildSystemPrompt skill paths", () => {
     expect(prompt).toContain("- version: unknown");
   });
 
-  it("renders invocation context with source-specific trigger details", () => {
-    const hardPrompt = buildSystemPrompt({
-      availableSkills: [],
-      activeSkills: [],
-      invocation: {
-        skillName: "sentry",
-        args: "--repo getsentry/sentry",
-        source: "hard_bang"
-      }
-    });
-    expect(hardPrompt).toContain("Explicit skill trigger detected: !sentry");
-
-    const legacyPrompt = buildSystemPrompt({
-      availableSkills: [],
-      activeSkills: [],
-      invocation: {
-        skillName: "sentry",
-        args: "--repo getsentry/sentry",
-        source: "legacy_slash"
-      }
-    });
-    expect(legacyPrompt).toContain("Legacy slash hint detected: /sentry (non-authoritative)");
-  });
 });

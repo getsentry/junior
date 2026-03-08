@@ -358,10 +358,9 @@ export function buildSystemPrompt(params: {
     renderTag(
       "skills",
       [
-        "- Treat `!skill-name` as the authoritative explicit skill trigger for that skill.",
-        "- If `!skill`-invoked instructions are already present in <loaded_skills>, apply them immediately.",
-        "- Otherwise, for `!skill` invocations, call `loadSkill` for that exact skill before applying skill-specific behavior.",
-        "- A `/skill-name` token is legacy fallback intent only; it is a hint, not an authoritative trigger.",
+        "- Explicit skill triggers may appear as `/skillname` or `!skillname`.",
+        "- If explicitly invoked skill instructions are already present in <loaded_skills>, apply them immediately.",
+        "- Otherwise, for an explicitly invoked skill, call `loadSkill` for that exact skill before applying skill-specific behavior.",
         "- For requests without an explicit trigger where a skill clearly matches, call `loadSkill` before applying skill-specific behavior.",
         "- Do not claim to have used a skill unless it is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Never apply skill-specific behavior unless the skill is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
