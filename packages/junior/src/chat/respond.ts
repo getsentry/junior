@@ -611,6 +611,14 @@ function createAgentTools(
             }
 
             const hasBashCredentials = injectedHeaders || injectedEnv;
+            const sandboxInput =
+              toolName === "bash"
+                ? { command: String(parsed.command ?? "") }
+                : toolName === "readFile"
+                  ? { path: String(parsed.path ?? "") }
+                  : toolName === "writeFile"
+                    ? { path: String(parsed.path ?? ""), content: String(parsed.content ?? "") }
+                    : parsed;
             const result =
               sandboxExecutor?.canExecute(toolName)
                 ? await sandboxExecutor.execute({
@@ -618,11 +626,11 @@ function createAgentTools(
                     input:
                       toolName === "bash" && hasBashCredentials
                         ? {
-                            ...parsed,
+                            ...sandboxInput,
                             ...(injectedHeaders ? { headerTransforms: injectedHeaders } : {}),
                             ...(injectedEnv ? { env: injectedEnv } : {})
                           }
-                        : parsed
+                        : sandboxInput
                   })
                 : await toolDef.execute(parsed as never, {
                     experimental_context: sandbox

@@ -7,6 +7,11 @@ type RouteContext = {
   params: Promise<unknown>;
 };
 
+/**
+ * `@sentry/junior/handler` is a stable public entrypoint for Next.js catch-all routes.
+ * Keep this router thin and explicit so app code can export one handler module while
+ * runtime internals continue to evolve behind it.
+ */
 function normalizeRoutePath(pathParts: string[]): string {
   const route = pathParts.join("/").replace(/^\/+|\/+$/g, "");
   return route.startsWith("api/") ? route.slice("api/".length) : route;
@@ -56,6 +61,9 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
  * Supported routes:
  * - `api/webhooks/:platform`
  * - `api/queue/callback`
+ *
+ * `queue/callback` is routed here for local/dev parity, but production queue triggers
+ * should still target the dedicated `app/api/queue/callback/route.ts` endpoint.
  */
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   const route = normalizeRoutePath(getRoutePathParts(await context.params));

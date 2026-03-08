@@ -10,6 +10,13 @@ import {
   withSpan
 } from "@/chat/observability";
 
+/**
+ * Webhook route contract for `@sentry/junior`.
+ *
+ * We keep a dedicated `/api/webhooks/:platform` surface so each adapter owns its
+ * protocol details (signature verification, challenge flows, retries) while this
+ * handler remains a thin dispatcher.
+ */
 type WebhookRouteContext = {
   params: Promise<{
     platform: string;
@@ -22,10 +29,10 @@ async function loadBot() {
 }
 
 /**
- * Handles platform webhook POST requests for Junior.
+ * Handles `POST /api/webhooks/:platform`.
  *
- * This endpoint resolves a platform adapter from the route context and delegates
- * request handling to the adapter webhook handler.
+ * The router only resolves the platform and delegates to the adapter webhook
+ * implementation; request semantics stay owned by the adapter package.
  */
 export async function POST(request: Request, context: WebhookRouteContext): Promise<Response> {
   const bot = await loadBot();

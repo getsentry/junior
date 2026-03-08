@@ -389,8 +389,7 @@ async function runRuntimePostinstall(
     },
     async () => {
       for (const command of commands) {
-        const quotedArgs = (command.args ?? []).map((arg) => JSON.stringify(arg)).join(" ");
-        const invocation = [command.cmd, quotedArgs].filter(Boolean).join(" ");
+        const invocation = [JSON.stringify(command.cmd), ...(command.args ?? []).map((arg) => JSON.stringify(arg))].join(" ");
         const pathPrefix = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`;
         await runOrThrow(
           sandbox,

@@ -10,7 +10,7 @@ export function createReadFileTool() {
         minLength: 1,
         description: "Path to the file in the sandbox workspace."
       })
-    }),
+    }, { additionalProperties: false }),
     execute: async () => {
       throw new Error("readFile can only run when sandbox execution is enabled.");
     }

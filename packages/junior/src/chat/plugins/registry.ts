@@ -27,19 +27,68 @@ import type {
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
+const AUTH_TOKEN_ENV_RE = /^[A-Z][A-Z0-9_]*$/;
+const API_DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const RUNTIME_POSTINSTALL_CMD_RE = /^[A-Za-z0-9._/-]+$/;
+
+function toRecord(value: unknown, errorMessage: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(errorMessage);
+  }
+  return value as Record<string, unknown>;
+}
+
+function requireStringField(record: Record<string, unknown>, field: string, errorMessage: string): string {
+  const value = record[field];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(errorMessage);
+  }
+  return value.trim();
+}
+
+function requireEnvVarField(record: Record<string, unknown>, field: string, pluginName: string): string {
+  const value = requireStringField(record, field, `Plugin ${pluginName} ${field} must be a non-empty string`);
+  if (!AUTH_TOKEN_ENV_RE.test(value)) {
+    throw new Error(`Plugin ${pluginName} ${field} must be an uppercase env var name`);
+  }
+  return value;
+}
+
+function requireHttpsUrlField(record: Record<string, unknown>, field: string, pluginName: string): string {
+  const value = requireStringField(record, field, `Plugin ${pluginName} oauth.${field} must be a non-empty string`);
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Plugin ${pluginName} oauth.${field} must be a valid URL`);
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error(`Plugin ${pluginName} oauth.${field} must use https`);
+  }
+  return value;
+}
+
+function normalizeApiDomain(rawDomain: unknown, name: string): string {
+  const domain = typeof rawDomain === "string" ? rawDomain.trim().toLowerCase() : "";
+  if (!domain) {
+    throw new Error(`Plugin ${name} credentials.api-domains entries must be non-empty strings`);
+  }
+  if (!API_DOMAIN_RE.test(domain)) {
+    throw new Error(`Plugin ${name} credentials.api-domains entries must be valid domain names`);
+  }
+  return domain;
+}
 
 function parseBaseCredentialFields(
   data: Record<string, unknown>,
   name: string
 ): { apiDomains: string[]; authTokenEnv: string; authTokenPlaceholder?: string } {
   const rawDomains = data["api-domains"];
-  if (!Array.isArray(rawDomains) || rawDomains.length === 0 || !rawDomains.every((d) => typeof d === "string" && d.trim())) {
+  if (!Array.isArray(rawDomains) || rawDomains.length === 0) {
     throw new Error(`Plugin ${name} credentials.api-domains must be a non-empty array of strings`);
   }
-  const authTokenEnv = data["auth-token-env"];
-  if (typeof authTokenEnv !== "string" || !authTokenEnv.trim()) {
-    throw new Error(`Plugin ${name} credentials.auth-token-env must be a non-empty string`);
-  }
+  const apiDomains = rawDomains.map((rawDomain) => normalizeApiDomain(rawDomain, name));
+  const authTokenEnv = requireEnvVarField(data, "auth-token-env", name);
   const authTokenPlaceholderRaw = data["auth-token-placeholder"];
   if (
     authTokenPlaceholderRaw !== undefined &&
@@ -48,7 +97,7 @@ function parseBaseCredentialFields(
     throw new Error(`Plugin ${name} credentials.auth-token-placeholder must be a non-empty string when provided`);
   }
   return {
-    apiDomains: rawDomains as string[],
+    apiDomains,
     authTokenEnv,
     ...(typeof authTokenPlaceholderRaw === "string"
       ? { authTokenPlaceholder: authTokenPlaceholderRaw.trim() }
@@ -65,18 +114,9 @@ function parseCredentials(data: Record<string, unknown>, name: string): PluginCr
 
   if (type === "github-app") {
     const base = parseBaseCredentialFields(data, name);
-    const appIdEnv = data["app-id-env"];
-    if (typeof appIdEnv !== "string" || !appIdEnv.trim()) {
-      throw new Error(`Plugin ${name} credentials.app-id-env must be a non-empty string`);
-    }
-    const privateKeyEnv = data["private-key-env"];
-    if (typeof privateKeyEnv !== "string" || !privateKeyEnv.trim()) {
-      throw new Error(`Plugin ${name} credentials.private-key-env must be a non-empty string`);
-    }
-    const installationIdEnv = data["installation-id-env"];
-    if (typeof installationIdEnv !== "string" || !installationIdEnv.trim()) {
-      throw new Error(`Plugin ${name} credentials.installation-id-env must be a non-empty string`);
-    }
+    const appIdEnv = requireEnvVarField(data, "app-id-env", name);
+    const privateKeyEnv = requireEnvVarField(data, "private-key-env", name);
+    const installationIdEnv = requireEnvVarField(data, "installation-id-env", name);
     return { type: "github-app", ...base, appIdEnv, privateKeyEnv, installationIdEnv } satisfies GitHubAppCredentials;
   }
 
@@ -205,6 +245,11 @@ function parseRuntimePostinstall(
     if (!cmd) {
       throw new Error(`Plugin ${name} runtime-postinstall cmd must be a non-empty string`);
     }
+    if (!RUNTIME_POSTINSTALL_CMD_RE.test(cmd)) {
+      throw new Error(
+        `Plugin ${name} runtime-postinstall cmd must be a single executable token (letters, digits, ., _, /, -)`
+      );
+    }
 
     const argsRaw = record.args;
     if (argsRaw !== undefined && (!Array.isArray(argsRaw) || !argsRaw.every((arg) => typeof arg === "string"))) {
@@ -231,7 +276,7 @@ function parseRuntimePostinstall(
 }
 
 function parseManifest(raw: string, dir: string): PluginManifest {
-  const data = parseYaml(raw) as Record<string, unknown>;
+  const data = toRecord(parseYaml(raw), `Invalid plugin manifest in ${dir}: expected an object`);
 
   const rawName = data.name;
   if (typeof rawName !== "string" || !PLUGIN_NAME_RE.test(rawName)) {
@@ -274,11 +319,8 @@ function parseManifest(raw: string, dir: string): PluginManifest {
   }
 
   const credentialsRaw = data.credentials;
-  if (
-    credentialsRaw !== undefined &&
-    (!credentialsRaw || typeof credentialsRaw !== "object" || Array.isArray(credentialsRaw))
-  ) {
-    throw new Error(`Plugin ${name} credentials must be an object when provided`);
+  if (credentialsRaw !== undefined) {
+    toRecord(credentialsRaw, `Plugin ${name} credentials must be an object when provided`);
   }
   const credentials = credentialsRaw
     ? parseCredentials(credentialsRaw as Record<string, unknown>, name)
@@ -297,7 +339,7 @@ function parseManifest(raw: string, dir: string): PluginManifest {
     ...(runtimePostinstall ? { runtimePostinstall } : {})
   };
 
-  const oauthRaw = data.oauth as Record<string, unknown> | undefined;
+  const oauthRaw = data.oauth ? toRecord(data.oauth, `Plugin ${name} oauth must be an object`) : undefined;
   if (oauthRaw) {
     if (!credentials) {
       throw new Error(`Plugin ${name} oauth requires credentials`);
@@ -305,22 +347,16 @@ function parseManifest(raw: string, dir: string): PluginManifest {
     if (credentials.type !== "oauth-bearer") {
       throw new Error(`Plugin ${name} oauth requires credentials.type "oauth-bearer"`);
     }
-    const oauthFields = ["client-id-env", "client-secret-env", "authorize-endpoint", "token-endpoint", "scope"] as const;
-    for (const field of oauthFields) {
-      if (typeof oauthRaw[field] !== "string" || !(oauthRaw[field] as string).trim()) {
-        throw new Error(`Plugin ${name} oauth.${field} must be a non-empty string`);
-      }
-    }
     manifest.oauth = {
-      clientIdEnv: oauthRaw["client-id-env"] as string,
-      clientSecretEnv: oauthRaw["client-secret-env"] as string,
-      authorizeEndpoint: oauthRaw["authorize-endpoint"] as string,
-      tokenEndpoint: oauthRaw["token-endpoint"] as string,
-      scope: oauthRaw.scope as string
+      clientIdEnv: requireEnvVarField(oauthRaw, "client-id-env", name),
+      clientSecretEnv: requireEnvVarField(oauthRaw, "client-secret-env", name),
+      authorizeEndpoint: requireHttpsUrlField(oauthRaw, "authorize-endpoint", name),
+      tokenEndpoint: requireHttpsUrlField(oauthRaw, "token-endpoint", name),
+      scope: requireStringField(oauthRaw, "scope", `Plugin ${name} oauth.scope must be a non-empty string`)
     };
   }
 
-  const targetRaw = data.target as Record<string, unknown> | undefined;
+  const targetRaw = data.target ? toRecord(data.target, `Plugin ${name} target must be an object`) : undefined;
   if (targetRaw) {
     if (targetRaw.type !== "repo") {
       throw new Error(`Plugin ${name} target.type must be "repo"`);
@@ -328,6 +364,9 @@ function parseManifest(raw: string, dir: string): PluginManifest {
     const rawConfigKey = targetRaw["config-key"];
     if (typeof rawConfigKey !== "string" || !rawConfigKey.trim()) {
       throw new Error(`Plugin ${name} target.config-key must be a non-empty string`);
+    }
+    if (!SHORT_CONFIG_KEY_RE.test(rawConfigKey)) {
+      throw new Error(`Plugin ${name} target.config-key "${rawConfigKey}" is invalid`);
     }
     const qualifiedKey = `${name}.${rawConfigKey}`;
     if (!configKeys.includes(qualifiedKey)) {
@@ -388,18 +427,31 @@ function loadPlugins(): void {
   const roots = [...localRoots, ...packagedContent.manifestRoots];
   for (const pluginsRoot of roots) {
     let entries: string[];
+    let rootStat: ReturnType<typeof statSync>;
     try {
-      const rootStat = statSync(pluginsRoot);
-      if (rootStat.isDirectory()) {
-        const manifestPath = path.join(pluginsRoot, "plugin.yaml");
-        try {
-          const rawRootManifest = readFileSync(manifestPath, "utf8");
-          registerPluginManifest(rawRootManifest, pluginsRoot);
-          continue;
-        } catch {
-          // Not a root manifest package; continue scanning child directories.
-        }
+      rootStat = statSync(pluginsRoot);
+    } catch (error) {
+      logWarn("plugin_root_read_failed", {}, {
+        "file.directory": pluginsRoot,
+        "error.message": error instanceof Error ? error.message : String(error)
+      }, "Failed to read plugin root");
+      continue;
+    }
+    if (rootStat.isDirectory()) {
+      const manifestPath = path.join(pluginsRoot, "plugin.yaml");
+      let hasRootManifest = false;
+      try {
+        hasRootManifest = statSync(manifestPath).isFile();
+      } catch {
+        hasRootManifest = false;
       }
+      if (hasRootManifest) {
+        const rawRootManifest = readFileSync(manifestPath, "utf8");
+        registerPluginManifest(rawRootManifest, pluginsRoot);
+        continue;
+      }
+    }
+    try {
       entries = readdirSync(pluginsRoot);
     } catch (error) {
       logWarn("plugin_root_read_failed", {}, {

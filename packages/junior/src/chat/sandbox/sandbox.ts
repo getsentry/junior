@@ -3,7 +3,7 @@ import path from "node:path";
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
 import { extractHttpErrorDetails } from "@/chat/http-error-details";
-import { setSpanAttributes, setSpanStatus, withSpan, type ObservabilityContext } from "@/chat/observability";
+import { logWarn, setSpanAttributes, setSpanStatus, withSpan, type ObservabilityContext } from "@/chat/observability";
 import { SANDBOX_SKILLS_ROOT, SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import {
   isSnapshotMissingError,
@@ -317,6 +317,27 @@ export function createSandboxExecutor(options?: {
     attributes: Record<string, unknown>,
     callback: () => Promise<T>
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
+
+  const invalidateSandboxInstance = async (targetSandbox: Sandbox, reason: unknown): Promise<void> => {
+    if (sandbox === targetSandbox) {
+      sandbox = null;
+      sandboxIdHint = undefined;
+      toolExecutors = undefined;
+    }
+    logWarn(
+      "sandbox_network_policy_restore_failed",
+      traceContext,
+      {
+        "error.message": reason instanceof Error ? reason.message : String(reason)
+      },
+      "Sandbox network policy restore failed; discarding sandbox instance"
+    );
+    try {
+      await targetSandbox.stop({ blocking: true });
+    } catch {
+      // Best effort shutdown; we already dropped executor references.
+    }
+  };
 
   const upsertSkillsToSandbox = async (targetSandbox: Sandbox): Promise<void> => {
     await withSandboxSpan(
@@ -643,6 +664,7 @@ export function createSandboxExecutor(options?: {
             try {
               await activeSandbox.updateNetworkPolicy(restoreNetworkPolicy);
             } catch (restoreError) {
+              await invalidateSandboxInstance(activeSandbox, restoreError);
               if (!commandError) {
                 throw restoreError;
               }

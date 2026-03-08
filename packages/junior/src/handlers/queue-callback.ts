@@ -10,6 +10,13 @@ import {
   withSpan
 } from "@/chat/observability";
 
+/**
+ * Queue callback contract for `@sentry/junior`.
+ *
+ * Queue providers need a fixed callback URL (`/api/queue/callback`) that is
+ * configured out-of-band. A catch-all route is not sufficient as the canonical
+ * production endpoint because providers target an exact path.
+ */
 const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(async (message, metadata) => {
   if (metadata.topicName === getThreadMessageTopic()) {
     const payload = {
@@ -43,7 +50,11 @@ const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(async (
 });
 
 /**
- * Handles queue callback POST requests for asynchronous thread processing.
+ * Handles `POST /api/queue/callback` for asynchronous thread processing.
+ *
+ * Keep this route as a dedicated handler in app code. The catch-all router can
+ * mirror this path for local/dev parity, but production queue delivery should
+ * always target the dedicated endpoint.
  */
 export async function POST(request: Request): Promise<Response> {
   const requestContext = createRequestContext(request, { platform: "queue" });

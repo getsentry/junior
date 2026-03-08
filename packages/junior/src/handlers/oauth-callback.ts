@@ -11,6 +11,13 @@ import { getStateAdapter } from "@/chat/state";
 import { truncateStatusText } from "@/chat/status-format";
 import { escapeXml } from "@/chat/xml";
 
+/**
+ * OAuth callback contract for `@sentry/junior`.
+ *
+ * Providers redirect users to a concrete GET endpoint (`/api/oauth/callback/:provider`).
+ * We complete token exchange synchronously for correctness, then use `after(...)`
+ * for best-effort Slack side effects so the browser response returns quickly.
+ */
 function htmlErrorResponse(title: string, message: string, status: number): Response {
   const safeTitle = escapeXml(title);
   const safeMessage = escapeXml(message);

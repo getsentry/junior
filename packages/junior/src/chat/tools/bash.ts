@@ -10,7 +10,7 @@ export function createBashTool() {
         minLength: 1,
         description: "Bash command to run inside the sandbox."
       })
-    }),
+    }, { additionalProperties: false }),
     execute: async () => {
       throw new Error("bash can only run when sandbox execution is enabled.");
     }

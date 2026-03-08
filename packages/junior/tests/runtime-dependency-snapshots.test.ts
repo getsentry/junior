@@ -505,7 +505,7 @@ describe("runtime dependency snapshots", () => {
     });
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "bash",
-      args: ["-lc", "export PATH=\"/vercel/sandbox/.junior/bin:$PATH\" && example-cli \"install\""]
+      args: ["-lc", "export PATH=\"/vercel/sandbox/.junior/bin:$PATH\" && \"example-cli\" \"install\""]
     });
   });
 });

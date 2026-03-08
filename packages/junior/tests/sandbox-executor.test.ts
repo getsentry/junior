@@ -4,9 +4,10 @@ const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
   sandboxCreateMock: vi.fn()
 }));
-const { setSpanAttributesMock, setSpanStatusMock } = vi.hoisted(() => ({
+const { setSpanAttributesMock, setSpanStatusMock, logWarnMock } = vi.hoisted(() => ({
   setSpanAttributesMock: vi.fn(),
-  setSpanStatusMock: vi.fn()
+  setSpanStatusMock: vi.fn(),
+  logWarnMock: vi.fn()
 }));
 
 vi.mock("@vercel/sandbox", () => ({
@@ -28,7 +29,8 @@ vi.mock("@/chat/observability", () => ({
     callback: () => Promise<unknown>
   ) => callback(),
   setSpanAttributes: setSpanAttributesMock,
-  setSpanStatus: setSpanStatusMock
+  setSpanStatus: setSpanStatusMock,
+  logWarn: logWarnMock
 }));
 
 const { resolveRuntimeDependencySnapshotMock, isSnapshotMissingErrorMock } = vi.hoisted(() => ({
@@ -325,6 +327,58 @@ describe("createSandboxExecutor", () => {
       })
     ).rejects.toThrow("command failed");
     expect(sandbox.updateNetworkPolicy).toHaveBeenCalledTimes(2);
+  });
+
+  it("discards the sandbox when network policy restore fails after a successful command", async () => {
+    const firstSandbox = makeSandbox("sbx_restore_failure_first");
+    firstSandbox.updateNetworkPolicy
+      .mockImplementationOnce(async () => {})
+      .mockImplementationOnce(async () => {
+        throw new Error("restore failed");
+      });
+    const secondSandbox = makeSandbox("sbx_restore_failure_second");
+    sandboxCreateMock.mockResolvedValueOnce(firstSandbox).mockResolvedValueOnce(secondSandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) }
+      }
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await expect(
+      executor.execute({
+        toolName: "bash",
+        input: {
+          command: "echo ok",
+          headerTransforms: [
+            {
+              domain: "api.github.com",
+              headers: {
+                Authorization: "Bearer token-1"
+              }
+            }
+          ]
+        }
+      })
+    ).rejects.toThrow("restore failed");
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo second"
+      }
+    });
+
+    expect(firstSandbox.stop).toHaveBeenCalledTimes(1);
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+    expect(secondSandbox.runCommand).toHaveBeenCalledWith({
+      cmd: "bash",
+      args: ["-c", 'export PATH="/vercel/sandbox/.junior/bin:$PATH" && echo second'],
+      cwd: "/vercel/sandbox"
+    });
   });
 
   it("routes matching bash commands through custom command handler", async () => {

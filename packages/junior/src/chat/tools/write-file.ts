@@ -13,7 +13,7 @@ export function createWriteFileTool() {
       content: Type.String({
         description: "UTF-8 file content to write."
       })
-    }),
+    }, { additionalProperties: false }),
     execute: async () => {
       throw new Error("writeFile can only run when sandbox execution is enabled.");
     }
