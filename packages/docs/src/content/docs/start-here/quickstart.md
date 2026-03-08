@@ -111,6 +111,9 @@ pnpm dlx vercel@latest link
 }
 ```
 
+If your project uses JavaScript route files (for example from `junior init`), use
+`app/api/queue/callback/route.js` instead.
+
 ### Configure build command
 
 Set the Vercel build command to run snapshot warmup after app build.
