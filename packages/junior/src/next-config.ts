@@ -100,6 +100,7 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     ...nextConfig,
     serverExternalPackages: Array.from(new Set([
       ...(nextConfig?.serverExternalPackages ?? []),
+      "@vercel/queue",
       "@vercel/sandbox",
       "bash-tool",
       "just-bash",

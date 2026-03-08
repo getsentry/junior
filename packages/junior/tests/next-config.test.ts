@@ -29,6 +29,7 @@ describe("withJunior", () => {
     expect(config.serverExternalPackages).toEqual(
       expect.arrayContaining([
         "existing-package",
+        "@vercel/queue",
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",
@@ -68,6 +69,7 @@ describe("withJunior", () => {
     );
     expect(resolved.serverExternalPackages).toEqual(
       expect.arrayContaining([
+        "@vercel/queue",
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",
@@ -103,7 +105,7 @@ describe("withJunior", () => {
   it("deduplicates serverExternalPackages when consumer already includes defaults", async () => {
     const config = await resolveConfig(withJunior(
       {
-        serverExternalPackages: ["@vercel/sandbox", "custom-package"]
+        serverExternalPackages: ["@vercel/queue", "@vercel/sandbox", "custom-package"]
       },
       {
         dataDir: "./my-data",
@@ -114,6 +116,7 @@ describe("withJunior", () => {
 
     expect(config.serverExternalPackages).toEqual(
       expect.arrayContaining([
+        "@vercel/queue",
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",
@@ -124,6 +127,7 @@ describe("withJunior", () => {
         "custom-package"
       ])
     );
+    expect(config.serverExternalPackages?.filter((pkg) => pkg === "@vercel/queue")).toHaveLength(1);
     expect(config.serverExternalPackages?.filter((pkg) => pkg === "@vercel/sandbox")).toHaveLength(1);
   });
 
