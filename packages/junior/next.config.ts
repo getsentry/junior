@@ -8,4 +8,4 @@ const nextConfig = {
   }
 };
 
-export default withJunior(nextConfig, { sentry: true });
+export default withJunior({}, nextConfig);

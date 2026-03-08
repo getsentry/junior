@@ -1,35 +1,11 @@
 import type { NextConfig } from "next";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { discoverInstalledPluginPackageContent } from "./chat/plugins/package-discovery";
 
 const require = createRequire(import.meta.url);
 
-interface RootPackageJson {
-  dependencies?: Record<string, string>;
-  optionalDependencies?: Record<string, string>;
-}
-
-function readDeclaredDependencyNames(cwd: string = process.cwd()): string[] {
-  const packageJsonPath = path.join(cwd, "package.json");
-  try {
-    const rootPackage = JSON.parse(readFileSync(packageJsonPath, "utf8")) as RootPackageJson;
-    return [...new Set([
-      ...Object.keys(rootPackage.dependencies ?? {}),
-      ...Object.keys(rootPackage.optionalDependencies ?? {})
-    ])].sort((left, right) => left.localeCompare(right));
-  } catch {
-    return [];
-  }
-}
-
-function discoverInstalledPluginPackages(cwd: string = process.cwd()): { tracingIncludes: string[] } {
-  const packageNames = readDeclaredDependencyNames(cwd);
-  const discovered = discoverInstalledPluginPackageContent(cwd, { packageNames });
-  return {
-    tracingIncludes: discovered.tracingIncludes
-  };
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 /**
@@ -40,7 +16,6 @@ export interface JuniorConfigOptions {
   skillsDir?: string;
   pluginsDir?: string;
   pluginPackages?: string[];
-  sentry?: boolean;
 }
 
 type NextConfigFactory = (
@@ -49,15 +24,24 @@ type NextConfigFactory = (
 ) => Promise<NextConfig> | NextConfig;
 
 function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorConfigOptions): NextConfig {
+  const existingServerRuntimeConfig = (nextConfig as { serverRuntimeConfig?: Record<string, unknown> } | undefined)
+    ?.serverRuntimeConfig ?? {};
   const dataDir = options?.dataDir ?? "./app/data";
   const skillsDir = options?.skillsDir ?? "./app/skills";
   const pluginsDir = options?.pluginsDir ?? "./app/plugins";
+  const configuredPluginPackages = unique(options?.pluginPackages ?? []);
+  const discoveredPlugins = discoverInstalledPluginPackageContent(process.cwd(), { packageNames: configuredPluginPackages });
+  const unresolvedConfiguredPackages = configuredPluginPackages.filter(
+    (packageName) => !discoveredPlugins.packageNames.includes(packageName)
+  );
+  if (unresolvedConfiguredPackages.length > 0) {
+    throw new Error(
+      `withJunior pluginPackages contains unresolved packages: ${unresolvedConfiguredPackages.join(", ")}`
+    );
+  }
   const defaultDataTracingIncludes = options?.dataDir
     ? [`${dataDir}/**/*`]
     : ["./app/SOUL.md", "./app/ABOUT.md"];
-  const discoveredPlugins = options?.pluginPackages && options.pluginPackages.length > 0
-    ? discoverInstalledPluginPackageContent(process.cwd(), { packageNames: options.pluginPackages })
-    : discoverInstalledPluginPackages();
   const pluginPackageTracingIncludes = discoveredPlugins.tracingIncludes;
   const tracingIncludes = Array.from(new Set([
     ...defaultDataTracingIncludes,
@@ -70,7 +54,7 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     ...existingGlobalTracingIncludes,
     ...tracingIncludes
   ]));
-  const config: NextConfig = {
+  const config = {
     ...nextConfig,
     serverExternalPackages: Array.from(new Set([
       ...(nextConfig?.serverExternalPackages ?? []),
@@ -86,24 +70,23 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
     outputFileTracingIncludes: {
       ...nextConfig?.outputFileTracingIncludes,
       "/*": mergedGlobalTracingIncludes
+    },
+    serverRuntimeConfig: {
+      ...existingServerRuntimeConfig,
+      juniorPluginPackages: configuredPluginPackages
     }
-  };
+  } as NextConfig;
 
-  if (options?.sentry) {
-    // Conditionally load @sentry/nextjs only when Sentry integration is enabled.
-    const { withSentryConfig } = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
-    return withSentryConfig(config, {
-      org: process.env.SENTRY_ORG,
-      project: process.env.SENTRY_PROJECT,
-      authToken: process.env.SENTRY_AUTH_TOKEN,
-      silent: !process.env.CI,
-      sourcemaps: {
-        disable: false
-      }
-    });
-  }
-
-  return config;
+  const { withSentryConfig } = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
+  return withSentryConfig(config, {
+    org: process.env.SENTRY_ORG,
+    project: process.env.SENTRY_PROJECT,
+    authToken: process.env.SENTRY_AUTH_TOKEN,
+    silent: !process.env.CI,
+    sourcemaps: {
+      disable: false
+    }
+  });
 }
 
 /**
@@ -112,8 +95,8 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
  * Supports both object and function-style Next config exports.
  */
 export function withJunior(
-  nextConfig?: NextConfig | NextConfigFactory,
-  options?: JuniorConfigOptions
+  options?: JuniorConfigOptions,
+  nextConfig?: NextConfig | NextConfigFactory
 ): NextConfig | NextConfigFactory {
   if (typeof nextConfig === "function") {
     return async (phase, ctx) => {

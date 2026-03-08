@@ -62,6 +62,28 @@ function pathWithinCwd(cwd: string, targetPath: string): string | null {
   return `./${normalizeForGlob(relative)}`;
 }
 
+function parseRuntimeConfiguredPackageNames(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const parsed = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  return uniqueInOrder(parsed.map((entry) => entry.trim()));
+}
+
+function readNextRuntimeConfiguredPackageNames(): string[] | null {
+  try {
+    const nextConfigModule = require("next/config") as { default?: () => unknown };
+    const getConfig = nextConfigModule.default;
+    if (typeof getConfig !== "function") {
+      return null;
+    }
+    const runtimeConfig = getConfig() as { serverRuntimeConfig?: { juniorPluginPackages?: unknown } } | undefined;
+    return parseRuntimeConfiguredPackageNames(runtimeConfig?.serverRuntimeConfig?.juniorPluginPackages) ?? [];
+  } catch {
+    return null;
+  }
+}
+
 function findContainingNodeModulesDir(targetPath: string): string | null {
   let current = path.resolve(targetPath);
   while (true) {
@@ -153,13 +175,19 @@ function discoverInstalledJuniorContentPackages(
 ): InstalledJuniorContentPackage[] {
   const resolvedCwd = path.resolve(cwd);
   const candidateNodeModulesDirs = nodeModulesDirs ?? discoverNodeModulesDirs(resolvedCwd);
-  const declaredPackages = discoverDeclaredPackages(packageNames ?? [], candidateNodeModulesDirs);
+  const configuredPackageNames = packageNames ?? readNextRuntimeConfiguredPackageNames();
+  const declaredPackages = discoverDeclaredPackages(configuredPackageNames ?? [], candidateNodeModulesDirs);
+  const useFallbackScan = configuredPackageNames === null;
   const discovered: InstalledJuniorContentPackage[] = [...declaredPackages];
   const seenPackageNames = new Set<string>();
   const seenPackageDirs = new Set<string>();
   for (const pkg of declaredPackages) {
     seenPackageNames.add(pkg.name);
     seenPackageDirs.add(pkg.dir);
+  }
+
+  if (!useFallbackScan) {
+    return discovered;
   }
 
   for (const nodeModulesDir of candidateNodeModulesDirs) {

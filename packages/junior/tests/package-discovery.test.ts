@@ -63,4 +63,16 @@ describe("plugin package discovery", () => {
     expect(discovered.tracingIncludes).toContain("./node_modules/@acme/junior-plugin-link/plugin.yaml");
     expect(discovered.tracingIncludes).toContain("./node_modules/@acme/junior-plugin-link/skills/**/*");
   });
+
+  it("does not fallback scan when explicit packageNames is empty", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-package-discovery-"));
+    await writePluginPackage(path.join(tempRoot, "node_modules"), "@acme/junior-plugin-demo");
+    await fs.writeFile(path.join(tempRoot, "package.json"), JSON.stringify({ name: "temp", private: true }), "utf8");
+
+    const discovered = discoverInstalledPluginPackageContent(tempRoot, { packageNames: [] });
+    expect(discovered.packageNames).toEqual([]);
+    expect(discovered.manifestRoots).toEqual([]);
+    expect(discovered.skillRoots).toEqual([]);
+    expect(discovered.tracingIncludes).toEqual([]);
+  });
 });
