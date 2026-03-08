@@ -312,7 +312,19 @@ describe("oauth callback handler", () => {
     expect(response.status).toBe(400);
     const body = await response.text();
     expect(body).not.toContain("<script>");
-    expect(body).toContain("&lt;script&gt;");
+    expect(body).toContain("&amp;lt;script&amp;gt;");
+  });
+
+  it("escapes HTML in error message content to prevent XSS", async () => {
+    const response = await GET(
+      makeRequest("https://example.com/api/oauth/callback/sentry?error=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E&state=xss-msg-test"),
+      makeContext("sentry")
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).not.toContain("<img");
+    expect(body).toContain("&amp;lt;img");
   });
 
   it("shows pending-message status in success page", async () => {

@@ -13,13 +13,14 @@ import { escapeXml } from "@/chat/xml";
 
 function htmlErrorResponse(title: string, message: string, status: number): Response {
   const safeTitle = escapeXml(title);
+  const safeMessage = escapeXml(message);
   const html = `<!DOCTYPE html>
 <html>
 <head><title>${safeTitle}</title></head>
 <body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
   <div style="text-align: center; max-width: 480px;">
     <h1>${safeTitle}</h1>
-    <p>${message}</p>
+    <p>${safeMessage}</p>
     <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack to try again.</p>
   </div>
 </body>
