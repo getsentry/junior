@@ -30,7 +30,22 @@ export interface PluginSystemRuntimeDependency {
   package: string;
 }
 
-export type PluginRuntimeDependency = PluginNpmRuntimeDependency | PluginSystemRuntimeDependency;
+export interface PluginSystemRuntimeDependencyFromUrl {
+  type: "system";
+  url: string;
+  sha256: string;
+}
+
+export type PluginRuntimeDependency =
+  | PluginNpmRuntimeDependency
+  | PluginSystemRuntimeDependency
+  | PluginSystemRuntimeDependencyFromUrl;
+
+export interface PluginRuntimePostinstallCommand {
+  cmd: string;
+  args?: string[];
+  sudo?: boolean;
+}
 
 export interface PluginManifest {
   name: string;
@@ -39,6 +54,7 @@ export interface PluginManifest {
   configKeys: string[];
   credentials?: PluginCredentials;
   runtimeDependencies?: PluginRuntimeDependency[];
+  runtimePostinstall?: PluginRuntimePostinstallCommand[];
   oauth?: {
     clientIdEnv: string;
     clientSecretEnv: string;

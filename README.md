@@ -20,5 +20,6 @@ Start here:
 | Package | Purpose |
 | --- | --- |
 | `@sentry/junior` | Core Slack bot runtime for Next.js |
+| `@sentry/junior-agent-browser` | Browser automation plugin package for web interaction workflows |
 | `@sentry/junior-github` | GitHub plugin package for issue workflows |
 | `@sentry/junior-sentry` | Sentry plugin package for issue workflows |

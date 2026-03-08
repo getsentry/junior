@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 import { withSpan } from "@/chat/observability";
-import { getPluginRuntimeDependencies } from "@/chat/plugins/registry";
-import type { PluginRuntimeDependency } from "@/chat/plugins/types";
+import { getPluginRuntimeDependencies, getPluginRuntimePostinstall } from "@/chat/plugins/registry";
+import type { PluginRuntimeDependency, PluginRuntimePostinstallCommand } from "@/chat/plugins/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { getStateAdapter } from "@/chat/state";
 
@@ -27,6 +27,7 @@ interface DependencyProfile {
   dependencyCount: number;
   hasFloatingVersions: boolean;
   dependencies: PluginRuntimeDependency[];
+  postinstall: PluginRuntimePostinstallCommand[];
 }
 
 export type SnapshotResolveOutcome =
@@ -89,7 +90,8 @@ function parseFloatingDepMaxAgeMs(): number {
 
 function buildDependencyProfile(runtime: string): DependencyProfile | null {
   const dependencies = getPluginRuntimeDependencies();
-  if (dependencies.length === 0) {
+  const postinstall = getPluginRuntimePostinstall();
+  if (dependencies.length === 0 && postinstall.length === 0) {
     return null;
   }
   const rebuildEpoch = process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH?.trim() ?? "";
@@ -99,7 +101,8 @@ function buildDependencyProfile(runtime: string): DependencyProfile | null {
     version: SNAPSHOT_PROFILE_VERSION,
     runtime,
     rebuildEpoch,
-    dependencies
+    dependencies,
+    postinstall
   });
 
   const profileHash = createHash("sha256").update(hashInput).digest("hex");
@@ -107,7 +110,8 @@ function buildDependencyProfile(runtime: string): DependencyProfile | null {
     profileHash,
     dependencyCount: dependencies.length,
     hasFloatingVersions,
-    dependencies
+    dependencies,
+    postinstall
   };
 }
 
@@ -241,6 +245,23 @@ async function installGhCliViaDnf(sandbox: Sandbox): Promise<void> {
   );
 }
 
+function runtimeDependencyFilePath(url: string, sha256: string): string {
+  let urlBasename = "package.rpm";
+  try {
+    const pathname = new URL(url).pathname;
+    const segments = pathname.split("/").filter(Boolean);
+    const candidate = segments[segments.length - 1];
+    if (candidate) {
+      urlBasename = candidate;
+    }
+  } catch {
+    // URL shape is validated during manifest parsing; keep a safe fallback.
+  }
+
+  const sanitizedBasename = urlBasename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `/tmp/junior-runtime-${sha256.slice(0, 12)}-${sanitizedBasename}`;
+}
+
 async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeDependency[]): Promise<void> {
   const systemDeps = deps.filter((dep): dep is Extract<PluginRuntimeDependency, { type: "system" }> => dep.type === "system");
   const npmPackages = deps
@@ -256,6 +277,48 @@ async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeD
       },
       async () => {
         for (const dep of systemDeps) {
+          if ("url" in dep) {
+            const rpmPath = runtimeDependencyFilePath(dep.url, dep.sha256);
+            await runOrThrow(
+              sandbox,
+              {
+                cmd: "curl",
+                args: ["-fsSL", dep.url, "-o", rpmPath]
+              },
+              `curl download ${dep.url}`
+            );
+
+            const checksumResult = await sandbox.runCommand({
+              cmd: "sha256sum",
+              args: [rpmPath]
+            });
+            const checksumStdout = (await checksumResult.stdout()).trim();
+            const checksumStderr = (await checksumResult.stderr()).trim();
+            if (checksumResult.exitCode !== 0) {
+              throw new Error(`sha256sum failed: ${checksumStderr || checksumStdout || "command failed"}`);
+            }
+            const actualChecksum = checksumStdout.split(/\s+/)[0]?.toLowerCase();
+            if (!actualChecksum) {
+              throw new Error("sha256sum produced empty output");
+            }
+            if (actualChecksum !== dep.sha256) {
+              throw new Error(
+                `checksum mismatch for ${dep.url}: expected ${dep.sha256}, got ${actualChecksum}`
+              );
+            }
+
+            await runOrThrow(
+              sandbox,
+              {
+                cmd: "dnf",
+                args: ["install", "-y", rpmPath],
+                sudo: true
+              },
+              `dnf install ${dep.url}`
+            );
+            continue;
+          }
+
           if (dep.package === "gh") {
             await installGhCliViaDnf(sandbox);
             continue;
@@ -301,6 +364,36 @@ async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeD
   }
 }
 
+async function runRuntimePostinstall(
+  sandbox: Sandbox,
+  commands: PluginRuntimePostinstallCommand[]
+): Promise<void> {
+  if (commands.length === 0) {
+    return;
+  }
+
+  await withSnapshotSpan(
+    "sandbox.snapshot.runtime_postinstall",
+    "sandbox.snapshot.runtime_postinstall",
+    {
+      "app.sandbox.snapshot.runtime_postinstall.count": commands.length
+    },
+    async () => {
+      for (const command of commands) {
+        await runOrThrow(
+          sandbox,
+          {
+            cmd: command.cmd,
+            ...(command.args ? { args: command.args } : {}),
+            ...(command.sudo !== undefined ? { sudo: command.sudo } : {})
+          },
+          `runtime-postinstall ${command.cmd}`
+        );
+      }
+    }
+  );
+}
+
 async function createDependencySnapshot(profile: DependencyProfile, runtime: string, timeoutMs: number): Promise<string> {
   return await withSnapshotSpan(
     "sandbox.snapshot.build",
@@ -317,6 +410,7 @@ async function createDependencySnapshot(profile: DependencyProfile, runtime: str
 
       try {
         await installRuntimeDependencies(sandbox, profile.dependencies);
+        await runRuntimePostinstall(sandbox, profile.postinstall);
         return await withSnapshotSpan(
           "sandbox.snapshot.capture",
           "sandbox.snapshot.capture",

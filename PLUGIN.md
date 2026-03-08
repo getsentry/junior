@@ -77,6 +77,13 @@ runtime-dependencies:
     # version omitted => latest
   - type: system
     package: gh
+  - type: system
+    url: https://example.com/tool.rpm
+    sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+runtime-postinstall:
+  - cmd: agent-browser
+    args: [install]
 ```
 
 ## Manifest Rules
@@ -91,6 +98,8 @@ runtime-dependencies:
 - Plugins can declare capabilities without credentials, but `jr-rpc issue-credential` will fail with a clear no-credentials error.
 - `runtime-dependencies` is optional and supports `npm` and `system` installers
 - `runtime-dependencies[].version` is optional for `npm` (`latest` when omitted) and must be omitted for `system`
+- `runtime-dependencies` system entries support either `package` (repo package name) or `url` + `sha256` (direct RPM install with checksum verification)
+- `runtime-postinstall` is optional and runs declarative post-install commands after dependency installation and before snapshot capture
 - `plugin.yaml` is required
 
 ## System Runtime Dependency Notes

@@ -63,6 +63,15 @@ oauth:
 runtime-dependencies:
   - type: npm
     package: example-cli
+  - type: system
+    package: gh
+  - type: system
+    url: https://example.com/tool.rpm
+    sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+runtime-postinstall:
+  - cmd: agent-browser
+    args: ["install"]
 ```
 
 ## `name`
@@ -117,7 +126,17 @@ Optional credential target scope for provider operations. `target.config-key` mu
 Optional sandbox dependency declarations for CLI/tools required by skills.
 
 - `type: npm` with `package` and optional `version`
-- `type: system` with system package name
+- `type: system` with either:
+  - `package` (system package name), or
+  - `url` + `sha256` (direct RPM install with checksum verification)
+
+## `runtime-postinstall`
+
+Optional commands that run after dependency install and before snapshot capture.
+
+- `cmd` (required)
+- `args` (optional string array)
+- `sudo` (optional boolean)
 
 ## `mcp`
 

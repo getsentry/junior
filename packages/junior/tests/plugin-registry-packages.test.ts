@@ -54,6 +54,44 @@ async function writePackagedPluginWithImplicitLatest(tempRoot: string): Promise<
   );
 }
 
+async function writePackagedPluginWithSystemUrlDependency(tempRoot: string): Promise<void> {
+  const packageRoot = path.join(tempRoot, "node_modules", "@acme", "junior-plugin-system-url");
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo plugin",
+      "runtime-dependencies:",
+      "  - type: system",
+      "    url: https://example.com/tool.rpm",
+      "    sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ].join("\n"),
+    "utf8"
+  );
+}
+
+async function writePackagedPluginWithRuntimePostinstall(tempRoot: string): Promise<void> {
+  const packageRoot = path.join(tempRoot, "node_modules", "@acme", "junior-plugin-postinstall");
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo plugin",
+      "runtime-dependencies:",
+      "  - type: npm",
+      "    package: agent-browser",
+      "runtime-postinstall:",
+      "  - cmd: agent-browser",
+      "    args: [install]"
+    ].join("\n"),
+    "utf8"
+  );
+}
+
 async function writeBundlingOnlyPlugin(tempRoot: string): Promise<void> {
   const packageRoot = path.join(tempRoot, "node_modules", "@acme", "junior-plugin-bundle-only");
   const skillsDir = path.join(packageRoot, "skills", "demo");
@@ -173,5 +211,70 @@ describe("plugin registry package discovery", () => {
         }
       })
     ).toThrow('Provider "demo" has no credentials configured');
+  });
+
+  it("parses system URL runtime dependencies with required sha256", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-plugin-package-"));
+    await writePackagedPluginWithSystemUrlDependency(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-system-url": "1.0.0"
+        }
+      }),
+      "utf8"
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => []
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+    const providers = registry.getPluginProviders();
+    expect(providers).toHaveLength(1);
+    expect(providers[0]?.manifest.runtimeDependencies).toEqual([
+      {
+        type: "system",
+        url: "https://example.com/tool.rpm",
+        sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]);
+  });
+
+  it("parses runtime-postinstall commands", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-plugin-package-"));
+    await writePackagedPluginWithRuntimePostinstall(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-postinstall": "1.0.0"
+        }
+      }),
+      "utf8"
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => []
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+    const providers = registry.getPluginProviders();
+    expect(providers).toHaveLength(1);
+    expect(providers[0]?.manifest.runtimePostinstall).toEqual([
+      {
+        cmd: "agent-browser",
+        args: ["install"]
+      }
+    ]);
   });
 });
