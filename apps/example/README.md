@@ -28,9 +28,10 @@ Copy `.env.example` and set:
 
 ## Wiring
 
-- `app/api/webhooks/[platform]/route.ts` handles webhook ingress.
-- `app/api/oauth/callback/[provider]/route.ts` handles OAuth callbacks.
-- `app/api/queue/callback/route.ts` handles queue callbacks.
-- `app/api/health/route.ts` exposes a health endpoint.
+- `app/api/[...path]/route.ts` routes all Junior API traffic:
+  - `/api/webhooks/:platform` for webhook ingress
+  - `/api/oauth/callback/:provider` for OAuth callbacks
+  - `/api/queue/callback` for queue callbacks
+  - `/api/health` for health checks
 - `next.config.ts` enables `withJunior()`.
 - `instrumentation.ts` exports Junior instrumentation hooks.

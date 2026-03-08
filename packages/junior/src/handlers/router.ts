@@ -1,16 +1,28 @@
 import { GET as healthGET } from "@/handlers/health";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
+import { POST as queueCallbackPOST } from "@/handlers/queue-callback";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 
 type RouteContext = {
-  params: Promise<{
-    path: string[];
-  }>;
+  params: Promise<unknown>;
 };
 
 function normalizeRoutePath(pathParts: string[]): string {
   const route = pathParts.join("/").replace(/^\/+|\/+$/g, "");
   return route.startsWith("api/") ? route.slice("api/".length) : route;
+}
+
+function getRoutePathParts(params: unknown): string[] {
+  if (!params || typeof params !== "object" || !("path" in params)) {
+    return [];
+  }
+
+  const candidate = (params as { path?: unknown }).path;
+  if (!Array.isArray(candidate) || candidate.some((segment) => typeof segment !== "string")) {
+    return [];
+  }
+
+  return candidate as string[];
 }
 
 /**
@@ -21,8 +33,7 @@ function normalizeRoutePath(pathParts: string[]): string {
  * - `api/oauth/callback/:provider`
  */
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
-  const { path } = await context.params;
-  const route = normalizeRoutePath(path);
+  const route = normalizeRoutePath(getRoutePathParts(await context.params));
 
   if (route === "health") {
     return healthGET();
@@ -44,10 +55,14 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
  *
  * Supported routes:
  * - `api/webhooks/:platform`
+ * - `api/queue/callback`
  */
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
-  const { path } = await context.params;
-  const route = normalizeRoutePath(path);
+  const route = normalizeRoutePath(getRoutePathParts(await context.params));
+
+  if (route === "queue/callback") {
+    return queueCallbackPOST(request);
+  }
 
   const webhookMatch = route.match(/^webhooks\/([^/]+)$/);
   if (webhookMatch) {

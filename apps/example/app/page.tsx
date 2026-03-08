@@ -3,13 +3,10 @@ export default function HomePage() {
     <main style={{ padding: 24, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
       <h1>junior example app</h1>
       <p>
-        Slack webhook endpoint: <code>/api/webhooks/slack</code>
+        Generic API route: <code>/api/[...path]</code>
       </p>
       <p>
-        OAuth callback endpoint: <code>/api/oauth/callback/[provider]</code>
-      </p>
-      <p>
-        Queue callback endpoint: <code>/api/queue/callback</code>
+        Routed endpoints include <code>/api/webhooks/[platform]</code>, <code>/api/oauth/callback/[provider]</code>, <code>/api/queue/callback</code>, and <code>/api/health</code>.
       </p>
       <p>
         Try slash skills:

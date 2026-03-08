@@ -1,6 +1,6 @@
 {
   "functions": {
-    "app/api/queue/callback/route.ts": {
+    "app/api/[...path]/route.ts": {
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
