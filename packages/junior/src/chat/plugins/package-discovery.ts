@@ -1,20 +1,21 @@
-import { readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
+import { discoverNodeModulesDirs, listTopLevelPackages } from "@/chat/discovery-roots";
 
-interface RootPackageJson {
-  dependencies?: Record<string, string>;
-  optionalDependencies?: Record<string, string>;
-}
+const require = createRequire(import.meta.url);
 
 interface InstalledJuniorContentPackage {
   name: string;
   dir: string;
+  nodeModulesDir: string;
   hasRootPluginManifest: boolean;
   hasPluginsDir: boolean;
   hasSkillsDir: boolean;
 }
 
 export interface InstalledPluginPackageContent {
+  packageNames: string[];
   manifestRoots: string[];
   skillRoots: string[];
   tracingIncludes: string[];
@@ -36,56 +37,106 @@ function isFile(targetPath: string): boolean {
   }
 }
 
-function readRootPackageJson(cwd: string): RootPackageJson | null {
-  const rootPackageJsonPath = path.join(cwd, "package.json");
+function normalizeForGlob(targetPath: string): string {
+  return targetPath.split(path.sep).join("/");
+}
+
+function uniqueInOrder(values: string[]): string[] {
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+  for (const value of values) {
+    if (seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    resolved.push(value);
+  }
+  return resolved;
+}
+
+function pathWithinCwd(cwd: string, targetPath: string): string | null {
+  const relative = path.relative(cwd, targetPath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+  return `./${normalizeForGlob(relative)}`;
+}
+
+function findContainingNodeModulesDir(targetPath: string): string | null {
+  let current = path.resolve(targetPath);
+  while (true) {
+    if (path.basename(current) === "node_modules") {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
+function resolvePackageDirFromName(
+  packageName: string,
+  candidateNodeModulesDirs: string[]
+): { dir: string; nodeModulesDir: string } | null {
+  for (const nodeModulesDir of candidateNodeModulesDirs) {
+    const packageDir = path.join(nodeModulesDir, ...packageName.split("/"));
+    if (isDirectory(packageDir)) {
+      return {
+        dir: path.resolve(packageDir),
+        nodeModulesDir: path.resolve(nodeModulesDir)
+      };
+    }
+  }
+
   try {
-    const raw = readFileSync(rootPackageJsonPath, "utf8");
-    return JSON.parse(raw) as RootPackageJson;
+    const packageJsonPath = require.resolve(`${packageName}/package.json`);
+    const dir = path.dirname(packageJsonPath);
+    const nodeModulesDir = findContainingNodeModulesDir(dir);
+    if (!nodeModulesDir) {
+      return null;
+    }
+    return {
+      dir: path.resolve(dir),
+      nodeModulesDir: path.resolve(nodeModulesDir)
+    };
   } catch {
     return null;
   }
 }
 
-function uniqueSorted(values: string[]): string[] {
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
-}
-
-function readInstalledDependencyNames(cwd: string): string[] {
-  const rootPackageJson = readRootPackageJson(cwd);
-  if (!rootPackageJson) {
-    return [];
-  }
-
-  return uniqueSorted([
-    ...Object.keys(rootPackageJson.dependencies ?? {}),
-    ...Object.keys(rootPackageJson.optionalDependencies ?? {})
-  ]);
-}
-
-function packageInstallDir(cwd: string, packageName: string): string {
-  return path.join(cwd, "node_modules", ...packageName.split("/"));
-}
-
-function discoverInstalledJuniorContentPackages(cwd: string = process.cwd()): InstalledJuniorContentPackage[] {
-  const dependencies = readInstalledDependencyNames(cwd);
+function discoverDeclaredPackages(
+  packageNames: string[],
+  candidateNodeModulesDirs: string[]
+): InstalledJuniorContentPackage[] {
   const discovered: InstalledJuniorContentPackage[] = [];
+  const seenPackageNames = new Set<string>();
+  const seenPackageDirs = new Set<string>();
 
-  for (const dependency of dependencies) {
-    const dir = packageInstallDir(cwd, dependency);
-    if (!isDirectory(dir)) {
+  for (const packageName of packageNames) {
+    const resolved = resolvePackageDirFromName(packageName, candidateNodeModulesDirs);
+    if (!resolved) {
       continue;
     }
 
-    const hasRootPluginManifest = isFile(path.join(dir, "plugin.yaml"));
-    const hasPluginsDir = isDirectory(path.join(dir, "plugins"));
-    const hasSkillsDir = isDirectory(path.join(dir, "skills"));
+    if (seenPackageNames.has(packageName) || seenPackageDirs.has(resolved.dir)) {
+      continue;
+    }
+
+    const hasRootPluginManifest = isFile(path.join(resolved.dir, "plugin.yaml"));
+    const hasPluginsDir = isDirectory(path.join(resolved.dir, "plugins"));
+    const hasSkillsDir = isDirectory(path.join(resolved.dir, "skills"));
     if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
       continue;
     }
 
+    seenPackageNames.add(packageName);
+    seenPackageDirs.add(resolved.dir);
     discovered.push({
-      name: dependency,
-      dir,
+      name: packageName,
+      dir: resolved.dir,
+      nodeModulesDir: resolved.nodeModulesDir,
       hasRootPluginManifest,
       hasPluginsDir,
       hasSkillsDir
@@ -95,30 +146,96 @@ function discoverInstalledJuniorContentPackages(cwd: string = process.cwd()): In
   return discovered;
 }
 
-export function discoverInstalledPluginPackageContent(cwd: string = process.cwd()): InstalledPluginPackageContent {
+function discoverInstalledJuniorContentPackages(
+  cwd: string = process.cwd(),
+  nodeModulesDirs?: string[],
+  packageNames?: string[]
+): InstalledJuniorContentPackage[] {
+  const resolvedCwd = path.resolve(cwd);
+  const candidateNodeModulesDirs = nodeModulesDirs ?? discoverNodeModulesDirs(resolvedCwd);
+  const declaredPackages = discoverDeclaredPackages(packageNames ?? [], candidateNodeModulesDirs);
+  const discovered: InstalledJuniorContentPackage[] = [...declaredPackages];
+  const seenPackageNames = new Set<string>();
+  const seenPackageDirs = new Set<string>();
+  for (const pkg of declaredPackages) {
+    seenPackageNames.add(pkg.name);
+    seenPackageDirs.add(pkg.dir);
+  }
+
+  for (const nodeModulesDir of candidateNodeModulesDirs) {
+    for (const pkg of listTopLevelPackages(nodeModulesDir)) {
+      const resolvedDir = path.resolve(pkg.dir);
+      if (
+        seenPackageNames.has(pkg.name) ||
+        seenPackageDirs.has(resolvedDir)
+      ) {
+        continue;
+      }
+      seenPackageNames.add(pkg.name);
+      seenPackageDirs.add(resolvedDir);
+
+      const hasRootPluginManifest = isFile(path.join(resolvedDir, "plugin.yaml"));
+      const hasPluginsDir = isDirectory(path.join(resolvedDir, "plugins"));
+      const hasSkillsDir = isDirectory(path.join(resolvedDir, "skills"));
+      if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
+        continue;
+      }
+
+      discovered.push({
+        name: pkg.name,
+        dir: resolvedDir,
+        nodeModulesDir: path.resolve(nodeModulesDir),
+        hasRootPluginManifest,
+        hasPluginsDir,
+        hasSkillsDir
+      });
+    }
+  }
+
+  return discovered;
+}
+
+export interface DiscoverInstalledPluginPackageContentOptions {
+  nodeModulesDirs?: string[];
+  packageNames?: string[];
+}
+
+export function discoverInstalledPluginPackageContent(
+  cwd: string = process.cwd(),
+  options?: DiscoverInstalledPluginPackageContentOptions
+): InstalledPluginPackageContent {
+  const resolvedCwd = path.resolve(cwd);
+  const discoveredPackages = discoverInstalledJuniorContentPackages(resolvedCwd, options?.nodeModulesDirs, options?.packageNames);
   const manifestRoots: string[] = [];
   const skillRoots: string[] = [];
   const tracingIncludes: string[] = [];
 
-  for (const pkg of discoverInstalledJuniorContentPackages(cwd)) {
-    const base = `./node_modules/${pkg.name}`;
+  for (const pkg of discoveredPackages) {
+    const packagePathFromNodeModules = pathWithinCwd(resolvedCwd, path.join(pkg.nodeModulesDir, ...pkg.name.split("/")));
     if (pkg.hasRootPluginManifest) {
       manifestRoots.push(pkg.dir);
-      tracingIncludes.push(`${base}/plugin.yaml`);
+      if (packagePathFromNodeModules) {
+        tracingIncludes.push(`${packagePathFromNodeModules}/plugin.yaml`);
+      }
     }
     if (pkg.hasPluginsDir) {
       manifestRoots.push(path.join(pkg.dir, "plugins"));
-      tracingIncludes.push(`${base}/plugins/**/*`);
+      if (packagePathFromNodeModules) {
+        tracingIncludes.push(`${packagePathFromNodeModules}/plugins/**/*`);
+      }
     }
     if (pkg.hasSkillsDir) {
       skillRoots.push(path.join(pkg.dir, "skills"));
-      tracingIncludes.push(`${base}/skills/**/*`);
+      if (packagePathFromNodeModules) {
+        tracingIncludes.push(`${packagePathFromNodeModules}/skills/**/*`);
+      }
     }
   }
 
   return {
-    manifestRoots: uniqueSorted(manifestRoots),
-    skillRoots: uniqueSorted(skillRoots),
-    tracingIncludes: uniqueSorted(tracingIncludes)
+    packageNames: uniqueInOrder(discoveredPackages.map((pkg) => pkg.name)),
+    manifestRoots: uniqueInOrder(manifestRoots),
+    skillRoots: uniqueInOrder(skillRoots),
+    tracingIncludes: uniqueInOrder(tracingIncludes)
   };
 }

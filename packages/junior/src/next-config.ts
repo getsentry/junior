@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 import { createRequire } from "node:module";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { discoverInstalledPluginPackageContent } from "./chat/plugins/package-discovery";
 
 const require = createRequire(import.meta.url);
 
@@ -10,56 +11,25 @@ interface RootPackageJson {
   optionalDependencies?: Record<string, string>;
 }
 
-function isDirectory(targetPath: string): boolean {
+function readDeclaredDependencyNames(cwd: string = process.cwd()): string[] {
+  const packageJsonPath = path.join(cwd, "package.json");
   try {
-    return statSync(targetPath).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function isFile(targetPath: string): boolean {
-  try {
-    return statSync(targetPath).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function discoverInstalledPluginPackageTracingIncludes(cwd: string = process.cwd()): string[] {
-  const rootPackageJsonPath = path.join(cwd, "package.json");
-  let rootPackageJson: RootPackageJson | undefined;
-  try {
-    rootPackageJson = JSON.parse(readFileSync(rootPackageJsonPath, "utf8")) as RootPackageJson;
+    const rootPackage = JSON.parse(readFileSync(packageJsonPath, "utf8")) as RootPackageJson;
+    return [...new Set([
+      ...Object.keys(rootPackage.dependencies ?? {}),
+      ...Object.keys(rootPackage.optionalDependencies ?? {})
+    ])].sort((left, right) => left.localeCompare(right));
   } catch {
     return [];
   }
+}
 
-  const dependencies = [
-    ...Object.keys(rootPackageJson.dependencies ?? {}),
-    ...Object.keys(rootPackageJson.optionalDependencies ?? {})
-  ];
-  const tracingIncludes: string[] = [];
-
-  for (const dependency of dependencies) {
-    const packageDir = path.join(cwd, "node_modules", ...dependency.split("/"));
-    if (!isDirectory(packageDir)) {
-      continue;
-    }
-
-    const base = `./node_modules/${dependency}`;
-    if (isFile(path.join(packageDir, "plugin.yaml"))) {
-      tracingIncludes.push(`${base}/plugin.yaml`);
-    }
-    if (isDirectory(path.join(packageDir, "plugins"))) {
-      tracingIncludes.push(`${base}/plugins/**/*`);
-    }
-    if (isDirectory(path.join(packageDir, "skills"))) {
-      tracingIncludes.push(`${base}/skills/**/*`);
-    }
-  }
-
-  return [...new Set(tracingIncludes)].sort((left, right) => left.localeCompare(right));
+function discoverInstalledPluginPackages(cwd: string = process.cwd()): { tracingIncludes: string[] } {
+  const packageNames = readDeclaredDependencyNames(cwd);
+  const discovered = discoverInstalledPluginPackageContent(cwd, { packageNames });
+  return {
+    tracingIncludes: discovered.tracingIncludes
+  };
 }
 
 /**
@@ -69,6 +39,7 @@ export interface JuniorConfigOptions {
   dataDir?: string;
   skillsDir?: string;
   pluginsDir?: string;
+  pluginPackages?: string[];
   sentry?: boolean;
 }
 
@@ -84,7 +55,10 @@ function applyJuniorConfig(nextConfig: NextConfig | undefined, options?: JuniorC
   const defaultDataTracingIncludes = options?.dataDir
     ? [`${dataDir}/**/*`]
     : ["./app/SOUL.md", "./app/ABOUT.md"];
-  const pluginPackageTracingIncludes = discoverInstalledPluginPackageTracingIncludes();
+  const discoveredPlugins = options?.pluginPackages && options.pluginPackages.length > 0
+    ? discoverInstalledPluginPackageContent(process.cwd(), { packageNames: options.pluginPackages })
+    : discoverInstalledPluginPackages();
+  const pluginPackageTracingIncludes = discoveredPlugins.tracingIncludes;
   const tracingIncludes = Array.from(new Set([
     ...defaultDataTracingIncludes,
     `${skillsDir}/**/*`,

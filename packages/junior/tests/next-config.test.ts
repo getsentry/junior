@@ -186,4 +186,72 @@ describe("withJunior", () => {
       process.chdir(originalCwd);
     }
   });
+
+  it("includes tracing for plugin content present in node_modules without declared dependencies", async () => {
+    const originalCwd = process.cwd();
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-next-config-"));
+
+    try {
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-app",
+          private: true
+        }),
+        "utf8"
+      );
+      await fs.mkdir(path.join(tempRoot, "node_modules", "@acme", "junior-plugin-demo", "skills", "demo"), {
+        recursive: true
+      });
+      await fs.writeFile(
+        path.join(tempRoot, "node_modules", "@acme", "junior-plugin-demo", "plugin.yaml"),
+        "name: demo\ndescription: Demo plugin\n",
+        "utf8"
+      );
+
+      process.chdir(tempRoot);
+      const config = await resolveConfig(withJunior({}) as NextConfig);
+
+      expect(config.outputFileTracingIncludes?.["/*"]).toEqual(expect.arrayContaining([
+        "./node_modules/@acme/junior-plugin-demo/plugin.yaml",
+        "./node_modules/@acme/junior-plugin-demo/skills/**/*"
+      ]));
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
+  it("accepts explicit pluginPackages option", async () => {
+    const originalCwd = process.cwd();
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-next-config-"));
+
+    try {
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-app",
+          private: true
+        }),
+        "utf8"
+      );
+      await fs.mkdir(path.join(tempRoot, "node_modules", "@acme", "junior-plugin-explicit", "skills", "demo"), {
+        recursive: true
+      });
+      await fs.writeFile(
+        path.join(tempRoot, "node_modules", "@acme", "junior-plugin-explicit", "plugin.yaml"),
+        "name: demo\ndescription: Demo plugin\n",
+        "utf8"
+      );
+
+      process.chdir(tempRoot);
+      const config = await resolveConfig(withJunior({}, { pluginPackages: ["@acme/junior-plugin-explicit"] }) as NextConfig);
+
+      expect(config.outputFileTracingIncludes?.["/*"]).toEqual(expect.arrayContaining([
+        "./node_modules/@acme/junior-plugin-explicit/plugin.yaml",
+        "./node_modules/@acme/junior-plugin-explicit/skills/**/*"
+      ]));
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
 });
