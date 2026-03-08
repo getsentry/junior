@@ -176,8 +176,6 @@ importers:
         specifier: ^0.6.0
         version: 0.6.0(ai@6.0.116(zod@4.3.6))(tinyrainbow@3.0.3)(vitest@4.0.18(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.0)(@types/node@25.3.5)(jiti@2.6.1)(msw@2.12.10(@types/node@25.3.5)(typescript@5.9.3))(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2))(zod@4.3.6)
 
-  packages/junior-agent-browser: {}
-
   packages/junior-github: {}
 
   packages/junior-sentry: {}
