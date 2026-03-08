@@ -53,7 +53,9 @@ export const runtime = "nodejs";
 ```ts title="next.config.mjs"
 import { withJunior } from "@sentry/junior/config";
 
-export default withJunior();
+export default withJunior({
+  pluginPackages: ["@sentry/junior-github"]
+});
 ```
 
 ```ts title="instrumentation.ts"

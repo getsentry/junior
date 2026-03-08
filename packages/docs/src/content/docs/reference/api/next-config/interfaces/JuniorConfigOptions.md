@@ -5,7 +5,7 @@ prev: false
 title: "JuniorConfigOptions"
 ---
 
-Defined in: [next-config.ts:68](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L68)
+Defined in: [next-config.ts:14](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L14)
 
 Optional overrides for `withJunior`.
 
@@ -15,7 +15,15 @@ Optional overrides for `withJunior`.
 
 > `optional` **dataDir**: `string`
 
-Defined in: [next-config.ts:69](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L69)
+Defined in: [next-config.ts:15](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L15)
+
+***
+
+### pluginPackages?
+
+> `optional` **pluginPackages**: `string`[]
+
+Defined in: [next-config.ts:18](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L18)
 
 ***
 
@@ -23,15 +31,7 @@ Defined in: [next-config.ts:69](https://github.com/getsentry/junior/blob/main/pa
 
 > `optional` **pluginsDir**: `string`
 
-Defined in: [next-config.ts:71](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L71)
-
-***
-
-### sentry?
-
-> `optional` **sentry**: `boolean`
-
-Defined in: [next-config.ts:72](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L72)
+Defined in: [next-config.ts:17](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L17)
 
 ***
 
@@ -39,4 +39,4 @@ Defined in: [next-config.ts:72](https://github.com/getsentry/junior/blob/main/pa
 
 > `optional` **skillsDir**: `string`
 
-Defined in: [next-config.ts:70](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L70)
+Defined in: [next-config.ts:16](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L16)

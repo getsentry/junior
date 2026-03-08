@@ -44,6 +44,16 @@ For reuse across apps or teams, package plugin manifests + skills as npm package
 pnpm add @sentry/junior @sentry/junior-github @sentry/junior-sentry
 ```
 
+Then register those package names in `withJunior(...)` so build-time tracing and runtime discovery use the same explicit package list:
+
+```ts title="next.config.mjs"
+import { withJunior } from "@sentry/junior/config";
+
+export default withJunior({
+  pluginPackages: ["@sentry/junior-github", "@sentry/junior-sentry"]
+});
+```
+
 If you publish your own package, include `plugin.yaml` and `skills` in package `files` so runtime discovery works.
 
 ## Local skills and plugin skills
