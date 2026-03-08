@@ -3,7 +3,7 @@ import { Type } from "@sinclair/typebox";
 import { FETCH_TIMEOUT_MS, MAX_FETCH_BYTES, MAX_REDIRECTS } from "@/chat/tools/constants";
 import { assertPublicUrl, fetchTextWithRedirects, withTimeout } from "@/chat/tools/network";
 import type { ToolHooks } from "@/chat/tools/types";
-import { webFetch, MAX_FETCH_CHARS } from "@/chat/tools/web_fetch";
+import { extractWebFetchResponse, MAX_FETCH_CHARS } from "@/chat/tools/web_fetch";
 
 function extensionForMediaType(mediaType: string): string {
   if (mediaType === "image/png") return "png";
@@ -73,7 +73,7 @@ export function createWebFetchTool(hooks: ToolHooks) {
           };
         }
 
-        return await webFetch(url, max_chars);
+        return await extractWebFetchResponse(safeUrl, response, max_chars);
       } catch (error) {
         const message = error instanceof Error ? error.message : "fetch failed";
         const status = extractHttpStatusFromMessage(message);
