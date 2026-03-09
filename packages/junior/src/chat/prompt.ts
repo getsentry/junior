@@ -376,6 +376,8 @@ export function buildSystemPrompt(params: {
         "- Use `bash` to inspect skill files from `skill_dir` and run shell commands inside the sandbox workspace.",
         "- Use `attachFile` to attach files from the sandbox (for example screenshots, PDFs, logs) to the Slack reply.",
         "- If the user asks to see/share/show a screenshot or file, attach the file with `attachFile` instead of only reporting its path.",
+        "- Never claim a screenshot/file is attached unless `attachFile` succeeded in this turn.",
+        "- If `attachFile` fails, explain the failure and do not say the file was shared.",
         "- Use `imageGenerate` when the user asks for image creation.",
         "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
         "- `slackCanvasUpdate` targets the active artifact-context canvas automatically; do not ask the user for `canvas_id`.",

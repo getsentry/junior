@@ -95,6 +95,12 @@ describe("buildSystemPrompt skill paths", () => {
     expect(prompt).toContain(
       "If the user asks to see/share/show a screenshot or file, attach the file with `attachFile` instead of only reporting its path.",
     );
+    expect(prompt).toContain(
+      "Never claim a screenshot/file is attached unless `attachFile` succeeded in this turn.",
+    );
+    expect(prompt).toContain(
+      "If `attachFile` fails, explain the failure and do not say the file was shared.",
+    );
   });
 
   it("renders runtime-metadata with provided version", () => {

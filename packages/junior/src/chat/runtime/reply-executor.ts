@@ -380,10 +380,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
               await postThreadReply(
-                buildSlackOutputMessage(reply.text, {
-                  files:
-                    resolvedAttachFiles === "inline" ? replyFiles : undefined,
-                }),
+                buildSlackOutputMessage(
+                  reply.text,
+                  resolvedAttachFiles === "inline" ? replyFiles : undefined,
+                ),
                 "thread_reply",
               );
             } else {
@@ -499,7 +499,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             replyFiles
           ) {
             await postThreadReply(
-              { files: replyFiles } as Parameters<typeof thread.post>[0],
+              buildSlackOutputMessage("", replyFiles),
               "thread_reply_files_followup",
             );
           }

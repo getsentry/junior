@@ -64,6 +64,7 @@ import {
   extractStatusUrlDomain,
 } from "@/chat/status-format";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
+import { enforceAttachmentClaimTruth } from "@/chat/attachment-claims";
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
@@ -1398,8 +1399,10 @@ export async function generateAssistantReply(
         : "success"
       : "execution_failure";
 
-    const resolvedText =
-      primaryText || buildExecutionFailureMessage(toolErrorCount);
+    const resolvedText = enforceAttachmentClaimTruth(
+      primaryText || buildExecutionFailureMessage(toolErrorCount),
+      generatedFiles.length > 0,
+    );
     if (shouldTrace) {
       logInfo(
         "agent_message_out",

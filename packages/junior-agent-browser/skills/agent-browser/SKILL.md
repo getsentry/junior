@@ -42,6 +42,8 @@ Use this skill when work requires real browser interaction instead of API-only l
   - `agent-browser wait --load networkidle`
 - For user-facing findings, include screenshots and the exact page URL.
 - When a user asks to see/share a screenshot, run `attachFile` with the screenshot path so the image is included in the reply.
+- Never claim a screenshot was shared unless `attachFile` returned success (`attached: true`) in this turn.
+- If file attachment fails, state the failure clearly and include the error instead of claiming success.
 
 ## Common Patterns
 
