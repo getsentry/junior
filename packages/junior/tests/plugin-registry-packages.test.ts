@@ -249,24 +249,25 @@ async function writePackagedPluginWithOauthOverrides(
   await fs.writeFile(
     path.join(packageRoot, "plugin.yaml"),
     [
-      "name: notion",
-      "description: Notion plugin",
+      "name: example",
+      "description: Example plugin",
       "capabilities:",
       "  - api.read",
       "credentials:",
       "  type: oauth-bearer",
       "  api-domains:",
-      "    - api.notion.com",
+      "    - api.example.com",
       "  api-headers:",
-      '    Notion-Version: "2025-09-03"',
-      "  auth-token-env: NOTION_TOKEN",
+      '    X-Api-Version: "2026-01-01"',
+      "  auth-token-env: EXAMPLE_TOKEN",
       "oauth:",
-      "  client-id-env: NOTION_CLIENT_ID",
-      "  client-secret-env: NOTION_CLIENT_SECRET",
-      "  authorize-endpoint: https://api.notion.com/v1/oauth/authorize",
-      "  token-endpoint: https://api.notion.com/v1/oauth/token",
+      "  client-id-env: EXAMPLE_CLIENT_ID",
+      "  client-secret-env: EXAMPLE_CLIENT_SECRET",
+      "  authorize-endpoint: https://api.example.com/v1/oauth/authorize",
+      "  token-endpoint: https://api.example.com/v1/oauth/token",
+      "  scope: api.read",
       "  authorize-params:",
-      "    owner: user",
+      "    audience: workspace",
       "  token-auth-method: basic",
       "  token-extra-headers:",
       "    Content-Type: application/json",
@@ -650,21 +651,21 @@ describe("plugin registry package discovery", () => {
     expect(provider?.manifest.credentials).toMatchObject({
       type: "oauth-bearer",
       apiHeaders: {
-        "Notion-Version": "2025-09-03",
+        "X-Api-Version": "2026-01-01",
       },
     });
     expect(provider?.manifest.oauth).toMatchObject({
       authorizeParams: {
-        owner: "user",
+        audience: "workspace",
       },
       tokenAuthMethod: "basic",
       tokenExtraHeaders: {
         "Content-Type": "application/json",
       },
     });
-    expect(registry.getPluginOAuthConfig("notion")).toMatchObject({
+    expect(registry.getPluginOAuthConfig("example")).toMatchObject({
       authorizeParams: {
-        owner: "user",
+        audience: "workspace",
       },
       tokenAuthMethod: "basic",
       tokenExtraHeaders: {

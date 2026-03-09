@@ -99,13 +99,32 @@ export function createOAuthBearerBroker(
         );
       }
 
-      if (input.requesterId) {
+      const envToken = process.env[authTokenEnv]?.trim();
+      if (!manifest.oauth) {
+        if (envToken) {
+          return buildLease(
+            envToken,
+            input.capability,
+            Date.now() + MAX_LEASE_MS,
+            input.reason,
+          );
+        }
+
+        throw new CredentialUnavailableError(
+          provider,
+          `No ${provider} credentials available.`,
+        );
+      }
+
+      // 1. Per-user OAuth token (preferred when requester context exists)
+      if (input.requesterId && deps.userTokenStore) {
         const stored = await deps.userTokenStore.get(
           input.requesterId,
           provider,
         );
         if (stored) {
           const now = Date.now();
+          // Refresh if within buffer of expiry
           if (
             stored.expiresAt !== undefined &&
             stored.expiresAt - now < REFRESH_BUFFER_MS &&
@@ -161,13 +180,14 @@ export function createOAuthBearerBroker(
           );
         }
 
+        // User has requester context but no stored token — require OAuth.
         throw new CredentialUnavailableError(
           provider,
           `No ${provider} credentials available.`,
         );
       }
 
-      const envToken = process.env[authTokenEnv]?.trim();
+      // 2. Static env fallback — only used when there is no requester context
       if (envToken) {
         return buildLease(
           envToken,

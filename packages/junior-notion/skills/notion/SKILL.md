@@ -13,14 +13,14 @@ Use this skill for `/notion` workflows in the harness.
 
 1. Classify the request:
 
-- `auth`: run `jr-rpc oauth-start notion`, tell the user a private authorization link was sent, and stop.
-- `disconnect`: run `jr-rpc delete-token notion`, confirm, and stop.
+- `auth`: explain that this plugin uses a shared internal Notion integration, so there is no per-user auth flow. Tell the user the workspace admin must configure `NOTION_TOKEN` and share the relevant pages with the integration.
+- `disconnect`: explain that there is no per-user Notion connection to remove because the plugin uses a shared internal integration.
 - otherwise treat the request as a read-only query.
 
 2. Enable credentials:
 
 - Before any Notion API call, run `jr-rpc issue-credential notion.api.read`.
-- If credential issuance fails with `credential_unavailable` and `oauth_started`, relay the returned `message` and stop. The callback will resume after authorization.
+- If credential issuance fails, explain that Notion is not configured on the host and the admin must set `NOTION_TOKEN`.
 
 3. Search and summarize:
 
@@ -34,5 +34,5 @@ Use this skill for `/notion` workflows in the harness.
 - Read-only only.
 - Do not print credential values.
 - The runtime injects `Authorization` and `Notion-Version`; only add request-specific headers like `Content-Type: application/json` when needed.
-- If search returns no page matches, say that no accessible pages matched and note the integration may not have access yet.
+- If search returns no page matches, say that no accessible pages matched and note the page may not be shared with the integration yet.
 - If markdown retrieval fails for the top result, return the best matching page URL and explain that the page could not be fetched for summarization.

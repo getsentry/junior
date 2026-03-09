@@ -44,16 +44,6 @@ vi.mock("@/chat/state", () => ({
 }));
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginOAuthConfig: (provider: string) => {
-    if (provider === "notion") {
-      return {
-        clientIdEnv: "NOTION_CLIENT_ID",
-        clientSecretEnv: "NOTION_CLIENT_SECRET",
-        authorizeEndpoint: "https://api.notion.com/v1/oauth/authorize",
-        tokenEndpoint: "https://api.notion.com/v1/oauth/token",
-        authorizeParams: { owner: "user" },
-        callbackPath: "/api/oauth/callback/notion",
-      };
-    }
     if (provider === "sentry") {
       return {
         clientIdEnv: "SENTRY_CLIENT_ID",
@@ -101,7 +91,6 @@ import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-comma
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { CredentialBroker } from "@/chat/credentials/broker";
-import type { StoredTokens } from "@/chat/credentials/user-token-store";
 import type { Skill } from "@/chat/skills";
 
 const activeSkill: Skill = {
@@ -424,76 +413,22 @@ describe("jr-rpc custom command", () => {
     }
   });
 
-  it("treats no-expiry oauth tokens as already connected", async () => {
+  it("returns an error when a provider has no oauth flow", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc oauth-start notion",
       {
         capabilityRuntime: makeRuntime(),
         activeSkill,
         requesterId: "U123",
-        userTokenStore: {
-          get: async (): Promise<StoredTokens> => ({
-            accessToken: "notion-token",
-            refreshToken: "notion-refresh-token",
-          }),
-          set: async () => {},
-          delete: async () => {},
-        },
       },
     );
 
     expect(result.handled).toBe(true);
     if (result.handled) {
-      expect(result.result.exit_code).toBe(0);
-      const payload = JSON.parse(result.result.stdout) as {
-        already_connected: boolean;
-        provider: string;
-      };
-      expect(payload).toMatchObject({
-        already_connected: true,
-        provider: "notion",
-      });
+      expect(result.result.exit_code).toBe(1);
+      expect(result.result.stderr).toContain(
+        'Provider "notion" does not support OAuth authorization',
+      );
     }
-  });
-
-  it("includes provider authorize params and omits scope when starting notion oauth", async () => {
-    deliveredMessages.length = 0;
-    oauthStateStore.clear();
-    process.env.NOTION_CLIENT_ID = "notion-client-id";
-    process.env.JUNIOR_BASE_URL = "https://example.com";
-
-    const result = await maybeExecuteJrRpcCustomCommand(
-      "jr-rpc oauth-start notion",
-      {
-        capabilityRuntime: makeRuntime(),
-        activeSkill,
-        requesterId: "U123",
-        channelId: "C123",
-        threadTs: "123.456",
-        userTokenStore: {
-          get: async () => undefined,
-          set: async () => {},
-          delete: async () => {},
-        },
-      },
-    );
-
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(0);
-      const payload = JSON.parse(result.result.stdout) as {
-        private_delivery_sent: boolean;
-      };
-      expect(payload.private_delivery_sent).toBe(true);
-    }
-
-    expect(deliveredMessages).toHaveLength(1);
-    const linkText = deliveredMessages[0]?.text ?? "";
-    const match = linkText.match(/<([^|>]+)\|/);
-    expect(match?.[1]).toBeDefined();
-    const url = new URL(match![1]);
-    expect(url.searchParams.get("owner")).toBe("user");
-    expect(url.searchParams.get("scope")).toBeNull();
-    expect(url.searchParams.get("client_id")).toBe("notion-client-id");
   });
 });

@@ -51,22 +51,22 @@ vi.mock("@/chat/plugins/registry", () => ({
         callbackPath: "/api/oauth/callback/sentry",
       };
     }
-    if (provider === "notion") {
+    if (provider === "example") {
       return {
-        clientIdEnv: "NOTION_CLIENT_ID",
-        clientSecretEnv: "NOTION_CLIENT_SECRET",
-        authorizeEndpoint: "https://api.notion.com/v1/oauth/authorize",
-        tokenEndpoint: "https://api.notion.com/v1/oauth/token",
-        authorizeParams: { owner: "user" },
+        clientIdEnv: "EXAMPLE_CLIENT_ID",
+        clientSecretEnv: "EXAMPLE_CLIENT_SECRET",
+        authorizeEndpoint: "https://api.example.com/v1/oauth/authorize",
+        tokenEndpoint: "https://api.example.com/v1/oauth/token",
+        authorizeParams: { audience: "workspace" },
         tokenAuthMethod: "basic",
         tokenExtraHeaders: { "Content-Type": "application/json" },
-        callbackPath: "/api/oauth/callback/notion",
+        callbackPath: "/api/oauth/callback/example",
       };
     }
     return undefined;
   },
   isPluginProvider: (provider: string) =>
-    provider === "sentry" || provider === "notion",
+    provider === "sentry" || provider === "example",
   getPluginCapabilityProviders: () => [],
   isPluginCapability: () => false,
   isPluginConfigKey: () => false,
@@ -276,59 +276,59 @@ describe("oauth callback handler", () => {
     expect(stored.refreshToken).toBe("new-refresh-token");
   });
 
-  it("uses basic auth and json body for notion token exchange without expires_in", async () => {
-    const stateKey = "oauth-state:notion-exchange";
+  it("uses basic auth and json body for token exchange without expires_in", async () => {
+    const stateKey = "oauth-state:example-exchange";
     mockStateStore.set(stateKey, {
       userId: "U999",
-      provider: "notion",
+      provider: "example",
     });
 
-    process.env.NOTION_CLIENT_ID = "notion-client-id";
-    process.env.NOTION_CLIENT_SECRET = "notion-client-secret";
+    process.env.EXAMPLE_CLIENT_ID = "example-client-id";
+    process.env.EXAMPLE_CLIENT_SECRET = "example-client-secret";
     process.env.JUNIOR_BASE_URL = "https://example.com";
 
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({
-        access_token: "notion-access-token",
-        refresh_token: "notion-refresh-token",
+        access_token: "example-access-token",
+        refresh_token: "example-refresh-token",
       }),
     }));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const response = await GET(
       makeRequest(
-        "https://example.com/api/oauth/callback/notion?code=valid-code&state=notion-exchange",
+        "https://example.com/api/oauth/callback/example?code=valid-code&state=example-exchange",
       ),
-      makeContext("notion"),
+      makeContext("example"),
     );
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.notion.com/v1/oauth/token",
+      "https://api.example.com/v1/oauth/token",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
           accept: "application/json",
-          authorization: `Basic ${Buffer.from("notion-client-id:notion-client-secret").toString("base64")}`,
+          authorization: `Basic ${Buffer.from("example-client-id:example-client-secret").toString("base64")}`,
           "content-type": "application/json",
         }),
         body: JSON.stringify({
           grant_type: "authorization_code",
           code: "valid-code",
-          redirect_uri: "https://example.com/api/oauth/callback/notion",
+          redirect_uri: "https://example.com/api/oauth/callback/example",
         }),
       }),
     );
 
-    const stored = mockTokenStore.get("U999:notion") as {
+    const stored = mockTokenStore.get("U999:example") as {
       accessToken: string;
       refreshToken: string;
       expiresAt?: number;
     };
     expect(stored).toMatchObject({
-      accessToken: "notion-access-token",
-      refreshToken: "notion-refresh-token",
+      accessToken: "example-access-token",
+      refreshToken: "example-refresh-token",
     });
     expect(stored.expiresAt).toBeUndefined();
   });

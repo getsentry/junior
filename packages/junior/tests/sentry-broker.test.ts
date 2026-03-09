@@ -45,16 +45,6 @@ const NOTION_MANIFEST: PluginManifest = {
     },
     authTokenEnv: "NOTION_TOKEN",
   },
-  oauth: {
-    clientIdEnv: "NOTION_CLIENT_ID",
-    clientSecretEnv: "NOTION_CLIENT_SECRET",
-    authorizeEndpoint: "https://api.notion.com/v1/oauth/authorize",
-    tokenEndpoint: "https://api.notion.com/v1/oauth/token",
-    tokenAuthMethod: "basic",
-    tokenExtraHeaders: {
-      "Content-Type": "application/json",
-    },
-  },
 };
 
 function createMockTokenStore(
@@ -397,13 +387,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     expect(lease.env.SENTRY_AUTH_TOKEN).not.toBe("real-secret-token");
   });
 
-  it("issues leases for tokens without expiry and merges plugin api headers", async () => {
-    const tokenStore = createMockTokenStore({
-      "U777:notion": {
-        accessToken: "notion-user-token",
-        refreshToken: "notion-refresh-token",
-      },
-    });
+  it("uses shared env tokens for non-oauth bearer plugins and merges api headers", async () => {
+    process.env.NOTION_TOKEN = "notion-env-token";
+    const tokenStore = createMockTokenStore();
 
     const broker = createOAuthBearerBroker(
       NOTION_MANIFEST,
@@ -421,7 +407,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         domain: "api.notion.com",
         headers: {
           "Notion-Version": "2025-09-03",
-          Authorization: "Bearer notion-user-token",
+          Authorization: "Bearer notion-env-token",
         },
       },
     ]);
