@@ -3,6 +3,7 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 export interface OAuthBearerCredentials {
   type: "oauth-bearer";
   apiDomains: string[];
+  apiHeaders?: Record<string, string>;
   authTokenEnv: string;
   authTokenPlaceholder?: string;
 }
@@ -10,6 +11,7 @@ export interface OAuthBearerCredentials {
 export interface GitHubAppCredentials {
   type: "github-app";
   apiDomains: string[];
+  apiHeaders?: Record<string, string>;
   authTokenEnv: string;
   authTokenPlaceholder?: string;
   appIdEnv: string;
@@ -60,7 +62,10 @@ export interface PluginManifest {
     clientSecretEnv: string;
     authorizeEndpoint: string;
     tokenEndpoint: string;
-    scope: string;
+    scope?: string;
+    authorizeParams?: Record<string, string>;
+    tokenAuthMethod?: "body" | "basic";
+    tokenExtraHeaders?: Record<string, string>;
   };
   target?: {
     type: "repo";

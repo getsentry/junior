@@ -1,9 +1,17 @@
 import { after } from "next/server";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
-import { getOAuthProviderConfig, resolveBaseUrl, type OAuthStatePayload } from "@/chat/capabilities/jr-rpc-command";
+import {
+  getOAuthProviderConfig,
+  resolveBaseUrl,
+  type OAuthStatePayload,
+} from "@/chat/capabilities/jr-rpc-command";
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logException, logInfo } from "@/chat/observability";
+import {
+  buildOAuthTokenRequest,
+  parseOAuthTokenResponse,
+} from "@/chat/plugins/oauth-request";
 import { generateAssistantReply } from "@/chat/respond";
 import { publishAppHomeView } from "@/chat/app-home";
 import { getSlackClient } from "@/chat/slack-actions/client";
@@ -18,7 +26,11 @@ import { escapeXml } from "@/chat/xml";
  * We complete token exchange synchronously for correctness, then use `after(...)`
  * for best-effort Slack side effects so the browser response returns quickly.
  */
-function htmlErrorResponse(title: string, message: string, status: number): Response {
+function htmlErrorResponse(
+  title: string,
+  message: string,
+  status: number,
+): Response {
   const safeTitle = escapeXml(title);
   const safeMessage = escapeXml(message);
   const html = `<!DOCTYPE html>
@@ -34,21 +46,37 @@ function htmlErrorResponse(title: string, message: string, status: number): Resp
 </html>`;
   return new Response(html, {
     status,
-    headers: { "Content-Type": "text/html; charset=utf-8" }
+    headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
 
-async function postSlackMessage(channelId: string, threadTs: string, text: string): Promise<void> {
+async function postSlackMessage(
+  channelId: string,
+  threadTs: string,
+  text: string,
+): Promise<void> {
   try {
-    await getSlackClient().chat.postMessage({ channel: channelId, thread_ts: threadTs, text });
+    await getSlackClient().chat.postMessage({
+      channel: channelId,
+      thread_ts: threadTs,
+      text,
+    });
   } catch {
     // Best effort.
   }
 }
 
-async function setAssistantStatus(channelId: string, threadTs: string, status: string): Promise<void> {
+async function setAssistantStatus(
+  channelId: string,
+  threadTs: string,
+  status: string,
+): Promise<void> {
   try {
-    await getSlackClient().assistant.threads.setStatus({ channel_id: channelId, thread_ts: threadTs, status });
+    await getSlackClient().assistant.threads.setStatus({
+      channel_id: channelId,
+      thread_ts: threadTs,
+      status,
+    });
   } catch {
     // Best effort.
   }
@@ -95,9 +123,12 @@ function createDebouncedStatusPoster(channelId: string, threadTs: string) {
 
     pendingStatus = truncated;
     if (!pendingTimer) {
-      pendingTimer = setTimeout(() => {
-        void flush();
-      }, Math.max(1, STATUS_DEBOUNCE_MS - elapsed));
+      pendingTimer = setTimeout(
+        () => {
+          void flush();
+        },
+        Math.max(1, STATUS_DEBOUNCE_MS - elapsed),
+      );
     }
   };
 
@@ -113,12 +144,14 @@ function createDebouncedStatusPoster(channelId: string, threadTs: string) {
   return post;
 }
 
-function createReadOnlyConfigService(values: Record<string, unknown>): ChannelConfigurationService {
+function createReadOnlyConfigService(
+  values: Record<string, unknown>,
+): ChannelConfigurationService {
   const entries = Object.entries(values).map(([key, value]) => ({
     key,
     value,
     scope: "conversation" as const,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   }));
 
   return {
@@ -127,7 +160,8 @@ function createReadOnlyConfigService(values: Record<string, unknown>): ChannelCo
       throw new Error("Read-only configuration in resumed context");
     },
     unset: async () => false,
-    list: async ({ prefix } = {}) => entries.filter((e) => !prefix || e.key.startsWith(prefix)),
+    list: async ({ prefix } = {}) =>
+      entries.filter((e) => !prefix || e.key.startsWith(prefix)),
     resolve: async (key) => values[key],
     resolveValues: async ({ keys, prefix } = {}) => {
       const filtered: Record<string, unknown> = {};
@@ -137,21 +171,25 @@ function createReadOnlyConfigService(values: Record<string, unknown>): ChannelCo
         filtered[key] = value;
       }
       return filtered;
-    }
+    },
   };
 }
 
 async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
   if (!stored.pendingMessage || !stored.channelId || !stored.threadTs) return;
 
-  const providerLabel = stored.provider.charAt(0).toUpperCase() + stored.provider.slice(1);
+  const providerLabel =
+    stored.provider.charAt(0).toUpperCase() + stored.provider.slice(1);
   await postSlackMessage(
     stored.channelId,
     stored.threadTs,
-    `Your ${providerLabel} account is now connected. Processing your request...`
+    `Your ${providerLabel} account is now connected. Processing your request...`,
   );
 
-  const postStatus = createDebouncedStatusPoster(stored.channelId, stored.threadTs);
+  const postStatus = createDebouncedStatusPoster(
+    stored.channelId,
+    stored.threadTs,
+  );
   await setAssistantStatus(stored.channelId, stored.threadTs, "Thinking...");
 
   try {
@@ -161,13 +199,13 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
       correlation: {
         channelId: stored.channelId,
         threadTs: stored.threadTs,
-        requesterId: stored.userId
+        requesterId: stored.userId,
       },
       configuration: stored.configuration,
       channelConfiguration: stored.configuration
         ? createReadOnlyConfigService(stored.configuration)
         : undefined,
-      onStatus: postStatus
+      onStatus: postStatus,
     });
 
     postStatus.stop();
@@ -182,9 +220,9 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
       {
         "app.credential.provider": stored.provider,
         "app.ai.outcome": reply.diagnostics.outcome,
-        "app.ai.tool_calls": reply.diagnostics.toolCalls.length
+        "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
       },
-      "Auto-resumed pending message after OAuth callback"
+      "Auto-resumed pending message after OAuth callback",
     );
   } catch (error) {
     postStatus.stop();
@@ -194,25 +232,29 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
       "oauth_callback_resume_failed",
       {},
       { "app.credential.provider": stored.provider },
-      "Failed to auto-resume pending message after OAuth callback"
+      "Failed to auto-resume pending message after OAuth callback",
     );
 
     await postSlackMessage(
       stored.channelId,
       stored.threadTs,
-      `I connected your account but hit an error processing your request. Please try \`${stored.pendingMessage}\` again.`
+      `I connected your account but hit an error processing your request. Please try \`${stored.pendingMessage}\` again.`,
     );
   }
 }
 
 export async function GET(
   request: Request,
-  context: { params: Promise<{ provider: string }> }
+  context: { params: Promise<{ provider: string }> },
 ): Promise<Response> {
   const { provider } = await context.params;
   const providerConfig = getOAuthProviderConfig(provider);
   if (!providerConfig) {
-    return htmlErrorResponse("Unknown provider", "The OAuth provider in this link is not recognized.", 404);
+    return htmlErrorResponse(
+      "Unknown provider",
+      "The OAuth provider in this link is not recognized.",
+      404,
+    );
   }
 
   const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
@@ -231,18 +273,22 @@ export async function GET(
       return htmlErrorResponse(
         "Authorization declined",
         `You declined the ${providerLabel} authorization request. Return to Slack and run the auth command again if you change your mind.`,
-        400
+        400,
       );
     }
     return htmlErrorResponse(
       "Authorization failed",
       `${providerLabel} returned an error: ${errorParam}. Return to Slack and try again.`,
-      400
+      400,
     );
   }
 
   if (!code || !state) {
-    return htmlErrorResponse("Invalid request", "This authorization link is missing required parameters.", 400);
+    return htmlErrorResponse(
+      "Invalid request",
+      "This authorization link is missing required parameters.",
+      400,
+    );
   }
 
   const stateAdapter = getStateAdapter();
@@ -252,12 +298,16 @@ export async function GET(
     return htmlErrorResponse(
       "Link expired",
       `This authorization link has expired (links are valid for 10 minutes). Return to Slack and ask to connect your ${providerLabel} account again, or retry your original command to get a new link.`,
-      400
+      400,
     );
   }
 
   if (stored.provider !== provider) {
-    return htmlErrorResponse("Provider mismatch", "This authorization link does not match the expected provider.", 400);
+    return htmlErrorResponse(
+      "Provider mismatch",
+      "This authorization link does not match the expected provider.",
+      400,
+    );
   }
 
   await stateAdapter.delete(stateKey);
@@ -265,56 +315,72 @@ export async function GET(
   const clientId = process.env[providerConfig.clientIdEnv]?.trim();
   const clientSecret = process.env[providerConfig.clientSecretEnv]?.trim();
   if (!clientId || !clientSecret) {
-    return htmlErrorResponse("Configuration error", "OAuth client credentials are not configured on the server.", 500);
+    return htmlErrorResponse(
+      "Configuration error",
+      "OAuth client credentials are not configured on the server.",
+      500,
+    );
   }
 
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
-    return htmlErrorResponse("Configuration error", "The server cannot determine its base URL.", 500);
+    return htmlErrorResponse(
+      "Configuration error",
+      "The server cannot determine its base URL.",
+      500,
+    );
   }
 
   const redirectUri = `${baseUrl}${providerConfig.callbackPath}`;
 
   let tokenResponse: Response;
   try {
-    tokenResponse = await fetch(providerConfig.tokenEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
+    const tokenRequest = buildOAuthTokenRequest({
+      clientId,
+      clientSecret,
+      payload: {
         grant_type: "authorization_code",
         code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri
-      })
+        redirect_uri: redirectUri,
+      },
+      tokenAuthMethod: providerConfig.tokenAuthMethod,
+      tokenExtraHeaders: providerConfig.tokenExtraHeaders,
+    });
+    tokenResponse = await fetch(providerConfig.tokenEndpoint, {
+      method: "POST",
+      headers: tokenRequest.headers,
+      body: tokenRequest.body,
     });
   } catch {
-    return htmlErrorResponse("Connection failed", "Failed to exchange the authorization code. Please try again.", 500);
+    return htmlErrorResponse(
+      "Connection failed",
+      "Failed to exchange the authorization code. Please try again.",
+      500,
+    );
   }
 
   if (!tokenResponse.ok) {
-    return htmlErrorResponse("Connection failed", "The token exchange with the provider failed. Please try again.", 500);
+    return htmlErrorResponse(
+      "Connection failed",
+      "The token exchange with the provider failed. Please try again.",
+      500,
+    );
   }
 
   const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
-
-  if (
-    !tokenData.access_token ||
-    !tokenData.refresh_token ||
-    typeof tokenData.expires_in !== "number"
-  ) {
-    return htmlErrorResponse("Connection failed", "The provider returned an incomplete token response. Please try again.", 500);
+  let parsedTokenResponse;
+  try {
+    parsedTokenResponse = parseOAuthTokenResponse(tokenData);
+  } catch {
+    return htmlErrorResponse(
+      "Connection failed",
+      "The provider returned an incomplete token response. Please try again.",
+      500,
+    );
   }
 
-  const accessToken = tokenData.access_token as string;
-  const refreshToken = tokenData.refresh_token as string;
-  const expiresAt = Date.now() + (tokenData.expires_in as number) * 1000;
   const userTokenStore = getUserTokenStore();
-  await userTokenStore.set(stored.userId, provider, {
-    accessToken,
-    refreshToken,
-    expiresAt
-  });
+  await userTokenStore.set(stored.userId, provider, parsedTokenResponse);
 
   after(async () => {
     try {
@@ -332,7 +398,7 @@ export async function GET(
       await postSlackMessage(
         channelId,
         threadTs,
-        `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`
+        `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`,
       );
     });
   }
@@ -353,6 +419,6 @@ export async function GET(
 
   return new Response(html, {
     status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" }
+    headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }

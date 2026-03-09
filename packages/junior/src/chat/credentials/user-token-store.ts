@@ -1,7 +1,7 @@
 export interface StoredTokens {
   accessToken: string;
   refreshToken: string;
-  expiresAt: number;
+  expiresAt?: number;
 }
 
 export interface UserTokenStore {

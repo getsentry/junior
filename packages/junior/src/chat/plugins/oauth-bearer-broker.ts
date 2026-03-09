@@ -1,8 +1,15 @@
 import { randomUUID } from "node:crypto";
-import type { CredentialBroker, CredentialLease } from "@/chat/credentials/broker";
+import type {
+  CredentialBroker,
+  CredentialLease,
+} from "@/chat/credentials/broker";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
+import {
+  buildOAuthTokenRequest,
+  parseOAuthTokenResponse,
+} from "./oauth-request";
 import type { OAuthBearerCredentials, PluginManifest } from "./types";
 
 const MAX_LEASE_MS = 60 * 60 * 1000;
@@ -10,27 +17,34 @@ const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 async function refreshAccessToken(
   refreshToken: string,
-  oauth: NonNullable<PluginManifest["oauth"]>
+  oauth: NonNullable<PluginManifest["oauth"]>,
 ): Promise<{
   accessToken: string;
   refreshToken: string;
-  expiresIn: number;
+  expiresAt?: number;
 }> {
   const clientId = process.env[oauth.clientIdEnv]?.trim();
   const clientSecret = process.env[oauth.clientSecretEnv]?.trim();
   if (!clientId || !clientSecret) {
-    throw new Error(`Missing ${oauth.clientIdEnv} or ${oauth.clientSecretEnv} for token refresh`);
+    throw new Error(
+      `Missing ${oauth.clientIdEnv} or ${oauth.clientSecretEnv} for token refresh`,
+    );
   }
 
-  const response = await fetch(oauth.tokenEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
+  const request = buildOAuthTokenRequest({
+    clientId,
+    clientSecret,
+    payload: {
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret
-    })
+    },
+    tokenAuthMethod: oauth.tokenAuthMethod,
+    tokenExtraHeaders: oauth.tokenExtraHeaders,
+  });
+  const response = await fetch(oauth.tokenEndpoint, {
+    method: "POST",
+    headers: request.headers,
+    body: request.body,
   });
 
   if (!response.ok) {
@@ -38,29 +52,31 @@ async function refreshAccessToken(
   }
 
   const data = (await response.json()) as Record<string, unknown>;
+  return parseOAuthTokenResponse(data);
+}
 
-  if (!data.access_token || !data.refresh_token || typeof data.expires_in !== "number") {
-    throw new Error("Token refresh returned malformed response");
-  }
-
-  return {
-    accessToken: data.access_token as string,
-    refreshToken: data.refresh_token as string,
-    expiresIn: data.expires_in
-  };
+function getLeaseExpiry(expiresAt?: number): number {
+  return expiresAt
+    ? Math.min(expiresAt, Date.now() + MAX_LEASE_MS)
+    : Date.now() + MAX_LEASE_MS;
 }
 
 export function createOAuthBearerBroker(
   manifest: PluginManifest,
   credentials: OAuthBearerCredentials,
-  deps: { userTokenStore: UserTokenStore }
+  deps: { userTokenStore: UserTokenStore },
 ): CredentialBroker {
   const provider = manifest.name;
   const supportedCapabilities = new Set(manifest.capabilities);
-  const { apiDomains, authTokenEnv } = credentials;
+  const { apiDomains, apiHeaders, authTokenEnv } = credentials;
   const authTokenPlaceholder = resolveAuthTokenPlaceholder(credentials);
 
-  function buildLease(token: string, capability: string, expiresAtMs: number, reason: string): CredentialLease {
+  function buildLease(
+    token: string,
+    capability: string,
+    expiresAtMs: number,
+    reason: string,
+  ): CredentialLease {
     return {
       id: randomUUID(),
       provider,
@@ -68,78 +84,103 @@ export function createOAuthBearerBroker(
       env: { [authTokenEnv]: authTokenPlaceholder },
       headerTransforms: apiDomains.map((domain) => ({
         domain,
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { ...(apiHeaders ?? {}), Authorization: `Bearer ${token}` },
       })),
       expiresAt: new Date(expiresAtMs).toISOString(),
-      metadata: { reason }
+      metadata: { reason },
     };
   }
 
   return {
     async issue(input) {
       if (!supportedCapabilities.has(input.capability)) {
-        throw new Error(`Unsupported ${provider} capability: ${input.capability}`);
+        throw new Error(
+          `Unsupported ${provider} capability: ${input.capability}`,
+        );
       }
 
-      // 1. Per-user OAuth token (preferred when requester context exists)
-      if (input.requesterId && deps.userTokenStore) {
-        const stored = await deps.userTokenStore.get(input.requesterId, provider);
+      if (input.requesterId) {
+        const stored = await deps.userTokenStore.get(
+          input.requesterId,
+          provider,
+        );
         if (stored) {
           const now = Date.now();
-          // Refresh if within buffer of expiry
-          if (stored.expiresAt - now < REFRESH_BUFFER_MS && stored.refreshToken && manifest.oauth) {
+          if (
+            stored.expiresAt !== undefined &&
+            stored.expiresAt - now < REFRESH_BUFFER_MS &&
+            manifest.oauth
+          ) {
             try {
-              const refreshed = await refreshAccessToken(stored.refreshToken, manifest.oauth);
-              const expiresAt = Date.now() + refreshed.expiresIn * 1000;
-              await deps.userTokenStore.set(input.requesterId, provider, {
-                accessToken: refreshed.accessToken,
-                refreshToken: refreshed.refreshToken,
-                expiresAt
-              });
-              const leaseExpiry = Math.min(expiresAt, Date.now() + MAX_LEASE_MS);
-              return buildLease(refreshed.accessToken, input.capability, leaseExpiry, input.reason);
+              const refreshed = await refreshAccessToken(
+                stored.refreshToken,
+                manifest.oauth,
+              );
+              await deps.userTokenStore.set(
+                input.requesterId,
+                provider,
+                refreshed,
+              );
+              return buildLease(
+                refreshed.accessToken,
+                input.capability,
+                getLeaseExpiry(refreshed.expiresAt),
+                input.reason,
+              );
             } catch {
-              // Refresh failed — if the current token is still valid, use it
-              if (stored.expiresAt > Date.now()) {
-                const leaseExpiry = Math.min(stored.expiresAt, Date.now() + MAX_LEASE_MS);
-                return buildLease(stored.accessToken, input.capability, leaseExpiry, input.reason);
+              if (
+                stored.expiresAt === undefined ||
+                stored.expiresAt > Date.now()
+              ) {
+                return buildLease(
+                  stored.accessToken,
+                  input.capability,
+                  getLeaseExpiry(stored.expiresAt),
+                  input.reason,
+                );
               }
               throw new CredentialUnavailableError(
                 provider,
-                `Your ${provider} connection has expired.`
+                `Your ${provider} connection has expired.`,
               );
             }
           }
 
-          if (stored.expiresAt > Date.now()) {
-            const leaseExpiry = Math.min(stored.expiresAt, Date.now() + MAX_LEASE_MS);
-            return buildLease(stored.accessToken, input.capability, leaseExpiry, input.reason);
+          if (stored.expiresAt === undefined || stored.expiresAt > Date.now()) {
+            return buildLease(
+              stored.accessToken,
+              input.capability,
+              getLeaseExpiry(stored.expiresAt),
+              input.reason,
+            );
           }
 
           throw new CredentialUnavailableError(
             provider,
-            `Your ${provider} connection has expired.`
+            `Your ${provider} connection has expired.`,
           );
         }
 
-        // User has requester context but no stored token — require OAuth.
         throw new CredentialUnavailableError(
           provider,
-          `No ${provider} credentials available.`
+          `No ${provider} credentials available.`,
         );
       }
 
-      // 2. Static env fallback — only used when there is no requester context
       const envToken = process.env[authTokenEnv]?.trim();
       if (envToken) {
-        const expiresAtMs = Date.now() + MAX_LEASE_MS;
-        return buildLease(envToken, input.capability, expiresAtMs, input.reason);
+        return buildLease(
+          envToken,
+          input.capability,
+          getLeaseExpiry(),
+          input.reason,
+        );
       }
 
       throw new CredentialUnavailableError(
         provider,
-        `No ${provider} credentials available.`
+        `No ${provider} credentials available.`,
       );
-    }
+    },
   };
 }

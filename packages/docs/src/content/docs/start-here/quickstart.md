@@ -31,7 +31,7 @@ pnpm install
 ### Install Junior with a plugin package
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-github
+pnpm add @sentry/junior @sentry/junior-github @sentry/junior-notion
 ```
 
 This keeps the model extension-first from the start: runtime + at least one integration package.
@@ -54,7 +54,7 @@ export const runtime = "nodejs";
 import { withJunior } from "@sentry/junior/config";
 
 export default withJunior({
-  pluginPackages: ["@sentry/junior-github"]
+  pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
 });
 ```
 

@@ -31,7 +31,11 @@ export const runtime = "nodejs";
 import { withJunior } from "@sentry/junior/config";
 
 export default withJunior({
-  pluginPackages: ["@sentry/junior-github", "@sentry/junior-sentry"]
+  pluginPackages: [
+    "@sentry/junior-github",
+    "@sentry/junior-notion",
+    "@sentry/junior-sentry",
+  ],
 });
 ```
 

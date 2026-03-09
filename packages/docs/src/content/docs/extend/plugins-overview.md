@@ -8,6 +8,7 @@ prerequisites:
 related:
   - /extend/custom-plugins/
   - /extend/github-plugin/
+  - /extend/notion-plugin/
   - /extend/sentry-plugin/
 ---
 
@@ -41,7 +42,7 @@ Use this path when you want fast iteration inside a single app without publishin
 For reuse across apps or teams, package plugin manifests + skills as npm packages and install them next to `@sentry/junior`.
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-github @sentry/junior-sentry
+pnpm add @sentry/junior @sentry/junior-github @sentry/junior-notion @sentry/junior-sentry
 ```
 
 Then register those package names in `withJunior(...)` so build-time tracing and runtime discovery use the same explicit package list:
@@ -50,7 +51,11 @@ Then register those package names in `withJunior(...)` so build-time tracing and
 import { withJunior } from "@sentry/junior/config";
 
 export default withJunior({
-  pluginPackages: ["@sentry/junior-github", "@sentry/junior-sentry"]
+  pluginPackages: [
+    "@sentry/junior-github",
+    "@sentry/junior-notion",
+    "@sentry/junior-sentry",
+  ],
 });
 ```
 
@@ -75,4 +80,5 @@ pnpm skills:check
 
 - [Custom Plugins](/extend/custom-plugins/)
 - [GitHub Plugin](/extend/github-plugin/)
+- [Notion Plugin](/extend/notion-plugin/)
 - [Sentry Plugin](/extend/sentry-plugin/)

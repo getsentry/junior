@@ -1,0 +1,13 @@
+{
+  "name": "@sentry/junior-notion",
+  "version": "0.3.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "files": [
+    "plugin.yaml",
+    "skills"
+  ]
+}
