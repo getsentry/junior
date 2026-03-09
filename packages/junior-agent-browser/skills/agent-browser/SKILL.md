@@ -1,7 +1,7 @@
 ---
 name: agent-browser
 description: Automate websites with the agent-browser CLI for navigation, form flows, screenshots, extraction, and repeatable browser tasks. Use when users ask to interact with web apps, gather evidence from pages, or run browser-based QA steps.
-allowed-tools: bash
+allowed-tools: bash attachFile
 ---
 
 # Browser Automation
@@ -11,19 +11,24 @@ Use this skill when work requires real browser interaction instead of API-only l
 ## Core Workflow
 
 1. Open target page:
+
 - `agent-browser open <url>`
 
 2. Capture interactive refs:
+
 - `agent-browser snapshot -i`
 
 3. Interact by ref:
+
 - `agent-browser click @e1`
 - `agent-browser fill @e2 "value"`
 
 4. Re-snapshot after every navigation or significant DOM change:
+
 - `agent-browser snapshot -i`
 
 5. Capture result evidence:
+
 - `agent-browser screenshot --annotate <file.png>`
 
 ## Operational Rules
@@ -36,6 +41,7 @@ Use this skill when work requires real browser interaction instead of API-only l
 - If page load is async-heavy, wait explicitly:
   - `agent-browser wait --load networkidle`
 - For user-facing findings, include screenshots and the exact page URL.
+- When a user asks to see/share a screenshot, run `attachFile` with the screenshot path so the image is included in the reply.
 
 ## Common Patterns
 

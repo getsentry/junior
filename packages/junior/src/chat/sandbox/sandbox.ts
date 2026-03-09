@@ -3,12 +3,23 @@ import path from "node:path";
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
 import { extractHttpErrorDetails } from "@/chat/http-error-details";
-import { logWarn, setSpanAttributes, setSpanStatus, withSpan, type ObservabilityContext } from "@/chat/observability";
-import { SANDBOX_SKILLS_ROOT, SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import {
+  logWarn,
+  setSpanAttributes,
+  setSpanStatus,
+  withSpan,
+  type ObservabilityContext,
+} from "@/chat/observability";
+import {
+  SANDBOX_SKILLS_ROOT,
+  SANDBOX_WORKSPACE_ROOT,
+  sandboxSkillDir,
+} from "@/chat/sandbox/paths";
+import {
+  getRuntimeDependencyProfileHash,
   isSnapshotMissingError,
   resolveRuntimeDependencySnapshot,
-  type RuntimeDependencySnapshotProgressPhase
+  type RuntimeDependencySnapshotProgressPhase,
 } from "@/chat/sandbox/runtime-dependency-snapshots";
 import type { SkillMetadata } from "@/chat/skills";
 
@@ -39,9 +50,12 @@ export interface BashCustomCommandResult {
 export interface SandboxExecutor {
   configureSkills(skills: SkillMetadata[]): void;
   getSandboxId(): string | undefined;
+  getDependencyProfileHash(): string | undefined;
   canExecute(toolName: string): boolean;
   createSandbox(): Promise<Sandbox>;
-  execute<T>(params: SandboxExecutionInput): Promise<SandboxExecutionEnvelope<T>>;
+  execute<T>(
+    params: SandboxExecutionInput,
+  ): Promise<SandboxExecutionEnvelope<T>>;
   dispose(): Promise<void>;
 }
 
@@ -53,57 +67,95 @@ interface ToolExecutors {
       headers: Record<string, string>;
     }>;
     env?: Record<string, string>;
-  }) => Promise<{ stdout: string; stderr: string; exitCode: number; stdoutTruncated: boolean; stderrTruncated: boolean }>;
+  }) => Promise<{
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+    stdoutTruncated: boolean;
+    stderrTruncated: boolean;
+  }>;
   readFile: (input: { path: string }) => Promise<{ content: string }>;
-  writeFile: (input: { path: string; content: string }) => Promise<{ success: boolean }>;
+  writeFile: (input: {
+    path: string;
+    content: string;
+  }) => Promise<{ success: boolean }>;
 }
 
 const SANDBOX_TOOL_NAMES = new Set(["bash", "readFile", "writeFile"]);
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
+const SANDBOX_RUNTIME = "node22";
 const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
-const SANDBOX_ERROR_FIELDS = [{ sourceKey: "sandboxId", attributeKey: "sandbox_id", summaryKey: "sandboxId" }] as const;
+const SANDBOX_ERROR_FIELDS = [
+  {
+    sourceKey: "sandboxId",
+    attributeKey: "sandbox_id",
+    summaryKey: "sandboxId",
+  },
+] as const;
 
-type NetworkPolicyAllowEntry = Array<{ transform?: Array<{ headers: Record<string, string> }> }>;
+type NetworkPolicyAllowEntry = Array<{
+  transform?: Array<{ headers: Record<string, string> }>;
+}>;
 
 function mergeNetworkPolicyWithHeaderTransforms(
   networkPolicy: unknown,
-  headerTransforms: Array<{ domain: string; headers: Record<string, string> }>
-): { allow: Record<string, NetworkPolicyAllowEntry> } & Record<string, unknown> {
+  headerTransforms: Array<{ domain: string; headers: Record<string, string> }>,
+): { allow: Record<string, NetworkPolicyAllowEntry> } & Record<
+  string,
+  unknown
+> {
   const basePolicy =
-    networkPolicy && typeof networkPolicy === "object" && !Array.isArray(networkPolicy)
-      ? ({ ...(networkPolicy as Record<string, unknown>) } as Record<string, unknown>)
+    networkPolicy &&
+    typeof networkPolicy === "object" &&
+    !Array.isArray(networkPolicy)
+      ? ({ ...(networkPolicy as Record<string, unknown>) } as Record<
+          string,
+          unknown
+        >)
       : {};
 
   const existingAllowRaw = basePolicy.allow;
   const existingAllow: Record<string, NetworkPolicyAllowEntry> =
-    existingAllowRaw && typeof existingAllowRaw === "object" && !Array.isArray(existingAllowRaw)
+    existingAllowRaw &&
+    typeof existingAllowRaw === "object" &&
+    !Array.isArray(existingAllowRaw)
       ? Object.fromEntries(
-          Object.entries(existingAllowRaw as Record<string, unknown>).map(([domain, rules]) => [
-            domain,
-            Array.isArray(rules) ? ([...rules] as NetworkPolicyAllowEntry) : []
-          ])
+          Object.entries(existingAllowRaw as Record<string, unknown>).map(
+            ([domain, rules]) => [
+              domain,
+              Array.isArray(rules)
+                ? ([...rules] as NetworkPolicyAllowEntry)
+                : [],
+            ],
+          ),
         )
       : { "*": [] };
 
   for (const transform of headerTransforms) {
     const currentRules = existingAllow[transform.domain] ?? [];
-    existingAllow[transform.domain] = [...currentRules, { transform: [{ headers: transform.headers }] }];
+    existingAllow[transform.domain] = [
+      ...currentRules,
+      { transform: [{ headers: transform.headers }] },
+    ];
   }
 
   return {
     ...basePolicy,
-    allow: existingAllow
+    allow: existingAllow,
   };
 }
 
-function truncateOutput(output: string, maxLength: number): { value: string; truncated: boolean } {
+function truncateOutput(
+  output: string,
+  maxLength: number,
+): { value: string; truncated: boolean } {
   if (output.length <= maxLength) {
     return { value: output, truncated: false };
   }
   const truncatedLength = output.length - maxLength;
   return {
     value: `${output.slice(0, maxLength)}\n\n[output truncated: ${truncatedLength} characters removed]`,
-    truncated: true
+    truncated: true,
   };
 }
 
@@ -133,14 +185,16 @@ async function listFilesRecursive(root: string): Promise<string[]> {
   return files;
 }
 
-async function buildSkillSyncFiles(availableSkills: SkillMetadata[]): Promise<Array<{ path: string; content: Buffer }>> {
+async function buildSkillSyncFiles(
+  availableSkills: SkillMetadata[],
+): Promise<Array<{ path: string; content: Buffer }>> {
   const filesToWrite: Array<{ path: string; content: Buffer }> = [];
   const index = {
     skills: [] as Array<{
       name: string;
       description: string;
       root: string;
-    }>
+    }>,
   };
 
   for (const skill of availableSkills) {
@@ -152,26 +206,28 @@ async function buildSkillSyncFiles(availableSkills: SkillMetadata[]): Promise<Ar
       }
       filesToWrite.push({
         path: `${sandboxSkillDir(skill.name)}/${relative}`,
-        content: await fs.readFile(absoluteFile)
+        content: await fs.readFile(absoluteFile),
       });
     }
 
     index.skills.push({
       name: skill.name,
       description: skill.description,
-      root: sandboxSkillDir(skill.name)
+      root: sandboxSkillDir(skill.name),
     });
   }
 
   filesToWrite.push({
     path: `${SANDBOX_SKILLS_ROOT}/index.json`,
-    content: Buffer.from(JSON.stringify(index), "utf8")
+    content: Buffer.from(JSON.stringify(index), "utf8"),
   });
 
   return filesToWrite;
 }
 
-function collectDirectories(filesToWrite: Array<{ path: string; content: Buffer }>): string[] {
+function collectDirectories(
+  filesToWrite: Array<{ path: string; content: Buffer }>,
+): string[] {
   const directoriesToEnsure = new Set<string>();
   for (const file of filesToWrite) {
     const normalizedPath = path.posix.normalize(file.path);
@@ -184,14 +240,18 @@ function collectDirectories(filesToWrite: Array<{ path: string; content: Buffer 
   }
 
   return Array.from(directoriesToEnsure)
-    .filter((directory) => directory === SANDBOX_WORKSPACE_ROOT || directory.startsWith(`${SANDBOX_WORKSPACE_ROOT}/`))
+    .filter(
+      (directory) =>
+        directory === SANDBOX_WORKSPACE_ROOT ||
+        directory.startsWith(`${SANDBOX_WORKSPACE_ROOT}/`),
+    )
     .sort((a, b) => a.length - b.length);
 }
 
 function getSandboxErrorDetails(error: unknown) {
   return extractHttpErrorDetails(error, {
     attributePrefix: "app.sandbox.api_error",
-    extraFields: [...SANDBOX_ERROR_FIELDS]
+    extraFields: [...SANDBOX_ERROR_FIELDS],
   });
 }
 
@@ -204,7 +264,10 @@ function isAlreadyExistsError(error: unknown): boolean {
   );
 }
 
-function findInErrorChain(error: unknown, predicate: (candidate: unknown) => boolean): boolean {
+function findInErrorChain(
+  error: unknown,
+  predicate: (candidate: unknown) => boolean,
+): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
   while (current && !seen.has(current)) {
@@ -224,7 +287,8 @@ function findInErrorChain(error: unknown, predicate: (candidate: unknown) => boo
 function isSandboxUnavailableError(error: unknown): boolean {
   return findInErrorChain(error, (candidate) => {
     const details = getSandboxErrorDetails(candidate);
-    const searchable = `${details.searchableText} ${details.summary}`.toLowerCase();
+    const searchable =
+      `${details.searchableText} ${details.summary}`.toLowerCase();
     return (
       searchable.includes("sandbox_stopped") ||
       searchable.includes("status=410") ||
@@ -246,7 +310,10 @@ function getFirstErrorMessage(error: unknown): string | undefined {
       }
     }
     seen.add(current);
-    current = typeof current === "object" ? (current as { cause?: unknown }).cause : undefined;
+    current =
+      typeof current === "object"
+        ? (current as { cause?: unknown }).cause
+        : undefined;
   }
 
   return undefined;
@@ -256,7 +323,9 @@ function wrapSandboxSetupError(error: unknown): Error {
   try {
     const details = getSandboxErrorDetails(error);
     if (details.summary) {
-      return new Error(`sandbox setup failed (${details.summary})`, { cause: error });
+      return new Error(`sandbox setup failed (${details.summary})`, {
+        cause: error,
+      });
     }
   } catch {
     // Keep fallback message below if detail extraction fails.
@@ -269,7 +338,11 @@ function wrapSandboxSetupError(error: unknown): Error {
     causeMessage = cause instanceof Error ? cause.message : undefined;
   }
 
-  if (causeMessage && causeMessage.trim() && causeMessage !== "sandbox setup failed") {
+  if (
+    causeMessage &&
+    causeMessage.trim() &&
+    causeMessage !== "sandbox setup failed"
+  ) {
     const oneLine = causeMessage.replace(/\s+/g, " ").trim();
     return new Error(`sandbox setup failed (${oneLine})`, { cause: error });
   }
@@ -277,30 +350,43 @@ function wrapSandboxSetupError(error: unknown): Error {
   return new Error("sandbox setup failed", { cause: error });
 }
 
-function throwSandboxOperationError(action: string, error: unknown, includeMissingPath = false): never {
+function throwSandboxOperationError(
+  action: string,
+  error: unknown,
+  includeMissingPath = false,
+): never {
   const details = getSandboxErrorDetails(error);
   setSpanAttributes({
     ...details.attributes,
     ...(includeMissingPath
       ? {
           "app.sandbox.api_error.missing_path":
-            details.searchableText.includes("no such file") || details.searchableText.includes("enoent")
+            details.searchableText.includes("no such file") ||
+            details.searchableText.includes("enoent"),
         }
       : {}),
-    "app.sandbox.success": false
+    "app.sandbox.success": false,
   });
   setSpanStatus("error");
-  throw new Error(details.summary ? `${action} failed (${details.summary})` : `${action} failed`, {
-    cause: error
-  });
+  throw new Error(
+    details.summary
+      ? `${action} failed (${details.summary})`
+      : `${action} failed`,
+    {
+      cause: error,
+    },
+  );
 }
 
 export function createSandboxExecutor(options?: {
   sandboxId?: string;
+  sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: ObservabilityContext;
   onStatus?: (status: string) => void | Promise<void>;
-  runBashCustomCommand?: (command: string) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
+  runBashCustomCommand?: (
+    command: string,
+  ) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
 }): SandboxExecutor {
   let sandbox: Sandbox | null = null;
   let sandboxIdHint = options?.sandboxId;
@@ -310,15 +396,20 @@ export function createSandboxExecutor(options?: {
   const timeoutMs = options?.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options?.traceContext ?? {};
   const emitStatus = options?.onStatus;
+  const dependencyProfileHash =
+    getRuntimeDependencyProfileHash(SANDBOX_RUNTIME);
 
   const withSandboxSpan = <T>(
     name: string,
     op: string,
     attributes: Record<string, unknown>,
-    callback: () => Promise<T>
+    callback: () => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
-  const invalidateSandboxInstance = async (targetSandbox: Sandbox, reason: unknown): Promise<void> => {
+  const invalidateSandboxInstance = async (
+    targetSandbox: Sandbox,
+    reason: unknown,
+  ): Promise<void> => {
     if (sandbox === targetSandbox) {
       sandbox = null;
       sandboxIdHint = undefined;
@@ -328,9 +419,10 @@ export function createSandboxExecutor(options?: {
       "sandbox_network_policy_restore_failed",
       traceContext,
       {
-        "error.message": reason instanceof Error ? reason.message : String(reason)
+        "error.message":
+          reason instanceof Error ? reason.message : String(reason),
       },
-      "Sandbox network policy restore failed; discarding sandbox instance"
+      "Sandbox network policy restore failed; discarding sandbox instance",
     );
     try {
       await targetSandbox.stop({ blocking: true });
@@ -339,16 +431,21 @@ export function createSandboxExecutor(options?: {
     }
   };
 
-  const upsertSkillsToSandbox = async (targetSandbox: Sandbox): Promise<void> => {
+  const upsertSkillsToSandbox = async (
+    targetSandbox: Sandbox,
+  ): Promise<void> => {
     await withSandboxSpan(
       "sandbox.sync_skills",
       "sandbox.sync",
       {
-        "app.sandbox.skills_count": availableSkills.length
+        "app.sandbox.skills_count": availableSkills.length,
       },
       async () => {
         const filesToWrite = await buildSkillSyncFiles(availableSkills);
-        const bytesWritten = filesToWrite.reduce((total, file) => total + file.content.length, 0);
+        const bytesWritten = filesToWrite.reduce(
+          (total, file) => total + file.content.length,
+          0,
+        );
         const directories = collectDirectories(filesToWrite);
 
         await withSandboxSpan(
@@ -357,7 +454,7 @@ export function createSandboxExecutor(options?: {
           {
             "app.sandbox.sync.files_written": filesToWrite.length,
             "app.sandbox.sync.bytes_written": bytesWritten,
-            "app.sandbox.sync.directories_ensured": directories.length
+            "app.sandbox.sync.directories_ensured": directories.length,
           },
           async () => {
             try {
@@ -375,9 +472,9 @@ export function createSandboxExecutor(options?: {
             } catch (error) {
               throwSandboxOperationError("sandbox writeFiles", error, true);
             }
-          }
+          },
         );
-      }
+      },
     );
   };
 
@@ -389,7 +486,7 @@ export function createSandboxExecutor(options?: {
         "app.sandbox.id_hint_present": Boolean(sandboxIdHint),
         "app.sandbox.timeout_ms": timeoutMs,
         "app.sandbox.runtime": "node22",
-        "app.sandbox.skills_count": availableSkills.length
+        "app.sandbox.skills_count": availableSkills.length,
       },
       async () => {
         const assignSandbox = (nextSandbox: Sandbox): Sandbox => {
@@ -404,7 +501,7 @@ export function createSandboxExecutor(options?: {
         };
 
         const createFreshSandbox = async (): Promise<Sandbox> => {
-          const runtime = "node22";
+          const runtime = SANDBOX_RUNTIME;
           let statusCount = 0;
           const sentStatuses = new Set<string>();
           const emitSandboxStatus = async (status: string): Promise<void> => {
@@ -415,7 +512,9 @@ export function createSandboxExecutor(options?: {
             statusCount += 1;
             await emitStatus(status);
           };
-          const reportSnapshotPhase = async (phase: RuntimeDependencySnapshotProgressPhase): Promise<void> => {
+          const reportSnapshotPhase = async (
+            phase: RuntimeDependencySnapshotProgressPhase,
+          ): Promise<void> => {
             if (phase === "resolve_start") {
               await emitSandboxStatus("Checking sandbox snapshot cache...");
               return;
@@ -441,30 +540,44 @@ export function createSandboxExecutor(options?: {
               {
                 "app.sandbox.reused": false,
                 "app.sandbox.timeout_ms": timeoutMs,
-                "app.sandbox.runtime": runtime
+                "app.sandbox.runtime": runtime,
               },
               async () => {
                 await emitSandboxStatus("Preparing sandbox runtime...");
                 const snapshot = await resolveRuntimeDependencySnapshot({
                   runtime,
                   timeoutMs,
-                  onProgress: reportSnapshotPhase
+                  onProgress: reportSnapshotPhase,
                 });
 
                 setSpanAttributes({
-                  "app.sandbox.source": snapshot.snapshotId ? "snapshot" : "created",
+                  "app.sandbox.source": snapshot.snapshotId
+                    ? "snapshot"
+                    : "created",
                   "app.sandbox.snapshot.cache_hit": snapshot.cacheHit,
-                  "app.sandbox.snapshot.resolve_outcome": snapshot.resolveOutcome,
-                  ...(snapshot.profileHash ? { "app.sandbox.snapshot.profile_hash": snapshot.profileHash } : {}),
-                  "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount,
-                  ...(snapshot.rebuildReason ? { "app.sandbox.snapshot.rebuild_reason": snapshot.rebuildReason } : {})
+                  "app.sandbox.snapshot.resolve_outcome":
+                    snapshot.resolveOutcome,
+                  ...(snapshot.profileHash
+                    ? {
+                        "app.sandbox.snapshot.profile_hash":
+                          snapshot.profileHash,
+                      }
+                    : {}),
+                  "app.sandbox.snapshot.dependency_count":
+                    snapshot.dependencyCount,
+                  ...(snapshot.rebuildReason
+                    ? {
+                        "app.sandbox.snapshot.rebuild_reason":
+                          snapshot.rebuildReason,
+                      }
+                    : {}),
                 });
 
                 if (!snapshot.snapshotId) {
                   await emitSandboxStatus("Starting sandbox...");
                   return await Sandbox.create({
                     timeout: timeoutMs,
-                    runtime
+                    runtime,
                   });
                 }
 
@@ -474,8 +587,8 @@ export function createSandboxExecutor(options?: {
                     timeout: timeoutMs,
                     source: {
                       type: "snapshot",
-                      snapshotId: snapshot.snapshotId
-                    }
+                      snapshotId: snapshot.snapshotId,
+                    },
                   });
                 } catch (error) {
                   if (!isSnapshotMissingError(error)) {
@@ -483,29 +596,32 @@ export function createSandboxExecutor(options?: {
                   }
 
                   setSpanAttributes({
-                    "app.sandbox.snapshot.rebuild_after_missing": true
+                    "app.sandbox.snapshot.rebuild_after_missing": true,
                   });
-                  const rebuiltSnapshot = await resolveRuntimeDependencySnapshot({
-                    runtime,
-                    timeoutMs,
-                    forceRebuild: true,
-                    staleSnapshotId: snapshot.snapshotId,
-                    onProgress: reportSnapshotPhase
-                  });
+                  const rebuiltSnapshot =
+                    await resolveRuntimeDependencySnapshot({
+                      runtime,
+                      timeoutMs,
+                      forceRebuild: true,
+                      staleSnapshotId: snapshot.snapshotId,
+                      onProgress: reportSnapshotPhase,
+                    });
                   if (!rebuiltSnapshot.snapshotId) {
                     throw error;
                   }
 
-                  await emitSandboxStatus("Retrying sandbox startup with a fresh snapshot...");
+                  await emitSandboxStatus(
+                    "Retrying sandbox startup with a fresh snapshot...",
+                  );
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     source: {
                       type: "snapshot",
-                      snapshotId: rebuiltSnapshot.snapshotId
-                    }
+                      snapshotId: rebuiltSnapshot.snapshotId,
+                    },
                   });
                 }
-              }
+              },
             );
           } catch (error) {
             return handleSetupFailure(error);
@@ -519,17 +635,40 @@ export function createSandboxExecutor(options?: {
           return assignSandbox(createdSandbox);
         };
 
-        const recoverUnavailableSandbox = async (source: "memory" | "id_hint"): Promise<Sandbox> => {
+        if (
+          !sandbox &&
+          sandboxIdHint &&
+          dependencyProfileHash !== options?.sandboxDependencyProfileHash
+        ) {
+          setSpanAttributes({
+            "app.sandbox.reused": false,
+            "app.sandbox.recreate.reason": "dependency_profile_mismatch",
+            ...(options?.sandboxDependencyProfileHash
+              ? {
+                  "app.sandbox.previous_profile_hash":
+                    options.sandboxDependencyProfileHash,
+                }
+              : {}),
+            ...(dependencyProfileHash
+              ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
+              : {}),
+          });
+          sandboxIdHint = undefined;
+        }
+
+        const recoverUnavailableSandbox = async (
+          source: "memory" | "id_hint",
+        ): Promise<Sandbox> => {
           setSpanAttributes({
             "app.sandbox.recovery.attempted": true,
-            "app.sandbox.recovery.source": source
+            "app.sandbox.recovery.source": source,
           });
           sandbox = null;
           sandboxIdHint = undefined;
           toolExecutors = undefined;
           const replacement = await createFreshSandbox();
           setSpanAttributes({
-            "app.sandbox.recovery.succeeded": true
+            "app.sandbox.recovery.succeeded": true,
           });
           return replacement;
         };
@@ -542,11 +681,11 @@ export function createSandboxExecutor(options?: {
               "sandbox.acquire.cached",
               {
                 "app.sandbox.reused": true,
-                "app.sandbox.source": "memory"
+                "app.sandbox.source": "memory",
               },
               async () => {
                 await upsertSkillsToSandbox(cachedSandbox);
-              }
+              },
             );
             return cachedSandbox;
           } catch (error) {
@@ -565,9 +704,9 @@ export function createSandboxExecutor(options?: {
               "sandbox.get",
               {
                 "app.sandbox.reused": true,
-                "app.sandbox.source": "id_hint"
+                "app.sandbox.source": "id_hint",
               },
-              async () => Sandbox.get({ sandboxId: sandboxIdHint as string })
+              async () => Sandbox.get({ sandboxId: sandboxIdHint as string }),
             );
           } catch {
             acquiredSandbox = null;
@@ -587,7 +726,7 @@ export function createSandboxExecutor(options?: {
         }
 
         return createFreshSandbox();
-      }
+      },
     );
   };
 
@@ -602,13 +741,13 @@ export function createSandboxExecutor(options?: {
       "sandbox.tool.init",
       {
         "app.sandbox.tool_name": "bash",
-        "app.sandbox.destination": SANDBOX_WORKSPACE_ROOT
+        "app.sandbox.destination": SANDBOX_WORKSPACE_ROOT,
       },
       async () =>
         createBashTool({
           sandbox: activeSandbox,
-          destination: SANDBOX_WORKSPACE_ROOT
-        })
+          destination: SANDBOX_WORKSPACE_ROOT,
+        }),
     );
 
     const executeReadFile = toolkit.tools.readFile.execute;
@@ -622,14 +761,20 @@ export function createSandboxExecutor(options?: {
         const restoreNetworkPolicy = activeSandbox.networkPolicy ?? "allow-all";
         const headerTransforms = input.headerTransforms;
         if (headerTransforms && headerTransforms.length > 0) {
-          const policy = mergeNetworkPolicyWithHeaderTransforms(restoreNetworkPolicy, headerTransforms);
+          const policy = mergeNetworkPolicyWithHeaderTransforms(
+            restoreNetworkPolicy,
+            headerTransforms,
+          );
           await activeSandbox.updateNetworkPolicy(policy);
         }
 
         const pathPrefix = `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`;
         const envExports = input.env
           ? Object.entries(input.env)
-              .map(([key, value]) => `export ${key}='${value.replace(/'/g, "'\\''")}'`)
+              .map(
+                ([key, value]) =>
+                  `export ${key}='${value.replace(/'/g, "'\\''")}'`,
+              )
               .join(" && ")
           : "";
         const preamble = envExports
@@ -640,11 +785,16 @@ export function createSandboxExecutor(options?: {
           const commandResult = await activeSandbox.runCommand({
             cmd: "bash",
             args: ["-c", `${preamble} && ${input.command}`],
-            cwd: SANDBOX_WORKSPACE_ROOT
+            cwd: SANDBOX_WORKSPACE_ROOT,
           });
-          const maxOutputLength = Number.parseInt(process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "", 10);
+          const maxOutputLength = Number.parseInt(
+            process.env.SANDBOX_BASH_MAX_OUTPUT_CHARS ?? "",
+            10,
+          );
           const boundedOutputLength =
-            Number.isFinite(maxOutputLength) && maxOutputLength > 0 ? maxOutputLength : DEFAULT_MAX_OUTPUT_LENGTH;
+            Number.isFinite(maxOutputLength) && maxOutputLength > 0
+              ? maxOutputLength
+              : DEFAULT_MAX_OUTPUT_LENGTH;
           const stdoutRaw = await commandResult.stdout();
           const stderrRaw = await commandResult.stderr();
           const stdout = truncateOutput(stdoutRaw, boundedOutputLength);
@@ -654,7 +804,7 @@ export function createSandboxExecutor(options?: {
             stderr: stderr.value,
             exitCode: commandResult.exitCode,
             stdoutTruncated: stdout.truncated,
-            stderrTruncated: stderr.truncated
+            stderrTruncated: stderr.truncated,
           };
         } catch (error) {
           commandError = error;
@@ -675,21 +825,26 @@ export function createSandboxExecutor(options?: {
       readFile: async (input) =>
         (await executeReadFile(input, {
           toolCallId: "sandbox-read-file",
-          messages: []
+          messages: [],
         })) as { content: string },
       writeFile: async (input) =>
         (await executeWriteFile(input, {
           toolCallId: "sandbox-write-file",
-          messages: []
-        })) as { success: boolean }
+          messages: [],
+        })) as { success: boolean },
     };
 
     return toolExecutors;
   };
 
-  const execute = async <T>(params: SandboxExecutionInput): Promise<SandboxExecutionEnvelope<T>> => {
+  const execute = async <T>(
+    params: SandboxExecutionInput,
+  ): Promise<SandboxExecutionEnvelope<T>> => {
     const rawInput = (params.input ?? {}) as Record<string, unknown>;
-    const bashCommand = params.toolName === "bash" ? String(rawInput.command ?? "").trim() : undefined;
+    const bashCommand =
+      params.toolName === "bash"
+        ? String(rawInput.command ?? "").trim()
+        : undefined;
 
     if (params.toolName === "bash") {
       if (!bashCommand) {
@@ -704,18 +859,21 @@ export function createSandboxExecutor(options?: {
     }
 
     const activeSandbox = await createSandbox();
-    const keepAliveMs = Number.parseInt(process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0", 10);
+    const keepAliveMs = Number.parseInt(
+      process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
+      10,
+    );
     if (Number.isFinite(keepAliveMs) && keepAliveMs > 0) {
       try {
         await withSandboxSpan(
           "sandbox.keepalive.extend",
           "sandbox.keepalive",
           {
-            "app.sandbox.keepalive_ms": keepAliveMs
+            "app.sandbox.keepalive_ms": keepAliveMs,
           },
           async () => {
             await activeSandbox.extendTimeout(keepAliveMs);
-          }
+          },
         );
       } catch {
         // Best effort keepalive.
@@ -727,19 +885,29 @@ export function createSandboxExecutor(options?: {
       const headerTransformsInput = rawInput.headerTransforms;
       const headerTransforms = Array.isArray(headerTransformsInput)
         ? headerTransformsInput
-            .filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object"))
+            .filter((value): value is Record<string, unknown> =>
+              Boolean(value && typeof value === "object"),
+            )
             .map((transform) => ({
               domain: String(transform.domain ?? "").trim(),
               headers:
-                transform.headers && typeof transform.headers === "object" && !Array.isArray(transform.headers)
+                transform.headers &&
+                typeof transform.headers === "object" &&
+                !Array.isArray(transform.headers)
                   ? Object.fromEntries(
-                      Object.entries(transform.headers as Record<string, unknown>)
+                      Object.entries(
+                        transform.headers as Record<string, unknown>,
+                      )
                         .filter(([, value]) => typeof value === "string")
-                        .map(([key, value]) => [key, value as string])
+                        .map(([key, value]) => [key, value as string]),
                     )
-                  : {}
+                  : {},
             }))
-            .filter((transform) => transform.domain.length > 0 && Object.keys(transform.headers).length > 0)
+            .filter(
+              (transform) =>
+                transform.domain.length > 0 &&
+                Object.keys(transform.headers).length > 0,
+            )
         : undefined;
       const envInput = rawInput.env;
       const env =
@@ -747,7 +915,7 @@ export function createSandboxExecutor(options?: {
           ? Object.fromEntries(
               Object.entries(envInput as Record<string, unknown>)
                 .filter(([, value]) => typeof value === "string")
-                .map(([key, value]) => [key, value as string])
+                .map(([key, value]) => [key, value as string]),
             )
           : undefined;
 
@@ -756,27 +924,40 @@ export function createSandboxExecutor(options?: {
         "bash",
         "process.exec",
         {
-          "process.executable.name": "bash"
+          "process.executable.name": "bash",
         },
-          async () => {
-            try {
-              const response = await executeBash({ command, ...(headerTransforms ? { headerTransforms } : {}), ...(env ? { env } : {}) });
-              setSpanAttributes({
-                "process.exit.code": response.exitCode,
-                "app.sandbox.stdout_bytes": Buffer.byteLength(response.stdout ?? "", "utf8"),
-              "app.sandbox.stderr_bytes": Buffer.byteLength(response.stderr ?? "", "utf8"),
-              ...(response.exitCode !== 0 ? { "error.type": "nonzero_exit" } : {})
+        async () => {
+          try {
+            const response = await executeBash({
+              command,
+              ...(headerTransforms ? { headerTransforms } : {}),
+              ...(env ? { env } : {}),
+            });
+            setSpanAttributes({
+              "process.exit.code": response.exitCode,
+              "app.sandbox.stdout_bytes": Buffer.byteLength(
+                response.stdout ?? "",
+                "utf8",
+              ),
+              "app.sandbox.stderr_bytes": Buffer.byteLength(
+                response.stderr ?? "",
+                "utf8",
+              ),
+              ...(response.exitCode !== 0
+                ? { "error.type": "nonzero_exit" }
+                : {}),
             });
             setSpanStatus(response.exitCode === 0 ? "ok" : "error");
             return response;
           } catch (error) {
             setSpanAttributes({
-              "error.type": error instanceof Error ? error.name : "sandbox_execute_error"
+              "error.type":
+                error instanceof Error ? error.name : "sandbox_execute_error",
             });
             setSpanStatus("error");
             throw error;
           }
-        }
+        },
       );
 
       return {
@@ -790,8 +971,8 @@ export function createSandboxExecutor(options?: {
           stdout: result.stdout,
           stderr: result.stderr,
           stdout_truncated: result.stdoutTruncated,
-          stderr_truncated: result.stderrTruncated
-        } as T
+          stderr_truncated: result.stderrTruncated,
+        } as T,
       };
     }
 
@@ -806,22 +987,22 @@ export function createSandboxExecutor(options?: {
         "sandbox.readFile",
         "sandbox.fs.read",
         {
-          "app.sandbox.path.length": filePath.length
+          "app.sandbox.path.length": filePath.length,
         },
         async () => {
           const response = await executeReadFile({ path: filePath });
           const content = String(response.content ?? "");
           setSpanAttributes({
             "app.sandbox.read.bytes": Buffer.byteLength(content, "utf8"),
-            "app.sandbox.read.chars": content.length
+            "app.sandbox.read.chars": content.length,
           });
           setSpanStatus("ok");
           return {
             content,
             path: filePath,
-            success: true
+            success: true,
           };
-        }
+        },
       );
 
       return { result: result as T };
@@ -840,7 +1021,7 @@ export function createSandboxExecutor(options?: {
         "sandbox.fs.write",
         {
           "app.sandbox.path.length": filePath.length,
-          "app.sandbox.write.bytes": Buffer.byteLength(content, "utf8")
+          "app.sandbox.write.bytes": Buffer.byteLength(content, "utf8"),
         },
         async () => {
           try {
@@ -849,15 +1030,15 @@ export function createSandboxExecutor(options?: {
           } catch (error) {
             throwSandboxOperationError("sandbox writeFile", error);
           }
-        }
+        },
       );
 
       return {
         result: {
           ok: true,
           path: filePath,
-          bytes_written: Buffer.byteLength(content, "utf8")
-        } as T
+          bytes_written: Buffer.byteLength(content, "utf8"),
+        } as T,
       };
     }
 
@@ -873,11 +1054,11 @@ export function createSandboxExecutor(options?: {
       "sandbox.stop",
       "sandbox.stop",
       {
-        "app.sandbox.stop.blocking": true
+        "app.sandbox.stop.blocking": true,
       },
       async () => {
         await (sandbox as Sandbox).stop({ blocking: true });
-      }
+      },
     );
 
     sandbox = null;
@@ -891,11 +1072,14 @@ export function createSandboxExecutor(options?: {
     getSandboxId() {
       return sandbox?.sandboxId ?? sandboxIdHint;
     },
+    getDependencyProfileHash() {
+      return dependencyProfileHash;
+    },
     canExecute(toolName: string) {
       return SANDBOX_TOOL_NAMES.has(toolName);
     },
     createSandbox,
     execute,
-    dispose
+    dispose,
   };
 }
