@@ -3,7 +3,10 @@ import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
 import { Value } from "@sinclair/typebox/value";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
-import { extractGenAiUsageAttributes, serializeGenAiAttribute } from "@/chat/gen-ai-attributes";
+import {
+  extractGenAiUsageAttributes,
+  serializeGenAiAttribute,
+} from "@/chat/gen-ai-attributes";
 import {
   logException,
   logInfo,
@@ -12,37 +15,56 @@ import {
   setSpanStatus,
   setTags,
   withSpan,
-  type ObservabilityContext
+  type ObservabilityContext,
 } from "@/chat/observability";
 import { buildSystemPrompt } from "@/chat/prompt";
-import { createSkillCapabilityRuntime, getUserTokenStore } from "@/chat/capabilities/factory";
+import {
+  createSkillCapabilityRuntime,
+  getUserTokenStore,
+} from "@/chat/capabilities/factory";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { buildReplyDeliveryPlan, type ReplyDeliveryPlan } from "@/chat/delivery/plan";
+import {
+  buildReplyDeliveryPlan,
+  type ReplyDeliveryPlan,
+} from "@/chat/delivery/plan";
 import { SkillSandbox } from "@/chat/skill-sandbox";
-import { discoverSkills, findSkillByName, parseSkillInvocation, type Skill } from "@/chat/skills";
+import {
+  discoverSkills,
+  findSkillByName,
+  parseSkillInvocation,
+  type Skill,
+} from "@/chat/skills";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import { SlackActionError } from "@/chat/slack-actions/client";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
-import { GEN_AI_PROVIDER_NAME, getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
-import { createSandboxExecutor, type SandboxExecutor } from "@/chat/sandbox/sandbox";
+import {
+  GEN_AI_PROVIDER_NAME,
+  getGatewayApiKey,
+  resolveGatewayModel,
+} from "@/chat/pi/client";
+import {
+  createSandboxExecutor,
+  type SandboxExecutor,
+} from "@/chat/sandbox/sandbox";
 import { getRuntimeMetadata } from "@/chat/runtime-metadata";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   getAgentTurnSessionCheckpoint,
-  upsertAgentTurnSessionCheckpoint
+  upsertAgentTurnSessionCheckpoint,
 } from "@/chat/state";
 import {
   compactStatusFilename,
   compactStatusPath,
   compactStatusText,
-  extractStatusUrlDomain
+  extractStatusUrlDomain,
 } from "@/chat/status-format";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
+import { enforceAttachmentClaimTruth } from "@/chat/attachment-claims";
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
@@ -77,6 +99,7 @@ export interface ReplyRequestContext {
   }>;
   sandbox?: {
     sandboxId?: string;
+    sandboxDependencyProfileHash?: string;
   };
   onStatus?: (status: string) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
@@ -90,6 +113,7 @@ export interface AssistantReply {
   deliveryMode?: "thread" | "channel_only";
   ackStrategy?: "none" | "reaction";
   sandboxId?: string;
+  sandboxDependencyProfileHash?: string;
   diagnostics: AgentTurnDiagnostics;
 }
 
@@ -109,10 +133,16 @@ export interface AgentTurnDiagnostics {
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 let startupDiscoveryLogged = false;
 
-function getSessionIdentifiers(context: ReplyRequestContext): { conversationId?: string; sessionId?: string } {
+function getSessionIdentifiers(context: ReplyRequestContext): {
+  conversationId?: string;
+  sessionId?: string;
+} {
   return {
-    conversationId: context.correlation?.conversationId ?? context.correlation?.threadId ?? context.correlation?.runId,
-    sessionId: context.correlation?.turnId
+    conversationId:
+      context.correlation?.conversationId ??
+      context.correlation?.threadId ??
+      context.correlation?.runId,
+    sessionId: context.correlation?.turnId,
   };
 }
 
@@ -131,7 +161,10 @@ class AgentTurnTimeoutError extends Error {
   }
 }
 
-async function maybeReplaceAgentMessages(agent: Agent, messages: unknown[]): Promise<boolean> {
+async function maybeReplaceAgentMessages(
+  agent: Agent,
+  messages: unknown[],
+): Promise<boolean> {
   const resumable = agent as ResumablePiAgent;
   if (typeof resumable.replaceMessages !== "function") {
     return false;
@@ -150,20 +183,23 @@ async function runAgentContinuation(agent: Agent): Promise<unknown> {
 
 function isExecutionDeferralResponse(text: string): boolean {
   return /\b(want me to proceed|do you want me to proceed|shall i proceed|can i proceed|should i proceed|let me do that now|give me a moment|tag me again|fresh invocation)\b/i.test(
-    text
+    text,
   );
 }
 
 function isToolAccessDisclaimerResponse(text: string): boolean {
   return /\b(i (don't|do not) have access to (active )?tool|tool results came back empty|prior results .* empty|cannot access .*tool|need to (run|load) .*tool .* first)\b/i.test(
-    text
+    text,
   );
 }
 
 function isExecutionEscapeResponse(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  return isExecutionDeferralResponse(trimmed) || isToolAccessDisclaimerResponse(trimmed);
+  return (
+    isExecutionDeferralResponse(trimmed) ||
+    isToolAccessDisclaimerResponse(trimmed)
+  );
 }
 
 function parseJsonCandidate(text: string): unknown {
@@ -189,11 +225,19 @@ function isToolPayloadShape(payload: unknown): boolean {
 
   const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
   if (type.startsWith("tool-")) return true;
-  if (type === "tool_use" || type === "tool_call" || type === "tool_result" || type === "tool_error") return true;
+  if (
+    type === "tool_use" ||
+    type === "tool_call" ||
+    type === "tool_result" ||
+    type === "tool_error"
+  )
+    return true;
 
-  const hasToolName = typeof record.toolName === "string" || typeof record.name === "string";
+  const hasToolName =
+    typeof record.toolName === "string" || typeof record.name === "string";
   const hasToolInput =
-    Object.prototype.hasOwnProperty.call(record, "input") || Object.prototype.hasOwnProperty.call(record, "args");
+    Object.prototype.hasOwnProperty.call(record, "input") ||
+    Object.prototype.hasOwnProperty.call(record, "args");
   if (hasToolName && hasToolInput) return true;
 
   return false;
@@ -229,7 +273,7 @@ function formatToolStatus(toolName: string): string {
     slackListCreate: "Creating tracking list",
     slackListAddItems: "Updating tracking list",
     slackListUpdateItem: "Updating tracking list",
-    imageGenerate: "Generating image"
+    imageGenerate: "Generating image",
   };
 
   if (known[toolName]) {
@@ -241,12 +285,17 @@ function formatToolStatus(toolName: string): string {
 }
 
 function formatToolStatusWithInput(toolName: string, input: unknown): string {
-  const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : undefined;
+  const obj =
+    input && typeof input === "object"
+      ? (input as Record<string, unknown>)
+      : undefined;
   const path = obj ? compactStatusPath(obj.path) : undefined;
   const filename = obj ? compactStatusFilename(obj.path) : undefined;
   const query = obj ? compactStatusText(obj.query, 70) : undefined;
   const domain = obj ? extractStatusUrlDomain(obj.url) : undefined;
-  const skillName = obj ? compactStatusText(obj.skill_name ?? obj.skillName, 40) : undefined;
+  const skillName = obj
+    ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
+    : undefined;
 
   if (filename && toolName === "readFile") {
     return `Reading file ${filename}`;
@@ -283,7 +332,7 @@ function formatToolResultStatus(toolName: string): string {
     slackListCreate: "Preparing list update",
     slackListAddItems: "Preparing list update",
     slackListUpdateItem: "Preparing list update",
-    imageGenerate: "Preparing generated image"
+    imageGenerate: "Preparing generated image",
   };
 
   if (known[toolName]) {
@@ -291,16 +340,26 @@ function formatToolResultStatus(toolName: string): string {
   }
 
   const readable = toolName.replaceAll("_", " ").trim();
-  return readable.length > 0 ? `Reviewing ${readable} result` : "Reviewing tool result";
+  return readable.length > 0
+    ? `Reviewing ${readable} result`
+    : "Reviewing tool result";
 }
 
-function formatToolResultStatusWithInput(toolName: string, input: unknown): string {
-  const obj = input && typeof input === "object" ? (input as Record<string, unknown>) : undefined;
+function formatToolResultStatusWithInput(
+  toolName: string,
+  input: unknown,
+): string {
+  const obj =
+    input && typeof input === "object"
+      ? (input as Record<string, unknown>)
+      : undefined;
   const path = obj ? compactStatusPath(obj.path) : undefined;
   const filename = obj ? compactStatusFilename(obj.path) : undefined;
   const query = obj ? compactStatusText(obj.query, 70) : undefined;
   const domain = obj ? extractStatusUrlDomain(obj.url) : undefined;
-  const skillName = obj ? compactStatusText(obj.skill_name ?? obj.skillName, 40) : undefined;
+  const skillName = obj
+    ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
+    : undefined;
 
   if (filename && toolName === "readFile") {
     return `Reviewed file ${filename}`;
@@ -321,19 +380,21 @@ function formatToolResultStatusWithInput(toolName: string, input: unknown): stri
 }
 
 function toObservablePromptPart(
-  part: { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+  part:
+    | { type: "text"; text: string }
+    | { type: "image"; data: string; mimeType: string },
 ): Record<string, unknown> {
   if (part.type === "text") {
     return {
       type: "text",
-      text: part.text
+      text: part.text,
     };
   }
 
   return {
     type: "image",
     mimeType: part.mimeType,
-    data: `[omitted:${part.data.length}]`
+    data: `[omitted:${part.data.length}]`,
   };
 }
 
@@ -342,10 +403,15 @@ function summarizeMessageText(text: string): string {
   if (!normalized) {
     return "[empty]";
   }
-  return normalized.length > 1_200 ? `${normalized.slice(0, 1_200)}...` : normalized;
+  return normalized.length > 1_200
+    ? `${normalized.slice(0, 1_200)}...`
+    : normalized;
 }
 
-function buildUserTurnText(userInput: string, conversationContext?: string): string {
+function buildUserTurnText(
+  userInput: string,
+  conversationContext?: string,
+): string {
   const trimmedContext = conversationContext?.trim();
   if (!trimmedContext) {
     return userInput;
@@ -359,7 +425,7 @@ function buildUserTurnText(userInput: string, conversationContext?: string): str
     "<thread-conversation-context>",
     "Use this context for continuity across prior thread turns.",
     trimmedContext,
-    "</thread-conversation-context>"
+    "</thread-conversation-context>",
   ].join("\n");
 }
 
@@ -370,7 +436,9 @@ function encodeNonImageAttachmentForPrompt(attachment: {
 }): string {
   const base64 = attachment.data.toString("base64");
   const wasTruncated = base64.length > MAX_INLINE_ATTACHMENT_BASE64_CHARS;
-  const encodedPayload = wasTruncated ? `${base64.slice(0, MAX_INLINE_ATTACHMENT_BASE64_CHARS)}...` : base64;
+  const encodedPayload = wasTruncated
+    ? `${base64.slice(0, MAX_INLINE_ATTACHMENT_BASE64_CHARS)}...`
+    : base64;
 
   return [
     "<attachment>",
@@ -381,7 +449,7 @@ function encodeNonImageAttachmentForPrompt(attachment: {
     "<data_base64>",
     encodedPayload,
     "</data_base64>",
-    "</attachment>"
+    "</attachment>",
   ].join("\n");
 }
 
@@ -403,7 +471,11 @@ function toToolContentText(value: unknown): string {
 }
 
 function isToolResultMessage(value: unknown): value is ToolResultMessage<any> {
-  return typeof value === "object" && value !== null && (value as { role?: unknown }).role === "toolResult";
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { role?: unknown }).role === "toolResult"
+  );
 }
 
 function normalizeToolNameFromResult(result: unknown): string | undefined {
@@ -424,23 +496,35 @@ function isToolResultError(result: unknown): boolean {
 }
 
 function isAssistantMessage(value: unknown): value is AssistantMessage {
-  return typeof value === "object" && value !== null && (value as { role?: unknown }).role === "assistant";
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { role?: unknown }).role === "assistant"
+  );
 }
 
 function extractAssistantText(message: AssistantMessage): string {
-  const content = (message as { content?: Array<{ type?: unknown; text?: unknown }> }).content ?? [];
+  const content =
+    (message as { content?: Array<{ type?: unknown; text?: unknown }> })
+      .content ?? [];
   return content
-    .filter((part): part is { type: "text"; text: string } => part.type === "text" && typeof part.text === "string")
+    .filter(
+      (part): part is { type: "text"; text: string } =>
+        part.type === "text" && typeof part.text === "string",
+    )
     .map((part) => part.text)
     .join("\n");
 }
 
 function collectRelevantConfigurationKeys(
   activeSkills: Array<{ usesConfig?: string[] }>,
-  explicitSkill?: { usesConfig?: string[] } | null
+  explicitSkill?: { usesConfig?: string[] } | null,
 ): string[] {
   const keys = new Set<string>();
-  for (const skill of [...activeSkills, ...(explicitSkill ? [explicitSkill] : [])]) {
+  for (const skill of [
+    ...activeSkills,
+    ...(explicitSkill ? [explicitSkill] : []),
+  ]) {
     for (const key of skill.usesConfig ?? []) {
       keys.add(key);
     }
@@ -448,7 +532,9 @@ function collectRelevantConfigurationKeys(
   return [...keys].sort((a, b) => a.localeCompare(b));
 }
 
-function getToolErrorAttributes(error: unknown): Record<string, string | number> {
+function getToolErrorAttributes(
+  error: unknown,
+): Record<string, string | number> {
   if (!(error instanceof SlackActionError)) {
     return {};
   }
@@ -457,8 +543,10 @@ function getToolErrorAttributes(error: unknown): Record<string, string | number>
     "app.slack.error_code": error.code,
     ...(error.apiError ? { "app.slack.api_error": error.apiError } : {}),
     ...(error.detail ? { "app.slack.detail": error.detail } : {}),
-    ...(error.detailLine !== undefined ? { "app.slack.detail_line": error.detailLine } : {}),
-    ...(error.detailRule ? { "app.slack.detail_rule": error.detailRule } : {})
+    ...(error.detailLine !== undefined
+      ? { "app.slack.detail_line": error.detailLine }
+      : {}),
+    ...(error.detailRule ? { "app.slack.detail_rule": error.detailRule } : {}),
   };
 }
 
@@ -473,7 +561,7 @@ function createAgentTools(
     onGeneratedFiles?: (files: FileUpload[]) => void;
     onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
     onToolCall?: (toolName: string) => void;
-  }
+  },
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
   return Object.entries(tools).map(([toolName, toolDef]) => ({
@@ -482,7 +570,10 @@ function createAgentTools(
     description: toolDef.description,
     parameters: toolDef.inputSchema,
     execute: async (toolCallId: unknown, params: unknown) => {
-      const normalizedToolCallId = typeof toolCallId === "string" && toolCallId.length > 0 ? toolCallId : undefined;
+      const normalizedToolCallId =
+        typeof toolCallId === "string" && toolCallId.length > 0
+          ? toolCallId
+          : undefined;
       const toolArgumentsAttribute = serializeGenAiAttribute(params);
       hooks?.onToolCall?.(toolName);
       const toolStartedAt = Date.now();
@@ -490,7 +581,7 @@ function createAgentTools(
         ...spanContext,
         conversationId: spanContext.conversationId,
         turnId: spanContext.turnId,
-        agentId: spanContext.agentId
+        agentId: spanContext.agentId,
       };
       if (shouldTrace) {
         logInfo(
@@ -500,10 +591,14 @@ function createAgentTools(
             "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
             "gen_ai.operation.name": "execute_tool",
             "gen_ai.tool.name": toolName,
-            ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
-            ...(toolArgumentsAttribute ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute } : {})
+            ...(normalizedToolCallId
+              ? { "gen_ai.tool.call.id": normalizedToolCallId }
+              : {}),
+            ...(toolArgumentsAttribute
+              ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute }
+              : {}),
           },
-          "Agent tool call started"
+          "Agent tool call started",
         );
       }
       await onStatus?.(`${formatToolStatusWithInput(toolName, params)}...`);
@@ -517,11 +612,12 @@ function createAgentTools(
               .slice(0, 3)
               .map((entry) => `${entry.path || "/"}: ${entry.message}`)
               .join("; ");
-            const validationMessage = details.length > 0 ? details : "Invalid tool input";
+            const validationMessage =
+              details.length > 0 ? details : "Invalid tool input";
             const durationMs = Date.now() - toolStartedAt;
             setSpanAttributes({
               "app.ai.tool_duration_ms": durationMs,
-              "error.type": "tool_input_validation_error"
+              "error.type": "tool_input_validation_error",
             });
             setSpanStatus("error");
             logWarn(
@@ -531,10 +627,12 @@ function createAgentTools(
                 "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                 "gen_ai.operation.name": "execute_tool",
                 "gen_ai.tool.name": toolName,
-                ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
-                "app.ai.tool_duration_ms": durationMs
+                ...(normalizedToolCallId
+                  ? { "gen_ai.tool.call.id": normalizedToolCallId }
+                  : {}),
+                "app.ai.tool_duration_ms": durationMs,
               },
-              "Agent tool call input validation failed"
+              "Agent tool call input validation failed",
             );
             logException(
               new Error(validationMessage),
@@ -544,10 +642,12 @@ function createAgentTools(
                 "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                 "gen_ai.operation.name": "execute_tool",
                 "gen_ai.tool.name": toolName,
-                ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
-                "app.ai.tool_duration_ms": durationMs
+                ...(normalizedToolCallId
+                  ? { "gen_ai.tool.call.id": normalizedToolCallId }
+                  : {}),
+                "app.ai.tool_duration_ms": durationMs,
               },
-              "Agent tool call input validation failed with exception"
+              "Agent tool call input validation failed with exception",
             );
             throw new Error(validationMessage);
           }
@@ -557,14 +657,19 @@ function createAgentTools(
             if (typeof toolDef.execute !== "function") {
               const resultDetails = { ok: true };
               const durationMs = Date.now() - toolStartedAt;
-              const toolResultAttribute = serializeGenAiAttribute(resultDetails);
+              const toolResultAttribute =
+                serializeGenAiAttribute(resultDetails);
               setSpanAttributes({
                 "app.ai.tool_duration_ms": durationMs,
                 "app.ai.tool_outcome": "success",
-                ...(toolResultAttribute ? { "gen_ai.tool.call.result": toolResultAttribute } : {})
+                ...(toolResultAttribute
+                  ? { "gen_ai.tool.call.result": toolResultAttribute }
+                  : {}),
               });
               setSpanStatus("ok");
-              await onStatus?.(`${formatToolResultStatusWithInput(toolName, parsed)}...`);
+              await onStatus?.(
+                `${formatToolResultStatusWithInput(toolName, parsed)}...`,
+              );
               if (shouldTrace) {
                 logInfo(
                   "agent_tool_call_completed",
@@ -573,40 +678,53 @@ function createAgentTools(
                     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                     "gen_ai.operation.name": "execute_tool",
                     "gen_ai.tool.name": toolName,
-                    ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
+                    ...(normalizedToolCallId
+                      ? { "gen_ai.tool.call.id": normalizedToolCallId }
+                      : {}),
                     "app.ai.tool_duration_ms": durationMs,
                     "app.ai.tool_outcome": "success",
-                    ...(toolResultAttribute ? { "gen_ai.tool.call.result": toolResultAttribute } : {})
+                    ...(toolResultAttribute
+                      ? { "gen_ai.tool.call.result": toolResultAttribute }
+                      : {}),
                   },
-                  "Agent tool call completed"
+                  "Agent tool call completed",
                 );
               }
               return {
                 content: [{ type: "text", text: "ok" }],
-                details: resultDetails
+                details: resultDetails,
               };
             }
 
             const injectedHeaders =
-              toolName === "bash" ? capabilityRuntime?.getTurnHeaderTransforms() : undefined;
+              toolName === "bash"
+                ? capabilityRuntime?.getTurnHeaderTransforms()
+                : undefined;
             const injectedEnv =
               toolName === "bash" ? capabilityRuntime?.getTurnEnv() : undefined;
             const bashCommand =
-              toolName === "bash" && typeof parsed.command === "string" ? parsed.command.trim() : "";
-            const isCustomBashCommand = toolName === "bash" && /^jr-rpc(?:\s|$)/.test(bashCommand);
+              toolName === "bash" && typeof parsed.command === "string"
+                ? parsed.command.trim()
+                : "";
+            const isCustomBashCommand =
+              toolName === "bash" && /^jr-rpc(?:\s|$)/.test(bashCommand);
             const shouldLogCredentialInjection =
-              toolName === "bash" && !isCustomBashCommand && Boolean(injectedHeaders && injectedHeaders.length > 0);
+              toolName === "bash" &&
+              !isCustomBashCommand &&
+              Boolean(injectedHeaders && injectedHeaders.length > 0);
             if (shouldLogCredentialInjection) {
-              const headerDomains = (injectedHeaders ?? []).map((transform) => transform.domain);
+              const headerDomains = (injectedHeaders ?? []).map(
+                (transform) => transform.domain,
+              );
               logInfo(
                 "credential_inject_start",
                 {},
                 {
                   "app.skill.name": sandbox.getActiveSkill()?.name,
                   "app.credential.delivery": "header_transform",
-                  "app.credential.header_domains": headerDomains
+                  "app.credential.header_domains": headerDomains,
                 },
-                "Injecting scoped credential headers for sandbox command"
+                "Injecting scoped credential headers for sandbox command",
               );
             }
 
@@ -617,26 +735,33 @@ function createAgentTools(
                 : toolName === "readFile"
                   ? { path: String(parsed.path ?? "") }
                   : toolName === "writeFile"
-                    ? { path: String(parsed.path ?? ""), content: String(parsed.content ?? "") }
+                    ? {
+                        path: String(parsed.path ?? ""),
+                        content: String(parsed.content ?? ""),
+                      }
                     : parsed;
-            const result =
-              sandboxExecutor?.canExecute(toolName)
-                ? await sandboxExecutor.execute({
-                    toolName,
-                    input:
-                      toolName === "bash" && hasBashCredentials
-                        ? {
-                            ...sandboxInput,
-                            ...(injectedHeaders ? { headerTransforms: injectedHeaders } : {}),
-                            ...(injectedEnv ? { env: injectedEnv } : {})
-                          }
-                        : sandboxInput
-                  })
-                : await toolDef.execute(parsed as never, {
-                    experimental_context: sandbox
-                  });
+            const result = sandboxExecutor?.canExecute(toolName)
+              ? await sandboxExecutor.execute({
+                  toolName,
+                  input:
+                    toolName === "bash" && hasBashCredentials
+                      ? {
+                          ...sandboxInput,
+                          ...(injectedHeaders
+                            ? { headerTransforms: injectedHeaders }
+                            : {}),
+                          ...(injectedEnv ? { env: injectedEnv } : {}),
+                        }
+                      : sandboxInput,
+                })
+              : await toolDef.execute(parsed as never, {
+                  experimental_context: sandbox,
+                });
             const resultDetails =
-              sandboxExecutor?.canExecute(toolName) && result && typeof result === "object" && "result" in result
+              sandboxExecutor?.canExecute(toolName) &&
+              result &&
+              typeof result === "object" &&
+              "result" in result
                 ? (result as { result: unknown }).result
                 : result;
             if (shouldLogCredentialInjection) {
@@ -644,9 +769,9 @@ function createAgentTools(
                 "credential_inject_cleanup",
                 {},
                 {
-                  "app.skill.name": sandbox.getActiveSkill()?.name
+                  "app.skill.name": sandbox.getActiveSkill()?.name,
                 },
-                "Scoped credential header injection completed"
+                "Scoped credential header injection completed",
               );
             }
 
@@ -655,10 +780,14 @@ function createAgentTools(
             setSpanAttributes({
               "app.ai.tool_duration_ms": durationMs,
               "app.ai.tool_outcome": "success",
-              ...(toolResultAttribute ? { "gen_ai.tool.call.result": toolResultAttribute } : {})
+              ...(toolResultAttribute
+                ? { "gen_ai.tool.call.result": toolResultAttribute }
+                : {}),
             });
             setSpanStatus("ok");
-            await onStatus?.(`${formatToolResultStatusWithInput(toolName, parsed)}...`);
+            await onStatus?.(
+              `${formatToolResultStatusWithInput(toolName, parsed)}...`,
+            );
             if (shouldTrace) {
               logInfo(
                 "agent_tool_call_completed",
@@ -667,24 +796,31 @@ function createAgentTools(
                   "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                   "gen_ai.operation.name": "execute_tool",
                   "gen_ai.tool.name": toolName,
-                  ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
+                  ...(normalizedToolCallId
+                    ? { "gen_ai.tool.call.id": normalizedToolCallId }
+                    : {}),
                   "app.ai.tool_duration_ms": durationMs,
                   "app.ai.tool_outcome": "success",
-                  ...(toolResultAttribute ? { "gen_ai.tool.call.result": toolResultAttribute } : {})
+                  ...(toolResultAttribute
+                    ? { "gen_ai.tool.call.result": toolResultAttribute }
+                    : {}),
                 },
-                "Agent tool call completed"
+                "Agent tool call completed",
               );
             }
             return {
-              content: [{ type: "text", text: toToolContentText(resultDetails) }],
-              details: resultDetails
+              content: [
+                { type: "text", text: toToolContentText(resultDetails) },
+              ],
+              details: resultDetails,
             };
           } catch (error) {
             const durationMs = Date.now() - toolStartedAt;
             setSpanAttributes({
               "app.ai.tool_duration_ms": durationMs,
               "app.ai.tool_outcome": "error",
-              "error.type": error instanceof Error ? error.name : "tool_execution_error"
+              "error.type":
+                error instanceof Error ? error.name : "tool_execution_error",
             });
             setSpanStatus("error");
             if (shouldTrace) {
@@ -695,13 +831,19 @@ function createAgentTools(
                   "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                   "gen_ai.operation.name": "execute_tool",
                   "gen_ai.tool.name": toolName,
-                  ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
+                  ...(normalizedToolCallId
+                    ? { "gen_ai.tool.call.id": normalizedToolCallId }
+                    : {}),
                   "app.ai.tool_duration_ms": durationMs,
                   "app.ai.tool_outcome": "error",
-                  "error.type": error instanceof Error ? error.name : "tool_execution_error",
-                  "error.message": error instanceof Error ? error.message : String(error)
+                  "error.type":
+                    error instanceof Error
+                      ? error.name
+                      : "tool_execution_error",
+                  "error.message":
+                    error instanceof Error ? error.message : String(error),
                 },
-                "Agent tool call failed"
+                "Agent tool call failed",
               );
             }
             logException(
@@ -712,11 +854,13 @@ function createAgentTools(
                 "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                 "gen_ai.operation.name": "execute_tool",
                 "gen_ai.tool.name": toolName,
-                ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
+                ...(normalizedToolCallId
+                  ? { "gen_ai.tool.call.id": normalizedToolCallId }
+                  : {}),
                 "app.ai.tool_duration_ms": durationMs,
-                ...getToolErrorAttributes(error)
+                ...getToolErrorAttributes(error),
               },
-              "Agent tool call failed"
+              "Agent tool call failed",
             );
             throw error;
           }
@@ -725,27 +869,37 @@ function createAgentTools(
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "execute_tool",
           "gen_ai.tool.name": toolName,
-          ...(normalizedToolCallId ? { "gen_ai.tool.call.id": normalizedToolCallId } : {}),
-          ...(toolArgumentsAttribute ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute } : {})
-        }
+          ...(normalizedToolCallId
+            ? { "gen_ai.tool.call.id": normalizedToolCallId }
+            : {}),
+          ...(toolArgumentsAttribute
+            ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute }
+            : {}),
+        },
       );
-    }
+    },
   }));
 }
 
 export async function generateAssistantReply(
   messageText: string,
-  context: ReplyRequestContext = {}
+  context: ReplyRequestContext = {},
 ): Promise<AssistantReply> {
   let timeoutResumeConversationId: string | undefined;
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
   let timeoutResumeMessages: unknown[] = [];
+  let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
+  let lastKnownSandboxDependencyProfileHash: string | undefined =
+    context.sandbox?.sandboxDependencyProfileHash;
 
   try {
     const shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: ObservabilityContext = {
-      conversationId: context.correlation?.conversationId ?? context.correlation?.threadId ?? context.correlation?.runId,
+      conversationId:
+        context.correlation?.conversationId ??
+        context.correlation?.threadId ??
+        context.correlation?.runId,
       turnId: context.correlation?.turnId,
       agentId: context.correlation?.turnId,
       slackThreadId: context.correlation?.threadId,
@@ -753,14 +907,18 @@ export async function generateAssistantReply(
       slackChannelId: context.correlation?.channelId,
       runId: context.correlation?.runId,
       assistantUserName: context.assistant?.userName,
-      modelId: botConfig.modelId
+      modelId: botConfig.modelId,
     };
 
-    const availableSkills = await discoverSkills({ additionalRoots: context.skillDirs });
+    const availableSkills = await discoverSkills({
+      additionalRoots: context.skillDirs,
+    });
     if (!startupDiscoveryLogged) {
       startupDiscoveryLogged = true;
       const plugins = getPluginProviders();
-      const roots = [...new Set(availableSkills.map((skill) => skill.skillPath))].sort();
+      const roots = [
+        ...new Set(availableSkills.map((skill) => skill.skillPath)),
+      ].sort();
       logInfo(
         "startup_discovery_summary",
         spanContext,
@@ -769,13 +927,15 @@ export async function generateAssistantReply(
           "app.skill.names": availableSkills.map((skill) => skill.name).sort(),
           "file.directories": roots,
           "app.plugin.count": plugins.length,
-          "app.plugin.names": plugins.map((plugin) => plugin.manifest.name).sort()
+          "app.plugin.names": plugins
+            .map((plugin) => plugin.manifest.name)
+            .sort(),
         },
-        "Discovered startup SOUL/skills/plugins"
+        "Discovered startup SOUL/skills/plugins",
       );
     }
     const configurationValues: Record<string, unknown> = {
-      ...(context.configuration ?? {})
+      ...(context.configuration ?? {}),
     };
     const userInput = messageText;
     if (shouldTrace) {
@@ -787,9 +947,9 @@ export async function generateAssistantReply(
           "app.message.length": userInput.length,
           "app.message.input": summarizeMessageText(userInput),
           "app.message.attachment_count": context.userAttachments?.length ?? 0,
-          "messaging.message.id": context.correlation?.messageTs ?? ""
+          "messaging.message.id": context.correlation?.messageTs ?? "",
         },
-        "Agent message received"
+        "Agent message received",
       );
     }
     const skillInvocation = parseSkillInvocation(userInput, availableSkills);
@@ -801,10 +961,12 @@ export async function generateAssistantReply(
     const capabilityRuntime = createSkillCapabilityRuntime({
       invocationArgs: skillInvocation?.args,
       requesterId: context.requester?.userId,
-      resolveConfiguration: async (key) => configurationValues[key]
+      resolveConfiguration: async (key) => configurationValues[key],
     });
     const sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
+      sandboxDependencyProfileHash:
+        context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
       onStatus: context.onStatus,
       runBashCustomCommand: async (command) => {
@@ -823,13 +985,16 @@ export async function generateAssistantReply(
               return;
             }
             configurationValues[key] = value;
-          }
+          },
         });
         return result.handled
           ? { handled: true, result: result.result }
           : { handled: false };
-      }
+      },
     });
+    lastKnownSandboxId = sandboxExecutor.getSandboxId();
+    lastKnownSandboxDependencyProfileHash =
+      sandboxExecutor.getDependencyProfileHash();
     sandboxExecutor.configureSkills(availableSkills);
     const sandbox = await sandboxExecutor.createSandbox();
 
@@ -840,13 +1005,19 @@ export async function generateAssistantReply(
       }
     }
 
-    const userTurnText = buildUserTurnText(userInput, context.conversationContext);
+    const userTurnText = buildUserTurnText(
+      userInput,
+      context.conversationContext,
+    );
 
     if (!getGatewayApiKey()) {
-      const providerError = "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
+      const providerError =
+        "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
       return {
         text: `Error: ${providerError}`,
         sandboxId: sandboxExecutor.getSandboxId(),
+        sandboxDependencyProfileHash:
+          sandboxExecutor.getDependencyProfileHash(),
         diagnostics: {
           outcome: "provider_error",
           modelId: botConfig.modelId,
@@ -855,8 +1026,8 @@ export async function generateAssistantReply(
           toolResultCount: 0,
           toolErrorCount: 0,
           usedPrimaryText: false,
-          errorMessage: providerError
-        }
+          errorMessage: providerError,
+        },
       };
     }
 
@@ -873,7 +1044,7 @@ export async function generateAssistantReply(
       slackChannelId: context.correlation?.channelId,
       runId: context.correlation?.runId,
       assistantUserName: context.assistant?.userName,
-      modelId: botConfig.modelId
+      modelId: botConfig.modelId,
     });
 
     const tools = createTools(
@@ -886,15 +1057,21 @@ export async function generateAssistantReply(
           Object.assign(artifactStatePatch, patch);
         },
         onToolCallStart: async (toolName, input) => {
-          await context.onStatus?.(`${formatToolStatusWithInput(toolName, input)}...`);
+          await context.onStatus?.(
+            `${formatToolStatusWithInput(toolName, input)}...`,
+          );
         },
         onToolCallEnd: async (toolName, input) => {
-          await context.onStatus?.(`${formatToolResultStatusWithInput(toolName, input)}...`);
+          await context.onStatus?.(
+            `${formatToolResultStatusWithInput(toolName, input)}...`,
+          );
         },
         onSkillLoaded: async (loadedSkill) => {
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
-          const existing = activeSkills.find((skill) => skill.name === effective.name);
+          const existing = activeSkills.find(
+            (skill) => skill.name === effective.name,
+          );
           if (existing) {
             existing.body = effective.body;
             existing.description = effective.description;
@@ -905,7 +1082,7 @@ export async function generateAssistantReply(
             return;
           }
           activeSkills.push(effective);
-        }
+        },
       },
       {
         channelId: context.toolChannelId ?? context.correlation?.channelId,
@@ -914,8 +1091,8 @@ export async function generateAssistantReply(
         userText: userInput,
         artifactState: context.artifactState,
         configuration: configurationValues,
-        sandbox
-      }
+        sandbox,
+      },
     );
     const baseInstructions = buildSystemPrompt({
       availableSkills,
@@ -925,25 +1102,29 @@ export async function generateAssistantReply(
       requester: context.requester,
       artifactState: context.artifactState,
       configuration: configurationValues,
-      relevantConfigurationKeys: collectRelevantConfigurationKeys(activeSkills, invokedSkill),
-      runtimeMetadata: getRuntimeMetadata()
+      relevantConfigurationKeys: collectRelevantConfigurationKeys(
+        activeSkills,
+        invokedSkill,
+      ),
+      runtimeMetadata: getRuntimeMetadata(),
     });
 
-    const userContentParts: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
-      { type: "text", text: userTurnText }
-    ];
+    const userContentParts: Array<
+      | { type: "text"; text: string }
+      | { type: "image"; data: string; mimeType: string }
+    > = [{ type: "text", text: userTurnText }];
 
     for (const attachment of context.userAttachments ?? []) {
       if (attachment.mediaType.startsWith("image/")) {
         userContentParts.push({
           type: "image",
           data: attachment.data.toString("base64"),
-          mimeType: attachment.mediaType
+          mimeType: attachment.mediaType,
         });
       } else {
         userContentParts.push({
           type: "text",
-          text: encodeNonImageAttachmentForPrompt(attachment)
+          text: encodeNonImageAttachmentForPrompt(attachment),
         });
       }
     }
@@ -951,15 +1132,16 @@ export async function generateAssistantReply(
     const inputMessagesAttribute = serializeGenAiAttribute([
       {
         role: "system",
-        content: [{ type: "text", text: baseInstructions }]
+        content: [{ type: "text", text: baseInstructions }],
       },
       {
         role: "user",
-        content: userContentParts.map((part) => toObservablePromptPart(part))
-      }
+        content: userContentParts.map((part) => toObservablePromptPart(part)),
+      },
     ]);
 
-    const { conversationId: sessionConversationId, sessionId } = getSessionIdentifiers(context);
+    const { conversationId: sessionConversationId, sessionId } =
+      getSessionIdentifiers(context);
     const canUseTurnSession = Boolean(sessionConversationId && sessionId);
     timeoutResumeConversationId = sessionConversationId;
     timeoutResumeSessionId = sessionId;
@@ -970,9 +1152,11 @@ export async function generateAssistantReply(
     const resumedFromCheckpoint = Boolean(
       existingTurnCheckpoint &&
       existingTurnCheckpoint.state === "awaiting_resume" &&
-      existingTurnCheckpoint.piMessages.length > 0
+      existingTurnCheckpoint.piMessages.length > 0,
     );
-    const currentSliceId = resumedFromCheckpoint ? existingTurnCheckpoint!.sliceId : 1;
+    const currentSliceId = resumedFromCheckpoint
+      ? existingTurnCheckpoint!.sliceId
+      : 1;
     timeoutResumeSliceId = currentSliceId;
 
     const agent = new Agent({
@@ -992,10 +1176,11 @@ export async function generateAssistantReply(
               toolCalls.push(toolName);
             },
             onGeneratedFiles: (files) => generatedFiles.push(...files),
-            onArtifactStatePatch: (patch) => Object.assign(artifactStatePatch, patch)
-          }
-        )
-      }
+            onArtifactStatePatch: (patch) =>
+              Object.assign(artifactStatePatch, patch),
+          },
+        ),
+      },
     });
     let hasEmittedText = false;
     let needsSeparator = false;
@@ -1031,8 +1216,11 @@ export async function generateAssistantReply(
         logWarn(
           "streaming_text_delta_error",
           {},
-          { "error.message": error instanceof Error ? error.message : String(error) },
-          "Failed to deliver text delta to stream"
+          {
+            "error.message":
+              error instanceof Error ? error.message : String(error),
+          },
+          "Failed to deliver text delta to stream",
         );
       });
     });
@@ -1042,9 +1230,14 @@ export async function generateAssistantReply(
 
     try {
       if (resumedFromCheckpoint) {
-        const didReplace = await maybeReplaceAgentMessages(agent, existingTurnCheckpoint!.piMessages);
+        const didReplace = await maybeReplaceAgentMessages(
+          agent,
+          existingTurnCheckpoint!.piMessages,
+        );
         if (!didReplace) {
-          throw new Error("Agent session resume requested but replaceMessages is unavailable");
+          throw new Error(
+            "Agent session resume requested but replaceMessages is unavailable",
+          );
         }
       }
       beforeMessageCount = agent.state.messages.length;
@@ -1060,7 +1253,7 @@ export async function generateAssistantReply(
             : agent.prompt({
                 role: "user",
                 content: userContentParts,
-                timestamp: Date.now()
+                timestamp: Date.now(),
               });
 
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -1084,9 +1277,9 @@ export async function generateAssistantReply(
                   "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                   "gen_ai.operation.name": "invoke_agent",
                   "gen_ai.request.model": botConfig.modelId,
-                  "app.ai.turn_timeout_ms": botConfig.turnTimeoutMs
+                  "app.ai.turn_timeout_ms": botConfig.turnTimeoutMs,
                 },
-                "Agent turn timed out and was aborted"
+                "Agent turn timed out and was aborted",
               );
               await promptPromise.catch(() => {});
               timeoutResumeMessages = [...(agent.state.messages as unknown[])];
@@ -1098,21 +1291,32 @@ export async function generateAssistantReply(
             }
           }
 
-          newMessages = agent.state.messages.slice(beforeMessageCount) as unknown[];
+          newMessages = agent.state.messages.slice(
+            beforeMessageCount,
+          ) as unknown[];
           const outputMessages = newMessages.filter(isAssistantMessage);
-          const outputMessagesAttribute = serializeGenAiAttribute(outputMessages);
-          const usageAttributes = extractGenAiUsageAttributes(promptResult, agent.state, ...outputMessages);
+          const outputMessagesAttribute =
+            serializeGenAiAttribute(outputMessages);
+          const usageAttributes = extractGenAiUsageAttributes(
+            promptResult,
+            agent.state,
+            ...outputMessages,
+          );
           setSpanAttributes({
-            ...(outputMessagesAttribute ? { "gen_ai.output.messages": outputMessagesAttribute } : {}),
-            ...usageAttributes
+            ...(outputMessagesAttribute
+              ? { "gen_ai.output.messages": outputMessagesAttribute }
+              : {}),
+            ...usageAttributes,
           });
         },
         {
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "invoke_agent",
           "gen_ai.request.model": botConfig.modelId,
-          ...(inputMessagesAttribute ? { "gen_ai.input.messages": inputMessagesAttribute } : {})
-        }
+          ...(inputMessagesAttribute
+            ? { "gen_ai.input.messages": inputMessagesAttribute }
+            : {}),
+        },
       );
     } finally {
       unsubscribe();
@@ -1124,7 +1328,7 @@ export async function generateAssistantReply(
         sessionId,
         sliceId: currentSliceId,
         state: "completed",
-        piMessages: agent.state.messages as unknown[]
+        piMessages: agent.state.messages as unknown[],
       });
     }
 
@@ -1137,22 +1341,28 @@ export async function generateAssistantReply(
       .join("\n\n")
       .trim();
 
-    const toolErrorCount = toolResults.filter((result) => result.isError).length;
+    const toolErrorCount = toolResults.filter(
+      (result) => result.isError,
+    ).length;
     const explicitChannelPostIntent = isExplicitChannelPostIntent(userInput);
     const successfulToolNames = new Set(
       toolResults
         .filter((result) => !isToolResultError(result))
         .map((result) => normalizeToolNameFromResult(result))
-        .filter((value): value is string => Boolean(value))
+        .filter((value): value is string => Boolean(value)),
     );
-    const channelPostPerformed = successfulToolNames.has("slackChannelPostMessage");
-    const reactionPerformed = successfulToolNames.has("slackMessageAddReaction");
+    const channelPostPerformed = successfulToolNames.has(
+      "slackChannelPostMessage",
+    );
+    const reactionPerformed = successfulToolNames.has(
+      "slackMessageAddReaction",
+    );
     const deliveryPlan = buildReplyDeliveryPlan({
       explicitChannelPostIntent,
       channelPostPerformed,
       reactionPerformed,
       hasFiles: generatedFiles.length > 0,
-      streamingThreadReply: Boolean(context.onTextDelta)
+      streamingThreadReply: Boolean(context.onTextDelta),
     });
     const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
     const ackStrategy: "none" | "reaction" = deliveryPlan.ack;
@@ -1166,25 +1376,46 @@ export async function generateAssistantReply(
           slackChannelId: context.correlation?.channelId,
           runId: context.correlation?.runId,
           assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId
+          modelId: botConfig.modelId,
         },
         {
           "app.ai.tool_results": toolResults.length,
           "app.ai.tool_error_results": toolErrorCount,
-          "app.ai.generated_files": generatedFiles.length
+          "app.ai.generated_files": generatedFiles.length,
         },
-        "Model returned empty text response"
+        "Model returned empty text response",
       );
     }
 
-    const lastAssistant = assistantMessages.at(-1) as { stopReason?: unknown; errorMessage?: unknown } | undefined;
-    const stopReason = typeof lastAssistant?.stopReason === "string" ? lastAssistant.stopReason : undefined;
-    const errorMessage = typeof lastAssistant?.errorMessage === "string" ? lastAssistant.errorMessage : undefined;
+    const lastAssistant = assistantMessages.at(-1) as
+      | { stopReason?: unknown; errorMessage?: unknown }
+      | undefined;
+    const stopReason =
+      typeof lastAssistant?.stopReason === "string"
+        ? lastAssistant.stopReason
+        : undefined;
+    const errorMessage =
+      typeof lastAssistant?.errorMessage === "string"
+        ? lastAssistant.errorMessage
+        : undefined;
     const usedPrimaryText = Boolean(primaryText);
-    const outcome: AgentTurnDiagnostics["outcome"] =
-      primaryText ? (stopReason === "error" ? "provider_error" : "success") : "execution_failure";
+    const outcome: AgentTurnDiagnostics["outcome"] = primaryText
+      ? stopReason === "error"
+        ? "provider_error"
+        : "success"
+      : "execution_failure";
 
-    const resolvedText = primaryText || buildExecutionFailureMessage(toolErrorCount);
+    const candidateText =
+      primaryText || buildExecutionFailureMessage(toolErrorCount);
+    const escapedOrRawPayload =
+      isExecutionEscapeResponse(candidateText) ||
+      isRawToolPayloadResponse(candidateText);
+    const resolvedText = escapedOrRawPayload
+      ? buildExecutionFailureMessage(toolErrorCount)
+      : enforceAttachmentClaimTruth(candidateText, generatedFiles.length > 0);
+    const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
+      ? "execution_failure"
+      : outcome;
     if (shouldTrace) {
       logInfo(
         "agent_message_out",
@@ -1193,22 +1424,27 @@ export async function generateAssistantReply(
           "app.message.kind": "assistant_outbound",
           "app.message.length": resolvedText.length,
           "app.message.output": summarizeMessageText(resolvedText),
-          "app.ai.outcome": outcome,
+          "app.ai.outcome": resolvedOutcome,
           "app.ai.assistant_messages": assistantMessages.length,
-          ...(stopReason ? { "app.ai.stop_reason": stopReason } : {})
+          ...(stopReason ? { "app.ai.stop_reason": stopReason } : {}),
         },
-        "Agent message sent"
+        "Agent message sent",
       );
     }
-    if (isExecutionEscapeResponse(resolvedText) || isRawToolPayloadResponse(resolvedText)) {
+    if (escapedOrRawPayload) {
       return {
-        text: buildExecutionFailureMessage(toolErrorCount),
+        text: resolvedText,
         files: generatedFiles.length > 0 ? generatedFiles : undefined,
-        artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined,
+        artifactStatePatch:
+          Object.keys(artifactStatePatch).length > 0
+            ? artifactStatePatch
+            : undefined,
         deliveryPlan,
         deliveryMode,
         ackStrategy,
         sandboxId: sandboxExecutor.getSandboxId(),
+        sandboxDependencyProfileHash:
+          sandboxExecutor.getDependencyProfileHash(),
         diagnostics: {
           outcome: "execution_failure",
           modelId: botConfig.modelId,
@@ -1219,19 +1455,23 @@ export async function generateAssistantReply(
           usedPrimaryText,
           stopReason,
           errorMessage,
-          providerError: undefined
-        }
+          providerError: undefined,
+        },
       };
     }
 
     return {
       text: resolvedText,
       files: generatedFiles.length > 0 ? generatedFiles : undefined,
-      artifactStatePatch: Object.keys(artifactStatePatch).length > 0 ? artifactStatePatch : undefined,
+      artifactStatePatch:
+        Object.keys(artifactStatePatch).length > 0
+          ? artifactStatePatch
+          : undefined,
       deliveryPlan,
       deliveryMode,
       ackStrategy,
       sandboxId: sandboxExecutor.getSandboxId(),
+      sandboxDependencyProfileHash: sandboxExecutor.getDependencyProfileHash(),
       diagnostics: {
         outcome,
         modelId: botConfig.modelId,
@@ -1242,11 +1482,15 @@ export async function generateAssistantReply(
         usedPrimaryText,
         stopReason,
         errorMessage,
-        providerError: undefined
-      }
+        providerError: undefined,
+      },
     };
   } catch (error) {
-    if (error instanceof AgentTurnTimeoutError && timeoutResumeConversationId && timeoutResumeSessionId) {
+    if (
+      error instanceof AgentTurnTimeoutError &&
+      timeoutResumeConversationId &&
+      timeoutResumeSessionId
+    ) {
       const nextSliceId = timeoutResumeSliceId + 1;
       logException(
         error,
@@ -1257,20 +1501,26 @@ export async function generateAssistantReply(
           slackChannelId: context.correlation?.channelId,
           runId: context.correlation?.runId,
           assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId
+          modelId: botConfig.modelId,
         },
         {
           "app.ai.turn_timeout_ms": error.timeoutMs,
           "app.ai.resume_conversation_id": timeoutResumeConversationId,
           "app.ai.resume_session_id": timeoutResumeSessionId,
           "app.ai.resume_from_slice_id": timeoutResumeSliceId,
-          "app.ai.resume_next_slice_id": nextSliceId
+          "app.ai.resume_next_slice_id": nextSliceId,
         },
-        "Agent turn timed out and will be resumed"
+        "Agent turn timed out and will be resumed",
       );
       try {
-        const latestCheckpoint = await getAgentTurnSessionCheckpoint(timeoutResumeConversationId, timeoutResumeSessionId);
-        const piMessages = timeoutResumeMessages.length > 0 ? timeoutResumeMessages : (latestCheckpoint?.piMessages ?? []);
+        const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+          timeoutResumeConversationId,
+          timeoutResumeSessionId,
+        );
+        const piMessages =
+          timeoutResumeMessages.length > 0
+            ? timeoutResumeMessages
+            : (latestCheckpoint?.piMessages ?? []);
         await upsertAgentTurnSessionCheckpoint({
           conversationId: timeoutResumeConversationId,
           sessionId: timeoutResumeSessionId,
@@ -1278,7 +1528,7 @@ export async function generateAssistantReply(
           state: "awaiting_resume",
           piMessages,
           resumedFromSliceId: timeoutResumeSliceId,
-          errorMessage: error.message
+          errorMessage: error.message,
         });
       } catch (checkpointError) {
         logException(
@@ -1290,20 +1540,20 @@ export async function generateAssistantReply(
             slackChannelId: context.correlation?.channelId,
             runId: context.correlation?.runId,
             assistantUserName: context.assistant?.userName,
-            modelId: botConfig.modelId
+            modelId: botConfig.modelId,
           },
           {
             "app.ai.resume_conversation_id": timeoutResumeConversationId,
             "app.ai.resume_session_id": timeoutResumeSessionId,
             "app.ai.resume_from_slice_id": timeoutResumeSliceId,
-            "app.ai.resume_next_slice_id": nextSliceId
+            "app.ai.resume_next_slice_id": nextSliceId,
           },
-          "Failed to persist timeout checkpoint before retry"
+          "Failed to persist timeout checkpoint before retry",
         );
       }
       throw new RetryableTurnError(
         "agent_turn_timeout_resume",
-        `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`
+        `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,
       );
     }
 
@@ -1311,19 +1561,26 @@ export async function generateAssistantReply(
       throw error;
     }
 
-    logException(error, "assistant_reply_generation_failed", {
-      slackThreadId: context.correlation?.threadId,
-      slackUserId: context.correlation?.requesterId,
-      slackChannelId: context.correlation?.channelId,
-      runId: context.correlation?.runId,
-      assistantUserName: context.assistant?.userName,
-      modelId: botConfig.modelId
-    }, {}, "generateAssistantReply failed");
+    logException(
+      error,
+      "assistant_reply_generation_failed",
+      {
+        slackThreadId: context.correlation?.threadId,
+        slackUserId: context.correlation?.requesterId,
+        slackChannelId: context.correlation?.channelId,
+        runId: context.correlation?.runId,
+        assistantUserName: context.assistant?.userName,
+        modelId: botConfig.modelId,
+      },
+      {},
+      "generateAssistantReply failed",
+    );
 
     const message = error instanceof Error ? error.message : String(error);
     return {
       text: `Error: ${message}`,
-      sandboxId: undefined,
+      sandboxId: lastKnownSandboxId,
+      sandboxDependencyProfileHash: lastKnownSandboxDependencyProfileHash,
       diagnostics: {
         outcome: "provider_error",
         modelId: botConfig.modelId,
@@ -1333,8 +1590,8 @@ export async function generateAssistantReply(
         toolErrorCount: 0,
         usedPrimaryText: false,
         errorMessage: message,
-        providerError: error
-      }
+        providerError: error,
+      },
     };
   }
 }

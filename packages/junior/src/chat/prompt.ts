@@ -23,9 +23,9 @@ function loadSoul(): string {
           "soul_loaded",
           {},
           {
-            "file.path": resolved
+            "file.path": resolved,
           },
-          "Loaded SOUL.md"
+          "Loaded SOUL.md",
         );
         return raw;
       }
@@ -38,9 +38,9 @@ function loadSoul(): string {
     "soul_load_fallback",
     {},
     {
-      "file.candidates": attempted
+      "file.candidates": attempted,
     },
-    "SOUL.md not found; using built-in default personality"
+    "SOUL.md not found; using built-in default personality",
   );
   return DEFAULT_SOUL;
 }
@@ -53,9 +53,9 @@ export const JUNIOR_PERSONALITY = (() => {
       "soul_load_failed",
       {},
       {
-        "error.message": error instanceof Error ? error.message : String(error)
+        "error.message": error instanceof Error ? error.message : String(error),
       },
-      "Failed to load SOUL.md; using built-in default personality"
+      "Failed to load SOUL.md; using built-in default personality",
     );
     return DEFAULT_SOUL;
   }
@@ -77,7 +77,10 @@ function formatConfigurationValue(value: unknown): string {
   }
 }
 
-function renderIdentityBlock(tag: "assistant" | "requester", fields: Record<string, string | undefined>): string {
+function renderIdentityBlock(
+  tag: "assistant" | "requester",
+  fields: Record<string, string | undefined>,
+): string {
   const lines = Object.entries(fields)
     .filter(([, value]) => Boolean(value))
     .map(([key, value]) => `- ${key}: ${escapeXml(value as string)}`);
@@ -103,10 +106,14 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
     const skillLocation = `${workspaceSkillDir(skill.name)}/SKILL.md`;
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
-    lines.push(`    <description>${escapeXml(skill.description)}</description>`);
+    lines.push(
+      `    <description>${escapeXml(skill.description)}</description>`,
+    );
     lines.push(`    <location>${escapeXml(skillLocation)}</location>`);
     if (skill.usesConfig && skill.usesConfig.length > 0) {
-      lines.push(`    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`);
+      lines.push(
+        `    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`,
+      );
     }
     lines.push("  </skill>");
   }
@@ -122,10 +129,14 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
   const lines = ["<loaded_skills>"];
   for (const skill of skills) {
     const skillDir = workspaceSkillDir(skill.name);
-    lines.push(`  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skillDir}/SKILL.md`)}">`);
+    lines.push(
+      `  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skillDir}/SKILL.md`)}">`,
+    );
     lines.push(`References are relative to ${escapeXml(skillDir)}.`);
     if (skill.usesConfig && skill.usesConfig.length > 0) {
-      lines.push(`Uses config keys: ${escapeXml(skill.usesConfig.join(", "))}.`);
+      lines.push(
+        `Uses config keys: ${escapeXml(skill.usesConfig.join(", "))}.`,
+      );
     }
     lines.push("");
     lines.push(skill.body);
@@ -149,14 +160,14 @@ function formatProviderCatalogForPrompt(): string {
         provider.configKeys.length > 0
           ? escapeXml(provider.configKeys.join(", "))
           : "none"
-      }`
+      }`,
     );
     lines.push(
       `  - capabilities: ${
         provider.capabilities.length > 0
           ? escapeXml(provider.capabilities.join(", "))
           : "none"
-      }`
+      }`,
     );
   }
   return lines.join("\n");
@@ -181,7 +192,7 @@ function baseSystemPrompt(): string {
     "- Never guess. If you cannot verify with available sources, say it is unverified.",
     "- Never claim a lookup succeeded unless a tool result supports it.",
     "- Do not give up when unsure how to do something; find a viable path, gather evidence, and provide the best actionable way forward.",
-    "- When active skills are present, follow their instructions before default behavior."
+    "- When active skills are present, follow their instructions before default behavior.",
   ].join("\n");
 }
 
@@ -212,7 +223,7 @@ export function buildSystemPrompt(params: {
     artifactState,
     configuration,
     relevantConfigurationKeys,
-    runtimeMetadata
+    runtimeMetadata,
   } = params;
   // Core harness contract:
   // - See specs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
@@ -223,13 +234,13 @@ export function buildSystemPrompt(params: {
 
   const assistantSection = renderIdentityBlock("assistant", {
     user_name: assistant?.userName ?? botConfig.userName,
-    user_id: assistant?.userId
+    user_id: assistant?.userId,
   });
 
   const requesterSection = renderIdentityBlock("requester", {
     full_name: requester?.fullName,
     user_name: requester?.userName,
-    user_id: requester?.userId
+    user_id: requester?.userId,
   });
 
   const availableSkillsSection = [
@@ -237,24 +248,34 @@ export function buildSystemPrompt(params: {
     "Call `loadSkill` when the task matches a skill description.",
     "When a skill references a relative path, resolve it against `skill_dir` and use that path with `bash`.",
     "",
-    formatAvailableSkillsForPrompt(availableSkills)
+    formatAvailableSkillsForPrompt(availableSkills),
   ].join("\n");
 
   const activeSkillsSection = [
     "Loaded skills for this turn:",
-    formatLoadedSkillsForPrompt(activeSkills)
+    formatLoadedSkillsForPrompt(activeSkills),
   ].join("\n");
 
-  const configurationKeys = Object.keys(configuration ?? {}).sort((a, b) => a.localeCompare(b));
+  const configurationKeys = Object.keys(configuration ?? {}).sort((a, b) =>
+    a.localeCompare(b),
+  );
   const relevantConfigSet = new Set(
-    (relevantConfigurationKeys ?? []).filter((key) => Object.prototype.hasOwnProperty.call(configuration ?? {}, key))
+    (relevantConfigurationKeys ?? []).filter((key) =>
+      Object.prototype.hasOwnProperty.call(configuration ?? {}, key),
+    ),
   );
   const relevantConfigLines = configurationKeys
     .filter((key) => relevantConfigSet.has(key))
-    .map((key) => `  - ${escapeXml(key)}: ${formatConfigurationValue(configuration?.[key])}`);
+    .map(
+      (key) =>
+        `  - ${escapeXml(key)}: ${formatConfigurationValue(configuration?.[key])}`,
+    );
   const otherConfigLines = configurationKeys
     .filter((key) => !relevantConfigSet.has(key))
-    .map((key) => `  - ${escapeXml(key)}: ${formatConfigurationValue(configuration?.[key])}`);
+    .map(
+      (key) =>
+        `  - ${escapeXml(key)}: ${formatConfigurationValue(configuration?.[key])}`,
+    );
 
   const configurationSection = [
     "Use these conversation-scoped defaults when the user has not provided explicit values in this turn.",
@@ -262,9 +283,13 @@ export function buildSystemPrompt(params: {
     configurationKeys.length === 0
       ? "- none"
       : [
-          ...(relevantConfigLines.length > 0 ? ["- relevant_for_active_skills:", ...relevantConfigLines] : []),
-          ...(otherConfigLines.length > 0 ? ["- other_available_keys:", ...otherConfigLines] : [])
-        ].join("\n")
+          ...(relevantConfigLines.length > 0
+            ? ["- relevant_for_active_skills:", ...relevantConfigLines]
+            : []),
+          ...(otherConfigLines.length > 0
+            ? ["- other_available_keys:", ...otherConfigLines]
+            : []),
+        ].join("\n"),
   ].join("\n");
 
   const sections = [
@@ -274,16 +299,16 @@ export function buildSystemPrompt(params: {
       [
         "Always follow the personality guidance for tone/style unless safety or policy constraints require otherwise.",
         "",
-        JUNIOR_PERSONALITY.trim()
-      ].join("\n")
+        JUNIOR_PERSONALITY.trim(),
+      ].join("\n"),
     ),
     renderTag(
       "identity-context",
       [
         "Use these blocks as authoritative metadata for identity questions.",
         assistantSection,
-        requesterSection
-      ].join("\n")
+        requesterSection,
+      ].join("\n"),
     ),
     renderTag(
       "artifact-context",
@@ -291,44 +316,57 @@ export function buildSystemPrompt(params: {
         "Use this thread-scoped memory for follow-up updates to existing Slack artifacts.",
         artifactState
           ? [
-              artifactState.lastCanvasId ? `- last_canvas_id: ${escapeXml(artifactState.lastCanvasId)}` : "- last_canvas_id: none",
+              artifactState.lastCanvasId
+                ? `- last_canvas_id: ${escapeXml(artifactState.lastCanvasId)}`
+                : "- last_canvas_id: none",
               artifactState.lastCanvasUrl
                 ? `- last_canvas_url: ${escapeXml(artifactState.lastCanvasUrl)}`
                 : "- last_canvas_url: none",
-              artifactState.recentCanvases && artifactState.recentCanvases.length > 0
+              artifactState.recentCanvases &&
+              artifactState.recentCanvases.length > 0
                 ? [
                     "- recent_canvases:",
                     ...artifactState.recentCanvases.map((canvas) =>
                       [
                         `  - id: ${escapeXml(canvas.id)}`,
-                        canvas.title ? `    title: ${escapeXml(canvas.title)}` : "    title: [unknown]",
-                        canvas.url ? `    url: ${escapeXml(canvas.url)}` : "    url: [unknown]",
-                        canvas.createdAt ? `    created_at: ${escapeXml(canvas.createdAt)}` : "    created_at: [unknown]"
-                      ].join("\n")
-                    )
+                        canvas.title
+                          ? `    title: ${escapeXml(canvas.title)}`
+                          : "    title: [unknown]",
+                        canvas.url
+                          ? `    url: ${escapeXml(canvas.url)}`
+                          : "    url: [unknown]",
+                        canvas.createdAt
+                          ? `    created_at: ${escapeXml(canvas.createdAt)}`
+                          : "    created_at: [unknown]",
+                      ].join("\n"),
+                    ),
                   ].join("\n")
                 : "- recent_canvases: none",
-              artifactState.lastListId ? `- last_list_id: ${escapeXml(artifactState.lastListId)}` : "- last_list_id: none",
-              artifactState.lastListUrl ? `- last_list_url: ${escapeXml(artifactState.lastListUrl)}` : "- last_list_url: none"
+              artifactState.lastListId
+                ? `- last_list_id: ${escapeXml(artifactState.lastListId)}`
+                : "- last_list_id: none",
+              artifactState.lastListUrl
+                ? `- last_list_url: ${escapeXml(artifactState.lastListUrl)}`
+                : "- last_list_url: none",
             ].join("\n")
-          : "- none"
-      ].join("\n")
+          : "- none",
+      ].join("\n"),
     ),
     renderTag("configuration-context", configurationSection),
     renderTag(
       "runtime-metadata",
       [
         "Use this for runtime version questions about the deployed assistant.",
-        `- version: ${escapeXml(runtimeMetadata?.version ?? "unknown")}`
-      ].join("\n")
+        `- version: ${escapeXml(runtimeMetadata?.version ?? "unknown")}`,
+      ].join("\n"),
     ),
     renderTag(
       "provider-capabilities",
       [
         "Use this catalog to map provider intents to valid config keys and capability names.",
         "When user intent is to set a provider default, choose a config key from this catalog and use jr-rpc config set.",
-        formatProviderCatalogForPrompt()
-      ].join("\n")
+        formatProviderCatalogForPrompt(),
+      ].join("\n"),
     ),
     renderTag(
       "tool-usage",
@@ -336,6 +374,10 @@ export function buildSystemPrompt(params: {
         "- For factual or external questions, run tools/skills first, then answer from evidence.",
         "- Use tool descriptions as the source of truth for when each tool should or should not be called.",
         "- Use `bash` to inspect skill files from `skill_dir` and run shell commands inside the sandbox workspace.",
+        "- Use `attachFile` to attach files from the sandbox (for example screenshots, PDFs, logs) to the Slack reply.",
+        "- If the user asks to see/share/show a screenshot or file, attach the file with `attachFile` instead of only reporting its path.",
+        "- Never claim a screenshot/file is attached unless `attachFile` succeeded in this turn.",
+        "- If `attachFile` fails, explain the failure and do not say the file was shared.",
         "- Use `imageGenerate` when the user asks for image creation.",
         "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
         "- `slackCanvasUpdate` targets the active artifact-context canvas automatically; do not ask the user for `canvas_id`.",
@@ -352,8 +394,8 @@ export function buildSystemPrompt(params: {
         "- When your work is complete, provide the exact user-facing markdown response.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
         "- Prefer `webSearch` before `webFetch` when the user gave no URL.",
-        "- Never call side-effecting tools when the user only asked for analysis or options."
-      ].join("\n")
+        "- Never call side-effecting tools when the user only asked for analysis or options.",
+      ].join("\n"),
     ),
     renderTag(
       "skills",
@@ -366,8 +408,8 @@ export function buildSystemPrompt(params: {
         "- Never apply skill-specific behavior unless the skill is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",
         "- After `loadSkill`, use `skill_dir` as the root for any referenced files you read via `bash`.",
-        "- If no skill is a clear fit, continue with normal tool usage."
-      ].join("\n")
+        "- If no skill is a clear fit, continue with normal tool usage.",
+      ].join("\n"),
     ),
     renderTag(
       "output-contract",
@@ -380,8 +422,8 @@ export function buildSystemPrompt(params: {
         "- A brief initial acknowledgment before significant tool work is fine; avoid extended process chatter or repeated status updates.",
         "- Avoid tables unless explicitly requested.",
         "- End every turn with a final user-facing markdown response.",
-        "</output>"
-      ].join("\n")
+        "</output>",
+      ].join("\n"),
     ),
     availableSkillsSection,
     activeSkillsSection,
@@ -391,8 +433,8 @@ export function buildSystemPrompt(params: {
         ? invocation.source === "hard_bang"
           ? `Explicit skill trigger detected: !${invocation.skillName}`
           : `Legacy slash hint detected: /${invocation.skillName} (non-authoritative)`
-        : "No explicit skill trigger detected."
-    )
+        : "No explicit skill trigger detected.",
+    ),
   ];
 
   return sections.join("\n\n");

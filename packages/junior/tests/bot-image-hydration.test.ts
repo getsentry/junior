@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Author, Message, Thread, SentMessage, Channel, Adapter } from "chat";
+import type {
+  Author,
+  Message,
+  Thread,
+  SentMessage,
+  Channel,
+  Adapter,
+} from "chat";
 
 const listThreadRepliesMock = vi.fn();
 
@@ -12,27 +19,27 @@ vi.mock("chat", () => {
         getAdapter() {
           return {
             setAssistantTitle: async () => undefined,
-            setSuggestedPrompts: async () => undefined
+            setSuggestedPrompts: async () => undefined,
           };
-        }
+        },
       } as Record<string, unknown>,
       {
         get(target, prop: string) {
           if (prop in target) return target[prop];
           target[prop] = () => {};
           return target[prop];
-        }
-      }
+        },
+      },
     );
   }
 
   return {
-    Chat
+    Chat,
   };
 });
 
 vi.mock("@chat-adapter/slack", () => ({
-  createSlackAdapter: () => ({})
+  createSlackAdapter: () => ({}),
 }));
 
 vi.mock("@/chat/respond", () => ({
@@ -45,13 +52,13 @@ vi.mock("@/chat/respond", () => ({
       toolCalls: [],
       toolErrorCount: 0,
       toolResultCount: 0,
-      usedPrimaryText: true
-    }
-  })
+      usedPrimaryText: true,
+    },
+  }),
 }));
 
 vi.mock("@/chat/slack-user", () => ({
-  lookupSlackUser: async () => undefined
+  lookupSlackUser: async () => undefined,
 }));
 
 function parseChannelFromThreadId(threadId: string): string | undefined {
@@ -62,7 +69,9 @@ function parseChannelFromThreadId(threadId: string): string | undefined {
 
 const stubAdapter = {} as Adapter;
 
-function createStubChannel(stateRef?: { value: Record<string, unknown> }): Channel {
+function createStubChannel(stateRef?: {
+  value: Record<string, unknown>;
+}): Channel {
   const ref = stateRef ?? { value: {} };
   return {
     adapter: stubAdapter,
@@ -78,11 +87,16 @@ function createStubChannel(stateRef?: { value: Record<string, unknown> }): Chann
       return `<@${userId}>`;
     },
     post: vi.fn().mockResolvedValue(undefined) as unknown as Channel["post"],
-    postEphemeral: vi.fn().mockResolvedValue(null) as unknown as Channel["postEphemeral"],
+    postEphemeral: vi
+      .fn()
+      .mockResolvedValue(null) as unknown as Channel["postEphemeral"],
     get state(): Promise<Record<string, unknown> | null> {
       return Promise.resolve(ref.value);
     },
-    async setState(next: Partial<Record<string, unknown>>, options?: { replace?: boolean }): Promise<void> {
+    async setState(
+      next: Partial<Record<string, unknown>>,
+      options?: { replace?: boolean },
+    ): Promise<void> {
       if (options?.replace) {
         ref.value = { ...(next as Record<string, unknown>) };
         return;
@@ -90,10 +104,15 @@ function createStubChannel(stateRef?: { value: Record<string, unknown> }): Chann
       ref.value = { ...ref.value, ...(next as Record<string, unknown>) };
     },
     async startTyping(): Promise<void> {},
-    fetchMetadata: vi.fn().mockResolvedValue({ id: "stub-channel", metadata: {} }) as unknown as Channel["fetchMetadata"],
+    fetchMetadata: vi
+      .fn()
+      .mockResolvedValue({
+        id: "stub-channel",
+        metadata: {},
+      }) as unknown as Channel["fetchMetadata"],
     threads(): AsyncIterable<never> {
       return (async function* () {})();
-    }
+    },
   } satisfies Channel;
 }
 
@@ -124,7 +143,9 @@ function createTestThread(args: {
     async post(message: unknown): Promise<SentMessage> {
       return { id: "sent-1", text: String(message) } as unknown as SentMessage;
     },
-    postEphemeral: vi.fn().mockResolvedValue(null) as unknown as Thread["postEphemeral"],
+    postEphemeral: vi
+      .fn()
+      .mockResolvedValue(null) as unknown as Thread["postEphemeral"],
     async startTyping(): Promise<void> {},
     async subscribe(): Promise<void> {},
     async unsubscribe(): Promise<void> {},
@@ -135,7 +156,10 @@ function createTestThread(args: {
     mentionUser(userId: string): string {
       return `<@${userId}>`;
     },
-    async setState(next: Partial<Record<string, unknown>>, options?: { replace?: boolean }): Promise<void> {
+    async setState(
+      next: Partial<Record<string, unknown>>,
+      options?: { replace?: boolean },
+    ): Promise<void> {
       if (options?.replace) {
         stateData = { ...(next as Record<string, unknown>) };
         return;
@@ -147,7 +171,7 @@ function createTestThread(args: {
     },
     getState() {
       return stateData;
-    }
+    },
   };
 
   return thread;
@@ -172,7 +196,7 @@ function createTestMessage(args: {
     raw: {},
     toJSON() {
       return {} as ReturnType<Message["toJSON"]>;
-    }
+    },
   } as unknown as Message;
 }
 
@@ -189,13 +213,13 @@ describe("bot image hydration", () => {
     listThreadRepliesMock.mockResolvedValue([
       {
         ts: "1700000000.100",
-        files: []
-      }
+        files: [],
+      },
     ]);
 
     const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     setBotDepsForTests({
-      listThreadReplies: listThreadRepliesMock
+      listThreadReplies: listThreadRepliesMock,
     });
     const firstThread = createTestThread({
       id: "slack:C_IMAGE:1700000000.000",
@@ -209,31 +233,31 @@ describe("bot image hydration", () => {
               text: "candidate profile image posted earlier",
               createdAtMs: 1700000000100,
               meta: {
-                slackTs: "1700000000.100"
+                slackTs: "1700000000.100",
               },
               author: {
                 userId: "U-user",
-                userName: "user"
-              }
-            }
+                userName: "user",
+              },
+            },
           ],
           compactions: [],
           backfill: {
             completedAtMs: 1700000000000,
-            source: "recent_messages"
+            source: "recent_messages",
           },
           processing: {},
           stats: {
             estimatedContextTokens: 0,
             totalMessageCount: 1,
             compactedMessageCount: 0,
-            updatedAtMs: 1700000000000
+            updatedAtMs: 1700000000000,
           },
           vision: {
-            byFileId: {}
-          }
-        }
-      }
+            byFileId: {},
+          },
+        },
+      },
     });
 
     await appSlackRuntime.handleNewMention(
@@ -248,15 +272,15 @@ describe("bot image hydration", () => {
           userName: "user",
           fullName: "User Example",
           isBot: false,
-          isMe: false
-        }
-      })
+          isMe: false,
+        },
+      }),
     );
 
     const persisted = firstThread.getState();
     const secondThread = createTestThread({
       id: "slack:C_IMAGE:1700000000.000",
-      state: persisted
+      state: persisted,
     });
 
     await appSlackRuntime.handleNewMention(
@@ -271,9 +295,9 @@ describe("bot image hydration", () => {
           userName: "user",
           fullName: "User Example",
           isBot: false,
-          isMe: false
-        }
-      })
+          isMe: false,
+        },
+      }),
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
@@ -283,7 +307,7 @@ describe("bot image hydration", () => {
     const generatedFile = {
       data: Buffer.from("fake-png"),
       filename: "generated.png",
-      mimeType: "image/png"
+      mimeType: "image/png",
     };
 
     const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
@@ -299,15 +323,15 @@ describe("bot image hydration", () => {
           toolCalls: [],
           toolErrorCount: 0,
           toolResultCount: 0,
-          usedPrimaryText: true
-        }
-      })
+          usedPrimaryText: true,
+        },
+      }),
     });
 
     const postSpy = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({
       id: "slack:C_UPLOAD:1700000000.000",
-      state: {}
+      state: {},
     });
     thread.post = postSpy as unknown as Thread["post"];
 
@@ -323,9 +347,9 @@ describe("bot image hydration", () => {
           userName: "user",
           fullName: "User Example",
           isBot: false,
-          isMe: false
-        }
-      })
+          isMe: false,
+        },
+      }),
     );
 
     const filePost = postSpy.mock.calls.find(
@@ -334,10 +358,13 @@ describe("bot image hydration", () => {
         call[0] !== null &&
         "files" in (call[0] as Record<string, unknown>) &&
         Array.isArray((call[0] as { files?: unknown[] }).files) &&
-        ((call[0] as { files: unknown[] }).files).length > 0
+        (call[0] as { files: unknown[] }).files.length > 0,
     );
     expect(filePost).toBeDefined();
-    expect((filePost![0] as { files: Array<{ filename: string }> }).files[0].filename).toBe("generated.png");
+    expect(
+      (filePost![0] as { files: Array<{ filename: string }> }).files[0]
+        .filename,
+    ).toBe("generated.png");
   });
 
   it("posts files separately when streamed reply is already in progress", async () => {
@@ -353,8 +380,8 @@ describe("bot image hydration", () => {
             {
               data: Buffer.from("fake-png"),
               filename: "generated.png",
-              mimeType: "image/png"
-            }
+              mimeType: "image/png",
+            },
           ],
           diagnostics: {
             assistantMessageCount: 1,
@@ -363,16 +390,16 @@ describe("bot image hydration", () => {
             toolCalls: [],
             toolErrorCount: 0,
             toolResultCount: 0,
-            usedPrimaryText: true
-          }
+            usedPrimaryText: true,
+          },
         };
-      }
+      },
     });
 
     const postSpy = vi.fn().mockResolvedValue(undefined);
     const thread = createTestThread({
       id: "slack:C_STREAM:1700000000.000",
-      state: {}
+      state: {},
     });
     thread.post = postSpy as unknown as Thread["post"];
 
@@ -388,26 +415,29 @@ describe("bot image hydration", () => {
           userName: "user",
           fullName: "User Example",
           isBot: false,
-          isMe: false
-        }
-      })
+          isMe: false,
+        },
+      }),
     );
 
     // Should have at least 2 posts: the streamed reply and the file upload
     expect(postSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
 
-    // The file-only post should omit markdown so the adapter's file-only early-return triggers
+    // The file follow-up post should be file-only without placeholder markdown text.
     const filePost = postSpy.mock.calls.find(
       (call: unknown[]) =>
         typeof call[0] === "object" &&
         call[0] !== null &&
         "files" in (call[0] as Record<string, unknown>) &&
         Array.isArray((call[0] as { files?: unknown[] }).files) &&
-        ((call[0] as { files: unknown[] }).files).length > 0
+        (call[0] as { files: unknown[] }).files.length > 0,
     );
     expect(filePost).toBeDefined();
     const filePostArg = filePost![0] as Record<string, unknown>;
+    expect(filePostArg).toHaveProperty("raw", "");
     expect(filePostArg).not.toHaveProperty("markdown");
-    expect((filePostArg.files as Array<{ filename: string }>)[0].filename).toBe("generated.png");
+    expect((filePostArg.files as Array<{ filename: string }>)[0].filename).toBe(
+      "generated.png",
+    );
   });
 });

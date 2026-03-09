@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "node scripts/dev-with-root-env.mjs",
     "cli": "node scripts/cli-with-root-env.mjs",
+    "prepare": "simple-git-hooks",
+    "lint-staged": "lint-staged",
     "build": "pnpm --filter @sentry/junior build",
     "build:example": "pnpm --filter @sentry/junior-example build",
     "docs:dev": "pnpm --filter @sentry/junior-docs dev",
@@ -18,6 +20,12 @@
     "typecheck": "pnpm --filter @sentry/junior typecheck && pnpm --filter @sentry/junior-example typecheck",
     "skills:check": "pnpm --filter @sentry/junior skills:check"
   },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs,json,md,mdx,yml,yaml}": "pnpm exec prettier --write --ignore-unknown"
+  },
   "pnpm": {
     "peerDependencyRules": {
       "allowedVersions": {
@@ -27,7 +35,10 @@
     }
   },
   "devDependencies": {
-    "tsx": "^4.21.0",
-    "agent-browser": "^0.16.3"
+    "agent-browser": "^0.16.3",
+    "lint-staged": "^16.3.2",
+    "prettier": "^3.8.1",
+    "simple-git-hooks": "^2.13.1",
+    "tsx": "^4.21.0"
   }
 }

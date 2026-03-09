@@ -1,8 +1,14 @@
 import { createHash } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 import { withSpan } from "@/chat/observability";
-import { getPluginRuntimeDependencies, getPluginRuntimePostinstall } from "@/chat/plugins/registry";
-import type { PluginRuntimeDependency, PluginRuntimePostinstallCommand } from "@/chat/plugins/types";
+import {
+  getPluginRuntimeDependencies,
+  getPluginRuntimePostinstall,
+} from "@/chat/plugins/registry";
+import type {
+  PluginRuntimeDependency,
+  PluginRuntimePostinstallCommand,
+} from "@/chat/plugins/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { getStateAdapter } from "@/chat/state";
 
@@ -37,7 +43,11 @@ export type SnapshotResolveOutcome =
   | "rebuilt"
   | "forced_rebuild";
 
-export type SnapshotRebuildReason = "cache_miss" | "floating_stale" | "force_rebuild" | "snapshot_missing";
+export type SnapshotRebuildReason =
+  | "cache_miss"
+  | "floating_stale"
+  | "force_rebuild"
+  | "snapshot_missing";
 
 export interface RuntimeDependencySnapshot {
   snapshotId?: string;
@@ -104,14 +114,16 @@ function buildDependencyProfile(runtime: string): DependencyProfile | null {
   const rebuildEpoch = process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH?.trim() ?? "";
   // Runtime postinstall commands may install mutable "latest" artifacts.
   // Treat those profiles as stale-able just like floating dependency selectors.
-  const hasFloatingVersions = dependencies.some((dep) => hasFloatingSelector(dep)) || postinstall.length > 0;
+  const hasFloatingVersions =
+    dependencies.some((dep) => hasFloatingSelector(dep)) ||
+    postinstall.length > 0;
 
   const hashInput = JSON.stringify({
     version: SNAPSHOT_PROFILE_VERSION,
     runtime,
     rebuildEpoch,
     dependencies,
-    postinstall
+    postinstall,
   });
 
   const profileHash = createHash("sha256").update(hashInput).digest("hex");
@@ -120,11 +132,20 @@ function buildDependencyProfile(runtime: string): DependencyProfile | null {
     dependencyCount: dependencies.length,
     hasFloatingVersions,
     dependencies,
-    postinstall
+    postinstall,
   };
 }
 
-function shouldRebuildCachedSnapshot(profile: DependencyProfile, cached: CachedSnapshotEntry): boolean {
+export function getRuntimeDependencyProfileHash(
+  runtime: string,
+): string | undefined {
+  return buildDependencyProfile(runtime)?.profileHash;
+}
+
+function shouldRebuildCachedSnapshot(
+  profile: DependencyProfile,
+  cached: CachedSnapshotEntry,
+): boolean {
   if (!profile.hasFloatingVersions) {
     return false;
   }
@@ -135,7 +156,9 @@ function shouldRebuildCachedSnapshot(profile: DependencyProfile, cached: CachedS
   return Date.now() - cached.createdAtMs > maxAgeMs;
 }
 
-async function getCachedSnapshot(profileHash: string): Promise<CachedSnapshotEntry | null> {
+async function getCachedSnapshot(
+  profileHash: string,
+): Promise<CachedSnapshotEntry | null> {
   try {
     const state = getStateAdapter();
     await state.connect();
@@ -164,23 +187,31 @@ async function getCachedSnapshot(profileHash: string): Promise<CachedSnapshotEnt
 async function setCachedSnapshot(entry: CachedSnapshotEntry): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
-  await state.set(profileCacheKey(entry.profileHash), JSON.stringify(entry), SNAPSHOT_CACHE_TTL_MS);
+  await state.set(
+    profileCacheKey(entry.profileHash),
+    JSON.stringify(entry),
+    SNAPSHOT_CACHE_TTL_MS,
+  );
 }
 
 async function withSnapshotSpan<T>(
   name: string,
   op: string,
   attributes: Record<string, unknown>,
-  callback: () => Promise<T>
+  callback: () => Promise<T>,
 ): Promise<T> {
   return await withSpan(name, op, {}, callback, attributes);
 }
 
-async function runOrThrow(sandbox: Sandbox, params: {
-  cmd: string;
-  args?: string[];
-  sudo?: boolean;
-}, label: string): Promise<void> {
+async function runOrThrow(
+  sandbox: Sandbox,
+  params: {
+    cmd: string;
+    args?: string[];
+    sudo?: boolean;
+  },
+  label: string,
+): Promise<void> {
   const result = await sandbox.runCommand(params);
   if (result.exitCode === 0) {
     return;
@@ -192,11 +223,14 @@ async function runOrThrow(sandbox: Sandbox, params: {
   throw new Error(`${label} failed: ${detail}`);
 }
 
-async function tryRun(sandbox: Sandbox, params: {
-  cmd: string;
-  args?: string[];
-  sudo?: boolean;
-}): Promise<{ ok: true } | { ok: false; detail: string }> {
+async function tryRun(
+  sandbox: Sandbox,
+  params: {
+    cmd: string;
+    args?: string[];
+    sudo?: boolean;
+  },
+): Promise<{ ok: true } | { ok: false; detail: string }> {
   const result = await sandbox.runCommand(params);
   if (result.exitCode === 0) {
     return { ok: true };
@@ -211,7 +245,7 @@ async function installGhCliViaDnf(sandbox: Sandbox): Promise<void> {
   const direct = await tryRun(sandbox, {
     cmd: "dnf",
     args: ["install", "-y", "gh"],
-    sudo: true
+    sudo: true,
   });
   if (direct.ok) {
     return;
@@ -219,8 +253,12 @@ async function installGhCliViaDnf(sandbox: Sandbox): Promise<void> {
 
   const dnf5Repo = await tryRun(sandbox, {
     cmd: "dnf",
-    args: ["config-manager", "addrepo", "--from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo"],
-    sudo: true
+    args: [
+      "config-manager",
+      "addrepo",
+      "--from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo",
+    ],
+    sudo: true,
   });
   if (!dnf5Repo.ok) {
     await runOrThrow(
@@ -228,18 +266,22 @@ async function installGhCliViaDnf(sandbox: Sandbox): Promise<void> {
       {
         cmd: "dnf",
         args: ["install", "-y", "dnf-command(config-manager)"],
-        sudo: true
+        sudo: true,
       },
-      "dnf install dnf-command(config-manager)"
+      "dnf install dnf-command(config-manager)",
     );
     await runOrThrow(
       sandbox,
       {
         cmd: "dnf",
-        args: ["config-manager", "--add-repo", "https://cli.github.com/packages/rpm/gh-cli.repo"],
-        sudo: true
+        args: [
+          "config-manager",
+          "--add-repo",
+          "https://cli.github.com/packages/rpm/gh-cli.repo",
+        ],
+        sudo: true,
       },
-      "dnf config-manager --add-repo gh-cli.repo"
+      "dnf config-manager --add-repo gh-cli.repo",
     );
   }
 
@@ -248,9 +290,9 @@ async function installGhCliViaDnf(sandbox: Sandbox): Promise<void> {
     {
       cmd: "dnf",
       args: ["install", "-y", "gh", "--repo", "gh-cli"],
-      sudo: true
+      sudo: true,
     },
-    "dnf install gh --repo gh-cli"
+    "dnf install gh --repo gh-cli",
   );
 }
 
@@ -271,10 +313,19 @@ function runtimeDependencyFilePath(url: string, sha256: string): string {
   return `/tmp/junior-runtime-${sha256.slice(0, 12)}-${sanitizedBasename}`;
 }
 
-async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeDependency[]): Promise<void> {
-  const systemDeps = deps.filter((dep): dep is Extract<PluginRuntimeDependency, { type: "system" }> => dep.type === "system");
+async function installRuntimeDependencies(
+  sandbox: Sandbox,
+  deps: PluginRuntimeDependency[],
+): Promise<void> {
+  const systemDeps = deps.filter(
+    (dep): dep is Extract<PluginRuntimeDependency, { type: "system" }> =>
+      dep.type === "system",
+  );
   const npmPackages = deps
-    .filter((dep): dep is Extract<PluginRuntimeDependency, { type: "npm" }> => dep.type === "npm")
+    .filter(
+      (dep): dep is Extract<PluginRuntimeDependency, { type: "npm" }> =>
+        dep.type === "npm",
+    )
     .map((dep) => `${dep.package}@${dep.version}`);
 
   if (systemDeps.length > 0) {
@@ -282,7 +333,7 @@ async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeD
       "sandbox.snapshot.install_system",
       "sandbox.snapshot.install.system",
       {
-        "app.sandbox.snapshot.install.system_count": systemDeps.length
+        "app.sandbox.snapshot.install.system_count": systemDeps.length,
       },
       async () => {
         for (const dep of systemDeps) {
@@ -292,27 +343,31 @@ async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeD
               sandbox,
               {
                 cmd: "curl",
-                args: ["-fsSL", dep.url, "-o", rpmPath]
+                args: ["-fsSL", dep.url, "-o", rpmPath],
               },
-              `curl download ${dep.url}`
+              `curl download ${dep.url}`,
             );
 
             const checksumResult = await sandbox.runCommand({
               cmd: "sha256sum",
-              args: [rpmPath]
+              args: [rpmPath],
             });
             const checksumStdout = (await checksumResult.stdout()).trim();
             const checksumStderr = (await checksumResult.stderr()).trim();
             if (checksumResult.exitCode !== 0) {
-              throw new Error(`sha256sum failed: ${checksumStderr || checksumStdout || "command failed"}`);
+              throw new Error(
+                `sha256sum failed: ${checksumStderr || checksumStdout || "command failed"}`,
+              );
             }
-            const actualChecksum = checksumStdout.split(/\s+/)[0]?.toLowerCase();
+            const actualChecksum = checksumStdout
+              .split(/\s+/)[0]
+              ?.toLowerCase();
             if (!actualChecksum) {
               throw new Error("sha256sum produced empty output");
             }
             if (actualChecksum !== dep.sha256) {
               throw new Error(
-                `checksum mismatch for ${dep.url}: expected ${dep.sha256}, got ${actualChecksum}`
+                `checksum mismatch for ${dep.url}: expected ${dep.sha256}, got ${actualChecksum}`,
               );
             }
 
@@ -321,9 +376,9 @@ async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeD
               {
                 cmd: "dnf",
                 args: ["install", "-y", rpmPath],
-                sudo: true
+                sudo: true,
               },
-              `dnf install ${dep.url}`
+              `dnf install ${dep.url}`,
             );
             continue;
           }
@@ -337,12 +392,12 @@ async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeD
             {
               cmd: "dnf",
               args: ["install", "-y", dep.package],
-              sudo: true
+              sudo: true,
             },
-            `dnf install ${dep.package}`
+            `dnf install ${dep.package}`,
           );
         }
-      }
+      },
     );
   }
 
@@ -351,7 +406,7 @@ async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeD
       "sandbox.snapshot.install_npm",
       "sandbox.snapshot.install.npm",
       {
-        "app.sandbox.snapshot.install.npm_count": npmPackages.length
+        "app.sandbox.snapshot.install.npm_count": npmPackages.length,
       },
       async () => {
         await runOrThrow(
@@ -363,19 +418,19 @@ async function installRuntimeDependencies(sandbox: Sandbox, deps: PluginRuntimeD
               "--global",
               "--prefix",
               `${SANDBOX_WORKSPACE_ROOT}/.junior`,
-              ...npmPackages
-            ]
+              ...npmPackages,
+            ],
           },
-          "npm install"
+          "npm install",
         );
-      }
+      },
     );
   }
 }
 
 async function runRuntimePostinstall(
   sandbox: Sandbox,
-  commands: PluginRuntimePostinstallCommand[]
+  commands: PluginRuntimePostinstallCommand[],
 ): Promise<void> {
   if (commands.length === 0) {
     return;
@@ -385,38 +440,45 @@ async function runRuntimePostinstall(
     "sandbox.snapshot.runtime_postinstall",
     "sandbox.snapshot.runtime_postinstall",
     {
-      "app.sandbox.snapshot.runtime_postinstall.count": commands.length
+      "app.sandbox.snapshot.runtime_postinstall.count": commands.length,
     },
     async () => {
       for (const command of commands) {
-        const invocation = [JSON.stringify(command.cmd), ...(command.args ?? []).map((arg) => JSON.stringify(arg))].join(" ");
+        const invocation = [
+          JSON.stringify(command.cmd),
+          ...(command.args ?? []).map((arg) => JSON.stringify(arg)),
+        ].join(" ");
         const pathPrefix = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`;
         await runOrThrow(
           sandbox,
           {
             cmd: "bash",
             args: ["-lc", `export PATH="${pathPrefix}" && ${invocation}`],
-            ...(command.sudo !== undefined ? { sudo: command.sudo } : {})
+            ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
           },
-          `runtime-postinstall ${command.cmd}`
+          `runtime-postinstall ${command.cmd}`,
         );
       }
-    }
+    },
   );
 }
 
-async function createDependencySnapshot(profile: DependencyProfile, runtime: string, timeoutMs: number): Promise<string> {
+async function createDependencySnapshot(
+  profile: DependencyProfile,
+  runtime: string,
+  timeoutMs: number,
+): Promise<string> {
   return await withSnapshotSpan(
     "sandbox.snapshot.build",
     "sandbox.snapshot.build",
     {
       "app.sandbox.runtime": runtime,
-      "app.sandbox.snapshot.dependency_count": profile.dependencyCount
+      "app.sandbox.snapshot.dependency_count": profile.dependencyCount,
     },
     async () => {
       const sandbox = await Sandbox.create({
         timeout: timeoutMs,
-        runtime
+        runtime,
       });
 
       try {
@@ -426,12 +488,12 @@ async function createDependencySnapshot(profile: DependencyProfile, runtime: str
           "sandbox.snapshot.capture",
           "sandbox.snapshot.capture",
           {
-            "app.sandbox.snapshot.dependency_count": profile.dependencyCount
+            "app.sandbox.snapshot.dependency_count": profile.dependencyCount,
           },
           async () => {
             const snapshot = await sandbox.snapshot();
             return snapshot.snapshotId;
-          }
+          },
         );
       } finally {
         try {
@@ -440,22 +502,26 @@ async function createDependencySnapshot(profile: DependencyProfile, runtime: str
           // Snapshot creation may already finalize the sandbox; cleanup stays best-effort.
         }
       }
-    }
+    },
   );
 }
 
 async function withBuildLock(
   profileHash: string,
-  callback: () => Promise<{ snapshotId: string; source: "callback_cache" | "built" }>,
+  callback: () => Promise<{
+    snapshotId: string;
+    source: "callback_cache" | "built";
+  }>,
   canUseCachedSnapshot: (cached: CachedSnapshotEntry) => boolean,
   hooks?: {
     onWaitingForLock?: () => void | Promise<void>;
-  }
+  },
 ): Promise<BuildLockResult> {
   const state = getStateAdapter();
   await state.connect();
   const lockKey = profileLockKey(profileHash);
-  const tryAcquireLock = async () => await state.acquireLock(lockKey, SNAPSHOT_BUILD_LOCK_TTL_MS);
+  const tryAcquireLock = async () =>
+    await state.acquireLock(lockKey, SNAPSHOT_BUILD_LOCK_TTL_MS);
 
   let lock = await tryAcquireLock();
   if (lock) {
@@ -464,7 +530,7 @@ async function withBuildLock(
       return {
         snapshotId: result.snapshotId,
         source: result.source,
-        waitedForLock: false
+        waitedForLock: false,
       };
     } finally {
       await state.releaseLock(lock);
@@ -475,7 +541,7 @@ async function withBuildLock(
     "sandbox.snapshot.lock_wait",
     "sandbox.snapshot.lock_wait",
     {
-      "app.sandbox.snapshot.profile_hash": profileHash
+      "app.sandbox.snapshot.profile_hash": profileHash,
     },
     async () => {
       await hooks?.onWaitingForLock?.();
@@ -486,7 +552,7 @@ async function withBuildLock(
           return {
             snapshotId: cached.snapshotId,
             source: "wait_cache" as const,
-            waitedForLock: true
+            waitedForLock: true,
           };
         }
 
@@ -497,7 +563,7 @@ async function withBuildLock(
             return {
               snapshotId: result.snapshotId,
               source: result.source,
-              waitedForLock: true
+              waitedForLock: true,
             };
           } finally {
             await state.releaseLock(lock);
@@ -512,19 +578,19 @@ async function withBuildLock(
         return {
           snapshotId: cached.snapshotId,
           source: "wait_cache" as const,
-          waitedForLock: true
+          waitedForLock: true,
         };
       }
 
       throw new Error("Timed out waiting for snapshot build lock");
-    }
+    },
   );
 }
 
 function toResolveOutcome(
   forceRebuild: boolean,
   source: BuildLockResult["source"],
-  waitedForLock: boolean
+  waitedForLock: boolean,
 ): SnapshotResolveOutcome {
   if (source === "built") {
     return forceRebuild ? "forced_rebuild" : "rebuilt";
@@ -558,14 +624,16 @@ export async function resolveRuntimeDependencySnapshot(params: {
   timeoutMs: number;
   forceRebuild?: boolean;
   staleSnapshotId?: string;
-  onProgress?: (phase: RuntimeDependencySnapshotProgressPhase) => void | Promise<void>;
+  onProgress?: (
+    phase: RuntimeDependencySnapshotProgressPhase,
+  ) => void | Promise<void>;
 }): Promise<RuntimeDependencySnapshot> {
   return await withSnapshotSpan(
     "sandbox.snapshot.resolve",
     "sandbox.snapshot.resolve",
     {
       "app.sandbox.runtime": params.runtime,
-      "app.sandbox.snapshot.force_rebuild": Boolean(params.forceRebuild)
+      "app.sandbox.snapshot.force_rebuild": Boolean(params.forceRebuild),
     },
     async () => {
       await params.onProgress?.("resolve_start");
@@ -575,12 +643,14 @@ export async function resolveRuntimeDependencySnapshot(params: {
         return {
           dependencyCount: 0,
           cacheHit: false,
-          resolveOutcome: "no_profile"
+          resolveOutcome: "no_profile",
         };
       }
 
       const cached = await getCachedSnapshot(profile.profileHash);
-      const cachedNeedsRebuild = Boolean(cached?.snapshotId && shouldRebuildCachedSnapshot(profile, cached));
+      const cachedNeedsRebuild = Boolean(
+        cached?.snapshotId && shouldRebuildCachedSnapshot(profile, cached),
+      );
 
       if (!params.forceRebuild && cached?.snapshotId && !cachedNeedsRebuild) {
         await params.onProgress?.("cache_hit");
@@ -589,7 +659,7 @@ export async function resolveRuntimeDependencySnapshot(params: {
           profileHash: profile.profileHash,
           dependencyCount: profile.dependencyCount,
           cacheHit: true,
-          resolveOutcome: "cache_hit"
+          resolveOutcome: "cache_hit",
         };
       }
 
@@ -597,10 +667,12 @@ export async function resolveRuntimeDependencySnapshot(params: {
         forceRebuild: params.forceRebuild,
         staleSnapshotId: params.staleSnapshotId,
         cached,
-        shouldRebuildCached: cachedNeedsRebuild
+        shouldRebuildCached: cachedNeedsRebuild,
       });
 
-      const canUseCachedSnapshot = (candidate: CachedSnapshotEntry): boolean => {
+      const canUseCachedSnapshot = (
+        candidate: CachedSnapshotEntry,
+      ): boolean => {
         if (params.forceRebuild) {
           if (params.staleSnapshotId) {
             return candidate.snapshotId !== params.staleSnapshotId;
@@ -612,43 +684,67 @@ export async function resolveRuntimeDependencySnapshot(params: {
         return !shouldRebuildCachedSnapshot(profile, candidate);
       };
 
-      const lockResult = await withBuildLock(profile.profileHash, async () => {
-        const latest = await getCachedSnapshot(profile.profileHash);
-        if (latest?.snapshotId && canUseCachedSnapshot(latest)) {
-          await params.onProgress?.("cache_hit");
-          return { snapshotId: latest.snapshotId, source: "callback_cache" as const };
-        }
+      const lockResult = await withBuildLock(
+        profile.profileHash,
+        async () => {
+          const latest = await getCachedSnapshot(profile.profileHash);
+          if (latest?.snapshotId && canUseCachedSnapshot(latest)) {
+            await params.onProgress?.("cache_hit");
+            return {
+              snapshotId: latest.snapshotId,
+              source: "callback_cache" as const,
+            };
+          }
 
-        await params.onProgress?.("building_snapshot");
-        const nextSnapshotId = await createDependencySnapshot(profile, params.runtime, params.timeoutMs);
-        await setCachedSnapshot({
-          profileHash: profile.profileHash,
-          snapshotId: nextSnapshotId,
-          runtime: params.runtime,
-          createdAtMs: Date.now(),
-          dependencyCount: profile.dependencyCount
-        });
-        await params.onProgress?.("build_complete");
-        return { snapshotId: nextSnapshotId, source: "built" as const };
-      }, canUseCachedSnapshot, {
-        onWaitingForLock: async () => {
-          await params.onProgress?.("waiting_for_lock");
-        }
-      });
+          await params.onProgress?.("building_snapshot");
+          const nextSnapshotId = await createDependencySnapshot(
+            profile,
+            params.runtime,
+            params.timeoutMs,
+          );
+          await setCachedSnapshot({
+            profileHash: profile.profileHash,
+            snapshotId: nextSnapshotId,
+            runtime: params.runtime,
+            createdAtMs: Date.now(),
+            dependencyCount: profile.dependencyCount,
+          });
+          await params.onProgress?.("build_complete");
+          return { snapshotId: nextSnapshotId, source: "built" as const };
+        },
+        canUseCachedSnapshot,
+        {
+          onWaitingForLock: async () => {
+            await params.onProgress?.("waiting_for_lock");
+          },
+        },
+      );
 
       return {
         snapshotId: lockResult.snapshotId,
         profileHash: profile.profileHash,
         dependencyCount: profile.dependencyCount,
         cacheHit: lockResult.source !== "built",
-        resolveOutcome: toResolveOutcome(Boolean(params.forceRebuild), lockResult.source, lockResult.waitedForLock),
-        ...(rebuildReason ? { rebuildReason } : {})
+        resolveOutcome: toResolveOutcome(
+          Boolean(params.forceRebuild),
+          lockResult.source,
+          lockResult.waitedForLock,
+        ),
+        ...(rebuildReason ? { rebuildReason } : {}),
       };
-    }
+    },
   );
 }
 
 export function isSnapshotMissingError(error: unknown): boolean {
-  const searchable = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  return searchable.includes("snapshot") && (searchable.includes("not found") || searchable.includes("unknown") || searchable.includes("404"));
+  const searchable =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : String(error).toLowerCase();
+  return (
+    searchable.includes("snapshot") &&
+    (searchable.includes("not found") ||
+      searchable.includes("unknown") ||
+      searchable.includes("404"))
+  );
 }

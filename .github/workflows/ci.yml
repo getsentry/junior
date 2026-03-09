@@ -48,6 +48,7 @@ jobs:
         run: |
           mkdir -p artifacts
           pnpm --filter @sentry/junior pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-agent-browser pack --pack-destination artifacts
           pnpm --filter @sentry/junior-github pack --pack-destination artifacts
           pnpm --filter @sentry/junior-sentry pack --pack-destination artifacts
           ls -la artifacts

@@ -8,9 +8,9 @@ vi.mock("@/chat/capabilities/catalog", () => ({
     {
       provider: "github",
       configKeys: ["github.repo"],
-      capabilities: ["github.issues.read"]
-    }
-  ]
+      capabilities: ["github.issues.read"],
+    },
+  ],
 }));
 
 describe("buildSystemPrompt skill paths", () => {
@@ -20,28 +20,34 @@ describe("buildSystemPrompt skill paths", () => {
         name: "brief",
         description: "Create a candidate brief",
         skillPath: "/host/path/skills/brief",
-        usesConfig: ["github.repo"]
-      }
+        usesConfig: ["github.repo"],
+      },
     ];
 
     const activeSkills: Skill[] = [
       {
         ...availableSkills[0],
-        body: "# Instructions"
-      }
+        body: "# Instructions",
+      },
     ];
 
     const prompt = buildSystemPrompt({
       availableSkills,
       activeSkills,
-      invocation: null
+      invocation: null,
     });
 
-    expect(prompt).toContain(`<location>${sandboxSkillFile("brief")}</location>`);
+    expect(prompt).toContain(
+      `<location>${sandboxSkillFile("brief")}</location>`,
+    );
     expect(prompt).toContain("<uses_config>github.repo</uses_config>");
-    expect(prompt).toContain(`<skill name="brief" location="${sandboxSkillFile("brief")}">`);
+    expect(prompt).toContain(
+      `<skill name="brief" location="${sandboxSkillFile("brief")}">`,
+    );
     expect(prompt).toContain("Uses config keys: github.repo.");
-    expect(prompt).toContain(`References are relative to ${sandboxSkillDir("brief")}.`);
+    expect(prompt).toContain(
+      `References are relative to ${sandboxSkillDir("brief")}.`,
+    );
     expect(prompt).not.toContain("/host/path/skills/brief/SKILL.md");
   });
 
@@ -52,9 +58,9 @@ describe("buildSystemPrompt skill paths", () => {
       invocation: null,
       configuration: {
         "github.repo": "getsentry/junior",
-        "jira.project": "PLAT"
+        "jira.project": "PLAT",
       },
-      relevantConfigurationKeys: ["github.repo"]
+      relevantConfigurationKeys: ["github.repo"],
     });
 
     expect(prompt).toContain("<configuration-context>");
@@ -72,15 +78,28 @@ describe("buildSystemPrompt skill paths", () => {
     const prompt = buildSystemPrompt({
       availableSkills: [],
       activeSkills: [],
-      invocation: null
+      invocation: null,
     });
 
-    expect(prompt).toContain("`slackCanvasUpdate` targets the active artifact-context canvas automatically");
+    expect(prompt).toContain(
+      "`slackCanvasUpdate` targets the active artifact-context canvas automatically",
+    );
     expect(prompt).toContain("do not ask the user for `canvas_id`");
-    expect(prompt).toContain("`slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` target the active artifact-context list automatically");
+    expect(prompt).toContain(
+      "`slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` target the active artifact-context list automatically",
+    );
     expect(prompt).toContain("do not ask the user for `list_id`");
     expect(prompt).toContain(
-      "If the user explicitly asks to post/send/share/say/show/announce/broadcast in the channel (outside this thread), call `slackChannelPostMessage`"
+      "If the user explicitly asks to post/send/share/say/show/announce/broadcast in the channel (outside this thread), call `slackChannelPostMessage`",
+    );
+    expect(prompt).toContain(
+      "If the user asks to see/share/show a screenshot or file, attach the file with `attachFile` instead of only reporting its path.",
+    );
+    expect(prompt).toContain(
+      "Never claim a screenshot/file is attached unless `attachFile` succeeded in this turn.",
+    );
+    expect(prompt).toContain(
+      "If `attachFile` fails, explain the failure and do not say the file was shared.",
     );
   });
 
@@ -90,8 +109,8 @@ describe("buildSystemPrompt skill paths", () => {
       activeSkills: [],
       invocation: null,
       runtimeMetadata: {
-        version: "deadbeef"
-      }
+        version: "deadbeef",
+      },
     });
 
     expect(prompt).toContain("<runtime-metadata>");
@@ -102,11 +121,10 @@ describe("buildSystemPrompt skill paths", () => {
     const prompt = buildSystemPrompt({
       availableSkills: [],
       activeSkills: [],
-      invocation: null
+      invocation: null,
     });
 
     expect(prompt).toContain("<runtime-metadata>");
     expect(prompt).toContain("- version: unknown");
   });
-
 });

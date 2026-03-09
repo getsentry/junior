@@ -2,23 +2,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
-  sandboxCreateMock: vi.fn()
+  sandboxCreateMock: vi.fn(),
 }));
-const { setSpanAttributesMock, setSpanStatusMock, logWarnMock } = vi.hoisted(() => ({
-  setSpanAttributesMock: vi.fn(),
-  setSpanStatusMock: vi.fn(),
-  logWarnMock: vi.fn()
-}));
+const { setSpanAttributesMock, setSpanStatusMock, logWarnMock } = vi.hoisted(
+  () => ({
+    setSpanAttributesMock: vi.fn(),
+    setSpanStatusMock: vi.fn(),
+    logWarnMock: vi.fn(),
+  }),
+);
 
 vi.mock("@vercel/sandbox", () => ({
   Sandbox: {
     get: sandboxGetMock,
-    create: sandboxCreateMock
-  }
+    create: sandboxCreateMock,
+  },
 }));
 
 vi.mock("bash-tool", () => ({
-  createBashTool: vi.fn()
+  createBashTool: vi.fn(),
 }));
 
 vi.mock("@/chat/observability", () => ({
@@ -26,14 +28,18 @@ vi.mock("@/chat/observability", () => ({
     _name: string,
     _op: string,
     _context: unknown,
-    callback: () => Promise<unknown>
+    callback: () => Promise<unknown>,
   ) => callback(),
   setSpanAttributes: setSpanAttributesMock,
   setSpanStatus: setSpanStatusMock,
-  logWarn: logWarnMock
+  logWarn: logWarnMock,
 }));
 
-const { resolveRuntimeDependencySnapshotMock, isSnapshotMissingErrorMock } = vi.hoisted(() => ({
+const {
+  resolveRuntimeDependencySnapshotMock,
+  isSnapshotMissingErrorMock,
+  getRuntimeDependencyProfileHashMock,
+} = vi.hoisted(() => ({
   resolveRuntimeDependencySnapshotMock: vi.fn<
     (...args: any[]) => Promise<{
       snapshotId?: string;
@@ -43,13 +49,21 @@ const { resolveRuntimeDependencySnapshotMock, isSnapshotMissingErrorMock } = vi.
       resolveOutcome: string;
       rebuildReason?: string;
     }>
-  >(async () => ({ dependencyCount: 0, cacheHit: false, resolveOutcome: "no_profile" })),
-  isSnapshotMissingErrorMock: vi.fn<(error: unknown) => boolean>(() => false)
+  >(async () => ({
+    dependencyCount: 0,
+    cacheHit: false,
+    resolveOutcome: "no_profile",
+  })),
+  isSnapshotMissingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
+  getRuntimeDependencyProfileHashMock: vi.fn<
+    (runtime: string) => string | undefined
+  >(() => undefined),
 }));
 
 vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
   resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
-  isSnapshotMissingError: isSnapshotMissingErrorMock
+  isSnapshotMissingError: isSnapshotMissingErrorMock,
+  getRuntimeDependencyProfileHash: getRuntimeDependencyProfileHashMock,
 }));
 
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
@@ -71,7 +85,7 @@ function makeSandbox(
   options: {
     mkDirError?: unknown;
     writeFilesError?: unknown;
-  } = {}
+  } = {},
 ): MockSandbox {
   return {
     sandboxId,
@@ -88,32 +102,37 @@ function makeSandbox(
     runCommand: vi.fn(async () => ({
       exitCode: 0,
       stdout: async () => "",
-      stderr: async () => ""
+      stderr: async () => "",
     })),
     updateNetworkPolicy: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
     extendTimeout: vi.fn(async () => {}),
-    networkPolicy: "allow-all"
+    networkPolicy: "allow-all",
   };
 }
 
-function createApiError(status: number, statusText: string, code: string, message: string): Error {
+function createApiError(
+  status: number,
+  statusText: string,
+  code: string,
+  message: string,
+): Error {
   return Object.assign(new Error(`Status code ${status} is not ok`), {
     response: {
       status,
       statusText,
       url: "https://vercel.com/api/v1/sandboxes/sbx_test/fs/mkdir",
       headers: {
-        get: (_name: string) => null
-      }
+        get: (_name: string) => null,
+      },
     },
     json: {
       error: {
         code,
-        message
-      }
+        message,
+      },
     },
-    sandboxId: "sbx_test"
+    sandboxId: "sbx_test",
   });
 }
 
@@ -128,24 +147,23 @@ describe("createSandboxExecutor", () => {
     resolveRuntimeDependencySnapshotMock.mockResolvedValue({
       dependencyCount: 0,
       cacheHit: false,
-      resolveOutcome: "no_profile"
+      resolveOutcome: "no_profile",
     });
     isSnapshotMissingErrorMock.mockReset();
     isSnapshotMissingErrorMock.mockReturnValue(false);
+    getRuntimeDependencyProfileHashMock.mockReset();
+    getRuntimeDependencyProfileHashMock.mockReturnValue(undefined);
   });
 
   it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
-    const stoppedSandbox = makeSandbox(
-      "sbx_stopped",
-      {
-        mkDirError: createApiError(
-          410,
-          "Gone",
-          "sandbox_stopped",
-          "Sandbox has stopped execution and is no longer available"
-        )
-      }
-    );
+    const stoppedSandbox = makeSandbox("sbx_stopped", {
+      mkDirError: createApiError(
+        410,
+        "Gone",
+        "sandbox_stopped",
+        "Sandbox has stopped execution and is no longer available",
+      ),
+    });
     const freshSandbox = makeSandbox("sbx_fresh");
 
     sandboxGetMock.mockResolvedValue(stoppedSandbox);
@@ -165,25 +183,42 @@ describe("createSandboxExecutor", () => {
     expect(executor.getSandboxId()).toBe("sbx_fresh");
   });
 
+  it("recreates sandbox when dependency profile hash changed", async () => {
+    const freshSandbox = makeSandbox("sbx_fresh_after_profile_change");
+    getRuntimeDependencyProfileHashMock.mockReturnValue("current-profile");
+    sandboxCreateMock.mockResolvedValue(freshSandbox);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_old",
+      sandboxDependencyProfileHash: "old-profile",
+    });
+    executor.configureSkills([]);
+
+    const sandbox = await executor.createSandbox();
+
+    expect(sandbox).toBe(freshSandbox);
+    expect(sandboxGetMock).not.toHaveBeenCalled();
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces a generic sandbox setup failure for non-recoverable sync errors", async () => {
-    const forbiddenSandbox = makeSandbox(
-      "sbx_forbidden",
-      {
-        mkDirError: createApiError(
-          403,
-          "Forbidden",
-          "forbidden",
-          "You do not have permission to access this sandbox"
-        )
-      }
-    );
+    const forbiddenSandbox = makeSandbox("sbx_forbidden", {
+      mkDirError: createApiError(
+        403,
+        "Forbidden",
+        "forbidden",
+        "You do not have permission to access this sandbox",
+      ),
+    });
 
     sandboxGetMock.mockResolvedValue(forbiddenSandbox);
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_forbidden" });
     executor.configureSkills([]);
 
-    await expect(executor.createSandbox()).rejects.toThrow("sandbox setup failed");
+    await expect(executor.createSandbox()).rejects.toThrow(
+      "sandbox setup failed",
+    );
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
@@ -193,8 +228,8 @@ describe("createSandboxExecutor", () => {
     vi.mocked(createBashTool).mockResolvedValue({
       tools: {
         readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) }
-      }
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
     } as never);
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_headers" });
@@ -208,11 +243,11 @@ describe("createSandboxExecutor", () => {
           {
             domain: "api.github.com",
             headers: {
-              Authorization: "Bearer token-1"
-            }
-          }
-        ]
-      }
+              Authorization: "Bearer token-1",
+            },
+          },
+        ],
+      },
     });
 
     expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(1, {
@@ -223,18 +258,21 @@ describe("createSandboxExecutor", () => {
             transform: [
               {
                 headers: {
-                  Authorization: "Bearer token-1"
-                }
-              }
-            ]
-          }
-        ]
-      }
+                  Authorization: "Bearer token-1",
+                },
+              },
+            ],
+          },
+        ],
+      },
     });
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "bash",
-      args: ["-c", 'export PATH="/vercel/sandbox/.junior/bin:$PATH" && echo ok'],
-      cwd: "/vercel/sandbox"
+      args: [
+        "-c",
+        'export PATH="/vercel/sandbox/.junior/bin:$PATH" && echo ok',
+      ],
+      cwd: "/vercel/sandbox",
     });
     expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(2, "allow-all");
   });
@@ -243,15 +281,15 @@ describe("createSandboxExecutor", () => {
     const sandbox = makeSandbox("sbx_policy_merge");
     sandbox.networkPolicy = {
       allow: {
-        "example.com": [{ transform: [{ headers: { "X-Existing": "1" } }] }]
-      }
+        "example.com": [{ transform: [{ headers: { "X-Existing": "1" } }] }],
+      },
     };
     sandboxGetMock.mockResolvedValue(sandbox);
     vi.mocked(createBashTool).mockResolvedValue({
       tools: {
         readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) }
-      }
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
     } as never);
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_policy_merge" });
@@ -265,11 +303,11 @@ describe("createSandboxExecutor", () => {
           {
             domain: "api.github.com",
             headers: {
-              Authorization: "Bearer token-1"
-            }
-          }
-        ]
-      }
+              Authorization: "Bearer token-1",
+            },
+          },
+        ],
+      },
     });
 
     expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(1, {
@@ -280,15 +318,18 @@ describe("createSandboxExecutor", () => {
             transform: [
               {
                 headers: {
-                  Authorization: "Bearer token-1"
-                }
-              }
-            ]
-          }
-        ]
-      }
+                  Authorization: "Bearer token-1",
+                },
+              },
+            ],
+          },
+        ],
+      },
     });
-    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(2, sandbox.networkPolicy);
+    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(
+      2,
+      sandbox.networkPolicy,
+    );
   });
 
   it("preserves command errors when network policy restore fails", async () => {
@@ -303,11 +344,13 @@ describe("createSandboxExecutor", () => {
     vi.mocked(createBashTool).mockResolvedValue({
       tools: {
         readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) }
-      }
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
     } as never);
 
-    const executor = createSandboxExecutor({ sandboxId: "sbx_restore_failure" });
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_restore_failure",
+    });
     executor.configureSkills([]);
 
     await expect(
@@ -319,12 +362,12 @@ describe("createSandboxExecutor", () => {
             {
               domain: "api.github.com",
               headers: {
-                Authorization: "Bearer token-1"
-              }
-            }
-          ]
-        }
-      })
+                Authorization: "Bearer token-1",
+              },
+            },
+          ],
+        },
+      }),
     ).rejects.toThrow("command failed");
     expect(sandbox.updateNetworkPolicy).toHaveBeenCalledTimes(2);
   });
@@ -337,12 +380,14 @@ describe("createSandboxExecutor", () => {
         throw new Error("restore failed");
       });
     const secondSandbox = makeSandbox("sbx_restore_failure_second");
-    sandboxCreateMock.mockResolvedValueOnce(firstSandbox).mockResolvedValueOnce(secondSandbox);
+    sandboxCreateMock
+      .mockResolvedValueOnce(firstSandbox)
+      .mockResolvedValueOnce(secondSandbox);
     vi.mocked(createBashTool).mockResolvedValue({
       tools: {
         readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) }
-      }
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
     } as never);
 
     const executor = createSandboxExecutor();
@@ -357,27 +402,30 @@ describe("createSandboxExecutor", () => {
             {
               domain: "api.github.com",
               headers: {
-                Authorization: "Bearer token-1"
-              }
-            }
-          ]
-        }
-      })
+                Authorization: "Bearer token-1",
+              },
+            },
+          ],
+        },
+      }),
     ).rejects.toThrow("restore failed");
 
     await executor.execute({
       toolName: "bash",
       input: {
-        command: "echo second"
-      }
+        command: "echo second",
+      },
     });
 
     expect(firstSandbox.stop).toHaveBeenCalledTimes(1);
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
     expect(secondSandbox.runCommand).toHaveBeenCalledWith({
       cmd: "bash",
-      args: ["-c", 'export PATH="/vercel/sandbox/.junior/bin:$PATH" && echo second'],
-      cwd: "/vercel/sandbox"
+      args: [
+        "-c",
+        'export PATH="/vercel/sandbox/.junior/bin:$PATH" && echo second',
+      ],
+      cwd: "/vercel/sandbox",
     });
   });
 
@@ -387,8 +435,8 @@ describe("createSandboxExecutor", () => {
     vi.mocked(createBashTool).mockResolvedValue({
       tools: {
         readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) }
-      }
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
     } as never);
     const runBashCustomCommand = vi.fn(async (command: string) =>
       command === "jr-rpc issue-credential github.issues.write"
@@ -404,30 +452,32 @@ describe("createSandboxExecutor", () => {
               stdout: "credential_enabled\n",
               stderr: "",
               stdout_truncated: false,
-              stderr_truncated: false
-            }
+              stderr_truncated: false,
+            },
           }
-        : { handled: false }
+        : { handled: false },
     );
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_custom",
-      runBashCustomCommand
+      runBashCustomCommand,
     });
     executor.configureSkills([]);
 
     const response = await executor.execute({
       toolName: "bash",
       input: {
-        command: "jr-rpc issue-credential github.issues.write"
-      }
+        command: "jr-rpc issue-credential github.issues.write",
+      },
     });
 
-    expect(runBashCustomCommand).toHaveBeenCalledWith("jr-rpc issue-credential github.issues.write");
+    expect(runBashCustomCommand).toHaveBeenCalledWith(
+      "jr-rpc issue-credential github.issues.write",
+    );
     expect(sandbox.runCommand).not.toHaveBeenCalled();
     expect(response.result).toMatchObject({
       ok: true,
-      exit_code: 0
+      exit_code: 0,
     });
   });
 
@@ -438,7 +488,7 @@ describe("createSandboxExecutor", () => {
       profileHash: "hash_123",
       dependencyCount: 2,
       cacheHit: true,
-      resolveOutcome: "cache_hit"
+      resolveOutcome: "cache_hit",
     });
     sandboxCreateMock.mockResolvedValue(snapshotSandbox);
 
@@ -452,14 +502,14 @@ describe("createSandboxExecutor", () => {
       timeout: 1000 * 60 * 30,
       source: {
         type: "snapshot",
-        snapshotId: "snap_123"
-      }
+        snapshotId: "snap_123",
+      },
     });
     expect(setSpanAttributesMock).toHaveBeenCalledWith(
       expect.objectContaining({
         "app.sandbox.snapshot.cache_hit": true,
-        "app.sandbox.snapshot.resolve_outcome": "cache_hit"
-      })
+        "app.sandbox.snapshot.resolve_outcome": "cache_hit",
+      }),
     );
   });
 
@@ -471,7 +521,7 @@ describe("createSandboxExecutor", () => {
         profileHash: "hash_1",
         dependencyCount: 2,
         cacheHit: true,
-        resolveOutcome: "cache_hit"
+        resolveOutcome: "cache_hit",
       })
       .mockResolvedValueOnce({
         snapshotId: "snap_rebuilt",
@@ -479,13 +529,15 @@ describe("createSandboxExecutor", () => {
         dependencyCount: 2,
         cacheHit: false,
         resolveOutcome: "forced_rebuild",
-        rebuildReason: "snapshot_missing"
+        rebuildReason: "snapshot_missing",
       });
     const missingError = new Error("snapshot not found");
     sandboxCreateMock
       .mockRejectedValueOnce(missingError)
       .mockResolvedValueOnce(rebuiltSandbox);
-    isSnapshotMissingErrorMock.mockImplementation((error: unknown) => error === missingError);
+    isSnapshotMissingErrorMock.mockImplementation(
+      (error: unknown) => error === missingError,
+    );
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -499,25 +551,29 @@ describe("createSandboxExecutor", () => {
         runtime: "node22",
         timeoutMs: 1000 * 60 * 30,
         forceRebuild: true,
-        staleSnapshotId: "snap_missing"
-      })
+        staleSnapshotId: "snap_missing",
+      }),
     );
     expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
       timeout: 1000 * 60 * 30,
       source: {
         type: "snapshot",
-        snapshotId: "snap_rebuilt"
-      }
+        snapshotId: "snap_rebuilt",
+      },
     });
   });
 
   it("wraps snapshot resolution failures as sandbox setup errors", async () => {
-    resolveRuntimeDependencySnapshotMock.mockRejectedValueOnce(new Error("lock timeout"));
+    resolveRuntimeDependencySnapshotMock.mockRejectedValueOnce(
+      new Error("lock timeout"),
+    );
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
 
-    await expect(executor.createSandbox()).rejects.toThrow("sandbox setup failed");
+    await expect(executor.createSandbox()).rejects.toThrow(
+      "sandbox setup failed",
+    );
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
@@ -525,25 +581,27 @@ describe("createSandboxExecutor", () => {
     const sandbox = makeSandbox("sbx_status");
     sandboxCreateMock.mockResolvedValue(sandbox);
     const statuses: string[] = [];
-    resolveRuntimeDependencySnapshotMock.mockImplementationOnce(async (params: { onProgress?: (phase: string) => Promise<void> }) => {
-      await params.onProgress?.("resolve_start");
-      await params.onProgress?.("waiting_for_lock");
-      await params.onProgress?.("building_snapshot");
-      await params.onProgress?.("cache_hit");
-      await params.onProgress?.("build_complete");
-      return {
-        snapshotId: "snap_status",
-        profileHash: "hash_status",
-        dependencyCount: 2,
-        cacheHit: false,
-        resolveOutcome: "rebuilt"
-      };
-    });
+    resolveRuntimeDependencySnapshotMock.mockImplementationOnce(
+      async (params: { onProgress?: (phase: string) => Promise<void> }) => {
+        await params.onProgress?.("resolve_start");
+        await params.onProgress?.("waiting_for_lock");
+        await params.onProgress?.("building_snapshot");
+        await params.onProgress?.("cache_hit");
+        await params.onProgress?.("build_complete");
+        return {
+          snapshotId: "snap_status",
+          profileHash: "hash_status",
+          dependencyCount: 2,
+          cacheHit: false,
+          resolveOutcome: "rebuilt",
+        };
+      },
+    );
 
     const executor = createSandboxExecutor({
       onStatus: async (status) => {
         statuses.push(status);
-      }
+      },
     });
     executor.configureSkills([]);
 
@@ -553,7 +611,7 @@ describe("createSandboxExecutor", () => {
       "Preparing sandbox runtime...",
       "Checking sandbox snapshot cache...",
       "Waiting for sandbox snapshot build...",
-      "Building sandbox snapshot..."
+      "Building sandbox snapshot...",
     ]);
   });
 });
