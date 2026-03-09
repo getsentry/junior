@@ -8,7 +8,18 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-notion
 ```
 
-Set host env vars:
+Create a public Notion integration by following Notion's Authorization guide:
+
+- https://developers.notion.com/guides/get-started/authorization
+
+In the Notion integration settings:
+
+- choose `Public` as the integration type
+- set the redirect URI to `<base-url>/api/oauth/callback/notion`
+- enable the `Read content` capability
+- copy the client ID and client secret from the `Configuration` tab
+
+Set those values in your host environment:
 
 - `NOTION_CLIENT_ID`
 - `NOTION_CLIENT_SECRET`
