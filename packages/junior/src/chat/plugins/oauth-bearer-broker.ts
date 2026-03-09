@@ -145,10 +145,7 @@ export function createOAuthBearerBroker(
                 input.reason,
               );
             } catch {
-              if (
-                stored.expiresAt === undefined ||
-                stored.expiresAt > Date.now()
-              ) {
+              if (stored.expiresAt > Date.now()) {
                 return buildLease(
                   stored.accessToken,
                   input.capability,
