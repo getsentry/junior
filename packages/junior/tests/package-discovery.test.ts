@@ -11,6 +11,13 @@ async function writePluginPackage(nodeModulesRoot: string, packageName: string):
   return packageRoot;
 }
 
+async function writeWorkspacePlugin(workspaceRoot: string, packageDirName: string): Promise<string> {
+  const packageRoot = path.join(workspaceRoot, "packages", packageDirName);
+  await fs.mkdir(path.join(packageRoot, "skills", "demo"), { recursive: true });
+  await fs.writeFile(path.join(packageRoot, "plugin.yaml"), "name: demo\ndescription: demo\n", "utf8");
+  return packageRoot;
+}
+
 describe("plugin package discovery", () => {
   it("discovers plugin content from node_modules even when package.json has no dependencies", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-package-discovery-"));
@@ -62,6 +69,20 @@ describe("plugin package discovery", () => {
     expect(discovered.manifestRoots).toContain(path.resolve(linkedPackageInNodeModules));
     expect(discovered.tracingIncludes).toContain("./node_modules/@acme/junior-plugin-link/plugin.yaml");
     expect(discovered.tracingIncludes).toContain("./node_modules/@acme/junior-plugin-link/skills/**/*");
+  });
+
+  it("discovers sibling workspace plugin packages from pnpm-workspace members", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-package-discovery-"));
+    const appRoot = path.join(tempRoot, "packages", "junior");
+    const pluginRoot = await writeWorkspacePlugin(tempRoot, "junior-plugin-demo");
+
+    await fs.mkdir(appRoot, { recursive: true });
+    await fs.writeFile(path.join(tempRoot, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n', "utf8");
+    await fs.writeFile(path.join(appRoot, "package.json"), JSON.stringify({ name: "@sentry/junior", private: true }), "utf8");
+
+    const discovered = discoverInstalledPluginPackageContent(appRoot);
+    expect(discovered.manifestRoots).toContain(pluginRoot);
+    expect(discovered.skillRoots).toContain(path.join(pluginRoot, "skills"));
   });
 
   it("does not fallback scan when explicit packageNames is empty", async () => {

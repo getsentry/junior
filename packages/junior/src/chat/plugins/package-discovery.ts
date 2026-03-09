@@ -1,4 +1,6 @@
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import {
   discoverNodeModulesDirs,
   listTopLevelPackages,
@@ -67,6 +69,89 @@ function readNextRuntimeConfiguredPackageNames(): string[] | null {
   } catch {
     return [];
   }
+}
+
+function findWorkspaceRoot(cwd: string): string | null {
+  let current = path.resolve(cwd);
+
+  while (true) {
+    const candidate = path.join(current, "pnpm-workspace.yaml");
+    if (isFile(candidate)) {
+      return current;
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
+function discoverWorkspacePluginPackageDirs(
+  cwd: string,
+  packageNames: string[] | null,
+): string[] {
+  if (packageNames !== null) {
+    return [];
+  }
+
+  const workspaceRoot = findWorkspaceRoot(cwd);
+  if (!workspaceRoot) {
+    return [];
+  }
+
+  let packagePatterns: string[] = [];
+  try {
+    const raw = readFileSync(path.join(workspaceRoot, "pnpm-workspace.yaml"), "utf8");
+    const parsed = parseYaml(raw) as { packages?: unknown };
+    packagePatterns = Array.isArray(parsed.packages)
+      ? parsed.packages.filter(
+          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+        )
+      : [];
+  } catch {
+    return [];
+  }
+
+  const discovered: string[] = [];
+  const seen = new Set<string>();
+  const addIfPluginPackage = (candidate: string) => {
+    const normalized = path.resolve(candidate);
+    if (seen.has(normalized) || !isDirectory(normalized)) {
+      return;
+    }
+    const hasRootPluginManifest = isFile(path.join(normalized, "plugin.yaml"));
+    const hasPluginsDir = isDirectory(path.join(normalized, "plugins"));
+    const hasSkillsDir = isDirectory(path.join(normalized, "skills"));
+    if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
+      return;
+    }
+    seen.add(normalized);
+    discovered.push(normalized);
+  };
+
+  for (const pattern of packagePatterns) {
+    const trimmed = pattern.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    if (trimmed.endsWith("/*")) {
+      const baseDir = path.join(workspaceRoot, trimmed.slice(0, -2));
+      if (!isDirectory(baseDir)) {
+        continue;
+      }
+      for (const entry of readdirSync(baseDir)) {
+        addIfPluginPackage(path.join(baseDir, entry));
+      }
+      continue;
+    }
+
+    addIfPluginPackage(path.join(workspaceRoot, trimmed));
+  }
+
+  return discovered;
 }
 
 function resolvePackageDirFromName(
@@ -203,10 +288,16 @@ export function discoverInstalledPluginPackageContent(
   options?: DiscoverInstalledPluginPackageContentOptions,
 ): InstalledPluginPackageContent {
   const resolvedCwd = path.resolve(cwd);
+  const configuredPackageNames =
+    options?.packageNames ?? readNextRuntimeConfiguredPackageNames();
   const discoveredPackages = discoverInstalledJuniorContentPackages(
     resolvedCwd,
     options?.nodeModulesDirs,
-    options?.packageNames,
+    configuredPackageNames,
+  );
+  const workspacePluginDirs = discoverWorkspacePluginPackageDirs(
+    resolvedCwd,
+    configuredPackageNames,
   );
   const manifestRoots: string[] = [];
   const skillRoots: string[] = [];
@@ -234,6 +325,18 @@ export function discoverInstalledPluginPackageContent(
       if (packagePathFromNodeModules) {
         tracingIncludes.push(`${packagePathFromNodeModules}/skills/**/*`);
       }
+    }
+  }
+
+  for (const pluginDir of workspacePluginDirs) {
+    if (isFile(path.join(pluginDir, "plugin.yaml"))) {
+      manifestRoots.push(pluginDir);
+    }
+    if (isDirectory(path.join(pluginDir, "plugins"))) {
+      manifestRoots.push(path.join(pluginDir, "plugins"));
+    }
+    if (isDirectory(path.join(pluginDir, "skills"))) {
+      skillRoots.push(path.join(pluginDir, "skills"));
     }
   }
 

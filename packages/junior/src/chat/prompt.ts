@@ -388,7 +388,7 @@ export function buildSystemPrompt(params: {
         "- Use `slackMessageAddReaction` for rare lightweight acknowledgements. It reacts to the current inbound message via runtime context; never pick a target message yourself.",
         "- If the user explicitly asks for an emoji reaction instead of text, use `slackMessageAddReaction` with a Slack emoji alias name (for example `thumbsup`, not unicode emoji), and avoid redundant acknowledgment text.",
         "- Suggested acknowledgement reactions include 👋, ✅, 👍, and 👀, but choose what best fits the request.",
-        "- To enable provider credentials for this turn, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before commands that need authenticated API calls.",
+        "- To enable provider credentials for this turn, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before commands that need authenticated API calls. GitHub capabilities need repository context, which can come from `--repo` or a configured `github.repo` default.",
         "- To persist or read conversation defaults (for example `github.repo`), run `jr-rpc config get|set|unset|list ...` as a bash command.",
         "- Capabilities are provider-qualified (for example `github.issues.write`).",
         "- When your work is complete, provide the exact user-facing markdown response.",
