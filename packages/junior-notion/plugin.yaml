@@ -11,4 +11,3 @@ credentials:
   api-headers:
     Notion-Version: "2025-09-03"
   auth-token-env: NOTION_TOKEN
-  auth-token-placeholder: host_managed_credential

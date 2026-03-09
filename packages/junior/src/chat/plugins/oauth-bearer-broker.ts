@@ -100,7 +100,8 @@ export function createOAuthBearerBroker(
       }
 
       const envToken = process.env[authTokenEnv]?.trim();
-      if (!manifest.oauth) {
+      const oauth = manifest.oauth;
+      if (!oauth) {
         if (envToken) {
           return buildLease(
             envToken,
@@ -116,24 +117,21 @@ export function createOAuthBearerBroker(
         );
       }
 
-      // 1. Per-user OAuth token (preferred when requester context exists)
-      if (input.requesterId && deps.userTokenStore) {
+      if (input.requesterId) {
         const stored = await deps.userTokenStore.get(
           input.requesterId,
           provider,
         );
         if (stored) {
           const now = Date.now();
-          // Refresh if within buffer of expiry
           if (
             stored.expiresAt !== undefined &&
-            stored.expiresAt - now < REFRESH_BUFFER_MS &&
-            manifest.oauth
+            stored.expiresAt - now < REFRESH_BUFFER_MS
           ) {
             try {
               const refreshed = await refreshAccessToken(
                 stored.refreshToken,
-                manifest.oauth,
+                oauth,
               );
               await deps.userTokenStore.set(
                 input.requesterId,
@@ -180,14 +178,12 @@ export function createOAuthBearerBroker(
           );
         }
 
-        // User has requester context but no stored token — require OAuth.
         throw new CredentialUnavailableError(
           provider,
           `No ${provider} credentials available.`,
         );
       }
 
-      // 2. Static env fallback — only used when there is no requester context
       if (envToken) {
         return buildLease(
           envToken,

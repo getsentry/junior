@@ -7,7 +7,7 @@ It demonstrates:
 - one local skill (`/example-local`)
 - one plugin-bundled skill (`/example-bundle-help`)
 - one bundle-only plugin (`app/plugins/example-bundle/plugin.yaml`) with no credential broker config
-- installed plugin packages (`@sentry/junior-github`, `@sentry/junior-sentry`)
+- installed plugin packages (`@sentry/junior-github`, `@sentry/junior-notion`, `@sentry/junior-sentry`)
 
 ## Run
 
@@ -25,6 +25,7 @@ Copy `.env.example` and set:
 - `REDIS_URL`
 - `AI_MODEL` (optional)
 - `AI_FAST_MODEL` (optional)
+- `NOTION_TOKEN` (optional, enables the bundled Notion plugin)
 
 ## Wiring
 

@@ -4,6 +4,7 @@ import {
   canvasesEditOk,
   canvasesSectionsLookupOk,
   chatGetPermalinkOk,
+  chatPostEphemeralOk,
   chatPostMessageOk,
   conversationsCanvasesCreateOk,
   conversationsHistoryPage,
@@ -17,13 +18,14 @@ import {
   slackListsItemsCreateOk,
   slackListsItemsListPage,
   slackListsItemsUpdateOk,
-  usersInfoOk
+  usersInfoOk,
 } from "../../fixtures/slack/factories/api";
 
 const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
 
 export const SUPPORTED_SLACK_API_METHODS = [
   "chat.postMessage",
+  "chat.postEphemeral",
   "chat.getPermalink",
   "reactions.add",
   "reactions.remove",
@@ -40,7 +42,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "files.info",
   "files.getUploadURLExternal",
   "files.completeUploadExternal",
-  "users.info"
+  "users.info",
 ] as const;
 
 export type SlackApiMethod = (typeof SUPPORTED_SLACK_API_METHODS)[number];
@@ -96,7 +98,11 @@ function maybeParseJson(value: string): unknown {
   return value;
 }
 
-function assignBodyValue(target: Record<string, unknown>, key: string, value: unknown): void {
+function assignBodyValue(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
   const existing = target[key];
   if (existing === undefined) {
     target[key] = value;
@@ -109,7 +115,9 @@ function assignBodyValue(target: Record<string, unknown>, key: string, value: un
   target[key] = [existing, value];
 }
 
-async function parseSlackApiRequestBody(request: Request): Promise<Record<string, unknown>> {
+async function parseSlackApiRequestBody(
+  request: Request,
+): Promise<Record<string, unknown>> {
   const contentType = request.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/x-www-form-urlencoded")) {
@@ -141,7 +149,7 @@ async function parseSlackApiRequestBody(request: Request): Promise<Record<string
       assignBodyValue(parsed, key, {
         name: value.name,
         size: value.size,
-        type: value.type
+        type: value.type,
       });
     });
 
@@ -156,10 +164,14 @@ async function parseSlackApiRequestBody(request: Request): Promise<Record<string
   return { raw: text };
 }
 
-function defaultSlackApiResponse(method: SlackApiMethod): SlackMockHttpResponse {
+function defaultSlackApiResponse(
+  method: SlackApiMethod,
+): SlackMockHttpResponse {
   switch (method) {
     case "chat.postMessage":
       return { body: chatPostMessageOk() };
+    case "chat.postEphemeral":
+      return { body: chatPostEphemeralOk() };
     case "chat.getPermalink":
       return { body: chatGetPermalinkOk() };
     case "reactions.add":
@@ -199,8 +211,8 @@ function defaultSlackApiResponse(method: SlackApiMethod): SlackMockHttpResponse 
         status: 400,
         body: slackError({
           error: "invalid_arguments",
-          provided: method
-        })
+          provided: method,
+        }),
       };
   }
 }
@@ -226,17 +238,20 @@ function toHttpResponse(response: SlackMockHttpResponse): Response {
   if (typeof response.body === "string") {
     return new HttpResponse(response.body, {
       status,
-      headers
+      headers,
     });
   }
 
   return HttpResponse.json(response.body ?? {}, {
     status,
-    headers
+    headers,
   });
 }
 
-export function queueSlackApiResponse(method: SlackApiMethod, response: SlackMockHttpResponse): void {
+export function queueSlackApiResponse(
+  method: SlackApiMethod,
+  response: SlackMockHttpResponse,
+): void {
   const queue = queuedResponses.get(method) ?? [];
   queue.push(response);
   queuedResponses.set(method, queue);
@@ -250,7 +265,7 @@ export function queueSlackApiError(
     provided?: string;
     status?: number;
     headers?: Record<string, string>;
-  }
+  },
 ): void {
   queueSlackApiResponse(method, {
     status: input.status ?? 200,
@@ -258,32 +273,36 @@ export function queueSlackApiError(
     body: slackError({
       error: input.error,
       ...(input.needed ? { needed: input.needed } : {}),
-      ...(input.provided ? { provided: input.provided } : {})
-    })
+      ...(input.provided ? { provided: input.provided } : {}),
+    }),
   });
 }
 
 export function queueSlackRateLimit(
   method: SlackApiMethod,
   retryAfterSeconds = 1,
-  body: Record<string, unknown> | string = "rate limited"
+  body: Record<string, unknown> | string = "rate limited",
 ): void {
   queueSlackApiResponse(method, {
     status: 429,
     headers: {
-      "retry-after": String(retryAfterSeconds)
+      "retry-after": String(retryAfterSeconds),
     },
-    body
+    body,
   });
 }
 
-export function queueSlackExternalUploadResponse(response: SlackMockHttpResponse): void {
+export function queueSlackExternalUploadResponse(
+  response: SlackMockHttpResponse,
+): void {
   const queue = queuedResponses.get(EXTERNAL_UPLOAD_KEY) ?? [];
   queue.push(response);
   queuedResponses.set(EXTERNAL_UPLOAD_KEY, queue);
 }
 
-export function getCapturedSlackApiCalls(method?: SlackApiMethod): CapturedSlackApiCall[] {
+export function getCapturedSlackApiCalls(
+  method?: SlackApiMethod,
+): CapturedSlackApiCall[] {
   if (!method) {
     return [...capturedSlackApiCalls];
   }
@@ -304,7 +323,9 @@ export const slackApiHandlers = [
   http.post("https://slack.com/api/:method", async ({ params, request }) => {
     const rawMethod = params.method;
     if (typeof rawMethod !== "string" || !isSlackApiMethod(rawMethod)) {
-      throw new Error(`[MSW] Unsupported Slack API method: ${String(rawMethod ?? "unknown")}`);
+      throw new Error(
+        `[MSW] Unsupported Slack API method: ${String(rawMethod ?? "unknown")}`,
+      );
     }
 
     const requestBody = await parseSlackApiRequestBody(request);
@@ -312,10 +333,11 @@ export const slackApiHandlers = [
       method: rawMethod,
       url: request.url,
       headers: normalizeHeaders(request.headers),
-      params: requestBody
+      params: requestBody,
     });
 
-    const response = dequeueResponse(rawMethod) ?? defaultSlackApiResponse(rawMethod);
+    const response =
+      dequeueResponse(rawMethod) ?? defaultSlackApiResponse(rawMethod);
     return toHttpResponse(response);
   }),
 
@@ -328,12 +350,12 @@ export const slackApiHandlers = [
       url: request.url,
       headers: normalizeHeaders(request.headers),
       params: {
-        user: userId
-      }
+        user: userId,
+      },
     });
 
     const response = dequeueResponse("users.info") ?? {
-      body: usersInfoOk({ userId })
+      body: usersInfoOk({ userId }),
     };
 
     return toHttpResponse(response);
@@ -346,14 +368,14 @@ export const slackApiHandlers = [
       method: "POST",
       url: request.url,
       headers: normalizeHeaders(request.headers),
-      byteLength: buffer.byteLength
+      byteLength: buffer.byteLength,
     });
 
     const response = dequeueResponse(EXTERNAL_UPLOAD_KEY) ?? {
       status: 200,
-      body: "ok"
+      body: "ok",
     };
 
     return toHttpResponse(response);
-  })
+  }),
 ];

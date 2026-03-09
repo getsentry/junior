@@ -6,6 +6,7 @@ export default withJunior(
     pluginPackages: [
       "@sentry/junior-agent-browser",
       "@sentry/junior-github",
+      "@sentry/junior-notion",
       "@sentry/junior-sentry",
     ],
   },

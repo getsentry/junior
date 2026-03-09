@@ -24,69 +24,6 @@ vi.mock("@/chat/capabilities/catalog", () => ({
     { provider: "notion", capabilities: ["notion.api.read"], configKeys: [] },
   ],
 }));
-const oauthStateStore = new Map<string, unknown>();
-const deliveredMessages: Array<{
-  channel: string;
-  user: string;
-  text: string;
-}> = [];
-vi.mock("@/chat/state", () => ({
-  getStateAdapter: () => ({
-    get: async <T>(key: string): Promise<T | null> =>
-      (oauthStateStore.get(key) as T) ?? null,
-    set: async (key: string, value: unknown) => {
-      oauthStateStore.set(key, value);
-    },
-    delete: async (key: string) => {
-      oauthStateStore.delete(key);
-    },
-  }),
-}));
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginOAuthConfig: (provider: string) => {
-    if (provider === "sentry") {
-      return {
-        clientIdEnv: "SENTRY_CLIENT_ID",
-        clientSecretEnv: "SENTRY_CLIENT_SECRET",
-        authorizeEndpoint: "https://sentry.io/oauth/authorize/",
-        tokenEndpoint: "https://sentry.io/oauth/token/",
-        scope: "event:read org:read project:read",
-        callbackPath: "/api/oauth/callback/sentry",
-      };
-    }
-    return undefined;
-  },
-}));
-vi.mock("@/chat/slack-actions/client", () => ({
-  getSlackClient: () => ({
-    chat: {
-      postMessage: vi.fn(
-        async ({ channel, text }: { channel: string; text: string }) => {
-          deliveredMessages.push({ channel, user: channel, text });
-        },
-      ),
-      postEphemeral: vi.fn(
-        async ({
-          channel,
-          user,
-          text,
-        }: {
-          channel: string;
-          user: string;
-          text: string;
-        }) => {
-          deliveredMessages.push({ channel, user, text });
-        },
-      ),
-    },
-    conversations: {
-      open: vi.fn(async ({ users }: { users: string }) => ({
-        channel: { id: `D-${users}` },
-      })),
-    },
-  }),
-  isDmChannel: (channelId: string) => channelId.startsWith("D"),
-}));
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
