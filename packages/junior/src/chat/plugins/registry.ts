@@ -2,7 +2,6 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { CapabilityProviderDefinition } from "@/chat/capabilities/catalog";
-import type { OAuthProviderConfig } from "@/chat/capabilities/jr-rpc-command";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { pluginRoots } from "@/chat/home";
@@ -18,6 +17,7 @@ import type {
   PluginDefinition,
   PluginManifest,
   PluginNpmRuntimeDependency,
+  OAuthProviderConfig,
   PluginRuntimePostinstallCommand,
   PluginSystemRuntimeDependencyFromUrl,
   PluginSystemRuntimeDependency,

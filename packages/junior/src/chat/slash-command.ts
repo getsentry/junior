@@ -1,28 +1,30 @@
 import type { SlashCommandEvent } from "chat";
-import { startOAuthFlow } from "@/chat/capabilities/jr-rpc-command";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
-import { getOAuthProviderConfig } from "@/chat/capabilities/jr-rpc-command";
+import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { isPluginProvider } from "@/chat/plugins/registry";
+import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { logInfo } from "@/chat/observability";
 
-function providerLabel(provider: string): string {
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
-
-async function postEphemeral(event: SlashCommandEvent, text: string): Promise<void> {
+async function postEphemeral(
+  event: SlashCommandEvent,
+  text: string,
+): Promise<void> {
   await event.channel.postEphemeral(event.user, text, { fallbackToDM: false });
 }
 
-async function handleLink(event: SlashCommandEvent, provider: string): Promise<void> {
+async function handleLink(
+  event: SlashCommandEvent,
+  provider: string,
+): Promise<void> {
   if (!isPluginProvider(provider)) {
     await postEphemeral(event, `Unknown provider: \`${provider}\``);
     return;
   }
 
-  if (!getOAuthProviderConfig(provider)) {
+  if (!getPluginOAuthConfig(provider)) {
     await postEphemeral(
       event,
-      `${providerLabel(provider)} doesn't support account linking.`
+      `${formatProviderLabel(provider)} doesn't support account linking.`,
     );
     return;
   }
@@ -30,7 +32,7 @@ async function handleLink(event: SlashCommandEvent, provider: string): Promise<v
   const raw = event.raw as { channel_id?: string };
   const result = await startOAuthFlow(provider, {
     requesterId: event.user.userId,
-    channelId: raw.channel_id
+    channelId: raw.channel_id,
   });
 
   if (!result.ok) {
@@ -39,25 +41,31 @@ async function handleLink(event: SlashCommandEvent, provider: string): Promise<v
   }
 
   if (result.delivery === "fallback_dm") {
-    await postEphemeral(event, `Check your DMs for a ${providerLabel(provider)} authorization link.`);
+    await postEphemeral(
+      event,
+      `Check your DMs for a ${formatProviderLabel(provider)} authorization link.`,
+    );
   } else if (result.delivery === false) {
     await postEphemeral(
       event,
-      "I wasn't able to send you a private authorization link. Please try again in a direct message."
+      "I wasn't able to send you a private authorization link. Please try again in a direct message.",
     );
   }
 }
 
-async function handleUnlink(event: SlashCommandEvent, provider: string): Promise<void> {
+async function handleUnlink(
+  event: SlashCommandEvent,
+  provider: string,
+): Promise<void> {
   if (!isPluginProvider(provider)) {
     await postEphemeral(event, `Unknown provider: \`${provider}\``);
     return;
   }
 
-  if (!getOAuthProviderConfig(provider)) {
+  if (!getPluginOAuthConfig(provider)) {
     await postEphemeral(
       event,
-      `${providerLabel(provider)} doesn't support account unlinking.`
+      `${formatProviderLabel(provider)} doesn't support account unlinking.`,
     );
     return;
   }
@@ -69,17 +77,25 @@ async function handleUnlink(event: SlashCommandEvent, provider: string): Promise
     "slash_command_unlink",
     { slackUserId: event.user.userId },
     { "app.credential.provider": provider },
-    `Unlinked ${providerLabel(provider)} account via /jr slash command`
+    `Unlinked ${formatProviderLabel(provider)} account via /jr slash command`,
   );
 
-  await postEphemeral(event, `Your ${providerLabel(provider)} account has been unlinked.`);
+  await postEphemeral(
+    event,
+    `Your ${formatProviderLabel(provider)} account has been unlinked.`,
+  );
 }
 
-export async function handleSlashCommand(event: SlashCommandEvent): Promise<void> {
+export async function handleSlashCommand(
+  event: SlashCommandEvent,
+): Promise<void> {
   const [subcommand, provider, ...rest] = event.text.trim().split(/\s+/);
 
   if (!subcommand || !["link", "unlink"].includes(subcommand)) {
-    await postEphemeral(event, "Usage: `/jr link <provider>` or `/jr unlink <provider>`");
+    await postEphemeral(
+      event,
+      "Usage: `/jr link <provider>` or `/jr unlink <provider>`",
+    );
     return;
   }
 

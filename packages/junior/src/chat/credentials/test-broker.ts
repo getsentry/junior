@@ -5,7 +5,7 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 
-export interface TestBrokerConfig {
+interface TestBrokerConfig {
   provider: string;
   domains: string[];
   apiHeaders?: Record<string, string>;
@@ -14,7 +14,7 @@ export interface TestBrokerConfig {
 }
 
 export class TestCredentialBroker implements CredentialBroker {
-  private config: TestBrokerConfig;
+  private readonly config: TestBrokerConfig;
 
   constructor(config: TestBrokerConfig) {
     this.config = config;

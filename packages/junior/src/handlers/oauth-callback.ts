@@ -1,13 +1,14 @@
 import { after } from "next/server";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
 import {
-  getOAuthProviderConfig,
-  resolveBaseUrl,
+  formatProviderLabel,
   type OAuthStatePayload,
-} from "@/chat/capabilities/jr-rpc-command";
+  resolveBaseUrl,
+} from "@/chat/oauth-flow";
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logException, logInfo } from "@/chat/observability";
+import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
@@ -178,8 +179,7 @@ function createReadOnlyConfigService(
 async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
   if (!stored.pendingMessage || !stored.channelId || !stored.threadTs) return;
 
-  const providerLabel =
-    stored.provider.charAt(0).toUpperCase() + stored.provider.slice(1);
+  const providerLabel = formatProviderLabel(stored.provider);
   await postSlackMessage(
     stored.channelId,
     stored.threadTs,
@@ -248,7 +248,7 @@ export async function GET(
   context: { params: Promise<{ provider: string }> },
 ): Promise<Response> {
   const { provider } = await context.params;
-  const providerConfig = getOAuthProviderConfig(provider);
+  const providerConfig = getPluginOAuthConfig(provider);
   if (!providerConfig) {
     return htmlErrorResponse(
       "Unknown provider",
@@ -257,7 +257,7 @@ export async function GET(
     );
   }
 
-  const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
+  const providerLabel = formatProviderLabel(provider);
   const url = new URL(request.url);
   const errorParam = url.searchParams.get("error");
   const code = url.searchParams.get("code");

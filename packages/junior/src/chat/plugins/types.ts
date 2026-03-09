@@ -1,5 +1,20 @@
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 
+export interface PluginOAuthConfig {
+  clientIdEnv: string;
+  clientSecretEnv: string;
+  authorizeEndpoint: string;
+  tokenEndpoint: string;
+  scope?: string;
+  authorizeParams?: Record<string, string>;
+  tokenAuthMethod?: "body" | "basic";
+  tokenExtraHeaders?: Record<string, string>;
+}
+
+export interface OAuthProviderConfig extends PluginOAuthConfig {
+  callbackPath: string;
+}
+
 export interface OAuthBearerCredentials {
   type: "oauth-bearer";
   apiDomains: string[];
@@ -57,16 +72,7 @@ export interface PluginManifest {
   credentials?: PluginCredentials;
   runtimeDependencies?: PluginRuntimeDependency[];
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
-  oauth?: {
-    clientIdEnv: string;
-    clientSecretEnv: string;
-    authorizeEndpoint: string;
-    tokenEndpoint: string;
-    scope?: string;
-    authorizeParams?: Record<string, string>;
-    tokenAuthMethod?: "body" | "basic";
-    tokenExtraHeaders?: Record<string, string>;
-  };
+  oauth?: PluginOAuthConfig;
   target?: {
     type: "repo";
     configKey: string;
