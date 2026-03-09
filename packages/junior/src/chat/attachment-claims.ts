@@ -34,5 +34,5 @@ export function enforceAttachmentClaimTruth(
     return text;
   }
 
-  return `${text}\n\nNote: No file was attached in this turn. I need to run \`attachFile\` before claiming the screenshot is shared.`;
+  return `${text}\n\nNote: No file was attached in this turn. I need to attach the file before claiming it is shared.`;
 }

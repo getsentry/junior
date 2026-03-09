@@ -18,6 +18,7 @@ describe("enforceAttachmentClaimTruth", () => {
     const result = enforceAttachmentClaimTruth(text, false);
 
     expect(result).toContain("No file was attached in this turn.");
-    expect(result).toContain("attachFile");
+    expect(result).toContain("attach the file");
+    expect(result).not.toContain("attachFile");
   });
 });

@@ -1405,10 +1405,17 @@ export async function generateAssistantReply(
         : "success"
       : "execution_failure";
 
-    const resolvedText = enforceAttachmentClaimTruth(
-      primaryText || buildExecutionFailureMessage(toolErrorCount),
-      generatedFiles.length > 0,
-    );
+    const candidateText =
+      primaryText || buildExecutionFailureMessage(toolErrorCount);
+    const escapedOrRawPayload =
+      isExecutionEscapeResponse(candidateText) ||
+      isRawToolPayloadResponse(candidateText);
+    const resolvedText = escapedOrRawPayload
+      ? buildExecutionFailureMessage(toolErrorCount)
+      : enforceAttachmentClaimTruth(candidateText, generatedFiles.length > 0);
+    const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
+      ? "execution_failure"
+      : outcome;
     if (shouldTrace) {
       logInfo(
         "agent_message_out",
@@ -1417,19 +1424,16 @@ export async function generateAssistantReply(
           "app.message.kind": "assistant_outbound",
           "app.message.length": resolvedText.length,
           "app.message.output": summarizeMessageText(resolvedText),
-          "app.ai.outcome": outcome,
+          "app.ai.outcome": resolvedOutcome,
           "app.ai.assistant_messages": assistantMessages.length,
           ...(stopReason ? { "app.ai.stop_reason": stopReason } : {}),
         },
         "Agent message sent",
       );
     }
-    if (
-      isExecutionEscapeResponse(resolvedText) ||
-      isRawToolPayloadResponse(resolvedText)
-    ) {
+    if (escapedOrRawPayload) {
       return {
-        text: buildExecutionFailureMessage(toolErrorCount),
+        text: resolvedText,
         files: generatedFiles.length > 0 ? generatedFiles : undefined,
         artifactStatePatch:
           Object.keys(artifactStatePatch).length > 0
