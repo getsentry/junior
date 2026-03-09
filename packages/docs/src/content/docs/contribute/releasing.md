@@ -15,6 +15,7 @@ Junior uses lockstep package releases for:
 - `@sentry/junior`
 - `@sentry/junior-agent-browser`
 - `@sentry/junior-github`
+- `@sentry/junior-notion`
 - `@sentry/junior-sentry`
 
 ## Package release

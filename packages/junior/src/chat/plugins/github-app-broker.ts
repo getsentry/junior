@@ -1,6 +1,9 @@
 import { createPrivateKey, createSign, randomUUID } from "node:crypto";
 import type { CapabilityTarget } from "@/chat/capabilities/types";
-import type { CredentialBroker, CredentialLease } from "@/chat/credentials/broker";
+import type {
+  CredentialBroker,
+  CredentialLease,
+} from "@/chat/credentials/broker";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
 import type { GitHubAppCredentials, PluginManifest } from "./types";
 
@@ -69,12 +72,14 @@ function getPrivateKey(envName: string) {
     key = createPrivateKey({ key: normalized, format: "pem" });
   } catch {
     throw new Error(
-      `Invalid ${envName}: expected a PEM-encoded RSA private key (raw PEM, escaped newlines, or base64-encoded PEM)`
+      `Invalid ${envName}: expected a PEM-encoded RSA private key (raw PEM, escaped newlines, or base64-encoded PEM)`,
     );
   }
 
   if (key.asymmetricKeyType !== "rsa") {
-    throw new Error(`Invalid ${envName}: GitHub App signing requires an RSA private key`);
+    throw new Error(
+      `Invalid ${envName}: GitHub App signing requires an RSA private key`,
+    );
   }
 
   return key;
@@ -103,20 +108,24 @@ function createAppJwt(appId: string, privateKeyEnv: string): string {
   return `${signingInput}.${signature}`;
 }
 
-async function githubRequest<T>(apiBase: string, path: string, params: {
-  token: string;
-  method?: string;
-  body?: unknown;
-}): Promise<T> {
+async function githubRequest<T>(
+  apiBase: string,
+  path: string,
+  params: {
+    token: string;
+    method?: string;
+    body?: unknown;
+  },
+): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
     method: params.method ?? "GET",
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${params.token}`,
       "X-GitHub-Api-Version": "2022-11-28",
-      ...(params.body ? { "Content-Type": "application/json" } : {})
+      ...(params.body ? { "Content-Type": "application/json" } : {}),
     },
-    ...(params.body ? { body: JSON.stringify(params.body) } : {})
+    ...(params.body ? { body: JSON.stringify(params.body) } : {}),
   });
 
   const text = await response.text();
@@ -131,7 +140,10 @@ async function githubRequest<T>(apiBase: string, path: string, params: {
 
   if (!response.ok) {
     const message =
-      parsed && typeof parsed === "object" && "message" in parsed && typeof parsed.message === "string"
+      parsed &&
+      typeof parsed === "object" &&
+      "message" in parsed &&
+      typeof parsed.message === "string"
         ? parsed.message
         : `GitHub API error ${response.status}`;
     throw new Error(message);
@@ -140,7 +152,10 @@ async function githubRequest<T>(apiBase: string, path: string, params: {
   return parsed as T;
 }
 
-function capabilityToPermissions(capability: string, pluginName: string): Record<string, "read" | "write"> {
+function capabilityToPermissions(
+  capability: string,
+  pluginName: string,
+): Record<string, "read" | "write"> {
   if (capability === `${pluginName}.issues.read`) {
     return { issues: "read" };
   }
@@ -158,11 +173,18 @@ function capabilityToPermissions(capability: string, pluginName: string): Record
 
 export function createGitHubAppBroker(
   manifest: PluginManifest,
-  credentials: GitHubAppCredentials
+  credentials: GitHubAppCredentials,
 ): CredentialBroker {
   const tokenCache = new Map<string, CachedInstallationToken>();
   const provider = manifest.name;
-  const { apiDomains, authTokenEnv, appIdEnv, privateKeyEnv, installationIdEnv } = credentials;
+  const {
+    apiDomains,
+    apiHeaders,
+    authTokenEnv,
+    appIdEnv,
+    privateKeyEnv,
+    installationIdEnv,
+  } = credentials;
   const apiBase = `https://${apiDomains[0]}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
 
@@ -199,43 +221,49 @@ export function createGitHubAppBroker(
           headerTransforms: apiDomains.map((domain) => ({
             domain,
             headers: {
-              Authorization: `Bearer ${cached.token}`
-            }
+              ...(apiHeaders ?? {}),
+              Authorization: `Bearer ${cached.token}`,
+            },
           })),
           expiresAt: new Date(cached.expiresAt).toISOString(),
           metadata: {
             installationId: String(cached.installationId),
             targetScope,
-            reason: input.reason
-          }
+            reason: input.reason,
+          },
         };
       }
 
       const appJwt = createAppJwt(appId, privateKeyEnv);
       const repositoryName = input.target?.repo?.trim().toLowerCase();
-      const tokenRequestBody: { permissions: Record<string, "read" | "write">; repositories?: string[] } = {
-        permissions
+      const tokenRequestBody: {
+        permissions: Record<string, "read" | "write">;
+        repositories?: string[];
+      } = {
+        permissions,
       };
       if (repositoryName) {
         tokenRequestBody.repositories = [repositoryName];
       }
 
-      const accessTokenResponse = await githubRequest<{ token: string; expires_at: string }>(
-        apiBase,
-        `/app/installations/${installationId}/access_tokens`,
-        {
-          method: "POST",
-          token: appJwt,
-          body: tokenRequestBody
-        }
-      );
+      const accessTokenResponse = await githubRequest<{
+        token: string;
+        expires_at: string;
+      }>(apiBase, `/app/installations/${installationId}/access_tokens`, {
+        method: "POST",
+        token: appJwt,
+        body: tokenRequestBody,
+      });
 
       const providerExpiresAtMs = Date.parse(accessTokenResponse.expires_at);
-      const expiresAtMs = Math.min(providerExpiresAtMs, Date.now() + MAX_LEASE_MS);
+      const expiresAtMs = Math.min(
+        providerExpiresAtMs,
+        Date.now() + MAX_LEASE_MS,
+      );
       tokenCache.set(cacheKey, {
         installationId,
         token: accessTokenResponse.token,
-        expiresAt: expiresAtMs
+        expiresAt: expiresAtMs,
       });
 
       return {
@@ -246,16 +274,17 @@ export function createGitHubAppBroker(
         headerTransforms: apiDomains.map((domain) => ({
           domain,
           headers: {
-            Authorization: `Bearer ${accessTokenResponse.token}`
-          }
+            ...(apiHeaders ?? {}),
+            Authorization: `Bearer ${accessTokenResponse.token}`,
+          },
         })),
         expiresAt: new Date(expiresAtMs).toISOString(),
         metadata: {
           installationId: String(installationId),
           targetScope,
-          reason: input.reason
-        }
+          reason: input.reason,
+        },
       };
-    }
+    },
   };
 }

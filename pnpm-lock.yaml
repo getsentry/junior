@@ -34,6 +34,9 @@ importers:
       "@sentry/junior-github":
         specifier: workspace:*
         version: link:../../packages/junior-github
+      "@sentry/junior-notion":
+        specifier: workspace:*
+        version: link:../../packages/junior-notion
       "@sentry/junior-sentry":
         specifier: workspace:*
         version: link:../../packages/junior-sentry
@@ -190,6 +193,8 @@ importers:
   packages/junior-agent-browser: {}
 
   packages/junior-github: {}
+
+  packages/junior-notion: {}
 
   packages/junior-sentry: {}
 

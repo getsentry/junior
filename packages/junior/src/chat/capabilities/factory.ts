@@ -6,7 +6,10 @@ import { TestCredentialBroker } from "@/chat/credentials/test-broker";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth-token-placeholder";
-import { createPluginBroker, getPluginProviders } from "@/chat/plugins/registry";
+import {
+  createPluginBroker,
+  getPluginProviders,
+} from "@/chat/plugins/registry";
 import { getStateAdapter } from "@/chat/state";
 
 let _userTokenStore: UserTokenStore | undefined;
@@ -21,11 +24,13 @@ export function getUserTokenStore(): UserTokenStore {
 // Encapsulation boundary for capability runtime construction.
 // Swap broker strategy here (provider router, test broker, etc.) without
 // changing agent orchestration code in respond.ts.
-export function createSkillCapabilityRuntime(options: {
-  invocationArgs?: string;
-  requesterId?: string;
-  resolveConfiguration?: (key: string) => Promise<unknown>;
-} = {}): SkillCapabilityRuntime {
+export function createSkillCapabilityRuntime(
+  options: {
+    invocationArgs?: string;
+    requesterId?: string;
+    resolveConfiguration?: (key: string) => Promise<unknown>;
+  } = {},
+): SkillCapabilityRuntime {
   logCapabilityCatalogLoadedOnce();
   const useTestBroker = process.env.EVAL_ENABLE_TEST_CREDENTIALS === "1";
   const userTokenStore = getUserTokenStore();
@@ -40,7 +45,13 @@ export function createSkillCapabilityRuntime(options: {
     }
     const placeholder = resolveAuthTokenPlaceholder(credentials);
     brokersByProvider[name] = useTestBroker
-      ? new TestCredentialBroker({ provider: name, domains: credentials.apiDomains, envKey: credentials.authTokenEnv, placeholder })
+      ? new TestCredentialBroker({
+          provider: name,
+          domains: credentials.apiDomains,
+          apiHeaders: credentials.apiHeaders,
+          envKey: credentials.authTokenEnv,
+          placeholder,
+        })
       : createPluginBroker(name, { userTokenStore });
   }
 
@@ -50,6 +61,6 @@ export function createSkillCapabilityRuntime(options: {
     router,
     invocationArgs: options.invocationArgs,
     requesterId: options.requesterId,
-    resolveConfiguration: options.resolveConfiguration
+    resolveConfiguration: options.resolveConfiguration,
   });
 }

@@ -8,7 +8,7 @@
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-
+- 2026-03-09: Added provider-configured token request auth/headers and optional token expiry semantics.
 
 ## Status
 
@@ -27,12 +27,12 @@ Define how Junior handles OAuth-based user authentication for third-party provid
 
 ### Components
 
-| Component | Role |
-|-----------|------|
-| `jr-rpc oauth-start <provider>` | Generates state, stores in Redis, sends ephemeral link to user |
+| Component                        | Role                                                                                                     |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `jr-rpc oauth-start <provider>`  | Generates state, stores in Redis, sends ephemeral link to user                                           |
 | `/api/oauth/callback/[provider]` | Exchanges code for tokens, stores server-side, auto-resumes pending request or posts thread confirmation |
-| `StateAdapterTokenStore` | Redis-backed `UserTokenStore` for persistent token storage |
-| `SentryCredentialBroker` | Issues short-lived credential leases from stored user tokens |
+| `StateAdapterTokenStore`         | Redis-backed `UserTokenStore` for persistent token storage                                               |
+| `SentryCredentialBroker`         | Issues short-lived credential leases from stored user tokens                                             |
 
 ### Why authorization code grant
 
@@ -60,7 +60,7 @@ Agent: jr-rpc oauth-start sentry
   ├─ Generate random state token (32 bytes hex)
   ├─ Store { userId, provider, channelId, threadTs, pendingMessage?, configuration? } in Redis
   │   key `oauth-state:<state>`, 10-min TTL
-  ├─ Build authorize URL with client_id, scope, state, redirect_uri, response_type=code
+  ├─ Build authorize URL with client_id, state, redirect_uri, response_type=code, optional scope, and any provider authorize params
   ├─ Send authorize URL as ephemeral Slack message (only visible to the user)
   ├─ If ephemeral fails: send as DM to the user (still private)
   └─ Return { ok: true, private_delivery_sent: true }
@@ -77,7 +77,7 @@ Provider: Redirects to /api/oauth/callback/<provider>?code=...&state=...
   ├─ Look up `oauth-state:<state>` from Redis → { userId, provider, channelId, threadTs }
   ├─ Validate provider matches
   ├─ Delete state key (one-time use)
-  ├─ POST to token endpoint: grant_type=authorization_code, code, client_id, client_secret, redirect_uri
+  ├─ POST to token endpoint using provider-configured auth method and headers
   ├─ Store tokens via UserTokenStore (Redis key `oauth-token:<userId>:<provider>`)
   ├─ If pendingMessage: after() triggers generateAssistantReply and posts result to thread
   ├─ Else: post confirmation message into Slack thread (best effort, via SLACK_BOT_TOKEN)
@@ -125,8 +125,8 @@ Agent: jr-rpc delete-token sentry
 ### User tokens (persistent)
 
 - Key pattern: `oauth-token:<userId>:<provider>`
-- Value: `{ accessToken, refreshToken, expiresAt }`
-- TTL: `expiresAt - now + 24h` buffer (covers refresh token lifetime)
+- Value: `{ accessToken, refreshToken, expiresAt? }`
+- TTL: `expiresAt - now + 24h` buffer when expiry is known, otherwise 365 days
 - Storage: `StateAdapterTokenStore` wrapping `StateAdapter` (Redis)
 
 ## Base URL resolution
@@ -149,7 +149,10 @@ Providers are configured via plugin manifests (`plugin.yaml`) and exposed throug
   clientSecretEnv: string;   // env var name for client secret
   authorizeEndpoint: string; // provider's authorization URL
   tokenEndpoint: string;     // provider's token exchange URL
-  scope: string;             // OAuth scope string
+  scope?: string;            // OAuth scope string
+  authorizeParams?: Record<string, string>; // extra authorize URL params
+  tokenAuthMethod?: "body" | "basic";       // token client auth method
+  tokenExtraHeaders?: Record<string, string>; // extra token request headers
   callbackPath: string;      // path segment for redirect_uri
 }
 ```

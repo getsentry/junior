@@ -1,0 +1,13 @@
+name: notion
+description: Notion page search and summarization
+
+capabilities:
+  - api.read
+
+credentials:
+  type: oauth-bearer
+  api-domains:
+    - api.notion.com
+  api-headers:
+    Notion-Version: "2025-09-03"
+  auth-token-env: NOTION_TOKEN

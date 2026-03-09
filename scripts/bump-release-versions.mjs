@@ -12,7 +12,8 @@ const files = [
   "packages/junior/package.json",
   "packages/junior-agent-browser/package.json",
   "packages/junior-github/package.json",
-  "packages/junior-sentry/package.json"
+  "packages/junior-notion/package.json",
+  "packages/junior-sentry/package.json",
 ];
 
 for (const relativePath of files) {

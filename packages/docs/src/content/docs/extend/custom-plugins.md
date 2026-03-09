@@ -50,6 +50,8 @@ credentials:
   type: oauth-bearer
   api-domains:
     - api.example.com
+  api-headers:
+    X-Api-Version: "2026-01-01"
   auth-token-env: EXAMPLE_AUTH_TOKEN
   auth-token-placeholder: host_managed_credential
 
@@ -58,7 +60,11 @@ oauth:
   client-secret-env: EXAMPLE_CLIENT_SECRET
   authorize-endpoint: https://example.com/oauth/authorize
   token-endpoint: https://example.com/oauth/token
-  scope: "read write"
+  authorize-params:
+    audience: workspace
+  token-auth-method: basic
+  token-extra-headers:
+    Content-Type: application/json
 
 runtime-dependencies:
   - type: npm
@@ -100,6 +106,7 @@ runtime-postinstall:
 Common fields:
 
 - `api-domains`
+- `api-headers` (optional)
 - `auth-token-env`
 - `auth-token-placeholder` (optional)
 
@@ -113,7 +120,10 @@ Use this section when the provider supports user OAuth. Include:
 - `client-secret-env`
 - `authorize-endpoint`
 - `token-endpoint`
-- `scope`
+- `scope` (optional)
+- `authorize-params` (optional)
+- `token-auth-method` (optional)
+- `token-extra-headers` (optional)
 
 If omitted, plugin auth is treated as non-OAuth. `oauth` requires `credentials.type: oauth-bearer`.
 

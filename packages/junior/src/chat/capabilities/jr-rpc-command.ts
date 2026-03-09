@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { Bash, defineCommand } from "just-bash";
 import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
@@ -6,90 +5,10 @@ import { parseRepoTarget } from "@/chat/capabilities/target";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import { logInfo, logWarn } from "@/chat/observability";
+import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
+import { logInfo } from "@/chat/observability";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
-import { getSlackClient, isDmChannel } from "@/chat/slack-actions/client";
 import type { Skill } from "@/chat/skills";
-import { getStateAdapter } from "@/chat/state";
-
-/**
- * Deliver a private message to the requesting user. Authorization links must
- * ONLY be visible to the requesting user — never posted as visible channel
- * messages. See specs/security-policy.md "OAuth authorization link privacy".
- *
- * Delivery strategy:
- * 1. In 1:1 DMs (D-prefix): chat.postMessage (already private).
- * 2. In channels/groups: chat.postEphemeral (only the user sees it).
- * 3. If step 1 or 2 fails: open a DM with the user via conversations.open
- *    and send there.
- * 4. If all fail: return false. Caller must NOT expose the URL.
- */
-async function deliverPrivateMessage(input: {
-  channelId?: string;
-  threadTs?: string;
-  userId: string;
-  text: string;
-}): Promise<"in_context" | "fallback_dm" | false> {
-  let client: ReturnType<typeof getSlackClient>;
-  try {
-    client = getSlackClient();
-  } catch {
-    logWarn("oauth_private_delivery_skip", {}, { "app.reason": "missing_bot_token" }, "Skipped private message delivery — no SLACK_BOT_TOKEN");
-    return false;
-  }
-
-  // Strategy 1 & 2: Try in-context delivery (ephemeral or DM message)
-  if (input.channelId) {
-    const isDm = isDmChannel(input.channelId);
-    try {
-      if (isDm) {
-        await client.chat.postMessage({
-          channel: input.channelId,
-          text: input.text,
-          ...(input.threadTs ? { thread_ts: input.threadTs } : {})
-        });
-      } else {
-        await client.chat.postEphemeral({
-          channel: input.channelId,
-          user: input.userId,
-          text: input.text,
-          ...(input.threadTs ? { thread_ts: input.threadTs } : {})
-        });
-      }
-      return "in_context";
-    } catch (error) {
-      const slackError = error instanceof Error ? error.message : String(error);
-      logWarn(
-        "oauth_private_delivery_failed",
-        {},
-        { "app.slack.error": slackError, "app.slack.channel": input.channelId },
-        `${isDm ? "DM" : "Ephemeral"} message delivery failed, falling back to DM`
-      );
-    }
-  }
-
-  // Strategy 3: Open a DM with the user and send there
-  try {
-    const openResult = await client.conversations.open({ users: input.userId });
-    const dmChannelId = openResult.channel?.id;
-    if (!dmChannelId) {
-      logWarn("oauth_dm_fallback_failed", {}, { "app.reason": "no_dm_channel_id" }, "conversations.open returned no channel ID");
-      return false;
-    }
-
-    await client.chat.postMessage({ channel: dmChannelId, text: input.text });
-    return "fallback_dm";
-  } catch (error) {
-    const slackError = error instanceof Error ? error.message : String(error);
-    logWarn(
-      "oauth_dm_fallback_failed",
-      {},
-      { "app.slack.error": slackError },
-      "DM fallback delivery failed"
-    );
-    return false;
-  }
-}
 
 type JrRpcDeps = {
   capabilityRuntime: SkillCapabilityRuntime;
@@ -100,10 +19,17 @@ type JrRpcDeps = {
   threadTs?: string;
   userMessage?: string;
   userTokenStore?: UserTokenStore;
-  onConfigurationValueChanged?: (key: string, value: unknown | undefined) => void;
+  onConfigurationValueChanged?: (
+    key: string,
+    value: unknown | undefined,
+  ) => void;
 };
 
-function commandResult(input: { stdout?: unknown; stderr?: string; exitCode: number }) {
+function commandResult(input: {
+  stdout?: unknown;
+  stderr?: string;
+  exitCode: number;
+}) {
   let stdout = "";
   if (typeof input.stdout === "string") {
     stdout = input.stdout;
@@ -113,13 +39,15 @@ function commandResult(input: { stdout?: unknown; stderr?: string; exitCode: num
   return {
     stdout,
     stderr: input.stderr ?? "",
-    exitCode: input.exitCode
+    exitCode: input.exitCode,
   };
 }
 
 function requireChannelConfiguration(
-  deps: JrRpcDeps
-): { ok: true; configuration: ChannelConfigurationService } | { ok: false; result: ReturnType<typeof commandResult> } {
+  deps: JrRpcDeps,
+):
+  | { ok: true; configuration: ChannelConfigurationService }
+  | { ok: false; result: ReturnType<typeof commandResult> } {
   if (deps.channelConfiguration) {
     return { ok: true, configuration: deps.channelConfiguration };
   }
@@ -127,12 +55,14 @@ function requireChannelConfiguration(
     ok: false,
     result: commandResult({
       stderr: "jr-rpc config commands require active conversation context\n",
-      exitCode: 1
-    })
+      exitCode: 1,
+    }),
   };
 }
 
-function parsePrefixFlag(extras: string[]): { ok: true; prefix?: string } | { ok: false; error: string } {
+function parsePrefixFlag(
+  extras: string[],
+): { ok: true; prefix?: string } | { ok: false; error: string } {
   if (extras.length === 0) {
     return { ok: true };
   }
@@ -146,19 +76,19 @@ function parsePrefixFlag(extras: string[]): { ok: true; prefix?: string } | { ok
   }
   return {
     ok: false,
-    error: "jr-rpc config list accepts optional --prefix <value>\n"
+    error: "jr-rpc config list accepts optional --prefix <value>\n",
   };
 }
 
 async function handleIssueCredentialCommand(
   args: string[],
-  deps: JrRpcDeps
+  deps: JrRpcDeps,
 ): Promise<ReturnType<typeof commandResult>> {
   const capability = (args[0] ?? "").trim();
   if (!capability) {
     return commandResult({
       stderr: "jr-rpc issue-credential requires a capability argument\n",
-      exitCode: 2
+      exitCode: 2,
     });
   }
 
@@ -172,15 +102,16 @@ async function handleIssueCredentialCommand(
     } else {
       return {
         stdout: "",
-        stderr: "jr-rpc issue-credential requires exactly one capability argument and optional --repo <owner/repo>\n",
-        exitCode: 2
+        stderr:
+          "jr-rpc issue-credential requires exactly one capability argument and optional --repo <owner/repo>\n",
+        exitCode: 2,
       };
     }
     if (!parseRepoTarget(repoRef ?? "")) {
       return {
         stdout: "",
         stderr: "jr-rpc issue-credential --repo must be in owner/repo format\n",
-        exitCode: 2
+        exitCode: 2,
       };
     }
   }
@@ -191,21 +122,25 @@ async function handleIssueCredentialCommand(
       activeSkill: deps.activeSkill,
       capability,
       ...(repoRef ? { repoRef } : {}),
-      reason: `skill:${deps.activeSkill?.name ?? "unknown"}:jr-rpc:issue-credential`
+      reason: `skill:${deps.activeSkill?.name ?? "unknown"}:jr-rpc:issue-credential`,
     });
   } catch (error) {
     // Auto-start OAuth when no credentials are available for an OAuth-capable provider
-    if (error instanceof CredentialUnavailableError && getOAuthProviderConfig(error.provider) && deps.requesterId) {
+    if (
+      error instanceof CredentialUnavailableError &&
+      getPluginOAuthConfig(error.provider) &&
+      deps.requesterId
+    ) {
       const oauthResult = await startOAuthFlow(error.provider, {
         requesterId: deps.requesterId,
         channelId: deps.channelId,
         threadTs: deps.threadTs,
         userMessage: deps.userMessage,
         channelConfiguration: deps.channelConfiguration,
-        activeSkillName: deps.activeSkill?.name ?? undefined
+        activeSkillName: deps.activeSkill?.name ?? undefined,
       });
       if (oauthResult.ok) {
-        const providerLabel = error.provider.charAt(0).toUpperCase() + error.provider.slice(1);
+        const providerLabel = formatProviderLabel(error.provider);
         return commandResult({
           stdout: {
             credential_unavailable: true,
@@ -214,38 +149,41 @@ async function handleIssueCredentialCommand(
             private_delivery_sent: !!oauthResult.delivery,
             message: oauthResult.delivery
               ? `I need to connect your ${providerLabel} account first. I've sent you a private authorization link.`
-              : `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try your command again.`
+              : `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try your command again.`,
           },
-          exitCode: 1
+          exitCode: 1,
         });
       }
       // OAuth start failed — surface the specific misconfiguration error
       return {
         stdout: "",
         stderr: `${oauthResult.error}\n`,
-        exitCode: 1
+        exitCode: 1,
       };
     }
 
     return {
       stdout: "",
       stderr: `${error instanceof Error ? error.message : String(error)}\n`,
-      exitCode: 1
+      exitCode: 1,
     };
   }
 
   return commandResult({
     stdout: `${outcome.reused ? "credential_reused" : "credential_enabled"} capability=${capability} expiresAt=${outcome.expiresAt}\n`,
-    exitCode: 0
+    exitCode: 0,
   });
 }
 
-async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<ReturnType<typeof commandResult>> {
+async function handleConfigCommand(
+  args: string[],
+  deps: JrRpcDeps,
+): Promise<ReturnType<typeof commandResult>> {
   const usage = [
     "jr-rpc config get <key>",
     "jr-rpc config set <key> <value> [--json]",
     "jr-rpc config unset <key>",
-    "jr-rpc config list [--prefix <value>]"
+    "jr-rpc config list [--prefix <value>]",
   ].join("\n");
   const subverb = (args[0] ?? "").trim();
   const configurationResult = requireChannelConfiguration(deps);
@@ -259,7 +197,7 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
     if (!key || args.length !== 2) {
       return commandResult({
         stderr: `Usage:\n${usage}\n`,
-        exitCode: 2
+        exitCode: 2,
       });
     }
     const entry = await configuration.get(key);
@@ -272,14 +210,14 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
             value: entry.value,
             updatedAt: entry.updatedAt,
             updatedBy: entry.updatedBy,
-            source: entry.source
+            source: entry.source,
           }
         : {
             ok: true,
             key,
-            found: false
+            found: false,
           },
-      exitCode: 0
+      exitCode: 0,
     });
   }
 
@@ -290,7 +228,7 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
     if (!key || valueArg === undefined) {
       return commandResult({
         stderr: `Usage:\n${usage}\n`,
-        exitCode: 2
+        exitCode: 2,
       });
     }
 
@@ -301,7 +239,7 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
       } else {
         return commandResult({
           stderr: `Usage:\n${usage}\n`,
-          exitCode: 2
+          exitCode: 2,
         });
       }
     }
@@ -313,7 +251,7 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
       } catch (error) {
         return commandResult({
           stderr: `Invalid JSON value for jr-rpc config set --json: ${error instanceof Error ? error.message : String(error)}\n`,
-          exitCode: 2
+          exitCode: 2,
         });
       }
     }
@@ -323,7 +261,7 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
         key,
         value,
         updatedBy: deps.requesterId,
-        source: "jr-rpc"
+        source: "jr-rpc",
       });
       logInfo(
         "jr_rpc_config_set",
@@ -332,9 +270,11 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
           "app.config.key": entry.key,
           "app.config.scope": entry.scope,
           "app.config.source": entry.source ?? "jr-rpc",
-          ...(deps.activeSkill?.name ? { "app.skill.name": deps.activeSkill.name } : {})
+          ...(deps.activeSkill?.name
+            ? { "app.skill.name": deps.activeSkill.name }
+            : {}),
         },
-        "Set channel configuration via jr-rpc"
+        "Set channel configuration via jr-rpc",
       );
       deps.onConfigurationValueChanged?.(entry.key, entry.value);
       return commandResult({
@@ -345,14 +285,14 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
           value: entry.value,
           updatedAt: entry.updatedAt,
           updatedBy: entry.updatedBy,
-          source: entry.source
+          source: entry.source,
         },
-        exitCode: 0
+        exitCode: 0,
       });
     } catch (error) {
       return commandResult({
         stderr: `${error instanceof Error ? error.message : String(error)}\n`,
-        exitCode: 1
+        exitCode: 1,
       });
     }
   }
@@ -362,7 +302,7 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
     if (!key || args.length !== 2) {
       return commandResult({
         stderr: `Usage:\n${usage}\n`,
-        exitCode: 2
+        exitCode: 2,
       });
     }
     const deleted = await configuration.unset(key);
@@ -372,9 +312,11 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
         {},
         {
           "app.config.key": key,
-          ...(deps.activeSkill?.name ? { "app.skill.name": deps.activeSkill.name } : {})
+          ...(deps.activeSkill?.name
+            ? { "app.skill.name": deps.activeSkill.name }
+            : {}),
         },
-        "Unset channel configuration via jr-rpc"
+        "Unset channel configuration via jr-rpc",
       );
       deps.onConfigurationValueChanged?.(key, undefined);
     }
@@ -382,9 +324,9 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
       stdout: {
         ok: true,
         key,
-        deleted
+        deleted,
       },
-      exitCode: 0
+      exitCode: 0,
     });
   }
 
@@ -393,11 +335,11 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
     if (!prefixResult.ok) {
       return commandResult({
         stderr: prefixResult.error,
-        exitCode: 2
+        exitCode: 2,
       });
     }
     const entries = await configuration.list({
-      ...(prefixResult.prefix ? { prefix: prefixResult.prefix } : {})
+      ...(prefixResult.prefix ? { prefix: prefixResult.prefix } : {}),
     });
     return commandResult({
       stdout: {
@@ -408,16 +350,16 @@ async function handleConfigCommand(args: string[], deps: JrRpcDeps): Promise<Ret
           value: entry.value,
           updatedAt: entry.updatedAt,
           updatedBy: entry.updatedBy,
-          source: entry.source
-        }))
+          source: entry.source,
+        })),
       },
-      exitCode: 0
+      exitCode: 0,
     });
   }
 
   return commandResult({
     stderr: `Usage:\n${usage}\n`,
-    exitCode: 2
+    exitCode: 2,
   });
 }
 
@@ -425,150 +367,41 @@ function isKnownProvider(provider: string): boolean {
   return listCapabilityProviders().some((p) => p.provider === provider);
 }
 
-export type OAuthProviderConfig = {
-  clientIdEnv: string;
-  clientSecretEnv: string;
-  authorizeEndpoint: string;
-  tokenEndpoint: string;
-  scope: string;
-  callbackPath: string;
-};
-
-export function getOAuthProviderConfig(provider: string): OAuthProviderConfig | undefined {
-  return getPluginOAuthConfig(provider);
-}
-
-export type OAuthStatePayload = {
-  userId: string;
-  provider: string;
-  channelId?: string;
-  threadTs?: string;
-  pendingMessage?: string;
-  configuration?: Record<string, unknown>;
-};
-
-const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-
-export function resolveBaseUrl(): string | undefined {
-  const explicit = process.env.JUNIOR_BASE_URL?.trim();
-  if (explicit) return explicit;
-  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
-  if (vercelProd) return `https://${vercelProd}`;
-  const vercelUrl = process.env.VERCEL_URL?.trim();
-  if (vercelUrl) return `https://${vercelUrl}`;
-  return undefined;
-}
-
-export type OAuthFlowInput = {
-  requesterId: string;
-  channelId?: string;
-  threadTs?: string;
-  userMessage?: string;
-  channelConfiguration?: ChannelConfigurationService;
-  activeSkillName?: string;
-};
-
-export async function startOAuthFlow(
-  provider: string,
-  input: OAuthFlowInput
-): Promise<{ ok: false; error: string } | { ok: true; delivery: "in_context" | "fallback_dm" | false }> {
-  const providerConfig = getOAuthProviderConfig(provider);
-  if (!providerConfig) {
-    return { ok: false, error: `Provider "${provider}" does not support OAuth authorization` };
-  }
-
-  const clientId = process.env[providerConfig.clientIdEnv]?.trim();
-  if (!clientId) {
-    return { ok: false, error: `Missing ${providerConfig.clientIdEnv} environment variable` };
-  }
-
-  const baseUrl = resolveBaseUrl();
-  if (!baseUrl) {
-    return { ok: false, error: "Cannot determine base URL (set JUNIOR_BASE_URL or deploy to Vercel)" };
-  }
-
-  // Snapshot channel configuration so the resumed turn has context
-  let configuration: Record<string, unknown> | undefined;
-  if (input.userMessage && input.channelConfiguration) {
-    configuration = await input.channelConfiguration.resolveValues();
-  }
-
-  const state = randomBytes(32).toString("hex");
-  const stateKey = `oauth-state:${state}`;
-  const stateAdapter = getStateAdapter();
-  const statePayload: OAuthStatePayload = {
-    userId: input.requesterId,
-    provider,
-    ...(input.channelId ? { channelId: input.channelId } : {}),
-    ...(input.threadTs ? { threadTs: input.threadTs } : {}),
-    ...(input.userMessage ? { pendingMessage: input.userMessage } : {}),
-    ...(configuration && Object.keys(configuration).length > 0 ? { configuration } : {})
-  };
-  await stateAdapter.set(stateKey, statePayload, OAUTH_STATE_TTL_MS);
-
-  const redirectUri = `${baseUrl}${providerConfig.callbackPath}`;
-  const params = new URLSearchParams({
-    client_id: clientId,
-    scope: providerConfig.scope,
-    state,
-    redirect_uri: redirectUri,
-    response_type: "code"
-  });
-  const authorizeUrl = `${providerConfig.authorizeEndpoint}?${params.toString()}`;
-
-  logInfo(
-    "jr_rpc_oauth_start",
-    {},
-    {
-      "app.credential.provider": provider,
-      ...(input.activeSkillName ? { "app.skill.name": input.activeSkillName } : {})
-    },
-    "Initiated OAuth authorization code flow"
-  );
-
-  const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
-  const delivery = await deliverPrivateMessage({
-    channelId: input.channelId,
-    threadTs: input.threadTs,
-    userId: input.requesterId,
-    text: `<${authorizeUrl}|Click here to link your ${providerLabel} account>. Once you've authorized, you'll see a confirmation in Slack.`
-  });
-
-  return { ok: true, delivery };
-}
-
 async function handleOAuthStartCommand(
   args: string[],
-  deps: JrRpcDeps
+  deps: JrRpcDeps,
 ): Promise<ReturnType<typeof commandResult>> {
   const provider = (args[0] ?? "").trim();
   if (!provider) {
     return commandResult({
       stderr: "jr-rpc oauth-start requires: <provider>\n",
-      exitCode: 2
+      exitCode: 2,
     });
   }
 
   if (args.length > 1) {
     return commandResult({
       stderr: "jr-rpc oauth-start accepts only a provider argument\n",
-      exitCode: 2
+      exitCode: 2,
     });
   }
 
   // Check if user already has valid tokens for this provider
   if (deps.requesterId && deps.userTokenStore) {
     const stored = await deps.userTokenStore.get(deps.requesterId, provider);
-    if (stored && stored.expiresAt > Date.now()) {
-      const providerLabel = provider.charAt(0).toUpperCase() + provider.slice(1);
+    if (
+      stored &&
+      (stored.expiresAt === undefined || stored.expiresAt > Date.now())
+    ) {
+      const providerLabel = formatProviderLabel(provider);
       return commandResult({
         stdout: {
           ok: true,
           already_connected: true,
           provider,
-          message: `Your ${providerLabel} account is already connected.`
+          message: `Your ${providerLabel} account is already connected.`,
         },
-        exitCode: 0
+        exitCode: 0,
       });
     }
   }
@@ -576,7 +409,7 @@ async function handleOAuthStartCommand(
   if (!deps.requesterId) {
     return commandResult({
       stderr: "jr-rpc oauth-start requires requester context (requesterId)\n",
-      exitCode: 1
+      exitCode: 1,
     });
   }
 
@@ -586,7 +419,7 @@ async function handleOAuthStartCommand(
     requesterId: deps.requesterId,
     channelId: deps.channelId,
     threadTs: deps.threadTs,
-    activeSkillName: deps.activeSkill?.name ?? undefined
+    activeSkillName: deps.activeSkill?.name ?? undefined,
   });
   if (!result.ok) {
     return commandResult({ stderr: `${result.error}\n`, exitCode: 1 });
@@ -597,48 +430,49 @@ async function handleOAuthStartCommand(
       stdout: {
         ok: true,
         private_delivery_sent: false,
-        message: "I wasn't able to send you a private authorization link. Please send me a direct message and try again."
+        message:
+          "I wasn't able to send you a private authorization link. Please send me a direct message and try again.",
       },
-      exitCode: 0
+      exitCode: 0,
     });
   }
 
   return commandResult({
     stdout: {
       ok: true,
-      private_delivery_sent: true
+      private_delivery_sent: true,
     },
-    exitCode: 0
+    exitCode: 0,
   });
 }
 
 async function handleDeleteTokenCommand(
   args: string[],
-  deps: JrRpcDeps
+  deps: JrRpcDeps,
 ): Promise<ReturnType<typeof commandResult>> {
   const provider = (args[0] ?? "").trim();
   if (!provider) {
     return commandResult({
       stderr: "jr-rpc delete-token requires: <provider>\n",
-      exitCode: 2
+      exitCode: 2,
     });
   }
   if (!isKnownProvider(provider)) {
     return commandResult({
       stderr: `Unknown provider: ${provider}\n`,
-      exitCode: 2
+      exitCode: 2,
     });
   }
   if (!deps.requesterId) {
     return commandResult({
       stderr: "jr-rpc delete-token requires requester context (requesterId)\n",
-      exitCode: 1
+      exitCode: 1,
     });
   }
   if (!deps.userTokenStore) {
     return commandResult({
       stderr: "Token storage is not available\n",
-      exitCode: 1
+      exitCode: 1,
     });
   }
 
@@ -649,14 +483,16 @@ async function handleDeleteTokenCommand(
     {},
     {
       "app.credential.provider": provider,
-      ...(deps.activeSkill?.name ? { "app.skill.name": deps.activeSkill.name } : {})
+      ...(deps.activeSkill?.name
+        ? { "app.skill.name": deps.activeSkill.name }
+        : {}),
     },
-    "Deleted user token via jr-rpc"
+    "Deleted user token via jr-rpc",
   );
 
   return commandResult({
     stdout: `token_deleted provider=${provider}\n`,
-    exitCode: 0
+    exitCode: 0,
   });
 }
 
@@ -669,7 +505,7 @@ function createJrRpcCommand(deps: JrRpcDeps) {
       "jr-rpc config get <key>",
       "jr-rpc config set <key> <value> [--json]",
       "jr-rpc config unset <key>",
-      "jr-rpc config list [--prefix <value>]"
+      "jr-rpc config list [--prefix <value>]",
     ].join("\n");
     const verb = (args[0] ?? "").trim();
     if (verb === "issue-credential") {
@@ -686,14 +522,14 @@ function createJrRpcCommand(deps: JrRpcDeps) {
     }
     return commandResult({
       stderr: `Unsupported jr-rpc command. Use:\n${usage}\n`,
-      exitCode: 2
+      exitCode: 2,
     });
   });
 }
 
 export async function maybeExecuteJrRpcCustomCommand(
   command: string,
-  deps: JrRpcDeps
+  deps: JrRpcDeps,
 ): Promise<
   | {
       handled: false;
@@ -719,7 +555,7 @@ export async function maybeExecuteJrRpcCustomCommand(
     return { handled: false };
   }
   const shell = new Bash({
-    customCommands: [createJrRpcCommand(deps)]
+    customCommands: [createJrRpcCommand(deps)],
   });
   const execResult = await shell.exec(normalized);
   return {
@@ -734,7 +570,7 @@ export async function maybeExecuteJrRpcCustomCommand(
       stdout: execResult.stdout,
       stderr: execResult.stderr,
       stdout_truncated: false,
-      stderr_truncated: false
-    }
+      stderr_truncated: false,
+    },
   };
 }

@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOAuthBearerBroker } from "@/chat/plugins/oauth-bearer-broker";
-import type { OAuthBearerCredentials, PluginManifest } from "@/chat/plugins/types";
+import type {
+  OAuthBearerCredentials,
+  PluginManifest,
+} from "@/chat/plugins/types";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import type { StoredTokens, UserTokenStore } from "@/chat/credentials/user-token-store";
+import type {
+  StoredTokens,
+  UserTokenStore,
+} from "@/chat/credentials/user-token-store";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -15,18 +21,35 @@ const SENTRY_MANIFEST: PluginManifest = {
   credentials: {
     type: "oauth-bearer",
     apiDomains: ["sentry.io", "us.sentry.io", "de.sentry.io"],
-    authTokenEnv: "SENTRY_AUTH_TOKEN"
+    authTokenEnv: "SENTRY_AUTH_TOKEN",
   },
   oauth: {
     clientIdEnv: "SENTRY_CLIENT_ID",
     clientSecretEnv: "SENTRY_CLIENT_SECRET",
     authorizeEndpoint: "https://sentry.io/oauth/authorize/",
     tokenEndpoint: "https://sentry.io/oauth/token/",
-    scope: "event:read org:read project:read"
-  }
+    scope: "event:read org:read project:read",
+  },
 };
 
-function createMockTokenStore(tokens?: Record<string, StoredTokens>): UserTokenStore {
+const NOTION_MANIFEST: PluginManifest = {
+  name: "notion",
+  description: "Notion search",
+  capabilities: ["notion.api.read"],
+  configKeys: [],
+  credentials: {
+    type: "oauth-bearer",
+    apiDomains: ["api.notion.com"],
+    apiHeaders: {
+      "Notion-Version": "2025-09-03",
+    },
+    authTokenEnv: "NOTION_TOKEN",
+  },
+};
+
+function createMockTokenStore(
+  tokens?: Record<string, StoredTokens>,
+): UserTokenStore {
   const store = new Map<string, StoredTokens>();
   if (tokens) {
     for (const [key, value] of Object.entries(tokens)) {
@@ -34,13 +57,14 @@ function createMockTokenStore(tokens?: Record<string, StoredTokens>): UserTokenS
     }
   }
   return {
-    get: async (userId: string, provider: string) => store.get(`${userId}:${provider}`),
+    get: async (userId: string, provider: string) =>
+      store.get(`${userId}:${provider}`),
     set: async (userId: string, provider: string, t: StoredTokens) => {
       store.set(`${userId}:${provider}`, t);
     },
     delete: async (userId: string, provider: string) => {
       store.delete(`${userId}:${provider}`);
-    }
+    },
   };
 }
 
@@ -48,7 +72,7 @@ function createBroker(tokenStore?: UserTokenStore) {
   return createOAuthBearerBroker(
     SENTRY_MANIFEST,
     SENTRY_MANIFEST.credentials as OAuthBearerCredentials,
-    { userTokenStore: tokenStore ?? createMockTokenStore() }
+    { userTokenStore: tokenStore ?? createMockTokenStore() },
   );
 }
 
@@ -64,24 +88,33 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       "U123:sentry": {
         accessToken: "user-access-token",
         refreshToken: "user-refresh-token",
-        expiresAt: Date.now() + 60 * 60 * 1000
-      }
+        expiresAt: Date.now() + 60 * 60 * 1000,
+      },
     });
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
       capability: "sentry.api",
       reason: "test:oauth",
-      requesterId: "U123"
+      requesterId: "U123",
     });
 
     expect(lease.provider).toBe("sentry");
     expect(lease.capability).toBe("sentry.api");
     expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
-      { domain: "sentry.io", headers: { Authorization: "Bearer user-access-token" } },
-      { domain: "us.sentry.io", headers: { Authorization: "Bearer user-access-token" } },
-      { domain: "de.sentry.io", headers: { Authorization: "Bearer user-access-token" } }
+      {
+        domain: "sentry.io",
+        headers: { Authorization: "Bearer user-access-token" },
+      },
+      {
+        domain: "us.sentry.io",
+        headers: { Authorization: "Bearer user-access-token" },
+      },
+      {
+        domain: "de.sentry.io",
+        headers: { Authorization: "Bearer user-access-token" },
+      },
     ]);
   });
 
@@ -90,15 +123,24 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     const broker = createBroker();
     const lease = await broker.issue({
       capability: "sentry.api",
-      reason: "test:env-fallback"
+      reason: "test:env-fallback",
     });
 
     expect(lease.provider).toBe("sentry");
     expect(lease.env).toEqual({ SENTRY_AUTH_TOKEN: "host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
-      { domain: "sentry.io", headers: { Authorization: "Bearer static-env-token" } },
-      { domain: "us.sentry.io", headers: { Authorization: "Bearer static-env-token" } },
-      { domain: "de.sentry.io", headers: { Authorization: "Bearer static-env-token" } }
+      {
+        domain: "sentry.io",
+        headers: { Authorization: "Bearer static-env-token" },
+      },
+      {
+        domain: "us.sentry.io",
+        headers: { Authorization: "Bearer static-env-token" },
+      },
+      {
+        domain: "de.sentry.io",
+        headers: { Authorization: "Bearer static-env-token" },
+      },
     ]);
   });
 
@@ -109,8 +151,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     await expect(
       broker.issue({
         capability: "sentry.api",
-        reason: "test:unavailable"
-      })
+        reason: "test:unavailable",
+      }),
     ).rejects.toThrow(CredentialUnavailableError);
   });
 
@@ -121,8 +163,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     await expect(
       broker.issue({
         capability: "sentry.admin.write",
-        reason: "test:unsupported"
-      })
+        reason: "test:unsupported",
+      }),
     ).rejects.toThrow("Unsupported sentry capability: sentry.admin.write");
   });
 
@@ -134,8 +176,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       "U123:sentry": {
         accessToken: "old-access-token",
         refreshToken: "old-refresh-token",
-        expiresAt: Date.now() + 2 * 60 * 1000 // 2 min from now, within 5 min buffer
-      }
+        expiresAt: Date.now() + 2 * 60 * 1000, // 2 min from now, within 5 min buffer
+      },
     });
 
     globalThis.fetch = vi.fn(async () => ({
@@ -143,21 +185,30 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       json: async () => ({
         access_token: "new-access-token",
         refresh_token: "new-refresh-token",
-        expires_in: 3600
-      })
+        expires_in: 3600,
+      }),
     })) as unknown as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
       capability: "sentry.api",
       reason: "test:refresh",
-      requesterId: "U123"
+      requesterId: "U123",
     });
 
     expect(lease.headerTransforms).toEqual([
-      { domain: "sentry.io", headers: { Authorization: "Bearer new-access-token" } },
-      { domain: "us.sentry.io", headers: { Authorization: "Bearer new-access-token" } },
-      { domain: "de.sentry.io", headers: { Authorization: "Bearer new-access-token" } }
+      {
+        domain: "sentry.io",
+        headers: { Authorization: "Bearer new-access-token" },
+      },
+      {
+        domain: "us.sentry.io",
+        headers: { Authorization: "Bearer new-access-token" },
+      },
+      {
+        domain: "de.sentry.io",
+        headers: { Authorization: "Bearer new-access-token" },
+      },
     ]);
 
     // Verify updated tokens were stored
@@ -174,26 +225,35 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       "U123:sentry": {
         accessToken: "still-valid-token",
         refreshToken: "bad-refresh-token",
-        expiresAt: Date.now() + 2 * 60 * 1000
-      }
+        expiresAt: Date.now() + 2 * 60 * 1000,
+      },
     });
 
     globalThis.fetch = vi.fn(async () => ({
       ok: false,
-      status: 400
+      status: 400,
     })) as unknown as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
       capability: "sentry.api",
       reason: "test:refresh-fail-fallback",
-      requesterId: "U123"
+      requesterId: "U123",
     });
 
     expect(lease.headerTransforms).toEqual([
-      { domain: "sentry.io", headers: { Authorization: "Bearer still-valid-token" } },
-      { domain: "us.sentry.io", headers: { Authorization: "Bearer still-valid-token" } },
-      { domain: "de.sentry.io", headers: { Authorization: "Bearer still-valid-token" } }
+      {
+        domain: "sentry.io",
+        headers: { Authorization: "Bearer still-valid-token" },
+      },
+      {
+        domain: "us.sentry.io",
+        headers: { Authorization: "Bearer still-valid-token" },
+      },
+      {
+        domain: "de.sentry.io",
+        headers: { Authorization: "Bearer still-valid-token" },
+      },
     ]);
   });
 
@@ -205,13 +265,13 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       "U123:sentry": {
         accessToken: "expired-token",
         refreshToken: "bad-refresh-token",
-        expiresAt: Date.now() - 1000 // already expired
-      }
+        expiresAt: Date.now() - 1000, // already expired
+      },
     });
 
     globalThis.fetch = vi.fn(async () => ({
       ok: false,
-      status: 400
+      status: 400,
     })) as unknown as typeof fetch;
 
     const broker = createBroker(tokenStore);
@@ -220,8 +280,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       broker.issue({
         capability: "sentry.api",
         reason: "test:expired",
-        requesterId: "U123"
-      })
+        requesterId: "U123",
+      }),
     ).rejects.toThrow(CredentialUnavailableError);
   });
 
@@ -230,8 +290,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       "U123:sentry": {
         accessToken: "expired-token",
         refreshToken: "refresh-token",
-        expiresAt: Date.now() - 1000
-      }
+        expiresAt: Date.now() - 1000,
+      },
     });
 
     const broker = createBroker(tokenStore);
@@ -240,8 +300,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       broker.issue({
         capability: "sentry.api",
         reason: "test:expired-no-refresh",
-        requesterId: "U123"
-      })
+        requesterId: "U123",
+      }),
     ).rejects.toThrow(CredentialUnavailableError);
   });
 
@@ -255,8 +315,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       broker.issue({
         capability: "sentry.api",
         reason: "test:requester-no-token",
-        requesterId: "U999"
-      })
+        requesterId: "U999",
+      }),
     ).rejects.toThrow(CredentialUnavailableError);
   });
 
@@ -271,19 +331,28 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       broker.issue({
         capability: "sentry.api",
         reason: "test:with-requester",
-        requesterId: "U999"
-      })
+        requesterId: "U999",
+      }),
     ).rejects.toThrow(CredentialUnavailableError);
 
     // Without requesterId → should use static token
     const lease = await broker.issue({
       capability: "sentry.api",
-      reason: "test:without-requester"
+      reason: "test:without-requester",
     });
     expect(lease.headerTransforms).toEqual([
-      { domain: "sentry.io", headers: { Authorization: "Bearer static-env-token" } },
-      { domain: "us.sentry.io", headers: { Authorization: "Bearer static-env-token" } },
-      { domain: "de.sentry.io", headers: { Authorization: "Bearer static-env-token" } }
+      {
+        domain: "sentry.io",
+        headers: { Authorization: "Bearer static-env-token" },
+      },
+      {
+        domain: "us.sentry.io",
+        headers: { Authorization: "Bearer static-env-token" },
+      },
+      {
+        domain: "de.sentry.io",
+        headers: { Authorization: "Bearer static-env-token" },
+      },
     ]);
   });
 
@@ -292,7 +361,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     const broker = createBroker();
     const lease = await broker.issue({
       capability: "sentry.api",
-      reason: "test:placeholder"
+      reason: "test:placeholder",
     });
 
     expect(lease.env.SENTRY_AUTH_TOKEN).toBe("host_managed_credential");
@@ -305,16 +374,42 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       SENTRY_MANIFEST,
       {
         ...(SENTRY_MANIFEST.credentials as OAuthBearerCredentials),
-        authTokenPlaceholder: "sntr_fake_cli_token"
+        authTokenPlaceholder: "sntr_fake_cli_token",
       },
-      { userTokenStore: createMockTokenStore() }
+      { userTokenStore: createMockTokenStore() },
     );
     const lease = await broker.issue({
       capability: "sentry.api",
-      reason: "test:custom-placeholder"
+      reason: "test:custom-placeholder",
     });
 
     expect(lease.env.SENTRY_AUTH_TOKEN).toBe("sntr_fake_cli_token");
     expect(lease.env.SENTRY_AUTH_TOKEN).not.toBe("real-secret-token");
+  });
+
+  it("uses shared env tokens for non-oauth bearer plugins and merges api headers", async () => {
+    process.env.NOTION_TOKEN = "notion-env-token";
+    const tokenStore = createMockTokenStore();
+
+    const broker = createOAuthBearerBroker(
+      NOTION_MANIFEST,
+      NOTION_MANIFEST.credentials as OAuthBearerCredentials,
+      { userTokenStore: tokenStore },
+    );
+    const lease = await broker.issue({
+      capability: "notion.api.read",
+      reason: "test:notion",
+      requesterId: "U777",
+    });
+
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "api.notion.com",
+        headers: {
+          "Notion-Version": "2025-09-03",
+          Authorization: "Bearer notion-env-token",
+        },
+      },
+    ]);
   });
 });
