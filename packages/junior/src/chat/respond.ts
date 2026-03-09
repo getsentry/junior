@@ -889,6 +889,9 @@ export async function generateAssistantReply(
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
   let timeoutResumeMessages: unknown[] = [];
+  let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
+  let lastKnownSandboxDependencyProfileHash: string | undefined =
+    context.sandbox?.sandboxDependencyProfileHash;
 
   try {
     const shouldTrace = shouldEmitDevAgentTrace();
@@ -989,6 +992,9 @@ export async function generateAssistantReply(
           : { handled: false };
       },
     });
+    lastKnownSandboxId = sandboxExecutor.getSandboxId();
+    lastKnownSandboxDependencyProfileHash =
+      sandboxExecutor.getDependencyProfileHash();
     sandboxExecutor.configureSkills(availableSkills);
     const sandbox = await sandboxExecutor.createSandbox();
 
@@ -1569,7 +1575,8 @@ export async function generateAssistantReply(
     const message = error instanceof Error ? error.message : String(error);
     return {
       text: `Error: ${message}`,
-      sandboxId: undefined,
+      sandboxId: lastKnownSandboxId,
+      sandboxDependencyProfileHash: lastKnownSandboxDependencyProfileHash,
       diagnostics: {
         outcome: "provider_error",
         modelId: botConfig.modelId,
