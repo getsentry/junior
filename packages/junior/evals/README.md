@@ -11,11 +11,13 @@ Evals are end-to-end Slack conversation evaluations.
 ## Layer Boundaries
 
 Testing taxonomy and layer contracts are defined in:
+
 - `specs/testing/index.md`
 - `specs/testing/evals-spec.md`
 - `specs/testing/integration-spec.md`
 
 Quick mapping:
+
 - `tests/integration/*`: Slack/runtime integration and HTTP contract tests.
 - `evals/*`: Conversation-level behavior and quality scoring through the runtime harness.
 - `tests/unit/*` (or non-integration tests): isolated logic/invariant tests.
@@ -51,6 +53,7 @@ For each case (`slackEval()` call):
 3. `vitest-evals` scores the output against `criteria` (A–E → 1.0–0.0).
 
 Harness behavior knobs (in `BehaviorCaseConfig`):
+
 - `fail_reply_call`: force a non-retryable reply failure on a specific call.
 - `retryable_timeout_calls`: force retryable timeout-shaped failures on selected reply calls.
 - `retryable_max_attempts`: max retries for retryable timeout-shaped failures during one event.
@@ -64,6 +67,15 @@ checkpoint save/restore semantics in the core resumability path.
 - `pnpm evals`: Run all eval cases
 - `pnpm evals -- -t "subscribed"`: Filter by test name pattern
 - `pnpm test`: Normal test suite (not evals)
+
+## Optional CI Runs
+
+- Add the `run-evals` label to a PR to opt into the `Evals` GitHub Actions workflow.
+- The workflow only runs the eval job when eval-related files changed:
+  - `packages/junior/evals/**`
+  - `packages/junior/vitest.evals.config.ts`
+- You can also trigger the `Evals` workflow manually with `run_evals=true`.
+- The CI job requires repo-level AI gateway credentials and working Vercel Sandbox access.
 
 Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval fails immediately (no local fallback path).
 
