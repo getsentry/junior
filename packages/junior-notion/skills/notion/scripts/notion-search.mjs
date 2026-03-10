@@ -432,16 +432,21 @@ async function searchNotion({
   }
 
   let content = null;
-  if (selected.object === "page") {
-    content = {
-      type: "page",
-      markdown: await fetchPageContent(selected.id),
-    };
-  } else if (selected.object === "data_source") {
-    content = {
-      type: "data_source",
-      ...(await fetchDataSourceContent(selected.id, rowLimit)),
-    };
+  let contentError = null;
+  try {
+    if (selected.object === "page") {
+      content = {
+        type: "page",
+        markdown: await fetchPageContent(selected.id),
+      };
+    } else if (selected.object === "data_source") {
+      content = {
+        type: "data_source",
+        ...(await fetchDataSourceContent(selected.id, rowLimit)),
+      };
+    }
+  } catch (error) {
+    contentError = error instanceof Error ? error.message : String(error);
   }
 
   return {
@@ -464,6 +469,7 @@ async function searchNotion({
       score: selected.score,
     },
     content,
+    ...(contentError ? { content_error: contentError } : {}),
   };
 }
 
