@@ -88,14 +88,20 @@ function findWorkspaceRoot(cwd: string): string | null {
   }
 }
 
-function readWorkspacePackagePatterns(workspaceRoot: string): string[] {
+function listWorkspacePackageDirs(cwd: string): string[] {
+  const workspaceRoot = findWorkspaceRoot(cwd);
+  if (!workspaceRoot) {
+    return [];
+  }
+
+  let packagePatterns: string[] = [];
   try {
     const raw = readFileSync(
       path.join(workspaceRoot, "pnpm-workspace.yaml"),
       "utf8",
     );
     const parsed = parseYaml(raw) as { packages?: unknown };
-    return Array.isArray(parsed.packages)
+    packagePatterns = Array.isArray(parsed.packages)
       ? parsed.packages.filter(
           (entry): entry is string =>
             typeof entry === "string" && entry.trim().length > 0,
@@ -104,10 +110,7 @@ function readWorkspacePackagePatterns(workspaceRoot: string): string[] {
   } catch {
     return [];
   }
-}
 
-function listWorkspacePackageDirs(workspaceRoot: string): string[] {
-  const packagePatterns = readWorkspacePackagePatterns(workspaceRoot);
   const discovered: string[] = [];
   const seen = new Set<string>();
 
@@ -143,6 +146,25 @@ function listWorkspacePackageDirs(workspaceRoot: string): string[] {
   return discovered;
 }
 
+function readPluginPackageFlags(dir: string): {
+  hasRootPluginManifest: boolean;
+  hasPluginsDir: boolean;
+  hasSkillsDir: boolean;
+} | null {
+  const hasRootPluginManifest = isFile(path.join(dir, "plugin.yaml"));
+  const hasPluginsDir = isDirectory(path.join(dir, "plugins"));
+  const hasSkillsDir = isDirectory(path.join(dir, "skills"));
+  if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
+    return null;
+  }
+
+  return {
+    hasRootPluginManifest,
+    hasPluginsDir,
+    hasSkillsDir,
+  };
+}
+
 function discoverWorkspacePluginPackageDirs(
   cwd: string,
   packageNames: string[] | null,
@@ -151,53 +173,27 @@ function discoverWorkspacePluginPackageDirs(
     return [];
   }
 
-  const workspaceRoot = findWorkspaceRoot(cwd);
-  if (!workspaceRoot) {
-    return [];
+  return listWorkspacePackageDirs(cwd).filter(
+    (candidate) => readPluginPackageFlags(candidate) !== null,
+  );
+}
+
+function readWorkspacePackageName(dir: string): string | null {
+  try {
+    const raw = readFileSync(path.join(dir, "package.json"), "utf8");
+    const name = (JSON.parse(raw) as { name?: unknown }).name;
+    return typeof name === "string" && name.trim().length > 0 ? name : null;
+  } catch {
+    return null;
   }
-
-  const discovered: string[] = [];
-  const seen = new Set<string>();
-  const addIfPluginPackage = (candidate: string) => {
-    const normalized = path.resolve(candidate);
-    if (seen.has(normalized) || !isDirectory(normalized)) {
-      return;
-    }
-    const hasRootPluginManifest = isFile(path.join(normalized, "plugin.yaml"));
-    const hasPluginsDir = isDirectory(path.join(normalized, "plugins"));
-    const hasSkillsDir = isDirectory(path.join(normalized, "skills"));
-    if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
-      return;
-    }
-    seen.add(normalized);
-    discovered.push(normalized);
-  };
-
-  for (const candidate of listWorkspacePackageDirs(workspaceRoot)) {
-    addIfPluginPackage(candidate);
-  }
-
-  return discovered;
 }
 
 function resolveWorkspacePackageDirFromName(
   cwd: string,
   packageName: string,
 ): string | null {
-  const workspaceRoot = findWorkspaceRoot(cwd);
-  if (!workspaceRoot) {
-    return null;
-  }
-
-  for (const candidate of listWorkspacePackageDirs(workspaceRoot)) {
-    let parsedName: unknown;
-    try {
-      const raw = readFileSync(path.join(candidate, "package.json"), "utf8");
-      parsedName = (JSON.parse(raw) as { name?: unknown }).name;
-    } catch {
-      continue;
-    }
-    if (parsedName !== packageName) {
+  for (const candidate of listWorkspacePackageDirs(cwd)) {
+    if (readWorkspacePackageName(candidate) !== packageName) {
       continue;
     }
     return candidate;
@@ -249,10 +245,8 @@ function discoverDeclaredPackages(
       continue;
     }
 
-    const hasRootPluginManifest = isFile(path.join(packageDir, "plugin.yaml"));
-    const hasPluginsDir = isDirectory(path.join(packageDir, "plugins"));
-    const hasSkillsDir = isDirectory(path.join(packageDir, "skills"));
-    if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
+    const pluginFlags = readPluginPackageFlags(packageDir);
+    if (!pluginFlags) {
       continue;
     }
 
@@ -262,9 +256,7 @@ function discoverDeclaredPackages(
       name: packageName,
       dir: packageDir,
       nodeModulesDir: resolved?.nodeModulesDir ?? null,
-      hasRootPluginManifest,
-      hasPluginsDir,
-      hasSkillsDir,
+      ...pluginFlags,
     });
   }
 

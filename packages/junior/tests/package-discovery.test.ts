@@ -21,6 +21,7 @@ async function writePluginPackage(
 async function writeWorkspacePlugin(
   workspaceRoot: string,
   packageDirName: string,
+  packageName?: string,
 ): Promise<string> {
   const packageRoot = path.join(workspaceRoot, "packages", packageDirName);
   await fs.mkdir(path.join(packageRoot, "skills", "demo"), { recursive: true });
@@ -29,20 +30,13 @@ async function writeWorkspacePlugin(
     "name: demo\ndescription: demo\n",
     "utf8",
   );
-  return packageRoot;
-}
-
-async function writeWorkspaceNamedPlugin(
-  workspaceRoot: string,
-  packageDirName: string,
-  packageName: string,
-): Promise<string> {
-  const packageRoot = await writeWorkspacePlugin(workspaceRoot, packageDirName);
-  await fs.writeFile(
-    path.join(packageRoot, "package.json"),
-    JSON.stringify({ name: packageName, private: true }),
-    "utf8",
-  );
+  if (packageName) {
+    await fs.writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({ name: packageName, private: true }),
+      "utf8",
+    );
+  }
   return packageRoot;
 }
 
@@ -186,7 +180,7 @@ describe("plugin package discovery", () => {
       path.join(os.tmpdir(), "junior-package-discovery-"),
     );
     const appRoot = path.join(tempRoot, "packages", "junior");
-    const pluginRoot = await writeWorkspaceNamedPlugin(
+    const pluginRoot = await writeWorkspacePlugin(
       tempRoot,
       "junior-github",
       "@sentry/junior-github",
