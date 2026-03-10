@@ -8,7 +8,9 @@ import {
   resetBotDepsForTests,
   setBotDepsForTests,
 } from "@/chat/bot";
+import { resetPluginRegistryForTests } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
+import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
 import {
   FakeSlackAdapter,
@@ -78,15 +80,16 @@ interface SubscribedDecisionFixture {
 export interface BehaviorCaseConfig {
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
+  mock_slack_api?: boolean;
+  plugin_packages?: string[];
+  reply_texts?: string[];
+  retryable_max_attempts?: number;
   retryable_timeout_calls?: number[];
   retryable_timeout_message?: string;
-  retryable_max_attempts?: number;
-  mock_slack_api?: boolean;
   skill_dirs?: string[];
+  subscribed_decisions?: SubscribedDecisionFixture[];
   test_credential_token?: string;
   unset_gateway_api_key?: boolean;
-  reply_texts?: string[];
-  subscribed_decisions?: SubscribedDecisionFixture[];
 }
 
 export interface BehaviorEvalCase {
@@ -254,6 +257,7 @@ export async function runBehaviorEvalCase(
   const originalEnableTestCredentials =
     process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   const originalTestCredentialToken = process.env.EVAL_TEST_CREDENTIAL_TOKEN;
+  const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
   const originalSlackBotToken = process.env.SLACK_BOT_TOKEN;
   const configuredSkillDirs =
     testCase.behavior?.skill_dirs?.map((entry) =>
@@ -269,6 +273,11 @@ export async function runBehaviorEvalCase(
   if (testCase.behavior?.mock_slack_api) {
     process.env.SLACK_BOT_TOKEN = "xoxb-eval-test-token";
   }
+  process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
+    testCase.behavior?.plugin_packages ?? [],
+  );
+  resetPluginRegistryForTests();
+  resetSkillDiscoveryCache();
 
   const getChannelStateRef = (
     channelId: string | undefined,
@@ -462,8 +471,15 @@ export async function runBehaviorEvalCase(
     }
   } finally {
     resetBotDepsForTests();
+    resetPluginRegistryForTests();
+    resetSkillDiscoveryCache();
     (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter =
       originalGetAdapter;
+    if (originalPluginPackages === undefined) {
+      delete process.env.JUNIOR_PLUGIN_PACKAGES;
+    } else {
+      process.env.JUNIOR_PLUGIN_PACKAGES = originalPluginPackages;
+    }
     if (originalSlackBotToken === undefined) {
       delete process.env.SLACK_BOT_TOKEN;
     } else {

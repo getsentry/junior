@@ -41,6 +41,7 @@ describe("Conversational Evals: Skill Workflows", () => {
     behavior: {
       skill_dirs: ["evals/skills"],
       enable_test_credentials: true,
+      plugin_packages: ["@sentry/junior-github"],
       test_credential_token: "eval-smoke-token",
     },
     events: [mention("/capability-credential-smoke")],
@@ -52,6 +53,7 @@ describe("Conversational Evals: Skill Workflows", () => {
     behavior: {
       skill_dirs: ["evals/skills"],
       enable_test_credentials: true,
+      plugin_packages: ["@sentry/junior-sentry"],
       test_credential_token: "eval-sentry-token",
     },
     events: [mention("/sentry-credential-smoke")],
@@ -68,6 +70,7 @@ describe("Conversational Evals: Skill Workflows", () => {
   slackEval("skills: default repo setup via natural language", {
     behavior: {
       enable_test_credentials: true,
+      plugin_packages: ["@sentry/junior-github"],
       test_credential_token: "eval-default-repo-token",
       skill_dirs: ["skills"],
     },

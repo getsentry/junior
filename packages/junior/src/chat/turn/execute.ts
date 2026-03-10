@@ -1,22 +1,8 @@
-import type { ReplyFileDelivery } from "@/chat/delivery/plan";
+import {
+  isRedundantReactionAckText,
+  type ReplyFileDelivery,
+} from "@/chat/delivery/plan";
 import type { AssistantReply } from "@/chat/respond";
-
-const REACTION_ONLY_ACK_RE =
-  /^(?::[a-z0-9_+-]+:|[\p{Extended_Pictographic}\uFE0F\u200D]+)$/u;
-const REDUNDANT_REACTION_ACK_TEXT = new Set(["done", "got it", "ok", "okay"]);
-
-function isRedundantReactionAckText(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return false;
-  }
-  if (REACTION_ONLY_ACK_RE.test(trimmed)) {
-    return true;
-  }
-
-  const normalized = trimmed.toLowerCase().replace(/[!.]+$/g, "");
-  return REDUNDANT_REACTION_ACK_TEXT.has(normalized);
-}
 
 export function resolveReplyDelivery(args: {
   reply: AssistantReply;
