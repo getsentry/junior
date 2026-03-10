@@ -461,21 +461,46 @@ async function fetchContent({ id, object, rowLimit = DEFAULT_ROW_LIMIT } = {}) {
   }
 
   if (object === "page") {
-    const [target, markdown] = await Promise.all([fetchPageMetadata(id), fetchPageMarkdown(id)]);
-    return {
-      ok: true,
-      target,
-      content: {
-        type: "page",
-        markdown,
-      },
-    };
+    const target = await fetchPageMetadata(id);
+    try {
+      const markdown = await fetchPageMarkdown(id);
+      return {
+        ok: true,
+        target,
+        content: {
+          type: "page",
+          markdown,
+        },
+      };
+    } catch (error) {
+      return {
+        ok: true,
+        target,
+        content: null,
+        content_error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
-  return {
-    ok: true,
-    ...(await fetchDataSourceContent(id, rowLimit)),
-  };
+  try {
+    return {
+      ok: true,
+      ...(await fetchDataSourceContent(id, rowLimit)),
+    };
+  } catch (error) {
+    return {
+      ok: true,
+      target: {
+        id,
+        object: "data_source",
+        title: "",
+        url: "",
+        last_edited_time: null,
+      },
+      content: null,
+      content_error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function main() {
