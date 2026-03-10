@@ -44,7 +44,7 @@ async function buildSkillsSummaryText(): Promise<string> {
   }
 
   const visible = skills.slice(0, MAX_HOME_SKILLS);
-  const lines = visible.map((skill) => `• \`!${skill.name}\` — ${skill.description}`);
+  const lines = visible.map((skill) => `• *${skill.name}* — ${skill.description}`);
   if (skills.length > visible.length) {
     lines.push(`• …and ${skills.length - visible.length} more`);
   }

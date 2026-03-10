@@ -67,31 +67,21 @@ describe("skills", () => {
     }
   });
 
-  it("parses hard !skill invocation", () => {
-    expect(parseSkillInvocation("!brief github: octocat", stubSkills)).toEqual({
-      skillName: "brief",
-      args: "github: octocat",
-      source: "hard_bang"
-    });
-  });
-
   it("does not parse invocation without slash command", () => {
     expect(parseSkillInvocation("please summarize this candidate", stubSkills)).toBeNull();
   });
 
-  it("parses hard !skill tokens anywhere in the message", () => {
-    expect(parseSkillInvocation("hey !brief github: octocat", stubSkills)).toEqual({
+  it("parses /skill tokens anywhere in the message", () => {
+    expect(parseSkillInvocation("hey /brief github: octocat", stubSkills)).toEqual({
       skillName: "brief",
-      args: "github: octocat",
-      source: "hard_bang"
+      args: "github: octocat"
     });
   });
 
-  it("parses /skill as a legacy fallback hint", () => {
+  it("parses /skill invocation", () => {
     expect(parseSkillInvocation("hey /brief github: octocat", stubSkills)).toEqual({
       skillName: "brief",
-      args: "github: octocat",
-      source: "legacy_slash"
+      args: "github: octocat"
     });
   });
 
@@ -100,7 +90,7 @@ describe("skills", () => {
   });
 
   it("returns null when no skills are available", () => {
-    expect(parseSkillInvocation("!brief github: octocat", [])).toBeNull();
+    expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
   });
 
   it("skips skills with unknown capability/config metadata and logs warnings", async () => {

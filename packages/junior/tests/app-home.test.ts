@@ -202,8 +202,8 @@ describe("buildHomeView", () => {
     const view = await buildHomeView("U123", store);
 
     const content = getAllSectionText(view.blocks);
-    expect(content).toContain("`!incident-summary`");
-    expect(content).toContain("`!release-check`");
+    expect(content).toContain("*incident-summary*");
+    expect(content).toContain("*release-check*");
     expect(content).not.toContain("jr-rpc");
   });
 });

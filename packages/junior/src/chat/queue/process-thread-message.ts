@@ -126,6 +126,36 @@ export async function processQueuedThreadMessage(
     thread: deserializeThread(payload.thread),
     message: deserializeMessage(payload.message)
   };
+  let reactionCleared = false;
+  const clearProcessingReaction = async (): Promise<void> => {
+    if (reactionCleared) {
+      return;
+    }
+    reactionCleared = true;
+    try {
+      await deps.clearProcessingReaction({
+        channelId: runtimePayload.thread.channelId,
+        timestamp: runtimePayload.message.id
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      deps.logWarn(
+        "queue_processing_reaction_clear_failed",
+        {
+          slackThreadId: payload.normalizedThreadId,
+          slackChannelId: getPayloadChannelId(payload),
+          slackUserId: getPayloadUserId(payload)
+        },
+        {
+          "messaging.message.id": payload.message.id,
+          "app.queue.message_kind": payload.kind,
+          "app.queue.message_id": payload.queueMessageId,
+          "error.message": errorMessage
+        },
+        "Failed to remove processing reaction after queue turn completion"
+      );
+    }
+  };
 
   try {
     const refreshed = await refreshQueueMessageProcessingOwnership({
@@ -138,43 +168,12 @@ export async function processQueuedThreadMessage(
       throw new QueueMessageOwnershipError("refresh", payload.dedupKey);
     }
 
-    let reactionCleared = false;
-    const clearReactionBeforeFirstResponsePost = async (): Promise<void> => {
-      if (reactionCleared) {
-        return;
-      }
-      reactionCleared = true;
-      try {
-        await deps.clearProcessingReaction({
-          channelId: runtimePayload.thread.channelId,
-          timestamp: runtimePayload.message.id
-        });
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        deps.logWarn(
-          "queue_processing_reaction_clear_failed",
-          {
-            slackThreadId: payload.normalizedThreadId,
-            slackChannelId: getPayloadChannelId(payload),
-            slackUserId: getPayloadUserId(payload)
-          },
-          {
-            "messaging.message.id": payload.message.id,
-            "app.queue.message_kind": payload.kind,
-            "app.queue.message_id": payload.queueMessageId,
-            "error.message": errorMessage
-          },
-          "Failed to remove processing reaction before sending queue response"
-        );
-      }
-    };
-
     await deps.processRuntime({
       kind: runtimePayload.kind,
       thread: runtimePayload.thread,
-      message: runtimePayload.message,
-      beforeFirstResponsePost: clearReactionBeforeFirstResponsePost
+      message: runtimePayload.message
     });
+    await clearProcessingReaction();
 
     const completed = await completeQueueMessageProcessingOwnership({
       rawKey: payload.dedupKey,
@@ -187,6 +186,7 @@ export async function processQueuedThreadMessage(
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    await clearProcessingReaction();
 
     await logThreadMessageFailure(payload, errorMessage);
 

@@ -64,14 +64,13 @@ describe("processQueuedThreadMessage reaction regressions", () => {
     failQueueMessageProcessingOwnershipMock.mockResolvedValue(true);
   });
 
-  it("removes ingress :eyes: when runtime sends the first response", async () => {
+  it("removes ingress :eyes: after the runtime completes the turn", async () => {
     const steps: string[] = [];
     const clearProcessingReaction = vi.fn(async () => {
       steps.push("clear");
     });
-    const processRuntime = vi.fn(async ({ beforeFirstResponsePost }: { beforeFirstResponsePost?: () => Promise<void> }) => {
+    const processRuntime = vi.fn(async () => {
       steps.push("runtime");
-      await beforeFirstResponsePost?.();
       steps.push("post");
     });
     const payload = createPayload();
@@ -87,14 +86,12 @@ describe("processQueuedThreadMessage reaction regressions", () => {
       timestamp: "1700000000.200"
     });
     expect(processRuntime).toHaveBeenCalledTimes(1);
-    expect(steps).toEqual(["runtime", "clear", "post"]);
+    expect(steps).toEqual(["runtime", "post", "clear"]);
   });
 
-  it("continues queue turn when :eyes: removal fails on first response post", async () => {
+  it("continues queue turn when :eyes: removal fails after queue completion", async () => {
     const payload = createPayload();
-    const processRuntime = vi.fn(async ({ beforeFirstResponsePost }: { beforeFirstResponsePost?: () => Promise<void> }) => {
-      await beforeFirstResponsePost?.();
-    });
+    const processRuntime = vi.fn(async () => undefined);
     const logWarn = vi.fn();
 
     await processQueuedThreadMessage(payload, {
@@ -117,7 +114,7 @@ describe("processQueuedThreadMessage reaction regressions", () => {
         "messaging.message.id": "1700000000.200",
         "error.message": "reaction remove failed"
       }),
-      "Failed to remove processing reaction before sending queue response"
+      "Failed to remove processing reaction after queue turn completion"
     );
   });
 });

@@ -381,6 +381,7 @@ export function buildSystemPrompt(params: {
         "- Use `imageGenerate` when the user asks for image creation.",
         "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
         "- `slackCanvasUpdate` targets the active artifact-context canvas automatically; do not ask the user for `canvas_id`.",
+        "- When you create or update a Slack artifact in this turn (for example a canvas, list, posted message, or attached file), mention it explicitly in the final reply and include its link when the tool returned one.",
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- `slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` target the active artifact-context list automatically; do not ask the user for `list_id`.",
         "- If the user explicitly asks to post/send/share/say/show/announce/broadcast in the channel (outside this thread), call `slackChannelPostMessage` with the requested text instead of only replying in-thread.",
@@ -400,7 +401,7 @@ export function buildSystemPrompt(params: {
     renderTag(
       "skills",
       [
-        "- Explicit skill triggers may appear as `/skillname` or `!skillname`.",
+        "- Explicit skill triggers may appear as `/skillname`.",
         "- If explicitly invoked skill instructions are already present in <loaded_skills>, apply them immediately.",
         "- Otherwise, for an explicitly invoked skill, call `loadSkill` for that exact skill before applying skill-specific behavior.",
         "- For requests without an explicit trigger where a skill clearly matches, call `loadSkill` before applying skill-specific behavior.",
@@ -430,9 +431,7 @@ export function buildSystemPrompt(params: {
     renderTag(
       "invocation-context",
       invocation
-        ? invocation.source === "hard_bang"
-          ? `Explicit skill trigger detected: !${invocation.skillName}`
-          : `Legacy slash hint detected: /${invocation.skillName} (non-authoritative)`
+        ? `Explicit skill trigger detected: /${invocation.skillName}`
         : "No explicit skill trigger detected.",
     ),
   ];

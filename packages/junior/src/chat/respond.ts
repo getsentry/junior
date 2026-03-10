@@ -998,7 +998,7 @@ export async function generateAssistantReply(
     sandboxExecutor.configureSkills(availableSkills);
     const sandbox = await sandboxExecutor.createSandbox();
 
-    if (invokedSkill && skillInvocation?.source === "hard_bang") {
+    if (invokedSkill) {
       const preloaded = await skillSandbox.loadSkill(invokedSkill.name);
       if (preloaded) {
         activeSkills.push(preloaded);

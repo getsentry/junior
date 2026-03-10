@@ -93,6 +93,10 @@ describe("buildSystemPrompt skill paths", () => {
       "If the user explicitly asks to post/send/share/say/show/announce/broadcast in the channel (outside this thread), call `slackChannelPostMessage`",
     );
     expect(prompt).toContain(
+      "When you create or update a Slack artifact in this turn",
+    );
+    expect(prompt).toContain("include its link when the tool returned one");
+    expect(prompt).toContain(
       "If the user asks to see/share/show a screenshot or file, attach the file with `attachFile` instead of only reporting its path.",
     );
     expect(prompt).toContain(

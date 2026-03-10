@@ -24,7 +24,6 @@ export interface Skill extends SkillMetadata {
 export interface SkillInvocation {
   skillName: string;
   args: string;
-  source: "hard_bang" | "legacy_slash";
 }
 
 export interface DiscoverSkillsOptions {
@@ -190,38 +189,21 @@ export function parseSkillInvocation(
   availableSkills: SkillMetadata[]
 ): SkillInvocation | null {
   const trimmed = messageText.trim();
-  const toInvocation = (
-    match: RegExpExecArray | null,
-    source: SkillInvocation["source"]
-  ): SkillInvocation | null => {
-    if (!match) {
-      return null;
-    }
-
-    const skillName = match[1].toLowerCase();
-    if (!availableSkills.some((skill) => skill.name === skillName)) {
-      return null;
-    }
-
-    return {
-      skillName,
-      args: (match[2] ?? "").trim(),
-      source
-    };
-  };
-
-  const hardBangInvocation = toInvocation(
-    /(?:^|\s)!([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(trimmed),
-    "hard_bang"
-  );
-  if (hardBangInvocation) {
-    return hardBangInvocation;
+  const match =
+    /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(trimmed);
+  if (!match) {
+    return null;
   }
 
-  return toInvocation(
-    /(?:^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+([\s\S]*))?/i.exec(trimmed),
-    "legacy_slash"
-  );
+  const skillName = match[1].toLowerCase();
+  if (!availableSkills.some((skill) => skill.name === skillName)) {
+    return null;
+  }
+
+  return {
+    skillName,
+    args: (match[2] ?? "").trim()
+  };
 }
 
 export function findSkillByName(skillName: string, available: SkillMetadata[]): SkillMetadata | null {
