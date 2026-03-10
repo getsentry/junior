@@ -173,6 +173,12 @@ describe("plugin package discovery", () => {
     const discovered = discoverInstalledPluginPackageContent(appRoot);
     expect(discovered.manifestRoots).toContain(pluginRoot);
     expect(discovered.skillRoots).toContain(path.join(pluginRoot, "skills"));
+    expect(discovered.tracingIncludes).toContain(
+      "../junior-plugin-demo/plugin.yaml",
+    );
+    expect(discovered.tracingIncludes).toContain(
+      "../junior-plugin-demo/skills/**/*",
+    );
   });
 
   it("resolves explicit packageNames through sibling workspace packages", async () => {
@@ -205,6 +211,12 @@ describe("plugin package discovery", () => {
     expect(discovered.packageNames).toContain("@sentry/junior-github");
     expect(discovered.manifestRoots).toContain(pluginRoot);
     expect(discovered.skillRoots).toContain(path.join(pluginRoot, "skills"));
+    expect(discovered.tracingIncludes).toContain(
+      "../junior-github/plugin.yaml",
+    );
+    expect(discovered.tracingIncludes).toContain(
+      "../junior-github/skills/**/*",
+    );
   });
 
   it("does not fallback scan when explicit packageNames is empty", async () => {

@@ -40,12 +40,14 @@ function uniqueStringsInOrder(values: string[]): string[] {
   return resolved;
 }
 
-function pathWithinCwd(cwd: string, targetPath: string): string | null {
+function pathForTracingInclude(cwd: string, targetPath: string): string | null {
   const relative = path.relative(cwd, targetPath);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+  if (!relative || path.isAbsolute(relative)) {
     return null;
   }
-  return `./${normalizeForGlob(relative)}`;
+
+  const normalized = normalizeForGlob(relative);
+  return normalized.startsWith(".") ? normalized : `./${normalized}`;
 }
 
 function parseRuntimeConfiguredPackageNames(value: unknown): string[] | null {
@@ -349,41 +351,51 @@ export function discoverInstalledPluginPackageContent(
   const tracingIncludes: string[] = [];
 
   for (const pkg of discoveredPackages) {
-    const packagePathFromNodeModules = pkg.nodeModulesDir
-      ? pathWithinCwd(
+    const tracingBasePath = pkg.nodeModulesDir
+      ? pathForTracingInclude(
           resolvedCwd,
           path.join(pkg.nodeModulesDir, ...pkg.name.split("/")),
         )
-      : null;
+      : pathForTracingInclude(resolvedCwd, pkg.dir);
     if (pkg.hasRootPluginManifest) {
       manifestRoots.push(pkg.dir);
-      if (packagePathFromNodeModules) {
-        tracingIncludes.push(`${packagePathFromNodeModules}/plugin.yaml`);
+      if (tracingBasePath) {
+        tracingIncludes.push(`${tracingBasePath}/plugin.yaml`);
       }
     }
     if (pkg.hasPluginsDir) {
       manifestRoots.push(path.join(pkg.dir, "plugins"));
-      if (packagePathFromNodeModules) {
-        tracingIncludes.push(`${packagePathFromNodeModules}/plugins/**/*`);
+      if (tracingBasePath) {
+        tracingIncludes.push(`${tracingBasePath}/plugins/**/*`);
       }
     }
     if (pkg.hasSkillsDir) {
       skillRoots.push(path.join(pkg.dir, "skills"));
-      if (packagePathFromNodeModules) {
-        tracingIncludes.push(`${packagePathFromNodeModules}/skills/**/*`);
+      if (tracingBasePath) {
+        tracingIncludes.push(`${tracingBasePath}/skills/**/*`);
       }
     }
   }
 
   for (const pluginDir of workspacePluginDirs) {
+    const tracingBasePath = pathForTracingInclude(resolvedCwd, pluginDir);
     if (isFile(path.join(pluginDir, "plugin.yaml"))) {
       manifestRoots.push(pluginDir);
+      if (tracingBasePath) {
+        tracingIncludes.push(`${tracingBasePath}/plugin.yaml`);
+      }
     }
     if (isDirectory(path.join(pluginDir, "plugins"))) {
       manifestRoots.push(path.join(pluginDir, "plugins"));
+      if (tracingBasePath) {
+        tracingIncludes.push(`${tracingBasePath}/plugins/**/*`);
+      }
     }
     if (isDirectory(path.join(pluginDir, "skills"))) {
       skillRoots.push(path.join(pluginDir, "skills"));
+      if (tracingBasePath) {
+        tracingIncludes.push(`${tracingBasePath}/skills/**/*`);
+      }
     }
   }
 
