@@ -12,7 +12,7 @@ describe("resolveReplyDelivery", () => {
           mode: "channel_only",
           ack: "none",
           postThreadText: false,
-          attachFiles: "none"
+          attachFiles: "none",
         },
         diagnostics: {
           assistantMessageCount: 1,
@@ -21,14 +21,14 @@ describe("resolveReplyDelivery", () => {
           toolCalls: [],
           toolErrorCount: 0,
           toolResultCount: 0,
-          usedPrimaryText: true
-        }
-      }
+          usedPrimaryText: true,
+        },
+      },
     });
 
     expect(resolved).toEqual({
       shouldPostThreadReply: false,
-      attachFiles: "none"
+      attachFiles: "none",
     });
   });
 
@@ -47,14 +47,64 @@ describe("resolveReplyDelivery", () => {
           toolCalls: [],
           toolErrorCount: 0,
           toolResultCount: 0,
-          usedPrimaryText: true
-        }
-      }
+          usedPrimaryText: true,
+        },
+      },
     });
 
     expect(resolved).toEqual({
       shouldPostThreadReply: true,
-      attachFiles: "inline"
+      attachFiles: "inline",
+    });
+  });
+
+  it("suppresses redundant thread text when a reaction already acknowledges the turn", () => {
+    const resolved = resolveReplyDelivery({
+      hasStreamedThreadReply: false,
+      reply: {
+        text: "👍",
+        files: [],
+        ackStrategy: "reaction",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "model",
+          outcome: "success",
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      },
+    });
+
+    expect(resolved).toEqual({
+      shouldPostThreadReply: false,
+      attachFiles: "none",
+    });
+  });
+
+  it("keeps thread text when a reaction accompanies a substantive reply", () => {
+    const resolved = resolveReplyDelivery({
+      hasStreamedThreadReply: false,
+      reply: {
+        text: "Added the reaction. I also posted the update in channel.",
+        files: [],
+        ackStrategy: "reaction",
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "model",
+          outcome: "success",
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      },
+    });
+
+    expect(resolved).toEqual({
+      shouldPostThreadReply: true,
+      attachFiles: "none",
     });
   });
 });

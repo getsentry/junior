@@ -1,0 +1,145 @@
+name: Evals
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - labeled
+  workflow_dispatch:
+    inputs:
+      run_evals:
+        description: Run conversational evals when eval-related files changed relative to main
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      evals_changed: ${{ steps.changes.outputs.evals_changed }}
+      evals_requested: ${{ steps.request.outputs.evals_requested }}
+      gateway_ready: ${{ steps.secrets.outputs.gateway_ready }}
+      should_run: ${{ steps.decision.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: request
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          requested=false
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            requested_input="$(jq -r '.inputs.run_evals // "false"' "$GITHUB_EVENT_PATH")"
+            if [[ "$requested_input" == "true" ]]; then
+              requested=true
+            fi
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            if jq -e '.pull_request.labels[]?.name | select(. == "run-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
+              requested=true
+            fi
+          fi
+
+          echo "evals_requested=$requested" >> "$GITHUB_OUTPUT"
+
+      - id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            git fetch --no-tags --depth=1 origin main
+            base_ref="$(git merge-base HEAD origin/main)"
+            head_ref="$GITHUB_SHA"
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base_ref="$(jq -r '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
+            head_ref="$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
+          else
+            echo "Unsupported event: $EVENT_NAME" >&2
+            exit 1
+          fi
+
+          if git diff --quiet "$base_ref" "$head_ref" -- \
+            packages/junior/evals \
+            packages/junior/vitest.evals.config.ts; then
+            echo "evals_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "evals_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - id: secrets
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${AI_GATEWAY_API_KEY:-}" ]]; then
+            echo "gateway_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "gateway_ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - id: decision
+        env:
+          EVALS_CHANGED: ${{ steps.changes.outputs.evals_changed }}
+          EVALS_REQUESTED: ${{ steps.request.outputs.evals_requested }}
+          GATEWAY_READY: ${{ steps.secrets.outputs.gateway_ready }}
+        run: |
+          set -euo pipefail
+
+          should_run=false
+          if [[ "$EVALS_CHANGED" == "true" && "$EVALS_REQUESTED" == "true" && "$GATEWAY_READY" == "true" ]]; then
+            should_run=true
+          fi
+
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Eval Gate"
+            echo
+            echo "- evals_changed: $EVALS_CHANGED"
+            echo "- evals_requested: $EVALS_REQUESTED"
+            echo "- ai_gateway_ready: $GATEWAY_READY"
+            echo "- will_run: $should_run"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  evals:
+    needs: gate
+    if: needs.gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm evals

@@ -51,6 +51,7 @@ import { resolveReplyDelivery } from "@/chat/turn/execute";
 import { isRetryableTurnError } from "@/chat/turn/errors";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 import { startActiveTurn } from "@/chat/turn/prepare";
+import { isPotentialRedundantReactionAckText } from "@/chat/delivery/plan";
 
 function buildDeterministicTurnId(messageId: string): string {
   const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -202,6 +203,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         });
         const textStream = createTextStreamBridge();
         let streamedReplyPromise: Promise<SentMessage> | undefined;
+        let pendingStreamText = "";
         let beforeFirstResponsePostCalled = false;
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
@@ -223,6 +225,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             })();
             streamedReplyPromise = streamingReply;
           }
+        };
+        const flushPendingStreamText = () => {
+          if (!pendingStreamText) {
+            return;
+          }
+          startStreamingReply();
+          textStream.push(pendingStreamText);
+          pendingStreamText = "";
         };
         const postThreadReply = async (
           payload: Parameters<typeof thread.post>[0],
@@ -289,10 +299,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               if (explicitChannelPostIntent) {
                 return;
               }
-              startStreamingReply();
-              textStream.push(deltaText);
+              if (streamedReplyPromise) {
+                textStream.push(deltaText);
+                return;
+              }
+              pendingStreamText += deltaText;
+              if (isPotentialRedundantReactionAckText(pendingStreamText)) {
+                return;
+              }
+              flushPendingStreamText();
             },
           });
+          if (streamedReplyPromise) {
+            flushPendingStreamText();
+          }
           textStream.end();
           const diagnosticsContext = {
             slackThreadId: threadId,

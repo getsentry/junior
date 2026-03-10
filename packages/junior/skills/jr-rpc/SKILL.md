@@ -2,6 +2,7 @@
 name: jr-rpc
 description: Issue capability credentials and manage OAuth flows via jr-rpc bash commands. Use when a task needs authenticated API calls, credentials are not enabled, or a user needs to connect or disconnect a provider account.
 allowed-tools: bash
+uses-config: github.repo
 ---
 
 # jr-rpc
@@ -14,7 +15,8 @@ Run before any authenticated API call:
 
 `jr-rpc issue-credential <capability> [--repo <owner/repo>]`
 
-- GitHub capabilities require `--repo`. Sentry capabilities are org-scoped (no `--repo`).
+- GitHub capabilities require repository context. Provide `--repo`, or reuse a configured default via `github.repo` when available.
+- Sentry capabilities are org-scoped and do not use `--repo`.
 - On success, sandbox header transforms are applied for this turn. Do not pass raw tokens.
 - If credential issuance fails with `credential_unavailable` + `oauth_started`, relay the `message` field to the user and **stop the turn** — the callback auto-resumes the request after authorization.
 
@@ -35,6 +37,8 @@ Run before any authenticated API call:
 ## Configuration
 
 `jr-rpc config get|set|unset|list` — read and write channel-scoped configuration values.
+
+- Use `jr-rpc config set github.repo <owner/repo>` to store a channel default GitHub repository for later credential issuance.
 
 Read `${CLAUDE_SKILL_ROOT}/references/commands.md` for full command syntax and response shapes.
 

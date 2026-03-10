@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildReplyDeliveryPlan } from "@/chat/delivery/plan";
+import {
+  buildReplyDeliveryPlan,
+  isPotentialRedundantReactionAckText,
+} from "@/chat/delivery/plan";
 
 describe("buildReplyDeliveryPlan", () => {
   it("returns channel_only mode when explicit channel intent and channel post succeeds", () => {
@@ -9,13 +12,13 @@ describe("buildReplyDeliveryPlan", () => {
         channelPostPerformed: true,
         reactionPerformed: false,
         hasFiles: true,
-        streamingThreadReply: true
-      })
+        streamingThreadReply: true,
+      }),
     ).toEqual({
       mode: "channel_only",
       ack: "none",
       postThreadText: false,
-      attachFiles: "none"
+      attachFiles: "none",
     });
   });
 
@@ -26,13 +29,13 @@ describe("buildReplyDeliveryPlan", () => {
         channelPostPerformed: false,
         reactionPerformed: false,
         hasFiles: true,
-        streamingThreadReply: true
-      })
+        streamingThreadReply: true,
+      }),
     ).toEqual({
       mode: "thread",
       ack: "none",
       postThreadText: true,
-      attachFiles: "followup"
+      attachFiles: "followup",
     });
   });
 
@@ -43,13 +46,13 @@ describe("buildReplyDeliveryPlan", () => {
         channelPostPerformed: false,
         reactionPerformed: false,
         hasFiles: true,
-        streamingThreadReply: false
-      })
+        streamingThreadReply: false,
+      }),
     ).toEqual({
       mode: "thread",
       ack: "none",
       postThreadText: true,
-      attachFiles: "inline"
+      attachFiles: "inline",
     });
   });
 
@@ -60,13 +63,20 @@ describe("buildReplyDeliveryPlan", () => {
         channelPostPerformed: false,
         reactionPerformed: true,
         hasFiles: false,
-        streamingThreadReply: true
-      })
+        streamingThreadReply: true,
+      }),
     ).toEqual({
       mode: "thread",
       ack: "reaction",
       postThreadText: true,
-      attachFiles: "none"
+      attachFiles: "none",
     });
+  });
+
+  it("treats partial redundant ack text as a buffered prefix", () => {
+    expect(isPotentialRedundantReactionAckText("o")).toBe(true);
+    expect(isPotentialRedundantReactionAckText("ok")).toBe(true);
+    expect(isPotentialRedundantReactionAckText("do")).toBe(true);
+    expect(isPotentialRedundantReactionAckText("do this")).toBe(false);
   });
 });

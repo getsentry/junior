@@ -744,11 +744,25 @@ function loadPlugins(): void {
   );
 }
 
+function ensurePluginsLoaded(): void {
+  loadPlugins();
+}
+
+export function resetPluginRegistryForTests(): void {
+  pluginDefinitions.length = 0;
+  capabilityToPlugin.clear();
+  pluginConfigKeys.clear();
+  pluginsByName.clear();
+  packageSkillRoots.clear();
+  pluginsLoaded = false;
+}
+
 loadPlugins();
 
 // --- Sync exports ---
 
 export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
+  ensurePluginsLoaded();
   return pluginDefinitions.map((plugin) => ({
     provider: plugin.manifest.name,
     capabilities: [...plugin.manifest.capabilities],
@@ -760,10 +774,12 @@ export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
 }
 
 export function getPluginProviders(): PluginDefinition[] {
+  ensurePluginsLoaded();
   return [...pluginDefinitions];
 }
 
 export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
+  ensurePluginsLoaded();
   const seen = new Set<string>();
   const deps: PluginRuntimeDependency[] = [];
   for (const plugin of pluginDefinitions) {
@@ -805,6 +821,7 @@ export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
 }
 
 export function getPluginRuntimePostinstall(): PluginRuntimePostinstallCommand[] {
+  ensurePluginsLoaded();
   const commands: PluginRuntimePostinstallCommand[] = [];
   for (const plugin of pluginDefinitions) {
     for (const command of plugin.manifest.runtimePostinstall ?? []) {
@@ -822,6 +839,7 @@ export function getPluginRuntimePostinstall(): PluginRuntimePostinstallCommand[]
 export function getPluginOAuthConfig(
   provider: string,
 ): OAuthProviderConfig | undefined {
+  ensurePluginsLoaded();
   const plugin = pluginsByName.get(provider);
   if (!plugin?.manifest.oauth) return undefined;
   const oauth = plugin.manifest.oauth;
@@ -845,6 +863,7 @@ export function getPluginOAuthConfig(
 }
 
 export function getPluginSkillRoots(): string[] {
+  ensurePluginsLoaded();
   return [
     ...new Set([
       ...pluginDefinitions.map((plugin) => plugin.skillsDir),
@@ -854,14 +873,17 @@ export function getPluginSkillRoots(): string[] {
 }
 
 export function isPluginProvider(provider: string): boolean {
+  ensurePluginsLoaded();
   return pluginsByName.has(provider);
 }
 
 export function isPluginCapability(capability: string): boolean {
+  ensurePluginsLoaded();
   return capabilityToPlugin.has(capability);
 }
 
 export function isPluginConfigKey(key: string): boolean {
+  ensurePluginsLoaded();
   return pluginConfigKeys.has(key);
 }
 
@@ -871,6 +893,7 @@ export function createPluginBroker(
   provider: string,
   deps: PluginBrokerDeps,
 ): CredentialBroker {
+  ensurePluginsLoaded();
   const plugin = pluginsByName.get(provider);
   if (!plugin) {
     throw new Error(`Unknown plugin provider: "${provider}"`);

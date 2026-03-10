@@ -1,11 +1,26 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Message } from "chat";
 import type { AppRuntimeAssistantLifecycleEvent } from "@/chat/app-runtime";
-import { appSlackRuntime, bot, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
+import {
+  appSlackRuntime,
+  bot,
+  resetBotDepsForTests,
+  setBotDepsForTests,
+} from "@/chat/bot";
+import { resetPluginRegistryForTests } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
+import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
-import { FakeSlackAdapter, createTestThread, type TestThread } from "../tests/fixtures/slack-harness";
-import { readCapturedSlackApiCalls, type CapturedSlackApiCall } from "../tests/msw/captured-slack-api-calls";
+import {
+  FakeSlackAdapter,
+  createTestThread,
+  type TestThread,
+} from "../tests/fixtures/slack-harness";
+import {
+  readCapturedSlackApiCalls,
+  type CapturedSlackApiCall,
+} from "../tests/msw/captured-slack-api-calls";
 
 interface BehaviorEventThreadFixture {
   channel_id?: string;
@@ -65,15 +80,16 @@ interface SubscribedDecisionFixture {
 export interface BehaviorCaseConfig {
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
+  mock_slack_api?: boolean;
+  plugin_packages?: string[];
+  reply_texts?: string[];
+  retryable_max_attempts?: number;
   retryable_timeout_calls?: number[];
   retryable_timeout_message?: string;
-  retryable_max_attempts?: number;
-  mock_slack_api?: boolean;
   skill_dirs?: string[];
+  subscribed_decisions?: SubscribedDecisionFixture[];
   test_credential_token?: string;
   unset_gateway_api_key?: boolean;
-  reply_texts?: string[];
-  subscribed_decisions?: SubscribedDecisionFixture[];
 }
 
 export interface BehaviorEvalCase {
@@ -96,6 +112,16 @@ export interface BehaviorCaseResult {
   slackAdapter: FakeSlackAdapter;
 }
 
+const EVAL_PACKAGE_ROOT = path.resolve(
+  fileURLToPath(new URL("..", import.meta.url)),
+);
+
+function resolveEvalRelativePath(entry: string): string {
+  return path.isAbsolute(entry)
+    ? entry
+    : path.resolve(EVAL_PACKAGE_ROOT, entry);
+}
+
 function toFirstString(value: unknown): string | undefined {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -110,7 +136,9 @@ function toFirstString(value: unknown): string | undefined {
   return undefined;
 }
 
-export function collectSlackArtifactsFromCapturedCalls(calls: CapturedSlackApiCall[]): Pick<BehaviorCaseResult, "channelPosts" | "reactions"> {
+export function collectSlackArtifactsFromCapturedCalls(
+  calls: CapturedSlackApiCall[],
+): Pick<BehaviorCaseResult, "channelPosts" | "reactions"> {
   const channelPosts: BehaviorCaseResult["channelPosts"] = [];
   const reactions: BehaviorCaseResult["reactions"] = [];
 
@@ -125,7 +153,7 @@ export function collectSlackArtifactsFromCapturedCalls(calls: CapturedSlackApiCa
       channelPosts.push({
         channel,
         text,
-        ...(threadTs ? { thread_ts: threadTs } : {})
+        ...(threadTs ? { thread_ts: threadTs } : {}),
       });
       continue;
     }
@@ -140,14 +168,14 @@ export function collectSlackArtifactsFromCapturedCalls(calls: CapturedSlackApiCa
       reactions.push({
         channel,
         emoji,
-        timestamp
+        timestamp,
       });
     }
   }
 
   return {
     channelPosts,
-    reactions
+    reactions,
   };
 }
 
@@ -188,46 +216,72 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     raw: {
       channel: event.thread.channel_id,
       ts: messageTs,
-      thread_ts: event.thread.thread_ts
+      thread_ts: event.thread.thread_ts,
     },
     author: {
       userId: event.message.author?.user_id ?? "U-eval",
       userName: event.message.author?.user_name ?? "",
       fullName: event.message.author?.full_name ?? "",
       isMe: event.message.author?.is_me ?? false,
-      isBot: event.message.author?.is_bot ?? false
-    }
+      isBot: event.message.author?.is_bot ?? false,
+    },
   };
 }
 
-export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<BehaviorCaseResult> {
+export async function runBehaviorEvalCase(
+  testCase: BehaviorEvalCase,
+): Promise<BehaviorCaseResult> {
   const slackAdapter = new FakeSlackAdapter();
   const threadsById = new Map<string, TestThread>();
-  const channelStateById = new Map<string, { value: Record<string, unknown> }>();
+  const channelStateById = new Map<
+    string,
+    { value: Record<string, unknown> }
+  >();
   const replyTexts = testCase.behavior?.reply_texts ?? [];
-  const retryableTimeoutCalls = new Set(testCase.behavior?.retryable_timeout_calls ?? []);
-  const retryableTimeoutMessage = testCase.behavior?.retryable_timeout_message ?? "simulated eval timeout";
-  const retryableMaxAttempts = Math.max(1, testCase.behavior?.retryable_max_attempts ?? 3);
+  const retryableTimeoutCalls = new Set(
+    testCase.behavior?.retryable_timeout_calls ?? [],
+  );
+  const retryableTimeoutMessage =
+    testCase.behavior?.retryable_timeout_message ?? "simulated eval timeout";
+  const retryableMaxAttempts = Math.max(
+    1,
+    testCase.behavior?.retryable_max_attempts ?? 3,
+  );
   const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
-  const replyTimeoutMs = Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000", 10);
+  const replyTimeoutMs = Number.parseInt(
+    process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000",
+    10,
+  );
   let replyCallCount = 0;
   let decisionIndex = 0;
-  const originalEnableTestCredentials = process.env.EVAL_ENABLE_TEST_CREDENTIALS;
+  const originalEnableTestCredentials =
+    process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   const originalTestCredentialToken = process.env.EVAL_TEST_CREDENTIAL_TOKEN;
+  const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
   const originalSlackBotToken = process.env.SLACK_BOT_TOKEN;
   const configuredSkillDirs =
-    testCase.behavior?.skill_dirs?.map((entry) => path.resolve(process.cwd(), entry)) ?? [];
+    testCase.behavior?.skill_dirs?.map((entry) =>
+      resolveEvalRelativePath(entry),
+    ) ?? [];
   if (testCase.behavior?.enable_test_credentials) {
     process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
     if (testCase.behavior?.test_credential_token) {
-      process.env.EVAL_TEST_CREDENTIAL_TOKEN = testCase.behavior.test_credential_token;
+      process.env.EVAL_TEST_CREDENTIAL_TOKEN =
+        testCase.behavior.test_credential_token;
     }
   }
   if (testCase.behavior?.mock_slack_api) {
     process.env.SLACK_BOT_TOKEN = "xoxb-eval-test-token";
   }
+  process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
+    testCase.behavior?.plugin_packages ?? [],
+  );
+  resetPluginRegistryForTests();
+  resetSkillDiscoveryCache();
 
-  const getChannelStateRef = (channelId: string | undefined): { value: Record<string, unknown> } | undefined => {
+  const getChannelStateRef = (
+    channelId: string | undefined,
+  ): { value: Record<string, unknown> } | undefined => {
     const normalized = channelId?.trim();
     if (!normalized) return undefined;
     const existing = channelStateById.get(normalized);
@@ -247,14 +301,18 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       channelId: fixture.channel_id,
       runId: fixture.run_id,
       threadTs: fixture.thread_ts,
-      channelStateRef: getChannelStateRef(fixture.channel_id)
+      channelStateRef: getChannelStateRef(fixture.channel_id),
     });
     threadsById.set(fixture.id, created);
     return created;
   };
 
-  const originalGetAdapter = (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter?.bind(bot);
-  (bot as unknown as { getAdapter: (name: string) => unknown }).getAdapter = (name: string): unknown => {
+  const originalGetAdapter = (
+    bot as unknown as { getAdapter?: (name: string) => unknown }
+  ).getAdapter?.bind(bot);
+  (bot as unknown as { getAdapter: (name: string) => unknown }).getAdapter = (
+    name: string,
+  ): unknown => {
     if (name === "slack") {
       return slackAdapter;
     }
@@ -265,29 +323,39 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     completeObject: async () => {
       if (subscribedDecisions.length === 0) {
         return {
-          object: { should_reply: false, confidence: 0, reason: "passive conversation" },
-          text: "{\"should_reply\":false,\"confidence\":0,\"reason\":\"passive conversation\"}"
+          object: {
+            should_reply: false,
+            confidence: 0,
+            reason: "passive conversation",
+          },
+          text: '{"should_reply":false,"confidence":0,"reason":"passive conversation"}',
         } as any;
       }
-      const next = subscribedDecisions[Math.min(decisionIndex, subscribedDecisions.length - 1)];
+      const next =
+        subscribedDecisions[
+          Math.min(decisionIndex, subscribedDecisions.length - 1)
+        ];
       decisionIndex += 1;
       return {
         object: {
           should_reply: next.should_reply,
           confidence: next.should_reply ? 1 : 0,
-          reason: next.reason
+          reason: next.reason,
         },
         text: JSON.stringify({
           should_reply: next.should_reply,
           confidence: next.should_reply ? 1 : 0,
-          reason: next.reason
-        })
+          reason: next.reason,
+        }),
       } as any;
     },
     generateAssistantReply: async (text, context) => {
       replyCallCount += 1;
       if (retryableTimeoutCalls.has(replyCallCount)) {
-        throw new RetryableTurnError("agent_turn_timeout_resume", retryableTimeoutMessage);
+        throw new RetryableTurnError(
+          "agent_turn_timeout_resume",
+          retryableTimeoutMessage,
+        );
       }
       if (testCase.behavior?.fail_reply_call === replyCallCount) {
         throw new Error(`forced reply failure on call ${replyCallCount}`);
@@ -304,14 +372,21 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         reply = await Promise.race([
           generateAssistantReply(text, {
             ...context,
-            ...(configuredSkillDirs.length > 0 ? { skillDirs: configuredSkillDirs } : {})
+            ...(configuredSkillDirs.length > 0
+              ? { skillDirs: configuredSkillDirs }
+              : {}),
           }),
           new Promise<never>((_, reject) =>
             setTimeout(
-              () => reject(new Error(`generateAssistantReply timed out after ${replyTimeoutMs}ms`)),
-              replyTimeoutMs
-            )
-          )
+              () =>
+                reject(
+                  new Error(
+                    `generateAssistantReply timed out after ${replyTimeoutMs}ms`,
+                  ),
+                ),
+              replyTimeoutMs,
+            ),
+          ),
         ]);
       } finally {
         if (testCase.behavior?.unset_gateway_api_key) {
@@ -332,15 +407,17 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       if (typeof replyText === "string") {
         return {
           ...reply,
-          text: replyText
+          text: replyText,
         };
       }
       return reply;
-    }
+    },
   });
 
   try {
-    const runWithRetryableTurnHandling = async (run: () => Promise<void>): Promise<void> => {
+    const runWithRetryableTurnHandling = async (
+      run: () => Promise<void>,
+    ): Promise<void> => {
       for (let attempt = 1; attempt <= retryableMaxAttempts; attempt += 1) {
         try {
           await run();
@@ -360,7 +437,10 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       if (event.type === "new_mention") {
         const thread = getThread(event.thread);
         await runWithRetryableTurnHandling(async () => {
-          await appSlackRuntime.handleNewMention(thread, toIncomingMessage(event) as any);
+          await appSlackRuntime.handleNewMention(
+            thread,
+            toIncomingMessage(event) as any,
+          );
         });
         continue;
       }
@@ -368,7 +448,10 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       if (event.type === "subscribed_message") {
         const thread = getThread(event.thread);
         await runWithRetryableTurnHandling(async () => {
-          await appSlackRuntime.handleSubscribedMessage(thread, toIncomingMessage(event) as any);
+          await appSlackRuntime.handleSubscribedMessage(
+            thread,
+            toIncomingMessage(event) as any,
+          );
         });
         continue;
       }
@@ -377,7 +460,7 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
         threadId: event.thread.id,
         channelId: event.thread.channel_id ?? "C_EVAL",
         threadTs: event.thread.thread_ts ?? "0",
-        userId: event.user_id ?? "U-eval"
+        userId: event.user_id ?? "U-eval",
       };
       if (event.type === "assistant_thread_started") {
         await appSlackRuntime.handleAssistantThreadStarted(lifecycleEvent);
@@ -388,7 +471,15 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     }
   } finally {
     resetBotDepsForTests();
-    (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter = originalGetAdapter;
+    resetPluginRegistryForTests();
+    resetSkillDiscoveryCache();
+    (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter =
+      originalGetAdapter;
+    if (originalPluginPackages === undefined) {
+      delete process.env.JUNIOR_PLUGIN_PACKAGES;
+    } else {
+      process.env.JUNIOR_PLUGIN_PACKAGES = originalPluginPackages;
+    }
     if (originalSlackBotToken === undefined) {
       delete process.env.SLACK_BOT_TOKEN;
     } else {
@@ -398,7 +489,8 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
       if (originalEnableTestCredentials === undefined) {
         delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
       } else {
-        process.env.EVAL_ENABLE_TEST_CREDENTIALS = originalEnableTestCredentials;
+        process.env.EVAL_ENABLE_TEST_CREDENTIALS =
+          originalEnableTestCredentials;
       }
       if (originalTestCredentialToken === undefined) {
         delete process.env.EVAL_TEST_CREDENTIAL_TOKEN;
@@ -408,18 +500,28 @@ export async function runBehaviorEvalCase(testCase: BehaviorEvalCase): Promise<B
     }
   }
 
-  const posts = [...threadsById.values()].flatMap((thread) => thread.posts.map(toPostedText));
-  const { channelPosts, reactions } = collectSlackArtifactsFromCapturedCalls(readCapturedSlackApiCalls());
+  const posts = [...threadsById.values()].flatMap((thread) =>
+    thread.posts.map(toPostedText),
+  );
+  const { channelPosts, reactions } = collectSlackArtifactsFromCapturedCalls(
+    readCapturedSlackApiCalls(),
+  );
 
   return {
     channelPosts,
     reactions,
     posts,
-    slackAdapter
+    slackAdapter,
   };
 }
 
 // Compile-time guards for Thread and Message fakes are in tests/fixtures/slack-harness.ts.
 // The toIncomingMessage function below still needs a local check since it maps from eval-specific fixtures.
 type AssertAssignable<_TSub extends TSuper, TSuper> = true;
-type _MessageCheck = AssertAssignable<ReturnType<typeof toIncomingMessage>, Pick<Message, "id" | "text" | "isMention" | "attachments" | "metadata" | "author">>;
+type _MessageCheck = AssertAssignable<
+  ReturnType<typeof toIncomingMessage>,
+  Pick<
+    Message,
+    "id" | "text" | "isMention" | "attachments" | "metadata" | "author"
+  >
+>;
