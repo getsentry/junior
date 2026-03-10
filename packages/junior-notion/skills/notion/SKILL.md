@@ -26,11 +26,12 @@ Use this skill for `/notion` workflows in the harness.
 
 - **Important**: The Notion search API (`POST /v1/search`) only matches against page **titles**, not page content. Craft your search query accordingly.
 - Extract 1–3 short keywords likely to appear in the page title. Do not pass the user's full natural-language question as the query. For example, if the user asks "how do we handle deployment pipelines?", search for `"deployment"` rather than the full sentence.
-- Use a short inline `node` script or `curl` request to `POST https://api.notion.com/v1/search` with the JSON body `{"query": "<keywords>", "filter": {"property": "object", "value": "page"}, "page_size": 5}`.
-- If the first search returns no results, retry with broader or alternative keywords (synonyms, fewer terms, or an empty query to list recent pages).
-- From the results, pick the best-matching page by title relevance to the user's question.
-- Fetch markdown for that page from `GET https://api.notion.com/v1/pages/<page_id>/markdown`.
-- Return a concise summary plus the page title and Notion URL.
+- **Do not filter by object type** in the initial search — pages and databases both contain useful content, and filtering can hide results. Use a short inline `node` script or `curl` request to `POST https://api.notion.com/v1/search` with the JSON body `{"query": "<keywords>", "page_size": 10}`.
+- If the first search returns no results, retry with broader or alternative keywords (synonyms, fewer terms, singular/plural variants, or an empty query to list recent pages). Notion's search index can be inconsistent, so try at least two keyword variations before giving up.
+- From the results, pick the best-matching result by title relevance to the user's question. Results may be pages (`"object": "page"`) or databases (`"object": "database"`).
+- For pages: fetch markdown from `GET https://api.notion.com/v1/pages/<page_id>/markdown`.
+- For databases: fetch entries from `POST https://api.notion.com/v1/databases/<database_id>/query` with `{"page_size": 50}`, then summarize the returned entries.
+- Return a concise summary plus the title and Notion URL.
 
 ## Guardrails
 
