@@ -46,6 +46,7 @@ pnpm evals
 pnpm typecheck
 pnpm skills:check
 pnpm docs:check
+pnpm release:check
 ```
 
 Build and validate the published package artifacts:
@@ -59,8 +60,13 @@ pnpm build:pkg
 This repo uses Craft for manual lockstep npm releases of:
 
 - `@sentry/junior`
+- `@sentry/junior-agent-browser`
 - `@sentry/junior-github`
+- `@sentry/junior-notion`
 - `@sentry/junior-sentry`
+
+Run `pnpm release:check` before changing release package lists so `.craft.yml`, CI,
+the bump script, and the release docs stay aligned.
 
 Trigger releases from GitHub Actions:
 

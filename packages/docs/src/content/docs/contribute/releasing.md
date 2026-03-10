@@ -37,6 +37,7 @@ Docs are deployed at `https://junior.sentry.dev/` from `packages/docs`.
 Recommended preflight:
 
 ```bash
+pnpm release:check
 pnpm docs:check
 ```
 

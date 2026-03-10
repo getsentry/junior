@@ -1,21 +1,26 @@
 # Agent Instructions
 
 ## Package Manager
+
 Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm skills:check`
 
 ## Commit Attribution
+
 AI commits MUST include:
+
 ```
 Co-Authored-By: (agent model name) <email>
 ```
 
 ## File-Scoped Commands
-| Task | Command |
-|------|---------|
-| Unit test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts` |
-| Eval file | `pnpm --filter @sentry/junior exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts` |
+
+| Task           | Command                                                                                       |
+| -------------- | --------------------------------------------------------------------------------------------- |
+| Unit test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                           |
+| Eval file      | `pnpm --filter @sentry/junior exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts` |
 
 ## Key Conventions
+
 - Commit to `main` only.
 - Use `/commit` skill for any commit operation.
 - Use `/create-pr` skill for any PR creation operation.
@@ -24,6 +29,7 @@ Co-Authored-By: (agent model name) <email>
 - Evals cannot be run reliably inside Codex due to sandbox/network limits; run eval commands outside Codex.
 - Use instrumentation conventions from `specs/logging/index.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
+- Keep release package lists aligned across `.craft.yml`, `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs; verify with `pnpm release:check`.
 - Minimize defensive programming — no fallbacks when systems are expected to work. Ensure errors are captured correctly. Use retries for expected network failures, nothing more.
 - Prefer minimal interfaces and simple components across the codebase.
 - Keep public surfaces small: fewer exported types/functions, fewer integration points, explicit contracts.
@@ -36,6 +42,7 @@ Co-Authored-By: (agent model name) <email>
 - Prefer hard cutover for command or skill renames and behavior migrations unless backward compatibility is explicitly requested.
 
 ## Codex Execution Checklist
+
 - Read local contracts first: `AGENTS.md`, relevant `specs/*`, and required `SKILL.md` files.
 - For any test addition/update, you MUST read `specs/testing/index.md` first, then apply the correct layer contract (`unit` vs `integration` vs `eval`) before writing tests.
 - Derive explicit invariants before editing and keep them stable through implementation.
@@ -45,6 +52,7 @@ Co-Authored-By: (agent model name) <email>
 - Treat completion as gated: typecheck/build checks, targeted tests, and contract/spec updates when behavior changes.
 
 ## Known Specs
+
 - `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
 - `specs/security-policy.md` (global runtime/container/token security policy)
 - `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
