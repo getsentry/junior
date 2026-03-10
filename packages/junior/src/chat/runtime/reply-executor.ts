@@ -51,7 +51,7 @@ import { resolveReplyDelivery } from "@/chat/turn/execute";
 import { isRetryableTurnError } from "@/chat/turn/errors";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 import { startActiveTurn } from "@/chat/turn/prepare";
-import { isRedundantReactionAckText } from "@/chat/delivery/plan";
+import { isPotentialRedundantReactionAckText } from "@/chat/delivery/plan";
 
 function buildDeterministicTurnId(messageId: string): string {
   const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -299,13 +299,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               if (explicitChannelPostIntent) {
                 return;
               }
+              if (streamedReplyPromise) {
+                textStream.push(deltaText);
+                return;
+              }
               pendingStreamText += deltaText;
-              if (isRedundantReactionAckText(pendingStreamText)) {
+              if (isPotentialRedundantReactionAckText(pendingStreamText)) {
                 return;
               }
               flushPendingStreamText();
             },
           });
+          if (streamedReplyPromise) {
+            flushPendingStreamText();
+          }
           textStream.end();
           const diagnosticsContext = {
             slackThreadId: threadId,

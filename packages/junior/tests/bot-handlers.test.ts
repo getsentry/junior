@@ -366,6 +366,86 @@ describe("bot handlers (integration)", () => {
     expect(thread.posts).toHaveLength(0);
   });
 
+  it("does not post a streamed thread reply for split reaction-only acknowledgements", async () => {
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    setBotDepsForTests({
+      generateAssistantReply: async (_prompt, context) => {
+        await context?.onTextDelta?.("o");
+        await context?.onTextDelta?.("k");
+        return {
+          text: "ok",
+          ackStrategy: "reaction",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "test-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 1,
+            usedPrimaryText: true,
+          },
+        };
+      },
+      listThreadReplies: async () => [],
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_REACTION_SPLIT:1700000000.000",
+    });
+
+    await appSlackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-reaction-split",
+        threadId: "slack:C_REACTION_SPLIT:1700000000.000",
+        text: "react only",
+        isMention: true,
+      }),
+    );
+
+    expect(thread.posts).toHaveLength(0);
+  });
+
+  it("keeps trailing streamed text when the final delta looks like a redundant ack token", async () => {
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    setBotDepsForTests({
+      generateAssistantReply: async (_prompt, context) => {
+        await context?.onTextDelta?.("The task is ");
+        await context?.onTextDelta?.("done.");
+        return {
+          text: "The task is done.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "test-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true,
+          },
+        };
+      },
+      listThreadReplies: async () => [],
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_STREAM_DONE:1700000000.000",
+    });
+
+    await appSlackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-stream-done",
+        threadId: "slack:C_STREAM_DONE:1700000000.000",
+        text: "status",
+        isMention: true,
+      }),
+    );
+
+    expect(thread.posts).toHaveLength(1);
+    expect(thread.posts[0]).toBe("The task is done.");
+  });
+
   it("passes conversation and turn correlation IDs into assistant reply context", async () => {
     const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     const capturedCorrelation: Array<{
