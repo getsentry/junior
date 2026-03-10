@@ -21,7 +21,7 @@ vi.mock("@/chat/capabilities/catalog", () => ({
       capabilities: ["sentry.api"],
       configKeys: ["sentry.org", "sentry.project"],
     },
-    { provider: "notion", capabilities: ["notion.api.read"], configKeys: [] },
+    { provider: "notion", capabilities: ["notion.api"], configKeys: [] },
   ],
 }));
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
