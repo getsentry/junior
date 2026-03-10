@@ -103,11 +103,15 @@ function discoverWorkspacePluginPackageDirs(
 
   let packagePatterns: string[] = [];
   try {
-    const raw = readFileSync(path.join(workspaceRoot, "pnpm-workspace.yaml"), "utf8");
+    const raw = readFileSync(
+      path.join(workspaceRoot, "pnpm-workspace.yaml"),
+      "utf8",
+    );
     const parsed = parseYaml(raw) as { packages?: unknown };
     packagePatterns = Array.isArray(parsed.packages)
       ? parsed.packages.filter(
-          (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+          (entry): entry is string =>
+            typeof entry === "string" && entry.trim().length > 0,
         )
       : [];
   } catch {
@@ -222,7 +226,7 @@ function discoverDeclaredPackages(
 function discoverInstalledJuniorContentPackages(
   cwd: string = process.cwd(),
   nodeModulesDirs?: string[],
-  packageNames?: string[],
+  packageNames?: string[] | null,
 ): InstalledJuniorContentPackage[] {
   const resolvedCwd = path.resolve(cwd);
   const candidateNodeModulesDirs =
