@@ -12,7 +12,7 @@
 
 const DEFAULT_API_BASE_URL = "https://api.notion.com/v1";
 // Keep this pinned in sync with packages/junior-notion/plugin.yaml.
-const DEFAULT_NOTION_VERSION = "2026-03-11";
+const DEFAULT_NOTION_VERSION = "2025-09-03";
 const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_ROW_LIMIT = 10;
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -146,7 +146,7 @@ function buildHeaders(extraHeaders) {
     ...extraHeaders,
   };
   const token = normalizeWhitespace(process.env.NOTION_TOKEN);
-  if (token) {
+  if (token && token !== "host_managed_credential") {
     headers.Authorization = `Bearer ${token}`;
   }
   return headers;
