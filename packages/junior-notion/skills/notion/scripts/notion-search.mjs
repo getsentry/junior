@@ -302,9 +302,13 @@ function simplifyPropertyValue(property) {
     case "last_edited_time":
       return property.last_edited_time ?? null;
     case "unique_id":
-      return property.unique_id
-        ? `${property.unique_id.prefix ?? ""}${property.unique_id.number ?? ""}`
-        : null;
+      if (!property.unique_id) {
+        return null;
+      }
+      if (property.unique_id.prefix) {
+        return `${property.unique_id.prefix}-${property.unique_id.number ?? ""}`;
+      }
+      return property.unique_id.number ?? null;
     default:
       return null;
   }
