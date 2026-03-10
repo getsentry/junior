@@ -46,7 +46,7 @@ This plugin currently uses Notion's public `v1` API for search and content retri
 
 We also tested Notion's private `api/v3/search` endpoint with the same integration token. It accepted the token at the HTTP layer, but it did not return useful results for the same sample queries, so this plugin does not depend on `api/v3`.
 
-For local debugging, the package exposes two helper scripts that load the workspace env first:
+For local debugging, the package exposes one Notion helper script through two subcommands that load the workspace env first:
 
 ```bash
 pnpm notion:search -- --query "company holidays"

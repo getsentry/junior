@@ -7,8 +7,8 @@
   },
   "type": "module",
   "scripts": {
-    "search": "node scripts/run-with-root-env.mjs ../skills/notion/scripts/notion-search.mjs",
-    "fetch": "node scripts/run-with-root-env.mjs ../skills/notion/scripts/notion-fetch.mjs"
+    "search": "node scripts/run-with-root-env.mjs ../skills/notion/scripts/notion-cli.mjs search",
+    "fetch": "node scripts/run-with-root-env.mjs ../skills/notion/scripts/notion-cli.mjs fetch"
   },
   "files": [
     "plugin.yaml",

@@ -12,7 +12,8 @@ if (rawArgs.length === 0) {
   throw new Error("run-with-root-env requires a helper script path");
 }
 
-const [helperRelativePath, ...helperArgs] = rawArgs;
+const [helperRelativePath, ...rawHelperArgs] = rawArgs;
+const helperArgs = rawHelperArgs[0] === "--" ? rawHelperArgs.slice(1) : rawHelperArgs;
 const envCandidates = [
   `.env.${nodeEnv}.local`,
   nodeEnv === "test" ? null : ".env.local",
