@@ -35,4 +35,22 @@ export default withJunior({
 
 There is no `/notion auth` flow for this plugin. Once the token is configured and pages or data sources are shared with the integration, users can run `/notion <query>` directly.
 
+## Search limitations
+
+This plugin currently uses Notion's public `v1` API for search and content retrieval.
+
+- `v1/search` is title-biased and does not match the richer `Best matches` behavior users see in notion.so.
+- Results can differ from the UI even when the user can see a page in the Notion app.
+- The most common cause of missing results is that the target page or data source is not directly shared with the integration.
+- Newly shared content can also lag behind search indexing.
+
+We also tested Notion's private `api/v3/search` endpoint with the same integration token. It accepted the token at the HTTP layer, but it did not return useful results for the same sample queries, so this plugin does not depend on `api/v3`.
+
+For local debugging, the package exposes two helper scripts that load the workspace env first:
+
+```bash
+pnpm notion:search -- --query "company holidays"
+pnpm notion:fetch -- --id "<notion-id>" --object page
+```
+
 Full setup guide: https://junior.sentry.dev/extend/notion-plugin/

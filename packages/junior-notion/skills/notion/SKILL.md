@@ -22,20 +22,21 @@ Use this skill for `/notion` workflows in the harness.
 - Before any Notion API call, run `jr-rpc issue-credential notion.api`.
 - If credential issuance fails, explain that Notion is not configured on the host and the admin must set `NOTION_TOKEN`.
 
-3. Search with the checked-in helper:
+3. Search with the checked-in helpers:
 
 - Do not improvise `curl` requests or inline `node` snippets for Notion.
 - Decide the actual search phrases first. Notion search is title-biased, so search for the likely page or data source title, not the user's full sentence.
 - Use 1-3 short explicit search phrases.
 - Good: `deployment pipeline`, `launch tracker`, `incident review`
 - Bad: `how do we handle deployment pipelines for mobile releases`
-- Run the helper with the loaded `skill_dir` path:
+- Run search with the loaded `skill_dir` path:
   `node <skill_dir>/scripts/notion-search.mjs --query "<best phrase>" --query "<fallback phrase>"`
 - If the first phrase misses, rerun with 1-2 alternate title-style phrases.
-- Use the helper output to:
-  - pick the best match
-  - summarize page markdown, or summarize the data source schema and returned rows
-  - include the title and Notion URL in the answer
+- Search returns ranked page/data-source candidates only. Pick the best candidate, then fetch content with:
+  `node <skill_dir>/scripts/notion-fetch.mjs --id "<result id>" --object "page"`
+  or
+  `node <skill_dir>/scripts/notion-fetch.mjs --id "<result id>" --object "data_source"`
+- Use the fetch output to summarize page markdown, or summarize the data source schema and returned rows.
 
 ## Guardrails
 

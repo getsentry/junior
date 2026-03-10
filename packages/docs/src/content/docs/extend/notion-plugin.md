@@ -12,6 +12,8 @@ related:
 
 The Notion plugin uses a shared internal integration so Slack users can search shared Notion pages and data sources through `/notion`.
 
+Notion's public search API is more limited than the search experience in the Notion app. Junior uses the stable public API, so `/notion` works best when users search for the exact page or data source title they want to open.
+
 ## Setup
 
 ### Create an internal Notion integration
@@ -73,12 +75,20 @@ This is the most common reason `/notion` returns no matches or a `404`/permissio
 - The target page or data source is shared with the integration in Notion.
 - A real `/notion <query>` request returns a summary and source URL.
 
+For local debugging, you can also run:
+
+```bash
+pnpm notion:search -- --query "company holidays"
+pnpm notion:fetch -- --id "<notion-id>" --object page
+```
+
 ## Failure modes
 
 - No search matches: the page or data source may not be shared with the integration yet, or Notion search may still be indexing immediately after content was shared.
 - `403` from Notion: the integration is missing `Read content`.
 - `401` from Notion: `NOTION_TOKEN` is missing or invalid.
 - Retrieval errors: the top matching page or data source could not be fetched for summarization.
+- Search results differ from notion.so: Junior uses Notion's public `v1` API, which is title-biased and does not expose the richer `Best matches` behavior from the Notion UI.
 
 Notion's search docs note that directly shared pages are guaranteed to appear, while newly shared content can still be delayed by search indexing. If a page or data source was just shared and `/notion` still misses it, retry once indexing catches up.
 

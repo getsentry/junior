@@ -6,8 +6,13 @@
     "access": "public"
   },
   "type": "module",
+  "scripts": {
+    "search": "node scripts/run-with-root-env.mjs ../skills/notion/scripts/notion-search.mjs",
+    "fetch": "node scripts/run-with-root-env.mjs ../skills/notion/scripts/notion-fetch.mjs"
+  },
   "files": [
     "plugin.yaml",
-    "skills"
+    "skills",
+    "scripts"
   ]
 }
