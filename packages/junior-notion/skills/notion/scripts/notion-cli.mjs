@@ -77,6 +77,7 @@ function buildSearchQueries(queries) {
     seenQueries.add(value);
     normalizedQueries.push(value);
   }
+  normalizedQueries.push("");
   return normalizedQueries;
 }
 
@@ -510,24 +511,24 @@ async function main() {
   }
 
   const args = parseArgs(rest[0] === "--" ? rest.slice(1) : rest);
-  const result =
-    command === "search"
-      ? await (() => {
-          const queries = toStringArray(args.query);
-          if (queries.length === 0) {
-            throw new Error("notion search requires at least one --query");
-          }
-          return searchNotion({
-            queries,
-            pageSize: args["page-size"] ? Number.parseInt(args["page-size"], 10) : DEFAULT_PAGE_SIZE,
-            object: normalizeWhitespace(args.object),
-          });
-        })()
-      : await fetchContent({
-          id: normalizeWhitespace(args.id),
-          object: normalizeWhitespace(args.object),
-          rowLimit: args["row-limit"] ? Number.parseInt(args["row-limit"], 10) : DEFAULT_ROW_LIMIT,
-        });
+  let result;
+  if (command === "search") {
+    const queries = toStringArray(args.query);
+    if (queries.length === 0) {
+      throw new Error("notion search requires at least one --query");
+    }
+    result = await searchNotion({
+      queries,
+      pageSize: args["page-size"] ? Number.parseInt(args["page-size"], 10) : DEFAULT_PAGE_SIZE,
+      object: normalizeWhitespace(args.object),
+    });
+  } else {
+    result = await fetchContent({
+      id: normalizeWhitespace(args.id),
+      object: normalizeWhitespace(args.object),
+      rowLimit: args["row-limit"] ? Number.parseInt(args["row-limit"], 10) : DEFAULT_ROW_LIMIT,
+    });
+  }
 
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
