@@ -64,24 +64,18 @@ function toStringArray(value) {
   return normalized ? [normalized] : [];
 }
 
-function buildSearchQueries({ query = "", queries = [] }) {
-  const variants = [];
-  const seenVariants = new Set();
-  const pushVariant = (value) => {
-    const normalized = normalizeWhitespace(value);
-    if (seenVariants.has(normalized)) {
-      return;
+function buildSearchQueries(queries) {
+  const normalizedQueries = [];
+  const seenQueries = new Set();
+  for (const value of toStringArray(queries)) {
+    if (seenQueries.has(value)) {
+      continue;
     }
-    seenVariants.add(normalized);
-    variants.push(normalized);
-  };
-
-  for (const value of [...toStringArray(query), ...toStringArray(queries)]) {
-    pushVariant(value);
+    seenQueries.add(value);
+    normalizedQueries.push(value);
   }
-  pushVariant("");
-
-  return variants;
+  normalizedQueries.push("");
+  return normalizedQueries;
 }
 
 function extractPlainText(value) {
@@ -302,7 +296,7 @@ function simplifyPropertyValue(property) {
         ? property.relation.map((item) => item?.id).filter(Boolean)
         : [];
     case "formula":
-      return simplifyPropertyValue(property.formula);
+      return simplifyFormulaValue(property.formula);
     case "created_time":
       return property.created_time ?? null;
     case "last_edited_time":
@@ -311,6 +305,38 @@ function simplifyPropertyValue(property) {
       return property.unique_id
         ? `${property.unique_id.prefix ?? ""}${property.unique_id.number ?? ""}`
         : null;
+    default:
+      return null;
+  }
+}
+
+function simplifyFormulaValue(formula) {
+  if (!formula || typeof formula !== "object") {
+    return null;
+  }
+
+  switch (formula.type) {
+    case "string":
+      return formula.string ?? null;
+    case "number":
+      return formula.number ?? null;
+    case "boolean":
+      return formula.boolean ?? null;
+    case "date":
+      return formula.date
+        ? {
+            start: formula.date.start ?? null,
+            end: formula.date.end ?? null,
+          }
+        : null;
+    case "page":
+      return formula.page?.id ?? null;
+    case "person":
+      return formula.person?.name || formula.person?.id || null;
+    case "list":
+      return Array.isArray(formula.list)
+        ? formula.list.map((item) => simplifyFormulaValue(item)).filter((item) => item !== null)
+        : [];
     default:
       return null;
   }
@@ -383,12 +409,11 @@ async function fetchDataSourceContent(dataSourceId, rowLimit) {
 }
 
 async function searchNotion({
-  query = "",
   queries = [],
   pageSize = DEFAULT_PAGE_SIZE,
   rowLimit = DEFAULT_ROW_LIMIT,
 } = {}) {
-  const searchQueries = buildSearchQueries({ query, queries });
+  const searchQueries = buildSearchQueries(queries);
   const tokens = [...new Set(tokenize(searchQueries.join(" ")))];
   const attempts = [];
   const candidateMap = new Map();
@@ -476,23 +501,18 @@ async function searchNotion({
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const queries = toStringArray(args.query);
-  const query = queries[0] ?? "";
-  const remainingQueries = queries.slice(1);
-  if (!normalizeWhitespace(query) && remainingQueries.length === 0) {
+  if (queries.length === 0) {
     throw new Error("notion-search requires at least one --query");
   }
   const result = await searchNotion({
-    query,
-    queries: remainingQueries,
+    queries,
     pageSize: args["page-size"] ? Number.parseInt(args["page-size"], 10) : DEFAULT_PAGE_SIZE,
     rowLimit: args["row-limit"] ? Number.parseInt(args["row-limit"], 10) : DEFAULT_ROW_LIMIT,
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((error) => {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    process.exitCode = 1;
-  });
-}
+main().catch((error) => {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
+});
