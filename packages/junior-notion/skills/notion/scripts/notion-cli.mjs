@@ -146,6 +146,8 @@ function buildHeaders(extraHeaders) {
     ...extraHeaders,
   };
   const token = normalizeWhitespace(process.env.NOTION_TOKEN);
+  // In sandboxed runs the broker can set a placeholder value here and inject the
+  // real Authorization header later, so skip the placeholder rather than sending it.
   if (token && token !== "host_managed_credential") {
     headers.Authorization = `Bearer ${token}`;
   }
