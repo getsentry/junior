@@ -485,11 +485,17 @@ async function main() {
   const args = parseArgs(rest[0] === "--" ? rest.slice(1) : rest);
   const result =
     command === "search"
-      ? await searchNotion({
-          queries: toStringArray(args.query),
-          pageSize: args["page-size"] ? Number.parseInt(args["page-size"], 10) : DEFAULT_PAGE_SIZE,
-          object: normalizeWhitespace(args.object),
-        })
+      ? await (() => {
+          const queries = toStringArray(args.query);
+          if (queries.length === 0) {
+            throw new Error("notion search requires at least one --query");
+          }
+          return searchNotion({
+            queries,
+            pageSize: args["page-size"] ? Number.parseInt(args["page-size"], 10) : DEFAULT_PAGE_SIZE,
+            object: normalizeWhitespace(args.object),
+          });
+        })()
       : await fetchContent({
           id: normalizeWhitespace(args.id),
           object: normalizeWhitespace(args.object),
