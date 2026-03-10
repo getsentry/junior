@@ -35,6 +35,8 @@ Good structure — problem-specific sections:
 >
 > ## Workaround
 > Retry wrapper that catches LockError and clears the dedup key (PR #32).
+>
+> Action taken on behalf of Jane Doe.
 
 ## Task example
 
@@ -52,6 +54,8 @@ Good scope — quantified and specific:
 > | `processReaction` | scheduling only |
 > | `processAction` | scheduling only |
 > | `processMessage` | scheduling + thread ID normalization + lock retry |
+>
+> Action taken on behalf of Jane Doe.
 
 ## Feature example
 
@@ -70,6 +74,8 @@ Good framing — current state, gap, options:
 > |----------|----------|
 > | File watch + hot reload | Simple, but no atomicity guarantee |
 > | Config service with polling | Consistent, but adds a dependency |
+>
+> Action taken on behalf of Jane Doe.
 
 ## Principles
 
@@ -86,3 +92,4 @@ Good framing — current state, gap, options:
 - Confident fix claims without root-cause evidence
 - Speculative detail mixed into verified facts
 - Session-specific content (user names, slash commands, channel references)
+- Missing delegated attribution footer on user-requested issue creation

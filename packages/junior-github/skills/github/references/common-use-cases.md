@@ -9,6 +9,12 @@ jr-rpc issue-credential github.issues.write
 gh issue create --repo owner/repo --title "OAuth token refresh fails in long-running thread" --body-file /vercel/sandbox/tmp/issue.md
 ```
 
+`/vercel/sandbox/tmp/issue.md` should end with:
+
+```md
+Action taken on behalf of Jane Doe.
+```
+
 ## 2) Patch issue title/body
 
 ```bash

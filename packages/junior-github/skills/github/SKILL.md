@@ -42,6 +42,8 @@ Use this skill for `/github` workflows in the harness. Issues are the primary su
 - Cross-reference related issues and PRs when they provide context.
 - For quality gates, use [references/issue-quality-checklist.md](references/issue-quality-checklist.md).
 - For structure examples, use [references/issue-examples.md](references/issue-examples.md).
+- When creating a new issue on behalf of a user, append a final attribution line at the end of the body in the form `Action taken on behalf of <name>.`
+- Use the clearest available user identifier from conversation context. Prefer a human name, then stable handle, and do not omit attribution for delegated mutations.
 
 4. Execute operation:
 - Issue credential for the required capability before API calls:
