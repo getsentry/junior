@@ -10,7 +10,7 @@ import { isDirectory, isFile } from "@/chat/fs-utils";
 interface InstalledJuniorContentPackage {
   name: string;
   dir: string;
-  nodeModulesDir: string;
+  nodeModulesDir: string | null;
   hasRootPluginManifest: boolean;
   hasPluginsDir: boolean;
   hasSkillsDir: boolean;
@@ -88,6 +88,61 @@ function findWorkspaceRoot(cwd: string): string | null {
   }
 }
 
+function readWorkspacePackagePatterns(workspaceRoot: string): string[] {
+  try {
+    const raw = readFileSync(
+      path.join(workspaceRoot, "pnpm-workspace.yaml"),
+      "utf8",
+    );
+    const parsed = parseYaml(raw) as { packages?: unknown };
+    return Array.isArray(parsed.packages)
+      ? parsed.packages.filter(
+          (entry): entry is string =>
+            typeof entry === "string" && entry.trim().length > 0,
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function listWorkspacePackageDirs(workspaceRoot: string): string[] {
+  const packagePatterns = readWorkspacePackagePatterns(workspaceRoot);
+  const discovered: string[] = [];
+  const seen = new Set<string>();
+
+  const addDir = (candidate: string) => {
+    const normalized = path.resolve(candidate);
+    if (seen.has(normalized) || !isDirectory(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    discovered.push(normalized);
+  };
+
+  for (const pattern of packagePatterns) {
+    const trimmed = pattern.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    if (trimmed.endsWith("/*")) {
+      const baseDir = path.join(workspaceRoot, trimmed.slice(0, -2));
+      if (!isDirectory(baseDir)) {
+        continue;
+      }
+      for (const entry of readdirSync(baseDir)) {
+        addDir(path.join(baseDir, entry));
+      }
+      continue;
+    }
+
+    addDir(path.join(workspaceRoot, trimmed));
+  }
+
+  return discovered;
+}
+
 function discoverWorkspacePluginPackageDirs(
   cwd: string,
   packageNames: string[] | null,
@@ -98,23 +153,6 @@ function discoverWorkspacePluginPackageDirs(
 
   const workspaceRoot = findWorkspaceRoot(cwd);
   if (!workspaceRoot) {
-    return [];
-  }
-
-  let packagePatterns: string[] = [];
-  try {
-    const raw = readFileSync(
-      path.join(workspaceRoot, "pnpm-workspace.yaml"),
-      "utf8",
-    );
-    const parsed = parseYaml(raw) as { packages?: unknown };
-    packagePatterns = Array.isArray(parsed.packages)
-      ? parsed.packages.filter(
-          (entry): entry is string =>
-            typeof entry === "string" && entry.trim().length > 0,
-        )
-      : [];
-  } catch {
     return [];
   }
 
@@ -135,27 +173,37 @@ function discoverWorkspacePluginPackageDirs(
     discovered.push(normalized);
   };
 
-  for (const pattern of packagePatterns) {
-    const trimmed = pattern.trim();
-    if (!trimmed) {
-      continue;
-    }
-
-    if (trimmed.endsWith("/*")) {
-      const baseDir = path.join(workspaceRoot, trimmed.slice(0, -2));
-      if (!isDirectory(baseDir)) {
-        continue;
-      }
-      for (const entry of readdirSync(baseDir)) {
-        addIfPluginPackage(path.join(baseDir, entry));
-      }
-      continue;
-    }
-
-    addIfPluginPackage(path.join(workspaceRoot, trimmed));
+  for (const candidate of listWorkspacePackageDirs(workspaceRoot)) {
+    addIfPluginPackage(candidate);
   }
 
   return discovered;
+}
+
+function resolveWorkspacePackageDirFromName(
+  cwd: string,
+  packageName: string,
+): string | null {
+  const workspaceRoot = findWorkspaceRoot(cwd);
+  if (!workspaceRoot) {
+    return null;
+  }
+
+  for (const candidate of listWorkspacePackageDirs(workspaceRoot)) {
+    let parsedName: unknown;
+    try {
+      const raw = readFileSync(path.join(candidate, "package.json"), "utf8");
+      parsedName = (JSON.parse(raw) as { name?: unknown }).name;
+    } catch {
+      continue;
+    }
+    if (parsedName !== packageName) {
+      continue;
+    }
+    return candidate;
+  }
+
+  return null;
 }
 
 function resolvePackageDirFromName(
@@ -176,6 +224,7 @@ function resolvePackageDirFromName(
 }
 
 function discoverDeclaredPackages(
+  cwd: string,
   packageNames: string[],
   candidateNodeModulesDirs: string[],
 ): InstalledJuniorContentPackage[] {
@@ -188,32 +237,31 @@ function discoverDeclaredPackages(
       packageName,
       candidateNodeModulesDirs,
     );
-    if (!resolved) {
+    const workspaceDir = resolved
+      ? null
+      : resolveWorkspacePackageDirFromName(cwd, packageName);
+    if (!resolved && !workspaceDir) {
+      continue;
+    }
+    const packageDir = resolved?.dir ?? workspaceDir!;
+
+    if (seenPackageNames.has(packageName) || seenPackageDirs.has(packageDir)) {
       continue;
     }
 
-    if (
-      seenPackageNames.has(packageName) ||
-      seenPackageDirs.has(resolved.dir)
-    ) {
-      continue;
-    }
-
-    const hasRootPluginManifest = isFile(
-      path.join(resolved.dir, "plugin.yaml"),
-    );
-    const hasPluginsDir = isDirectory(path.join(resolved.dir, "plugins"));
-    const hasSkillsDir = isDirectory(path.join(resolved.dir, "skills"));
+    const hasRootPluginManifest = isFile(path.join(packageDir, "plugin.yaml"));
+    const hasPluginsDir = isDirectory(path.join(packageDir, "plugins"));
+    const hasSkillsDir = isDirectory(path.join(packageDir, "skills"));
     if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
       continue;
     }
 
     seenPackageNames.add(packageName);
-    seenPackageDirs.add(resolved.dir);
+    seenPackageDirs.add(packageDir);
     discovered.push({
       name: packageName,
-      dir: resolved.dir,
-      nodeModulesDir: resolved.nodeModulesDir,
+      dir: packageDir,
+      nodeModulesDir: resolved?.nodeModulesDir ?? null,
       hasRootPluginManifest,
       hasPluginsDir,
       hasSkillsDir,
@@ -234,6 +282,7 @@ function discoverInstalledJuniorContentPackages(
   const configuredPackageNames =
     packageNames ?? readNextRuntimeConfiguredPackageNames();
   const declaredPackages = discoverDeclaredPackages(
+    resolvedCwd,
     configuredPackageNames ?? [],
     candidateNodeModulesDirs,
   );
@@ -308,10 +357,12 @@ export function discoverInstalledPluginPackageContent(
   const tracingIncludes: string[] = [];
 
   for (const pkg of discoveredPackages) {
-    const packagePathFromNodeModules = pathWithinCwd(
-      resolvedCwd,
-      path.join(pkg.nodeModulesDir, ...pkg.name.split("/")),
-    );
+    const packagePathFromNodeModules = pkg.nodeModulesDir
+      ? pathWithinCwd(
+          resolvedCwd,
+          path.join(pkg.nodeModulesDir, ...pkg.name.split("/")),
+        )
+      : null;
     if (pkg.hasRootPluginManifest) {
       manifestRoots.push(pkg.dir);
       if (packagePathFromNodeModules) {
