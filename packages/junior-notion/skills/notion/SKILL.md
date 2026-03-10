@@ -24,8 +24,11 @@ Use this skill for `/notion` workflows in the harness.
 
 3. Search and summarize:
 
-- Use a short inline `node` script or `curl` request to `POST https://api.notion.com/v1/search` with a JSON body containing the user query.
-- Filter the results to `object === "page"` and use the top page result for v1.
+- **Important**: The Notion search API (`POST /v1/search`) only matches against page **titles**, not page content. Craft your search query accordingly.
+- Extract 1–3 short keywords likely to appear in the page title. Do not pass the user's full natural-language question as the query. For example, if the user asks "how do we handle deployment pipelines?", search for `"deployment"` rather than the full sentence.
+- Use a short inline `node` script or `curl` request to `POST https://api.notion.com/v1/search` with the JSON body `{"query": "<keywords>", "filter": {"property": "object", "value": "page"}, "page_size": 5}`.
+- If the first search returns no results, retry with broader or alternative keywords (synonyms, fewer terms, or an empty query to list recent pages).
+- From the results, pick the best-matching page by title relevance to the user's question.
 - Fetch markdown for that page from `GET https://api.notion.com/v1/pages/<page_id>/markdown`.
 - Return a concise summary plus the page title and Notion URL.
 
