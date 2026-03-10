@@ -35,7 +35,7 @@ const SENTRY_MANIFEST: PluginManifest = {
 const NOTION_MANIFEST: PluginManifest = {
   name: "notion",
   description: "Notion search",
-  capabilities: ["notion.api.read"],
+  capabilities: ["notion.api"],
   configKeys: [],
   credentials: {
     type: "oauth-bearer",
@@ -397,7 +397,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       { userTokenStore: tokenStore },
     );
     const lease = await broker.issue({
-      capability: "notion.api.read",
+      capability: "notion.api",
       reason: "test:notion",
       requesterId: "U777",
     });

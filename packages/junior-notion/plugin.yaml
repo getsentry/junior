@@ -2,7 +2,7 @@ name: notion
 description: Notion page search and summarization
 
 capabilities:
-  - api.read
+  - api
 
 credentials:
   type: oauth-bearer
