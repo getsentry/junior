@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import { botConfig } from "@/chat/config";
-import { soulPathCandidates } from "@/chat/home";
+import { aboutPathCandidates, soulPathCandidates } from "@/chat/home";
 import { logInfo, logWarn } from "@/chat/observability";
 import { slackOutputPolicy } from "@/chat/output";
 import type { RuntimeMetadata } from "@/chat/runtime-metadata";
@@ -12,20 +12,23 @@ import { escapeXml } from "@/chat/xml";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
 
-function loadSoul(): string {
+function loadOptionalMarkdownFile(
+  candidates: string[],
+  fileName: string,
+): string | null {
   const attempted: string[] = [];
-  for (const resolved of soulPathCandidates()) {
+  for (const resolved of candidates) {
     attempted.push(resolved);
     try {
       const raw = fs.readFileSync(resolved, "utf8").trim();
       if (raw.length > 0) {
         logInfo(
-          "soul_loaded",
+          `${fileName.toLowerCase()}_loaded`,
           {},
           {
             "file.path": resolved,
           },
-          "Loaded SOUL.md",
+          `Loaded ${fileName}`,
         );
         return raw;
       }
@@ -34,15 +37,28 @@ function loadSoul(): string {
     }
   }
 
+  return null;
+}
+
+function loadSoul(): string {
+  const soul = loadOptionalMarkdownFile(soulPathCandidates(), "SOUL.md");
+  if (soul) {
+    return soul;
+  }
+
   logWarn(
     "soul_load_fallback",
     {},
     {
-      "file.candidates": attempted,
+      "file.candidates": soulPathCandidates(),
     },
     "SOUL.md not found; using built-in default personality",
   );
   return DEFAULT_SOUL;
+}
+
+function loadAbout(): string | null {
+  return loadOptionalMarkdownFile(aboutPathCandidates(), "ABOUT.md");
 }
 
 export const JUNIOR_PERSONALITY = (() => {
@@ -58,6 +74,22 @@ export const JUNIOR_PERSONALITY = (() => {
       "Failed to load SOUL.md; using built-in default personality",
     );
     return DEFAULT_SOUL;
+  }
+})();
+
+export const JUNIOR_ABOUT = (() => {
+  try {
+    return loadAbout();
+  } catch (error) {
+    logWarn(
+      "about_load_failed",
+      {},
+      {
+        "error.message": error instanceof Error ? error.message : String(error),
+      },
+      "Failed to load ABOUT.md; omitting about prompt context",
+    );
+    return null;
   }
 })();
 
@@ -302,6 +334,18 @@ export function buildSystemPrompt(params: {
         JUNIOR_PERSONALITY.trim(),
       ].join("\n"),
     ),
+    ...(JUNIOR_ABOUT
+      ? [
+          renderTag(
+            "about",
+            [
+              "Use this as the assistant's product/domain description when relevant.",
+              "",
+              JUNIOR_ABOUT.trim(),
+            ].join("\n"),
+          ),
+        ]
+      : []),
     renderTag(
       "identity-context",
       [

@@ -78,6 +78,10 @@ export async function runInit(dir: string, log: (line: string) => void = console
   const dataDir = path.join(target, "app", "data");
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(path.join(dataDir, "SOUL.md"), `# ${name}\n\nYou are ${name}, a helpful assistant.\n`);
+  fs.writeFileSync(
+    path.join(dataDir, "ABOUT.md"),
+    `# About ${name}\n\nDescribe what ${name} helps users do.\n`
+  );
 
   const skillsDir = path.join(target, "app", "skills");
   fs.mkdirSync(skillsDir, { recursive: true });

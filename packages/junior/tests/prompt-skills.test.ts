@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildSystemPrompt } from "@/chat/prompt";
 import { sandboxSkillFile, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { Skill, SkillMetadata } from "@/chat/skills";
@@ -12,6 +12,11 @@ vi.mock("@/chat/capabilities/catalog", () => ({
     },
   ],
 }));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.resetModules();
+});
 
 describe("buildSystemPrompt skill paths", () => {
   it("renders available and loaded skill locations in sandbox workspace paths", () => {
@@ -130,5 +135,44 @@ describe("buildSystemPrompt skill paths", () => {
 
     expect(prompt).toContain("<runtime-metadata>");
     expect(prompt).toContain("- version: unknown");
+  });
+
+  it("renders ABOUT.md in a dedicated about section when available", async () => {
+    vi.resetModules();
+    vi.doMock("node:fs", () => ({
+      default: {
+        readFileSync: vi.fn((target: string) => {
+          if (target.endsWith("/SOUL.md")) {
+            return "You are a precise assistant.";
+          }
+          if (target.endsWith("/ABOUT.md")) {
+            return "You help teams coordinate releases.";
+          }
+          throw new Error(`Unexpected read: ${target}`);
+        }),
+      },
+    }));
+    vi.doMock("@/chat/home", async () => {
+      const actual = await vi.importActual<typeof import("@/chat/home")>("@/chat/home");
+      return {
+        ...actual,
+        soulPathCandidates: () => ["/mock/app/SOUL.md"],
+        aboutPathCandidates: () => ["/mock/app/ABOUT.md"],
+      };
+    });
+
+    const { buildSystemPrompt: buildPrompt } = await import("@/chat/prompt");
+    const prompt = buildPrompt({
+      availableSkills: [],
+      activeSkills: [],
+      invocation: null,
+    });
+
+    expect(prompt).toContain("<about>");
+    expect(prompt).toContain(
+      "Use this as the assistant's product/domain description when relevant.",
+    );
+    expect(prompt).toContain("You help teams coordinate releases.");
+    expect(prompt).toContain("</about>");
   });
 });

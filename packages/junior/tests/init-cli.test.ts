@@ -27,6 +27,8 @@ describe("init cli", () => {
     expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "api", "[...path]", "route.js"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "api", "queue", "callback", "route.js"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "app", "data", "SOUL.md"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "app", "data", "ABOUT.md"))).toBe(true);
   });
 
   it("refuses to initialize a non-empty directory", async () => {

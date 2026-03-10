@@ -20,7 +20,10 @@ function pathExists(targetPath: string): boolean {
 }
 
 function hasAnyDataMarkers(appDir: string): boolean {
-  return pathExists(path.join(appDir, "SOUL.md"));
+  return (
+    pathExists(path.join(appDir, "SOUL.md")) ||
+    pathExists(path.join(appDir, "ABOUT.md"))
+  );
 }
 
 function scoreAppCandidate(appDir: string): number {
@@ -112,6 +115,10 @@ export function soulPath(): string {
   return path.join(dataDir(), "SOUL.md");
 }
 
+export function aboutPath(): string {
+  return path.join(dataDir(), "ABOUT.md");
+}
+
 export function skillsDir(): string {
   return resolveContentRoots("skills")[0];
 }
@@ -134,5 +141,10 @@ export function pluginRoots(): string[] {
 
 export function soulPathCandidates(): string[] {
   const candidates = dataRoots().map((root) => path.join(root, "SOUL.md"));
+  return unique(candidates);
+}
+
+export function aboutPathCandidates(): string[] {
+  const candidates = dataRoots().map((root) => path.join(root, "ABOUT.md"));
   return unique(candidates);
 }
