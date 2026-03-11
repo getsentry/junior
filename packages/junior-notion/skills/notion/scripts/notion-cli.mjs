@@ -462,8 +462,15 @@ async function fetchContent({ id, object, rowLimit = DEFAULT_ROW_LIMIT } = {}) {
   }
 
   if (object === "page") {
-    const target = await fetchPageMetadata(id);
+    let target = {
+      id,
+      object: "page",
+      title: "",
+      url: "",
+      last_edited_time: null,
+    };
     try {
+      target = await fetchPageMetadata(id);
       const markdown = await fetchPageMarkdown(id);
       return {
         ok: true,
