@@ -77,7 +77,6 @@ function buildSearchQueries(queries) {
     seenQueries.add(value);
     normalizedQueries.push(value);
   }
-  normalizedQueries.push("");
   return normalizedQueries;
 }
 
