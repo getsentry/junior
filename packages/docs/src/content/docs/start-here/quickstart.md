@@ -1,8 +1,8 @@
 ---
 title: Quickstart
-description: Wire Junior locally and deploy it to Vercel in one end-to-end setup flow.
+description: Start from `junior init`, verify locally, then add the few deployment-specific pieces needed for Vercel.
 type: tutorial
-summary: Set up Junior once, verify local Slack thread execution, then deploy the same runtime to Vercel.
+summary: Scaffold a new Junior app with `junior init`, fill in environment and Slack setup, then deploy the same runtime to Vercel.
 prerequisites: []
 related:
   - /extend/plugins-overview/
@@ -18,9 +18,13 @@ related:
 - Redis URL
 - A Vercel account
 
-## Setup
+## Outcome
 
-### Create a new app
+You will end with a working Junior app scaffolded by `junior init`, verified locally, and ready for Vercel deployment.
+
+## Create a new app
+
+Start with the initializer. This is the intended path for a new project.
 
 ```bash
 npx @sentry/junior init my-bot
@@ -28,29 +32,64 @@ cd my-bot
 pnpm install
 ```
 
-### Install Junior with a plugin package
+`junior init` already creates the core runtime wiring for you:
+
+- `app/api/[...path]/route.js`
+- `app/api/queue/callback/route.js`
+- `app/layout.js`
+- `next.config.mjs`
+- `instrumentation.js`
+- `app/data/SOUL.md` and `app/data/ABOUT.md`
+- `app/skills/` and `app/plugins/`
+- `.env.example`
+
+For a new app, that means you usually do not need to hand-create routes or runtime wrapper files.
+
+## Configure environment
+
+Copy values into your local env file. The scaffold includes `.env.example` with the core runtime variables.
+
+Required:
+
+- `SLACK_SIGNING_SECRET`
+- `SLACK_BOT_TOKEN`
+- `REDIS_URL`
+
+Recommended:
+
+- `JUNIOR_BOT_NAME`
+- `AI_MODEL`
+- `AI_FAST_MODEL`
+
+See [Config & Environment](/reference/config-and-env/) for the full reference.
+
+## Run locally
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-github @sentry/junior-notion
+pnpm dev
 ```
 
-This keeps the model extension-first from the start: runtime + at least one integration package.
+## Verify locally
 
-### Wire routes
+Run the health check first, then verify a real Slack thread.
 
-```ts title="app/api/[...path]/route.ts"
-export { GET, POST } from "@sentry/junior/handler";
-export const runtime = "nodejs";
+- `GET http://localhost:3000/api/health` returns JSON with `status: "ok"`.
+- Set your Slack Event Subscriptions and Interactivity URLs to `http://<your-tunnel-or-dev-host>/api/webhooks/slack`.
+- Mention the bot in Slack and confirm it replies in the same thread.
+
+## Add plugins
+
+The initializer creates local `app/plugins` and `app/skills` directories, so you can start there without extra runtime config.
+
+If you want to use npm-distributed plugins, install them explicitly:
+
+```bash
+pnpm add @sentry/junior-github @sentry/junior-notion
 ```
 
-```ts title="app/api/queue/callback/route.ts"
-export { POST } from "@sentry/junior/handlers/queue-callback";
-export const runtime = "nodejs";
-```
+Then register them in `next.config.mjs`:
 
-### Enable Next.js runtime config
-
-```ts title="next.config.mjs"
+```js title="next.config.mjs"
 import { withJunior } from "@sentry/junior/config";
 
 export default withJunior({
@@ -58,36 +97,49 @@ export default withJunior({
 });
 ```
 
-```ts title="instrumentation.ts"
+See [Plugins Overview](/extend/plugins-overview/) for the local-vs-package model.
+
+## What `junior init` created
+
+If you need to wire the runtime by hand in an existing Next.js app, this is the shape `junior init` gives you.
+
+### Catch-all route
+
+```js title="app/api/[...path]/route.js"
+export { GET, POST } from "@sentry/junior/handler";
+export const runtime = "nodejs";
+```
+
+### Queue callback route
+
+```js title="app/api/queue/callback/route.js"
+export { POST } from "@sentry/junior/handlers/queue-callback";
+export const runtime = "nodejs";
+```
+
+### Next.js config
+
+```js title="next.config.mjs"
+import { withJunior } from "@sentry/junior/config";
+
+export default withJunior();
+```
+
+### Instrumentation
+
+```js title="instrumentation.js"
 export { register, onRequestError } from "@sentry/junior/instrumentation";
 ```
 
-If your app has no root layout yet:
+### Root layout
 
-```ts
+```js title="app/layout.js"
 export { default } from "@sentry/junior/app/layout";
 ```
 
-### Set required env vars
-
-```bash
-SLACK_SIGNING_SECRET=...
-SLACK_BOT_TOKEN=...
-REDIS_URL=...
-```
-
-### Run locally
-
-```bash
-pnpm dev
-```
-
-### Verify locally
-
-- `GET http://localhost:3000/api/health` returns JSON with `status: "ok"`.
-- A Slack mention triggers a threaded response.
-
 ## Deploy to Vercel
+
+`junior init` does not configure your Vercel project. You still need to add the deployment-specific pieces below.
 
 ### Link the project
 
@@ -101,7 +153,7 @@ pnpm dlx vercel@latest link
 ```json title="vercel.json"
 {
   "functions": {
-    "app/api/queue/callback/route.ts": {
+    "app/api/queue/callback/route.js": {
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
@@ -112,9 +164,6 @@ pnpm dlx vercel@latest link
   }
 }
 ```
-
-If your project uses JavaScript route files (for example from `junior init`), use
-`app/api/queue/callback/route.js` instead.
 
 ### Configure build command
 
@@ -178,7 +227,4 @@ https://<your-domain>/api/webhooks/slack
 
 ## Next step
 
-Now that runtime wiring is done, focus on extension:
-
-- [Plugins Overview](/extend/plugins-overview/)
-- [Custom Plugins](/extend/custom-plugins/)
+Now that the scaffold is running, move to [Plugins Overview](/extend/plugins-overview/) to add packaged or local extensions, then use [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) for post-deploy checks.
