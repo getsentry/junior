@@ -1,6 +1,6 @@
-# GitHub Issue CLI API Surface
+# GitHub CLI API Surface
 
-This skill supports issue workflows only.
+This skill supports issue workflows plus repository checkout via `gh repo clone`.
 
 All operations use `gh` CLI.
 
@@ -8,6 +8,7 @@ All operations use `gh` CLI.
 
 | Capability | Commands |
 | --- | --- |
+| none required | `gh repo clone` |
 | `github.issues.read` | `gh issue view`, `gh api /repos/.../comments` |
 | `github.issues.write` | `gh issue create`, `gh issue edit`, `gh issue close`, `gh issue reopen` |
 | `github.issues.comment` | `gh issue comment` |
@@ -17,6 +18,9 @@ All operations use `gh` CLI.
 
 | Operation | Command |
 | --- | --- |
+| Clone repository (default shallow) | `gh repo clone owner/repo [DIRECTORY] -- --depth=1` |
+| Deepen shallow clone | `git -C DIRECTORY fetch --depth=N origin` |
+| Convert shallow clone to full | `git -C DIRECTORY fetch --unshallow` |
 | Create issue | `gh issue create --repo owner/repo --title "..." [--body-file PATH]` |
 | Update issue fields | `gh issue edit NUMBER --repo owner/repo [--title "..."] [--body-file PATH]` |
 | Close issue | `gh issue close NUMBER --repo owner/repo [--comment "..."]` |
@@ -39,6 +43,12 @@ Set repo default:
 
 ```bash
 jr-rpc config set github.repo owner/repo
+```
+
+Pass extra `git clone` flags after `--`:
+
+```bash
+gh repo clone owner/repo -- --depth=1 --filter=blob:none
 ```
 
 Issue scoped credentials:

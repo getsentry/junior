@@ -57,6 +57,21 @@ Repeat for `preview` and `development` as needed. After env changes, redeploy so
 
 Run as a regular sandbox `bash` command while this skill is active:
 
+Clone a repository with a shallow checkout by default:
+
+```bash
+gh repo clone owner/repo -- --depth=1
+```
+
+Deepen later only if the task needs more history:
+
+```bash
+git -C repo fetch --depth=50 origin
+git -C repo fetch --unshallow
+```
+
+Issue operations still require scoped credentials:
+
 ```bash
 jr-rpc issue-credential github.issues.write
 gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sandbox/tmp/issue.md
