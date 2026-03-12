@@ -1,22 +1,62 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   decideSubscribedThreadReply,
+  getSubscribedReplyPreflightDecision,
   SubscribedReplyReason,
-  type SubscribedDecisionInput
+  type SubscribedDecisionInput,
 } from "@/chat/routing/subscribed-decision";
 
-function makeInput(overrides: Partial<SubscribedDecisionInput> = {}): SubscribedDecisionInput {
+function makeInput(
+  overrides: Partial<SubscribedDecisionInput> = {},
+): SubscribedDecisionInput {
   return {
     rawText: "hello",
     text: "hello",
     hasAttachments: false,
     isExplicitMention: false,
     context: {},
-    ...overrides
+    ...overrides,
   };
 }
 
 describe("decideSubscribedThreadReply", () => {
+  it("preflight-skips a leading mention addressed to another named party", () => {
+    const decision = getSubscribedReplyPreflightDecision({
+      botUserName: "junior",
+      rawText: "@Cursor can you take this one?",
+      text: "@Cursor can you take this one?",
+      isExplicitMention: false,
+    });
+
+    expect(decision).toEqual({
+      shouldReply: false,
+      reason: SubscribedReplyReason.DirectedToOtherParty,
+      reasonDetail: "named_mention:Cursor",
+    });
+  });
+
+  it("does not preflight-skip when junior is also addressed", () => {
+    const decision = getSubscribedReplyPreflightDecision({
+      botUserName: "junior",
+      rawText: "@Cursor and @junior can one of you take this?",
+      text: "@Cursor and @junior can one of you take this?",
+      isExplicitMention: false,
+    });
+
+    expect(decision).toBeUndefined();
+  });
+
+  it("does not preflight-skip non-address mentions in the middle of the sentence", () => {
+    const decision = getSubscribedReplyPreflightDecision({
+      botUserName: "junior",
+      rawText: "please ask @Cursor to look at this later",
+      text: "please ask @Cursor to look at this later",
+      isExplicitMention: false,
+    });
+
+    expect(decision).toBeUndefined();
+  });
+
   it("replies immediately for explicit mention", async () => {
     const completeObject = vi.fn();
     const decision = await decideSubscribedThreadReply({
@@ -24,10 +64,35 @@ describe("decideSubscribedThreadReply", () => {
       modelId: "router-model",
       input: makeInput({ isExplicitMention: true }),
       completeObject,
-      logClassifierFailure: vi.fn()
+      logClassifierFailure: vi.fn(),
     });
 
-    expect(decision).toEqual({ shouldReply: true, reason: SubscribedReplyReason.ExplicitMention });
+    expect(decision).toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.ExplicitMention,
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
+  it("skips leading slack mentions addressed to another party before classifier", async () => {
+    const completeObject = vi.fn();
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        rawText: "<@UCURSOR> can you handle this?",
+        text: "<@UCURSOR> can you handle this?",
+        isExplicitMention: false,
+      }),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: false,
+      reason: SubscribedReplyReason.DirectedToOtherParty,
+      reasonDetail: "slack_mention",
+    });
     expect(completeObject).not.toHaveBeenCalled();
   });
 
@@ -37,7 +102,7 @@ describe("decideSubscribedThreadReply", () => {
       modelId: "router-model",
       input: makeInput({ text: "   ", rawText: "   " }),
       completeObject: vi.fn(),
-      logClassifierFailure: vi.fn()
+      logClassifierFailure: vi.fn(),
     });
 
     expect(decision.reason).toBe(SubscribedReplyReason.EmptyMessage);
@@ -50,7 +115,7 @@ describe("decideSubscribedThreadReply", () => {
       modelId: "router-model",
       input: makeInput({ text: "", rawText: "", hasAttachments: true }),
       completeObject: vi.fn(),
-      logClassifierFailure: vi.fn()
+      logClassifierFailure: vi.fn(),
     });
 
     expect(decision.reason).toBe(SubscribedReplyReason.AttachmentOnly);
@@ -64,7 +129,7 @@ describe("decideSubscribedThreadReply", () => {
       modelId: "router-model",
       input: makeInput({ text: "thanks!", rawText: "thanks!" }),
       completeObject,
-      logClassifierFailure: vi.fn()
+      logClassifierFailure: vi.fn(),
     });
 
     expect(decision.reason).toBe(SubscribedReplyReason.Acknowledgment);
@@ -80,10 +145,11 @@ describe("decideSubscribedThreadReply", () => {
       input: makeInput({
         text: "what did you just say about the budget?",
         rawText: "what did you just say about the budget?",
-        conversationContext: "<thread-transcript>\n[assistant] junior: Budget is due Friday.\n</thread-transcript>"
+        conversationContext:
+          "<thread-transcript>\n[assistant] junior: Budget is due Friday.\n</thread-transcript>",
       }),
       completeObject,
-      logClassifierFailure: vi.fn()
+      logClassifierFailure: vi.fn(),
     });
 
     expect(decision.reason).toBe(SubscribedReplyReason.FollowUpQuestion);
@@ -97,9 +163,13 @@ describe("decideSubscribedThreadReply", () => {
       modelId: "router-model",
       input: makeInput({ text: "some new text", rawText: "some new text" }),
       completeObject: vi.fn(async () => ({
-        object: { should_reply: false, confidence: 0.95, reason: "status chatter" }
+        object: {
+          should_reply: false,
+          confidence: 0.95,
+          reason: "status chatter",
+        },
       })),
-      logClassifierFailure: vi.fn()
+      logClassifierFailure: vi.fn(),
     });
 
     expect(decision.reason).toBe(SubscribedReplyReason.SideConversation);
@@ -113,9 +183,13 @@ describe("decideSubscribedThreadReply", () => {
       modelId: "router-model",
       input: makeInput({ text: "some new text", rawText: "some new text" }),
       completeObject: vi.fn(async () => ({
-        object: { should_reply: true, confidence: 0.6, reason: "maybe follow-up" }
+        object: {
+          should_reply: true,
+          confidence: 0.6,
+          reason: "maybe follow-up",
+        },
       })),
-      logClassifierFailure: vi.fn()
+      logClassifierFailure: vi.fn(),
     });
 
     expect(decision.reason).toBe(SubscribedReplyReason.LowConfidence);
@@ -128,9 +202,13 @@ describe("decideSubscribedThreadReply", () => {
       modelId: "router-model",
       input: makeInput({ text: "some new text", rawText: "some new text" }),
       completeObject: vi.fn(async () => ({
-        object: { should_reply: true, confidence: 0.95, reason: "direct question" }
+        object: {
+          should_reply: true,
+          confidence: 0.95,
+          reason: "direct question",
+        },
       })),
-      logClassifierFailure: vi.fn()
+      logClassifierFailure: vi.fn(),
     });
 
     expect(decision.reason).toBe(SubscribedReplyReason.Classifier);
@@ -140,7 +218,10 @@ describe("decideSubscribedThreadReply", () => {
 
   it("fails closed on classifier errors", async () => {
     const logClassifierFailure = vi.fn();
-    const input = makeInput({ text: "some new text", rawText: "some new text" });
+    const input = makeInput({
+      text: "some new text",
+      rawText: "some new text",
+    });
     const decision = await decideSubscribedThreadReply({
       botUserName: "junior",
       modelId: "router-model",
@@ -148,7 +229,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => {
         throw new Error("router failed");
       }),
-      logClassifierFailure
+      logClassifierFailure,
     });
 
     expect(decision.reason).toBe(SubscribedReplyReason.ClassifierError);

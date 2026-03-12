@@ -358,12 +358,14 @@ describe("plugin registry package discovery", () => {
     expect(providers[0]?.manifest.name).toBe("demo");
     expect(providers[0]?.manifest.capabilities).toEqual(["demo.api"]);
     expect(registry.getPluginSkillRoots()).toEqual([
-      path.join(
-        tempRoot,
-        "node_modules",
-        "@acme",
-        "junior-plugin-demo",
-        "skills",
+      await fs.realpath(
+        path.join(
+          tempRoot,
+          "node_modules",
+          "@acme",
+          "junior-plugin-demo",
+          "skills",
+        ),
       ),
     ]);
     expect(registry.isPluginProvider("demo")).toBe(true);
