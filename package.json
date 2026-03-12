@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "node scripts/dev-with-root-env.mjs",
     "cli": "node scripts/cli-with-root-env.mjs",
+    "notion:search": "node packages/junior-notion/scripts/run-with-root-env.mjs ../skills/notion/scripts/notion-cli.mjs search",
+    "notion:fetch": "node packages/junior-notion/scripts/run-with-root-env.mjs ../skills/notion/scripts/notion-cli.mjs fetch",
     "prepare": "simple-git-hooks",
     "lint-staged": "lint-staged",
     "build": "pnpm --filter @sentry/junior build",

@@ -1,11 +1,25 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from "node:url";
+
+/**
+ * Unified Notion helper for LLM-facing search and fetch operations.
+ *
+ * `search` preserves the public v1 Search API's native ordering as closely as possible and
+ * returns broad candidate results for the raw query without forcing a winner.
+ *
+ * `fetch` loads normalized content for a specific page or data source chosen from search
+ * results so the model can summarize a stable payload.
+ */
+
 const DEFAULT_API_BASE_URL = "https://api.notion.com/v1";
+// Keep this pinned in sync with packages/junior-notion/plugin.yaml.
 const DEFAULT_NOTION_VERSION = "2025-09-03";
-const DEFAULT_PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_ROW_LIMIT = 10;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RETRY_LIMIT = 2;
+
 function parseArgs(argv) {
   const parsed = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -47,15 +61,6 @@ function normalizeWhitespace(value) {
     .trim();
 }
 
-function tokenize(value) {
-  return normalizeWhitespace(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9\s/-]+/g, " ")
-    .split(/[\s/]+/)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 1);
-}
-
 function toStringArray(value) {
   if (Array.isArray(value)) {
     return value.map((item) => normalizeWhitespace(item)).filter(Boolean);
@@ -74,7 +79,6 @@ function buildSearchQueries(queries) {
     seenQueries.add(value);
     normalizedQueries.push(value);
   }
-  normalizedQueries.push("");
   return normalizedQueries;
 }
 
@@ -127,42 +131,13 @@ function extractResultTitle(result) {
   return "";
 }
 
-function scoreTitleMatch(title, tokens, queries) {
-  const normalizedTitle = title.toLowerCase();
-  let score = 0;
-  for (const query of queries) {
-    if (!query) {
-      continue;
-    }
-    const normalizedQuery = query.toLowerCase();
-    if (normalizedTitle === normalizedQuery) {
-      score += 120;
-    } else if (normalizedTitle.includes(normalizedQuery)) {
-      score += 60;
-    }
-  }
-  for (const token of tokens) {
-    if (normalizedTitle.includes(token)) {
-      score += 15;
-    }
-  }
-  return score;
-}
-
-function rankResult(result, context) {
-  const title = extractResultTitle(result);
-  const object = String(result?.object ?? "");
-  const score =
-    scoreTitleMatch(title, context.tokens, context.queries) +
-    (object === "page" ? 5 : 0) +
-    (title ? 10 : 0);
-
+function simplifySearchResult(result) {
   return {
     id: String(result?.id ?? ""),
-    object,
-    title,
+    object: String(result?.object ?? ""),
+    title: extractResultTitle(result),
     url: String(result?.url ?? ""),
-    score,
+    last_edited_time: result?.last_edited_time ?? null,
   };
 }
 
@@ -173,6 +148,8 @@ function buildHeaders(extraHeaders) {
     ...extraHeaders,
   };
   const token = normalizeWhitespace(process.env.NOTION_TOKEN);
+  // In sandboxed runs the broker can set a placeholder value here and inject the
+  // real Authorization header later, so skip the placeholder rather than sending it.
   if (token && token !== "host_managed_credential") {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -240,17 +217,99 @@ async function notionRequest(pathname, init = {}, options = {}) {
   throw new Error(`Notion API ${method} ${pathname} failed after retries`);
 }
 
-async function searchOnce(query, pageSize) {
+async function searchOnce(query, pageSize, object) {
+  const body = {
+    query,
+    page_size: pageSize,
+  };
+  if (object) {
+    body.filter = {
+      property: "object",
+      value: object,
+    };
+  }
   return await notionRequest("/search", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      query,
-      page_size: pageSize,
-    }),
+    body: JSON.stringify(body),
   });
+}
+
+async function searchNotion({ queries = [], pageSize = DEFAULT_PAGE_SIZE, object = "" } = {}) {
+  const searchQueries = buildSearchQueries(queries);
+  const attempts = [];
+  const candidateMap = new Map();
+
+  for (const variant of searchQueries) {
+    const response = await searchOnce(variant, pageSize, object || undefined);
+    const results = Array.isArray(response?.results) ? response.results : [];
+    attempts.push({
+      query: variant,
+      object: object || "page_or_data_source",
+      result_count: results.length,
+      has_more: Boolean(response?.has_more),
+      next_cursor: response?.next_cursor ?? null,
+    });
+
+    for (const result of results) {
+      if (!result?.id || candidateMap.has(result.id)) {
+        continue;
+      }
+      candidateMap.set(result.id, {
+        ...simplifySearchResult(result),
+        query: variant,
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    query_variants: searchQueries,
+    attempts,
+    result_count: candidateMap.size,
+    results: [...candidateMap.values()].map((candidate) => ({
+      id: candidate.id,
+      object: candidate.object,
+      title: candidate.title,
+      url: candidate.url,
+      last_edited_time: candidate.last_edited_time,
+      query: candidate.query,
+    })),
+  };
+}
+
+function simplifyFormulaValue(formula) {
+  if (!formula || typeof formula !== "object") {
+    return null;
+  }
+
+  switch (formula.type) {
+    case "string":
+      return formula.string ?? null;
+    case "number":
+      return formula.number ?? null;
+    case "boolean":
+      return formula.boolean ?? null;
+    case "date":
+      return formula.date
+        ? {
+            start: formula.date.start ?? null,
+            end: formula.date.end ?? null,
+          }
+        : null;
+    case "page":
+      return formula.page?.id ?? null;
+    case "person":
+      return formula.person?.name || formula.person?.id || null;
+    case "list":
+      return Array.isArray(formula.list)
+        ? formula.list.map((item) => simplifyFormulaValue(item)).filter((item) => item !== null)
+        : [];
+    default:
+      return null;
+  }
 }
 
 function simplifyPropertyValue(property) {
@@ -314,38 +373,6 @@ function simplifyPropertyValue(property) {
   }
 }
 
-function simplifyFormulaValue(formula) {
-  if (!formula || typeof formula !== "object") {
-    return null;
-  }
-
-  switch (formula.type) {
-    case "string":
-      return formula.string ?? null;
-    case "number":
-      return formula.number ?? null;
-    case "boolean":
-      return formula.boolean ?? null;
-    case "date":
-      return formula.date
-        ? {
-            start: formula.date.start ?? null,
-            end: formula.date.end ?? null,
-          }
-        : null;
-    case "page":
-      return formula.page?.id ?? null;
-    case "person":
-      return formula.person?.name || formula.person?.id || null;
-    case "list":
-      return Array.isArray(formula.list)
-        ? formula.list.map((item) => simplifyFormulaValue(item)).filter((item) => item !== null)
-        : [];
-    default:
-      return null;
-  }
-}
-
 function simplifyPageRecord(page) {
   const properties = {};
   if (page?.properties && typeof page.properties === "object") {
@@ -375,7 +402,12 @@ function simplifyDataSourceSchema(dataSource) {
   }));
 }
 
-async function fetchPageContent(pageId) {
+async function fetchPageMetadata(pageId) {
+  const page = await notionRequest(`/pages/${pageId}`);
+  return simplifySearchResult(page);
+}
+
+async function fetchPageMarkdown(pageId) {
   const response = await notionRequest(`/pages/${pageId}/markdown`);
   if (typeof response === "string") {
     return response;
@@ -393,130 +425,133 @@ async function fetchPageContent(pageId) {
 }
 
 async function fetchDataSourceContent(dataSourceId, rowLimit) {
-  const [dataSource, rowsResponse] = await Promise.all([
-    notionRequest(`/data_sources/${dataSourceId}`),
-    notionRequest(`/data_sources/${dataSourceId}/query`, {
+  const dataSource = await notionRequest(`/data_sources/${dataSourceId}`);
+  const target = {
+    id: String(dataSource?.id ?? dataSourceId),
+    object: "data_source",
+    title: extractResultTitle(dataSource),
+    url: String(dataSource?.url ?? ""),
+    last_edited_time: dataSource?.last_edited_time ?? null,
+  };
+
+  try {
+    const rowsResponse = await notionRequest(`/data_sources/${dataSourceId}/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ page_size: rowLimit }),
-    }),
-  ]);
-
-  return {
-    schema: simplifyDataSourceSchema(dataSource),
-    rows: Array.isArray(rowsResponse?.results)
-      ? rowsResponse.results.map((row) => simplifyPageRecord(row))
-      : [],
-  };
-}
-
-async function searchNotion({
-  queries = [],
-  pageSize = DEFAULT_PAGE_SIZE,
-  rowLimit = DEFAULT_ROW_LIMIT,
-} = {}) {
-  const searchQueries = buildSearchQueries(queries);
-  const tokens = [...new Set(tokenize(searchQueries.join(" ")))];
-  const attempts = [];
-  const candidateMap = new Map();
-
-  for (const variant of searchQueries) {
-    const response = await searchOnce(variant, pageSize);
-    const results = Array.isArray(response?.results) ? response.results : [];
-    attempts.push({
-      query: variant,
-      result_count: results.length,
     });
 
-    for (const result of results) {
-      if (!result?.id) {
-        continue;
-      }
-      const ranked = rankResult(result, { tokens, queries: searchQueries });
-      const existing = candidateMap.get(ranked.id);
-      if (!existing || ranked.score > existing.score) {
-        candidateMap.set(ranked.id, ranked);
-      }
-    }
-
-    if (results.length > 0 && variant) {
-      break;
-    }
-  }
-
-  const candidates = [...candidateMap.values()].sort((left, right) => right.score - left.score);
-  const selected = candidates[0] ?? null;
-  if (!selected) {
     return {
-      ok: true,
-      query_variants: searchQueries,
-      attempts,
-      result_count: 0,
-      results: [],
-      selected: null,
+      target,
+      content: {
+        type: "data_source",
+        schema: simplifyDataSourceSchema(dataSource),
+        rows: Array.isArray(rowsResponse?.results)
+          ? rowsResponse.results.map((row) => simplifyPageRecord(row))
+          : [],
+      },
+    };
+  } catch (error) {
+    return {
+      target,
       content: null,
+      content_error: error instanceof Error ? error.message : String(error),
     };
   }
+}
 
-  let content = null;
-  let contentError = null;
-  try {
-    if (selected.object === "page") {
-      content = {
-        type: "page",
-        markdown: await fetchPageContent(selected.id),
-      };
-    } else if (selected.object === "data_source") {
-      content = {
-        type: "data_source",
-        ...(await fetchDataSourceContent(selected.id, rowLimit)),
-      };
-    }
-  } catch (error) {
-    contentError = error instanceof Error ? error.message : String(error);
+export async function fetchContent({ id, object, rowLimit = DEFAULT_ROW_LIMIT } = {}) {
+  if (!id) {
+    throw new Error("notion fetch requires --id");
+  }
+  if (object !== "page" && object !== "data_source") {
+    throw new Error("notion fetch requires --object page|data_source");
   }
 
-  return {
-    ok: true,
-    query_variants: searchQueries,
-    attempts,
-    result_count: candidates.length,
-    results: candidates.map((candidate) => ({
-      id: candidate.id,
-      object: candidate.object,
-      title: candidate.title,
-      url: candidate.url,
-      score: candidate.score,
-    })),
-    selected: {
-      id: selected.id,
-      object: selected.object,
-      title: selected.title,
-      url: selected.url,
-      score: selected.score,
-    },
-    content,
-    ...(contentError ? { content_error: contentError } : {}),
-  };
+  if (object === "page") {
+    let target = {
+      id,
+      object: "page",
+      title: "",
+      url: "",
+      last_edited_time: null,
+    };
+    try {
+      target = await fetchPageMetadata(id);
+      const markdown = await fetchPageMarkdown(id);
+      return {
+        ok: true,
+        target,
+        content: {
+          type: "page",
+          markdown,
+        },
+      };
+    } catch (error) {
+      return {
+        ok: true,
+        target,
+        content: null,
+        content_error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  try {
+    return {
+      ok: true,
+      ...(await fetchDataSourceContent(id, rowLimit)),
+    };
+  } catch (error) {
+    return {
+      ok: true,
+      target: {
+        id,
+        object: "data_source",
+        title: "",
+        url: "",
+        last_edited_time: null,
+      },
+      content: null,
+      content_error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const queries = toStringArray(args.query);
-  if (queries.length === 0) {
-    throw new Error("notion-search requires at least one --query");
+  const [command, ...rest] = process.argv.slice(2);
+  if (command !== "search" && command !== "fetch") {
+    throw new Error("notion-cli requires a subcommand: search | fetch");
   }
-  const result = await searchNotion({
-    queries,
-    pageSize: args["page-size"] ? Number.parseInt(args["page-size"], 10) : DEFAULT_PAGE_SIZE,
-    rowLimit: args["row-limit"] ? Number.parseInt(args["row-limit"], 10) : DEFAULT_ROW_LIMIT,
-  });
+
+  const args = parseArgs(rest[0] === "--" ? rest.slice(1) : rest);
+  let result;
+  if (command === "search") {
+    const queries = toStringArray(args.query);
+    if (queries.length === 0) {
+      throw new Error("notion search requires at least one --query");
+    }
+    result = await searchNotion({
+      queries,
+      pageSize: args["page-size"] ? Number.parseInt(args["page-size"], 10) : DEFAULT_PAGE_SIZE,
+      object: normalizeWhitespace(args.object),
+    });
+  } else {
+    result = await fetchContent({
+      id: normalizeWhitespace(args.id),
+      object: normalizeWhitespace(args.object),
+      rowLimit: args["row-limit"] ? Number.parseInt(args["row-limit"], 10) : DEFAULT_ROW_LIMIT,
+    });
+  }
+
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}
