@@ -574,7 +574,7 @@ export function createSandboxExecutor(options?: {
                 });
 
                 if (!snapshot.snapshotId) {
-                  await emitSandboxStatus("Starting sandbox...");
+                  await emitSandboxStatus("Booting up...");
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     runtime,
@@ -582,7 +582,7 @@ export function createSandboxExecutor(options?: {
                 }
 
                 try {
-                  await emitSandboxStatus("Starting sandbox from snapshot...");
+                  await emitSandboxStatus("Booting up...");
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     source: {
@@ -611,7 +611,7 @@ export function createSandboxExecutor(options?: {
                   }
 
                   await emitSandboxStatus(
-                    "Retrying sandbox startup with a fresh snapshot...",
+                    "Booting up...",
                   );
                   return await Sandbox.create({
                     timeout: timeoutMs,

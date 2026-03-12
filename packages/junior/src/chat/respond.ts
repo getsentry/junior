@@ -260,9 +260,9 @@ function formatToolStatus(toolName: string): string {
   const known: Record<string, string> = {
     loadSkill: "Loading skill instructions",
     systemTime: "Reading current system time",
-    bash: "Running shell command in sandbox",
-    readFile: "Reading file in sandbox",
-    writeFile: "Writing file in sandbox",
+    bash: "Working in the shell",
+    readFile: "Reading a file",
+    writeFile: "Updating a file",
     webSearch: "Searching public sources",
     webFetch: "Reading source pages",
     slackChannelPostMessage: "Posting message to channel",
@@ -289,6 +289,7 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
     input && typeof input === "object"
       ? (input as Record<string, unknown>)
       : undefined;
+  const command = obj ? compactStatusText(obj.command, 70) : undefined;
   const path = obj ? compactStatusPath(obj.path) : undefined;
   const filename = obj ? compactStatusFilename(obj.path) : undefined;
   const query = obj ? compactStatusText(obj.query, 70) : undefined;
@@ -297,11 +298,17 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
     ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
     : undefined;
 
+  if (command && toolName === "bash") {
+    return `Running ${command}`;
+  }
   if (filename && toolName === "readFile") {
     return `Reading file ${filename}`;
   }
+  if (filename && toolName === "writeFile") {
+    return `Updating file ${filename}`;
+  }
   if (path && toolName === "writeFile") {
-    return `Writing file ${path}`;
+    return `Updating file ${path}`;
   }
   if (skillName && toolName === "loadSkill") {
     return `Loading skill ${skillName}`;
@@ -319,7 +326,7 @@ function formatToolResultStatus(toolName: string): string {
   const known: Record<string, string> = {
     loadSkill: "Integrating loaded skill guidance",
     systemTime: "Applying current time context",
-    bash: "Analyzing command output",
+    bash: "Reviewing command results",
     readFile: "Analyzing file contents",
     writeFile: "Saving file update",
     webSearch: "Reviewing search results",
@@ -353,6 +360,7 @@ function formatToolResultStatusWithInput(
     input && typeof input === "object"
       ? (input as Record<string, unknown>)
       : undefined;
+  const command = obj ? compactStatusText(obj.command, 70) : undefined;
   const path = obj ? compactStatusPath(obj.path) : undefined;
   const filename = obj ? compactStatusFilename(obj.path) : undefined;
   const query = obj ? compactStatusText(obj.query, 70) : undefined;
@@ -361,11 +369,17 @@ function formatToolResultStatusWithInput(
     ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
     : undefined;
 
+  if (command && toolName === "bash") {
+    return `Reviewed results from ${command}`;
+  }
   if (filename && toolName === "readFile") {
     return `Reviewed file ${filename}`;
   }
+  if (filename && toolName === "writeFile") {
+    return `Updated file ${filename}`;
+  }
   if (path && toolName === "writeFile") {
-    return `Saved file ${path}`;
+    return `Updated file ${path}`;
   }
   if (skillName && toolName === "loadSkill") {
     return `Loaded skill ${skillName}`;
@@ -469,6 +483,13 @@ function toToolContentText(value: unknown): string {
     return String(value);
   }
 }
+
+export const respondStatusFormatters = {
+  formatToolStatus,
+  formatToolStatusWithInput,
+  formatToolResultStatus,
+  formatToolResultStatusWithInput,
+};
 
 function isToolResultMessage(value: unknown): value is ToolResultMessage<any> {
   return (
