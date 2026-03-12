@@ -404,7 +404,7 @@ function simplifyDataSourceSchema(dataSource) {
 
 async function fetchPageMetadata(pageId) {
   const page = await notionRequest(`/pages/${pageId}`);
-  return simplifyPageRecord(page);
+  return simplifySearchResult(page);
 }
 
 async function fetchPageMarkdown(pageId) {

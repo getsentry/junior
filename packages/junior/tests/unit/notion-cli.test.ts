@@ -52,4 +52,58 @@ describe("notion cli fetchContent", () => {
     expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/data_sources/ds_123"))).toHaveLength(1);
     expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/data_sources/ds_123/query"))).toHaveLength(3);
   });
+
+  it("keeps page targets on the compact shared shape", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = String(input);
+        if (url.endsWith("/pages/page_123")) {
+          return Response.json({
+            id: "page_123",
+            object: "page",
+            url: "https://notion.so/page",
+            last_edited_time: "2026-03-12T00:00:00.000Z",
+            properties: {
+              Name: {
+                type: "title",
+                title: [{ plain_text: "Spec" }],
+              },
+            },
+          });
+        }
+
+        if (url.endsWith("/pages/page_123/markdown")) {
+          return new Response("# Spec", {
+            headers: {
+              "content-type": "text/plain",
+            },
+          });
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    const result = await fetchContent({
+      id: "page_123",
+      object: "page",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      target: {
+        id: "page_123",
+        object: "page",
+        title: "Spec",
+        url: "https://notion.so/page",
+        last_edited_time: "2026-03-12T00:00:00.000Z",
+      },
+      content: {
+        type: "page",
+        markdown: "# Spec",
+      },
+    });
+    expect(result.target).not.toHaveProperty("properties");
+  });
 });
