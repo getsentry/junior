@@ -2,7 +2,7 @@
 title: Sentry Plugin
 description: Configure Sentry OAuth for per-user investigation workflows.
 type: tutorial
-summary: Set up Sentry OAuth for per-user access and verify re-auth behavior for investigation workflows.
+summary: Install the Sentry plugin, register it with withJunior, configure OAuth, and verify per-user investigation workflows.
 prerequisites:
   - /extend/
 related:
@@ -10,30 +10,48 @@ related:
   - /operate/security-hardening/
 ---
 
-The Sentry plugin enables per-user OAuth so Slack users can run Sentry investigations through capability-scoped access.
+The Sentry plugin enables per-user OAuth so Slack users can run Sentry investigations with their own access.
 
-## Setup
+## Install
 
-### Configure OAuth application
+Install the plugin package alongside `@sentry/junior`:
 
-Set redirect URL to:
+```bash
+pnpm add @sentry/junior @sentry/junior-sentry
+```
+
+## Register with `withJunior`
+
+Add the package to `pluginPackages` so runtime discovery includes the Sentry plugin:
+
+```ts title="next.config.mjs"
+import { withJunior } from "@sentry/junior/config";
+
+export default withJunior({
+  pluginPackages: ["@sentry/junior-sentry"],
+});
+```
+
+## Configure environment variables
+
+Set these values in the host environment:
+
+| Variable               | Required | Purpose              |
+| ---------------------- | -------- | -------------------- |
+| `SENTRY_CLIENT_ID`     | Yes      | OAuth client ID.     |
+| `SENTRY_CLIENT_SECRET` | Yes      | OAuth client secret. |
+
+## Create the Sentry OAuth application
+
+Create an OAuth application in Sentry and set its redirect URL to:
 
 ```text
 <base-url>/api/oauth/callback/sentry
 ```
 
-Set host env vars:
+Then copy the client ID and client secret into your deployment environment as `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET`.
 
-- `SENTRY_CLIENT_ID`
-- `SENTRY_CLIENT_SECRET`
-
-### Runtime auth flow
-
-1. User runs `/sentry auth`.
-2. Runtime sends private authorization link.
-3. OAuth callback stores token and can resume the original request.
-
-### Optional defaults
+If your workspace usually targets the same org or project, set defaults once:
 
 ```bash
 jr-rpc config set sentry.org getsentry
@@ -42,14 +60,21 @@ jr-rpc config set sentry.project my-project
 
 ## Verify
 
-- `/sentry auth` completes successfully.
-- A real query returns expected data.
-- Re-auth flow works after token invalidation.
+Run the auth flow and then make a real Sentry request:
+
+1. User runs `/sentry auth`.
+2. Junior sends the private authorization link.
+3. The OAuth callback stores the token and resumes the original request.
+4. User runs a real Sentry query in Slack.
+
+Confirm the auth flow completes, the query returns expected data, and re-auth works after token invalidation.
 
 ## Failure modes
 
-- 401/403 after issuance: token lacks org access or stale token.
-- Callback errors: redirect URL mismatch or invalid base URL.
+- Callback errors after consent: the OAuth redirect URL does not exactly match `<base-url>/api/oauth/callback/sentry`. Update the OAuth app redirect URL and retry.
+- `401` or `403` after authorization: the user token lacks org access or is stale. Re-run `/sentry auth` with an account that can access the target org.
+- Auth link points at the wrong host: `JUNIOR_BASE_URL` is unset or incorrect. Set it to the canonical public base URL used for callbacks.
+- Query still targets the wrong project: no default config was set for the workspace. Set `sentry.org` and `sentry.project`, or provide the target explicitly in the request.
 
 ## Next step
 
