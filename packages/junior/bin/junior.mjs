@@ -36,6 +36,15 @@ async function runInit(dir) {
   await runInitFn(dir);
 }
 
+async function runCheck(dir) {
+  const runCheckFn = await loadCliFunction(
+    "check",
+    "runCheck",
+    "Check module is unavailable; reinstall @sentry/junior and retry."
+  );
+  await runCheckFn(dir);
+}
+
 async function main() {
   const runCli = await loadCliFunction(
     "run",
@@ -44,7 +53,8 @@ async function main() {
   );
   const exitCode = await runCli(positionals, {
     runInit,
-    runSnapshotCreate
+    runSnapshotCreate,
+    runCheck
   });
   if (exitCode !== 0) {
     process.exit(exitCode);

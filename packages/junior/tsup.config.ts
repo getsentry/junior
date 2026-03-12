@@ -8,6 +8,7 @@ export default defineConfig({
     "handlers/health": "src/handlers/health.ts",
     "cli/init": "src/cli/init.ts",
     "cli/run": "src/cli/run.ts",
+    "cli/check": "src/cli/check.ts",
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
     "next-config": "src/next-config.ts",
     instrumentation: "src/instrumentation.ts",

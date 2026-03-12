@@ -1,8 +1,9 @@
-export const CLI_USAGE = "usage: junior init <dir>\n       junior snapshot create";
+export const CLI_USAGE = "usage: junior init <dir>\n       junior snapshot create\n       junior check [dir]";
 
 interface CliHandlers {
   runInit: (dir: string) => Promise<void>;
   runSnapshotCreate: () => Promise<void>;
+  runCheck: (dir?: string) => Promise<void>;
 }
 
 interface CliIo {
@@ -31,6 +32,15 @@ export async function runCli(argv: string[], handlers: CliHandlers, io: CliIo = 
       return 1;
     }
     await handlers.runSnapshotCreate();
+    return 0;
+  }
+
+  if (command === "check") {
+    if (rest.length > 0) {
+      io.error(CLI_USAGE);
+      return 1;
+    }
+    await handlers.runCheck(subcommand);
     return 0;
   }
 

@@ -10,10 +10,16 @@ async function runSnapshotCreate(): Promise<void> {
   await mod.runSnapshotCreate();
 }
 
+async function runCheck(dir?: string): Promise<void> {
+  const mod = await import("./check");
+  await mod.runCheck(dir);
+}
+
 async function main(argv: string[]): Promise<void> {
   const exitCode = await runCli(argv, {
     runInit,
-    runSnapshotCreate
+    runSnapshotCreate,
+    runCheck
   });
   if (exitCode !== 0) {
     process.exit(exitCode);
