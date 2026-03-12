@@ -8,7 +8,7 @@
   Any new color added to this file must stay within this palette.
 */
 /* Ash Docs - Johnny Appleseed Tattoo Parlor */
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Geist+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Geist+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap');
 
 :root,
 :root[data-theme='light'],
@@ -110,6 +110,17 @@ header.header {
   backdrop-filter: none;
 }
 
+header.header > .header,
+header.header > .header > .sl-flex,
+header.header .title-wrapper,
+header.header .right-group {
+  align-items: center !important;
+}
+
+header.header > .header {
+  min-height: 100%;
+}
+
 header.header::before,
 header.header::after {
   border-right: 0 !important;
@@ -167,6 +178,11 @@ header.header :is(
 }
 
 header.header site-search > button[data-open-modal] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  height: 2.6rem;
+  padding: 0 0.8rem;
   background: #080808 !important;
   color: #f3f3f3 !important;
   border: 0 !important;
@@ -183,10 +199,63 @@ header.header site-search > button[data-open-modal]:hover {
 }
 
 header.header site-search > button[data-open-modal] kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+header.header site-search > button[data-open-modal] kbd kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.32rem;
   background: #141414 !important;
   border: 1px solid #494949 !important;
   color: #dadada !important;
   border-radius: 0 !important;
+  line-height: 1;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+header.header site-search > button[data-open-modal] svg {
+  flex: 0 0 auto;
+}
+
+header.header .social-icons {
+  margin-inline-end: 0 !important;
+  padding-block: 0 !important;
+  gap: 0.4rem;
+  height: 2.6rem;
+  align-items: center !important;
+}
+
+header.header .social-icons a {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 2.6rem;
+  height: 2.6rem;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #f3f3f3 !important;
+}
+
+header.header .social-icons a:hover {
+  color: #ffffff !important;
+}
+
+header.header .social-icons svg {
+  color: currentColor !important;
+  fill: currentColor !important;
 }
 
 header.header :is(
@@ -703,11 +772,16 @@ starlight-aside[data-type='note'] :is(.icon, [slot='icon'], svg),
   margin: 0.1rem 0 0.8rem;
 }
 
+.sl-markdown-content :not(pre) > code,
 :not(pre) > code {
-  background: #1b1b1b;
-  border: 1px solid #494949;
-  color: #e6e6e6;
+  background: transparent;
+  border: 0;
+  color: #ffffff;
   font-family: var(--sl-font-mono);
+  font-size: 0.96em;
+  font-weight: 700 !important;
+  padding: 0;
+  box-shadow: none;
   border-radius: 0 !important;
 }
 
@@ -718,11 +792,12 @@ pre {
   border-bottom-width: 1px !important;
   box-shadow: none;
   font-family: var(--sl-font-mono);
+  padding-inline: 0.35rem;
   border-radius: 0 !important;
 }
 
 pre code {
-  color: #f4f4f4 !important;
+  color: #ffffff !important;
   font-family: var(--sl-font-mono) !important;
 }
 
@@ -802,7 +877,7 @@ pre code {
 /* High-contrast, monochrome-first code palette */
 body .expressive-code {
   --ec-codeBg: #080808 !important;
-  --ec-codeFg: #f4f4f4 !important;
+  --ec-codeFg: #ffffff !important;
   --ec-brdCol: var(--ash-dark-border) !important;
   --ec-gtrFg: #919191 !important;
   --ec-gtrBrdCol: #393939 !important;
@@ -844,7 +919,7 @@ body .expressive-code {
 }
 
 body .expressive-code .ec-line :where(span[style^='--']:not([class])) {
-  color: #f0f0f0 !important;
+  color: #ffffff !important;
 }
 
 body .expressive-code,
@@ -854,17 +929,17 @@ body .expressive-code code {
 }
 
 body .expressive-code .ec-line :where(span[style*='--1:#d6d6d6']) {
-  color: #e5e5e5 !important;
+  color: #ffffff !important;
   font-weight: 650 !important;
 }
 
 body .expressive-code .ec-line :where(span[style*='--1:#a5a5a5']) {
-  color: #d6d6d6 !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
 }
 
 body .expressive-code .ec-line :where(span[style*='--1:#111111']) {
-  color: #aaaaaa !important;
+  color: #ffffff !important;
 }
 
 body .expressive-code .ec-line :is(
@@ -882,6 +957,7 @@ body .expressive-code .ec-line :is(
   [class*='operator'],
   [class*='type']
 ) {
+  color: #ffffff !important;
   font-weight: 650 !important;
 }
 

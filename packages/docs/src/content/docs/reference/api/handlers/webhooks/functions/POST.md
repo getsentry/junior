@@ -7,12 +7,12 @@ title: "POST"
 
 > **POST**(`request`, `context`): `Promise`\<`Response`\>
 
-Defined in: [handlers/webhooks.ts:30](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L30)
+Defined in: [handlers/webhooks.ts:37](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L37)
 
-Handles platform webhook POST requests for Junior.
+Handles `POST /api/webhooks/:platform`.
 
-This endpoint resolves a platform adapter from the route context and delegates
-request handling to the adapter webhook handler.
+The router only resolves the platform and delegates to the adapter webhook
+implementation; request semantics stay owned by the adapter package.
 
 ## Parameters
 

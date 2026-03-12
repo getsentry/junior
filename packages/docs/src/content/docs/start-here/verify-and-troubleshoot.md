@@ -11,10 +11,6 @@ related:
   - /concepts/execution-model/
 ---
 
-## Outcome
-
-You can confirm production health quickly and isolate setup regressions.
-
 ## Verification sequence
 
 1. Health endpoint: `GET /api/health` returns `status: "ok"`.
@@ -24,12 +20,12 @@ You can confirm production health quickly and isolate setup regressions.
 
 ## Symptom -> likely cause
 
-| Symptom | Likely cause | First check |
-| --- | --- | --- |
-| Slack mention receives no reply | Missing webhook URL or token scopes | Slack app Event Subscriptions URL + scopes |
-| Webhook 401/signature errors | Incorrect signing secret | `SLACK_SIGNING_SECRET` value |
-| Message accepted but no threaded work | Queue callback trigger misconfigured | `vercel.json` trigger + callback route |
-| Plugin commands fail auth | Missing credentials or OAuth state | Plugin env vars + `/sentry auth` flow |
+| Symptom                               | Likely cause                         | First check                                |
+| ------------------------------------- | ------------------------------------ | ------------------------------------------ |
+| Slack mention receives no reply       | Missing webhook URL or token scopes  | Slack app Event Subscriptions URL + scopes |
+| Webhook 401/signature errors          | Incorrect signing secret             | `SLACK_SIGNING_SECRET` value               |
+| Message accepted but no threaded work | Queue callback trigger misconfigured | `vercel.json` trigger + callback route     |
+| Plugin commands fail auth             | Missing credentials or OAuth state   | Plugin env vars + `/sentry auth` flow      |
 
 ## Useful signals
 

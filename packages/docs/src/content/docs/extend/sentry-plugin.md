@@ -4,7 +4,7 @@ description: Configure Sentry OAuth for per-user investigation workflows.
 type: tutorial
 summary: Set up Sentry OAuth for per-user access and verify re-auth behavior for investigation workflows.
 prerequisites:
-  - /extend/plugins-overview/
+  - /extend/
 related:
   - /concepts/credentials-and-oauth/
   - /operate/security-hardening/

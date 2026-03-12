@@ -5,8 +5,7 @@ type: tutorial
 summary: Scaffold a new Junior app with `junior init`, fill in environment and Slack setup, then deploy the same runtime to Vercel.
 prerequisites: []
 related:
-  - /extend/plugins-overview/
-  - /extend/custom-plugins/
+  - /extend/
   - /start-here/verify-and-troubleshoot/
 ---
 
@@ -18,13 +17,9 @@ related:
 - Redis URL
 - A Vercel account
 
-## Outcome
-
-You will end with a working Junior app scaffolded by `junior init`, verified locally, and ready for Vercel deployment.
-
 ## Create a new app
 
-Start with the initializer. This is the intended path for a new project.
+Start with the initializer. This is the default path for a new project.
 
 ```bash
 npx @sentry/junior init my-bot
@@ -43,7 +38,7 @@ pnpm install
 - `app/skills/` and `app/plugins/`
 - `.env.example`
 
-For a new app, that means you usually do not need to hand-create routes or runtime wrapper files.
+For a new app, you usually do not need to hand-create routes or runtime wrapper files.
 
 ## Configure environment
 
@@ -71,7 +66,7 @@ pnpm dev
 
 ## Verify locally
 
-Run the health check first, then verify a real Slack thread.
+Check the health route first, then verify a real Slack thread.
 
 - `GET http://localhost:3000/api/health` returns JSON with `status: "ok"`.
 - Set your Slack Event Subscriptions and Interactivity URLs to `http://<your-tunnel-or-dev-host>/api/webhooks/slack`.
@@ -97,11 +92,11 @@ export default withJunior({
 });
 ```
 
-See [Plugins Overview](/extend/plugins-overview/) for the local-vs-package model.
+See [Plugins](/extend/) for the local-vs-package model.
 
 ## What `junior init` created
 
-If you need to wire the runtime by hand in an existing Next.js app, this is the shape `junior init` gives you.
+If you need to wire Junior into an existing Next.js app, this is what `junior init` creates.
 
 ### Catch-all route
 
@@ -139,7 +134,7 @@ export { default } from "@sentry/junior/app/layout";
 
 ## Deploy to Vercel
 
-`junior init` does not configure your Vercel project. You still need to add the deployment-specific pieces below.
+`junior init` does not configure your Vercel project. You still need to add the deploy-specific pieces below.
 
 ### Link the project
 
@@ -227,4 +222,4 @@ https://<your-domain>/api/webhooks/slack
 
 ## Next step
 
-Now that the scaffold is running, move to [Plugins Overview](/extend/plugins-overview/) to add packaged or local extensions, then use [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) for post-deploy checks.
+Now that the scaffold is running, move to [Plugins](/extend/) to add packaged or local extensions, then use [Verify & Troubleshoot](/start-here/verify-and-troubleshoot/) for post-deploy checks.

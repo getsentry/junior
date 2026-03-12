@@ -7,11 +7,12 @@ title: "GET"
 
 > **GET**(`request`, `context`): `Promise`\<`Response`\>
 
-Defined in: [handlers/router.ts:23](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/router.ts#L23)
+Defined in: [handlers/router.ts:40](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/router.ts#L40)
 
 Handles all GET requests routed through `@sentry/junior/handler`.
 
 Supported routes:
+
 - `api/health`
 - `api/oauth/callback/:provider`
 

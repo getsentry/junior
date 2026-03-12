@@ -4,7 +4,7 @@ description: Configure a shared internal Notion integration for read-only page a
 type: tutorial
 summary: Set up the Notion plugin with an internal integration token and verify `/notion` page and data source search workflows.
 prerequisites:
-  - /extend/plugins-overview/
+  - /extend/
 related:
   - /concepts/credentials-and-oauth/
   - /operate/security-hardening/

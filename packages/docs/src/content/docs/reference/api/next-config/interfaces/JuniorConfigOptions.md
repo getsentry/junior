@@ -5,7 +5,7 @@ prev: false
 title: "JuniorConfigOptions"
 ---
 
-Defined in: [next-config.ts:14](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L14)
+Defined in: [next-config.ts:17](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L17)
 
 Optional overrides for `withJunior`.
 
@@ -15,28 +15,28 @@ Optional overrides for `withJunior`.
 
 > `optional` **dataDir**: `string`
 
-Defined in: [next-config.ts:15](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L15)
+Defined in: [next-config.ts:18](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L18)
 
-***
+---
 
 ### pluginPackages?
 
 > `optional` **pluginPackages**: `string`[]
 
-Defined in: [next-config.ts:18](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L18)
+Defined in: [next-config.ts:21](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L21)
 
-***
+---
 
 ### pluginsDir?
 
 > `optional` **pluginsDir**: `string`
 
-Defined in: [next-config.ts:17](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L17)
+Defined in: [next-config.ts:20](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L20)
 
-***
+---
 
 ### skillsDir?
 
 > `optional` **skillsDir**: `string`
 
-Defined in: [next-config.ts:16](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L16)
+Defined in: [next-config.ts:19](https://github.com/getsentry/junior/blob/main/packages/junior/src/next-config.ts#L19)

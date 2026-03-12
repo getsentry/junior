@@ -4,10 +4,9 @@ description: How local skills and plugin-provided capabilities are composed.
 type: conceptual
 summary: Understand how skills and plugins compose capabilities while keeping runtime wiring stable.
 prerequisites:
-  - /start-here/overview/
+  - /start-here/quickstart/
 related:
-  - /extend/plugins-overview/
-  - /extend/custom-plugins/
+  - /extend/
 ---
 
 ## Mental model
@@ -33,5 +32,4 @@ pnpm skills:check
 
 ## Next step
 
-- [Plugins Overview](/extend/plugins-overview/)
-- [Custom Plugins](/extend/custom-plugins/)
+- [Plugins](/extend/)

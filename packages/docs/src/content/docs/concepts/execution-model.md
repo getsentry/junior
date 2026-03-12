@@ -4,7 +4,7 @@ description: End-to-end runtime lifecycle from webhook ingress to threaded respo
 type: conceptual
 summary: Understand the request lifecycle from Slack ingress through queue processing to threaded response delivery.
 prerequisites:
-  - /start-here/overview/
+  - /start-here/quickstart/
 related:
   - /concepts/thread-routing/
   - /concepts/credentials-and-oauth/

@@ -4,10 +4,10 @@ description: Configure browser automation workflows with agent-browser in Junior
 type: tutorial
 summary: Install the agent-browser plugin package, run browser workflows through `/agent-browser`, and verify sandbox execution.
 prerequisites:
-  - /extend/plugins-overview/
+  - /extend/
 related:
   - /concepts/skills-and-plugins/
-  - /extend/custom-plugins/
+  - /extend/
   - /operate/security-hardening/
 ---
 
@@ -52,4 +52,4 @@ Example invocation:
 
 ## Next step
 
-Continue with [Custom Plugins](/extend/custom-plugins/) to build provider-specific extensions or review [Security Hardening](/operate/security-hardening/) for production controls.
+Continue with [Plugins](/extend/) to build provider-specific extensions or review [Security Hardening](/operate/security-hardening/) for production controls.

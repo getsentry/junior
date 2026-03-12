@@ -15,10 +15,12 @@ const juniorEntryPoints = [
 export default defineConfig({
   site: "https://junior.sentry.dev",
   redirects: {
-    "/get-started": "/start-here/overview",
-    "/get-started/index": "/start-here/overview",
+    "/get-started": "/start-here/quickstart",
+    "/get-started/index": "/start-here/quickstart",
     "/get-started/quickstart": "/start-here/quickstart",
-    "/plugins/overview": "/extend/plugins-overview",
+    "/extend/custom-plugins": "/extend",
+    "/extend/plugins-overview": "/extend",
+    "/plugins/overview": "/extend",
     "/plugins/agent-browser": "/extend/agent-browser-plugin",
     "/plugins/github": "/extend/github-plugin",
     "/plugins/notion": "/extend/notion-plugin",
@@ -49,7 +51,6 @@ export default defineConfig({
         {
           label: "Start Here",
           items: [
-            { label: "Overview", link: "/start-here/overview/" },
             { label: "Quickstart", link: "/start-here/quickstart/" },
             {
               label: "Verify & Troubleshoot",
@@ -75,8 +76,7 @@ export default defineConfig({
         {
           label: "Extend",
           items: [
-            { label: "Plugins Overview", link: "/extend/plugins-overview/" },
-            { label: "Custom Plugins", link: "/extend/custom-plugins/" },
+            { label: "Plugins", link: "/extend/" },
             {
               label: "Agent Browser Plugin",
               link: "/extend/agent-browser-plugin/",
@@ -97,6 +97,16 @@ export default defineConfig({
             {
               label: "Security Hardening",
               link: "/operate/security-hardening/",
+            },
+          ],
+        },
+        {
+          label: "CLI",
+          items: [
+            { label: "junior init", link: "/cli/init/" },
+            {
+              label: "junior snapshot create",
+              link: "/cli/snapshot-create/",
             },
           ],
         },
