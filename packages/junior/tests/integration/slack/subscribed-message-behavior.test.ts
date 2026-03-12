@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { appSlackRuntime, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
-import { createTestMessage, createTestThread } from "../../fixtures/slack-harness";
+import {
+  appSlackRuntime,
+  resetBotDepsForTests,
+  setBotDepsForTests,
+} from "@/chat/bot";
+import {
+  createTestMessage,
+  createTestThread,
+} from "../../fixtures/slack-harness";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -32,14 +39,16 @@ describe("Slack behavior: subscribed messages", () => {
           object: {
             should_reply: false,
             confidence: 0,
-            reason: "side conversation"
+            reason: "side conversation",
           },
-          text: "{\"should_reply\":false,\"confidence\":0,\"reason\":\"side conversation\"}"
+          text: '{"should_reply":false,"confidence":0,"reason":"side conversation"}',
         } as never;
       },
       generateAssistantReply: async () => {
-        throw new Error("generateAssistantReply should not run when classifier skips reply");
-      }
+        throw new Error(
+          "generateAssistantReply should not run when classifier skips reply",
+        );
+      },
     });
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002000.000" });
@@ -48,7 +57,7 @@ describe("Slack behavior: subscribed messages", () => {
       text: "sounds good thanks everyone",
       isMention: false,
       threadId: thread.id,
-      author: { userId: "U_TESTER" }
+      author: { userId: "U_TESTER" },
     });
 
     await appSlackRuntime.handleSubscribedMessage(thread, message);
@@ -68,9 +77,9 @@ describe("Slack behavior: subscribed messages", () => {
           object: {
             should_reply: true,
             confidence: 1,
-            reason: "explicit ask"
+            reason: "explicit ask",
           },
-          text: "{\"should_reply\":true,\"confidence\":1,\"reason\":\"explicit ask\"}"
+          text: '{"should_reply":true,"confidence":1,"reason":"explicit ask"}',
         } as never;
       },
       generateAssistantReply: async (prompt) => {
@@ -84,10 +93,10 @@ describe("Slack behavior: subscribed messages", () => {
             toolCalls: [],
             toolErrorCount: 0,
             toolResultCount: 0,
-            usedPrimaryText: true
-          }
+            usedPrimaryText: true,
+          },
         };
-      }
+      },
     });
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002001.000" });
@@ -96,7 +105,7 @@ describe("Slack behavior: subscribed messages", () => {
       text: "can you suggest one concrete next step?",
       isMention: false,
       threadId: thread.id,
-      author: { userId: "U_TESTER" }
+      author: { userId: "U_TESTER" },
     });
 
     await appSlackRuntime.handleSubscribedMessage(thread, message);
@@ -127,10 +136,10 @@ describe("Slack behavior: subscribed messages", () => {
             toolCalls: [],
             toolErrorCount: 0,
             toolResultCount: 0,
-            usedPrimaryText: true
-          }
+            usedPrimaryText: true,
+          },
         };
-      }
+      },
     });
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002002.000" });
@@ -139,7 +148,7 @@ describe("Slack behavior: subscribed messages", () => {
       text: "<@U_APP> quick status?",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" }
+      author: { userId: "U_TESTER" },
     });
 
     await appSlackRuntime.handleSubscribedMessage(thread, message);
@@ -170,10 +179,10 @@ describe("Slack behavior: subscribed messages", () => {
             toolCalls: [],
             toolErrorCount: 0,
             toolResultCount: 0,
-            usedPrimaryText: true
-          }
+            usedPrimaryText: true,
+          },
         };
-      }
+      },
     });
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.000" });
@@ -182,7 +191,7 @@ describe("Slack behavior: subscribed messages", () => {
       text: "thanks!",
       isMention: false,
       threadId: thread.id,
-      author: { userId: "U_TESTER" }
+      author: { userId: "U_TESTER" },
     });
 
     await appSlackRuntime.handleSubscribedMessage(thread, message);
@@ -192,6 +201,74 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(0);
   });
 
+  it("stays silent when a subscribed message is clearly directed at another bot", async () => {
+    let classifierCalled = false;
+    let replyCalled = false;
+
+    setBotDepsForTests({
+      completeObject: async () => {
+        classifierCalled = true;
+        throw new Error(
+          "classifier should be bypassed for messages addressed to another bot",
+        );
+      },
+      generateAssistantReply: async () => {
+        replyCalled = true;
+        return {
+          text: "This should never be posted.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true,
+          },
+        };
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.500" });
+    const message = createTestMessage({
+      id: "m-subscribed-other-bot",
+      text: "@Cursor can you help address issue 87?",
+      isMention: false,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+    });
+
+    await appSlackRuntime.handleSubscribedMessage(thread, message);
+
+    expect(classifierCalled).toBe(false);
+    expect(replyCalled).toBe(false);
+    expect(thread.posts).toHaveLength(0);
+    const state = await thread.state;
+    const conversation = (state.conversation ?? {}) as {
+      messages?: Array<{
+        id: string;
+        text: string;
+        meta?: { replied?: boolean; skippedReason?: string };
+      }>;
+      processing?: { lastCompletedAtMs?: number };
+    };
+    expect(conversation.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "m-subscribed-other-bot",
+          text: "@Cursor can you help address issue 87?",
+          meta: expect.objectContaining({
+            replied: false,
+            skippedReason: "directed_to_other_party:named_mention:Cursor",
+          }),
+        }),
+      ]),
+    );
+    expect(conversation.processing?.lastCompletedAtMs).toEqual(
+      expect.any(Number),
+    );
+  });
+
   it("bypasses classifier for assistant-directed follow-up questions", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];
@@ -199,7 +276,9 @@ describe("Slack behavior: subscribed messages", () => {
     setBotDepsForTests({
       completeObject: async () => {
         classifierCalled = true;
-        throw new Error("classifier should be bypassed for follow-up questions");
+        throw new Error(
+          "classifier should be bypassed for follow-up questions",
+        );
       },
       generateAssistantReply: async (prompt) => {
         replyCalls.push(prompt);
@@ -212,10 +291,10 @@ describe("Slack behavior: subscribed messages", () => {
             toolCalls: [],
             toolErrorCount: 0,
             toolResultCount: 0,
-            usedPrimaryText: true
-          }
+            usedPrimaryText: true,
+          },
         };
-      }
+      },
     });
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002004.000" });
@@ -226,8 +305,8 @@ describe("Slack behavior: subscribed messages", () => {
         text: "<@U_APP> I need the budget by Friday",
         isMention: true,
         threadId: thread.id,
-        author: { userId: "U_TESTER" }
-      })
+        author: { userId: "U_TESTER" },
+      }),
     );
 
     await appSlackRuntime.handleSubscribedMessage(
@@ -237,8 +316,8 @@ describe("Slack behavior: subscribed messages", () => {
         text: "what did you just say about the budget?",
         isMention: false,
         threadId: thread.id,
-        author: { userId: "U_TESTER" }
-      })
+        author: { userId: "U_TESTER" },
+      }),
     );
 
     expect(classifierCalled).toBe(false);

@@ -1,4 +1,5 @@
 import type { Message, Thread } from "chat";
+import { getSubscribedReplyPreflightDecision } from "@/chat/routing/subscribed-decision";
 import { isRetryableTurnError } from "@/chat/turn/errors";
 import type { ErrorReference } from "@/chat/observability";
 import { getSlackErrorObservabilityAttributes } from "@/chat/runtime/thread-context";
@@ -31,7 +32,11 @@ export interface AppRuntimeReplyHooks {
 }
 
 function isExplicitMentionDecision(reason: string): boolean {
-  return reason === "explicit mention" || reason === "explicit_mention" || reason.startsWith("explicit_mention:");
+  return (
+    reason === "explicit mention" ||
+    reason === "explicit_mention" ||
+    reason.startsWith("explicit_mention:")
+  );
 }
 
 type AppRuntimeLogContext = Record<string, unknown> & {
@@ -47,7 +52,9 @@ type AppRuntimeLogContext = Record<string, unknown> & {
 export interface AppSlackRuntimeDependencies<TPreparedState> {
   assistantUserName: string;
   getChannelId: (thread: Thread, message: Message) => string | undefined;
-  getPreparedConversationContext: (preparedState: TPreparedState) => string | undefined;
+  getPreparedConversationContext: (
+    preparedState: TPreparedState,
+  ) => string | undefined;
   getThreadId: (thread: Thread, message: Message) => string | undefined;
   getRunId: (thread: Thread, message: Message) => string | undefined;
   initializeAssistantThread: (event: {
@@ -61,22 +68,29 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
     eventName: string,
     context?: Record<string, unknown>,
     attributes?: Record<string, unknown>,
-    body?: string
+    body?: string,
   ) => string | undefined;
   logWarn: (
     eventName: string,
     context?: Record<string, unknown>,
     attributes?: Record<string, unknown>,
-    body?: string
+    body?: string,
   ) => void;
   modelId: string;
   now: () => number;
   getErrorReference: (eventId?: string) => ErrorReference | null;
+  recordSkippedSubscribedMessage: (args: {
+    completedAtMs: number;
+    decision: AppRuntimeReplyDecision;
+    message: Message;
+    thread: Thread;
+    userText: string;
+  }) => Promise<void>;
   onSubscribedMessageSkipped: (args: {
     completedAtMs: number;
     decision: AppRuntimeReplyDecision;
     message: Message;
-    preparedState: TPreparedState;
+    preparedState?: TPreparedState;
     thread: Thread;
   }) => Promise<void>;
   persistPreparedState: (args: {
@@ -97,7 +111,7 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
       beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
       preparedState?: TPreparedState;
-    }
+    },
   ) => Promise<void>;
   shouldReplyInSubscribedThread: (args: {
     context: AppRuntimeThreadContext;
@@ -111,13 +125,13 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
     text: string,
     options: {
       stripLeadingSlackMentionToken?: boolean;
-    }
+    },
   ) => string;
   withSpan: (
     name: string,
     op: string,
     context: Record<string, unknown>,
-    callback: () => Promise<void>
+    callback: () => Promise<void>,
   ) => Promise<void>;
 }
 
@@ -133,23 +147,35 @@ function buildFailureMessage(reference: ErrorReference | null): string {
 
 export interface AppSlackRuntime<
   TPreparedState,
-  TAssistantEvent extends AppRuntimeAssistantLifecycleEvent = AppRuntimeAssistantLifecycleEvent
+  TAssistantEvent extends AppRuntimeAssistantLifecycleEvent =
+    AppRuntimeAssistantLifecycleEvent,
 > {
   handleAssistantContextChanged: (event: TAssistantEvent) => Promise<void>;
   handleAssistantThreadStarted: (event: TAssistantEvent) => Promise<void>;
-  handleNewMention: (thread: Thread, message: Message, hooks?: AppRuntimeReplyHooks) => Promise<void>;
-  handleSubscribedMessage: (thread: Thread, message: Message, hooks?: AppRuntimeReplyHooks) => Promise<void>;
+  handleNewMention: (
+    thread: Thread,
+    message: Message,
+    hooks?: AppRuntimeReplyHooks,
+  ) => Promise<void>;
+  handleSubscribedMessage: (
+    thread: Thread,
+    message: Message,
+    hooks?: AppRuntimeReplyHooks,
+  ) => Promise<void>;
 }
 
 function buildLogContext(
-  deps: Pick<AppSlackRuntimeDependencies<unknown>, "assistantUserName" | "modelId">,
+  deps: Pick<
+    AppSlackRuntimeDependencies<unknown>,
+    "assistantUserName" | "modelId"
+  >,
   args: {
     channelId?: string;
     requesterId?: string;
     requesterUserName?: string;
     threadId?: string;
     runId?: string;
-  }
+  },
 ): AppRuntimeLogContext {
   return {
     slackThreadId: args.threadId,
@@ -158,15 +184,16 @@ function buildLogContext(
     slackChannelId: args.channelId,
     runId: args.runId,
     assistantUserName: deps.assistantUserName,
-    modelId: deps.modelId
+    modelId: deps.modelId,
   };
 }
 
 export function createAppSlackRuntime<
   TPreparedState,
-  TAssistantEvent extends AppRuntimeAssistantLifecycleEvent = AppRuntimeAssistantLifecycleEvent
+  TAssistantEvent extends AppRuntimeAssistantLifecycleEvent =
+    AppRuntimeAssistantLifecycleEvent,
 >(
-  deps: AppSlackRuntimeDependencies<TPreparedState>
+  deps: AppSlackRuntimeDependencies<TPreparedState>,
 ): AppSlackRuntime<TPreparedState, TAssistantEvent> {
   const logContext = (args: {
     channelId?: string;
@@ -174,8 +201,7 @@ export function createAppSlackRuntime<
     requesterUserName?: string;
     threadId?: string;
     runId?: string;
-  }): AppRuntimeLogContext =>
-    buildLogContext(deps, args);
+  }): AppRuntimeLogContext => buildLogContext(deps, args);
 
   const postFallbackErrorReplyWithLogging = async (args: {
     thread: Thread;
@@ -194,17 +220,23 @@ export function createAppSlackRuntime<
         args.errorContext,
         {
           "app.slack.reply_stage": "error_fallback_post",
-          ...(args.eventId ? { "app.error.original_event_id": args.eventId } : {}),
-          ...getSlackErrorObservabilityAttributes(postError)
+          ...(args.eventId
+            ? { "app.error.original_event_id": args.eventId }
+            : {}),
+          ...getSlackErrorObservabilityAttributes(postError),
         },
-        args.postFailureBody
+        args.postFailureBody,
       );
       throw postError;
     }
   };
 
   return {
-    async handleNewMention(thread: Thread, message: Message, hooks?: AppRuntimeReplyHooks): Promise<void> {
+    async handleNewMention(
+      thread: Thread,
+      message: Message,
+      hooks?: AppRuntimeReplyHooks,
+    ): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
@@ -214,28 +246,23 @@ export function createAppSlackRuntime<
           channelId,
           requesterId: message.author.userId,
           requesterUserName: message.author.userName,
-          runId
+          runId,
         });
 
-        await deps.withSpan(
-          "chat.turn",
-          "chat.turn",
-          context,
-          async () => {
-            await thread.subscribe();
-            await deps.replyToThread(thread, message, {
-              explicitMention: true,
-              beforeFirstResponsePost: hooks?.beforeFirstResponsePost
-            });
-          }
-        );
+        await deps.withSpan("chat.turn", "chat.turn", context, async () => {
+          await thread.subscribe();
+          await deps.replyToThread(thread, message, {
+            explicitMention: true,
+            beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+          });
+        });
       } catch (error) {
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
           requesterId: message.author.userId,
           requesterUserName: message.author.userName,
           channelId: deps.getChannelId(thread, message),
-          runId: deps.getRunId(thread, message)
+          runId: deps.getRunId(thread, message),
         });
         if (isRetryableTurnError(error)) {
           deps.logException(
@@ -243,7 +270,7 @@ export function createAppSlackRuntime<
             "mention_handler_retryable_failure",
             errorContext,
             { "app.turn.retryable_reason": error.reason },
-            "onNewMention failed with retryable error"
+            "onNewMention failed with retryable error",
           );
           throw error;
         }
@@ -252,7 +279,7 @@ export function createAppSlackRuntime<
           "mention_handler_failed",
           errorContext,
           {},
-          "onNewMention failed"
+          "onNewMention failed",
         );
         await hooks?.beforeFirstResponsePost?.();
         const reference = deps.getErrorReference(eventId);
@@ -262,52 +289,102 @@ export function createAppSlackRuntime<
           errorContext,
           eventId,
           postFailureEventName: "mention_handler_failure_reply_post_failed",
-          postFailureBody: "Failed to post fallback error reply for mention handler"
+          postFailureBody:
+            "Failed to post fallback error reply for mention handler",
         });
       }
     },
 
-    async handleSubscribedMessage(thread: Thread, message: Message, hooks?: AppRuntimeReplyHooks): Promise<void> {
+    async handleSubscribedMessage(
+      thread: Thread,
+      message: Message,
+      hooks?: AppRuntimeReplyHooks,
+    ): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
         const runId = deps.getRunId(thread, message);
         const rawUserText = message.text;
         const userText = deps.stripLeadingBotMention(rawUserText, {
-          stripLeadingSlackMentionToken: Boolean(message.isMention)
+          stripLeadingSlackMentionToken: Boolean(message.isMention),
         });
         const context: AppRuntimeThreadContext = {
           threadId,
           requesterId: message.author.userId,
           channelId,
-          runId
+          runId,
         };
+        const preflightDecision = hooks?.preApprovedReply
+          ? undefined
+          : getSubscribedReplyPreflightDecision({
+              botUserName: deps.assistantUserName,
+              rawText: rawUserText,
+              text: userText,
+              isExplicitMention: Boolean(message.isMention),
+            });
+
+        if (preflightDecision && !preflightDecision.shouldReply) {
+          const completedAtMs = deps.now();
+          const reason = preflightDecision.reasonDetail
+            ? `${preflightDecision.reason}:${preflightDecision.reasonDetail}`
+            : preflightDecision.reason;
+          deps.logWarn(
+            "subscribed_message_reply_skipped",
+            logContext({
+              threadId,
+              requesterId: message.author.userId,
+              requesterUserName: message.author.userName,
+              channelId,
+              runId,
+            }),
+            {
+              "app.decision.reason": reason,
+            },
+            "Skipping subscribed message reply",
+          );
+          await deps.onSubscribedMessageSkipped({
+            thread,
+            message,
+            decision: { shouldReply: false, reason },
+            completedAtMs,
+            preparedState: undefined,
+          });
+          await deps.recordSkippedSubscribedMessage({
+            thread,
+            message,
+            decision: { shouldReply: false, reason },
+            completedAtMs,
+            userText,
+          });
+          return;
+        }
 
         const preparedState = await deps.prepareTurnState({
           thread,
           message,
           userText,
           explicitMention: Boolean(message.isMention),
-          context
+          context,
         });
 
         await deps.persistPreparedState({
           thread,
-          preparedState
+          preparedState,
         });
 
         const decision = hooks?.preApprovedReply
           ? {
               shouldReply: true,
-              reason: "pre_approved_reply"
+              reason: "pre_approved_reply",
             }
           : await deps.shouldReplyInSubscribedThread({
               rawText: rawUserText,
               text: userText,
-              conversationContext: deps.getPreparedConversationContext(preparedState),
+              conversationContext:
+                deps.getPreparedConversationContext(preparedState),
               hasAttachments: message.attachments.length > 0,
               isExplicitMention: Boolean(message.isMention),
-              context
+              context,
             });
 
         if (!decision.shouldReply) {
@@ -318,19 +395,19 @@ export function createAppSlackRuntime<
               requesterId: message.author.userId,
               requesterUserName: message.author.userName,
               channelId,
-              runId
+              runId,
             }),
             {
-              "app.decision.reason": decision.reason
+              "app.decision.reason": decision.reason,
             },
-            "Skipping subscribed message reply"
+            "Skipping subscribed message reply",
           );
           await deps.onSubscribedMessageSkipped({
             thread,
             message,
             preparedState,
             decision,
-            completedAtMs: deps.now()
+            completedAtMs: deps.now(),
           });
           return;
         }
@@ -343,15 +420,15 @@ export function createAppSlackRuntime<
             requesterId: message.author.userId,
             requesterUserName: message.author.userName,
             channelId,
-            runId
+            runId,
           }),
           async () => {
             await deps.replyToThread(thread, message, {
               explicitMention: isExplicitMentionDecision(decision.reason),
               preparedState,
-              beforeFirstResponsePost: hooks?.beforeFirstResponsePost
+              beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             });
-          }
+          },
         );
       } catch (error) {
         const errorContext = logContext({
@@ -359,7 +436,7 @@ export function createAppSlackRuntime<
           requesterId: message.author.userId,
           requesterUserName: message.author.userName,
           channelId: deps.getChannelId(thread, message),
-          runId: deps.getRunId(thread, message)
+          runId: deps.getRunId(thread, message),
         });
         if (isRetryableTurnError(error)) {
           deps.logException(
@@ -367,7 +444,7 @@ export function createAppSlackRuntime<
             "subscribed_message_handler_retryable_failure",
             errorContext,
             { "app.turn.retryable_reason": error.reason },
-            "onSubscribedMessage failed with retryable error"
+            "onSubscribedMessage failed with retryable error",
           );
           throw error;
         }
@@ -376,7 +453,7 @@ export function createAppSlackRuntime<
           "subscribed_message_handler_failed",
           errorContext,
           {},
-          "onSubscribedMessage failed"
+          "onSubscribedMessage failed",
         );
         await hooks?.beforeFirstResponsePost?.();
         const reference = deps.getErrorReference(eventId);
@@ -385,8 +462,10 @@ export function createAppSlackRuntime<
           reference,
           errorContext,
           eventId,
-          postFailureEventName: "subscribed_message_handler_failure_reply_post_failed",
-          postFailureBody: "Failed to post fallback error reply for subscribed message handler"
+          postFailureEventName:
+            "subscribed_message_handler_failure_reply_post_failed",
+          postFailureBody:
+            "Failed to post fallback error reply for subscribed message handler",
         });
       }
     },
@@ -397,7 +476,7 @@ export function createAppSlackRuntime<
           threadId: event.threadId,
           channelId: event.channelId,
           threadTs: event.threadTs,
-          sourceChannelId: event.context?.channelId
+          sourceChannelId: event.context?.channelId,
         });
       } catch (error) {
         deps.logException(
@@ -408,10 +487,10 @@ export function createAppSlackRuntime<
             slackUserId: event.userId,
             slackChannelId: event.channelId,
             assistantUserName: deps.assistantUserName,
-            modelId: deps.modelId
+            modelId: deps.modelId,
           },
           {},
-          "onAssistantThreadStarted failed"
+          "onAssistantThreadStarted failed",
         );
       }
     },
@@ -422,7 +501,7 @@ export function createAppSlackRuntime<
           threadId: event.threadId,
           channelId: event.channelId,
           threadTs: event.threadTs,
-          sourceChannelId: event.context?.channelId
+          sourceChannelId: event.context?.channelId,
         });
       } catch (error) {
         deps.logException(
@@ -433,12 +512,12 @@ export function createAppSlackRuntime<
             slackUserId: event.userId,
             slackChannelId: event.channelId,
             assistantUserName: deps.assistantUserName,
-            modelId: deps.modelId
+            modelId: deps.modelId,
           },
           {},
-          "onAssistantContextChanged failed"
+          "onAssistantContextChanged failed",
         );
       }
-    }
+    },
   };
 }
