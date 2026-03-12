@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from "node:url";
+
 /**
  * Unified Notion helper for LLM-facing search and fetch operations.
  *
@@ -423,36 +425,44 @@ async function fetchPageMarkdown(pageId) {
 }
 
 async function fetchDataSourceContent(dataSourceId, rowLimit) {
-  const [dataSource, rowsResponse] = await Promise.all([
-    notionRequest(`/data_sources/${dataSourceId}`),
-    notionRequest(`/data_sources/${dataSourceId}/query`, {
+  const dataSource = await notionRequest(`/data_sources/${dataSourceId}`);
+  const target = {
+    id: String(dataSource?.id ?? dataSourceId),
+    object: "data_source",
+    title: extractResultTitle(dataSource),
+    url: String(dataSource?.url ?? ""),
+    last_edited_time: dataSource?.last_edited_time ?? null,
+  };
+
+  try {
+    const rowsResponse = await notionRequest(`/data_sources/${dataSourceId}/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ page_size: rowLimit }),
-    }),
-  ]);
+    });
 
-  return {
-    target: {
-      id: String(dataSource?.id ?? dataSourceId),
-      object: "data_source",
-      title: extractResultTitle(dataSource),
-      url: String(dataSource?.url ?? ""),
-      last_edited_time: dataSource?.last_edited_time ?? null,
-    },
-    content: {
-      type: "data_source",
-      schema: simplifyDataSourceSchema(dataSource),
-      rows: Array.isArray(rowsResponse?.results)
-        ? rowsResponse.results.map((row) => simplifyPageRecord(row))
-        : [],
-    },
-  };
+    return {
+      target,
+      content: {
+        type: "data_source",
+        schema: simplifyDataSourceSchema(dataSource),
+        rows: Array.isArray(rowsResponse?.results)
+          ? rowsResponse.results.map((row) => simplifyPageRecord(row))
+          : [],
+      },
+    };
+  } catch (error) {
+    return {
+      target,
+      content: null,
+      content_error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
-async function fetchContent({ id, object, rowLimit = DEFAULT_ROW_LIMIT } = {}) {
+export async function fetchContent({ id, object, rowLimit = DEFAULT_ROW_LIMIT } = {}) {
   if (!id) {
     throw new Error("notion fetch requires --id");
   }
@@ -539,7 +549,9 @@ async function main() {
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}
