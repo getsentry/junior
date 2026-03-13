@@ -2,7 +2,7 @@
 title: Notion Plugin
 description: Configure a shared internal Notion integration for read-only page and data source search workflows.
 type: tutorial
-summary: Install the Notion plugin, register it with withJunior, configure a shared integration token, and verify `/notion` search workflows.
+summary: Install the Notion plugin, register it with withJunior, configure a shared integration token, and verify Notion search workflows.
 prerequisites:
   - /extend/
 related:
@@ -10,9 +10,9 @@ related:
   - /operate/security-hardening/
 ---
 
-The Notion plugin uses a shared internal integration so Slack users can search shared Notion pages and data sources through `/notion`.
+The Notion plugin uses a shared internal integration so Slack users can search shared Notion pages and data sources through normal Notion requests.
 
-Notion's public search API is more limited than the search experience in the Notion app. Junior uses the stable public API, so `/notion` works best when users search for the exact page or data source title they want to open.
+Notion's public search API is more limited than the search experience in the Notion app. Junior uses the stable public API, so Notion requests work best when users search for the exact page or data source title they want to open.
 
 ## Install
 
@@ -62,13 +62,13 @@ Notion internal integrations only see the pages and data sources that are explic
 3. Choose `Add connections`.
 4. Select your integration.
 
-This is the most common reason `/notion` returns no matches or a permission-style error.
+This is the most common reason a Notion request returns no matches or a permission-style error.
 
 ## Verify
 
 Confirm the token is set, the target content is shared with the integration, and a real search succeeds:
 
-- Run `/notion <query>` in Slack and confirm the response includes the expected page or data source.
+- Ask Junior to search Notion for a real page or data source title and confirm the response includes the expected result.
 - If needed, verify the same content through the local helper scripts:
 
 ```bash

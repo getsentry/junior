@@ -25,7 +25,7 @@ related:
 | Slack mention receives no reply       | Missing webhook URL or token scopes  | Slack app Event Subscriptions URL + scopes |
 | Webhook 401/signature errors          | Incorrect signing secret             | `SLACK_SIGNING_SECRET` value               |
 | Message accepted but no threaded work | Queue callback trigger misconfigured | `vercel.json` trigger + callback route     |
-| Plugin commands fail auth             | Missing credentials or OAuth state   | Plugin env vars + `/sentry auth` flow      |
+| Plugin commands fail auth             | Missing credentials or OAuth state   | Plugin env vars + Sentry connect flow      |
 
 ## Useful signals
 

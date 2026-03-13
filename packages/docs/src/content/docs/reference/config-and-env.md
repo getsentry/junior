@@ -13,16 +13,16 @@ related:
 
 ## Core runtime
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `SLACK_SIGNING_SECRET` | Yes | Verifies Slack request signatures. |
-| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes | Posts thread replies and calls Slack APIs. |
-| `REDIS_URL` | Yes | Queue and runtime state storage. |
-| `JUNIOR_BOT_NAME` | No | Bot display/config naming. |
-| `AI_MODEL` | No | Primary model selection override. |
-| `AI_FAST_MODEL` | No | Faster model for lightweight tasks. |
-| `JUNIOR_BASE_URL` | No | Canonical base URL for callback/auth URL generation. |
-| `AI_GATEWAY_API_KEY` | No | AI gateway auth if used in your setup. |
+| Variable                                    | Required | Purpose                                              |
+| ------------------------------------------- | -------- | ---------------------------------------------------- |
+| `SLACK_SIGNING_SECRET`                      | Yes      | Verifies Slack request signatures.                   |
+| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes      | Posts thread replies and calls Slack APIs.           |
+| `REDIS_URL`                                 | Yes      | Queue and runtime state storage.                     |
+| `JUNIOR_BOT_NAME`                           | No       | Bot display/config naming.                           |
+| `AI_MODEL`                                  | No       | Primary model selection override.                    |
+| `AI_FAST_MODEL`                             | No       | Faster model for lightweight tasks.                  |
+| `JUNIOR_BASE_URL`                           | No       | Canonical base URL for callback/auth URL generation. |
+| `AI_GATEWAY_API_KEY`                        | No       | AI gateway auth if used in your setup.               |
 
 ## Build-time snapshot warmup
 
@@ -33,18 +33,18 @@ If your build command runs `junior snapshot create`:
 
 ## GitHub plugin
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `GITHUB_APP_ID` | Yes | GitHub App identity. |
-| `GITHUB_APP_PRIVATE_KEY` | Yes | GitHub App signing key. |
-| `GITHUB_INSTALLATION_ID` | Yes | Repository/org installation target. |
+| Variable                 | Required | Purpose                             |
+| ------------------------ | -------- | ----------------------------------- |
+| `GITHUB_APP_ID`          | Yes      | GitHub App identity.                |
+| `GITHUB_APP_PRIVATE_KEY` | Yes      | GitHub App signing key.             |
+| `GITHUB_INSTALLATION_ID` | Yes      | Repository/org installation target. |
 
 ## Sentry plugin
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `SENTRY_CLIENT_ID` | Yes | OAuth client ID. |
-| `SENTRY_CLIENT_SECRET` | Yes | OAuth client secret. |
+| Variable               | Required | Purpose              |
+| ---------------------- | -------- | -------------------- |
+| `SENTRY_CLIENT_ID`     | Yes      | OAuth client ID.     |
+| `SENTRY_CLIENT_SECRET` | Yes      | OAuth client secret. |
 
 ## Verification
 
@@ -54,4 +54,4 @@ If your build command runs `junior snapshot create`:
 
 ## Next step
 
-Use [Runtime Commands](/reference/runtime-commands/) to verify credentialed workflows after env changes, then monitor with [Observability](/operate/observability/).
+Use [Plugin Auth & Context](/reference/runtime-commands/) to verify plugin auth and target-context behavior after env changes, then monitor with [Observability](/operate/observability/).

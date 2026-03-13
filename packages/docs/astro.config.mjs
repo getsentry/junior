@@ -122,7 +122,10 @@ export default defineConfig({
               label: "Route & Handler Surface",
               link: "/reference/handler-surface/",
             },
-            { label: "Runtime Commands", link: "/reference/runtime-commands/" },
+            {
+              label: "Plugin Auth & Context",
+              link: "/reference/runtime-commands/",
+            },
             { label: "API Reference Guide", link: "/reference/api/" },
           ],
         },

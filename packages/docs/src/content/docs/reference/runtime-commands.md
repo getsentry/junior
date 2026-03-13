@@ -1,8 +1,8 @@
 ---
-title: Runtime Commands
-description: High-value jr-rpc commands for credentials, config, and OAuth.
+title: Plugin Auth & Context
+description: How Junior handles plugin auth, private OAuth prompts, and provider target context.
 type: reference
-summary: Use `jr-rpc` commands to issue credentials, manage channel config, and control OAuth token lifecycle.
+summary: Use requests about GitHub, Sentry, and other plugins while Junior handles auth and context behind the scenes.
 prerequisites:
   - /reference/config-and-env/
 related:
@@ -11,47 +11,37 @@ related:
   - /operate/security-hardening/
 ---
 
-## Credential issuance
+Junior handles plugin authentication and provider context behind the scenes. Public plugin docs should focus on the workflows people actually run, not the internal command layer that powers them.
 
-```bash
-jr-rpc issue-credential <capability>
-```
+## What users do
 
-Examples:
+Users work through normal requests about GitHub, Sentry, Notion, and other enabled plugins.
 
-```bash
-jr-rpc issue-credential github.issues.write
-jr-rpc issue-credential sentry.api
-```
+- Run the plugin workflow in Slack or the host chat surface.
+- If Junior asks for authorization, follow the private prompt it sends.
+- For Sentry, users can ask Junior to connect or reconnect their account proactively.
+- If the target repository, org, or project is unclear, include it directly in the request.
 
-## Config values
+## Auth behavior
 
-```bash
-jr-rpc config get <key>
-jr-rpc config set <key> <value>
-```
+Different plugins authenticate in different ways, but the visible pattern stays the same.
 
-Examples:
+- GitHub uses host-managed GitHub App access configured by the operator.
+- OAuth-based plugins such as Sentry send sign-in links privately to the requesting user.
+- If a user token is stale or no longer has access, Junior prompts for re-authorization instead of asking users to manage tokens manually.
 
-```bash
-jr-rpc config set github.repo getsentry/junior
-jr-rpc config set sentry.org getsentry
-jr-rpc config set sentry.project my-project
-```
+## Context behavior
 
-## OAuth lifecycle
+Junior works best when the request names the target clearly.
 
-```bash
-jr-rpc oauth-start sentry
-jr-rpc delete-token sentry
-```
+- For GitHub, include `owner/repo` when the repository is not obvious from the request or surrounding conversation.
+- For Sentry, include the org and project when your workspace spans multiple targets.
+- When follow-up requests stay on the same target, Junior can continue the workflow without restating every detail.
 
-## Operational guidance
+## Operator verification
 
-- Issue only the scope needed for the command you are running.
-- Treat auth failures as actionable signals, not transient noise.
-- Never expose provider token values in output.
+After changing plugin env vars or auth settings, verify one real workflow end to end in the chat surface where users will run it. Confirm the request succeeds, the result is scoped to the expected target, and any auth prompt stays private to the requesting user.
 
 ## Next step
 
-Apply these commands in [GitHub Plugin](/extend/github-plugin/) or [Sentry Plugin](/extend/sentry-plugin/) setup, then follow [Reliability Runbooks](/operate/reliability-runbooks/) when auth failures recur.
+Set up a concrete integration with [GitHub Plugin](/extend/github-plugin/) or [Sentry Plugin](/extend/sentry-plugin/), then follow [Reliability Runbooks](/operate/reliability-runbooks/) when auth failures recur.
