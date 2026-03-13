@@ -2,7 +2,7 @@
 title: "junior check"
 description: "Validate Junior plugin manifests and skill files under app/ before build or deploy."
 type: reference
-summary: "`junior check [dir]` validates `app/plugins`, `app/skills`, and plugin-local skills, then exits non-zero on schema or duplicate-name errors."
+summary: "`junior check [dir]` validates `app/plugins`, `app/skills`, and plugin-local skills, prints a grouped inventory of what it checked, then exits non-zero on schema or duplicate-name errors."
 prerequisites:
   - /start-here/quickstart/
 related:
@@ -55,13 +55,22 @@ If a skill file has frontmatter but no instructions after it, the command emits 
 Successful validation:
 
 ```text
-Validation passed (1 plugin manifest, 2 skill directories checked).
+Checking /repo
+✓ plugin demo
+  └─ ✓ skill demo-helper
+✓ app skills
+  └─ ✓ skill repo-local
+✓ Validation passed (1 plugin manifest, 2 skill directories checked).
 ```
 
 Validation failure:
 
 ```text
-error: /repo/app/skills/repo-local/SKILL.md: uses-config token "GITHUB_REPO" is invalid; expected dotted lowercase tokens (for example "github.repo")
+Checking /repo
+✓ plugin demo
+✖ app skills
+  └─ ✖ skill repo-local
+✖ error: /repo/app/skills/repo-local/SKILL.md: uses-config token "GITHUB_REPO" is invalid; expected dotted lowercase tokens (for example "github.repo")
 junior command failed: Validation failed (1 error, 1 plugin manifest, 1 skill directory checked).
 ```
 

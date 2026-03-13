@@ -31,6 +31,8 @@ describe("check cli", () => {
       [
         "name: demo",
         "description: Demo plugin",
+        "capabilities:",
+        "  - issues.read",
         "config-keys:",
         "  - repo",
         "target:",
@@ -53,6 +55,8 @@ describe("check cli", () => {
         "---",
         "name: demo-helper",
         "description: Help with demo tasks.",
+        "uses-config: demo.repo",
+        "requires-capabilities: demo.issues.read",
         "---",
         "",
         "Use this skill.",
@@ -80,7 +84,12 @@ describe("check cli", () => {
     });
 
     expect(lines).toEqual([
-      "Validation passed (1 plugin manifest, 2 skill directories checked).",
+      `Checking ${repoRoot}`,
+      "✓ plugin demo",
+      "  └─ ✓ skill demo-helper",
+      "✓ app skills",
+      "  └─ ✓ skill repo-local",
+      "✓ Validation passed (1 plugin manifest, 2 skill directories checked).",
     ]);
   });
 
@@ -99,7 +108,8 @@ describe("check cli", () => {
     });
 
     expect(lines).toEqual([
-      "Validation passed (0 plugin manifests, 0 skill directories checked).",
+      `Checking ${repoRoot}`,
+      "✓ Validation passed (0 plugin manifests, 0 skill directories checked).",
     ]);
   });
 
@@ -150,7 +160,10 @@ describe("check cli", () => {
     });
 
     expect(lines).toEqual([
-      "Validation passed (1 plugin manifest, 1 skill directory checked).",
+      `Checking ${repoRoot}`,
+      "✓ plugin demo",
+      "  └─ ✓ skill shared-skill",
+      "✓ Validation passed (1 plugin manifest, 1 skill directory checked).",
     ]);
   });
 
