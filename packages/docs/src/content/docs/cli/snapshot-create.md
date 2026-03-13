@@ -8,6 +8,7 @@ prerequisites:
 related:
   - /reference/config-and-env/
   - /start-here/quickstart/
+  - /cli/check/
   - /operate/observability/
 ---
 
@@ -52,8 +53,6 @@ Sandbox snapshot create complete: runtime=node22 resolve_outcome=rebuilt cache_h
 
 If there is nothing to snapshot, the command still reports the empty profile and completion outcome.
 
-## When to use it
-
 The common case is a Vercel build command:
 
 ```json title="package.json"
@@ -86,4 +85,4 @@ After adding the command to your build:
 
 ## Next step
 
-Return to [Quickstart](/start-here/quickstart/) to wire the command into Vercel, then monitor deploys with [Observability](/operate/observability/).
+Run [junior check](/cli/check/) before snapshot warmup when you change `plugin.yaml` or `SKILL.md`, then wire the command into Vercel from [Quickstart](/start-here/quickstart/).

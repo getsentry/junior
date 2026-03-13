@@ -8,6 +8,7 @@ prerequisites:
 related:
   - /start-here/quickstart/
   - /reference/config-and-env/
+  - /cli/check/
   - /cli/snapshot-create/
 ---
 
@@ -77,4 +78,4 @@ For the complete setup flow, continue with [Quickstart](/start-here/quickstart/)
 
 ## Next step
 
-Follow [Quickstart](/start-here/quickstart/) to add env vars, verify Slack locally, and deploy to Vercel.
+Follow [Quickstart](/start-here/quickstart/) to add env vars, then run [junior check](/cli/check/) once you start adding skills or plugins.
