@@ -256,16 +256,10 @@ function issueMessage(error: z.ZodError, prefix: string): string {
 }
 
 function normalizeStringMap(
-  raw: unknown,
+  value: Record<string, string> | undefined,
   prefix: string,
   options: { reservedKeys?: Set<string>; forbiddenKeys?: Set<string> } = {},
 ): Record<string, string> | undefined {
-  const result = stringMapSchema.safeParse(raw);
-  if (!result.success) {
-    throw new Error(issueMessage(result.error, prefix));
-  }
-
-  const value = result.data;
   if (!value) {
     return undefined;
   }
