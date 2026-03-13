@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
@@ -7,16 +8,16 @@ const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
 
-export interface SkillFrontmatter {
+export interface ParsedSkillFile {
   name: string;
   description: string;
+  body: string;
   metadata?: Record<string, unknown>;
   compatibility?: string;
   license?: string;
-  "allowed-tools"?: string;
-  "requires-capabilities"?: string;
-  "uses-config"?: string;
-  [key: string]: unknown;
+  allowedTools?: string[];
+  requiresCapabilities?: string[];
+  usesConfig?: string[];
 }
 
 function hasAngleBrackets(value: string): boolean {
@@ -25,21 +26,141 @@ function hasAngleBrackets(value: string): boolean {
 
 function validateSkillName(name: string): string | null {
   if (!name) return "name must not be empty";
-  if (name.length > MAX_NAME_LENGTH) return `name must be <= ${MAX_NAME_LENGTH} characters`;
-  if (!SKILL_NAME_RE.test(name)) return "name must contain only lowercase letters, digits, and hyphens";
-  if (name.startsWith("-") || name.endsWith("-")) return "name must not start or end with a hyphen";
+  if (name.length > MAX_NAME_LENGTH)
+    return `name must be <= ${MAX_NAME_LENGTH} characters`;
+  if (!SKILL_NAME_RE.test(name))
+    return "name must contain only lowercase letters, digits, and hyphens";
+  if (name.startsWith("-") || name.endsWith("-"))
+    return "name must not start or end with a hyphen";
   if (name.includes("--")) return "name must not contain consecutive hyphens";
   return null;
 }
+
+function createTokenFieldSchema(
+  fieldName: "requires-capabilities" | "uses-config",
+  example: string,
+) {
+  return z
+    .string({
+      error: `Frontmatter field "${fieldName}" must be a string when present`,
+    })
+    .superRefine((value, ctx) => {
+      const tokens = value
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 0);
+
+      for (const token of tokens) {
+        if (!CAPABILITY_TOKEN_RE.test(token)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${fieldName} token "${token}" is invalid; expected dotted lowercase tokens (for example "${example}")`,
+          });
+          return;
+        }
+      }
+    });
+}
+
+function parseTokenList(value: string | undefined): string[] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const tokens = value
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
+  return tokens.length > 0 ? tokens : undefined;
+}
+
+const skillFrontmatterSchema = z
+  .object({
+    name: z
+      .string({ error: 'Frontmatter field "name" must be a string' })
+      .superRefine((value, ctx) => {
+        const nameError = validateSkillName(value);
+        if (nameError) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: nameError,
+          });
+        }
+      }),
+    description: z
+      .string({ error: 'Frontmatter field "description" must be a string' })
+      .superRefine((value, ctx) => {
+        if (!value.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "description must not be empty",
+          });
+          return;
+        }
+        if (value.length > MAX_DESCRIPTION_LENGTH) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `description must be <= ${MAX_DESCRIPTION_LENGTH} characters`,
+          });
+          return;
+        }
+        if (hasAngleBrackets(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'description must not contain "<" or ">"',
+          });
+        }
+      }),
+    metadata: z
+      .record(z.string(), z.unknown(), {
+        error: 'Frontmatter field "metadata" must be an object when present',
+      })
+      .optional(),
+    compatibility: z
+      .string({
+        error:
+          'Frontmatter field "compatibility" must be a string when present',
+      })
+      .superRefine((value, ctx) => {
+        if (value.length > MAX_COMPATIBILITY_LENGTH) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `compatibility must be <= ${MAX_COMPATIBILITY_LENGTH} characters`,
+          });
+        }
+      })
+      .optional(),
+    license: z
+      .string({
+        error: 'Frontmatter field "license" must be a string when present',
+      })
+      .optional(),
+    "allowed-tools": z
+      .string({
+        error:
+          'Frontmatter field "allowed-tools" must be a string when present',
+      })
+      .optional(),
+    "requires-capabilities": createTokenFieldSchema(
+      "requires-capabilities",
+      "github.issues.write",
+    ).optional(),
+    "uses-config": createTokenFieldSchema(
+      "uses-config",
+      "github.repo",
+    ).optional(),
+  })
+  .passthrough();
 
 export function stripFrontmatter(raw: string): string {
   return raw.replace(FRONTMATTER_RE, "").trim();
 }
 
-export function parseAndValidateSkillFrontmatter(
+export function parseSkillFile(
   raw: string,
-  expectedName?: string
-): { ok: true; frontmatter: SkillFrontmatter } | { ok: false; error: string } {
+  expectedName?: string,
+): { ok: true; skill: ParsedSkillFile } | { ok: false; error: string } {
   const match = FRONTMATTER_RE.exec(raw);
   if (!match) {
     return { ok: false, error: "Missing YAML frontmatter at start of file" };
@@ -51,7 +172,7 @@ export function parseAndValidateSkillFrontmatter(
   } catch (error) {
     return {
       ok: false,
-      error: `Invalid YAML frontmatter: ${error instanceof Error ? error.message : String(error)}`
+      error: `Invalid YAML frontmatter: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 
@@ -59,100 +180,43 @@ export function parseAndValidateSkillFrontmatter(
     return { ok: false, error: "Frontmatter must be a YAML object" };
   }
 
-  const frontmatter = parsed as Record<string, unknown>;
-  const name = frontmatter.name;
-  const description = frontmatter.description;
-
-  if (typeof name !== "string") {
-    return { ok: false, error: 'Frontmatter field "name" must be a string' };
-  }
-  const nameError = validateSkillName(name);
-  if (nameError) {
-    return { ok: false, error: nameError };
-  }
-  if (expectedName && name !== expectedName) {
-    return { ok: false, error: `name "${name}" must match directory "${expectedName}"` };
+  const result = skillFrontmatterSchema.safeParse(parsed);
+  if (!result.success) {
+    return {
+      ok: false,
+      error: result.error.issues[0]?.message ?? "Invalid YAML frontmatter",
+    };
   }
 
-  if (typeof description !== "string") {
-    return { ok: false, error: 'Frontmatter field "description" must be a string' };
-  }
-  if (!description.trim()) {
-    return { ok: false, error: "description must not be empty" };
-  }
-  if (description.length > MAX_DESCRIPTION_LENGTH) {
-    return { ok: false, error: `description must be <= ${MAX_DESCRIPTION_LENGTH} characters` };
-  }
-  if (hasAngleBrackets(description)) {
-    return { ok: false, error: 'description must not contain "<" or ">"' };
+  if (expectedName && result.data.name !== expectedName) {
+    return {
+      ok: false,
+      error: `name "${result.data.name}" must match directory "${expectedName}"`,
+    };
   }
 
-  if ("metadata" in frontmatter && (typeof frontmatter.metadata !== "object" || !frontmatter.metadata || Array.isArray(frontmatter.metadata))) {
-    return { ok: false, error: 'Frontmatter field "metadata" must be an object when present' };
-  }
-  if ("compatibility" in frontmatter) {
-    if (typeof frontmatter.compatibility !== "string") {
-      return { ok: false, error: 'Frontmatter field "compatibility" must be a string when present' };
-    }
-    if (frontmatter.compatibility.length > MAX_COMPATIBILITY_LENGTH) {
-      return { ok: false, error: `compatibility must be <= ${MAX_COMPATIBILITY_LENGTH} characters` };
-    }
-  }
-  if ("license" in frontmatter && typeof frontmatter.license !== "string") {
-    return { ok: false, error: 'Frontmatter field "license" must be a string when present' };
-  }
-  if ("allowed-tools" in frontmatter && typeof frontmatter["allowed-tools"] !== "string") {
-    return { ok: false, error: 'Frontmatter field "allowed-tools" must be a string when present' };
-  }
-  if ("requires-capabilities" in frontmatter) {
-    if (typeof frontmatter["requires-capabilities"] !== "string") {
-      return { ok: false, error: 'Frontmatter field "requires-capabilities" must be a string when present' };
-    }
-
-    const tokens = frontmatter["requires-capabilities"]
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter((token) => token.length > 0);
-
-    for (const token of tokens) {
-      if (!CAPABILITY_TOKEN_RE.test(token)) {
-        return {
-          ok: false,
-          error:
-            `requires-capabilities token "${token}" is invalid; expected dotted lowercase tokens ` +
-            `(for example "github.issues.write")`
-        };
-      }
-    }
-  }
-  if ("uses-config" in frontmatter) {
-    if (typeof frontmatter["uses-config"] !== "string") {
-      return { ok: false, error: 'Frontmatter field "uses-config" must be a string when present' };
-    }
-
-    const tokens = frontmatter["uses-config"]
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter((token) => token.length > 0);
-
-    for (const token of tokens) {
-      if (!CAPABILITY_TOKEN_RE.test(token)) {
-        return {
-          ok: false,
-          error:
-            `uses-config token "${token}" is invalid; expected dotted lowercase tokens ` +
-            `(for example "github.repo")`
-        };
-      }
-    }
-  }
+  const allowedTools = parseTokenList(result.data["allowed-tools"]);
+  const requiresCapabilities = parseTokenList(
+    result.data["requires-capabilities"],
+  );
+  const usesConfig = parseTokenList(result.data["uses-config"]);
 
   return {
     ok: true,
-    frontmatter: {
-      ...(frontmatter as SkillFrontmatter),
-      name,
-      description
-    }
+    skill: {
+      name: result.data.name,
+      description: result.data.description,
+      body: stripFrontmatter(raw),
+      ...(result.data.metadata ? { metadata: result.data.metadata } : {}),
+      ...(result.data.compatibility !== undefined
+        ? { compatibility: result.data.compatibility }
+        : {}),
+      ...(result.data.license !== undefined
+        ? { license: result.data.license }
+        : {}),
+      ...(allowedTools ? { allowedTools } : {}),
+      ...(requiresCapabilities ? { requiresCapabilities } : {}),
+      ...(usesConfig ? { usesConfig } : {}),
+    },
   };
 }

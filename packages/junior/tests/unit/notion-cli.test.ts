@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// @ts-expect-error test-only import from an untyped sibling package script
 import { fetchContent } from "../../../junior-notion/skills/notion/scripts/notion-cli.mjs";
 
 describe("notion cli fetchContent", () => {
@@ -10,7 +11,10 @@ describe("notion cli fetchContent", () => {
   it("preserves data source metadata when the rows query fails", async () => {
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/data_sources/ds_123") && (init?.method === undefined || init.method === "GET")) {
+      if (
+        url.endsWith("/data_sources/ds_123") &&
+        (init?.method === undefined || init.method === "GET")
+      ) {
         return Response.json({
           id: "ds_123",
           object: "data_source",
@@ -47,10 +51,20 @@ describe("notion cli fetchContent", () => {
       },
       content: null,
     });
-    expect(result.content_error).toContain("Notion API POST /data_sources/ds_123/query failed with 500");
+    expect(result.content_error).toContain(
+      "Notion API POST /data_sources/ds_123/query failed with 500",
+    );
     expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/data_sources/ds_123"))).toHaveLength(1);
-    expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/data_sources/ds_123/query"))).toHaveLength(3);
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).endsWith("/data_sources/ds_123"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).endsWith("/data_sources/ds_123/query"),
+      ),
+    ).toHaveLength(3);
   });
 
   it("keeps page targets on the compact shared shape", async () => {

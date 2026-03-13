@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAndValidateSkillFrontmatter } from "@/chat/skill-frontmatter";
+import { parseSkillFile } from "@/chat/skill-frontmatter";
 
 describe("skill frontmatter validation", () => {
   it("accepts valid frontmatter", () => {
@@ -11,11 +11,16 @@ describe("skill frontmatter validation", () => {
       "  owner: recruiting",
       "---",
       "",
-      "# Body"
+      "# Body",
     ].join("\n");
 
-    const result = parseAndValidateSkillFrontmatter(raw, "brief");
+    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(true);
+    expect(result.ok ? result.skill : null).toMatchObject({
+      name: "brief",
+      description: "Create a candidate brief from public engineering signals.",
+      body: "# Body",
+    });
   });
 
   it("rejects invalid name shape", () => {
@@ -25,10 +30,10 @@ describe("skill frontmatter validation", () => {
       "description: Valid description",
       "---",
       "",
-      "# Body"
+      "# Body",
     ].join("\n");
 
-    const result = parseAndValidateSkillFrontmatter(raw, "bad--name");
+    const result = parseSkillFile(raw, "bad--name");
     expect(result.ok).toBe(false);
   });
 
@@ -39,10 +44,10 @@ describe("skill frontmatter validation", () => {
       "description: Brief <candidate> profile",
       "---",
       "",
-      "# Body"
+      "# Body",
     ].join("\n");
 
-    const result = parseAndValidateSkillFrontmatter(raw, "brief");
+    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(false);
   });
 
@@ -54,11 +59,15 @@ describe("skill frontmatter validation", () => {
       "requires-capabilities: github.issues.read github.issues.write",
       "---",
       "",
-      "# Body"
+      "# Body",
     ].join("\n");
 
-    const result = parseAndValidateSkillFrontmatter(raw, "brief");
+    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(true);
+    expect(result.ok ? result.skill.requiresCapabilities : null).toEqual([
+      "github.issues.read",
+      "github.issues.write",
+    ]);
   });
 
   it("rejects invalid requires-capabilities tokens", () => {
@@ -69,10 +78,10 @@ describe("skill frontmatter validation", () => {
       "requires-capabilities: github",
       "---",
       "",
-      "# Body"
+      "# Body",
     ].join("\n");
 
-    const result = parseAndValidateSkillFrontmatter(raw, "brief");
+    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(false);
   });
 
@@ -84,11 +93,15 @@ describe("skill frontmatter validation", () => {
       "uses-config: github.repo jira.project",
       "---",
       "",
-      "# Body"
+      "# Body",
     ].join("\n");
 
-    const result = parseAndValidateSkillFrontmatter(raw, "brief");
+    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(true);
+    expect(result.ok ? result.skill.usesConfig : null).toEqual([
+      "github.repo",
+      "jira.project",
+    ]);
   });
 
   it("rejects invalid uses-config tokens", () => {
@@ -99,10 +112,10 @@ describe("skill frontmatter validation", () => {
       "uses-config: GITHUB_REPO",
       "---",
       "",
-      "# Body"
+      "# Body",
     ].join("\n");
 
-    const result = parseAndValidateSkillFrontmatter(raw, "brief");
+    const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(false);
   });
 });

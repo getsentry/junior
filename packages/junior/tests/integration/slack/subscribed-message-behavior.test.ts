@@ -243,7 +243,7 @@ describe("Slack behavior: subscribed messages", () => {
     expect(classifierCalled).toBe(false);
     expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
-    const state = await thread.state;
+    const state = (await thread.state) ?? {};
     const conversation = (state.conversation ?? {}) as {
       messages?: Array<{
         id: string;
