@@ -1,9 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  parseAndValidateSkillFrontmatter,
-  stripFrontmatter,
-} from "@/chat/skill-frontmatter";
+import { parseSkillFile } from "@/chat/skill-frontmatter";
 import { parsePluginManifest } from "@/chat/plugins/manifest";
 
 export interface ValidationIo {
@@ -18,20 +15,8 @@ const DEFAULT_IO: ValidationIo = {
   error: console.error,
 };
 
-function unique(values: string[]): string[] {
-  return [...new Set(values)];
-}
-
-function resolveContentRoots(
-  rootDir: string,
-  subdir: "skills" | "plugins",
-): string[] {
-  const canonical = path.resolve(rootDir, "app", subdir);
-  const legacy = path.resolve(rootDir, subdir);
-  if (canonical === legacy) {
-    return [canonical];
-  }
-  return unique([canonical, legacy]);
+function contentRoot(rootDir: string, subdir: "skills" | "plugins"): string {
+  return path.resolve(rootDir, "app", subdir);
 }
 
 async function pathIsDirectory(targetPath: string): Promise<boolean> {
@@ -66,13 +51,13 @@ async function validateSkillDirectory(
     return { errors, warnings };
   }
 
-  const parsed = parseAndValidateSkillFrontmatter(raw, path.basename(skillDir));
+  const parsed = parseSkillFile(raw, path.basename(skillDir));
   if (!parsed.ok) {
     errors.push(`${skillFile}: ${parsed.error}`);
     return { errors, warnings };
   }
 
-  const name = parsed.frontmatter.name;
+  const name = parsed.skill.name;
   const firstSeen = duplicateNames.get(name);
   if (firstSeen) {
     errors.push(
@@ -82,7 +67,7 @@ async function validateSkillDirectory(
     duplicateNames.set(name, skillFile);
   }
 
-  if (!stripFrontmatter(raw)) {
+  if (!parsed.skill.body) {
     warnings.push(`${skillFile}: no skill instructions after frontmatter`);
   }
 
@@ -119,27 +104,28 @@ async function validatePluginDirectory(
 
 async function collectPluginDirectories(rootDir: string): Promise<string[]> {
   const pluginDirs: string[] = [];
-  for (const pluginsRoot of resolveContentRoots(rootDir, "plugins")) {
-    let entries;
-    try {
-      entries = await fs.readdir(pluginsRoot, { withFileTypes: true });
-    } catch {
+
+  let entries;
+  try {
+    entries = await fs.readdir(contentRoot(rootDir, "plugins"), {
+      withFileTypes: true,
+    });
+  } catch {
+    return pluginDirs;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
       continue;
     }
 
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-
-      const pluginDir = path.join(pluginsRoot, entry.name);
-      if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
-        pluginDirs.push(pluginDir);
-      }
+    const pluginDir = path.join(contentRoot(rootDir, "plugins"), entry.name);
+    if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
+      pluginDirs.push(pluginDir);
     }
   }
 
-  return unique(pluginDirs).sort((left, right) => left.localeCompare(right));
+  return pluginDirs.sort((left, right) => left.localeCompare(right));
 }
 
 async function collectSkillDirectories(
@@ -147,12 +133,12 @@ async function collectSkillDirectories(
   pluginDirs: string[],
 ): Promise<string[]> {
   const roots = [
-    ...resolveContentRoots(rootDir, "skills"),
+    contentRoot(rootDir, "skills"),
     ...pluginDirs.map((pluginDir) => path.join(pluginDir, "skills")),
   ];
   const skillDirs: string[] = [];
 
-  for (const root of unique(roots)) {
+  for (const root of roots) {
     let entries;
     try {
       entries = await fs.readdir(root, { withFileTypes: true });
@@ -167,7 +153,7 @@ async function collectSkillDirectories(
     }
   }
 
-  return unique(skillDirs).sort((left, right) => left.localeCompare(right));
+  return skillDirs.sort((left, right) => left.localeCompare(right));
 }
 
 export async function runCheck(

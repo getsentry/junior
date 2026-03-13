@@ -8,16 +8,16 @@ const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
 
-export interface SkillFrontmatter {
+export interface ParsedSkillFile {
   name: string;
   description: string;
+  body: string;
   metadata?: Record<string, unknown>;
   compatibility?: string;
   license?: string;
-  "allowed-tools"?: string;
-  "requires-capabilities"?: string;
-  "uses-config"?: string;
-  [key: string]: unknown;
+  allowedTools?: string[];
+  requiresCapabilities?: string[];
+  usesConfig?: string[];
 }
 
 function hasAngleBrackets(value: string): boolean {
@@ -60,6 +60,19 @@ function createTokenFieldSchema(
         }
       }
     });
+}
+
+function parseTokenList(value: string | undefined): string[] | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const tokens = value
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
+  return tokens.length > 0 ? tokens : undefined;
 }
 
 const skillFrontmatterSchema = z
@@ -144,10 +157,10 @@ export function stripFrontmatter(raw: string): string {
   return raw.replace(FRONTMATTER_RE, "").trim();
 }
 
-export function parseAndValidateSkillFrontmatter(
+export function parseSkillFile(
   raw: string,
   expectedName?: string,
-): { ok: true; frontmatter: SkillFrontmatter } | { ok: false; error: string } {
+): { ok: true; skill: ParsedSkillFile } | { ok: false; error: string } {
   const match = FRONTMATTER_RE.exec(raw);
   if (!match) {
     return { ok: false, error: "Missing YAML frontmatter at start of file" };
@@ -182,12 +195,28 @@ export function parseAndValidateSkillFrontmatter(
     };
   }
 
+  const allowedTools = parseTokenList(result.data["allowed-tools"]);
+  const requiresCapabilities = parseTokenList(
+    result.data["requires-capabilities"],
+  );
+  const usesConfig = parseTokenList(result.data["uses-config"]);
+
   return {
     ok: true,
-    frontmatter: {
-      ...(result.data as SkillFrontmatter),
+    skill: {
       name: result.data.name,
       description: result.data.description,
+      body: stripFrontmatter(raw),
+      ...(result.data.metadata ? { metadata: result.data.metadata } : {}),
+      ...(result.data.compatibility !== undefined
+        ? { compatibility: result.data.compatibility }
+        : {}),
+      ...(result.data.license !== undefined
+        ? { license: result.data.license }
+        : {}),
+      ...(allowedTools ? { allowedTools } : {}),
+      ...(requiresCapabilities ? { requiresCapabilities } : {}),
+      ...(usesConfig ? { usesConfig } : {}),
     },
   };
 }

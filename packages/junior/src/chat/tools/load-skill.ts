@@ -2,6 +2,7 @@ import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import type { Sandbox } from "@vercel/sandbox";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
+import { stripFrontmatter } from "@/chat/skill-frontmatter";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 
 export type LoadSkillResult = {
@@ -30,33 +31,24 @@ function toLoadedSkill(result: LoadSkillResult): Skill | null {
     name: result.skill_name,
     description: result.description,
     skillPath: result.skill_dir,
-    body: result.instructions
+    body: result.instructions,
   };
-}
-
-function stripFrontmatter(raw: string): string {
-  if (!raw.startsWith("---")) {
-    return raw;
-  }
-  const match = /^---\n[\s\S]*?\n---\n?/.exec(raw);
-  if (!match) {
-    return raw;
-  }
-  return raw.slice(match[0].length);
 }
 
 export async function loadSkillFromSandbox(
   sandbox: Sandbox,
   availableSkills: SkillMetadata[],
-  skillName: string
+  skillName: string,
 ): Promise<LoadSkillResult> {
   const requested = skillName.trim().toLowerCase();
-  const skill = availableSkills.find((entry) => entry.name.toLowerCase() === requested);
+  const skill = availableSkills.find(
+    (entry) => entry.name.toLowerCase() === requested,
+  );
   if (!skill) {
     return {
       ok: false,
       error: `Unknown skill: ${skillName}`,
-      available_skills: availableSkills.map((entry) => entry.name)
+      available_skills: availableSkills.map((entry) => entry.name),
     };
   }
 
@@ -73,7 +65,7 @@ export async function loadSkillFromSandbox(
     description: skill.description,
     skill_dir: skillDir,
     location: skillFilePath,
-    instructions: stripFrontmatter(file.toString("utf8"))
+    instructions: stripFrontmatter(file.toString("utf8")),
   };
 }
 
@@ -82,7 +74,7 @@ export function createLoadSkillTool(
   availableSkills: SkillMetadata[],
   options?: {
     onSkillLoaded?: (skill: Skill) => void | Promise<void>;
-  }
+  },
 ) {
   return tool({
     description:
@@ -90,16 +82,20 @@ export function createLoadSkillTool(
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,
-        description: "Skill name to load, without the leading slash."
-      })
+        description: "Skill name to load, without the leading slash.",
+      }),
     }),
     execute: async ({ skill_name }) => {
-      const result = await loadSkillFromSandbox(sandbox, availableSkills, skill_name);
+      const result = await loadSkillFromSandbox(
+        sandbox,
+        availableSkills,
+        skill_name,
+      );
       const loadedSkill = toLoadedSkill(result);
       if (loadedSkill) {
         await options?.onSkillLoaded?.(loadedSkill);
       }
       return result;
-    }
+    },
   });
 }

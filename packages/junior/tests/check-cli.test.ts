@@ -84,25 +84,26 @@ describe("check cli", () => {
     ]);
   });
 
-  it("fails when a local plugin manifest is invalid", async () => {
+  it("ignores plugin manifests outside app/plugins", async () => {
     const repoRoot = makeTempDir("junior-validate-invalid-plugin-");
     writeFile(
       path.join(repoRoot, "plugins", "demo", "plugin.yaml"),
       "name: Demo\n",
     );
 
-    await expect(
-      runCheck(repoRoot, {
-        info: () => undefined,
-        warn: () => undefined,
-        error: () => undefined,
-      }),
-    ).rejects.toThrow(
-      "Validation failed (1 error, 1 plugin manifest, 0 skill directories checked).",
-    );
+    const lines: string[] = [];
+    await runCheck(repoRoot, {
+      info: (line) => lines.push(line),
+      warn: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+
+    expect(lines).toEqual([
+      "Validation passed (0 plugin manifests, 0 skill directories checked).",
+    ]);
   });
 
-  it("fails when duplicate skill names exist across local roots", async () => {
+  it("only checks skill directories under app and plugin skill roots", async () => {
     const repoRoot = makeTempDir("junior-validate-duplicate-skill-");
     writeFile(
       path.join(repoRoot, "skills", "shared-skill", "SKILL.md"),
@@ -141,15 +142,16 @@ describe("check cli", () => {
       ].join("\n"),
     );
 
-    await expect(
-      runCheck(repoRoot, {
-        info: () => undefined,
-        warn: () => undefined,
-        error: () => undefined,
-      }),
-    ).rejects.toThrow(
-      "Validation failed (1 error, 1 plugin manifest, 2 skill directories checked).",
-    );
+    const lines: string[] = [];
+    await runCheck(repoRoot, {
+      info: (line) => lines.push(line),
+      warn: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+
+    expect(lines).toEqual([
+      "Validation passed (1 plugin manifest, 1 skill directory checked).",
+    ]);
   });
 
   it("fails when skill uses-config tokens are invalid", async () => {

@@ -43,7 +43,10 @@ function scoreAppCandidate(appDir: string): number {
   return score;
 }
 
-function resolveCandidateAppDirs(cwd: string, projectRoots?: string[]): string[] {
+function resolveCandidateAppDirs(
+  cwd: string,
+  projectRoots?: string[],
+): string[] {
   const roots = projectRoots ?? discoverProjectRoots(cwd);
   const resolved: string[] = [];
   const seen = new Set<string>();
@@ -67,14 +70,20 @@ export interface ResolveHomeDirOptions {
   projectRoots?: string[];
 }
 
-export function resolveHomeDir(cwd: string = process.cwd(), options?: ResolveHomeDirOptions): string {
+export function resolveHomeDir(
+  cwd: string = process.cwd(),
+  options?: ResolveHomeDirOptions,
+): string {
   const resolvedCwd = path.resolve(cwd);
   const directApp = path.resolve(resolvedCwd, "app");
   if (pathExists(directApp) && hasAnyDataMarkers(directApp)) {
     return directApp;
   }
 
-  const candidates = resolveCandidateAppDirs(resolvedCwd, options?.projectRoots);
+  const candidates = resolveCandidateAppDirs(
+    resolvedCwd,
+    options?.projectRoots,
+  );
   if (candidates.length === 0) {
     return directApp;
   }
@@ -85,8 +94,12 @@ export function resolveHomeDir(cwd: string = process.cwd(), options?: ResolveHom
     if (leftScore !== rightScore) {
       return rightScore - leftScore;
     }
-    const leftDistance = path.relative(resolvedCwd, left).split(path.sep).length;
-    const rightDistance = path.relative(resolvedCwd, right).split(path.sep).length;
+    const leftDistance = path
+      .relative(resolvedCwd, left)
+      .split(path.sep).length;
+    const rightDistance = path
+      .relative(resolvedCwd, right)
+      .split(path.sep).length;
     if (leftDistance !== rightDistance) {
       return leftDistance - rightDistance;
     }
@@ -100,11 +113,7 @@ function resolveContentRoots(subdir: "data" | "skills" | "plugins"): string[] {
     return [homeDir()];
   }
 
-  if (subdir === "skills") {
-    return [path.join(homeDir(), "skills"), path.resolve(process.cwd(), "skills")];
-  }
-
-  return [path.join(homeDir(), "plugins")];
+  return [path.join(homeDir(), subdir)];
 }
 
 export function dataDir(): string {
