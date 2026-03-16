@@ -49,11 +49,7 @@ const replyDecisionSchema = z.object({
     .min(0)
     .max(1)
     .describe("Classifier confidence from 0 to 1."),
-  reason: z
-    .string()
-    .max(160)
-    .optional()
-    .describe("Short reason for the decision."),
+  reason: z.string().optional().describe("Short reason for the decision."),
 });
 
 const ROUTER_CONFIDENCE_THRESHOLD = 0.72;

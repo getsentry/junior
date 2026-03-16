@@ -177,6 +177,28 @@ describe("decideSubscribedThreadReply", () => {
     expect(decision.shouldReply).toBe(false);
   });
 
+  it("accepts long classifier reasons without failing schema parsing", async () => {
+    const longReason =
+      "User is making a casual comment about Junior, not asking for assistance or requesting Junior to perform a task. This is side conversation and not a direct request for help.";
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({ text: "some new text", rawText: "some new text" }),
+      completeObject: vi.fn(async () => ({
+        object: {
+          should_reply: false,
+          confidence: 0.95,
+          reason: longReason,
+        },
+      })),
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision.reason).toBe(SubscribedReplyReason.SideConversation);
+    expect(decision.reasonDetail).toBe(longReason);
+    expect(decision.shouldReply).toBe(false);
+  });
+
   it("uses classifier and rejects low-confidence true", async () => {
     const decision = await decideSubscribedThreadReply({
       botUserName: "junior",

@@ -1,6 +1,11 @@
 import { Message, ThreadImpl } from "chat";
-import type { Message as ChatMessage, SerializedMessage, SerializedThread, Thread } from "chat";
-import { logError, logWarn } from "@/chat/observability";
+import type {
+  Message as ChatMessage,
+  SerializedMessage,
+  SerializedThread,
+  Thread,
+} from "chat";
+import { logError, logInfo, logWarn } from "@/chat/observability";
 import { removeReactionFromMessage } from "@/chat/slack-actions/channel";
 import {
   acquireQueueMessageProcessingOwnership,
@@ -8,26 +13,42 @@ import {
   failQueueMessageProcessingOwnership,
   getStateAdapter,
   getQueueMessageProcessingState,
-  refreshQueueMessageProcessingOwnership
+  refreshQueueMessageProcessingOwnership,
 } from "@/chat/state";
 import { processThreadMessageRuntime } from "@/chat/thread-runtime/process-thread-message-runtime";
 import type { ThreadMessagePayload } from "@/chat/queue/types";
 
 let stateAdapterConnected = false;
 
-function isSerializedThread(thread: ThreadMessagePayload["thread"]): thread is SerializedThread {
-  return typeof thread === "object" && thread !== null && (thread as { _type?: unknown })._type === "chat:Thread";
+function isSerializedThread(
+  thread: ThreadMessagePayload["thread"],
+): thread is SerializedThread {
+  return (
+    typeof thread === "object" &&
+    thread !== null &&
+    (thread as { _type?: unknown })._type === "chat:Thread"
+  );
 }
 
-function isSerializedMessage(message: ThreadMessagePayload["message"]): message is SerializedMessage {
-  return typeof message === "object" && message !== null && (message as { _type?: unknown })._type === "chat:Message";
+function isSerializedMessage(
+  message: ThreadMessagePayload["message"],
+): message is SerializedMessage {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as { _type?: unknown })._type === "chat:Message"
+  );
 }
 
-function getPayloadChannelId(payload: { thread: ThreadMessagePayload["thread"] }): string | undefined {
+function getPayloadChannelId(payload: {
+  thread: ThreadMessagePayload["thread"];
+}): string | undefined {
   return payload.thread.channelId;
 }
 
-function getPayloadUserId(payload: { message: ThreadMessagePayload["message"] }): string | undefined {
+function getPayloadUserId(payload: {
+  message: ThreadMessagePayload["message"];
+}): string | undefined {
   return payload.message.author?.userId;
 }
 
@@ -37,13 +58,19 @@ function createMessageOwnerToken(): string {
 
 class QueueMessageOwnershipError extends Error {
   constructor(stage: "refresh" | "complete", dedupKey: string) {
-    super(`Queue message ownership lost during ${stage} for dedupKey=${dedupKey}`);
+    super(
+      `Queue message ownership lost during ${stage} for dedupKey=${dedupKey}`,
+    );
     this.name = "QueueMessageOwnershipError";
   }
 }
 
 interface ProcessQueuedThreadMessageDeps {
-  clearProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
+  clearProcessingReaction: (input: {
+    channelId: string;
+    timestamp: string;
+  }) => Promise<void>;
+  logInfo: typeof logInfo;
   logWarn: typeof logWarn;
   processRuntime: typeof processThreadMessageRuntime;
 }
@@ -53,11 +80,12 @@ const defaultProcessQueuedThreadMessageDeps: ProcessQueuedThreadMessageDeps = {
     await removeReactionFromMessage({
       channelId,
       timestamp,
-      emoji: "eyes"
+      emoji: "eyes",
     });
   },
+  logInfo,
   logWarn,
-  processRuntime: processThreadMessageRuntime
+  processRuntime: processThreadMessageRuntime,
 };
 
 function deserializeThread(thread: ThreadMessagePayload["thread"]): Thread {
@@ -68,7 +96,9 @@ function deserializeThread(thread: ThreadMessagePayload["thread"]): Thread {
   return thread;
 }
 
-function deserializeMessage(message: ThreadMessagePayload["message"]): ChatMessage {
+function deserializeMessage(
+  message: ThreadMessagePayload["message"],
+): ChatMessage {
   if (isSerializedMessage(message)) {
     return Message.fromJSON(message);
   }
@@ -76,30 +106,50 @@ function deserializeMessage(message: ThreadMessagePayload["message"]): ChatMessa
   return message;
 }
 
-export async function logThreadMessageFailure(payload: ThreadMessagePayload, errorMessage: string): Promise<void> {
+export async function logThreadMessageFailure(
+  payload: ThreadMessagePayload,
+  errorMessage: string,
+): Promise<void> {
   logError(
     "queue_message_failed",
     {
       slackThreadId: payload.normalizedThreadId,
       slackChannelId: getPayloadChannelId(payload),
-      slackUserId: getPayloadUserId(payload)
+      slackUserId: getPayloadUserId(payload),
     },
     {
       "messaging.message.id": payload.message.id,
       "app.queue.message_kind": payload.kind,
       "app.queue.message_id": payload.queueMessageId,
-      "error.message": errorMessage
+      "error.message": errorMessage,
     },
-    "Queue message processing failed"
+    "Queue message processing failed",
   );
 }
 
 export async function processQueuedThreadMessage(
   payload: ThreadMessagePayload,
-  deps: ProcessQueuedThreadMessageDeps = defaultProcessQueuedThreadMessageDeps
+  deps: ProcessQueuedThreadMessageDeps = defaultProcessQueuedThreadMessageDeps,
 ): Promise<void> {
-  const existingMessageState = await getQueueMessageProcessingState(payload.dedupKey);
+  const existingMessageState = await getQueueMessageProcessingState(
+    payload.dedupKey,
+  );
   if (existingMessageState?.status === "completed") {
+    deps.logInfo(
+      "queue_message_skipped_completed",
+      {
+        slackThreadId: payload.normalizedThreadId,
+        slackChannelId: getPayloadChannelId(payload),
+        slackUserId: getPayloadUserId(payload),
+      },
+      {
+        "messaging.message.id": payload.message.id,
+        "app.queue.message_kind": payload.kind,
+        "app.queue.message_id": payload.queueMessageId,
+        "app.queue.processing_state": existingMessageState.status,
+      },
+      "Skipping queue message because it is already completed",
+    );
     return;
   }
 
@@ -107,10 +157,26 @@ export async function processQueuedThreadMessage(
   const claimResult = await acquireQueueMessageProcessingOwnership({
     rawKey: payload.dedupKey,
     ownerToken,
-    queueMessageId: payload.queueMessageId
+    queueMessageId: payload.queueMessageId,
   });
 
   if (claimResult === "blocked") {
+    deps.logInfo(
+      "queue_message_skipped_blocked",
+      {
+        slackThreadId: payload.normalizedThreadId,
+        slackChannelId: getPayloadChannelId(payload),
+        slackUserId: getPayloadUserId(payload),
+      },
+      {
+        "messaging.message.id": payload.message.id,
+        "app.queue.message_kind": payload.kind,
+        "app.queue.message_id": payload.queueMessageId,
+        "app.queue.claim_result": claimResult,
+        "app.queue.processing_state": "processing",
+      },
+      "Skipping queue message because another worker owns it",
+    );
     return;
   }
 
@@ -124,7 +190,7 @@ export async function processQueuedThreadMessage(
   const runtimePayload = {
     ...payload,
     thread: deserializeThread(payload.thread),
-    message: deserializeMessage(payload.message)
+    message: deserializeMessage(payload.message),
   };
   let reactionCleared = false;
   const clearProcessingReaction = async (): Promise<void> => {
@@ -135,24 +201,25 @@ export async function processQueuedThreadMessage(
     try {
       await deps.clearProcessingReaction({
         channelId: runtimePayload.thread.channelId,
-        timestamp: runtimePayload.message.id
+        timestamp: runtimePayload.message.id,
       });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       deps.logWarn(
         "queue_processing_reaction_clear_failed",
         {
           slackThreadId: payload.normalizedThreadId,
           slackChannelId: getPayloadChannelId(payload),
-          slackUserId: getPayloadUserId(payload)
+          slackUserId: getPayloadUserId(payload),
         },
         {
           "messaging.message.id": payload.message.id,
           "app.queue.message_kind": payload.kind,
           "app.queue.message_id": payload.queueMessageId,
-          "error.message": errorMessage
+          "error.message": errorMessage,
         },
-        "Failed to remove processing reaction after queue turn completion"
+        "Failed to remove processing reaction after queue turn completion",
       );
     }
   };
@@ -161,7 +228,7 @@ export async function processQueuedThreadMessage(
     const refreshed = await refreshQueueMessageProcessingOwnership({
       rawKey: payload.dedupKey,
       ownerToken,
-      queueMessageId: payload.queueMessageId
+      queueMessageId: payload.queueMessageId,
     });
 
     if (!refreshed) {
@@ -171,14 +238,14 @@ export async function processQueuedThreadMessage(
     await deps.processRuntime({
       kind: runtimePayload.kind,
       thread: runtimePayload.thread,
-      message: runtimePayload.message
+      message: runtimePayload.message,
     });
     await clearProcessingReaction();
 
     const completed = await completeQueueMessageProcessingOwnership({
       rawKey: payload.dedupKey,
       ownerToken,
-      queueMessageId: payload.queueMessageId
+      queueMessageId: payload.queueMessageId,
     });
 
     if (!completed) {
@@ -194,11 +261,13 @@ export async function processQueuedThreadMessage(
       rawKey: payload.dedupKey,
       ownerToken,
       errorMessage,
-      queueMessageId: payload.queueMessageId
+      queueMessageId: payload.queueMessageId,
     });
 
     if (!failed && !(error instanceof QueueMessageOwnershipError)) {
-      throw new Error(`Failed to persist queue message failure state for dedupKey=${payload.dedupKey}: ${errorMessage}`);
+      throw new Error(
+        `Failed to persist queue message failure state for dedupKey=${payload.dedupKey}: ${errorMessage}`,
+      );
     }
 
     throw error;

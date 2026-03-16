@@ -1,13 +1,17 @@
-import { createQueueCallbackHandler, getThreadMessageTopic } from "@/chat/queue/client";
+import {
+  createQueueCallbackHandler,
+  getThreadMessageTopic,
+} from "@/chat/queue/client";
 import { processQueuedThreadMessage } from "@/chat/queue/process-thread-message";
 import type { ThreadMessagePayload } from "@/chat/queue/types";
 import {
   createRequestContext,
   logError,
   logException,
+  logInfo,
   setSpanStatus,
   withContext,
-  withSpan
+  withSpan,
 } from "@/chat/observability";
 
 /**
@@ -17,37 +21,56 @@ import {
  * configured out-of-band. A catch-all route is not sufficient as the canonical
  * production endpoint because providers target an exact path.
  */
-const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(async (message, metadata) => {
-  if (metadata.topicName === getThreadMessageTopic()) {
-    const payload = {
-      ...message,
-      queueMessageId: metadata.messageId
-    } satisfies ThreadMessagePayload;
+const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(
+  async (message, metadata) => {
+    if (metadata.topicName === getThreadMessageTopic()) {
+      const payload = {
+        ...message,
+        queueMessageId: metadata.messageId,
+      } satisfies ThreadMessagePayload;
 
-    await withSpan(
-      "queue.process_message",
-      "queue.process_message",
-      {
-        slackThreadId: payload.normalizedThreadId,
-        slackChannelId: payload.thread.channelId,
-        slackUserId: payload.message.author?.userId
-      },
-      async () => {
-        await processQueuedThreadMessage(payload);
-      },
-      {
-        "messaging.message.id": payload.message.id,
-        "app.queue.message_kind": payload.kind,
-        "app.queue.message_id": payload.queueMessageId,
-        "app.queue.delivery_count": metadata.deliveryCount,
-        "app.queue.topic": metadata.topicName
-      }
-    );
-    return;
-  }
+      logInfo(
+        "queue_callback_received",
+        {
+          slackThreadId: payload.normalizedThreadId,
+          slackChannelId: payload.thread.channelId,
+          slackUserId: payload.message.author?.userId,
+        },
+        {
+          "messaging.message.id": payload.message.id,
+          "app.queue.message_kind": payload.kind,
+          "app.queue.message_id": payload.queueMessageId,
+          "app.queue.delivery_count": metadata.deliveryCount,
+          "app.queue.topic": metadata.topicName,
+        },
+        "Received queue callback payload",
+      );
 
-  throw new Error(`Unexpected queue topic: ${metadata.topicName}`);
-});
+      await withSpan(
+        "queue.process_message",
+        "queue.process_message",
+        {
+          slackThreadId: payload.normalizedThreadId,
+          slackChannelId: payload.thread.channelId,
+          slackUserId: payload.message.author?.userId,
+        },
+        async () => {
+          await processQueuedThreadMessage(payload);
+        },
+        {
+          "messaging.message.id": payload.message.id,
+          "app.queue.message_kind": payload.kind,
+          "app.queue.message_id": payload.queueMessageId,
+          "app.queue.delivery_count": metadata.deliveryCount,
+          "app.queue.topic": metadata.topicName,
+        },
+      );
+      return;
+    }
+
+    throw new Error(`Unexpected queue topic: ${metadata.topicName}`);
+  },
+);
 
 /**
  * Handles `POST /api/queue/callback` for asynchronous thread processing.
@@ -70,9 +93,9 @@ export async function POST(request: Request): Promise<Response> {
         "queue_callback_failed",
         {},
         {
-          "error.message": message
+          "error.message": message,
         },
-        "Queue callback processing failed"
+        "Queue callback processing failed",
       );
       logException(error, "queue_callback_failed");
       throw error;
