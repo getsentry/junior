@@ -89,6 +89,36 @@ describe("createAttachFileTool", () => {
     ).rejects.toThrow("failed to read file: /tmp/missing.png");
   });
 
+  it("treats same-turn generated images as already attached when the sandbox file is missing", async () => {
+    const sandbox = makeSandbox({
+      readFileToBuffer: async () => null,
+    });
+    const tool = createAttachFileTool(sandbox, {
+      getGeneratedFile: () => ({
+        data: Buffer.from("generated-bytes"),
+        filename: "generated-image-1.png",
+        mimeType: "image/png",
+      }),
+    });
+    if (typeof tool.execute !== "function") {
+      throw new Error("attachFile execute function missing");
+    }
+
+    const result = await tool.execute(
+      { path: "/vercel/sandbox/generated-image-1.png" },
+      {} as any,
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      attached: true,
+      already_attached: true,
+      filename: "generated-image-1.png",
+      mime_type: "image/png",
+      bytes: Buffer.from("generated-bytes").byteLength,
+    });
+  });
+
   it("errors when file exceeds max size", async () => {
     const tooLarge = Buffer.alloc(10 * 1024 * 1024 + 1, 1);
     const sandbox = makeSandbox({

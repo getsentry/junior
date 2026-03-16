@@ -90,6 +90,10 @@ function createStubChannel(stateRef?: {
     postEphemeral: vi
       .fn()
       .mockResolvedValue(null) as unknown as Channel["postEphemeral"],
+    schedule: vi.fn().mockResolvedValue({
+      id: "scheduled-1",
+      cancel: async () => undefined,
+    }) as unknown as Channel["schedule"],
     get state(): Promise<Record<string, unknown> | null> {
       return Promise.resolve(ref.value);
     },
@@ -104,12 +108,10 @@ function createStubChannel(stateRef?: {
       ref.value = { ...ref.value, ...(next as Record<string, unknown>) };
     },
     async startTyping(): Promise<void> {},
-    fetchMetadata: vi
-      .fn()
-      .mockResolvedValue({
-        id: "stub-channel",
-        metadata: {},
-      }) as unknown as Channel["fetchMetadata"],
+    fetchMetadata: vi.fn().mockResolvedValue({
+      id: "stub-channel",
+      metadata: {},
+    }) as unknown as Channel["fetchMetadata"],
     threads(): AsyncIterable<never> {
       return (async function* () {})();
     },
@@ -146,6 +148,10 @@ function createTestThread(args: {
     postEphemeral: vi
       .fn()
       .mockResolvedValue(null) as unknown as Thread["postEphemeral"],
+    schedule: vi.fn().mockResolvedValue({
+      id: "scheduled-1",
+      cancel: async () => undefined,
+    }) as unknown as Thread["schedule"],
     async startTyping(): Promise<void> {},
     async subscribe(): Promise<void> {},
     async unsubscribe(): Promise<void> {},

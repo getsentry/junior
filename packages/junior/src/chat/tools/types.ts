@@ -4,6 +4,7 @@ import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import type { Skill } from "@/chat/skills";
 
 export interface ToolHooks {
+  getGeneratedFile?: (filename: string) => FileUpload | undefined;
   onGeneratedFiles?: (files: FileUpload[]) => void;
   onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
   onToolCallStart?: (toolName: string, input?: unknown) => void | Promise<void>;

@@ -80,13 +80,18 @@ const UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT = `
 `;
 
 function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
-  const acquireLock = async (threadId: string, ttlMs: number): Promise<Lock | null> => {
+  const acquireLock = async (
+    threadId: string,
+    ttlMs: number,
+  ): Promise<Lock | null> => {
     const effectiveTtlMs = Math.max(ttlMs, MIN_LOCK_TTL_MS);
     const lock = await base.acquireLock(threadId, effectiveTtlMs);
     return lock;
   };
 
   return {
+    appendToList: (key, value, options) =>
+      base.appendToList(key, value, options),
     connect: () => base.connect(),
     disconnect: () => base.disconnect(),
     subscribe: (threadId) => base.subscribe(threadId),
@@ -94,11 +99,15 @@ function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
     isSubscribed: (threadId) => base.isSubscribed(threadId),
     acquireLock,
     releaseLock: (lock) => base.releaseLock(lock),
-    extendLock: (lock, ttlMs) => base.extendLock(lock, Math.max(ttlMs, MIN_LOCK_TTL_MS)),
+    extendLock: (lock, ttlMs) =>
+      base.extendLock(lock, Math.max(ttlMs, MIN_LOCK_TTL_MS)),
+    forceReleaseLock: (threadId) => base.forceReleaseLock(threadId),
     get: (key) => base.get(key),
+    getList: (key) => base.getList(key),
     set: (key, value, ttlMs) => base.set(key, value, ttlMs),
-    setIfNotExists: (key, value, ttlMs) => base.setIfNotExists(key, value, ttlMs),
-    delete: (key) => base.delete(key)
+    setIfNotExists: (key, value, ttlMs) =>
+      base.setIfNotExists(key, value, ttlMs),
+    delete: (key) => base.delete(key),
   };
 }
 
@@ -113,7 +122,7 @@ function createStateAdapter() {
   }
 
   const redisState = createRedisState({
-    url: process.env.REDIS_URL
+    url: process.env.REDIS_URL,
   });
   _redisStateAdapter = redisState;
   return createQueuedStateAdapter(redisState);
@@ -134,8 +143,15 @@ function getRedisStateAdapter(): RedisStateAdapter {
   return _redisStateAdapter;
 }
 
-export type QueueMessageProcessingStatus = "processing" | "completed" | "failed";
-export type AgentTurnSessionStatus = "running" | "awaiting_resume" | "completed" | "failed";
+export type QueueMessageProcessingStatus =
+  | "processing"
+  | "completed"
+  | "failed";
+export type AgentTurnSessionStatus =
+  | "running"
+  | "awaiting_resume"
+  | "completed"
+  | "failed";
 
 export interface QueueMessageProcessingState {
   status: QueueMessageProcessingStatus;
@@ -161,7 +177,9 @@ function queueMessageKey(rawKey: string): string {
   return `${QUEUE_MESSAGE_PROCESSING_PREFIX}:${rawKey}`;
 }
 
-function parseQueueMessageState(value: unknown): QueueMessageProcessingState | undefined {
+function parseQueueMessageState(
+  value: unknown,
+): QueueMessageProcessingState | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
@@ -170,7 +188,9 @@ function parseQueueMessageState(value: unknown): QueueMessageProcessingState | u
     const parsed = JSON.parse(value) as Partial<QueueMessageProcessingState>;
     if (
       !parsed ||
-      (parsed.status !== "processing" && parsed.status !== "completed" && parsed.status !== "failed") ||
+      (parsed.status !== "processing" &&
+        parsed.status !== "completed" &&
+        parsed.status !== "failed") ||
       typeof parsed.updatedAtMs !== "number"
     ) {
       return undefined;
@@ -178,16 +198,25 @@ function parseQueueMessageState(value: unknown): QueueMessageProcessingState | u
     return {
       status: parsed.status,
       updatedAtMs: parsed.updatedAtMs,
-      ...(typeof parsed.ownerToken === "string" ? { ownerToken: parsed.ownerToken } : {}),
-      ...(typeof parsed.queueMessageId === "string" ? { queueMessageId: parsed.queueMessageId } : {}),
-      ...(typeof parsed.errorMessage === "string" ? { errorMessage: parsed.errorMessage } : {})
+      ...(typeof parsed.ownerToken === "string"
+        ? { ownerToken: parsed.ownerToken }
+        : {}),
+      ...(typeof parsed.queueMessageId === "string"
+        ? { queueMessageId: parsed.queueMessageId }
+        : {}),
+      ...(typeof parsed.errorMessage === "string"
+        ? { errorMessage: parsed.errorMessage }
+        : {}),
     };
   } catch {
     return undefined;
   }
 }
 
-function agentTurnSessionKey(conversationId: string, sessionId: string): string {
+function agentTurnSessionKey(
+  conversationId: string,
+  sessionId: string,
+): string {
   return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
 }
 
@@ -195,7 +224,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function parseAgentTurnSessionCheckpoint(value: unknown): AgentTurnSessionCheckpoint | undefined {
+function parseAgentTurnSessionCheckpoint(
+  value: unknown,
+): AgentTurnSessionCheckpoint | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
@@ -207,7 +238,12 @@ function parseAgentTurnSessionCheckpoint(value: unknown): AgentTurnSessionCheckp
     }
 
     const status = parsed.state;
-    if (status !== "running" && status !== "awaiting_resume" && status !== "completed" && status !== "failed") {
+    if (
+      status !== "running" &&
+      status !== "awaiting_resume" &&
+      status !== "completed" &&
+      status !== "failed"
+    ) {
       return undefined;
     }
 
@@ -234,8 +270,12 @@ function parseAgentTurnSessionCheckpoint(value: unknown): AgentTurnSessionCheckp
       state: status,
       updatedAtMs,
       piMessages: Array.isArray(parsed.piMessages) ? parsed.piMessages : [],
-      ...(typeof parsed.errorMessage === "string" ? { errorMessage: parsed.errorMessage } : {}),
-      ...(typeof parsed.resumedFromSliceId === "number" ? { resumedFromSliceId: parsed.resumedFromSliceId } : {})
+      ...(typeof parsed.errorMessage === "string"
+        ? { errorMessage: parsed.errorMessage }
+        : {}),
+      ...(typeof parsed.resumedFromSliceId === "number"
+        ? { resumedFromSliceId: parsed.resumedFromSliceId }
+        : {}),
     };
   } catch {
     return undefined;
@@ -262,12 +302,15 @@ export async function disconnectStateAdapter(): Promise<void> {
   }
 }
 
-export async function claimQueueIngressDedup(rawKey: string, ttlMs: number): Promise<boolean> {
+export async function claimQueueIngressDedup(
+  rawKey: string,
+  ttlMs: number,
+): Promise<boolean> {
   await getStateAdapter().connect();
   const key = `${QUEUE_INGRESS_DEDUP_PREFIX}:${rawKey}`;
   const result = await getRedisStateAdapter().getClient().set(key, "1", {
     NX: true,
-    PX: ttlMs
+    PX: ttlMs,
   });
   return result === "OK";
 }
@@ -280,7 +323,7 @@ export async function hasQueueIngressDedup(rawKey: string): Promise<boolean> {
 }
 
 export async function getQueueMessageProcessingState(
-  rawKey: string
+  rawKey: string,
 ): Promise<QueueMessageProcessingState | undefined> {
   await getStateAdapter().connect();
   const state = await getStateAdapter().get(queueMessageKey(rawKey));
@@ -299,12 +342,18 @@ export async function acquireQueueMessageProcessingOwnership(args: {
     status: "processing",
     updatedAtMs: nowMs,
     ownerToken: args.ownerToken,
-    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {})
+    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {}),
   } satisfies QueueMessageProcessingState);
-  const result = await getRedisStateAdapter().getClient().eval(CLAIM_OR_RECLAIM_PROCESSING_SCRIPT, {
-    keys: [key],
-    arguments: [String(nowMs), String(QUEUE_MESSAGE_PROCESSING_TTL_MS), payload]
-  });
+  const result = await getRedisStateAdapter()
+    .getClient()
+    .eval(CLAIM_OR_RECLAIM_PROCESSING_SCRIPT, {
+      keys: [key],
+      arguments: [
+        String(nowMs),
+        String(QUEUE_MESSAGE_PROCESSING_TTL_MS),
+        payload,
+      ],
+    });
   if (result === 1) {
     return "acquired";
   }
@@ -328,12 +377,18 @@ export async function refreshQueueMessageProcessingOwnership(args: {
     status: "processing",
     updatedAtMs: nowMs,
     ownerToken: args.ownerToken,
-    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {})
+    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {}),
   } satisfies QueueMessageProcessingState);
-  const result = await getRedisStateAdapter().getClient().eval(UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT, {
-    keys: [queueMessageKey(args.rawKey)],
-    arguments: [args.ownerToken, String(QUEUE_MESSAGE_PROCESSING_TTL_MS), payload]
-  });
+  const result = await getRedisStateAdapter()
+    .getClient()
+    .eval(UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT, {
+      keys: [queueMessageKey(args.rawKey)],
+      arguments: [
+        args.ownerToken,
+        String(QUEUE_MESSAGE_PROCESSING_TTL_MS),
+        payload,
+      ],
+    });
   return result === 1;
 }
 
@@ -347,12 +402,18 @@ export async function completeQueueMessageProcessingOwnership(args: {
     status: "completed",
     updatedAtMs: Date.now(),
     ownerToken: args.ownerToken,
-    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {})
+    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {}),
   } satisfies QueueMessageProcessingState);
-  const result = await getRedisStateAdapter().getClient().eval(UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT, {
-    keys: [queueMessageKey(args.rawKey)],
-    arguments: [args.ownerToken, String(QUEUE_MESSAGE_COMPLETED_TTL_MS), payload]
-  });
+  const result = await getRedisStateAdapter()
+    .getClient()
+    .eval(UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT, {
+      keys: [queueMessageKey(args.rawKey)],
+      arguments: [
+        args.ownerToken,
+        String(QUEUE_MESSAGE_COMPLETED_TTL_MS),
+        payload,
+      ],
+    });
   return result === 1;
 }
 
@@ -368,21 +429,29 @@ export async function failQueueMessageProcessingOwnership(args: {
     updatedAtMs: Date.now(),
     ownerToken: args.ownerToken,
     errorMessage: args.errorMessage,
-    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {})
+    ...(args.queueMessageId ? { queueMessageId: args.queueMessageId } : {}),
   } satisfies QueueMessageProcessingState);
-  const result = await getRedisStateAdapter().getClient().eval(UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT, {
-    keys: [queueMessageKey(args.rawKey)],
-    arguments: [args.ownerToken, String(QUEUE_MESSAGE_FAILED_TTL_MS), payload]
-  });
+  const result = await getRedisStateAdapter()
+    .getClient()
+    .eval(UPDATE_PROCESSING_STATE_IF_OWNER_SCRIPT, {
+      keys: [queueMessageKey(args.rawKey)],
+      arguments: [
+        args.ownerToken,
+        String(QUEUE_MESSAGE_FAILED_TTL_MS),
+        payload,
+      ],
+    });
   return result === 1;
 }
 
 export async function getAgentTurnSessionCheckpoint(
   conversationId: string,
-  sessionId: string
+  sessionId: string,
 ): Promise<AgentTurnSessionCheckpoint | undefined> {
   await getStateAdapter().connect();
-  const value = await getStateAdapter().get(agentTurnSessionKey(conversationId, sessionId));
+  const value = await getStateAdapter().get(
+    agentTurnSessionKey(conversationId, sessionId),
+  );
   return parseAgentTurnSessionCheckpoint(value);
 }
 
@@ -398,7 +467,10 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
 }): Promise<AgentTurnSessionCheckpoint> {
   await getStateAdapter().connect();
 
-  const existing = await getAgentTurnSessionCheckpoint(args.conversationId, args.sessionId);
+  const existing = await getAgentTurnSessionCheckpoint(
+    args.conversationId,
+    args.sessionId,
+  );
   const checkpoint: AgentTurnSessionCheckpoint = {
     checkpointVersion: (existing?.checkpointVersion ?? 0) + 1,
     conversationId: args.conversationId,
@@ -408,10 +480,16 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
     updatedAtMs: Date.now(),
     piMessages: Array.isArray(args.piMessages) ? args.piMessages : [],
     ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
-    ...(typeof args.resumedFromSliceId === "number" ? { resumedFromSliceId: args.resumedFromSliceId } : {})
+    ...(typeof args.resumedFromSliceId === "number"
+      ? { resumedFromSliceId: args.resumedFromSliceId }
+      : {}),
   };
 
   const ttlMs = Math.max(1, args.ttlMs ?? AGENT_TURN_SESSION_TTL_MS);
-  await getStateAdapter().set(agentTurnSessionKey(args.conversationId, args.sessionId), JSON.stringify(checkpoint), ttlMs);
+  await getStateAdapter().set(
+    agentTurnSessionKey(args.conversationId, args.sessionId),
+    JSON.stringify(checkpoint),
+    ttlMs,
+  );
   return checkpoint;
 }

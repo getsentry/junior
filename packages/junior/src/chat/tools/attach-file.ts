@@ -88,7 +88,7 @@ async function detectMimeType(
 export function createAttachFileTool(sandbox: Sandbox, hooks: ToolHooks = {}) {
   return tool({
     description:
-      "Attach a file from the sandbox to the Slack reply. Use this immediately after creating screenshots/reports when the user asks to see/share the actual file, not just its path.",
+      "Attach a file from the sandbox to the Slack reply. Use this for files that actually exist in the sandbox, such as screenshots, PDFs, or logs written by tools or bash commands.",
     inputSchema: Type.Object(
       {
         path: Type.String({
@@ -115,6 +115,26 @@ export function createAttachFileTool(sandbox: Sandbox, hooks: ToolHooks = {}) {
       const targetPath = normalizeSandboxPath(requestedPath);
       const fileBuffer = await sandbox.readFileToBuffer({ path: targetPath });
       if (!fileBuffer) {
+        const generatedFile = hooks.getGeneratedFile?.(
+          path.posix.basename(targetPath),
+        );
+        if (generatedFile) {
+          return {
+            ok: true,
+            attached: true,
+            already_attached: true,
+            path: targetPath,
+            filename: generatedFile.filename,
+            mime_type:
+              generatedFile.mimeType ?? inferMimeType(generatedFile.filename),
+            bytes: Buffer.isBuffer(generatedFile.data)
+              ? generatedFile.data.byteLength
+              : generatedFile.data instanceof ArrayBuffer
+                ? generatedFile.data.byteLength
+                : generatedFile.data.size,
+          };
+        }
+
         throw new Error(`failed to read file: ${targetPath}`);
       }
 

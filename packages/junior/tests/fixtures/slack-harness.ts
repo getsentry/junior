@@ -1,4 +1,11 @@
-import type { Adapter, Author, Channel, Message, SentMessage, Thread } from "chat";
+import type {
+  Adapter,
+  Author,
+  Channel,
+  Message,
+  SentMessage,
+  Thread,
+} from "chat";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -15,7 +22,7 @@ const defaultAuthor: Author = {
   userName: "testuser",
   fullName: "Test User",
   isBot: false,
-  isMe: false
+  isMe: false,
 };
 
 export function createTestAuthor(overrides?: Partial<Author>): Author {
@@ -48,11 +55,11 @@ export function createTestMessage(args: {
     formatted: { type: "root", children: [] },
     raw: args.raw ?? {
       ...(inferredChannel ? { channel: inferredChannel } : {}),
-      ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : {})
+      ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : {}),
     },
     toJSON() {
       return {} as ReturnType<Message["toJSON"]>;
-    }
+    },
   } as unknown as Message;
 }
 
@@ -76,14 +83,18 @@ export class FakeSlackAdapter {
     title: string;
   }> = [];
 
-  async setAssistantTitle(channelId: string, threadTs: string, title: string): Promise<void> {
+  async setAssistantTitle(
+    channelId: string,
+    threadTs: string,
+    title: string,
+  ): Promise<void> {
     this.titleCalls.push({ channelId, threadTs, title });
   }
 
   async setSuggestedPrompts(
     channelId: string,
     threadTs: string,
-    prompts: Array<{ message: string; title: string }>
+    prompts: Array<{ message: string; title: string }>,
   ): Promise<void> {
     this.promptCalls.push({ channelId, threadTs, prompts });
   }
@@ -92,7 +103,7 @@ export class FakeSlackAdapter {
     channelId: string,
     threadTs: string,
     text: string,
-    suggestions: string[]
+    suggestions: string[],
   ): Promise<void> {
     this.statusCalls.push({ channelId, threadTs, text, suggestions });
   }
@@ -142,21 +153,34 @@ export function createTestThread(args: {
     },
     post: (async () => undefined) as unknown as Channel["post"],
     postEphemeral: (async () => null) as unknown as Channel["postEphemeral"],
+    schedule: (async () => ({
+      id: "scheduled-1",
+      cancel: async () => undefined,
+    })) as unknown as Channel["schedule"],
     get state(): Promise<Record<string, unknown>> {
       return Promise.resolve(channelRef.value);
     },
-    async setState(next: Partial<Record<string, unknown>>, options?: { replace?: boolean }): Promise<void> {
+    async setState(
+      next: Partial<Record<string, unknown>>,
+      options?: { replace?: boolean },
+    ): Promise<void> {
       if (options?.replace) {
         channelRef.value = { ...(next as Record<string, unknown>) };
         return;
       }
-      channelRef.value = { ...channelRef.value, ...(next as Record<string, unknown>) };
+      channelRef.value = {
+        ...channelRef.value,
+        ...(next as Record<string, unknown>),
+      };
     },
     async startTyping(): Promise<void> {},
-    fetchMetadata: (async () => ({ id: channelId, metadata: {} })) as unknown as Channel["fetchMetadata"],
+    fetchMetadata: (async () => ({
+      id: channelId,
+      metadata: {},
+    })) as unknown as Channel["fetchMetadata"],
     threads(): AsyncIterable<never> {
       return (async function* () {})();
-    }
+    },
   } satisfies Channel;
 
   const thread: TestThread = {
@@ -194,6 +218,10 @@ export function createTestThread(args: {
       return { id: "sent-1", text: String(message) } as unknown as SentMessage;
     },
     postEphemeral: (async () => null) as unknown as Thread["postEphemeral"],
+    schedule: (async () => ({
+      id: "scheduled-1",
+      cancel: async () => undefined,
+    })) as unknown as Thread["schedule"],
     async startTyping(): Promise<void> {},
     async subscribe(): Promise<void> {
       subscribed = true;
@@ -209,7 +237,10 @@ export function createTestThread(args: {
     mentionUser(userId: string): string {
       return `<@${userId}>`;
     },
-    async setState(next: Partial<Record<string, unknown>>, options?: { replace?: boolean }): Promise<void> {
+    async setState(
+      next: Partial<Record<string, unknown>>,
+      options?: { replace?: boolean },
+    ): Promise<void> {
       if (options?.replace) {
         stateData = { ...(next as Record<string, unknown>) };
         return;
@@ -230,7 +261,7 @@ export function createTestThread(args: {
     },
     getState() {
       return stateData;
-    }
+    },
   };
 
   return thread;
@@ -241,10 +272,7 @@ export function createTestThread(args: {
 // required property, typecheck will fail here rather than silently at runtime.
 type AssertAssignable<_TSub extends TSuper, TSuper> = true;
 
-type _ThreadCheck = AssertAssignable<
-  TestThread,
-  Thread
->;
+type _ThreadCheck = AssertAssignable<TestThread, Thread>;
 
 type _MessageCheck = AssertAssignable<
   ReturnType<typeof createTestMessage>,

@@ -1071,6 +1071,8 @@ export async function generateAssistantReply(
     const tools = createTools(
       availableSkills,
       {
+        getGeneratedFile: (filename) =>
+          generatedFiles.find((file) => file.filename === filename),
         onGeneratedFiles: (files) => {
           generatedFiles.push(...files);
         },
