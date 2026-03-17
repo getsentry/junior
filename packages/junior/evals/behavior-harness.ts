@@ -423,7 +423,7 @@ export async function runBehaviorEvalCase(
             ...(mockImageGeneration
               ? {
                   toolOverrides: {
-                    ...context.toolOverrides,
+                    ...(context?.toolOverrides ?? {}),
                     imageGenerate: createMockImageGenerateDeps(),
                   },
                 }
