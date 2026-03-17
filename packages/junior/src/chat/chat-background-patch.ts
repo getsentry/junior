@@ -182,10 +182,22 @@ export function buildQueueIngressDedupKey(
   return `${normalizedThreadId}:${messageId}`;
 }
 
+function isSlackDirectMessageThreadId(threadId: string): boolean {
+  const parts = threadId.split(":");
+  return (
+    parts.length === 3 && parts[0] === "slack" && parts[1]?.startsWith("D")
+  );
+}
+
 export function determineThreadMessageKind(args: {
+  isDirectMessage: boolean;
   isMention: boolean;
   isSubscribed: boolean;
 }): ThreadMessageKind | undefined {
+  if (args.isDirectMessage) {
+    return "new_mention";
+  }
+
   if (args.isSubscribed) {
     return "subscribed_message";
   }
@@ -403,7 +415,12 @@ export async function routeIncomingMessageToQueue(args: {
       ? "fallback_detector"
       : undefined;
   const isMention = mentionSource !== undefined;
+  if (isMention && !typedMessage.isMention) {
+    typedMessage.isMention = true;
+  }
+  const isDirectMessage = isSlackDirectMessageThreadId(normalizedThreadId);
   const kind = determineThreadMessageKind({
+    isDirectMessage,
     isSubscribed,
     isMention,
   });
