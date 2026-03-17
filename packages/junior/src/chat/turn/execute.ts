@@ -25,7 +25,7 @@ export function resolveReplyDelivery(args: {
       : "none",
   };
 
-  let attachFiles = deliveryPlan.attachFiles;
+  let attachFiles = replyHasFiles ? deliveryPlan.attachFiles : "none";
   if (attachFiles === "followup" && !args.hasStreamedThreadReply) {
     attachFiles = "inline";
   }

@@ -40,6 +40,7 @@ Not in scope:
 - Eval cases:
   - `evals/conversational/routing-and-continuity.eval.ts`
   - `evals/conversational/lifecycle-and-resilience.eval.ts`
+  - `evals/conversational/media-and-attachments.eval.ts`
   - `evals/conversational/skill-workflows.eval.ts`
 - Helpers and event builders: `evals/helpers.ts`
 - Harness/runtime adapter: `evals/behavior-harness.ts`
@@ -49,12 +50,13 @@ Not in scope:
 For each case (`slackEval()` call):
 
 1. Replay events through the harness via `runBehaviorEvalCase()`.
-2. Return observed artifacts as JSON for LLM judgment.
+2. Return observed artifacts as JSON for LLM judgment, including `assistant_posts` and Slack-visible metadata.
 3. `vitest-evals` scores the output against `criteria` (A–E → 1.0–0.0).
 
 Harness behavior knobs (in `BehaviorCaseConfig`):
 
 - `fail_reply_call`: force a non-retryable reply failure on a specific call.
+- `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
 - `retryable_timeout_calls`: force retryable timeout-shaped failures on selected reply calls.
 - `retryable_max_attempts`: max retries for retryable timeout-shaped failures during one event.
 - `reply_texts`: override returned reply text per call.

@@ -42,6 +42,7 @@ import { SlackActionError } from "@/chat/slack-actions/client";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
+import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
   getGatewayApiKey,
@@ -100,6 +101,9 @@ export interface ReplyRequestContext {
   sandbox?: {
     sandboxId?: string;
     sandboxDependencyProfileHash?: string;
+  };
+  toolOverrides?: {
+    imageGenerate?: ImageGenerateToolDeps;
   };
   onStatus?: (status: string) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
@@ -579,8 +583,6 @@ function createAgentTools(
   sandboxExecutor?: SandboxExecutor,
   capabilityRuntime?: SkillCapabilityRuntime,
   hooks?: {
-    onGeneratedFiles?: (files: FileUpload[]) => void;
-    onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
     onToolCall?: (toolName: string) => void;
   },
 ): AgentTool[] {
@@ -1053,6 +1055,7 @@ export async function generateAssistantReply(
     }
 
     const generatedFiles: FileUpload[] = [];
+    const replyFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
 
@@ -1071,8 +1074,13 @@ export async function generateAssistantReply(
     const tools = createTools(
       availableSkills,
       {
-        onGeneratedFiles: (files) => {
+        getGeneratedFile: (filename) =>
+          generatedFiles.find((file) => file.filename === filename),
+        onGeneratedArtifactFiles: (files) => {
           generatedFiles.push(...files);
+        },
+        onGeneratedFiles: (files) => {
+          replyFiles.push(...files);
         },
         onArtifactStatePatch: (patch) => {
           Object.assign(artifactStatePatch, patch);
@@ -1087,6 +1095,7 @@ export async function generateAssistantReply(
             `${formatToolResultStatusWithInput(toolName, input)}...`,
           );
         },
+        toolOverrides: context.toolOverrides,
         onSkillLoaded: async (loadedSkill) => {
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
@@ -1196,9 +1205,6 @@ export async function generateAssistantReply(
             onToolCall: (toolName) => {
               toolCalls.push(toolName);
             },
-            onGeneratedFiles: (files) => generatedFiles.push(...files),
-            onArtifactStatePatch: (patch) =>
-              Object.assign(artifactStatePatch, patch),
           },
         ),
       },
@@ -1382,7 +1388,7 @@ export async function generateAssistantReply(
       explicitChannelPostIntent,
       channelPostPerformed,
       reactionPerformed,
-      hasFiles: generatedFiles.length > 0,
+      hasFiles: replyFiles.length > 0,
       streamingThreadReply: Boolean(context.onTextDelta),
     });
     const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
@@ -1433,7 +1439,7 @@ export async function generateAssistantReply(
       isRawToolPayloadResponse(candidateText);
     const resolvedText = escapedOrRawPayload
       ? buildExecutionFailureMessage(toolErrorCount)
-      : enforceAttachmentClaimTruth(candidateText, generatedFiles.length > 0);
+      : enforceAttachmentClaimTruth(candidateText, replyFiles.length > 0);
     const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
       ? "execution_failure"
       : outcome;
@@ -1455,7 +1461,7 @@ export async function generateAssistantReply(
     if (escapedOrRawPayload) {
       return {
         text: resolvedText,
-        files: generatedFiles.length > 0 ? generatedFiles : undefined,
+        files: replyFiles.length > 0 ? replyFiles : undefined,
         artifactStatePatch:
           Object.keys(artifactStatePatch).length > 0
             ? artifactStatePatch
@@ -1483,7 +1489,7 @@ export async function generateAssistantReply(
 
     return {
       text: resolvedText,
-      files: generatedFiles.length > 0 ? generatedFiles : undefined,
+      files: replyFiles.length > 0 ? replyFiles : undefined,
       artifactStatePatch:
         Object.keys(artifactStatePatch).length > 0
           ? artifactStatePatch

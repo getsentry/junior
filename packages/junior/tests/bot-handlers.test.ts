@@ -5,64 +5,6 @@ import {
   createTestMessage,
 } from "./fixtures/slack-harness";
 
-// ── Module mocks (required for bot.ts module-level initialization) ───
-
-vi.mock("chat", () => {
-  // Auto-stub any method the Chat class is expected to have so the mock
-  // doesn't break every time bot.ts registers a new handler.
-  function Chat() {
-    return new Proxy(
-      {
-        getAdapter() {
-          return {
-            setAssistantTitle: async () => undefined,
-            setSuggestedPrompts: async () => undefined,
-          };
-        },
-      } as Record<string, unknown>,
-      {
-        get(target, prop: string) {
-          if (prop in target) return target[prop];
-          target[prop] = () => {};
-          return target[prop];
-        },
-      },
-    );
-  }
-  return {
-    Chat,
-    ThreadImpl: {
-      fromJSON: () => ({
-        state: Promise.resolve({}),
-        setState: async () => undefined,
-      }),
-    },
-  };
-});
-
-vi.mock("@chat-adapter/slack", () => ({
-  createSlackAdapter: () => ({}),
-}));
-
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: async () => ({
-    text: "ok",
-    diagnostics: {
-      assistantMessageCount: 1,
-      modelId: "test-model",
-      outcome: "success",
-      toolCalls: [],
-      toolErrorCount: 0,
-      toolResultCount: 0,
-      usedPrimaryText: true,
-    },
-  }),
-}));
-
-vi.mock("@/chat/slack-user", () => ({
-  lookupSlackUser: async () => undefined,
-}));
-
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("bot handlers (integration)", () => {

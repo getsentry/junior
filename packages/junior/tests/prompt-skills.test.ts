@@ -105,10 +105,16 @@ describe("buildSystemPrompt skill paths", () => {
       "If the user asks to see/share/show a screenshot or file, attach the file with `attachFile` instead of only reporting its path.",
     );
     expect(prompt).toContain(
+      "Use `attachFile` for files that actually exist in the sandbox",
+    );
+    expect(prompt).toContain(
       "Never claim a screenshot/file is attached unless `attachFile` succeeded in this turn.",
     );
     expect(prompt).toContain(
       "If `attachFile` fails, explain the failure and do not say the file was shared.",
+    );
+    expect(prompt).toContain(
+      "`imageGenerate` returns generated image metadata, including `attachment_path` values you can pass to `attachFile`",
     );
   });
 
@@ -153,7 +159,8 @@ describe("buildSystemPrompt skill paths", () => {
       },
     }));
     vi.doMock("@/chat/home", async () => {
-      const actual = await vi.importActual<typeof import("@/chat/home")>("@/chat/home");
+      const actual =
+        await vi.importActual<typeof import("@/chat/home")>("@/chat/home");
       return {
         ...actual,
         soulPathCandidates: () => ["/mock/app/SOUL.md"],

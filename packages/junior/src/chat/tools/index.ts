@@ -125,7 +125,7 @@ export function createTools(
     webFetch: wrapToolExecution("webFetch", createWebFetchTool(hooks), hooks),
     imageGenerate: wrapToolExecution(
       "imageGenerate",
-      createImageGenerateTool(hooks),
+      createImageGenerateTool(hooks, hooks.toolOverrides?.imageGenerate),
       hooks,
     ),
     slackCanvasUpdate: wrapToolExecution(
