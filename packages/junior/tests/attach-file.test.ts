@@ -93,12 +93,21 @@ describe("createAttachFileTool", () => {
     const sandbox = makeSandbox({
       readFileToBuffer: async () => null,
     });
+    const uploads: Array<{ filename: string; bytes: number }> = [];
     const tool = createAttachFileTool(sandbox, {
       getGeneratedFile: () => ({
         data: Buffer.from("generated-bytes"),
         filename: "generated-image-1.png",
         mimeType: "image/png",
       }),
+      onGeneratedFiles: (files: FileUpload[]) => {
+        uploads.push(
+          ...files.map((file) => ({
+            filename: file.filename,
+            bytes: getUploadBytes(file.data),
+          })),
+        );
+      },
     });
     if (typeof tool.execute !== "function") {
       throw new Error("attachFile execute function missing");
@@ -112,11 +121,16 @@ describe("createAttachFileTool", () => {
     expect(result).toMatchObject({
       ok: true,
       attached: true,
-      already_attached: true,
       filename: "generated-image-1.png",
       mime_type: "image/png",
       bytes: Buffer.from("generated-bytes").byteLength,
     });
+    expect(uploads).toEqual([
+      {
+        filename: "generated-image-1.png",
+        bytes: Buffer.from("generated-bytes").byteLength,
+      },
+    ]);
   });
 
   it("errors when file exceeds max size", async () => {

@@ -88,7 +88,7 @@ async function detectMimeType(
 export function createAttachFileTool(sandbox: Sandbox, hooks: ToolHooks = {}) {
   return tool({
     description:
-      "Attach a file from the sandbox to the Slack reply. Use this for files that actually exist in the sandbox, such as screenshots, PDFs, or logs written by tools or bash commands.",
+      "Attach a file to the Slack reply. Use this for files that exist in the sandbox, such as screenshots, PDFs, or logs, or for generated image `attachment_path` values returned earlier in the turn.",
     inputSchema: Type.Object(
       {
         path: Type.String({
@@ -119,10 +119,10 @@ export function createAttachFileTool(sandbox: Sandbox, hooks: ToolHooks = {}) {
           path.posix.basename(targetPath),
         );
         if (generatedFile) {
+          hooks.onGeneratedFiles?.([generatedFile]);
           return {
             ok: true,
             attached: true,
-            already_attached: true,
             path: targetPath,
             filename: generatedFile.filename,
             mime_type:

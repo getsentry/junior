@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/pi/client", () => ({
-  completeText: vi.fn()
+  completeText: vi.fn(),
 }));
 
 vi.mock("@/chat/prompt", () => ({
-  JUNIOR_PERSONALITY: "test persona"
+  JUNIOR_PERSONALITY: "test persona",
 }));
 
 vi.mock("@/chat/observability", () => ({
   logInfo: vi.fn(),
-  logWarn: vi.fn()
+  logWarn: vi.fn(),
 }));
 
 import { completeText } from "@/chat/pi/client";
@@ -22,7 +22,7 @@ function createJsonResponse(payload: unknown) {
   return {
     ok: true,
     status: 200,
-    json: async () => payload
+    json: async () => payload,
   } as Response;
 }
 
@@ -30,7 +30,7 @@ function createErrorResponse(status: number, body: string) {
   return {
     ok: false,
     status,
-    text: async () => body
+    text: async () => body,
   } as Response;
 }
 
@@ -39,10 +39,16 @@ function imagePayload() {
     choices: [
       {
         message: {
-          images: [{ image_url: { url: `data:image/png;base64,${Buffer.from("img").toString("base64")}` } }]
-        }
-      }
-    ]
+          images: [
+            {
+              image_url: {
+                url: `data:image/png;base64,${Buffer.from("img").toString("base64")}`,
+              },
+            },
+          ],
+        },
+      },
+    ],
   };
 }
 
@@ -58,15 +64,17 @@ describe("createImageGenerateTool", () => {
   it("uses the default image model when AI_IMAGE_MODEL is not set", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched prompt" } as any);
-    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(Date, "now").mockReturnValue(1_737_000_000_000);
 
     const uploads: Array<{ filename: string }> = [];
     const tool = createImageGenerateTool({
-      onGeneratedFiles: (files: Array<{ filename: string }>) => {
+      onGeneratedArtifactFiles: (files: Array<{ filename: string }>) => {
         uploads.push(...files.map((file) => ({ filename: file.filename })));
-      }
+      },
     } as any);
     if (typeof tool.execute !== "function") {
       throw new Error("imageGenerate execute function missing");
@@ -76,16 +84,27 @@ describe("createImageGenerateTool", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0];
-    expect(request?.[0]).toBe("https://ai-gateway.vercel.sh/v1/chat/completions");
-    expect(JSON.parse((request?.[1] as RequestInit).body as string)).toMatchObject({
+    expect(request?.[0]).toBe(
+      "https://ai-gateway.vercel.sh/v1/chat/completions",
+    );
+    expect(
+      JSON.parse((request?.[1] as RequestInit).body as string),
+    ).toMatchObject({
       model: "google/gemini-3-pro-image",
       messages: [{ role: "user", content: "enriched prompt" }],
-      modalities: ["image"]
+      modalities: ["image"],
     });
     expect(result).toMatchObject({
       ok: true,
       model: "google/gemini-3-pro-image",
-      image_count: 1
+      image_count: 1,
+    });
+    expect(result).toMatchObject({
+      images: [
+        expect.objectContaining({
+          attachment_path: "generated-image-1737000000000-1.png",
+        }),
+      ],
     });
     expect(uploads[0]?.filename).toContain("generated-image-1737000000000-1");
   });
@@ -94,7 +113,9 @@ describe("createImageGenerateTool", () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     process.env.AI_IMAGE_MODEL = "openai/dall-e-3";
     mockCompleteText.mockResolvedValueOnce({ text: "enriched cat" } as any);
-    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({} as any);
@@ -104,12 +125,14 @@ describe("createImageGenerateTool", () => {
     const result = await tool.execute({ prompt: "a cat" }, {} as any);
 
     const request = fetchMock.mock.calls[0];
-    expect(JSON.parse((request?.[1] as RequestInit).body as string)).toMatchObject({
-      model: "openai/dall-e-3"
+    expect(
+      JSON.parse((request?.[1] as RequestInit).body as string),
+    ).toMatchObject({
+      model: "openai/dall-e-3",
     });
     expect(result).toMatchObject({
       ok: true,
-      model: "openai/dall-e-3"
+      model: "openai/dall-e-3",
     });
   });
 
@@ -123,10 +146,10 @@ describe("createImageGenerateTool", () => {
         JSON.stringify({
           error: {
             message:
-              "Model 'google/gemini-3-pro-image' is a language model, not an image model. Use the language generation API instead."
-          }
-        })
-      )
+              "Model 'google/gemini-3-pro-image' is a language model, not an image model. Use the language generation API instead.",
+          },
+        }),
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -134,58 +157,72 @@ describe("createImageGenerateTool", () => {
     if (typeof tool.execute !== "function") {
       throw new Error("imageGenerate execute function missing");
     }
-    await expect(tool.execute({ prompt: "person in a forest" }, {} as any)).rejects.toThrow(
-      'configured model "google/gemini-3-pro-image" is not an image generation model'
+    await expect(
+      tool.execute({ prompt: "person in a forest" }, {} as any),
+    ).rejects.toThrow(
+      'configured model "google/gemini-3-pro-image" is not an image generation model',
     );
   });
 
   it("forwards enriched prompt to image API when enrichment succeeds", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    mockCompleteText.mockResolvedValueOnce({ text: "a dark, high-contrast dog with glowing eyes" } as any);
-    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    mockCompleteText.mockResolvedValueOnce({
+      text: "a dark, high-contrast dog with glowing eyes",
+    } as any);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({
-      onGeneratedFiles: vi.fn()
+      onGeneratedArtifactFiles: vi.fn(),
     } as any);
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
     const request = fetchMock.mock.calls[0];
     const body = JSON.parse((request?.[1] as RequestInit).body as string);
-    expect(body.messages[0].content).toBe("a dark, high-contrast dog with glowing eyes");
+    expect(body.messages[0].content).toBe(
+      "a dark, high-contrast dog with glowing eyes",
+    );
     expect(result).toMatchObject({
       prompt: "draw a dog",
-      enrichedPrompt: "a dark, high-contrast dog with glowing eyes"
+      enrichedPrompt: "a dark, high-contrast dog with glowing eyes",
     });
   });
 
   it("falls back to raw prompt when enrichment returns empty text", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockResolvedValueOnce({ text: "   " } as any);
-    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({
-      onGeneratedFiles: vi.fn()
+      onGeneratedArtifactFiles: vi.fn(),
     } as any);
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
-    const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0]?.[1] as RequestInit).body as string,
+    );
     expect(body.messages[0].content).toBe("draw a dog");
     expect(result).toMatchObject({
       prompt: "draw a dog",
-      enrichedPrompt: "draw a dog"
+      enrichedPrompt: "draw a dog",
     });
   });
 
   it("falls back to raw prompt when enrichment fails", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
     mockCompleteText.mockRejectedValueOnce(new Error("LLM unavailable"));
-    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(imagePayload()));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createJsonResponse(imagePayload()));
     vi.stubGlobal("fetch", fetchMock);
 
     const tool = createImageGenerateTool({
-      onGeneratedFiles: vi.fn()
+      onGeneratedArtifactFiles: vi.fn(),
     } as any);
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
@@ -194,7 +231,7 @@ describe("createImageGenerateTool", () => {
     expect(body.messages[0].content).toBe("draw a dog");
     expect(result).toMatchObject({
       prompt: "draw a dog",
-      enrichedPrompt: "draw a dog"
+      enrichedPrompt: "draw a dog",
     });
   });
 });

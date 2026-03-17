@@ -5,6 +5,7 @@ import type { Skill } from "@/chat/skills";
 
 export interface ToolHooks {
   getGeneratedFile?: (filename: string) => FileUpload | undefined;
+  onGeneratedArtifactFiles?: (files: FileUpload[]) => void;
   onGeneratedFiles?: (files: FileUpload[]) => void;
   onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
   onToolCallStart?: (toolName: string, input?: unknown) => void | Promise<void>;

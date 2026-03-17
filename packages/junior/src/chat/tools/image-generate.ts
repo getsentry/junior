@@ -22,15 +22,25 @@ async function enrichImagePrompt(rawPrompt: string): Promise<string> {
       modelId: botConfig.fastModelId,
       system: ENRICHMENT_SYSTEM_PROMPT,
       messages: [{ role: "user", content: rawPrompt, timestamp: Date.now() }],
-      maxTokens: 1024
+      maxTokens: 1024,
     });
     if (text && text.trim().length > 0) {
-      logInfo("image_prompt_enriched", {}, { "app.image.enriched_prompt_length": text.trim().length }, "Image prompt enriched with persona");
+      logInfo(
+        "image_prompt_enriched",
+        {},
+        { "app.image.enriched_prompt_length": text.trim().length },
+        "Image prompt enriched with persona",
+      );
       return text.trim();
     }
     return rawPrompt;
   } catch (error) {
-    logWarn("image_prompt_enrichment_failed", {}, { "error.message": String(error) }, "Image prompt enrichment failed, using raw prompt");
+    logWarn(
+      "image_prompt_enrichment_failed",
+      {},
+      { "error.message": String(error) },
+      "Image prompt enrichment failed, using raw prompt",
+    );
     return rawPrompt;
   }
 }
@@ -43,7 +53,11 @@ function extensionForMediaType(mediaType: string): string {
   return "bin";
 }
 
-function parseImageGenerationError(status: number, body: string, model: string): string {
+function parseImageGenerationError(
+  status: number,
+  body: string,
+  model: string,
+): string {
   if (!body) return `image generation failed: ${status}`;
 
   try {
@@ -67,32 +81,40 @@ export function createImageGenerateTool(hooks: ToolHooks) {
       prompt: Type.String({
         minLength: 1,
         maxLength: 4000,
-        description: "Image generation prompt."
-      })
+        description: "Image generation prompt.",
+      }),
     }),
     execute: async ({ prompt }) => {
-      const apiKey = process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN;
+      const apiKey =
+        process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN;
       if (!apiKey) {
-        throw new Error("Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)");
+        throw new Error(
+          "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
+        );
       }
       const model = process.env.AI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODEL;
       const enrichedPrompt = await enrichImagePrompt(prompt);
-      const response = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${apiKey}`
+      const response = await fetch(
+        "https://ai-gateway.vercel.sh/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: enrichedPrompt }],
+            modalities: ["image"],
+          }),
         },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: enrichedPrompt }],
-          modalities: ["image"]
-        })
-      });
+      );
 
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(parseImageGenerationError(response.status, text, model));
+        throw new Error(
+          parseImageGenerationError(response.status, text, model),
+        );
       }
 
       const payload = (await response.json()) as {
@@ -106,7 +128,11 @@ export function createImageGenerateTool(hooks: ToolHooks) {
           };
         }>;
       };
-      const uploads: Array<{ data: Buffer; filename: string; mimeType: string }> = [];
+      const uploads: Array<{
+        data: Buffer;
+        filename: string;
+        mimeType: string;
+      }> = [];
       const generatedImages = payload.choices?.[0]?.message?.images ?? [];
       for (const [index, image] of generatedImages.entries()) {
         let bytes: Buffer | null = null;
@@ -130,12 +156,12 @@ export function createImageGenerateTool(hooks: ToolHooks) {
         uploads.push({
           data: bytes,
           filename: `generated-image-${Date.now()}-${index + 1}.${extension}`,
-          mimeType
+          mimeType,
         });
       }
 
       if (uploads.length > 0) {
-        hooks.onGeneratedFiles?.(uploads);
+        hooks.onGeneratedArtifactFiles?.(uploads);
       }
 
       return {
@@ -146,11 +172,13 @@ export function createImageGenerateTool(hooks: ToolHooks) {
         image_count: uploads.length,
         images: uploads.map((upload) => ({
           filename: upload.filename,
+          attachment_path: upload.filename,
           media_type: upload.mimeType,
-          bytes: upload.data.byteLength
+          bytes: upload.data.byteLength,
         })),
-        delivery: "Images will be attached to the Slack response as files."
+        delivery:
+          "Generated images are available to attach with attachFile using the returned attachment_path.",
       };
-    }
+    },
   });
 }

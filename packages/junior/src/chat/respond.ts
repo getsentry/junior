@@ -1053,6 +1053,7 @@ export async function generateAssistantReply(
     }
 
     const generatedFiles: FileUpload[] = [];
+    const replyFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
 
@@ -1073,8 +1074,11 @@ export async function generateAssistantReply(
       {
         getGeneratedFile: (filename) =>
           generatedFiles.find((file) => file.filename === filename),
-        onGeneratedFiles: (files) => {
+        onGeneratedArtifactFiles: (files) => {
           generatedFiles.push(...files);
+        },
+        onGeneratedFiles: (files) => {
+          replyFiles.push(...files);
         },
         onArtifactStatePatch: (patch) => {
           Object.assign(artifactStatePatch, patch);
@@ -1435,7 +1439,7 @@ export async function generateAssistantReply(
       isRawToolPayloadResponse(candidateText);
     const resolvedText = escapedOrRawPayload
       ? buildExecutionFailureMessage(toolErrorCount)
-      : enforceAttachmentClaimTruth(candidateText, generatedFiles.length > 0);
+      : enforceAttachmentClaimTruth(candidateText, replyFiles.length > 0);
     const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
       ? "execution_failure"
       : outcome;
@@ -1457,7 +1461,7 @@ export async function generateAssistantReply(
     if (escapedOrRawPayload) {
       return {
         text: resolvedText,
-        files: generatedFiles.length > 0 ? generatedFiles : undefined,
+        files: replyFiles.length > 0 ? replyFiles : undefined,
         artifactStatePatch:
           Object.keys(artifactStatePatch).length > 0
             ? artifactStatePatch
@@ -1485,7 +1489,7 @@ export async function generateAssistantReply(
 
     return {
       text: resolvedText,
-      files: generatedFiles.length > 0 ? generatedFiles : undefined,
+      files: replyFiles.length > 0 ? replyFiles : undefined,
       artifactStatePatch:
         Object.keys(artifactStatePatch).length > 0
           ? artifactStatePatch

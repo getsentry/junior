@@ -105,7 +105,7 @@ describe("buildSystemPrompt skill paths", () => {
       "If the user asks to see/share/show a screenshot or file, attach the file with `attachFile` instead of only reporting its path.",
     );
     expect(prompt).toContain(
-      "Use `attachFile` only for files that actually exist in the sandbox",
+      "Use `attachFile` for files that actually exist in the sandbox",
     );
     expect(prompt).toContain(
       "Never claim a screenshot/file is attached unless `attachFile` succeeded in this turn.",
@@ -114,7 +114,7 @@ describe("buildSystemPrompt skill paths", () => {
       "If `attachFile` fails, explain the failure and do not say the file was shared.",
     );
     expect(prompt).toContain(
-      "`imageGenerate` already attaches generated images to the Slack reply",
+      "`imageGenerate` returns generated image metadata, including `attachment_path` values you can pass to `attachFile`",
     );
   });
 
