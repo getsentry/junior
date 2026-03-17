@@ -151,7 +151,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     if (scope === "verifier" || scope === "all") {
       await patchMcpAuthSession(this.authSessionId, {
         codeVerifier: undefined,
-        authorizationUrl: scope === "all" ? undefined : undefined,
+        ...(scope === "all" ? { authorizationUrl: undefined } : {}),
       });
     }
   }

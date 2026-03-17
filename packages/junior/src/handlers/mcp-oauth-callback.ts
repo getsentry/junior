@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
 import { after } from "next/server";
 import { ThreadImpl, type FileUpload } from "chat";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { botConfig } from "@/chat/config";
 import { coerceThreadConversationState } from "@/chat/conversation-state";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
@@ -28,27 +30,55 @@ import { coerceThreadArtifactsState } from "@/chat/slack-actions/types";
 import { truncateStatusText } from "@/chat/status-format";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 import { resolveReplyDelivery } from "@/chat/turn/execute";
-import { escapeXml } from "@/chat/xml";
 
 function htmlResponse(
   title: string,
   message: string,
   status: number,
 ): Response {
-  const safeTitle = escapeXml(title);
-  const safeMessage = escapeXml(message);
-  const html = `<!DOCTYPE html>
-<html>
-<head><title>${safeTitle}</title></head>
-<body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
-  <div style="text-align: center; max-width: 480px;">
-    <h1>${safeTitle}</h1>
-    <p>${safeMessage}</p>
-    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack.</p>
-  </div>
-</body>
-</html>`;
-  return new Response(html, {
+  const html = renderToStaticMarkup(
+    createElement(
+      "html",
+      null,
+      createElement("head", null, createElement("title", null, title)),
+      createElement(
+        "body",
+        {
+          style: {
+            fontFamily: "system-ui, sans-serif",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            minHeight: "100vh",
+            margin: 0,
+          },
+        },
+        createElement(
+          "div",
+          {
+            style: {
+              textAlign: "center",
+              maxWidth: 480,
+            },
+          },
+          createElement("h1", null, title),
+          createElement("p", null, message),
+          createElement(
+            "p",
+            {
+              style: {
+                marginTop: "2rem",
+                color: "#666",
+                fontSize: "0.9em",
+              },
+            },
+            "You can close this tab and return to Slack.",
+          ),
+        ),
+      ),
+    ),
+  );
+  return new Response(`<!DOCTYPE html>${html}`, {
     status,
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });

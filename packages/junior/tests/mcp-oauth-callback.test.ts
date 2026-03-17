@@ -236,6 +236,38 @@ describe("mcp oauth callback handler", () => {
     expect(finalizeMcpAuthorizationMock).not.toHaveBeenCalled();
   });
 
+  it("escapes querystring error text in the HTML response", async () => {
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?state=state-123&error=%3Cscript%3Ealert(1)%3C%2Fscript%3E",
+      ),
+      makeContext("demo"),
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(body).not.toContain("<script>alert(1)</script>");
+  });
+
+  it("escapes callback exception text in the HTML response", async () => {
+    finalizeMcpAuthorizationMock.mockRejectedValueOnce(
+      new Error("<img src=x onerror=alert(1)>"),
+    );
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
+      ),
+      makeContext("demo"),
+    );
+
+    expect(response.status).toBe(500);
+    const body = await response.text();
+    expect(body).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(body).not.toContain("<img src=x onerror=alert(1)>");
+  });
+
   it("finalizes MCP auth and resumes the paused request in the stored Slack thread", async () => {
     const response = await GET(
       makeRequest(
