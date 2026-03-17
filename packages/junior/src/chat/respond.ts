@@ -579,8 +579,6 @@ function createAgentTools(
   sandboxExecutor?: SandboxExecutor,
   capabilityRuntime?: SkillCapabilityRuntime,
   hooks?: {
-    onGeneratedFiles?: (files: FileUpload[]) => void;
-    onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
     onToolCall?: (toolName: string) => void;
   },
 ): AgentTool[] {
@@ -1202,9 +1200,6 @@ export async function generateAssistantReply(
             onToolCall: (toolName) => {
               toolCalls.push(toolName);
             },
-            onGeneratedFiles: (files) => generatedFiles.push(...files),
-            onArtifactStatePatch: (patch) =>
-              Object.assign(artifactStatePatch, patch),
           },
         ),
       },
@@ -1388,7 +1383,7 @@ export async function generateAssistantReply(
       explicitChannelPostIntent,
       channelPostPerformed,
       reactionPerformed,
-      hasFiles: generatedFiles.length > 0,
+      hasFiles: replyFiles.length > 0,
       streamingThreadReply: Boolean(context.onTextDelta),
     });
     const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
