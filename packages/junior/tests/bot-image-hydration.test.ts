@@ -1,217 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  Author,
-  Message,
-  Thread,
-  SentMessage,
-  Channel,
-  Adapter,
-} from "chat";
+import type { Thread } from "chat";
+import {
+  appSlackRuntime,
+  resetBotDepsForTests,
+  setBotDepsForTests,
+} from "@/chat/bot";
+import { createTestMessage, createTestThread } from "./fixtures/slack-harness";
 
 const listThreadRepliesMock = vi.fn();
 
-vi.mock("chat", () => {
-  // Auto-stub any method the Chat class is expected to have so the mock
-  // doesn't break every time bot.ts registers a new handler.
-  function Chat() {
-    return new Proxy(
-      {
-        getAdapter() {
-          return {
-            setAssistantTitle: async () => undefined,
-            setSuggestedPrompts: async () => undefined,
-          };
-        },
-      } as Record<string, unknown>,
-      {
-        get(target, prop: string) {
-          if (prop in target) return target[prop];
-          target[prop] = () => {};
-          return target[prop];
-        },
-      },
-    );
-  }
-
+function makeSuccessReply(text = "ok") {
   return {
-    Chat,
-  };
-});
-
-vi.mock("@chat-adapter/slack", () => ({
-  createSlackAdapter: () => ({}),
-}));
-
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: async () => ({
-    text: "ok",
+    text,
     diagnostics: {
       assistantMessageCount: 1,
       modelId: "test-model",
-      outcome: "success",
+      outcome: "success" as const,
       toolCalls: [],
       toolErrorCount: 0,
       toolResultCount: 0,
       usedPrimaryText: true,
     },
-  }),
-}));
-
-vi.mock("@/chat/slack-user", () => ({
-  lookupSlackUser: async () => undefined,
-}));
-
-function parseChannelFromThreadId(threadId: string): string | undefined {
-  const parts = threadId.split(":");
-  if (parts.length === 3 && parts[0] === "slack" && parts[1]) return parts[1];
-  return undefined;
-}
-
-const stubAdapter = {} as Adapter;
-
-function createStubChannel(stateRef?: {
-  value: Record<string, unknown>;
-}): Channel {
-  const ref = stateRef ?? { value: {} };
-  return {
-    adapter: stubAdapter,
-    id: "stub-channel",
-    isDM: false,
-    get messages(): AsyncIterable<Message> {
-      return (async function* () {})();
-    },
-    get name() {
-      return null;
-    },
-    mentionUser(userId: string) {
-      return `<@${userId}>`;
-    },
-    post: vi.fn().mockResolvedValue(undefined) as unknown as Channel["post"],
-    postEphemeral: vi
-      .fn()
-      .mockResolvedValue(null) as unknown as Channel["postEphemeral"],
-    schedule: vi.fn().mockResolvedValue({
-      id: "scheduled-1",
-      cancel: async () => undefined,
-    }) as unknown as Channel["schedule"],
-    get state(): Promise<Record<string, unknown> | null> {
-      return Promise.resolve(ref.value);
-    },
-    async setState(
-      next: Partial<Record<string, unknown>>,
-      options?: { replace?: boolean },
-    ): Promise<void> {
-      if (options?.replace) {
-        ref.value = { ...(next as Record<string, unknown>) };
-        return;
-      }
-      ref.value = { ...ref.value, ...(next as Record<string, unknown>) };
-    },
-    async startTyping(): Promise<void> {},
-    fetchMetadata: vi.fn().mockResolvedValue({
-      id: "stub-channel",
-      metadata: {},
-    }) as unknown as Channel["fetchMetadata"],
-    threads(): AsyncIterable<never> {
-      return (async function* () {})();
-    },
-  } satisfies Channel;
-}
-
-function createTestThread(args: {
-  id: string;
-  state?: Record<string, unknown>;
-}): Thread & { getState: () => Record<string, unknown> } {
-  let stateData: Record<string, unknown> = { ...(args.state ?? {}) };
-  const channelId = parseChannelFromThreadId(args.id) ?? args.id;
-  const channel = createStubChannel();
-
-  const thread: Thread & { getState: () => Record<string, unknown> } = {
-    adapter: stubAdapter,
-    id: args.id,
-    channelId,
-    isDM: false,
-    channel,
-    get allMessages(): AsyncIterable<Message> {
-      return (async function* () {})();
-    },
-    get messages(): AsyncIterable<Message> {
-      return (async function* () {})();
-    },
-    recentMessages: [],
-    get state(): Promise<Record<string, unknown> | null> {
-      return Promise.resolve(stateData);
-    },
-    async post(message: unknown): Promise<SentMessage> {
-      return { id: "sent-1", text: String(message) } as unknown as SentMessage;
-    },
-    postEphemeral: vi
-      .fn()
-      .mockResolvedValue(null) as unknown as Thread["postEphemeral"],
-    schedule: vi.fn().mockResolvedValue({
-      id: "scheduled-1",
-      cancel: async () => undefined,
-    }) as unknown as Thread["schedule"],
-    async startTyping(): Promise<void> {},
-    async subscribe(): Promise<void> {},
-    async unsubscribe(): Promise<void> {},
-    async isSubscribed(): Promise<boolean> {
-      return false;
-    },
-    async refresh(): Promise<void> {},
-    mentionUser(userId: string): string {
-      return `<@${userId}>`;
-    },
-    async setState(
-      next: Partial<Record<string, unknown>>,
-      options?: { replace?: boolean },
-    ): Promise<void> {
-      if (options?.replace) {
-        stateData = { ...(next as Record<string, unknown>) };
-        return;
-      }
-      stateData = { ...stateData, ...(next as Record<string, unknown>) };
-    },
-    createSentMessageFromMessage(message: Message): SentMessage {
-      return message as unknown as SentMessage;
-    },
-    getState() {
-      return stateData;
-    },
   };
-
-  return thread;
-}
-
-function createTestMessage(args: {
-  id: string;
-  text: string;
-  threadId: string;
-  author: Author;
-  isMention?: boolean;
-}): Message {
-  return {
-    id: args.id,
-    threadId: args.threadId,
-    text: args.text,
-    author: args.author,
-    isMention: args.isMention,
-    attachments: [],
-    metadata: { dateSent: new Date(), edited: false },
-    formatted: { type: "root", children: [] },
-    raw: {},
-    toJSON() {
-      return {} as ReturnType<Message["toJSON"]>;
-    },
-  } as unknown as Message;
 }
 
 describe("bot image hydration", () => {
   beforeEach(() => {
     listThreadRepliesMock.mockReset();
   });
-  afterEach(async () => {
-    const { resetBotDepsForTests } = await import("@/chat/bot");
+  afterEach(() => {
     resetBotDepsForTests();
   });
 
@@ -223,9 +40,9 @@ describe("bot image hydration", () => {
       },
     ]);
 
-    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     setBotDepsForTests({
       listThreadReplies: listThreadRepliesMock,
+      generateAssistantReply: async () => makeSuccessReply(),
     });
     const firstThread = createTestThread({
       id: "slack:C_IMAGE:1700000000.000",
@@ -316,21 +133,11 @@ describe("bot image hydration", () => {
       mimeType: "image/png",
     };
 
-    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     setBotDepsForTests({
       listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
       generateAssistantReply: async () => ({
-        text: "Here is your image",
+        ...makeSuccessReply("Here is your image"),
         files: [generatedFile],
-        diagnostics: {
-          assistantMessageCount: 1,
-          modelId: "test-model",
-          outcome: "success" as const,
-          toolCalls: [],
-          toolErrorCount: 0,
-          toolResultCount: 0,
-          usedPrimaryText: true,
-        },
       }),
     });
 
@@ -374,14 +181,13 @@ describe("bot image hydration", () => {
   });
 
   it("posts files separately when streamed reply is already in progress", async () => {
-    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     setBotDepsForTests({
       listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
       generateAssistantReply: async (_text: string, context: any) => {
         context?.onTextDelta?.("streamed ");
         context?.onTextDelta?.("content");
         return {
-          text: "streamed content",
+          ...makeSuccessReply("streamed content"),
           files: [
             {
               data: Buffer.from("fake-png"),
@@ -389,15 +195,6 @@ describe("bot image hydration", () => {
               mimeType: "image/png",
             },
           ],
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "test-model",
-            outcome: "success" as const,
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
         };
       },
     });
