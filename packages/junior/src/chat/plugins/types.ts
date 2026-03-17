@@ -64,6 +64,14 @@ export interface PluginRuntimePostinstallCommand {
   sudo?: boolean;
 }
 
+export interface PluginMcpHttpConfig {
+  transport: "http";
+  url: string;
+  headers?: Record<string, string>;
+}
+
+export type PluginMcpConfig = PluginMcpHttpConfig;
+
 export interface PluginManifest {
   name: string;
   description: string;
@@ -72,6 +80,7 @@ export interface PluginManifest {
   credentials?: PluginCredentials;
   runtimeDependencies?: PluginRuntimeDependency[];
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
+  mcp?: PluginMcpConfig;
   oauth?: PluginOAuthConfig;
   target?: {
     type: "repo";

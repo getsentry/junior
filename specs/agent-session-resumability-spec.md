@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-03-05
+- Last Edited: 2026-03-13
 
 ## Changelog
 
 - 2026-03-05: Initial canonical contract for timeout-safe multi-slice assistant execution with Pi in serverless runtimes.
+- 2026-03-13: Added auth-driven resume reason and checkpointed dynamic tool state for MCP-backed turns.
 
 ## Status
 
@@ -84,7 +85,9 @@ Each checkpoint must include:
 - `tool_call_log`: Ordered committed tool calls and results.
 - `transcript_log`: Ordered committed user/assistant visible messages.
 - `state`: one of `running|awaiting_resume|completed|failed`.
-- `resume_reason`: `timeout|preempted|retry|operator` (when `awaiting_resume`).
+- `resume_reason`: `timeout|auth|preempted|retry|operator` (when `awaiting_resume`).
+- `loaded_skill_names`: Active skills that must be restored before resume when tool availability depends on loaded skills.
+- `active_mcp_providers`: Active plugin MCP providers that must be restored before resume when tools were progressively disclosed.
 - `deadline_at`: hard deadline for the current slice.
 - `updated_at`
 
@@ -96,8 +99,9 @@ For slice `n+1`, runtime must:
 
 1. Load latest committed checkpoint for `(conversation_id, session_id)`.
 2. Instantiate Pi agent.
-3. Call `replaceMessages(checkpoint.pi_messages)`.
-4. Call `continue()` to resume generation/tool loop.
+3. Restore any checkpointed dynamic tool state required by the wrapper runtime (for example loaded skills and active MCP providers).
+4. Call `replaceMessages(checkpoint.pi_messages)`.
+5. Call `continue()` to resume generation/tool loop.
 
 If the previous slice timed out after producing uncommitted partial assistant text, that text may be regenerated in the next slice. User-visible output must only include committed transcript content.
 
@@ -181,7 +185,8 @@ Required attributes on slice/session events when available:
 3. Integration: forced timeout at safe boundary resumes with `replaceMessages` + `continue` and reaches same terminal output.
 4. Integration: duplicate continuation message does not produce duplicate tool side effects.
 5. Integration: crash-after-commit-before-enqueue is recovered by sweeper.
-6. Eval: long-running thread surpassing single serverless timeout completes across multiple slices without user-visible corruption.
+6. Integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
+7. Eval: long-running thread surpassing single serverless timeout completes across multiple slices without user-visible corruption.
 
 ## Related Specs
 

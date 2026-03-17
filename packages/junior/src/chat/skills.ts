@@ -6,7 +6,10 @@ import {
 } from "@/chat/capabilities/catalog";
 import { skillRoots } from "@/chat/home";
 import { logWarn } from "@/chat/observability";
-import { getPluginSkillRoots } from "@/chat/plugins/registry";
+import {
+  getPluginForSkillPath,
+  getPluginSkillRoots,
+} from "@/chat/plugins/registry";
 import { parseSkillFile } from "@/chat/skill-frontmatter";
 
 const SKILL_CACHE_TTL_MS = 5000;
@@ -15,6 +18,7 @@ export interface SkillMetadata {
   name: string;
   description: string;
   skillPath: string;
+  pluginProvider?: string;
   allowedTools?: string[];
   requiresCapabilities?: string[];
   usesConfig?: string[];
@@ -117,6 +121,7 @@ async function readSkillDirectory(
       requiresCapabilities,
       usesConfig,
     } = parsed.skill;
+    const plugin = getPluginForSkillPath(skillDir);
     const metadataError = validateSkillMetadata({
       requiresCapabilities,
       usesConfig,
@@ -138,6 +143,7 @@ async function readSkillDirectory(
       name,
       description,
       skillPath: skillDir,
+      ...(plugin ? { pluginProvider: plugin.manifest.name } : {}),
       allowedTools,
       requiresCapabilities,
       usesConfig,

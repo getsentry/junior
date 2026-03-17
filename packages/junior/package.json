@@ -42,6 +42,7 @@
     "@chat-adapter/state-redis": "4.20.2",
     "@mariozechner/pi-agent-core": "^0.59.0",
     "@mariozechner/pi-ai": "^0.59.0",
+    "@modelcontextprotocol/sdk": "1.27.1",
     "@sinclair/typebox": "^0.34.48",
     "@slack/web-api": "^7.15.0",
     "@vercel/queue": "^0.1.4",

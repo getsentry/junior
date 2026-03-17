@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-03
+- Last Edited: 2026-03-13
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-09: Added provider-configured token request auth/headers and optional token expiry semantics.
+- 2026-03-13: Documented MCP challenge-driven OAuth, MCP callback routing, and auth-driven turn resume.
 
 ## Status
 
@@ -27,12 +28,14 @@ Define how Junior handles OAuth-based user authentication for third-party provid
 
 ### Components
 
-| Component                        | Role                                                                                                     |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `jr-rpc oauth-start <provider>`  | Generates state, stores in Redis, sends ephemeral link to user                                           |
-| `/api/oauth/callback/[provider]` | Exchanges code for tokens, stores server-side, auto-resumes pending request or posts thread confirmation |
-| `StateAdapterTokenStore`         | Redis-backed `UserTokenStore` for persistent token storage                                               |
-| `SentryCredentialBroker`         | Issues short-lived credential leases from stored user tokens                                             |
+| Component                            | Role                                                                                                     |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `jr-rpc oauth-start <provider>`      | Generates state, stores in Redis, sends ephemeral link to user                                           |
+| `/api/oauth/callback/[provider]`     | Exchanges code for tokens, stores server-side, auto-resumes pending request or posts thread confirmation |
+| `/api/oauth/callback/mcp/[provider]` | Completes MCP SDK authorization and resumes the paused MCP-backed turn session                           |
+| `StateAdapterTokenStore`             | Redis-backed `UserTokenStore` for persistent token storage                                               |
+| MCP auth session store               | Stores MCP auth session context and SDK-managed OAuth state across the browser redirect                  |
+| `SentryCredentialBroker`             | Issues short-lived credential leases from stored user tokens                                             |
 
 ### Why authorization code grant
 
@@ -87,6 +90,32 @@ Provider: Redirects to /api/oauth/callback/<provider>?code=...&state=...
 User: Sees "account connected" in browser; if pending, sees resumed response in thread
 ```
 
+### MCP challenge-driven authorization
+
+```
+User: invokes a skill that exposes MCP-backed tools
+  │
+  ▼
+Agent: calls an MCP tool from the same plugin
+  │
+  ├─ MCP server responds with 401 / auth challenge
+  ├─ MCP OAuth provider persists auth session state
+  ├─ Runtime privately delivers the authorization link to the requesting user
+  ├─ Turn checkpoint is written as `awaiting_resume` with `resume_reason=auth`
+  └─ Current turn exits with retryable resume semantics
+  │
+  ▼
+User: opens the private link, approves, provider redirects to /api/oauth/callback/mcp/<provider>?code=...&state=...
+  │
+  ├─ Callback loads MCP auth session by `state`
+  ├─ SDK completes OAuth via `finishAuth(code)` and persists tokens
+  ├─ after() resumes the same `(conversation_id, session_id)` turn context
+  └─ Resumed turn rebuilds loaded skills + active MCP providers, then calls `continue()`
+  │
+  ▼
+User: sees the original thread continue without reissuing the request
+```
+
 ### Credential issuance (per-turn)
 
 After a user has connected their account, credential issuance works transparently:
@@ -129,6 +158,15 @@ Agent: jr-rpc delete-token sentry
 - TTL: `expiresAt - now + 24h` buffer when expiry is known, otherwise 365 days
 - Storage: `StateAdapterTokenStore` wrapping `StateAdapter` (Redis)
 
+### MCP auth sessions and credentials
+
+- Session key pattern: `junior:mcp_auth_session:<state>`
+- Session value: `{ provider, userId, conversationId, sessionId, userMessage, channelId?, threadTs?, toolChannelId?, configuration?, artifactState?, authorizationUrl?, codeVerifier? }`
+- Session TTL: 24 hours
+- Credentials key pattern: `junior:mcp_auth_credentials:<userId>:<provider>`
+- Credentials value: MCP SDK client information, discovery state, and OAuth tokens
+- Credentials TTL: 30 days, refreshed on every write
+
 ## Base URL resolution
 
 The OAuth `redirect_uri` requires the application's base URL. Resolved in order:
@@ -166,6 +204,13 @@ Providers are configured via plugin manifests (`plugin.yaml`) and exposed throug
 - Scope: `event:read org:read project:read`
 - Callback: `/api/oauth/callback/sentry`
 
+### MCP-backed plugins
+
+- Plugin manifests may also declare `mcp.transport: http` and `mcp.url`.
+- MCP headers are optional but may not include `Authorization`.
+- MCP callback path is `/api/oauth/callback/mcp/<plugin>`.
+- MCP OAuth is challenge-driven by the SDK rather than initiated through `jr-rpc oauth-start`.
+
 ## Security properties
 
 - **Authorization links are private**: Authorization URLs contain user-specific CSRF state tokens and must **only** be visible to the requesting user. Delivered via `chat.postEphemeral` in channels or `chat.postMessage` in 1:1 DMs. If private delivery fails, falls back to a DM to the user. Authorization URLs are **never** posted as visible messages in channels or returned to the agent.
@@ -175,6 +220,9 @@ Providers are configured via plugin manifests (`plugin.yaml`) and exposed throug
 - **Server-side secrets**: `client_secret` is read from host env, never exposed to sandbox or agent.
 - **Token refresh on host**: Broker refreshes expired tokens server-side, agent only receives header transforms.
 - **Scoped storage**: Tokens keyed by `userId:provider` — users cannot access each other's tokens.
+- **MCP links remain private**: MCP authorization URLs are also delivered through the same private Slack delivery rules and are never emitted as visible thread messages.
+- **Resumed tool universe is stable**: MCP auth resume restores the checkpointed loaded skills and active MCP providers before continuing the same turn session.
+- **Resumed thread context is stable**: MCP auth resume also restores snapshotted configuration, artifact state, and tool-channel targeting before the resumed turn continues.
 
 ## Slack chat experience
 

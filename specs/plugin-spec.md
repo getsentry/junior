@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-03-06
+- Last Edited: 2026-03-13
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-03-06: Added runtime dependency declarations and linked sandbox snapshot lifecycle contract.
 - 2026-03-06: Made plugin credentials/capabilities/config-keys optional to support bundle-only plugins.
 - 2026-03-09: Added OAuth request overrides, optional OAuth scope, and plugin-level API headers.
+- 2026-03-13: Implemented HTTP MCP manifests, same-plugin progressive tool activation, and dedicated MCP OAuth callbacks.
 
 ## Status
 
@@ -44,7 +45,8 @@ Define a plugin model where provider integrations are self-contained directories
 3. The registry registers capabilities, config keys, OAuth config, and skill roots from each manifest.
 4. Credential brokers are created on demand only for plugins that declare credentials (`oauth-bearer` or `github-app` type).
 5. Skills in `plugins/<name>/skills/` are auto-discovered alongside existing skill roots.
-6. Core infrastructure (agent loop, sandbox, jr-rpc, Slack tools, web tools) stays unchanged.
+6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded for the turn.
+7. Core infrastructure (agent loop, sandbox, jr-rpc, Slack tools, web tools) stays unchanged outside the MCP activation/resume wiring.
 
 ## Plugin directory structure
 
@@ -118,10 +120,10 @@ runtime-postinstall: # optional — post-install commands executed before snapsh
     args: ["install"]
 
 mcp: # optional — MCP server config for tool sources
-  command: npx
-  args: ["-y", "@sentry/mcp-server"]
-  env:
-    SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+  transport: http
+  url: https://mcp.example.com/mcp
+  headers:
+    X-Workspace: acme
 ```
 
 ## Plugin manifest contract
@@ -170,7 +172,10 @@ mcp: # optional — MCP server config for tool sources
 | `runtime-postinstall[].cmd`          | `string`                 | Non-empty command name.                                                                                                                          |
 | `runtime-postinstall[].args`         | `string[]`               | Optional command arguments.                                                                                                                      |
 | `runtime-postinstall[].sudo`         | `boolean`                | Optional sudo flag for commands requiring elevated privileges.                                                                                   |
-| `mcp`                                | `object`                 | MCP server configuration for external tool sources. Reserved — not yet parsed by the registry.                                                   |
+| `mcp`                                | `object`                 | Optional MCP server configuration for host-managed tool discovery.                                                                               |
+| `mcp.transport`                      | `string`                 | Must be `"http"` in v1. Stdio/command transports are not supported.                                                                              |
+| `mcp.url`                            | `string`                 | HTTPS endpoint for the MCP server.                                                                                                               |
+| `mcp.headers`                        | `Record<string, string>` | Optional static non-Authorization headers sent with MCP HTTP requests. `Authorization` is reserved for runtime-managed auth.                     |
 
 Snapshot build/reuse and invalidation behavior for `runtime-dependencies` is defined in [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md).
 
@@ -244,6 +249,15 @@ isPluginConfigKey(key): boolean
 // On-demand broker creation
 createPluginBroker(provider, deps: PluginBrokerDeps): CredentialBroker
 ```
+
+### MCP tool activation
+
+- MCP tools are not sandbox dependencies and are not registered globally at startup.
+- The runtime activates a plugin's MCP tools only after a skill owned by that plugin is loaded in the current turn.
+- Explicit `/skill` invocations preload the skill first, so same-plugin MCP tools are available before the first model step.
+- Mid-turn `loadSkill` updates the active Pi tool list for subsequent agent steps.
+- MCP tool names are exposed to Pi as `mcp__<plugin>__<tool>`.
+- MCP authorization uses a dedicated callback path at `/api/oauth/callback/mcp/<plugin>` and resumes the paused turn session after the user authorizes.
 
 ## Capability and credential integration
 

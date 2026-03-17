@@ -190,6 +190,11 @@ export function getPluginProviders(): PluginDefinition[] {
   return [...pluginDefinitions];
 }
 
+export function getPluginMcpProviders(): PluginDefinition[] {
+  ensurePluginsLoaded();
+  return pluginDefinitions.filter((plugin) => Boolean(plugin.manifest.mcp));
+}
+
 export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
   ensurePluginsLoaded();
   const seen = new Set<string>();
@@ -282,6 +287,28 @@ export function getPluginSkillRoots(): string[] {
       ...packageSkillRoots,
     ]),
   ];
+}
+
+export function getPluginForSkillPath(
+  skillPath: string,
+): PluginDefinition | undefined {
+  ensurePluginsLoaded();
+  const resolvedSkillPath = path.resolve(skillPath);
+
+  return pluginDefinitions.find((plugin) => {
+    const resolvedSkillsDir = path.resolve(plugin.skillsDir);
+    return (
+      resolvedSkillPath === resolvedSkillsDir ||
+      resolvedSkillPath.startsWith(`${resolvedSkillsDir}${path.sep}`)
+    );
+  });
+}
+
+export function getPluginDefinition(
+  provider: string,
+): PluginDefinition | undefined {
+  ensurePluginsLoaded();
+  return pluginsByName.get(provider);
 }
 
 export function isPluginProvider(provider: string): boolean {

@@ -7,6 +7,8 @@ import {
   extractGenAiUsageAttributes,
   serializeGenAiAttribute,
 } from "@/chat/gen-ai-attributes";
+import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
+import { getMcpAuthSession, patchMcpAuthSession } from "@/chat/mcp/auth-store";
 import {
   logException,
   logInfo,
@@ -17,6 +19,7 @@ import {
   withSpan,
   type ObservabilityContext,
 } from "@/chat/observability";
+import { deliverPrivateMessage, formatProviderLabel } from "@/chat/oauth-flow";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
   createSkillCapabilityRuntime,
@@ -37,7 +40,11 @@ import {
   parseSkillInvocation,
   type Skill,
 } from "@/chat/skills";
-import { getPluginProviders } from "@/chat/plugins/registry";
+import {
+  getPluginMcpProviders,
+  getPluginProviders,
+} from "@/chat/plugins/registry";
+import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { SlackActionError } from "@/chat/slack-actions/client";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
@@ -66,6 +73,7 @@ import {
 } from "@/chat/status-format";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
 import { enforceAttachmentClaimTruth } from "@/chat/attachment-claims";
+import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
@@ -162,6 +170,16 @@ class AgentTurnTimeoutError extends Error {
     super(`Agent turn timed out after ${timeoutMs}ms`);
     this.name = "AgentTurnTimeoutError";
     this.timeoutMs = timeoutMs;
+  }
+}
+
+class McpAuthorizationPauseError extends Error {
+  readonly provider: string;
+
+  constructor(provider: string) {
+    super(`MCP authorization started for ${provider}`);
+    this.name = "McpAuthorizationPauseError";
+    this.provider = provider;
   }
 }
 
@@ -541,6 +559,22 @@ function extractAssistantText(message: AssistantMessage): string {
     .join("\n");
 }
 
+function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
+  const existing = activeSkills.find((skill) => skill.name === next.name);
+  if (existing) {
+    existing.body = next.body;
+    existing.description = next.description;
+    existing.skillPath = next.skillPath;
+    existing.allowedTools = next.allowedTools;
+    existing.requiresCapabilities = next.requiresCapabilities;
+    existing.usesConfig = next.usesConfig;
+    existing.pluginProvider = next.pluginProvider;
+    return;
+  }
+
+  activeSkills.push(next);
+}
+
 function collectRelevantConfigurationKeys(
   activeSkills: Array<{ usesConfig?: string[] }>,
   explicitSkill?: { usesConfig?: string[] } | null,
@@ -915,6 +949,10 @@ export async function generateAssistantReply(
   let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
+  let loadedSkillNamesForResume: string[] = [];
+  let activeMcpProvidersForResume: string[] = [];
+  let mcpToolManager: McpToolManager | undefined;
+  let pendingMcpAuthorizationPause: McpAuthorizationPauseError | undefined;
 
   try {
     const shouldTrace = shouldEmitDevAgentTrace();
@@ -981,6 +1019,24 @@ export async function generateAssistantReply(
       : null;
     const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
+    const { conversationId: sessionConversationId, sessionId } =
+      getSessionIdentifiers(context);
+    const canUseTurnSession = Boolean(sessionConversationId && sessionId);
+    timeoutResumeConversationId = sessionConversationId;
+    timeoutResumeSessionId = sessionId;
+    const existingTurnCheckpoint =
+      canUseTurnSession && sessionConversationId && sessionId
+        ? await getAgentTurnSessionCheckpoint(sessionConversationId, sessionId)
+        : undefined;
+    const resumedFromCheckpoint = Boolean(
+      existingTurnCheckpoint &&
+      existingTurnCheckpoint.state === "awaiting_resume" &&
+      existingTurnCheckpoint.piMessages.length > 0,
+    );
+    const currentSliceId = resumedFromCheckpoint
+      ? existingTurnCheckpoint!.sliceId
+      : 1;
+    timeoutResumeSliceId = currentSliceId;
     const capabilityRuntime = createSkillCapabilityRuntime({
       invocationArgs: skillInvocation?.args,
       requesterId: context.requester?.userId,
@@ -1021,10 +1077,17 @@ export async function generateAssistantReply(
     sandboxExecutor.configureSkills(availableSkills);
     const sandbox = await sandboxExecutor.createSandbox();
 
+    for (const skillName of existingTurnCheckpoint?.loadedSkillNames ?? []) {
+      const preloaded = await skillSandbox.loadSkill(skillName);
+      if (preloaded) {
+        upsertActiveSkill(activeSkills, preloaded);
+      }
+    }
+
     if (invokedSkill) {
       const preloaded = await skillSandbox.loadSkill(invokedSkill.name);
       if (preloaded) {
-        activeSkills.push(preloaded);
+        upsertActiveSkill(activeSkills, preloaded);
       }
     }
 
@@ -1058,6 +1121,110 @@ export async function generateAssistantReply(
     const replyFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
+    const mcpAuthSessionIdsByProvider = new Map<string, string>();
+    mcpToolManager = new McpToolManager(getPluginMcpProviders(), {
+      authProviderFactory: async (plugin) => {
+        if (
+          !sessionConversationId ||
+          !sessionId ||
+          !context.requester?.userId
+        ) {
+          return undefined;
+        }
+
+        const provider = await createMcpOAuthClientProvider({
+          provider: plugin.manifest.name,
+          conversationId: sessionConversationId,
+          sessionId,
+          userId: context.requester.userId,
+          userMessage: userInput,
+          ...(context.correlation?.channelId
+            ? { channelId: context.correlation.channelId }
+            : {}),
+          ...(context.correlation?.threadTs
+            ? { threadTs: context.correlation.threadTs }
+            : {}),
+          ...(context.toolChannelId
+            ? { toolChannelId: context.toolChannelId }
+            : {}),
+          configuration: configurationValues,
+          artifactState: context.artifactState,
+        });
+        mcpAuthSessionIdsByProvider.set(
+          plugin.manifest.name,
+          provider.authSessionId,
+        );
+        return provider;
+      },
+      onAuthorizationRequired: async (provider) => {
+        if (pendingMcpAuthorizationPause) {
+          return;
+        }
+
+        const authSessionId = mcpAuthSessionIdsByProvider.get(provider);
+        if (!authSessionId || !context.requester?.userId) {
+          throw new Error(
+            `Missing MCP auth session context for plugin "${provider}"`,
+          );
+        }
+
+        const latestArtifactState = mergeArtifactsState(
+          context.artifactState ?? {},
+          artifactStatePatch,
+        );
+        await patchMcpAuthSession(authSessionId, {
+          configuration: { ...configurationValues },
+          artifactState: latestArtifactState,
+          toolChannelId:
+            context.toolChannelId ??
+            latestArtifactState.assistantContextChannelId ??
+            context.correlation?.channelId,
+        });
+
+        const authSession = await getMcpAuthSession(authSessionId);
+        if (!authSession?.authorizationUrl) {
+          throw new Error(
+            `Missing MCP authorization URL for plugin "${provider}"`,
+          );
+        }
+
+        const delivery = await deliverPrivateMessage({
+          channelId: authSession.channelId,
+          threadTs: authSession.threadTs,
+          userId: authSession.userId,
+          text: `<${authSession.authorizationUrl}|Click here to link your ${formatProviderLabel(provider)} MCP access>. Once you've authorized, this thread will continue automatically.`,
+        });
+        if (!delivery) {
+          throw new Error(
+            `Unable to deliver MCP authorization link for plugin "${provider}"`,
+          );
+        }
+
+        pendingMcpAuthorizationPause = new McpAuthorizationPauseError(provider);
+        agent?.abort();
+      },
+      ...(sessionConversationId && sessionId
+        ? { sessionId: `${sessionConversationId}:${sessionId}` }
+        : {}),
+    });
+    const turnMcpToolManager = mcpToolManager;
+    let agent: Agent | undefined;
+    let baseAgentTools: AgentTool<any>[] = [];
+    const syncResumeState = () => {
+      loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
+      activeMcpProvidersForResume = mcpToolManager?.getActiveProviders() ?? [];
+    };
+
+    const refreshAgentTools = () => {
+      if (!agent) {
+        return;
+      }
+      agent.setTools([
+        ...baseAgentTools,
+        ...turnMcpToolManager.getActiveTools(),
+      ]);
+      syncResumeState();
+    };
 
     setTags({
       conversationId: spanContext.conversationId,
@@ -1099,19 +1266,10 @@ export async function generateAssistantReply(
         onSkillLoaded: async (loadedSkill) => {
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
-          const existing = activeSkills.find(
-            (skill) => skill.name === effective.name,
-          );
-          if (existing) {
-            existing.body = effective.body;
-            existing.description = effective.description;
-            existing.skillPath = effective.skillPath;
-            existing.allowedTools = effective.allowedTools;
-            existing.requiresCapabilities = effective.requiresCapabilities;
-            existing.usesConfig = effective.usesConfig;
-            return;
-          }
-          activeSkills.push(effective);
+          upsertActiveSkill(activeSkills, effective);
+          await turnMcpToolManager.activateForSkill(effective);
+          syncResumeState();
+          refreshAgentTools();
         },
       },
       {
@@ -1124,6 +1282,26 @@ export async function generateAssistantReply(
         sandbox,
       },
     );
+
+    syncResumeState();
+    try {
+      for (const skill of activeSkills) {
+        await turnMcpToolManager.activateForSkill(skill);
+        syncResumeState();
+      }
+      for (const provider of existingTurnCheckpoint?.activeMcpProviders ?? []) {
+        await turnMcpToolManager.activateProvider(provider);
+        syncResumeState();
+      }
+    } catch (error) {
+      if (pendingMcpAuthorizationPause) {
+        timeoutResumeMessages = existingTurnCheckpoint?.piMessages ?? [];
+        throw pendingMcpAuthorizationPause;
+      }
+      throw error;
+    }
+    syncResumeState();
+
     const baseInstructions = buildSystemPrompt({
       availableSkills,
       activeSkills,
@@ -1170,43 +1348,26 @@ export async function generateAssistantReply(
       },
     ]);
 
-    const { conversationId: sessionConversationId, sessionId } =
-      getSessionIdentifiers(context);
-    const canUseTurnSession = Boolean(sessionConversationId && sessionId);
-    timeoutResumeConversationId = sessionConversationId;
-    timeoutResumeSessionId = sessionId;
-    const existingTurnCheckpoint =
-      canUseTurnSession && sessionConversationId && sessionId
-        ? await getAgentTurnSessionCheckpoint(sessionConversationId, sessionId)
-        : undefined;
-    const resumedFromCheckpoint = Boolean(
-      existingTurnCheckpoint &&
-      existingTurnCheckpoint.state === "awaiting_resume" &&
-      existingTurnCheckpoint.piMessages.length > 0,
+    baseAgentTools = createAgentTools(
+      tools as Record<string, ToolDefinition<any>>,
+      skillSandbox,
+      spanContext,
+      context.onStatus,
+      sandboxExecutor,
+      capabilityRuntime,
+      {
+        onToolCall: (toolName) => {
+          toolCalls.push(toolName);
+        },
+      },
     );
-    const currentSliceId = resumedFromCheckpoint
-      ? existingTurnCheckpoint!.sliceId
-      : 1;
-    timeoutResumeSliceId = currentSliceId;
 
-    const agent = new Agent({
+    agent = new Agent({
       getApiKey: () => getGatewayApiKey(),
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),
-        tools: createAgentTools(
-          tools as Record<string, ToolDefinition<any>>,
-          skillSandbox,
-          spanContext,
-          context.onStatus,
-          sandboxExecutor,
-          capabilityRuntime,
-          {
-            onToolCall: (toolName) => {
-              toolCalls.push(toolName);
-            },
-          },
-        ),
+        tools: [...baseAgentTools, ...turnMcpToolManager.getActiveTools()],
       },
     });
     let hasEmittedText = false;
@@ -1311,6 +1472,10 @@ export async function generateAssistantReply(
               await promptPromise.catch(() => {});
               timeoutResumeMessages = [...(agent.state.messages as unknown[])];
             }
+            if (pendingMcpAuthorizationPause) {
+              timeoutResumeMessages = [...(agent.state.messages as unknown[])];
+              throw pendingMcpAuthorizationPause;
+            }
             throw error;
           } finally {
             if (timeoutId) {
@@ -1321,6 +1486,10 @@ export async function generateAssistantReply(
           newMessages = agent.state.messages.slice(
             beforeMessageCount,
           ) as unknown[];
+          if (pendingMcpAuthorizationPause) {
+            timeoutResumeMessages = [...(agent.state.messages as unknown[])];
+            throw pendingMcpAuthorizationPause;
+          }
           const outputMessages = newMessages.filter(isAssistantMessage);
           const outputMessagesAttribute =
             serializeGenAiAttribute(outputMessages);
@@ -1349,6 +1518,10 @@ export async function generateAssistantReply(
       unsubscribe();
     }
 
+    if (pendingMcpAuthorizationPause) {
+      throw pendingMcpAuthorizationPause;
+    }
+
     if (canUseTurnSession && sessionConversationId && sessionId) {
       await upsertAgentTurnSessionCheckpoint({
         conversationId: sessionConversationId,
@@ -1356,6 +1529,8 @@ export async function generateAssistantReply(
         sliceId: currentSliceId,
         state: "completed",
         piMessages: agent.state.messages as unknown[],
+        loadedSkillNames: activeSkills.map((skill) => skill.name),
+        activeMcpProviders: turnMcpToolManager.getActiveProviders(),
       });
     }
 
@@ -1514,6 +1689,30 @@ export async function generateAssistantReply(
     };
   } catch (error) {
     if (
+      error instanceof McpAuthorizationPauseError &&
+      timeoutResumeConversationId &&
+      timeoutResumeSessionId
+    ) {
+      const nextSliceId = timeoutResumeSliceId + 1;
+      await upsertAgentTurnSessionCheckpoint({
+        conversationId: timeoutResumeConversationId,
+        sessionId: timeoutResumeSessionId,
+        sliceId: nextSliceId,
+        state: "awaiting_resume",
+        piMessages: timeoutResumeMessages,
+        loadedSkillNames: loadedSkillNamesForResume,
+        activeMcpProviders: activeMcpProvidersForResume,
+        resumeReason: "auth",
+        resumedFromSliceId: timeoutResumeSliceId,
+        errorMessage: error.message,
+      });
+      throw new RetryableTurnError(
+        "mcp_auth_resume",
+        `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,
+      );
+    }
+
+    if (
       error instanceof AgentTurnTimeoutError &&
       timeoutResumeConversationId &&
       timeoutResumeSessionId
@@ -1554,6 +1753,9 @@ export async function generateAssistantReply(
           sliceId: nextSliceId,
           state: "awaiting_resume",
           piMessages,
+          loadedSkillNames: loadedSkillNamesForResume,
+          activeMcpProviders: activeMcpProvidersForResume,
+          resumeReason: "timeout",
           resumedFromSliceId: timeoutResumeSliceId,
           errorMessage: error.message,
         });
@@ -1620,5 +1822,21 @@ export async function generateAssistantReply(
         providerError: error,
       },
     };
+  } finally {
+    try {
+      await mcpToolManager?.close();
+    } catch (closeError) {
+      logWarn(
+        "mcp_tool_manager_close_failed",
+        {},
+        {
+          "error.message":
+            closeError instanceof Error
+              ? closeError.message
+              : String(closeError),
+        },
+        "Failed to close MCP tool manager",
+      );
+    }
   }
 }
