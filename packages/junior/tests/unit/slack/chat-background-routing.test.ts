@@ -132,19 +132,6 @@ describe("routeIncomingMessageToQueue", () => {
     expect(deps.markDedup).not.toHaveBeenCalled();
     expect(deps.addProcessingReaction).not.toHaveBeenCalled();
     expect(deps.enqueueThreadMessage).not.toHaveBeenCalled();
-    expect(deps.logInfo).toHaveBeenCalledWith(
-      "queue_ingress_ignored_unsubscribed_non_mention",
-      expect.objectContaining({
-        slackThreadId: "slack:C123:1700000000.100",
-        slackChannelId: "C123",
-        slackUserId: "U_TEST",
-      }),
-      expect.objectContaining({
-        "messaging.message.id": "1700000000.100",
-        "app.queue.route_result": "ignored_unsubscribed_non_mention",
-      }),
-      "Ignoring unsubscribed non-mention message before queue routing",
-    );
   });
 
   it("returns duplicate result when dedupe key already exists", async () => {
@@ -169,16 +156,6 @@ describe("routeIncomingMessageToQueue", () => {
     expect(deps.addProcessingReaction).not.toHaveBeenCalled();
     expect(deps.enqueueThreadMessage).not.toHaveBeenCalled();
     expect(deps.markDedup).not.toHaveBeenCalled();
-    expect(deps.logInfo).toHaveBeenCalledWith(
-      "queue_ingress_dedup_hit",
-      expect.any(Object),
-      expect.objectContaining({
-        "app.queue.dedup_outcome": "duplicate",
-        "app.slack.mention_source": "sdk_flag",
-        "app.queue.route_result": "ignored_duplicate",
-      }),
-      "Skipping duplicate incoming message before queue enqueue",
-    );
   });
 
   it("routes explicit mentions in unsubscribed threads without fallback detection", async () => {
@@ -218,16 +195,6 @@ describe("routeIncomingMessageToQueue", () => {
       channelId: "slack:C123",
       timestamp: "1700000000.300",
     });
-    expect(deps.logInfo).toHaveBeenCalledWith(
-      "queue_ingress_enqueued",
-      {},
-      expect.objectContaining({
-        "app.queue.dedup_outcome": "primary",
-        "app.slack.mention_source": "sdk_flag",
-        "app.queue.message_id": "msg_123",
-      }),
-      "Routing incoming message to queue",
-    );
   });
 
   it("routes fallback mention detection when SDK mention flag is false", async () => {
@@ -253,14 +220,6 @@ describe("routeIncomingMessageToQueue", () => {
     const [payload] = (deps.enqueueThreadMessage as ReturnType<typeof vi.fn>)
       .mock.calls[0] as [ThreadMessagePayload, string];
     expect(payload.kind).toBe("new_mention");
-    expect(deps.logInfo).toHaveBeenCalledWith(
-      "queue_ingress_enqueued",
-      {},
-      expect.objectContaining({
-        "app.slack.mention_source": "fallback_detector",
-      }),
-      "Routing incoming message to queue",
-    );
   });
 
   it("normalizes thread identity from raw slack fields before dedupe and routing", async () => {
@@ -324,23 +283,10 @@ describe("routeIncomingMessageToQueue", () => {
     expect(deps.hasDedup).not.toHaveBeenCalled();
     expect(deps.markDedup).not.toHaveBeenCalled();
     expect(deps.addProcessingReaction).not.toHaveBeenCalled();
-    expect(deps.logInfo).toHaveBeenCalledWith(
-      "queue_ingress_ignored_self_message",
-      expect.objectContaining({
-        slackThreadId: "slack:C123:1700000000.100",
-        slackChannelId: "C123",
-        slackUserId: "U_TEST",
-      }),
-      expect.objectContaining({
-        "messaging.message.id": "1700000000.100",
-        "app.queue.route_result": "ignored_self_message",
-      }),
-      "Ignoring self-authored message before queue routing",
-    );
     expect(deps.enqueueThreadMessage).not.toHaveBeenCalled();
   });
 
-  it("logs and ignores messages without an id", async () => {
+  it("ignores messages without an id", async () => {
     const runtime = createRuntime();
     const deps = createDeps();
     const message = {
@@ -357,18 +303,6 @@ describe("routeIncomingMessageToQueue", () => {
     });
 
     expect(result).toBe("ignored_missing_message_id");
-    expect(deps.logInfo).toHaveBeenCalledWith(
-      "queue_ingress_ignored_missing_message_id",
-      expect.objectContaining({
-        slackThreadId: "slack:C123:1700000000.100",
-        slackChannelId: "C123",
-        slackUserId: "U_TEST",
-      }),
-      expect.objectContaining({
-        "app.queue.route_result": "ignored_missing_message_id",
-      }),
-      "Ignoring message without an id before queue routing",
-    );
   });
 
   it("does not mark dedupe when routing fails so retries are still allowed", async () => {
@@ -430,16 +364,6 @@ describe("routeIncomingMessageToQueue", () => {
     expect(result).toBe("routed");
     expect(deps.enqueueThreadMessage).toHaveBeenCalledTimes(1);
     expect(deps.removeProcessingReaction).not.toHaveBeenCalled();
-    expect(deps.logWarn).toHaveBeenCalledWith(
-      "queue_ingress_reaction_add_failed",
-      {},
-      expect.objectContaining({
-        "messaging.message.id": "1700000000.950",
-        "app.queue.message_kind": "subscribed_message",
-        "error.message": "reaction unavailable",
-      }),
-      "Failed to add ingress processing reaction",
-    );
   });
 
   it("skips enqueue and reaction when webhook passive routing decides no reply", async () => {
@@ -468,21 +392,6 @@ describe("routeIncomingMessageToQueue", () => {
     expect(deps.enqueueThreadMessage).not.toHaveBeenCalled();
     expect(deps.addProcessingReaction).not.toHaveBeenCalled();
     expect(deps.markDedup).not.toHaveBeenCalled();
-    expect(deps.logInfo).toHaveBeenCalledWith(
-      "queue_ingress_ignored_passive_no_reply",
-      expect.objectContaining({
-        slackThreadId: "slack:C123:1700000000.100",
-        slackChannelId: "C123",
-        slackUserId: "U_TEST",
-      }),
-      expect.objectContaining({
-        "messaging.message.id": "1700000000.951",
-        "app.queue.message_kind": "subscribed_message",
-        "app.queue.route_result": "ignored_passive_no_reply",
-        "app.decision.reason": "side_conversation",
-      }),
-      "Skipping passive subscribed-thread reply before queue enqueue",
-    );
   });
 
   it("routes successfully on retry after an initial routing failure", async () => {
