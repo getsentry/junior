@@ -1,13 +1,36 @@
 import { Chat } from "chat";
 import type { Message, Thread } from "chat";
-import { coerceThreadConversationState, type ThreadConversationState } from "@/chat/conversation-state";
+import {
+  coerceThreadConversationState,
+  type ThreadConversationState,
+} from "@/chat/conversation-state";
 import { enqueueThreadMessage } from "@/chat/queue/client";
-import type { ThreadMessageKind, ThreadMessagePayload } from "@/chat/queue/types";
+import type {
+  ThreadMessageKind,
+  ThreadMessagePayload,
+} from "@/chat/queue/types";
 import { shouldReplyInSubscribedThread } from "@/chat/runtime/subscribed-routing";
-import { getChannelId, getRunId, stripLeadingBotMention } from "@/chat/runtime/thread-context";
-import { addReactionToMessage, removeReactionFromMessage } from "@/chat/slack-actions/channel";
-import { claimQueueIngressDedup, getStateAdapter, hasQueueIngressDedup } from "@/chat/state";
-import { logInfo, logWarn, setSpanAttributes, withContext, withSpan } from "@/chat/observability";
+import {
+  getChannelId,
+  getRunId,
+  stripLeadingBotMention,
+} from "@/chat/runtime/thread-context";
+import {
+  addReactionToMessage,
+  removeReactionFromMessage,
+} from "@/chat/slack-actions/channel";
+import {
+  claimQueueIngressDedup,
+  getStateAdapter,
+  hasQueueIngressDedup,
+} from "@/chat/state";
+import {
+  logInfo,
+  logWarn,
+  setSpanAttributes,
+  withContext,
+  withSpan,
+} from "@/chat/observability";
 
 type WebhookOptions = {
   waitUntil?: (task: () => Promise<unknown>) => void;
@@ -21,19 +44,29 @@ type ChatLike = {
     adapter: unknown,
     threadId: string,
     initialMessage: unknown,
-    isSubscribedContext?: boolean
+    isSubscribedContext?: boolean,
   ) => Promise<unknown>;
   detectMention?: (adapter: unknown, message: unknown) => boolean;
-  handleIncomingMessage: (adapter: unknown, threadId: string, message: unknown) => Promise<void>;
+  handleIncomingMessage: (
+    adapter: unknown,
+    threadId: string,
+    message: unknown,
+  ) => Promise<void>;
   handleReactionEvent: (event: unknown) => Promise<void>;
   handleActionEvent: (event: unknown) => Promise<void>;
-  retrieveModalContext: (adapterName: string, contextId: string) => Promise<{
+  retrieveModalContext: (
+    adapterName: string,
+    contextId: string,
+  ) => Promise<{
     relatedThread: unknown;
     relatedMessage: unknown;
     relatedChannel: unknown;
   }>;
   handleSlashCommandEvent: (event: unknown) => Promise<void>;
-  modalCloseHandlers: Array<{ callbackIds: string[]; handler: (event: unknown) => Promise<void> }>;
+  modalCloseHandlers: Array<{
+    callbackIds: string[];
+    handler: (event: unknown) => Promise<void>;
+  }>;
   assistantThreadStartedHandlers: Array<(event: unknown) => Promise<void>>;
   assistantContextChangedHandlers: Array<(event: unknown) => Promise<void>>;
   appHomeOpenedHandlers: Array<(event: unknown) => Promise<void>>;
@@ -49,8 +82,13 @@ function nonEmptyString(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
-function buildRoutingConversationContext(conversation: ThreadConversationState): string | undefined {
-  if (conversation.messages.length === 0 && conversation.compactions.length === 0) {
+function buildRoutingConversationContext(
+  conversation: ThreadConversationState,
+): string | undefined {
+  if (
+    conversation.messages.length === 0 &&
+    conversation.compactions.length === 0
+  ) {
     return undefined;
   }
 
@@ -63,8 +101,8 @@ function buildRoutingConversationContext(conversation: ThreadConversationState):
           `summary_${index + 1}:`,
           compaction.summary,
           `covered_messages: ${compaction.coveredMessageIds.length}`,
-          `created_at: ${new Date(compaction.createdAtMs).toISOString()}`
-        ].join(" ")
+          `created_at: ${new Date(compaction.createdAtMs).toISOString()}`,
+        ].join(" "),
       );
     }
     lines.push("</thread-compactions>");
@@ -73,14 +111,17 @@ function buildRoutingConversationContext(conversation: ThreadConversationState):
 
   lines.push("<thread-transcript>");
   for (const message of conversation.messages) {
-    const displayName = message.author?.fullName || message.author?.userName || message.role;
+    const displayName =
+      message.author?.fullName || message.author?.userName || message.role;
     lines.push(`[${message.role}] ${displayName}: ${message.text}`);
   }
   lines.push("</thread-transcript>");
   return lines.join("\n");
 }
 
-function serializeMessageForQueue(message: Message): ThreadMessagePayload["message"] {
+function serializeMessageForQueue(
+  message: Message,
+): ThreadMessagePayload["message"] {
   const candidate = message as Message & { toJSON?: () => unknown };
   if (typeof candidate.toJSON === "function") {
     return candidate.toJSON() as ThreadMessagePayload["message"];
@@ -88,11 +129,13 @@ function serializeMessageForQueue(message: Message): ThreadMessagePayload["messa
 
   return {
     _type: "chat:Message",
-    ...(message as unknown as Record<string, unknown>)
+    ...(message as unknown as Record<string, unknown>),
   } as ThreadMessagePayload["message"];
 }
 
-function serializeThreadForQueue(thread: Thread): ThreadMessagePayload["thread"] {
+function serializeThreadForQueue(
+  thread: Thread,
+): ThreadMessagePayload["thread"] {
   const candidate = thread as Thread & { toJSON?: () => unknown };
   if (typeof candidate.toJSON === "function") {
     return candidate.toJSON() as ThreadMessagePayload["thread"];
@@ -100,13 +143,16 @@ function serializeThreadForQueue(thread: Thread): ThreadMessagePayload["thread"]
 
   return {
     _type: "chat:Thread",
-    ...(thread as unknown as Record<string, unknown>)
+    ...(thread as unknown as Record<string, unknown>),
   } as ThreadMessagePayload["thread"];
 }
 
 // Derive canonical Slack thread IDs from the raw event payload (channel + thread_ts/ts)
 // rather than trusting adapter-provided thread ID parts which may be incomplete.
-export function normalizeIncomingSlackThreadId(threadId: string, message: unknown): string {
+export function normalizeIncomingSlackThreadId(
+  threadId: string,
+  message: unknown,
+): string {
   if (!threadId.startsWith("slack:")) {
     return threadId;
   }
@@ -129,7 +175,10 @@ export function normalizeIncomingSlackThreadId(threadId: string, message: unknow
   return `slack:${channelId}:${threadTs}`;
 }
 
-export function buildQueueIngressDedupKey(normalizedThreadId: string, messageId: string): string {
+export function buildQueueIngressDedupKey(
+  normalizedThreadId: string,
+  messageId: string,
+): string {
   return `${normalizedThreadId}:${messageId}`;
 }
 
@@ -159,14 +208,72 @@ interface QueueRoutingDeps {
   getIsSubscribed: (threadId: string) => Promise<boolean>;
   logInfo: typeof logInfo;
   logWarn: typeof logWarn;
-  enqueueThreadMessage: (payload: ThreadMessagePayload, dedupKey: string) => Promise<string | undefined>;
+  enqueueThreadMessage: (
+    payload: ThreadMessagePayload,
+    dedupKey: string,
+  ) => Promise<string | undefined>;
   shouldReplyInSubscribedThread: (args: {
     message: Message;
     normalizedThreadId: string;
     thread: Thread;
   }) => Promise<{ shouldReply: boolean; reason: string }>;
-  addProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
-  removeProcessingReaction: (input: { channelId: string; timestamp: string }) => Promise<void>;
+  addProcessingReaction: (input: {
+    channelId: string;
+    timestamp: string;
+  }) => Promise<void>;
+  removeProcessingReaction: (input: {
+    channelId: string;
+    timestamp: string;
+  }) => Promise<void>;
+}
+
+function getMessageLogContext(args: {
+  message: {
+    author?: { userId?: string };
+    raw?: Record<string, unknown>;
+  };
+  normalizedThreadId?: string;
+}): {
+  slackChannelId?: string;
+  slackThreadId?: string;
+  slackUserId?: string;
+} {
+  return {
+    slackThreadId: args.normalizedThreadId,
+    slackChannelId: nonEmptyString(args.message.raw?.channel),
+    slackUserId: args.message.author?.userId,
+  };
+}
+
+function logIgnoredIngressResult(args: {
+  deps: Pick<QueueRoutingDeps, "logInfo">;
+  eventName: string;
+  logContext: {
+    slackChannelId?: string;
+    slackThreadId?: string;
+    slackUserId?: string;
+  };
+  messageId?: string;
+  dedupKey?: string;
+  kind?: ThreadMessageKind;
+  routeResult: QueueIngressRouteResult;
+  decisionReason?: string;
+  body: string;
+}): void {
+  args.deps.logInfo(
+    args.eventName,
+    args.logContext,
+    {
+      ...(args.messageId ? { "messaging.message.id": args.messageId } : {}),
+      ...(args.kind ? { "app.queue.message_kind": args.kind } : {}),
+      ...(args.dedupKey ? { "app.queue.dedup_key": args.dedupKey } : {}),
+      ...(args.decisionReason
+        ? { "app.decision.reason": args.decisionReason }
+        : {}),
+      "app.queue.route_result": args.routeResult,
+    },
+    args.body,
+  );
 }
 
 const defaultQueueRoutingDeps: QueueRoutingDeps = {
@@ -177,12 +284,16 @@ const defaultQueueRoutingDeps: QueueRoutingDeps = {
   logWarn,
   enqueueThreadMessage: async (payload, dedupKey) =>
     await enqueueThreadMessage(payload, {
-      idempotencyKey: dedupKey
+      idempotencyKey: dedupKey,
     }),
-  shouldReplyInSubscribedThread: async ({ message, normalizedThreadId, thread }) => {
+  shouldReplyInSubscribedThread: async ({
+    message,
+    normalizedThreadId,
+    thread,
+  }) => {
     const rawText = message.text;
     const text = stripLeadingBotMention(rawText, {
-      stripLeadingSlackMentionToken: Boolean(message.isMention)
+      stripLeadingSlackMentionToken: Boolean(message.isMention),
     });
     const conversation = coerceThreadConversationState(await thread.state);
     const conversationContext = buildRoutingConversationContext(conversation);
@@ -198,24 +309,24 @@ const defaultQueueRoutingDeps: QueueRoutingDeps = {
         threadId: normalizedThreadId,
         requesterId: message.author.userId,
         channelId,
-        runId
-      }
+        runId,
+      },
     });
   },
   addProcessingReaction: async ({ channelId, timestamp }) => {
     await addReactionToMessage({
       channelId,
       timestamp,
-      emoji: "eyes"
+      emoji: "eyes",
     });
   },
   removeProcessingReaction: async ({ channelId, timestamp }) => {
     await removeReactionFromMessage({
       channelId,
       timestamp,
-      emoji: "eyes"
+      emoji: "eyes",
     });
-  }
+  },
 };
 
 export type QueueIngressRouteResult =
@@ -241,7 +352,17 @@ export async function routeIncomingMessageToQueue(args: {
     return "ignored_non_object";
   }
 
-  const normalizedThreadId = normalizeIncomingSlackThreadId(args.threadId, message);
+  const normalizedThreadId = normalizeIncomingSlackThreadId(
+    args.threadId,
+    message,
+  );
+  const baseLogContext = getMessageLogContext({
+    message: message as {
+      author?: { userId?: string };
+      raw?: Record<string, unknown>;
+    },
+    normalizedThreadId,
+  });
   if ("threadId" in message) {
     (message as Record<string, unknown>).threadId = normalizedThreadId;
   }
@@ -252,21 +373,49 @@ export async function routeIncomingMessageToQueue(args: {
     isMention?: boolean;
   };
   if (typedMessage.author?.isMe) {
+    logIgnoredIngressResult({
+      deps,
+      eventName: "queue_ingress_ignored_self_message",
+      logContext: baseLogContext,
+      messageId: nonEmptyString(typedMessage.id),
+      routeResult: "ignored_self_message",
+      body: "Ignoring self-authored message before queue routing",
+    });
     return "ignored_self_message";
   }
 
   const messageId = nonEmptyString(typedMessage.id);
   if (!messageId) {
+    logIgnoredIngressResult({
+      deps,
+      eventName: "queue_ingress_ignored_missing_message_id",
+      logContext: baseLogContext,
+      routeResult: "ignored_missing_message_id",
+      body: "Ignoring message without an id before queue routing",
+    });
     return "ignored_missing_message_id";
   }
 
   const isSubscribed = await deps.getIsSubscribed(normalizedThreadId);
-  const isMention = Boolean(typedMessage.isMention || runtime.detectMention?.(adapter, message));
+  const mentionSource = typedMessage.isMention
+    ? "sdk_flag"
+    : runtime.detectMention?.(adapter, message)
+      ? "fallback_detector"
+      : undefined;
+  const isMention = mentionSource !== undefined;
   const kind = determineThreadMessageKind({
     isSubscribed,
-    isMention
+    isMention,
   });
   if (!kind) {
+    logIgnoredIngressResult({
+      deps,
+      eventName: "queue_ingress_ignored_unsubscribed_non_mention",
+      logContext: baseLogContext,
+      messageId,
+      routeResult: "ignored_unsubscribed_non_mention",
+      body: "Ignoring unsubscribed non-mention message before queue routing",
+    });
     return "ignored_unsubscribed_non_mention";
   }
 
@@ -275,22 +424,26 @@ export async function routeIncomingMessageToQueue(args: {
   if (alreadyDeduped) {
     deps.logInfo(
       "queue_ingress_dedup_hit",
-      {
-        slackThreadId: normalizedThreadId,
-        slackUserId: (message as Message).author.userId
-      },
+      baseLogContext,
       {
         "messaging.message.id": messageId,
         "app.queue.message_kind": kind,
         "app.queue.dedup_key": dedupKey,
-        "app.queue.dedup_outcome": "duplicate"
+        "app.queue.dedup_outcome": "duplicate",
+        ...(mentionSource ? { "app.slack.mention_source": mentionSource } : {}),
+        "app.queue.route_result": "ignored_duplicate",
       },
-      "Skipping duplicate incoming message before queue enqueue"
+      "Skipping duplicate incoming message before queue enqueue",
     );
     return "ignored_duplicate";
   }
 
-  const thread = (await runtime.createThread(adapter, normalizedThreadId, message, isSubscribed)) as Thread;
+  const thread = (await runtime.createThread(
+    adapter,
+    normalizedThreadId,
+    message,
+    isSubscribed,
+  )) as Thread;
   const serializedMessage = serializeMessageForQueue(message as Message);
   const serializedThread = serializeThreadForQueue(thread);
   let payloadKind: ThreadMessageKind = kind;
@@ -298,9 +451,20 @@ export async function routeIncomingMessageToQueue(args: {
     const decision = await deps.shouldReplyInSubscribedThread({
       message: message as Message,
       normalizedThreadId,
-      thread
+      thread,
     });
     if (!decision.shouldReply) {
+      logIgnoredIngressResult({
+        deps,
+        eventName: "queue_ingress_ignored_passive_no_reply",
+        logContext: baseLogContext,
+        messageId,
+        dedupKey,
+        kind,
+        routeResult: "ignored_passive_no_reply",
+        decisionReason: decision.reason,
+        body: "Skipping passive subscribed-thread reply before queue enqueue",
+      });
       return "ignored_passive_no_reply";
     }
     payloadKind = "subscribed_reply";
@@ -311,14 +475,14 @@ export async function routeIncomingMessageToQueue(args: {
     kind: payloadKind,
     message: serializedMessage,
     normalizedThreadId,
-    thread: serializedThread
+    thread: serializedThread,
   };
 
   await withContext(
     {
       slackThreadId: normalizedThreadId,
       slackChannelId: thread.channelId,
-      slackUserId: (message as Message).author.userId
+      slackUserId: (message as Message).author.userId,
     },
     async () => {
       let processingReactionAdded = false;
@@ -326,20 +490,24 @@ export async function routeIncomingMessageToQueue(args: {
       try {
         await deps.addProcessingReaction({
           channelId: thread.channelId,
-          timestamp: messageId
+          timestamp: messageId,
         });
         processingReactionAdded = true;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         deps.logWarn(
           "queue_ingress_reaction_add_failed",
           {},
           {
             "messaging.message.id": messageId,
             "app.queue.message_kind": payloadKind,
-            "error.message": errorMessage
+            ...(mentionSource
+              ? { "app.slack.mention_source": mentionSource }
+              : {}),
+            "error.message": errorMessage,
           },
-          "Failed to add ingress processing reaction"
+          "Failed to add ingress processing reaction",
         );
       }
 
@@ -350,39 +518,42 @@ export async function routeIncomingMessageToQueue(args: {
           {
             slackThreadId: normalizedThreadId,
             slackChannelId: thread.channelId,
-            slackUserId: (message as Message).author.userId
+            slackUserId: (message as Message).author.userId,
           },
           async () => {
             queueMessageId = await deps.enqueueThreadMessage(payload, dedupKey);
             if (queueMessageId) {
               setSpanAttributes({
-                "app.queue.message_id": queueMessageId
+                "app.queue.message_id": queueMessageId,
               });
             }
           },
           {
             "messaging.message.id": messageId,
-            "app.queue.message_kind": payloadKind
-          }
+            "app.queue.message_kind": payloadKind,
+          },
         );
       } catch (error) {
         if (processingReactionAdded) {
           try {
             await deps.removeProcessingReaction({
               channelId: thread.channelId,
-              timestamp: messageId
+              timestamp: messageId,
             });
           } catch (cleanupError) {
-            const cleanupErrorMessage = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+            const cleanupErrorMessage =
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : String(cleanupError);
             deps.logWarn(
               "queue_ingress_reaction_cleanup_failed",
               {},
               {
                 "messaging.message.id": messageId,
                 "app.queue.message_kind": payloadKind,
-                "error.message": cleanupErrorMessage
+                "error.message": cleanupErrorMessage,
               },
-              "Failed to remove ingress processing reaction after enqueue failure"
+              "Failed to remove ingress processing reaction after enqueue failure",
             );
           }
         }
@@ -395,11 +566,15 @@ export async function routeIncomingMessageToQueue(args: {
         {
           "messaging.message.id": messageId,
           "app.queue.message_kind": payloadKind,
+          ...(mentionSource
+            ? { "app.slack.mention_source": mentionSource }
+            : {}),
           "app.queue.dedup_key": dedupKey,
           "app.queue.dedup_outcome": "primary",
-          ...(queueMessageId ? { "app.queue.message_id": queueMessageId } : {})
+          "app.queue.route_result": "routed",
+          ...(queueMessageId ? { "app.queue.message_id": queueMessageId } : {}),
         },
-        "Routing incoming message to queue"
+        "Routing incoming message to queue",
       );
 
       const marked = await deps.markDedup(dedupKey, QUEUE_INGRESS_DEDUP_TTL_MS);
@@ -410,18 +585,21 @@ export async function routeIncomingMessageToQueue(args: {
           {
             "messaging.message.id": messageId,
             "app.queue.message_kind": payloadKind,
-            "app.queue.dedup_key": dedupKey
+            "app.queue.dedup_key": dedupKey,
           },
-          "Queue ingress dedup state write failed after enqueue"
+          "Queue ingress dedup state write failed after enqueue",
         );
       }
-    }
+    },
   );
 
   return "routed";
 }
 
-function scheduleBackgroundWork(options: WebhookOptions | undefined, run: () => Promise<void>): void {
+function scheduleBackgroundWork(
+  options: WebhookOptions | undefined,
+  run: () => Promise<void>,
+): void {
   if (!options?.waitUntil) {
     throw new Error("Chat background processing requires waitUntil");
   }
@@ -438,115 +616,136 @@ export function installChatBackgroundPatch(): void {
   target[PATCH_FLAG] = true;
   const chatProto = Chat.prototype as unknown as ChatLike;
 
-  (chatProto as unknown as { processMessage: unknown }).processMessage = function processMessage(
-    this: ChatLike,
-    adapter: unknown,
-    threadId: string,
-    messageOrFactory: unknown,
-    options?: WebhookOptions
-  ): void {
-    const run = async (): Promise<void> => {
-      try {
-        const message =
-          typeof messageOrFactory === "function"
-            ? await (messageOrFactory as () => Promise<unknown>)()
-            : messageOrFactory;
-        const result = await routeIncomingMessageToQueue({
-          adapter,
-          threadId,
-          message,
-          runtime: {
-            createThread: this.createThread.bind(this),
-            detectMention: this.detectMention?.bind(this)
+  (chatProto as unknown as { processMessage: unknown }).processMessage =
+    function processMessage(
+      this: ChatLike,
+      adapter: unknown,
+      threadId: string,
+      messageOrFactory: unknown,
+      options?: WebhookOptions,
+    ): void {
+      const run = async (): Promise<void> => {
+        try {
+          const message =
+            typeof messageOrFactory === "function"
+              ? await (messageOrFactory as () => Promise<unknown>)()
+              : messageOrFactory;
+          const result = await routeIncomingMessageToQueue({
+            adapter,
+            threadId,
+            message,
+            runtime: {
+              createThread: this.createThread.bind(this),
+              detectMention: this.detectMention?.bind(this),
+            },
+          });
+          if (result === "ignored_missing_message_id") {
+            const normalizedThreadId = normalizeIncomingSlackThreadId(
+              threadId,
+              message,
+            );
+            this.logger?.error?.("Message processing error", {
+              threadId: normalizedThreadId,
+              reason: "missing_message_id",
+            });
           }
-        });
-        if (result === "ignored_missing_message_id") {
-          const normalizedThreadId = normalizeIncomingSlackThreadId(threadId, message);
+        } catch (err) {
           this.logger?.error?.("Message processing error", {
-            threadId: normalizedThreadId,
-            reason: "missing_message_id"
+            error: err,
+            threadId,
           });
         }
-      } catch (err) {
-        this.logger?.error?.("Message processing error", { error: err, threadId });
-      }
+      };
+
+      // processMessage already logs and rethrows inside run(); avoid duplicate
+      // logging in non-waitUntil paths by not adding a second unhandled callback.
+      scheduleBackgroundWork(options, run);
     };
 
-    // processMessage already logs and rethrows inside run(); avoid duplicate
-    // logging in non-waitUntil paths by not adding a second unhandled callback.
-    scheduleBackgroundWork(options, run);
-  };
-
-  (chatProto as unknown as { processReaction: unknown }).processReaction = function processReaction(
-    this: ChatLike,
-    event: { emoji?: string; messageId?: string },
-    options?: WebhookOptions
-  ): void {
-    const run = async (): Promise<void> => {
-      try {
-        await this.handleReactionEvent(event);
-      } catch (err) {
-        this.logger?.error?.("Reaction processing error", {
-          error: err,
-          emoji: event.emoji,
-          messageId: event.messageId
-        });
-      }
-    };
-
-    scheduleBackgroundWork(options, run);
-  };
-
-  (chatProto as unknown as { processAction: unknown }).processAction = function processAction(
-    this: ChatLike,
-    event: { actionId?: string; messageId?: string },
-    options?: WebhookOptions
-  ): void {
-    const run = async (): Promise<void> => {
-      try {
-        await this.handleActionEvent(event);
-      } catch (err) {
-        this.logger?.error?.("Action processing error", {
-          error: err,
-          actionId: event.actionId,
-          messageId: event.messageId
-        });
-      }
-    };
-
-    scheduleBackgroundWork(options, run);
-  };
-
-  (chatProto as unknown as { processModalClose: unknown }).processModalClose = function processModalClose(
-    this: ChatLike,
-    event: { adapter: { name: string }; callbackId: string },
-    contextId: string,
-    options?: WebhookOptions
-  ): void {
-    const run = async (): Promise<void> => {
-      try {
-        const { relatedThread, relatedMessage, relatedChannel } = await this.retrieveModalContext(event.adapter.name, contextId);
-        const fullEvent = { ...event, relatedThread, relatedMessage, relatedChannel };
-        for (const { callbackIds, handler } of this.modalCloseHandlers) {
-          if (callbackIds.length === 0 || callbackIds.includes(event.callbackId)) {
-            await handler(fullEvent);
-          }
+  (chatProto as unknown as { processReaction: unknown }).processReaction =
+    function processReaction(
+      this: ChatLike,
+      event: { emoji?: string; messageId?: string },
+      options?: WebhookOptions,
+    ): void {
+      const run = async (): Promise<void> => {
+        try {
+          await this.handleReactionEvent(event);
+        } catch (err) {
+          this.logger?.error?.("Reaction processing error", {
+            error: err,
+            emoji: event.emoji,
+            messageId: event.messageId,
+          });
         }
-      } catch (err) {
-        this.logger?.error?.("Modal close handler error", {
-          error: err,
-          callbackId: event.callbackId
-        });
-      }
+      };
+
+      scheduleBackgroundWork(options, run);
     };
 
-    scheduleBackgroundWork(options, run);
-  };
+  (chatProto as unknown as { processAction: unknown }).processAction =
+    function processAction(
+      this: ChatLike,
+      event: { actionId?: string; messageId?: string },
+      options?: WebhookOptions,
+    ): void {
+      const run = async (): Promise<void> => {
+        try {
+          await this.handleActionEvent(event);
+        } catch (err) {
+          this.logger?.error?.("Action processing error", {
+            error: err,
+            actionId: event.actionId,
+            messageId: event.messageId,
+          });
+        }
+      };
 
-  (chatProto as unknown as { processSlashCommand: unknown }).processSlashCommand = function processSlashCommand(
+      scheduleBackgroundWork(options, run);
+    };
+
+  (chatProto as unknown as { processModalClose: unknown }).processModalClose =
+    function processModalClose(
+      this: ChatLike,
+      event: { adapter: { name: string }; callbackId: string },
+      contextId: string,
+      options?: WebhookOptions,
+    ): void {
+      const run = async (): Promise<void> => {
+        try {
+          const { relatedThread, relatedMessage, relatedChannel } =
+            await this.retrieveModalContext(event.adapter.name, contextId);
+          const fullEvent = {
+            ...event,
+            relatedThread,
+            relatedMessage,
+            relatedChannel,
+          };
+          for (const { callbackIds, handler } of this.modalCloseHandlers) {
+            if (
+              callbackIds.length === 0 ||
+              callbackIds.includes(event.callbackId)
+            ) {
+              await handler(fullEvent);
+            }
+          }
+        } catch (err) {
+          this.logger?.error?.("Modal close handler error", {
+            error: err,
+            callbackId: event.callbackId,
+          });
+        }
+      };
+
+      scheduleBackgroundWork(options, run);
+    };
+
+  (
+    chatProto as unknown as { processSlashCommand: unknown }
+  ).processSlashCommand = function processSlashCommand(
     this: ChatLike,
     event: { command?: string; text?: string },
-    options?: WebhookOptions
+    options?: WebhookOptions,
   ): void {
     const run = async (): Promise<void> => {
       try {
@@ -555,7 +754,7 @@ export function installChatBackgroundPatch(): void {
         this.logger?.error?.("Slash command processing error", {
           error: err,
           command: event.command,
-          text: event.text
+          text: event.text,
         });
       }
     };
@@ -563,54 +762,58 @@ export function installChatBackgroundPatch(): void {
     scheduleBackgroundWork(options, run);
   };
 
-  (chatProto as unknown as { processAssistantThreadStarted: unknown }).processAssistantThreadStarted =
-    function processAssistantThreadStarted(
-      this: ChatLike,
-      event: { threadId?: string },
-      options?: WebhookOptions
-    ): void {
-      const run = async (): Promise<void> => {
-        try {
-          for (const handler of this.assistantThreadStartedHandlers) {
-            await handler(event);
-          }
-        } catch (err) {
-          this.logger?.error?.("Assistant thread started handler error", {
-            error: err,
-            threadId: event.threadId
-          });
+  (
+    chatProto as unknown as { processAssistantThreadStarted: unknown }
+  ).processAssistantThreadStarted = function processAssistantThreadStarted(
+    this: ChatLike,
+    event: { threadId?: string },
+    options?: WebhookOptions,
+  ): void {
+    const run = async (): Promise<void> => {
+      try {
+        for (const handler of this.assistantThreadStartedHandlers) {
+          await handler(event);
         }
-      };
-
-      scheduleBackgroundWork(options, run);
+      } catch (err) {
+        this.logger?.error?.("Assistant thread started handler error", {
+          error: err,
+          threadId: event.threadId,
+        });
+      }
     };
 
-  (chatProto as unknown as { processAssistantContextChanged: unknown }).processAssistantContextChanged =
-    function processAssistantContextChanged(
-      this: ChatLike,
-      event: { threadId?: string },
-      options?: WebhookOptions
-    ): void {
-      const run = async (): Promise<void> => {
-        try {
-          for (const handler of this.assistantContextChangedHandlers) {
-            await handler(event);
-          }
-        } catch (err) {
-          this.logger?.error?.("Assistant context changed handler error", {
-            error: err,
-            threadId: event.threadId
-          });
-        }
-      };
+    scheduleBackgroundWork(options, run);
+  };
 
-      scheduleBackgroundWork(options, run);
+  (
+    chatProto as unknown as { processAssistantContextChanged: unknown }
+  ).processAssistantContextChanged = function processAssistantContextChanged(
+    this: ChatLike,
+    event: { threadId?: string },
+    options?: WebhookOptions,
+  ): void {
+    const run = async (): Promise<void> => {
+      try {
+        for (const handler of this.assistantContextChangedHandlers) {
+          await handler(event);
+        }
+      } catch (err) {
+        this.logger?.error?.("Assistant context changed handler error", {
+          error: err,
+          threadId: event.threadId,
+        });
+      }
     };
 
-  (chatProto as unknown as { processAppHomeOpened: unknown }).processAppHomeOpened = function processAppHomeOpened(
+    scheduleBackgroundWork(options, run);
+  };
+
+  (
+    chatProto as unknown as { processAppHomeOpened: unknown }
+  ).processAppHomeOpened = function processAppHomeOpened(
     this: ChatLike,
     event: { userId?: string },
-    options?: WebhookOptions
+    options?: WebhookOptions,
   ): void {
     const run = async (): Promise<void> => {
       try {
@@ -620,7 +823,7 @@ export function installChatBackgroundPatch(): void {
       } catch (err) {
         this.logger?.error?.("App home opened handler error", {
           error: err,
-          userId: event.userId
+          userId: event.userId,
         });
       }
     };
