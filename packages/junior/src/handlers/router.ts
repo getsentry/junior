@@ -13,8 +13,22 @@ type RouteContext = {
  * Keep this router thin and explicit so app code can export one handler module while
  * runtime internals continue to evolve behind it.
  */
+function trimEdgeSlashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+
+  while (start < end && value[start] === "/") {
+    start += 1;
+  }
+  while (end > start && value[end - 1] === "/") {
+    end -= 1;
+  }
+
+  return value.slice(start, end);
+}
+
 function normalizeRoutePath(pathParts: string[]): string {
-  const route = pathParts.join("/").replace(/^\/+|\/+$/g, "");
+  const route = trimEdgeSlashes(pathParts.join("/"));
   return route.startsWith("api/") ? route.slice("api/".length) : route;
 }
 

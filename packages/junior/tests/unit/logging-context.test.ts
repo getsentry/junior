@@ -5,14 +5,18 @@ vi.mock("@sentry/nextjs", () => ({
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
-    error: vi.fn()
+    error: vi.fn(),
   },
-  withScope: (callback: (scope: Record<string, (key: string, value: unknown) => void>) => void) => {
+  withScope: (
+    callback: (
+      scope: Record<string, (key: string, value: unknown) => void>,
+    ) => void,
+  ) => {
     callback({
       setExtra: () => undefined,
       setTag: () => undefined,
       setUser: () => undefined,
-      setContext: () => undefined
+      setContext: () => undefined,
     });
   },
   captureMessage: vi.fn(),
@@ -21,7 +25,9 @@ vi.mock("@sentry/nextjs", () => ({
   spanToJSON: vi.fn(() => ({})),
   setTag: vi.fn(),
   setUser: vi.fn(),
-  startSpan: vi.fn(async (_args, callback: () => Promise<unknown>) => await callback())
+  startSpan: vi.fn(
+    async (_args, callback: () => Promise<unknown>) => await callback(),
+  ),
 }));
 
 describe("logging context ids", () => {
@@ -30,12 +36,16 @@ describe("logging context ids", () => {
   });
 
   it("attaches conversation, turn, and agent ids to emitted records", async () => {
-    const { log, registerLogRecordSink, withLogContext } = await import("@/chat/logging");
-    const records: Array<{ eventName: string; attributes: Record<string, unknown> }> = [];
+    const { log, registerLogRecordSink, withLogContext } =
+      await import("@/chat/logging");
+    const records: Array<{
+      eventName: string;
+      attributes: Record<string, unknown>;
+    }> = [];
     const unregister = registerLogRecordSink((record) => {
       records.push({
         eventName: record.eventName,
-        attributes: record.attributes
+        attributes: record.attributes,
       });
     });
 
@@ -44,11 +54,15 @@ describe("logging context ids", () => {
         {
           conversationId: "conversation-1",
           turnId: "turn-1",
-          agentId: "turn-1"
+          agentId: "turn-1",
         },
         async () => {
-          log.info("agent_turn_started", { "app.message.kind": "user_inbound" }, "Agent turn started");
-        }
+          log.info(
+            "agent_turn_started",
+            { "app.message.kind": "user_inbound" },
+            "Agent turn started",
+          );
+        },
       );
     } finally {
       unregister();
@@ -61,26 +75,32 @@ describe("logging context ids", () => {
         "app.conversation.id": "conversation-1",
         "app.turn.id": "turn-1",
         "app.agent.id": "turn-1",
-        "event.name": "agent_turn_started"
-      })
+        "event.name": "agent_turn_started",
+      }),
     );
   });
 
   it("prioritizes correlation ids early in dev console output", async () => {
     vi.stubEnv("NODE_ENV", "development");
     const { log, withLogContext } = await import("@/chat/logging");
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const infoSpy = vi
+      .spyOn(console, "info")
+      .mockImplementation(() => undefined);
 
     try {
       await withLogContext(
         {
           conversationId: "conversation-2",
           turnId: "turn-2",
-          agentId: "turn-2"
+          agentId: "turn-2",
         },
         async () => {
-          log.info("agent_message_in", { "app.message.kind": "user_inbound" }, "Agent message received");
-        }
+          log.info(
+            "agent_message_in",
+            { "app.message.kind": "user_inbound" },
+            "Agent message received",
+          );
+        },
       );
     } finally {
       vi.unstubAllEnvs();
@@ -96,5 +116,33 @@ describe("logging context ids", () => {
     expect(turnIndex).toBeGreaterThan(conversationIndex);
     expect(agentIndex).toBeGreaterThan(turnIndex);
     expect(eventNameIndex).toBeGreaterThan(agentIndex);
+  });
+
+  it("redacts PEM private key bodies without regex backtracking", async () => {
+    const { log, registerLogRecordSink } = await import("@/chat/logging");
+    const records: Array<{ body: string }> = [];
+    const unregister = registerLogRecordSink((record) => {
+      records.push({ body: record.body });
+    });
+
+    try {
+      log.error(
+        "pem_key_logged",
+        {},
+        [
+          "-----BEGIN PRIVATE KEY-----",
+          "super-secret-material",
+          "-----END PRIVATE KEY-----",
+        ].join("\n"),
+      );
+    } finally {
+      unregister();
+    }
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.body).toContain("-----BEGIN PRIVATE KEY-----");
+    expect(records[0]?.body).toContain("...redacted...");
+    expect(records[0]?.body).toContain("-----END PRIVATE KEY-----");
+    expect(records[0]?.body).not.toContain("super-secret-material");
   });
 });

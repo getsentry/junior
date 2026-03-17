@@ -93,6 +93,15 @@ describe("handlers router", () => {
     expect(healthGetMock).toHaveBeenCalledTimes(1);
   });
 
+  it("normalizes edge slashes before routing catch-all requests", async () => {
+    const response = await GET(
+      new Request("http://localhost/api/health"),
+      routeContext(["", "api", "health", ""]),
+    );
+    expect(response.status).toBe(200);
+    expect(healthGetMock).toHaveBeenCalledTimes(1);
+  });
+
   it("routes catch-all webhook requests", async () => {
     const response = await POST(
       new Request("http://localhost/api/webhooks/slack", { method: "POST" }),
