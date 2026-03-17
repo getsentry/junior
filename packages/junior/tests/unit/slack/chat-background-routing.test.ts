@@ -472,7 +472,7 @@ describe("routeIncomingMessageToQueue", () => {
       "queue_ingress_ignored_passive_no_reply",
       expect.objectContaining({
         slackThreadId: "slack:C123:1700000000.100",
-        slackChannelId: "slack:C123",
+        slackChannelId: "C123",
         slackUserId: "U_TEST",
       }),
       expect.objectContaining({

@@ -457,11 +457,7 @@ export async function routeIncomingMessageToQueue(args: {
       logIgnoredIngressResult({
         deps,
         eventName: "queue_ingress_ignored_passive_no_reply",
-        logContext: {
-          slackThreadId: normalizedThreadId,
-          slackChannelId: thread.channelId,
-          slackUserId: (message as Message).author.userId,
-        },
+        logContext: baseLogContext,
         messageId,
         dedupKey,
         kind,
