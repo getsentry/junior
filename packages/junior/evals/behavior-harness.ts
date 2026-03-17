@@ -21,6 +21,7 @@ import {
   readCapturedSlackApiCalls,
   type CapturedSlackApiCall,
 } from "../tests/msw/captured-slack-api-calls";
+import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 
 interface BehaviorEventThreadFixture {
   channel_id?: string;
@@ -80,6 +81,7 @@ interface SubscribedDecisionFixture {
 export interface BehaviorCaseConfig {
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
+  mock_image_generation?: boolean;
   mock_slack_api?: boolean;
   plugin_packages?: string[];
   reply_texts?: string[];
@@ -136,6 +138,48 @@ function toFirstString(value: unknown): string | undefined {
   return undefined;
 }
 
+function createMockImageGenerateDeps(): ImageGenerateToolDeps {
+  const generatedImageBase64 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH3cAAAAASUVORK5CYII=";
+
+  return {
+    fetch: async (input, init) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "https://ai-gateway.vercel.sh/v1/chat/completions") {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  images: [
+                    {
+                      image_url: {
+                        url: `data:image/png;base64,${generatedImageBase64}`,
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        );
+      }
+      return fetch(input, init);
+    },
+  };
+}
+
 export function collectSlackArtifactsFromCapturedCalls(
   calls: CapturedSlackApiCall[],
 ): Pick<BehaviorCaseResult, "channelPosts" | "reactions"> {
@@ -188,11 +232,11 @@ function toPostedText(value: unknown): string {
     if (typeof markdown === "string") {
       return markdown;
     }
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return "[unserializable post payload]";
+    const raw = (value as { raw?: unknown }).raw;
+    if (typeof raw === "string") {
+      return raw;
     }
+    return "[non-text post]";
   }
   return String(value);
 }
@@ -351,6 +395,7 @@ export async function runBehaviorEvalCase(
     },
     generateAssistantReply: async (text, context) => {
       replyCallCount += 1;
+      const mockImageGeneration = testCase.behavior?.mock_image_generation;
       if (retryableTimeoutCalls.has(replyCallCount)) {
         throw new RetryableTurnError(
           "agent_turn_timeout_resume",
@@ -374,6 +419,14 @@ export async function runBehaviorEvalCase(
             ...context,
             ...(configuredSkillDirs.length > 0
               ? { skillDirs: configuredSkillDirs }
+              : {}),
+            ...(mockImageGeneration
+              ? {
+                  toolOverrides: {
+                    ...context.toolOverrides,
+                    imageGenerate: createMockImageGenerateDeps(),
+                  },
+                }
               : {}),
           }),
           new Promise<never>((_, reject) =>

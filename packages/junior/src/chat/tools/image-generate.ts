@@ -1,6 +1,6 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
-import type { ToolHooks } from "@/chat/tools/types";
+import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
 import { botConfig } from "@/chat/config";
 import { completeText } from "@/chat/pi/client";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
@@ -73,7 +73,10 @@ function parseImageGenerationError(
   }
 }
 
-export function createImageGenerateTool(hooks: ToolHooks) {
+export function createImageGenerateTool(
+  hooks: ToolHooks,
+  deps: ImageGenerateToolDeps = {},
+) {
   return tool({
     description:
       "Generate images from a prompt. Use when the user wants to visually show or represent something — feelings, concepts, art, humor, or any visual idea. Also use for explicit image creation requests.",
@@ -85,6 +88,7 @@ export function createImageGenerateTool(hooks: ToolHooks) {
       }),
     }),
     execute: async ({ prompt }) => {
+      const fetchImpl = deps.fetch ?? fetch;
       const apiKey =
         process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN;
       if (!apiKey) {
@@ -94,7 +98,7 @@ export function createImageGenerateTool(hooks: ToolHooks) {
       }
       const model = process.env.AI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODEL;
       const enrichedPrompt = await enrichImagePrompt(prompt);
-      const response = await fetch(
+      const response = await fetchImpl(
         "https://ai-gateway.vercel.sh/v1/chat/completions",
         {
           method: "POST",
@@ -145,7 +149,7 @@ export function createImageGenerateTool(hooks: ToolHooks) {
           mimeType = match[1] ?? mimeType;
           bytes = Buffer.from(match[2] ?? "", "base64");
         } else if (typeof url === "string" && url.length > 0) {
-          const fetched = await fetch(url);
+          const fetched = await fetchImpl(url);
           if (!fetched.ok) continue;
           mimeType = fetched.headers.get("content-type") ?? mimeType;
           bytes = Buffer.from(await fetched.arrayBuffer());

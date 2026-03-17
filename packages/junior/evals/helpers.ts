@@ -13,34 +13,61 @@ configure({ model: gateway("openai/gpt-5.2") });
 // ── Eval output schema ─────────────────────────────────────
 
 const slackMetadataSchema = z.object({
-  thread_title_set: z.boolean().describe("Whether the assistant set a title on the Slack thread"),
-  suggested_prompts_set: z.boolean().describe("Whether the assistant set suggested prompts on the Slack thread"),
+  thread_title_set: z
+    .boolean()
+    .describe("Whether the assistant set a title on the Slack thread"),
+  suggested_prompts_set: z
+    .boolean()
+    .describe(
+      "Whether the assistant set suggested prompts on the Slack thread",
+    ),
 });
 
 const evalOutputSchema = z.object({
-  assistant_posts: z.array(z.string()).describe("Messages the assistant posted to the thread"),
+  assistant_posts: z
+    .array(z.string())
+    .describe("Messages the assistant posted to the thread"),
   channel_posts: z
     .array(
       z.object({
-        channel: z.string().describe("Slack channel ID where a direct channel post was sent"),
-        text: z.string().describe("Message text sent via Slack chat.postMessage"),
-        thread_ts: z.string().optional().describe("Slack thread timestamp when the message was sent as a thread reply")
-      })
+        channel: z
+          .string()
+          .describe("Slack channel ID where a direct channel post was sent"),
+        text: z
+          .string()
+          .describe("Message text sent via Slack chat.postMessage"),
+        thread_ts: z
+          .string()
+          .optional()
+          .describe(
+            "Slack thread timestamp when the message was sent as a thread reply",
+          ),
+      }),
     )
     .describe("Slack channel posts sent outside the thread-reply surface"),
   reactions: z
     .array(
       z.object({
-        channel: z.string().describe("Slack channel ID where the reaction was added"),
-        emoji: z.string().describe("Emoji reaction name sent via Slack reactions.add"),
-        timestamp: z.string().describe("Target message timestamp reacted to via Slack reactions.add")
-      })
+        channel: z
+          .string()
+          .describe("Slack channel ID where the reaction was added"),
+        emoji: z
+          .string()
+          .describe("Emoji reaction name sent via Slack reactions.add"),
+        timestamp: z
+          .string()
+          .describe(
+            "Target message timestamp reacted to via Slack reactions.add",
+          ),
+      }),
     )
     .describe("Slack reactions added by the assistant"),
-  slack_metadata: slackMetadataSchema.describe("Slack thread metadata set by the assistant"),
+  slack_metadata: slackMetadataSchema.describe(
+    "Slack thread metadata set by the assistant",
+  ),
 });
 
-function serializeResult(result: BehaviorCaseResult): string {
+function serializeBehaviorCaseResult(result: BehaviorCaseResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
     channel_posts: result.channelPosts,
@@ -67,7 +94,9 @@ interface SlackEvalOptions {
 const SANDBOX_SETUP_FAILED_TEXT = "Error: sandbox setup failed";
 
 function assertSandboxReady(name: string, result: BehaviorCaseResult): void {
-  const failingPosts = result.posts.filter((post) => post.includes(SANDBOX_SETUP_FAILED_TEXT));
+  const failingPosts = result.posts.filter((post) =>
+    post.includes(SANDBOX_SETUP_FAILED_TEXT),
+  );
   if (failingPosts.length === 0) {
     return;
   }
@@ -75,7 +104,7 @@ function assertSandboxReady(name: string, result: BehaviorCaseResult): void {
   const sample = failingPosts[0];
   throw new Error(
     `Eval sandbox bootstrap failed for "${name}". Received "${sample}". ` +
-      "Evals require a working Vercel Sandbox and do not permit local fallback."
+      "Evals require a working Vercel Sandbox and do not permit local fallback.",
   );
 }
 
@@ -91,7 +120,7 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
       if (opts.requireSandboxReady ?? true) {
         assertSandboxReady(name, result);
       }
-      return serializeResult(result);
+      return serializeBehaviorCaseResult(result);
     },
     criteria: opts.criteria,
   });
@@ -100,7 +129,9 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
 // ── Event builders ─────────────────────────────────────────
 
 let _seq = 0;
-function nextId() { return String(++_seq); }
+function nextId() {
+  return String(++_seq);
+}
 
 const DEFAULT_AUTHOR = {
   user_id: "U-test",
@@ -120,25 +151,56 @@ export function mention(text: string, opts?: { thread?: ThreadOverrides }) {
   const seq = nextId();
   return {
     type: "new_mention" as const,
-    thread: { id: `thread-${seq}`, channel_id: `C-${seq}`, thread_ts: `17000000.${seq}`, ...opts?.thread },
-    message: { id: `m-${seq}`, text, is_mention: true, author: { ...DEFAULT_AUTHOR } },
+    thread: {
+      id: `thread-${seq}`,
+      channel_id: `C-${seq}`,
+      thread_ts: `17000000.${seq}`,
+      ...opts?.thread,
+    },
+    message: {
+      id: `m-${seq}`,
+      text,
+      is_mention: true,
+      author: { ...DEFAULT_AUTHOR },
+    },
   };
 }
 
-export function threadMessage(text: string, opts?: { thread?: ThreadOverrides; is_mention?: boolean }) {
+export function threadMessage(
+  text: string,
+  opts?: { thread?: ThreadOverrides; is_mention?: boolean },
+) {
   const seq = nextId();
   return {
     type: "subscribed_message" as const,
-    thread: { id: `thread-${seq}`, channel_id: `C-${seq}`, thread_ts: `17000000.${seq}`, ...opts?.thread },
-    message: { id: `m-${seq}`, text, is_mention: opts?.is_mention ?? false, author: { ...DEFAULT_AUTHOR } },
+    thread: {
+      id: `thread-${seq}`,
+      channel_id: `C-${seq}`,
+      thread_ts: `17000000.${seq}`,
+      ...opts?.thread,
+    },
+    message: {
+      id: `m-${seq}`,
+      text,
+      is_mention: opts?.is_mention ?? false,
+      author: { ...DEFAULT_AUTHOR },
+    },
   };
 }
 
-export function threadStart(opts?: { thread?: ThreadOverrides; user_id?: string }) {
+export function threadStart(opts?: {
+  thread?: ThreadOverrides;
+  user_id?: string;
+}) {
   const seq = nextId();
   return {
     type: "assistant_thread_started" as const,
-    thread: { id: `thread-${seq}`, channel_id: `C-${seq}`, thread_ts: `17000000.${seq}`, ...opts?.thread },
+    thread: {
+      id: `thread-${seq}`,
+      channel_id: `C-${seq}`,
+      thread_ts: `17000000.${seq}`,
+      ...opts?.thread,
+    },
     user_id: opts?.user_id ?? `U-${seq}`,
   };
 }

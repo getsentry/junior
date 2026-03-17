@@ -3,6 +3,10 @@ import type { Sandbox } from "@vercel/sandbox";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import type { Skill } from "@/chat/skills";
 
+export interface ImageGenerateToolDeps {
+  fetch?: typeof fetch;
+}
+
 export interface ToolHooks {
   getGeneratedFile?: (filename: string) => FileUpload | undefined;
   onGeneratedArtifactFiles?: (files: FileUpload[]) => void;
@@ -11,6 +15,9 @@ export interface ToolHooks {
   onToolCallStart?: (toolName: string, input?: unknown) => void | Promise<void>;
   onToolCallEnd?: (toolName: string, input?: unknown) => void | Promise<void>;
   onSkillLoaded?: (skill: Skill) => void | Promise<void>;
+  toolOverrides?: {
+    imageGenerate?: ImageGenerateToolDeps;
+  };
 }
 
 export interface ToolRuntimeContext {

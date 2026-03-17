@@ -42,6 +42,7 @@ import { SlackActionError } from "@/chat/slack-actions/client";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
+import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
   getGatewayApiKey,
@@ -100,6 +101,9 @@ export interface ReplyRequestContext {
   sandbox?: {
     sandboxId?: string;
     sandboxDependencyProfileHash?: string;
+  };
+  toolOverrides?: {
+    imageGenerate?: ImageGenerateToolDeps;
   };
   onStatus?: (status: string) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
@@ -1091,6 +1095,7 @@ export async function generateAssistantReply(
             `${formatToolResultStatusWithInput(toolName, input)}...`,
           );
         },
+        toolOverrides: context.toolOverrides,
         onSkillLoaded: async (loadedSkill) => {
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
