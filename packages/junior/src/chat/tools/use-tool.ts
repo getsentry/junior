@@ -1,4 +1,3 @@
-import { validateToolArguments } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { Skill } from "@/chat/skills";
 import { tool } from "@/chat/tools/definition";
@@ -38,24 +37,10 @@ export function createUseToolTool(
     ),
     execute: async ({ tool_name, arguments: rawArguments }) => {
       const activeSkills = getActiveSkills();
-      const toolCatalog = mcpToolManager.getActiveToolCatalog(activeSkills);
-      const toolDef = toolCatalog.find((entry) => entry.name === tool_name);
-      if (!toolDef) {
-        throw new Error(`Unknown active MCP tool: ${tool_name}`);
-      }
-
-      const validatedArguments = validateToolArguments(
-        toolDef as never,
-        {
-          name: tool_name,
-          arguments: normalizeToolArguments(rawArguments),
-        } as never,
-      ) as Record<string, unknown>;
-
       return await mcpToolManager.executeTool(
         activeSkills,
         tool_name,
-        validatedArguments,
+        normalizeToolArguments(rawArguments),
       );
     },
   });

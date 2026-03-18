@@ -1,4 +1,5 @@
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
+import { validateToolArguments } from "@mariozechner/pi-ai";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -151,15 +152,24 @@ export interface ManagedMcpToolResult {
 
 export interface ManagedMcpToolDescriptor {
   name: string;
-  label: string;
   description: string;
   parameters: Record<string, unknown>;
   provider: string;
-  rawName: string;
-  title?: string;
 }
 
+type ActiveMcpSkillScope = Pick<
+  SkillMetadata,
+  "pluginProvider" | "allowedMcpTools"
+>;
+
+type ActiveMcpSkill = Pick<
+  SkillMetadata,
+  "name" | "pluginProvider" | "allowedMcpTools"
+>;
+
 interface ManagedMcpTool extends ManagedMcpToolDescriptor {
+  rawName: string;
+  title?: string;
   execute: (args: Record<string, unknown>) => Promise<ManagedMcpToolResult>;
 }
 
@@ -186,9 +196,7 @@ export class McpToolManager {
     );
   }
 
-  async activateForSkill(
-    skill: Pick<SkillMetadata, "name" | "pluginProvider" | "allowedMcpTools">,
-  ): Promise<boolean> {
+  async activateForSkill(skill: ActiveMcpSkill): Promise<boolean> {
     if (!skill.pluginProvider) {
       return false;
     }
@@ -250,29 +258,25 @@ export class McpToolManager {
   }
 
   getActiveToolCatalog(
-    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    skills: ActiveMcpSkillScope[],
     options: { provider?: string } = {},
   ): ManagedMcpToolDescriptor[] {
-    return this.getResolvedActiveTools(skills, options).map((tool) => ({
-      name: tool.name,
-      label: tool.label,
-      description: tool.description,
-      parameters: tool.parameters,
-      provider: tool.provider,
-      rawName: tool.rawName,
-      ...(tool.title ? { title: tool.title } : {}),
-    }));
+    return this.getResolvedActiveTools(skills, options).map((tool) =>
+      this.toToolDescriptor(tool),
+    );
   }
 
   searchTools(
-    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    skills: ActiveMcpSkillScope[],
     query: string,
     options: { provider?: string; limit?: number } = {},
   ): ManagedMcpToolDescriptor[] {
-    const resolved = this.getActiveToolCatalog(skills, options);
+    const resolved = this.getResolvedActiveTools(skills, options);
     const trimmedQuery = query.trim();
     if (!trimmedQuery || trimmedQuery === "*") {
-      return resolved.slice(0, Math.max(1, options.limit ?? 8));
+      return resolved
+        .slice(0, Math.max(1, options.limit ?? 8))
+        .map((tool) => this.toToolDescriptor(tool));
     }
 
     const normalizedQuery = trimmedQuery.toLowerCase();
@@ -294,11 +298,11 @@ export class McpToolManager {
         return left.tool.name.localeCompare(right.tool.name);
       })
       .slice(0, Math.max(1, options.limit ?? 8))
-      .map((entry) => entry.tool);
+      .map((entry) => this.toToolDescriptor(entry.tool));
   }
 
   async executeTool(
-    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    skills: ActiveMcpSkillScope[],
     canonicalToolName: string,
     args: Record<string, unknown>,
   ): Promise<ManagedMcpToolResult> {
@@ -307,7 +311,7 @@ export class McpToolManager {
       throw new Error(`Unknown active MCP tool: ${canonicalToolName}`);
     }
 
-    return await tool.execute(args);
+    return await tool.execute(this.validateExecutionArgs(tool, args));
   }
 
   private filterListedTools(
@@ -357,7 +361,6 @@ export class McpToolManager {
   ): ManagedMcpTool {
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
-      label: tool.title?.trim() || tool.name,
       description: describeMcpTool(plugin.manifest.name, tool),
       parameters: tool.inputSchema as Record<string, unknown>,
       provider: plugin.manifest.name,
@@ -397,9 +400,7 @@ export class McpToolManager {
     };
   }
 
-  private assertSkillToolExposure(
-    skill: Pick<SkillMetadata, "name" | "pluginProvider" | "allowedMcpTools">,
-  ): void {
+  private assertSkillToolExposure(skill: ActiveMcpSkill): void {
     const provider = skill.pluginProvider;
     if (
       !provider ||
@@ -423,7 +424,7 @@ export class McpToolManager {
   }
 
   private getResolvedActiveTools(
-    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    skills: ActiveMcpSkillScope[],
     options: { provider?: string } = {},
   ): ManagedMcpTool[] {
     const resolved: ManagedMcpTool[] = [];
@@ -441,7 +442,7 @@ export class McpToolManager {
 
   private resolveProviderTools(
     provider: string,
-    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    skills: ActiveMcpSkillScope[],
   ): ManagedMcpTool[] {
     const providerTools = this.toolsByProvider.get(provider) ?? [];
     if (providerTools.length === 0) {
@@ -469,7 +470,7 @@ export class McpToolManager {
   }
 
   private resolveActiveTool(
-    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    skills: ActiveMcpSkillScope[],
     canonicalToolName: string,
   ): ManagedMcpTool | undefined {
     return this.getResolvedActiveTools(skills).find(
@@ -477,12 +478,34 @@ export class McpToolManager {
     );
   }
 
+  private toToolDescriptor(tool: ManagedMcpTool): ManagedMcpToolDescriptor {
+    return {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+      provider: tool.provider,
+    };
+  }
+
+  private validateExecutionArgs(
+    tool: ManagedMcpTool,
+    args: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return validateToolArguments(
+      tool as never,
+      {
+        name: tool.name,
+        arguments: args,
+      } as never,
+    ) as Record<string, unknown>;
+  }
+
   private scoreToolMatch(
-    tool: ManagedMcpToolDescriptor,
+    tool: ManagedMcpTool,
     normalizedQuery: string,
     queryTokens: string[],
   ): number {
-    const exactCandidates = [tool.name, tool.rawName, tool.label, tool.title]
+    const exactCandidates = [tool.name, tool.rawName, tool.title]
       .filter((value): value is string => Boolean(value))
       .map((value) => value.toLowerCase());
 
@@ -494,7 +517,6 @@ export class McpToolManager {
     const searchableText = [
       tool.name,
       tool.rawName,
-      tool.label,
       tool.title,
       tool.description,
       tool.provider,

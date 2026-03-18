@@ -200,21 +200,24 @@ function parseStoredCredentials(
   }
 }
 
+async function getConnectedStateAdapter() {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  return stateAdapter;
+}
+
 export async function getMcpAuthSession(
   authSessionId: string,
 ): Promise<McpAuthSessionState | undefined> {
-  await getStateAdapter().connect();
-  return parseMcpAuthSession(
-    await getStateAdapter().get(sessionKey(authSessionId)),
-  );
+  const stateAdapter = await getConnectedStateAdapter();
+  return parseMcpAuthSession(await stateAdapter.get(sessionKey(authSessionId)));
 }
 
 export async function putMcpAuthSession(
   session: McpAuthSessionState,
   ttlMs: number = MCP_AUTH_SESSION_TTL_MS,
 ): Promise<void> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
+  const stateAdapter = await getConnectedStateAdapter();
   await stateAdapter.set(
     sessionKey(session.authSessionId),
     JSON.stringify(session),
@@ -261,8 +264,7 @@ export async function patchMcpAuthSession(
 export async function deleteMcpAuthSession(
   authSessionId: string,
 ): Promise<void> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
+  const stateAdapter = await getConnectedStateAdapter();
   const current = parseMcpAuthSession(
     await stateAdapter.get(sessionKey(authSessionId)),
   );
@@ -291,8 +293,7 @@ export async function deleteMcpAuthSessionsForUserProvider(
   userId: string,
   provider: string,
 ): Promise<void> {
-  const stateAdapter = getStateAdapter();
-  await stateAdapter.connect();
+  const stateAdapter = await getConnectedStateAdapter();
   const indexKey = sessionIndexKey(userId, provider);
   const authSessionIds = parseSessionIndex(await stateAdapter.get(indexKey));
 
@@ -307,9 +308,9 @@ export async function getMcpStoredOAuthCredentials(
   userId: string,
   provider: string,
 ): Promise<McpStoredOAuthCredentials | undefined> {
-  await getStateAdapter().connect();
+  const stateAdapter = await getConnectedStateAdapter();
   return parseStoredCredentials(
-    await getStateAdapter().get(credentialsKey(userId, provider)),
+    await stateAdapter.get(credentialsKey(userId, provider)),
   );
 }
 
@@ -319,8 +320,8 @@ export async function putMcpStoredOAuthCredentials(
   value: McpStoredOAuthCredentials,
   ttlMs: number = MCP_AUTH_CREDENTIALS_TTL_MS,
 ): Promise<void> {
-  await getStateAdapter().connect();
-  await getStateAdapter().set(
+  const stateAdapter = await getConnectedStateAdapter();
+  await stateAdapter.set(
     credentialsKey(userId, provider),
     JSON.stringify(value),
     ttlMs,
@@ -331,17 +332,17 @@ export async function deleteMcpStoredOAuthCredentials(
   userId: string,
   provider: string,
 ): Promise<void> {
-  await getStateAdapter().connect();
-  await getStateAdapter().delete(credentialsKey(userId, provider));
+  const stateAdapter = await getConnectedStateAdapter();
+  await stateAdapter.delete(credentialsKey(userId, provider));
 }
 
 export async function getMcpServerSessionId(
   userId: string,
   provider: string,
 ): Promise<string | undefined> {
-  await getStateAdapter().connect();
+  const stateAdapter = await getConnectedStateAdapter();
   return parseServerSession(
-    await getStateAdapter().get(serverSessionKey(userId, provider)),
+    await stateAdapter.get(serverSessionKey(userId, provider)),
   )?.sessionId;
 }
 
@@ -351,8 +352,8 @@ export async function putMcpServerSessionId(
   sessionId: string,
   ttlMs: number = MCP_SERVER_SESSION_TTL_MS,
 ): Promise<void> {
-  await getStateAdapter().connect();
-  await getStateAdapter().set(
+  const stateAdapter = await getConnectedStateAdapter();
+  await stateAdapter.set(
     serverSessionKey(userId, provider),
     JSON.stringify({
       sessionId,
@@ -366,6 +367,6 @@ export async function deleteMcpServerSessionId(
   userId: string,
   provider: string,
 ): Promise<void> {
-  await getStateAdapter().connect();
-  await getStateAdapter().delete(serverSessionKey(userId, provider));
+  const stateAdapter = await getConnectedStateAdapter();
+  await stateAdapter.delete(serverSessionKey(userId, provider));
 }
