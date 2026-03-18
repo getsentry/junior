@@ -398,6 +398,50 @@ describe("mcp oauth callback handler", () => {
     });
   });
 
+  it("uploads resumed reply files even when thread text delivery is suppressed", async () => {
+    generateAssistantReplyMock.mockResolvedValueOnce({
+      text: "👍",
+      files: [
+        {
+          data: Buffer.from("hello"),
+          filename: "resume.txt",
+        },
+      ],
+      deliveryPlan: {
+        mode: "thread",
+        ack: "reaction",
+        postThreadText: false,
+        attachFiles: "inline",
+      },
+      diagnostics: {
+        outcome: "success",
+        toolCalls: [],
+      },
+    });
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
+      ),
+      makeContext("demo"),
+    );
+
+    expect(response.status).toBe(200);
+    await afterCallbacks[0]!();
+
+    expect(postMessageMock).toHaveBeenCalledTimes(1);
+    expect(uploadFilesToThreadMock).toHaveBeenCalledWith({
+      channelId: "C123",
+      threadTs: "1712345.0001",
+      files: [
+        {
+          data: Buffer.from("hello"),
+          filename: "resume.txt",
+        },
+      ],
+    });
+  });
+
   it("marks the resumed turn failed in thread state when continuation errors", async () => {
     generateAssistantReplyMock.mockRejectedValueOnce(
       new Error("resume failed"),

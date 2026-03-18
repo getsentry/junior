@@ -166,7 +166,7 @@ async function deliverReplyToThread(
     }
   }
 
-  if (!replyFiles || attachFiles === "none" || !shouldPostThreadReply) {
+  if (!replyFiles || attachFiles === "none") {
     return;
   }
 
