@@ -214,12 +214,23 @@ export class McpToolManager {
   }
 
   async close(): Promise<void> {
+    let firstError: unknown;
+
     for (const client of this.clientsByProvider.values()) {
-      await client.close();
+      try {
+        await client.close();
+      } catch (error) {
+        firstError ??= error;
+      }
     }
+
     this.clientsByProvider.clear();
     this.toolsByProvider.clear();
     this.activeProviders.clear();
+
+    if (firstError) {
+      throw firstError;
+    }
   }
 
   private async getClient(plugin: PluginDefinition): Promise<PluginMcpClient> {

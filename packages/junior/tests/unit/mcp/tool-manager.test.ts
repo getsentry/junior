@@ -45,12 +45,12 @@ vi.mock("@/chat/mcp/client", () => {
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 
-function buildPlugin(): PluginDefinition {
+function buildPlugin(name = "demo"): PluginDefinition {
   return {
-    dir: "/tmp/plugins/demo",
-    skillsDir: "/tmp/plugins/demo/skills",
+    dir: `/tmp/plugins/${name}`,
+    skillsDir: `/tmp/plugins/${name}/skills`,
     manifest: {
-      name: "demo",
+      name,
       description: "Demo MCP plugin",
       capabilities: [],
       configKeys: [],
@@ -175,5 +175,27 @@ describe("McpToolManager", () => {
         message: "Discovery auth required",
       }),
     );
+  });
+
+  it("closes every active client before surfacing the first close error", async () => {
+    const alphaPlugin = buildPlugin("alpha");
+    const betaPlugin = buildPlugin("beta");
+    const manager = new McpToolManager([alphaPlugin, betaPlugin]);
+
+    await manager.activateProvider("alpha");
+    await manager.activateProvider("beta");
+
+    closeMock.mockImplementation(async (plugin: PluginDefinition) => {
+      if (plugin.manifest.name === "alpha") {
+        throw new Error("alpha close failed");
+      }
+    });
+
+    await expect(manager.close()).rejects.toThrow("alpha close failed");
+    expect(closeMock).toHaveBeenCalledTimes(2);
+    expect(closeMock).toHaveBeenNthCalledWith(1, alphaPlugin);
+    expect(closeMock).toHaveBeenNthCalledWith(2, betaPlugin);
+    expect(manager.getActiveProviders()).toEqual([]);
+    expect(manager.getActiveTools()).toEqual([]);
   });
 });
