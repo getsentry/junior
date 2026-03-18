@@ -59,6 +59,7 @@ import {
   upsertAgentTurnSessionCheckpoint,
 } from "@/chat/state";
 import {
+  compactStatusCommand,
   compactStatusFilename,
   compactStatusPath,
   compactStatusText,
@@ -293,7 +294,7 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
     input && typeof input === "object"
       ? (input as Record<string, unknown>)
       : undefined;
-  const command = obj ? compactStatusText(obj.command, 70) : undefined;
+  const command = obj ? compactStatusCommand(obj.command) : undefined;
   const path = obj ? compactStatusPath(obj.path) : undefined;
   const filename = obj ? compactStatusFilename(obj.path) : undefined;
   const query = obj ? compactStatusText(obj.query, 70) : undefined;
@@ -364,7 +365,7 @@ function formatToolResultStatusWithInput(
     input && typeof input === "object"
       ? (input as Record<string, unknown>)
       : undefined;
-  const command = obj ? compactStatusText(obj.command, 70) : undefined;
+  const command = obj ? compactStatusCommand(obj.command) : undefined;
   const path = obj ? compactStatusPath(obj.path) : undefined;
   const filename = obj ? compactStatusFilename(obj.path) : undefined;
   const query = obj ? compactStatusText(obj.query, 70) : undefined;

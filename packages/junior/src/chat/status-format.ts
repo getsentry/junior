@@ -33,7 +33,10 @@ export function compactStatusPath(value: unknown): string | undefined {
   return `...${trimmed.slice(-77)}`;
 }
 
-export function compactStatusText(value: unknown, maxLength = 80): string | undefined {
+export function compactStatusText(
+  value: unknown,
+  maxLength = 80,
+): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
@@ -43,6 +46,108 @@ export function compactStatusText(value: unknown, maxLength = 80): string | unde
     return undefined;
   }
   return truncateWithEllipsis(trimmed, maxLength);
+}
+
+function readShellToken(
+  command: string,
+  startIndex: number,
+): { token: string; nextIndex: number } | undefined {
+  let index = startIndex;
+  while (index < command.length && /\s/.test(command[index] ?? "")) {
+    index += 1;
+  }
+
+  if (index >= command.length) {
+    return undefined;
+  }
+
+  let token = "";
+  let quote: '"' | "'" | undefined;
+
+  while (index < command.length) {
+    const char = command[index];
+    if (!char) {
+      break;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = undefined;
+        index += 1;
+        continue;
+      }
+
+      if (char === "\\" && quote === '"' && index + 1 < command.length) {
+        token += command[index + 1];
+        index += 2;
+        continue;
+      }
+
+      token += char;
+      index += 1;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      break;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      index += 1;
+      continue;
+    }
+
+    if (char === "\\" && index + 1 < command.length) {
+      token += command[index + 1];
+      index += 2;
+      continue;
+    }
+
+    token += char;
+    index += 1;
+  }
+
+  return { token, nextIndex: index };
+}
+
+export function compactStatusCommand(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  let index = 0;
+  while (index < trimmed.length) {
+    const parsed = readShellToken(trimmed, index);
+    if (!parsed) {
+      return undefined;
+    }
+
+    index = parsed.nextIndex;
+    if (!parsed.token) {
+      continue;
+    }
+
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(parsed.token)) {
+      continue;
+    }
+
+    const normalized = parsed.token.replace(/[\\/]+$/g, "");
+    if (!normalized) {
+      return undefined;
+    }
+
+    const parts = normalized.split(/[\\/]/).filter((part) => part.length > 0);
+    const command = parts.length > 0 ? parts[parts.length - 1] : normalized;
+    return compactStatusText(command, 40);
+  }
+
+  return undefined;
 }
 
 export function compactStatusFilename(value: unknown): string | undefined {
