@@ -29,28 +29,52 @@ import { truncateStatusText } from "@/chat/status-format";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 import { resolveReplyDelivery } from "@/chat/turn/execute";
 import { isRetryableTurnError } from "@/chat/turn/errors";
-import { escapeXml } from "@/chat/xml";
 
-function htmlResponse(
-  title: string,
-  message: string,
-  status: number,
-): Response {
-  const safeTitle = escapeXml(title);
-  const safeMessage = escapeXml(message);
+const CALLBACK_PAGES = {
+  missing_state: {
+    title: "Authorization failed",
+    message: "Missing state parameter.",
+    status: 400,
+  },
+  provider_error: {
+    title: "Authorization failed",
+    message: "The provider returned an authorization error.",
+    status: 400,
+  },
+  missing_code: {
+    title: "Authorization failed",
+    message: "Missing code parameter.",
+    status: 400,
+  },
+  success: {
+    title: "Authorization complete",
+    message:
+      "Your MCP access is connected. Junior will continue the paused request in Slack.",
+    status: 200,
+  },
+  failure: {
+    title: "Authorization failed",
+    message:
+      "Junior could not finish the authorization callback. Return to Slack and retry the original request.",
+    status: 500,
+  },
+} as const;
+
+function htmlResponse(kind: keyof typeof CALLBACK_PAGES): Response {
+  const page = CALLBACK_PAGES[kind];
   const html = `<!DOCTYPE html>
 <html>
-<head><title>${safeTitle}</title></head>
+<head><title>${page.title}</title></head>
 <body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
   <div style="text-align: center; max-width: 480px;">
-    <h1>${safeTitle}</h1>
-    <p>${safeMessage}</p>
+    <h1>${page.title}</h1>
+    <p>${page.message}</p>
     <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack.</p>
   </div>
 </body>
 </html>`;
   return new Response(html, {
-    status,
+    status: page.status,
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
@@ -382,17 +406,13 @@ export async function GET(
   const error = url.searchParams.get("error")?.trim();
 
   if (!state) {
-    return htmlResponse(
-      "Authorization failed",
-      "Missing state parameter.",
-      400,
-    );
+    return htmlResponse("missing_state");
   }
   if (error) {
-    return htmlResponse("Authorization failed", `OAuth error: ${error}`, 400);
+    return htmlResponse("provider_error");
   }
   if (!code) {
-    return htmlResponse("Authorization failed", "Missing code parameter.", 400);
+    return htmlResponse("missing_code");
   }
 
   try {
@@ -515,11 +535,7 @@ export async function GET(
       }
     });
 
-    return htmlResponse(
-      "Authorization complete",
-      "Your MCP access is connected. Junior will continue the paused request in Slack.",
-      200,
-    );
+    return htmlResponse("success");
   } catch (callbackError) {
     logException(
       callbackError,
@@ -528,12 +544,6 @@ export async function GET(
       { "app.credential.provider": provider },
       "Failed to process MCP OAuth callback",
     );
-    return htmlResponse(
-      "Authorization failed",
-      callbackError instanceof Error
-        ? callbackError.message
-        : "Unexpected callback error.",
-      500,
-    );
+    return htmlResponse("failure");
   }
 }

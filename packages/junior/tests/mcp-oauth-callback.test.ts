@@ -240,7 +240,7 @@ describe("mcp oauth callback handler", () => {
     expect(finalizeMcpAuthorizationMock).not.toHaveBeenCalled();
   });
 
-  it("escapes querystring error text in the HTML response", async () => {
+  it("does not reflect provider error text in the HTML response", async () => {
     const response = await GET(
       makeRequest(
         "https://example.com/api/oauth/callback/mcp/demo?state=state-123&error=%3Cscript%3Ealert(1)%3C%2Fscript%3E",
@@ -250,11 +250,11 @@ describe("mcp oauth callback handler", () => {
 
     expect(response.status).toBe(400);
     const body = await response.text();
-    expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(body).toContain("The provider returned an authorization error.");
     expect(body).not.toContain("<script>alert(1)</script>");
   });
 
-  it("escapes callback exception text in the HTML response", async () => {
+  it("does not reflect callback exception text in the HTML response", async () => {
     finalizeMcpAuthorizationMock.mockRejectedValueOnce(
       new Error("<img src=x onerror=alert(1)>"),
     );
@@ -268,7 +268,9 @@ describe("mcp oauth callback handler", () => {
 
     expect(response.status).toBe(500);
     const body = await response.text();
-    expect(body).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(body).toContain(
+      "Junior could not finish the authorization callback. Return to Slack and retry the original request.",
+    );
     expect(body).not.toContain("<img src=x onerror=alert(1)>");
   });
 
