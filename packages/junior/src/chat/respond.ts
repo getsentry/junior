@@ -1267,8 +1267,8 @@ export async function generateAssistantReply(
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
           upsertActiveSkill(activeSkills, effective);
-          await turnMcpToolManager.activateForSkill(effective);
           syncResumeState();
+          await turnMcpToolManager.activateForSkill(effective);
           refreshAgentTools();
         },
       },
