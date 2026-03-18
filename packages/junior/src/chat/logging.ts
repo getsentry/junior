@@ -97,21 +97,43 @@ const ANSI = {
 const CONSOLE_PRIORITY_KEYS = [
   "app.conversation.id",
   "app.turn.id",
-  "app.agent.id",
   "event.name",
   "error.message",
   "messaging.message.id",
+  "app.trace_id",
+  "app.span_id",
+  "app.agent.id",
   "messaging.message.conversation_id",
   "messaging.destination.name",
   "enduser.id",
   "app.run.id",
   "app.message.kind",
-  "app.trace_id",
-  "app.span_id",
 ] as const;
 const CONSOLE_PRIORITY_INDEX: Map<string, number> = new Map(
   CONSOLE_PRIORITY_KEYS.map((key, index) => [key, index]),
 );
+const CONSOLE_ALWAYS_HIDDEN_KEYS = new Set([
+  "app.assistant.username",
+  "app.platform",
+  "enduser.id",
+  "enduser.pseudo_id",
+  "http.request.method",
+  "messaging.system",
+  "url.full",
+  "url.path",
+  "user_agent.original",
+]);
+const CONSOLE_DROP_WHEN_COUNTED_KEYS = new Set([
+  "app.capability.names",
+  "app.capability.providers",
+  "app.config.keys",
+]);
+const CONSOLE_PREVIEW_KEYS = new Set([
+  "gen_ai.input.messages",
+  "gen_ai.output.messages",
+  "gen_ai.tool.call.arguments",
+  "gen_ai.tool.call.result",
+]);
 
 function getSentryEnvironment(): string {
   return (
@@ -422,8 +444,134 @@ function formatConsoleValue(value: AttributeValue): string {
   return quoteConsoleValue(value);
 }
 
+function shouldShowConsoleDestinationName(eventName: string): boolean {
+  return /^(app_home_|oauth_|queue_|slash_command_|slack_|webhook_)/.test(
+    eventName,
+  );
+}
+
+function shouldShowConsoleModel(level: LogLevel, eventName: string): boolean {
+  if (level === "warn" || level === "error") {
+    return true;
+  }
+
+  return (
+    eventName.startsWith("ai_") ||
+    eventName.startsWith("assistant_") ||
+    eventName === "agent_turn_started" ||
+    eventName === "agent_turn_completed" ||
+    eventName === "agent_turn_provider_error"
+  );
+}
+
+function shouldHideConsoleAttribute(
+  level: LogLevel,
+  eventName: string,
+  key: string,
+  attributes: LogAttributes,
+): boolean {
+  if (CONSOLE_ALWAYS_HIDDEN_KEYS.has(key)) {
+    return true;
+  }
+  if (CONSOLE_DROP_WHEN_COUNTED_KEYS.has(key)) {
+    return true;
+  }
+  if (key === "app.agent.id" && attributes[key] === attributes["app.turn.id"]) {
+    return true;
+  }
+  if (
+    key === "messaging.message.conversation_id" &&
+    attributes[key] === attributes["app.conversation.id"]
+  ) {
+    return true;
+  }
+  if (
+    key === "app.message.id" &&
+    attributes[key] === attributes["messaging.message.id"]
+  ) {
+    return true;
+  }
+  if (
+    key === "messaging.destination.name" &&
+    !shouldShowConsoleDestinationName(eventName)
+  ) {
+    return true;
+  }
+  if (
+    key === "gen_ai.request.model" &&
+    !shouldShowConsoleModel(level, eventName)
+  ) {
+    return true;
+  }
+  if (
+    key === "gen_ai.provider.name" &&
+    eventName.startsWith("agent_tool_call_") &&
+    level !== "warn" &&
+    level !== "error"
+  ) {
+    return true;
+  }
+  if (
+    key === "gen_ai.operation.name" &&
+    eventName.startsWith("agent_tool_call_")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function summarizeConsoleString(value: string, maxChars: number): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= maxChars) {
+    return collapsed;
+  }
+  return `${collapsed.slice(0, maxChars)}... [${collapsed.length} chars]`;
+}
+
+function projectConsoleValue(
+  level: LogLevel,
+  key: string,
+  value: AttributeValue,
+): AttributeValue | undefined {
+  if (
+    (level === "debug" || level === "info") &&
+    CONSOLE_PREVIEW_KEYS.has(key) &&
+    typeof value === "string"
+  ) {
+    return summarizeConsoleString(
+      value,
+      key === "gen_ai.tool.call.result" ? 220 : 140,
+    );
+  }
+
+  return value;
+}
+
+function projectConsoleAttributes(
+  level: LogLevel,
+  eventName: string,
+  attributes: LogAttributes,
+): LogAttributes {
+  const projected: LogAttributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (shouldHideConsoleAttribute(level, eventName, key, attributes)) {
+      continue;
+    }
+
+    const nextValue = projectConsoleValue(level, key, value);
+    if (nextValue !== undefined) {
+      projected[key] = nextValue;
+    }
+  }
+
+  return projected;
+}
+
 function formatConsoleLine(
   level: LogLevel,
+  eventName: string,
   body: string,
   attributes: LogAttributes,
 ): string {
@@ -437,7 +585,12 @@ function formatConsoleLine(
   const parts = [
     `${colorize(timestamp, ANSI.gray)} ${colorize(formatConsoleLevel(level), levelColor)} ${body}`,
   ];
-  const sortedAttributes = Object.entries(attributes).sort(
+  const projectedAttributes = projectConsoleAttributes(
+    level,
+    eventName,
+    attributes,
+  );
+  const sortedAttributes = Object.entries(projectedAttributes).sort(
     ([left], [right]) => {
       const leftRank = CONSOLE_PRIORITY_INDEX.get(left);
       const rightRank = CONSOLE_PRIORITY_INDEX.get(right);
@@ -458,7 +611,7 @@ function formatConsoleLine(
 
 function emitConsole(
   level: LogLevel,
-  _eventName: string,
+  eventName: string,
   body: string,
   attributes: LogAttributes,
 ): void {
@@ -466,7 +619,7 @@ function emitConsole(
     return;
   }
 
-  const line = formatConsoleLine(level, body, attributes);
+  const line = formatConsoleLine(level, eventName, body, attributes);
   if (level === "error") {
     console.error(line);
     return;

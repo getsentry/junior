@@ -8,10 +8,15 @@ import type {
   OAuthDiscoveryState,
 } from "@modelcontextprotocol/sdk/client/auth.js";
 import {
+  deleteMcpServerSessionId,
   getMcpAuthSession,
+  getMcpServerSessionId,
   getMcpStoredOAuthCredentials,
   patchMcpAuthSession,
+  putMcpServerSessionId,
+  putMcpAuthSession,
   putMcpStoredOAuthCredentials,
+  type McpAuthSessionState,
 } from "./auth-store";
 
 function createClientMetadata(callbackUrl: string): OAuthClientMetadata {
@@ -30,6 +35,14 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   constructor(
     readonly authSessionId: string,
     private readonly callbackUrl: string,
+    private readonly sessionContext?: Omit<
+      McpAuthSessionState,
+      | "authSessionId"
+      | "authorizationUrl"
+      | "codeVerifier"
+      | "createdAtMs"
+      | "updatedAtMs"
+    >,
   ) {
     this.clientMetadata = createClientMetadata(callbackUrl);
   }
@@ -43,7 +56,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
-    const session = await this.requireSession();
+    const session = await this.getCredentialContext();
     const credentials = await getMcpStoredOAuthCredentials(
       session.userId,
       session.provider,
@@ -54,7 +67,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   async saveClientInformation(
     clientInformation: OAuthClientInformationMixed,
   ): Promise<void> {
-    const session = await this.requireSession();
+    const session = await this.getCredentialContext();
     const credentials =
       (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
       {};
@@ -65,7 +78,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
-    const session = await this.requireSession();
+    const session = await this.getCredentialContext();
     const credentials = await getMcpStoredOAuthCredentials(
       session.userId,
       session.provider,
@@ -74,7 +87,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    const session = await this.requireSession();
+    const session = await this.getCredentialContext();
     const credentials =
       (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
       {};
@@ -85,13 +98,13 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
-    await patchMcpAuthSession(this.authSessionId, {
+    await this.ensureSession({
       authorizationUrl: authorizationUrl.toString(),
     });
   }
 
   async saveCodeVerifier(codeVerifier: string): Promise<void> {
-    await patchMcpAuthSession(this.authSessionId, { codeVerifier });
+    await this.ensureSession({ codeVerifier });
   }
 
   async codeVerifier(): Promise<string> {
@@ -103,7 +116,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async saveDiscoveryState(state: OAuthDiscoveryState): Promise<void> {
-    const session = await this.requireSession();
+    const session = await this.getCredentialContext();
     const credentials =
       (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
       {};
@@ -114,7 +127,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   }
 
   async discoveryState(): Promise<OAuthDiscoveryState | undefined> {
-    const session = await this.requireSession();
+    const session = await this.getCredentialContext();
     const credentials = await getMcpStoredOAuthCredentials(
       session.userId,
       session.provider,
@@ -125,7 +138,7 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
   async invalidateCredentials(
     scope: "all" | "client" | "tokens" | "verifier" | "discovery",
   ): Promise<void> {
-    const session = await this.requireSession();
+    const session = await this.getCredentialContext();
     const credentials =
       (await getMcpStoredOAuthCredentials(session.userId, session.provider)) ??
       {};
@@ -149,11 +162,54 @@ export class StateBackedMcpOAuthClientProvider implements OAuthClientProvider {
     });
 
     if (scope === "verifier" || scope === "all") {
-      await patchMcpAuthSession(this.authSessionId, {
-        codeVerifier: undefined,
-        ...(scope === "all" ? { authorizationUrl: undefined } : {}),
-      });
+      const authSession = await getMcpAuthSession(this.authSessionId);
+      if (authSession) {
+        await patchMcpAuthSession(this.authSessionId, {
+          codeVerifier: undefined,
+          ...(scope === "all" ? { authorizationUrl: undefined } : {}),
+        });
+      }
     }
+  }
+
+  async getMcpServerSessionId(): Promise<string | undefined> {
+    const session = await this.getCredentialContext();
+    return await getMcpServerSessionId(session.userId, session.provider);
+  }
+
+  async saveMcpServerSessionId(sessionId: string | undefined): Promise<void> {
+    const session = await this.getCredentialContext();
+    if (!sessionId) {
+      await deleteMcpServerSessionId(session.userId, session.provider);
+      return;
+    }
+
+    await putMcpServerSessionId(session.userId, session.provider, sessionId);
+  }
+
+  private async getCredentialContext() {
+    return this.sessionContext ?? (await this.requireSession());
+  }
+
+  private async ensureSession(patch: Partial<McpAuthSessionState>) {
+    const existing = await getMcpAuthSession(this.authSessionId);
+    if (existing) {
+      return await patchMcpAuthSession(this.authSessionId, patch);
+    }
+    if (!this.sessionContext) {
+      throw new Error(`Unknown MCP auth session: ${this.authSessionId}`);
+    }
+
+    const now = Date.now();
+    const nextSession: McpAuthSessionState = {
+      authSessionId: this.authSessionId,
+      ...this.sessionContext,
+      ...patch,
+      createdAtMs: now,
+      updatedAtMs: now,
+    };
+    await putMcpAuthSession(nextSession);
+    return nextSession;
   }
 
   private async requireSession() {

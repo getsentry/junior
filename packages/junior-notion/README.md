@@ -1,27 +1,12 @@
 # @sentry/junior-notion
 
-`@sentry/junior-notion` adds read-only Notion search workflows for pages and data sources to Junior via a shared internal Notion integration.
+`@sentry/junior-notion` adds read-only Notion search workflows for pages and data sources to Junior through Notion's hosted MCP server.
 
 Install it alongside `@sentry/junior`:
 
 ```bash
 pnpm add @sentry/junior @sentry/junior-notion
 ```
-
-Create an internal Notion integration by following Notion's Authorization guide:
-
-- https://developers.notion.com/guides/get-started/authorization
-
-In the Notion integration settings:
-
-- choose the workspace where the integration will live
-- enable the `Read content` capability
-- copy the integration secret from the `Configuration` tab
-- share any pages or data sources Junior should read via `•••` -> `Add connections`
-
-Set that value in your host environment:
-
-- `NOTION_TOKEN`
 
 Then register the plugin package in `withJunior(...)`:
 
@@ -33,24 +18,23 @@ export default withJunior({
 });
 ```
 
-There is no `/notion auth` flow for this plugin. Once the token is configured and pages or data sources are shared with the integration, users can run `/notion <query>` directly.
+This package does not use `NOTION_TOKEN` or a shared workspace integration. Each user connects their own Notion account the first time Junior calls a Notion MCP tool. Junior sends the OAuth link privately and resumes the thread automatically after the user authorizes.
+
+Junior intentionally keeps this package read-only by exposing only Notion's `notion-search` and `notion-fetch` MCP tools. The plugin does not expose create, update, move, or other write-capable Notion tools.
 
 ## Search limitations
 
-This plugin currently uses Notion's public `v1` API for search and content retrieval.
+This package uses Notion MCP search and fetch rather than the older REST helper flow.
 
-- `v1/search` is title-biased and does not match the richer `Best matches` behavior users see in notion.so.
-- Results can differ from the UI even when the user can see a page in the Notion app.
-- The most common cause of missing results is that the target page or data source is not directly shared with the integration.
-- Newly shared content can also lag behind search indexing.
+- Search is still title-biased, so prompts work best when users search for the actual page or data source title.
+- Results can differ from the Notion UI even when the user can see a page in the app.
+- Search across connected sources like Slack, Google Drive, and Jira requires a Notion AI plan. Without Notion AI, search is limited to the user's Notion workspace.
+- Missing results are usually a permissions problem on the user's Notion account or a weak query phrase.
 
-We also tested Notion's private `api/v3/search` endpoint with the same integration token. It accepted the token at the HTTP layer, but it did not return useful results for the same sample queries, so this plugin does not depend on `api/v3`.
+## Auth model
 
-For local debugging, the package exposes one Notion helper script through two subcommands that load the workspace env first:
-
-```bash
-pnpm notion:search -- --query "company holidays"
-pnpm notion:fetch -- --id "<notion-id>" --object page
-```
+- Notion MCP requires user-based OAuth and does not support bearer token authentication.
+- This package is not suitable for fully headless or unattended automation.
+- Users can disconnect from Junior App Home with `Unlink`, or by asking Junior to disconnect Notion.
 
 Full setup guide: https://junior.sentry.dev/extend/notion-plugin/

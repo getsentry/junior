@@ -7,7 +7,15 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { logInfo } from "@/chat/observability";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import {
+  deleteMcpAuthSessionsForUserProvider,
+  deleteMcpServerSessionId,
+  deleteMcpStoredOAuthCredentials,
+} from "@/chat/mcp/auth-store";
+import {
+  getPluginOAuthConfig,
+  isPluginProvider,
+} from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
 
 type JrRpcDeps = {
@@ -364,7 +372,10 @@ async function handleConfigCommand(
 }
 
 function isKnownProvider(provider: string): boolean {
-  return listCapabilityProviders().some((p) => p.provider === provider);
+  return (
+    listCapabilityProviders().some((p) => p.provider === provider) ||
+    isPluginProvider(provider)
+  );
 }
 
 async function handleOAuthStartCommand(
@@ -476,7 +487,12 @@ async function handleDeleteTokenCommand(
     });
   }
 
-  await deps.userTokenStore.delete(deps.requesterId, provider);
+  await Promise.all([
+    deps.userTokenStore.delete(deps.requesterId, provider),
+    deleteMcpStoredOAuthCredentials(deps.requesterId, provider),
+    deleteMcpServerSessionId(deps.requesterId, provider),
+    deleteMcpAuthSessionsForUserProvider(deps.requesterId, provider),
+  ]);
 
   logInfo(
     "jr_rpc_delete_token",

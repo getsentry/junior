@@ -20,6 +20,7 @@ export interface SkillMetadata {
   skillPath: string;
   pluginProvider?: string;
   allowedTools?: string[];
+  allowedMcpTools?: string[];
   requiresCapabilities?: string[];
   usesConfig?: string[];
 }
@@ -118,6 +119,7 @@ async function readSkillDirectory(
       name,
       description,
       allowedTools,
+      allowedMcpTools,
       requiresCapabilities,
       usesConfig,
     } = parsed.skill;
@@ -145,6 +147,7 @@ async function readSkillDirectory(
       skillPath: skillDir,
       ...(plugin ? { pluginProvider: plugin.manifest.name } : {}),
       allowedTools,
+      allowedMcpTools,
       requiresCapabilities,
       usesConfig,
     };

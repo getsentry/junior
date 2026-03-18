@@ -3,13 +3,14 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-13
+- Last Edited: 2026-03-18
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-09: Added provider-configured token request auth/headers and optional token expiry semantics.
 - 2026-03-13: Documented MCP challenge-driven OAuth, MCP callback routing, and auth-driven turn resume.
+- 2026-03-18: Clarified lazy MCP auth-session creation, host-managed MCP server-session storage, and disconnect cleanup for stored credentials plus pending auth sessions.
 
 ## Status
 
@@ -134,7 +135,9 @@ User: /sentry disconnect
   ▼
 Agent: jr-rpc delete-token sentry
   │
-  ├─ Deletes Redis key `oauth-token:<userId>:<provider>`
+  ├─ Deletes Redis key `oauth-token:<userId>:<provider>` when present
+  ├─ Deletes Redis key `junior:mcp_auth_credentials:<userId>:<provider>` for MCP-backed providers
+  ├─ Deletes pending MCP auth-session entries for that `<userId>:<provider>` pair
   └─ Returns confirmation
 ```
 
@@ -161,11 +164,18 @@ Agent: jr-rpc delete-token sentry
 ### MCP auth sessions and credentials
 
 - Session key pattern: `junior:mcp_auth_session:<state>`
+- Session index key pattern: `junior:mcp_auth_session_index:<userId>:<provider>`
 - Session value: `{ provider, userId, conversationId, sessionId, userMessage, channelId?, threadTs?, toolChannelId?, configuration?, artifactState?, authorizationUrl?, codeVerifier? }`
 - Session TTL: 24 hours
+- Session records are created lazily when the MCP SDK first needs to redirect the user for authorization, not on every MCP client activation.
+- Disconnect must clear both stored MCP credentials and any pending indexed auth sessions for that `userId:provider` pair so stale private links cannot reconnect an unlinked account.
 - Credentials key pattern: `junior:mcp_auth_credentials:<userId>:<provider>`
 - Credentials value: MCP SDK client information, discovery state, and OAuth tokens
 - Credentials TTL: 30 days, refreshed on every write
+- Server session key pattern: `junior:mcp_server_session:<userId>:<provider>`
+- Server session value: `{ sessionId, updatedAtMs }`
+- Server session TTL: 24 hours
+- Server session ids are opaque server-issued transport state. They are stored only in host-managed state, never injected into the sandbox or surfaced to the agent, and are cleared on disconnect or when the MCP server reports the session is missing.
 
 ## Base URL resolution
 
@@ -362,7 +372,7 @@ User:     @Junior /sentry disconnect
 Junior:   Your Sentry account has been disconnected.
 ```
 
-Under the hood: `jr-rpc delete-token sentry` deletes the Redis key. Future Sentry commands will prompt the user to reconnect.
+Under the hood: `jr-rpc delete-token sentry` deletes the stored provider credentials, including MCP OAuth credentials for MCP-backed providers. Future commands will prompt the user to reconnect.
 
 ### Design notes
 

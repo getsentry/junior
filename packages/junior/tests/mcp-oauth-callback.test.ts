@@ -7,6 +7,7 @@ const {
   deleteMcpAuthSessionMock,
   finalizeMcpAuthorizationMock,
   generateAssistantReplyMock,
+  logWarnMock,
   markConversationMessageMock,
   markTurnCompletedMock,
   markTurnFailedMock,
@@ -25,6 +26,7 @@ const {
   deleteMcpAuthSessionMock: vi.fn(),
   finalizeMcpAuthorizationMock: vi.fn(),
   generateAssistantReplyMock: vi.fn(),
+  logWarnMock: vi.fn(),
   markConversationMessageMock: vi.fn(),
   markTurnCompletedMock: vi.fn(),
   markTurnFailedMock: vi.fn(),
@@ -84,6 +86,7 @@ vi.mock("@/chat/slack-actions/client", () => ({
 
 vi.mock("@/chat/observability", () => ({
   logException: vi.fn(),
+  logWarn: logWarnMock,
 }));
 
 vi.mock("@/chat/conversation-state", () => ({
@@ -132,6 +135,7 @@ describe("mcp oauth callback handler", () => {
     deleteMcpAuthSessionMock.mockReset();
     finalizeMcpAuthorizationMock.mockReset();
     generateAssistantReplyMock.mockReset();
+    logWarnMock.mockReset();
     markConversationMessageMock.mockReset();
     markTurnCompletedMock.mockReset();
     markTurnFailedMock.mockReset();
@@ -469,5 +473,31 @@ describe("mcp oauth callback handler", () => {
       thread_ts: "1712345.0001",
       text: "MCP authorization completed, but resuming the request failed. Please retry the original command.",
     });
+  });
+
+  it("re-parks the resumed turn when another MCP auth challenge is required", async () => {
+    const { RetryableTurnError } = await import("@/chat/turn/errors");
+    generateAssistantReplyMock.mockRejectedValueOnce(
+      new RetryableTurnError("mcp_auth_resume", "auth required again"),
+    );
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
+      ),
+      makeContext("demo"),
+    );
+
+    expect(response.status).toBe(200);
+    await afterCallbacks[0]!();
+
+    expect(logWarnMock).toHaveBeenCalledWith(
+      "mcp_oauth_callback_resume_reparked_for_auth",
+      {},
+      { "app.credential.provider": "demo" },
+      "Resumed MCP turn requested another authorization flow",
+    );
+    expect(markTurnFailedMock).not.toHaveBeenCalled();
+    expect(postMessageMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,8 +1,8 @@
 ---
 title: Notion Plugin
-description: Configure a shared internal Notion integration for read-only page and data source search workflows.
+description: Configure the hosted Notion MCP server for read-only page and data source search workflows.
 type: tutorial
-summary: Install the Notion plugin, register it with withJunior, configure a shared integration token, and verify Notion search workflows.
+summary: Install the Notion plugin, register it with withJunior, connect user accounts through Notion MCP OAuth, and verify read-only search workflows.
 prerequisites:
   - /extend/
 related:
@@ -10,9 +10,11 @@ related:
   - /operate/security-hardening/
 ---
 
-The Notion plugin uses a shared internal integration so Slack users can search shared Notion pages and data sources through normal Notion requests.
+The Notion plugin uses Notion's hosted MCP server so Slack users can search and fetch content from their own Notion account context.
 
-Notion's public search API is more limited than the search experience in the Notion app. Junior uses the stable public API, so Notion requests work best when users search for the exact page or data source title they want to open.
+Junior intentionally keeps this plugin read-only. It exposes only Notion's `notion-search` and `notion-fetch` MCP tools, even though the hosted server supports write-capable tools.
+
+Notion search is still title-biased. Requests work best when users search for the exact page or data source title they want to open.
 
 ## Install
 
@@ -34,55 +36,35 @@ export default withJunior({
 });
 ```
 
-## Configure environment variables
+## Auth model
 
-Set these values in the host environment:
+- No `NOTION_TOKEN` or shared integration secret is required.
+- Each user completes OAuth the first time Junior calls a Notion MCP tool on their behalf.
+- Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
+- Notion MCP requires user-based OAuth and does not support bearer token authentication, so this plugin is not suitable for fully headless automation.
 
-| Variable       | Required | Purpose                                                              |
-| -------------- | -------- | -------------------------------------------------------------------- |
-| `NOTION_TOKEN` | Yes      | Internal integration secret used for search and page fetch requests. |
+## What users can do
 
-## Create the Notion integration
-
-Start with Notion's [Authorization guide](https://developers.notion.com/guides/get-started/authorization), then create an internal integration in the Notion integrations dashboard.
-
-After you create the integration:
-
-1. Choose the workspace where the integration will live.
-2. Open the `Capabilities` tab and enable `Read content`.
-3. Open the `Configuration` tab and copy the integration secret.
-4. Store that secret in your deployment environment as `NOTION_TOKEN`.
-
-## Share pages and data sources with the integration
-
-Notion internal integrations only see the pages and data sources that are explicitly shared with them:
-
-1. Open the page or data source in Notion.
-2. Click the `•••` menu in the upper right.
-3. Choose `Add connections`.
-4. Select your integration.
-
-This is the most common reason a Notion request returns no matches or a permission-style error.
+- Search for a page or data source by title-style query.
+- Fetch the best matching result and summarize its content.
+- Disconnect their account later from Junior App Home with `Unlink`.
 
 ## Verify
 
-Confirm the token is set, the target content is shared with the integration, and a real search succeeds:
+Confirm a real user can connect and search successfully:
 
-- Ask Junior to search Notion for a real page or data source title and confirm the response includes the expected result.
-- If needed, verify the same content through the local helper scripts:
-
-```bash
-pnpm notion:search -- --query "company holidays"
-pnpm notion:fetch -- --id "<notion-id>" --object page
-```
+1. Ask Junior to search Notion for a real page or data source title.
+2. Complete the private OAuth flow when Junior prompts for it.
+3. Confirm the thread resumes automatically and includes the expected Notion result.
+4. Open Junior App Home and confirm Notion appears under `Connected accounts`.
 
 ## Failure modes
 
-- No search matches: the target page or data source is not shared with the integration yet, or Notion search is still indexing newly shared content. Share the content directly and retry after indexing catches up.
-- `403` from Notion: the integration is missing `Read content`. Enable that capability in the integration settings.
-- `401` from Notion: `NOTION_TOKEN` is missing or invalid. Update the deployment secret and redeploy.
-- Retrieval errors after a match: the matching page or data source could not be fetched for summarization. Confirm the object is still shared and accessible to the integration.
-- Search results differ from notion.so: Junior uses Notion's public `v1` API, which is title-biased and does not expose the richer `Best matches` behavior from the Notion UI. Search by the exact title when possible.
+- No auth prompt or no resume: the user still needs to complete the OAuth flow. Retry the request and finish the private authorization flow when prompted.
+- No search matches: the query is too broad, the content is outside the user's Notion permissions, or search has not indexed recent changes yet.
+- Search results differ from notion.so: MCP search is still title-biased. Search by the exact title when possible.
+- Connected-source results are missing: search across Slack, Google Drive, or Jira requires a Notion AI plan. Without it, search is limited to the user's Notion workspace.
+- Retrieval errors after a match: the matching page or data source could not be fetched for summarization. Confirm the user can still access that object in Notion.
 
 ## Next step
 

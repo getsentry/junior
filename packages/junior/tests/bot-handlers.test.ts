@@ -491,6 +491,48 @@ describe("bot handlers (integration)", () => {
     expect(lastMessage?.meta?.skippedReason).toBeUndefined();
   });
 
+  it("parks MCP auth resume turns without rethrowing to the queue", async () => {
+    const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
+    const { RetryableTurnError } = await import("@/chat/turn/errors");
+    setBotDepsForTests({
+      generateAssistantReply: async () => {
+        throw new RetryableTurnError("mcp_auth_resume", "simulated auth pause");
+      },
+      listThreadReplies: async () => [],
+    });
+
+    const thread = createTestThread({ id: "slack:C_AUTH:1700000000.000" });
+    await expect(
+      appSlackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-auth-pause",
+          threadId: "slack:C_AUTH:1700000000.000",
+          text: "please use notion",
+          isMention: true,
+        }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(thread.posts).toHaveLength(0);
+    const state = thread.getState();
+    const conversation = (
+      state as {
+        conversation?: {
+          processing?: { activeTurnId?: string };
+          messages?: Array<{
+            meta?: { replied?: boolean; skippedReason?: string };
+          }>;
+        };
+      }
+    ).conversation;
+    expect(conversation?.processing?.activeTurnId).toBe("turn_msg-auth-pause");
+    const lastMessage =
+      conversation?.messages?.[conversation.messages.length - 1];
+    expect(lastMessage?.meta?.replied).toBeUndefined();
+    expect(lastMessage?.meta?.skippedReason).toBeUndefined();
+  });
+
   it("posts terminal failure text after streamed partial output", async () => {
     const { appSlackRuntime, setBotDepsForTests } = await import("@/chat/bot");
     setBotDepsForTests({

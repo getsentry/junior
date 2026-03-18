@@ -68,6 +68,7 @@ export interface PluginMcpHttpConfig {
   transport: "http";
   url: string;
   headers?: Record<string, string>;
+  allowedTools?: string[];
 }
 
 export type PluginMcpConfig = PluginMcpHttpConfig;

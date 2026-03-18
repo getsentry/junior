@@ -325,6 +325,34 @@ async function writePackagedPluginWithMcp(tempRoot: string): Promise<void> {
       "  url: https://mcp.example.com",
       "  headers:",
       '    X-Workspace: "acme"',
+      "  allowed-tools:",
+      "    - search",
+      "    - fetch",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+async function writePackagedPluginWithInvalidMcpAllowedTools(
+  tempRoot: string,
+): Promise<void> {
+  const packageRoot = path.join(
+    tempRoot,
+    "node_modules",
+    "@acme",
+    "junior-plugin-mcp-invalid-allowed-tools",
+  );
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo MCP plugin",
+      "mcp:",
+      "  transport: http",
+      "  url: https://mcp.example.com",
+      '  allowed-tools: "search"',
     ].join("\n"),
     "utf8",
   );
@@ -808,10 +836,39 @@ describe("plugin registry package discovery", () => {
       headers: {
         "X-Workspace": "acme",
       },
+      allowedTools: ["search", "fetch"],
     });
     expect(
       registry.getPluginMcpProviders().map((plugin) => plugin.manifest.name),
     ).toEqual(["demo"]);
+  });
+
+  it("rejects invalid MCP allowed-tools declarations", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-package-"),
+    );
+    await writePackagedPluginWithInvalidMcpAllowedTools(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-mcp-invalid-allowed-tools": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => [],
+    }));
+
+    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+      "Plugin demo mcp.allowed-tools must be an array of strings when provided",
+    );
   });
 
   it("rejects Authorization in plugin MCP headers", async () => {

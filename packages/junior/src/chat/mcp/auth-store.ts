@@ -8,8 +8,11 @@ import { getStateAdapter } from "@/chat/state";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_auth_session";
 const MCP_AUTH_CREDENTIALS_PREFIX = "junior:mcp_auth_credentials";
+const MCP_AUTH_SESSION_INDEX_PREFIX = "junior:mcp_auth_session_index";
+const MCP_SERVER_SESSION_PREFIX = "junior:mcp_server_session";
 const MCP_AUTH_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const MCP_AUTH_CREDENTIALS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const MCP_SERVER_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface McpAuthSessionState {
   authSessionId: string;
@@ -35,6 +38,11 @@ export interface McpStoredOAuthCredentials {
   tokens?: OAuthTokens;
 }
 
+export interface McpServerSessionState {
+  sessionId: string;
+  updatedAtMs: number;
+}
+
 function sessionKey(authSessionId: string): string {
   return `${MCP_AUTH_SESSION_PREFIX}:${authSessionId}`;
 }
@@ -43,8 +51,34 @@ function credentialsKey(userId: string, provider: string): string {
   return `${MCP_AUTH_CREDENTIALS_PREFIX}:${userId}:${provider}`;
 }
 
+function sessionIndexKey(userId: string, provider: string): string {
+  return `${MCP_AUTH_SESSION_INDEX_PREFIX}:${userId}:${provider}`;
+}
+
+function serverSessionKey(userId: string, provider: string): string {
+  return `${MCP_SERVER_SESSION_PREFIX}:${userId}:${provider}`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function parseSessionIndex(value: unknown): string[] {
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return [
+      ...new Set(parsed.filter((id): id is string => typeof id === "string")),
+    ];
+  } catch {
+    return [];
+  }
 }
 
 function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
@@ -107,6 +141,30 @@ function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
   }
 }
 
+function parseServerSession(value: unknown): McpServerSessionState | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    if (
+      !isRecord(parsed) ||
+      typeof parsed.sessionId !== "string" ||
+      typeof parsed.updatedAtMs !== "number"
+    ) {
+      return undefined;
+    }
+
+    return {
+      sessionId: parsed.sessionId,
+      updatedAtMs: parsed.updatedAtMs,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 function parseStoredCredentials(
   value: unknown,
 ): McpStoredOAuthCredentials | undefined {
@@ -155,10 +213,22 @@ export async function putMcpAuthSession(
   session: McpAuthSessionState,
   ttlMs: number = MCP_AUTH_SESSION_TTL_MS,
 ): Promise<void> {
-  await getStateAdapter().connect();
-  await getStateAdapter().set(
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  await stateAdapter.set(
     sessionKey(session.authSessionId),
     JSON.stringify(session),
+    ttlMs,
+  );
+  const nextIndex = parseSessionIndex(
+    await stateAdapter.get(sessionIndexKey(session.userId, session.provider)),
+  );
+  if (!nextIndex.includes(session.authSessionId)) {
+    nextIndex.push(session.authSessionId);
+  }
+  await stateAdapter.set(
+    sessionIndexKey(session.userId, session.provider),
+    JSON.stringify(nextIndex),
     ttlMs,
   );
 }
@@ -191,8 +261,46 @@ export async function patchMcpAuthSession(
 export async function deleteMcpAuthSession(
   authSessionId: string,
 ): Promise<void> {
-  await getStateAdapter().connect();
-  await getStateAdapter().delete(sessionKey(authSessionId));
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const current = parseMcpAuthSession(
+    await stateAdapter.get(sessionKey(authSessionId)),
+  );
+  await stateAdapter.delete(sessionKey(authSessionId));
+  if (!current) {
+    return;
+  }
+
+  const nextIndex = parseSessionIndex(
+    await stateAdapter.get(sessionIndexKey(current.userId, current.provider)),
+  ).filter((id) => id !== authSessionId);
+
+  if (nextIndex.length > 0) {
+    await stateAdapter.set(
+      sessionIndexKey(current.userId, current.provider),
+      JSON.stringify(nextIndex),
+      MCP_AUTH_SESSION_TTL_MS,
+    );
+    return;
+  }
+
+  await stateAdapter.delete(sessionIndexKey(current.userId, current.provider));
+}
+
+export async function deleteMcpAuthSessionsForUserProvider(
+  userId: string,
+  provider: string,
+): Promise<void> {
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const indexKey = sessionIndexKey(userId, provider);
+  const authSessionIds = parseSessionIndex(await stateAdapter.get(indexKey));
+
+  for (const authSessionId of authSessionIds) {
+    await stateAdapter.delete(sessionKey(authSessionId));
+  }
+
+  await stateAdapter.delete(indexKey);
 }
 
 export async function getMcpStoredOAuthCredentials(
@@ -217,4 +325,47 @@ export async function putMcpStoredOAuthCredentials(
     JSON.stringify(value),
     ttlMs,
   );
+}
+
+export async function deleteMcpStoredOAuthCredentials(
+  userId: string,
+  provider: string,
+): Promise<void> {
+  await getStateAdapter().connect();
+  await getStateAdapter().delete(credentialsKey(userId, provider));
+}
+
+export async function getMcpServerSessionId(
+  userId: string,
+  provider: string,
+): Promise<string | undefined> {
+  await getStateAdapter().connect();
+  return parseServerSession(
+    await getStateAdapter().get(serverSessionKey(userId, provider)),
+  )?.sessionId;
+}
+
+export async function putMcpServerSessionId(
+  userId: string,
+  provider: string,
+  sessionId: string,
+  ttlMs: number = MCP_SERVER_SESSION_TTL_MS,
+): Promise<void> {
+  await getStateAdapter().connect();
+  await getStateAdapter().set(
+    serverSessionKey(userId, provider),
+    JSON.stringify({
+      sessionId,
+      updatedAtMs: Date.now(),
+    } satisfies McpServerSessionState),
+    ttlMs,
+  );
+}
+
+export async function deleteMcpServerSessionId(
+  userId: string,
+  provider: string,
+): Promise<void> {
+  await getStateAdapter().connect();
+  await getStateAdapter().delete(serverSessionKey(userId, provider));
 }

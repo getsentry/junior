@@ -4,11 +4,7 @@ import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getPluginDefinition } from "@/chat/plugins/registry";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
-import {
-  getMcpAuthSession,
-  putMcpAuthSession,
-  type McpAuthSessionState,
-} from "./auth-store";
+import { getMcpAuthSession, type McpAuthSessionState } from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
 
 export function getMcpOAuthCallbackPath(provider: string): string {
@@ -44,26 +40,22 @@ export async function createMcpOAuthClientProvider(input: {
     );
   }
 
-  const authSessionId = randomUUID();
-  const callbackUrl = `${baseUrl}${getMcpOAuthCallbackPath(input.provider)}`;
-  const session: McpAuthSessionState = {
-    authSessionId,
-    provider: input.provider,
-    userId: input.userId,
-    conversationId: input.conversationId,
-    sessionId: input.sessionId,
-    userMessage: input.userMessage,
-    createdAtMs: Date.now(),
-    updatedAtMs: Date.now(),
-    ...(input.channelId ? { channelId: input.channelId } : {}),
-    ...(input.threadTs ? { threadTs: input.threadTs } : {}),
-    ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
-    ...(input.configuration ? { configuration: input.configuration } : {}),
-    ...(input.artifactState ? { artifactState: input.artifactState } : {}),
-  };
-  await putMcpAuthSession(session);
-
-  return new StateBackedMcpOAuthClientProvider(authSessionId, callbackUrl);
+  return new StateBackedMcpOAuthClientProvider(
+    randomUUID(),
+    `${baseUrl}${getMcpOAuthCallbackPath(input.provider)}`,
+    {
+      provider: input.provider,
+      userId: input.userId,
+      conversationId: input.conversationId,
+      sessionId: input.sessionId,
+      userMessage: input.userMessage,
+      ...(input.channelId ? { channelId: input.channelId } : {}),
+      ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
+      ...(input.configuration ? { configuration: input.configuration } : {}),
+      ...(input.artifactState ? { artifactState: input.artifactState } : {}),
+    },
+  );
 }
 
 export async function finalizeMcpAuthorization(

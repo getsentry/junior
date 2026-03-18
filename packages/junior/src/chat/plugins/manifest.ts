@@ -34,6 +34,41 @@ const trimmedString = z.string().transform((value) => value.trim());
 const nonEmptyTrimmedString = trimmedString.pipe(
   z.string().min(1, { error: "must be a non-empty string" }),
 );
+const nonEmptyStringArraySchema = (
+  fieldName: string,
+  options: { nonEmptyMessage?: string } = {},
+) =>
+  z
+    .array(z.string(), {
+      error: "must be an array of strings when provided",
+    })
+    .min(1, {
+      error:
+        options.nonEmptyMessage ??
+        "must be a non-empty array of strings when provided",
+    })
+    .transform((values, ctx) => {
+      const result: string[] = [];
+      const seen = new Set<string>();
+
+      for (const rawValue of values) {
+        const value = rawValue.trim();
+        if (!value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${fieldName} entries must be non-empty strings`,
+          });
+          return z.NEVER;
+        }
+        if (seen.has(value)) {
+          continue;
+        }
+        seen.add(value);
+        result.push(value);
+      }
+
+      return result;
+    });
 const envVarString = nonEmptyTrimmedString.refine(
   (value) => AUTH_TOKEN_ENV_RE.test(value),
   {
@@ -195,6 +230,7 @@ const mcpSourceSchema = z
     }),
     url: httpsUrlString,
     headers: stringMapSchema.optional(),
+    "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
   })
   .passthrough();
 
@@ -533,6 +569,9 @@ function normalizeMcp(
             { forbiddenKeys: FORBIDDEN_API_HEADER_NAMES },
           ),
         }
+      : {}),
+    ...(result.data["allowed-tools"]
+      ? { allowedTools: result.data["allowed-tools"] }
       : {}),
   } satisfies PluginMcpConfig;
 }

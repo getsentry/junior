@@ -1,5 +1,10 @@
 import { Agent, type AgentTool } from "@mariozechner/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
+import type {
+  AssistantMessage,
+  ImageContent,
+  TextContent,
+  ToolResultMessage,
+} from "@mariozechner/pi-ai";
 import { Value } from "@sinclair/typebox/value";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
@@ -49,6 +54,7 @@ import { SlackActionError } from "@/chat/slack-actions/client";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
+import { toExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
@@ -296,6 +302,8 @@ function formatToolStatus(toolName: string): string {
     slackListAddItems: "Updating tracking list",
     slackListUpdateItem: "Updating tracking list",
     imageGenerate: "Generating image",
+    searchTools: "Searching active tools",
+    useTool: "Running active tool",
   };
 
   if (known[toolName]) {
@@ -304,6 +312,24 @@ function formatToolStatus(toolName: string): string {
 
   const readable = toolName.replaceAll("_", " ").trim();
   return readable.length > 0 ? `Running ${readable}` : "Running tool";
+}
+
+function formatCanonicalToolStatusName(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const mcpMatch = /^mcp__([^_]+)__(.+)$/.exec(trimmed);
+  if (mcpMatch) {
+    return compactStatusText(`${mcpMatch[1]}/${mcpMatch[2]}`, 40);
+  }
+
+  return compactStatusText(trimmed, 40);
 }
 
 function formatToolStatusWithInput(toolName: string, input: unknown): string {
@@ -318,6 +344,10 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
   const domain = obj ? extractStatusUrlDomain(obj.url) : undefined;
   const skillName = obj
     ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
+    : undefined;
+  const provider = obj ? compactStatusText(obj.provider, 20) : undefined;
+  const activeToolName = obj
+    ? formatCanonicalToolStatusName(obj.tool_name ?? obj.toolName)
     : undefined;
 
   if (command && toolName === "bash") {
@@ -337,6 +367,15 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
   }
   if (query && toolName === "webSearch") {
     return `Searching web for "${query}"`;
+  }
+  if (query && provider && toolName === "searchTools") {
+    return `Searching ${provider} tools for "${query}"`;
+  }
+  if (query && toolName === "searchTools") {
+    return `Searching tools for "${query}"`;
+  }
+  if (activeToolName && toolName === "useTool") {
+    return `Running ${activeToolName}`;
   }
   if (domain && toolName === "webFetch") {
     return `Fetching page from ${domain}`;
@@ -362,6 +401,8 @@ function formatToolResultStatus(toolName: string): string {
     slackListAddItems: "Preparing list update",
     slackListUpdateItem: "Preparing list update",
     imageGenerate: "Preparing generated image",
+    searchTools: "Reviewing tool matches",
+    useTool: "Reviewing tool result",
   };
 
   if (known[toolName]) {
@@ -390,6 +431,10 @@ function formatToolResultStatusWithInput(
   const skillName = obj
     ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
     : undefined;
+  const provider = obj ? compactStatusText(obj.provider, 20) : undefined;
+  const activeToolName = obj
+    ? formatCanonicalToolStatusName(obj.tool_name ?? obj.toolName)
+    : undefined;
 
   if (command && toolName === "bash") {
     return `Reviewed results from ${command}`;
@@ -408,6 +453,15 @@ function formatToolResultStatusWithInput(
   }
   if (query && toolName === "webSearch") {
     return `Reviewed web results for "${query}"`;
+  }
+  if (query && provider && toolName === "searchTools") {
+    return `Reviewed ${provider} tool matches`;
+  }
+  if (query && toolName === "searchTools") {
+    return `Reviewed tool matches for "${query}"`;
+  }
+  if (activeToolName && toolName === "useTool") {
+    return `Reviewed ${activeToolName} result`;
   }
   if (domain && toolName === "webFetch") {
     return `Reviewed page from ${domain}`;
@@ -506,6 +560,34 @@ function toToolContentText(value: unknown): string {
   }
 }
 
+function isStructuredToolExecutionResult(value: unknown): value is {
+  content: Array<TextContent | ImageContent>;
+  details: unknown;
+} {
+  const content = (value as { content?: unknown } | null)?.content;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray(content) &&
+    content.every((part) => {
+      if (!part || typeof part !== "object") {
+        return false;
+      }
+      const record = part as Record<string, unknown>;
+      if (record.type === "text") {
+        return typeof record.text === "string";
+      }
+      if (record.type === "image") {
+        return (
+          typeof record.data === "string" && typeof record.mimeType === "string"
+        );
+      }
+      return false;
+    }) &&
+    "details" in value
+  );
+}
+
 export const respondStatusFormatters = {
   formatToolStatus,
   formatToolStatusWithInput,
@@ -546,6 +628,14 @@ function isAssistantMessage(value: unknown): value is AssistantMessage {
   );
 }
 
+function getPiMessageRole(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const role = (value as { role?: unknown }).role;
+  return typeof role === "string" ? role : undefined;
+}
+
 function extractAssistantText(message: AssistantMessage): string {
   const content =
     (message as { content?: Array<{ type?: unknown; text?: unknown }> })
@@ -566,6 +656,7 @@ function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
     existing.description = next.description;
     existing.skillPath = next.skillPath;
     existing.allowedTools = next.allowedTools;
+    existing.allowedMcpTools = next.allowedMcpTools;
     existing.requiresCapabilities = next.requiresCapabilities;
     existing.usesConfig = next.usesConfig;
     existing.pluginProvider = next.pluginProvider;
@@ -640,24 +731,6 @@ function createAgentTools(
         turnId: spanContext.turnId,
         agentId: spanContext.agentId,
       };
-      if (shouldTrace) {
-        logInfo(
-          "agent_tool_call_started",
-          traceToolContext,
-          {
-            "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-            "gen_ai.operation.name": "execute_tool",
-            "gen_ai.tool.name": toolName,
-            ...(normalizedToolCallId
-              ? { "gen_ai.tool.call.id": normalizedToolCallId }
-              : {}),
-            ...(toolArgumentsAttribute
-              ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute }
-              : {}),
-          },
-          "Agent tool call started",
-        );
-      }
       await onStatus?.(`${formatToolStatusWithInput(toolName, params)}...`);
       return withSpan(
         `execute_tool ${toolName}`,
@@ -727,26 +800,6 @@ function createAgentTools(
               await onStatus?.(
                 `${formatToolResultStatusWithInput(toolName, parsed)}...`,
               );
-              if (shouldTrace) {
-                logInfo(
-                  "agent_tool_call_completed",
-                  traceToolContext,
-                  {
-                    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                    "gen_ai.operation.name": "execute_tool",
-                    "gen_ai.tool.name": toolName,
-                    ...(normalizedToolCallId
-                      ? { "gen_ai.tool.call.id": normalizedToolCallId }
-                      : {}),
-                    "app.ai.tool_duration_ms": durationMs,
-                    "app.ai.tool_outcome": "success",
-                    ...(toolResultAttribute
-                      ? { "gen_ai.tool.call.result": toolResultAttribute }
-                      : {}),
-                  },
-                  "Agent tool call completed",
-                );
-              }
               return {
                 content: [{ type: "text", text: "ok" }],
                 details: resultDetails,
@@ -833,7 +886,14 @@ function createAgentTools(
             }
 
             const durationMs = Date.now() - toolStartedAt;
-            const toolResultAttribute = serializeGenAiAttribute(resultDetails);
+            const structuredToolResult = isStructuredToolExecutionResult(
+              resultDetails,
+            )
+              ? resultDetails
+              : undefined;
+            const toolResultAttribute = serializeGenAiAttribute(
+              structuredToolResult?.details ?? resultDetails,
+            );
             setSpanAttributes({
               "app.ai.tool_duration_ms": durationMs,
               "app.ai.tool_outcome": "success",
@@ -845,25 +905,8 @@ function createAgentTools(
             await onStatus?.(
               `${formatToolResultStatusWithInput(toolName, parsed)}...`,
             );
-            if (shouldTrace) {
-              logInfo(
-                "agent_tool_call_completed",
-                traceToolContext,
-                {
-                  "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                  "gen_ai.operation.name": "execute_tool",
-                  "gen_ai.tool.name": toolName,
-                  ...(normalizedToolCallId
-                    ? { "gen_ai.tool.call.id": normalizedToolCallId }
-                    : {}),
-                  "app.ai.tool_duration_ms": durationMs,
-                  "app.ai.tool_outcome": "success",
-                  ...(toolResultAttribute
-                    ? { "gen_ai.tool.call.result": toolResultAttribute }
-                    : {}),
-                },
-                "Agent tool call completed",
-              );
+            if (structuredToolResult) {
+              return structuredToolResult;
             }
             return {
               content: [
@@ -1028,12 +1071,39 @@ export async function generateAssistantReply(
       canUseTurnSession && sessionConversationId && sessionId
         ? await getAgentTurnSessionCheckpoint(sessionConversationId, sessionId)
         : undefined;
-    const resumedFromCheckpoint = Boolean(
+    const hasAwaitingResumeCheckpoint = Boolean(
       existingTurnCheckpoint &&
       existingTurnCheckpoint.state === "awaiting_resume" &&
       existingTurnCheckpoint.piMessages.length > 0,
     );
-    const currentSliceId = resumedFromCheckpoint
+    const checkpointEndsWithAssistant = Boolean(
+      hasAwaitingResumeCheckpoint &&
+      getPiMessageRole(existingTurnCheckpoint!.piMessages.at(-1)) ===
+        "assistant",
+    );
+    const resumedFromCheckpoint = Boolean(
+      hasAwaitingResumeCheckpoint &&
+      !(
+        existingTurnCheckpoint?.resumeReason === "auth" &&
+        checkpointEndsWithAssistant
+      ),
+    );
+    if (
+      hasAwaitingResumeCheckpoint &&
+      existingTurnCheckpoint?.resumeReason === "auth" &&
+      checkpointEndsWithAssistant
+    ) {
+      logWarn(
+        "agent_turn_resume_replayed_from_prompt",
+        spanContext,
+        {
+          "app.ai.resume_reason": existingTurnCheckpoint.resumeReason,
+          "app.ai.resume_slice_id": existingTurnCheckpoint.sliceId,
+        },
+        "Replaying auth-paused turn from prompt because the saved Pi checkpoint ended on an assistant message",
+      );
+    }
+    const currentSliceId = hasAwaitingResumeCheckpoint
       ? existingTurnCheckpoint!.sliceId
       : 1;
     timeoutResumeSliceId = currentSliceId;
@@ -1117,11 +1187,15 @@ export async function generateAssistantReply(
       };
     }
 
+    timeoutResumeMessages = [];
+    pendingMcpAuthorizationPause = undefined;
     const generatedFiles: FileUpload[] = [];
     const replyFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
     const mcpAuthSessionIdsByProvider = new Map<string, string>();
+    let agent: Agent | undefined;
+
     mcpToolManager = new McpToolManager(getPluginMcpProviders(), {
       authProviderFactory: async (plugin) => {
         if (
@@ -1203,27 +1277,11 @@ export async function generateAssistantReply(
         pendingMcpAuthorizationPause = new McpAuthorizationPauseError(provider);
         agent?.abort();
       },
-      ...(sessionConversationId && sessionId
-        ? { sessionId: `${sessionConversationId}:${sessionId}` }
-        : {}),
     });
     const turnMcpToolManager = mcpToolManager;
-    let agent: Agent | undefined;
-    let baseAgentTools: AgentTool<any>[] = [];
     const syncResumeState = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
       activeMcpProvidersForResume = mcpToolManager?.getActiveProviders() ?? [];
-    };
-
-    const refreshAgentTools = () => {
-      if (!agent) {
-        return;
-      }
-      agent.setTools([
-        ...baseAgentTools,
-        ...turnMcpToolManager.getActiveTools(),
-      ]);
-      syncResumeState();
     };
 
     setTags({
@@ -1269,7 +1327,19 @@ export async function generateAssistantReply(
           upsertActiveSkill(activeSkills, effective);
           syncResumeState();
           await turnMcpToolManager.activateForSkill(effective);
-          refreshAgentTools();
+          syncResumeState();
+          if (!effective.pluginProvider) {
+            return undefined;
+          }
+
+          return {
+            available_tools: turnMcpToolManager
+              .getActiveToolCatalog(activeSkills, {
+                provider: effective.pluginProvider,
+              })
+              .map(toExposedToolSummary),
+            tool_search_available: true,
+          };
         },
       },
       {
@@ -1279,6 +1349,8 @@ export async function generateAssistantReply(
         userText: userInput,
         artifactState: context.artifactState,
         configuration: configurationValues,
+        getActiveSkills: () => activeSkills,
+        mcpToolManager: turnMcpToolManager,
         sandbox,
       },
     );
@@ -1302,9 +1374,13 @@ export async function generateAssistantReply(
     }
     syncResumeState();
 
+    const activeToolSummaries = turnMcpToolManager
+      .getActiveToolCatalog(activeSkills)
+      .map(toExposedToolSummary);
     const baseInstructions = buildSystemPrompt({
       availableSkills,
       activeSkills,
+      activeTools: activeToolSummaries,
       invocation: skillInvocation,
       assistant: context.assistant,
       requester: context.requester,
@@ -1348,7 +1424,7 @@ export async function generateAssistantReply(
       },
     ]);
 
-    baseAgentTools = createAgentTools(
+    const baseAgentTools = createAgentTools(
       tools as Record<string, ToolDefinition<any>>,
       skillSandbox,
       spanContext,
@@ -1367,7 +1443,7 @@ export async function generateAssistantReply(
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),
-        tools: [...baseAgentTools, ...turnMcpToolManager.getActiveTools()],
+        tools: baseAgentTools,
       },
     });
     let hasEmittedText = false;

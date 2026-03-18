@@ -29,6 +29,14 @@ const packageSkillRoots = new Set<string>();
 
 let pluginsLoaded = false;
 
+function getLoggedPluginNames(): Set<string> {
+  const globalState = globalThis as typeof globalThis & {
+    __juniorLoggedPluginNames?: Set<string>;
+  };
+  globalState.__juniorLoggedPluginNames ??= new Set<string>();
+  return globalState.__juniorLoggedPluginNames;
+}
+
 function registerPluginManifest(raw: string, pluginDir: string): void {
   const manifest = parsePluginManifest(raw, pluginDir);
 
@@ -141,19 +149,28 @@ function loadPlugins(): void {
     packageSkillRoots.add(skillRoot);
   }
 
-  logInfo(
-    "plugins_loaded",
-    {},
-    {
-      "file.directories": [...localRoots, ...packagedContent.manifestRoots],
-      "app.plugin.count": pluginDefinitions.length,
-      "app.plugin.names": pluginDefinitions
-        .map((plugin) => plugin.manifest.name)
-        .sort(),
-      "app.plugin.package_skill_roots": [...packageSkillRoots].sort(),
-    },
-    "Loaded plugins",
-  );
+  const loggedPluginNames = getLoggedPluginNames();
+  for (const plugin of [...pluginDefinitions].sort((left, right) =>
+    left.manifest.name.localeCompare(right.manifest.name),
+  )) {
+    if (loggedPluginNames.has(plugin.manifest.name)) {
+      continue;
+    }
+    loggedPluginNames.add(plugin.manifest.name);
+    logInfo(
+      "plugin_loaded",
+      {},
+      {
+        "app.plugin.name": plugin.manifest.name,
+        "app.plugin.capability_count": plugin.manifest.capabilities.length,
+        "app.plugin.config_key_count": plugin.manifest.configKeys.length,
+        "app.plugin.has_mcp": Boolean(plugin.manifest.mcp),
+        "file.directory": plugin.dir,
+        "file.skill_directory": plugin.skillsDir,
+      },
+      "Loaded plugin",
+    );
+  }
 }
 
 function ensurePluginsLoaded(): void {

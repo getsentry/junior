@@ -4,6 +4,7 @@ import type { Sandbox } from "@vercel/sandbox";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import { stripFrontmatter } from "@/chat/skill-frontmatter";
 import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { ExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
 
 export type LoadSkillResult = {
   ok?: boolean;
@@ -14,7 +15,14 @@ export type LoadSkillResult = {
   skill_dir?: string;
   location?: string;
   instructions?: string;
+  available_tools?: ExposedToolSummary[];
+  tool_search_available?: boolean;
 };
+
+export type LoadSkillMetadata = Pick<
+  LoadSkillResult,
+  "available_tools" | "tool_search_available"
+>;
 
 function toLoadedSkill(result: LoadSkillResult): Skill | null {
   if (
@@ -73,12 +81,14 @@ export function createLoadSkillTool(
   sandbox: Sandbox,
   availableSkills: SkillMetadata[],
   options?: {
-    onSkillLoaded?: (skill: Skill) => void | Promise<void>;
+    onSkillLoaded?: (
+      skill: Skill,
+    ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
   },
 ) {
   return tool({
     description:
-      "Load a skill by name so its instructions are available for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
+      "Load a skill by name so its instructions are available for this turn. When the skill exposes MCP tools, the result includes `available_tools` with exact tool_name values and argument schemas for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,
@@ -93,7 +103,10 @@ export function createLoadSkillTool(
       );
       const loadedSkill = toLoadedSkill(result);
       if (loadedSkill) {
-        await options?.onSkillLoaded?.(loadedSkill);
+        const metadata = await options?.onSkillLoaded?.(loadedSkill);
+        if (metadata) {
+          Object.assign(result, metadata);
+        }
       }
       return result;
     },

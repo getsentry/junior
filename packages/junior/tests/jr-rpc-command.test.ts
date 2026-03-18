@@ -1,4 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const {
+  deleteMcpAuthSessionsForUserProviderMock,
+  deleteMcpServerSessionIdMock,
+  deleteMcpStoredOAuthCredentialsMock,
+} = vi.hoisted(() => ({
+  deleteMcpAuthSessionsForUserProviderMock: vi.fn(),
+  deleteMcpServerSessionIdMock: vi.fn(),
+  deleteMcpStoredOAuthCredentialsMock: vi.fn(),
+}));
 
 vi.mock("@/chat/capabilities/catalog", () => ({
   getCapabilityProvider: (capability: string) =>
@@ -21,8 +31,18 @@ vi.mock("@/chat/capabilities/catalog", () => ({
       capabilities: ["sentry.api"],
       configKeys: ["sentry.org", "sentry.project"],
     },
-    { provider: "notion", capabilities: ["notion.api"], configKeys: [] },
   ],
+}));
+vi.mock("@/chat/mcp/auth-store", () => ({
+  deleteMcpAuthSessionsForUserProvider:
+    deleteMcpAuthSessionsForUserProviderMock,
+  deleteMcpServerSessionId: deleteMcpServerSessionIdMock,
+  deleteMcpStoredOAuthCredentials: deleteMcpStoredOAuthCredentialsMock,
+}));
+vi.mock("@/chat/plugins/registry", () => ({
+  getPluginOAuthConfig: () => undefined,
+  isPluginProvider: (provider: string) =>
+    provider === "github" || provider === "sentry" || provider === "notion",
 }));
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
@@ -85,6 +105,49 @@ function makeRuntime(
 }
 
 describe("jr-rpc custom command", () => {
+  beforeEach(() => {
+    deleteMcpAuthSessionsForUserProviderMock.mockReset();
+    deleteMcpAuthSessionsForUserProviderMock.mockResolvedValue(undefined);
+    deleteMcpServerSessionIdMock.mockReset();
+    deleteMcpServerSessionIdMock.mockResolvedValue(undefined);
+    deleteMcpStoredOAuthCredentialsMock.mockReset();
+    deleteMcpStoredOAuthCredentialsMock.mockResolvedValue(undefined);
+  });
+
+  it("deletes both legacy and MCP-backed provider credentials", async () => {
+    const userTokenStore = {
+      get: vi.fn(async () => undefined),
+      set: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    };
+
+    const result = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc delete-token notion",
+      {
+        capabilityRuntime: makeRuntime(),
+        activeSkill,
+        requesterId: "U123",
+        userTokenStore,
+      },
+    );
+
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.result.exit_code).toBe(0);
+      expect(result.result.stdout).toContain("token_deleted provider=notion");
+    }
+    expect(userTokenStore.delete).toHaveBeenCalledWith("U123", "notion");
+    expect(deleteMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith(
+      "U123",
+      "notion",
+    );
+    expect(deleteMcpServerSessionIdMock).toHaveBeenCalledWith("U123", "notion");
+    expect(deleteMcpAuthSessionsForUserProviderMock).toHaveBeenCalledWith(
+      "U123",
+      "notion",
+    );
+  });
+
   it("does not handle non jr-rpc commands", async () => {
     const result = await maybeExecuteJrRpcCustomCommand("echo hi", {
       capabilityRuntime: makeRuntime(),

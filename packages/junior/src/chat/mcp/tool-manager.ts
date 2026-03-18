@@ -1,6 +1,4 @@
-import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
-import type { TSchema } from "@sinclair/typebox";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -140,14 +138,36 @@ export interface McpToolManagerOptions {
     provider: string,
     error: McpAuthorizationRequiredError,
   ) => Promise<void> | void;
-  sessionId?: string;
+}
+
+export interface ManagedMcpToolResult {
+  content: Array<TextContent | ImageContent>;
+  details: {
+    provider: string;
+    tool: string;
+    rawResult: PluginMcpToolCallResult;
+  };
+}
+
+export interface ManagedMcpToolDescriptor {
+  name: string;
+  label: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  provider: string;
+  rawName: string;
+  title?: string;
+}
+
+interface ManagedMcpTool extends ManagedMcpToolDescriptor {
+  execute: (args: Record<string, unknown>) => Promise<ManagedMcpToolResult>;
 }
 
 export class McpToolManager {
   private readonly pluginsByProvider = new Map<string, PluginDefinition>();
   private readonly activeProviders = new Set<string>();
   private readonly clientsByProvider = new Map<string, PluginMcpClient>();
-  private readonly toolsByProvider = new Map<string, AgentTool<any>[]>();
+  private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
 
   constructor(
     plugins: PluginDefinition[],
@@ -166,20 +186,16 @@ export class McpToolManager {
     );
   }
 
-  getActiveTools(): AgentTool<any>[] {
-    return this.getActiveProviders().flatMap(
-      (provider) => this.toolsByProvider.get(provider) ?? [],
-    );
-  }
-
   async activateForSkill(
-    skill: Pick<SkillMetadata, "pluginProvider">,
+    skill: Pick<SkillMetadata, "name" | "pluginProvider" | "allowedMcpTools">,
   ): Promise<boolean> {
     if (!skill.pluginProvider) {
       return false;
     }
 
-    return await this.activateProvider(skill.pluginProvider);
+    const activated = await this.activateProvider(skill.pluginProvider);
+    this.assertSkillToolExposure(skill);
+    return activated;
   }
 
   async activateProvider(provider: string): Promise<boolean> {
@@ -195,10 +211,10 @@ export class McpToolManager {
     const client = await this.getClient(plugin);
 
     try {
-      const tools = await client.listTools();
+      const tools = this.filterListedTools(plugin, await client.listTools());
       this.toolsByProvider.set(
         provider,
-        tools.map((tool) => this.toAgentTool(plugin, client, tool)),
+        tools.map((tool) => this.toManagedTool(plugin, client, tool)),
       );
       this.activeProviders.add(provider);
       return true;
@@ -233,6 +249,90 @@ export class McpToolManager {
     }
   }
 
+  getActiveToolCatalog(
+    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    options: { provider?: string } = {},
+  ): ManagedMcpToolDescriptor[] {
+    return this.getResolvedActiveTools(skills, options).map((tool) => ({
+      name: tool.name,
+      label: tool.label,
+      description: tool.description,
+      parameters: tool.parameters,
+      provider: tool.provider,
+      rawName: tool.rawName,
+      ...(tool.title ? { title: tool.title } : {}),
+    }));
+  }
+
+  searchTools(
+    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    query: string,
+    options: { provider?: string; limit?: number } = {},
+  ): ManagedMcpToolDescriptor[] {
+    const resolved = this.getActiveToolCatalog(skills, options);
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery || trimmedQuery === "*") {
+      return resolved.slice(0, Math.max(1, options.limit ?? 8));
+    }
+
+    const normalizedQuery = trimmedQuery.toLowerCase();
+    const queryTokens = normalizedQuery
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length > 0);
+
+    return resolved
+      .map((tool) => ({
+        tool,
+        score: this.scoreToolMatch(tool, normalizedQuery, queryTokens),
+      }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        return left.tool.name.localeCompare(right.tool.name);
+      })
+      .slice(0, Math.max(1, options.limit ?? 8))
+      .map((entry) => entry.tool);
+  }
+
+  async executeTool(
+    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    canonicalToolName: string,
+    args: Record<string, unknown>,
+  ): Promise<ManagedMcpToolResult> {
+    const tool = this.resolveActiveTool(skills, canonicalToolName);
+    if (!tool) {
+      throw new Error(`Unknown active MCP tool: ${canonicalToolName}`);
+    }
+
+    return await tool.execute(args);
+  }
+
+  private filterListedTools(
+    plugin: PluginDefinition,
+    tools: PluginMcpListedTool[],
+  ): PluginMcpListedTool[] {
+    const allowedTools = plugin.manifest.mcp?.allowedTools;
+    if (!allowedTools || allowedTools.length === 0) {
+      return tools;
+    }
+
+    const availableToolNames = new Set(tools.map((tool) => tool.name));
+    const missingTools = allowedTools.filter(
+      (toolName) => !availableToolNames.has(toolName),
+    );
+    if (missingTools.length > 0) {
+      throw new Error(
+        `Plugin ${plugin.manifest.name} MCP discovery missing allowlisted tools: ${missingTools.join(", ")}`,
+      );
+    }
+
+    const allowedToolSet = new Set(allowedTools);
+    return tools.filter((tool) => allowedToolSet.has(tool.name));
+  }
+
   private async getClient(plugin: PluginDefinition): Promise<PluginMcpClient> {
     const existing = this.clientsByProvider.get(plugin.manifest.name);
     if (existing) {
@@ -245,30 +345,30 @@ export class McpToolManager {
     const client = new PluginMcpClient(plugin, {
       ...(authProvider ? { authProvider } : {}),
       ...(this.options.fetch ? { fetch: this.options.fetch } : {}),
-      ...(this.options.sessionId ? { sessionId: this.options.sessionId } : {}),
     });
     this.clientsByProvider.set(plugin.manifest.name, client);
     return client;
   }
 
-  private toAgentTool(
+  private toManagedTool(
     plugin: PluginDefinition,
     client: PluginMcpClient,
     tool: PluginMcpListedTool,
-  ): AgentTool<TSchema> {
+  ): ManagedMcpTool {
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
       label: tool.title?.trim() || tool.name,
       description: describeMcpTool(plugin.manifest.name, tool),
-      parameters: tool.inputSchema as unknown as TSchema,
-      execute: async (_toolCallId, params) => {
-        const args =
-          typeof params === "object" && params !== null
-            ? (params as Record<string, unknown>)
-            : {};
+      parameters: tool.inputSchema as Record<string, unknown>,
+      provider: plugin.manifest.name,
+      rawName: tool.name,
+      ...(tool.title?.trim() ? { title: tool.title.trim() } : {}),
+      execute: async (args) => {
+        const resolvedArgs =
+          typeof args === "object" && args !== null ? args : {};
 
         try {
-          const result = await client.callTool(tool.name, args);
+          const result = await client.callTool(tool.name, resolvedArgs);
           if ("isError" in result && result.isError) {
             throw new Error(extractMcpErrorMessage(result));
           }
@@ -295,5 +395,126 @@ export class McpToolManager {
         }
       },
     };
+  }
+
+  private assertSkillToolExposure(
+    skill: Pick<SkillMetadata, "name" | "pluginProvider" | "allowedMcpTools">,
+  ): void {
+    const provider = skill.pluginProvider;
+    if (
+      !provider ||
+      !skill.allowedMcpTools ||
+      skill.allowedMcpTools.length === 0
+    ) {
+      return;
+    }
+
+    const availableToolNames = new Set(
+      (this.toolsByProvider.get(provider) ?? []).map((tool) => tool.rawName),
+    );
+    const missingTools = skill.allowedMcpTools.filter(
+      (toolName) => !availableToolNames.has(toolName),
+    );
+    if (missingTools.length > 0) {
+      throw new Error(
+        `Skill ${skill.name} declares unavailable MCP tools for plugin ${provider}: ${missingTools.join(", ")}`,
+      );
+    }
+  }
+
+  private getResolvedActiveTools(
+    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    options: { provider?: string } = {},
+  ): ManagedMcpTool[] {
+    const resolved: ManagedMcpTool[] = [];
+
+    for (const provider of this.getActiveProviders()) {
+      if (options.provider && provider !== options.provider) {
+        continue;
+      }
+
+      resolved.push(...this.resolveProviderTools(provider, skills));
+    }
+
+    return resolved;
+  }
+
+  private resolveProviderTools(
+    provider: string,
+    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+  ): ManagedMcpTool[] {
+    const providerTools = this.toolsByProvider.get(provider) ?? [];
+    if (providerTools.length === 0) {
+      return [];
+    }
+
+    const relevantSkills = skills.filter(
+      (skill) => skill.pluginProvider === provider,
+    );
+    if (relevantSkills.length === 0) {
+      return [];
+    }
+
+    const exposeAllProviderTools = relevantSkills.some(
+      (skill) => !skill.allowedMcpTools || skill.allowedMcpTools.length === 0,
+    );
+    if (exposeAllProviderTools) {
+      return providerTools;
+    }
+
+    const allowedToolNames = new Set(
+      relevantSkills.flatMap((skill) => skill.allowedMcpTools ?? []),
+    );
+    return providerTools.filter((tool) => allowedToolNames.has(tool.rawName));
+  }
+
+  private resolveActiveTool(
+    skills: Array<Pick<SkillMetadata, "pluginProvider" | "allowedMcpTools">>,
+    canonicalToolName: string,
+  ): ManagedMcpTool | undefined {
+    return this.getResolvedActiveTools(skills).find(
+      (tool) => tool.name === canonicalToolName,
+    );
+  }
+
+  private scoreToolMatch(
+    tool: ManagedMcpToolDescriptor,
+    normalizedQuery: string,
+    queryTokens: string[],
+  ): number {
+    const exactCandidates = [tool.name, tool.rawName, tool.label, tool.title]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+
+    if (exactCandidates.includes(normalizedQuery)) {
+      return 100;
+    }
+
+    let score = 0;
+    const searchableText = [
+      tool.name,
+      tool.rawName,
+      tool.label,
+      tool.title,
+      tool.description,
+      tool.provider,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(" ")
+      .toLowerCase();
+
+    for (const candidate of exactCandidates) {
+      if (candidate.startsWith(normalizedQuery)) {
+        score = Math.max(score, 60);
+      }
+    }
+
+    for (const token of queryTokens) {
+      if (searchableText.includes(token)) {
+        score += 10;
+      }
+    }
+
+    return score;
   }
 }

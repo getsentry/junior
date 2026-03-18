@@ -1,15 +1,13 @@
 import { Buffer } from "node:buffer";
 import { after } from "next/server";
 import { ThreadImpl, type FileUpload } from "chat";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { botConfig } from "@/chat/config";
 import { coerceThreadConversationState } from "@/chat/conversation-state";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { deleteMcpAuthSession } from "@/chat/mcp/auth-store";
 import { buildSlackOutputMessage } from "@/chat/output";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
-import { logException } from "@/chat/observability";
+import { logException, logWarn } from "@/chat/observability";
 import { generateAssistantReply, type AssistantReply } from "@/chat/respond";
 import {
   mergeArtifactsState,
@@ -30,55 +28,28 @@ import { coerceThreadArtifactsState } from "@/chat/slack-actions/types";
 import { truncateStatusText } from "@/chat/status-format";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 import { resolveReplyDelivery } from "@/chat/turn/execute";
+import { isRetryableTurnError } from "@/chat/turn/errors";
+import { escapeXml } from "@/chat/xml";
 
 function htmlResponse(
   title: string,
   message: string,
   status: number,
 ): Response {
-  const html = renderToStaticMarkup(
-    createElement(
-      "html",
-      null,
-      createElement("head", null, createElement("title", null, title)),
-      createElement(
-        "body",
-        {
-          style: {
-            fontFamily: "system-ui, sans-serif",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            minHeight: "100vh",
-            margin: 0,
-          },
-        },
-        createElement(
-          "div",
-          {
-            style: {
-              textAlign: "center",
-              maxWidth: 480,
-            },
-          },
-          createElement("h1", null, title),
-          createElement("p", null, message),
-          createElement(
-            "p",
-            {
-              style: {
-                marginTop: "2rem",
-                color: "#666",
-                fontSize: "0.9em",
-              },
-            },
-            "You can close this tab and return to Slack.",
-          ),
-        ),
-      ),
-    ),
-  );
-  return new Response(`<!DOCTYPE html>${html}`, {
+  const safeTitle = escapeXml(title);
+  const safeMessage = escapeXml(message);
+  const html = `<!DOCTYPE html>
+<html>
+<head><title>${safeTitle}</title></head>
+<body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
+  <div style="text-align: center; max-width: 480px;">
+    <h1>${safeTitle}</h1>
+    <p>${safeMessage}</p>
+    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack.</p>
+  </div>
+</body>
+</html>`;
+  return new Response(html, {
     status,
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
@@ -505,6 +476,15 @@ export async function GET(
         }
       } catch (resumeError) {
         postStatus.stop();
+        if (isRetryableTurnError(resumeError, "mcp_auth_resume")) {
+          logWarn(
+            "mcp_oauth_callback_resume_reparked_for_auth",
+            {},
+            { "app.credential.provider": provider },
+            "Resumed MCP turn requested another authorization flow",
+          );
+          return;
+        }
         logException(
           resumeError,
           "mcp_oauth_callback_resume_failed",

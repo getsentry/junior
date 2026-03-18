@@ -101,7 +101,9 @@ For slice `n+1`, runtime must:
 2. Instantiate Pi agent.
 3. Restore any checkpointed dynamic tool state required by the wrapper runtime (for example loaded skills and active MCP providers).
 4. Call `replaceMessages(checkpoint.pi_messages)`.
-5. Call `continue()` to resume generation/tool loop.
+5. Resume generation with one of these modes:
+   - Default: call `continue()` to resume generation/tool loop.
+   - Auth fallback: if `resume_reason=auth` and `checkpoint.pi_messages` ends on an assistant message with no queued steering/follow-up input, do not call `continue()`. Replay the original user prompt after restoring dynamic tool state instead.
 
 If the previous slice timed out after producing uncommitted partial assistant text, that text may be regenerated in the next slice. User-visible output must only include committed transcript content.
 

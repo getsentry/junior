@@ -2,16 +2,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   agentInitialToolNames,
+  callToolMock,
+  clientOptions,
+  continueCallCount,
   deliverPrivateMessageMock,
   listToolsMock,
+  loadSkillAvailableToolNames,
+  loadSkillToolSearchFlags,
   loadSkillsByNameMock,
-  setToolsCallNames,
+  promptCallCount,
 } = vi.hoisted(() => ({
   agentInitialToolNames: [] as string[][],
+  callToolMock: vi.fn(),
+  clientOptions: [] as Array<Record<string, unknown>>,
+  continueCallCount: { value: 0 },
   deliverPrivateMessageMock: vi.fn(),
   listToolsMock: vi.fn(),
+  loadSkillAvailableToolNames: [] as string[][],
+  loadSkillToolSearchFlags: [] as boolean[],
   loadSkillsByNameMock: vi.fn(),
-  setToolsCallNames: [] as string[][],
+  promptCallCount: { value: 0 },
 }));
 
 vi.mock("@mariozechner/pi-agent-core", () => {
@@ -49,16 +59,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       return () => undefined;
     }
 
-    setTools(
-      tools: Array<{
-        name: string;
-        execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
-      }>,
-    ) {
-      this.state.tools = [...tools];
-      setToolsCallNames.push(tools.map((tool) => tool.name));
-    }
-
     abort() {}
 
     async replaceMessages(messages: unknown[]) {
@@ -66,18 +66,78 @@ vi.mock("@mariozechner/pi-agent-core", () => {
     }
 
     async prompt(message: unknown) {
+      promptCallCount.value += 1;
       this.state.messages.push(message);
+
       const loadSkillTool = this.state.tools.find(
         (tool) => tool.name === "loadSkill",
+      );
+      const useToolTool = this.state.tools.find(
+        (tool) => tool.name === "useTool",
       );
       if (!loadSkillTool) {
         throw new Error("loadSkill tool missing");
       }
-      await loadSkillTool.execute("tool-call-1", { skill_name: "demo-skill" });
+      if (!useToolTool) {
+        throw new Error("useTool tool missing");
+      }
+
+      let loadSkillResult: {
+        details?: {
+          available_tools?: Array<{ tool_name: string }>;
+          tool_search_available?: boolean;
+        };
+      };
+      try {
+        loadSkillResult = (await loadSkillTool.execute("tool-call-1", {
+          skill_name: "demo-skill",
+        })) as {
+          details?: {
+            available_tools?: Array<{ tool_name: string }>;
+            tool_search_available?: boolean;
+          };
+        };
+      } catch (error) {
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "loading demo skill" }],
+        });
+        throw error;
+      }
+      const availableTools = loadSkillResult.details?.available_tools ?? [];
+      loadSkillAvailableToolNames.push(
+        availableTools.map((tool) => tool.tool_name),
+      );
+      loadSkillToolSearchFlags.push(
+        loadSkillResult.details?.tool_search_available === true,
+      );
+
+      const pingTool = availableTools.find(
+        (tool) => tool.tool_name === "mcp__demo__ping",
+      );
+      if (!pingTool) {
+        throw new Error("loadSkill did not disclose demo ping tool");
+      }
+
+      await useToolTool.execute("tool-call-2", {
+        tool_name: pingTool.tool_name,
+        arguments: { query: "hello" },
+      });
+      this.state.messages.push({
+        role: "assistant",
+        content: [{ type: "text", text: "resumed reply" }],
+      });
       return {};
     }
 
     async continue() {
+      continueCallCount.value += 1;
+      const lastMessage = this.state.messages[
+        this.state.messages.length - 1
+      ] as { role?: unknown } | undefined;
+      if (lastMessage?.role === "assistant") {
+        throw new Error("Cannot continue from message role: assistant");
+      }
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "resumed reply" }],
@@ -188,6 +248,7 @@ vi.mock("@/chat/plugins/registry", async (importOriginal) => {
       mcp: {
         transport: "http",
         url: "https://mcp.example.com",
+        allowedTools: ["ping"],
       },
     },
   };
@@ -236,17 +297,16 @@ vi.mock("@/chat/mcp/client", () => {
           redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
         };
       },
-    ) {}
+    ) {
+      clientOptions.push({ ...options });
+    }
 
     async listTools() {
       return await listToolsMock(this.plugin, this.options);
     }
 
-    async callTool() {
-      return {
-        content: [{ type: "text", text: "pong" }],
-        isError: false,
-      };
+    async callTool(name: string, args: Record<string, unknown>) {
+      return await callToolMock(this.plugin, name, args);
     }
 
     async close() {}
@@ -268,10 +328,15 @@ import { isRetryableTurnError } from "@/chat/turn/errors";
 describe("generateAssistantReply progressive MCP loading", () => {
   beforeEach(async () => {
     agentInitialToolNames.length = 0;
-    setToolsCallNames.length = 0;
+    callToolMock.mockReset();
+    clientOptions.length = 0;
+    continueCallCount.value = 0;
     deliverPrivateMessageMock.mockReset();
     listToolsMock.mockReset();
+    loadSkillAvailableToolNames.length = 0;
+    loadSkillToolSearchFlags.length = 0;
     loadSkillsByNameMock.mockReset();
+    promptCallCount.value = 0;
 
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
@@ -280,12 +345,17 @@ describe("generateAssistantReply progressive MCP loading", () => {
       channel: "D123",
       threadTs: "1712345.0001",
     });
+    callToolMock.mockResolvedValue({
+      content: [{ type: "text", text: "pong" }],
+      isError: false,
+    });
     loadSkillsByNameMock.mockResolvedValue([
       {
         name: "demo-skill",
         description: "Demo skill",
         skillPath: "/tmp/skills/demo-skill",
         pluginProvider: "demo",
+        allowedMcpTools: ["ping"],
         body: "Skill instructions",
       },
     ]);
@@ -322,6 +392,15 @@ describe("generateAssistantReply progressive MCP loading", () => {
             properties: {},
           },
         },
+        {
+          name: "mutate",
+          title: "Mutate",
+          description: "Write through the demo MCP server",
+          inputSchema: {
+            type: "object",
+            properties: {},
+          },
+        },
       ]);
 
     await disconnectStateAdapter();
@@ -352,6 +431,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
     expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
     expect(agentInitialToolNames[0]).toContain("loadSkill");
+    expect(agentInitialToolNames[0]).toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("useTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
 
     const pausedCheckpoint = await getAgentTurnSessionCheckpoint(
@@ -364,19 +445,100 @@ describe("generateAssistantReply progressive MCP loading", () => {
       activeMcpProviders: [],
       resumeReason: "auth",
     });
+    expect(pausedCheckpoint?.piMessages.at(-1)).toMatchObject({
+      role: "assistant",
+    });
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
 
     const reply = await generateAssistantReply("help me", context);
 
     expect(reply.text).toBe("resumed reply");
-    expect(agentInitialToolNames[1]).toContain("mcp__demo__ping");
-    expect(setToolsCallNames).toEqual([]);
+    expect(promptCallCount.value).toBe(2);
+    expect(continueCallCount.value).toBe(0);
+    expect(clientOptions).not.toContainEqual(
+      expect.objectContaining({ sessionId: expect.any(String) }),
+    );
+    expect(agentInitialToolNames[1]).toContain("loadSkill");
+    expect(agentInitialToolNames[1]).toContain("searchTools");
+    expect(agentInitialToolNames[1]).toContain("useTool");
+    expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
+    expect(loadSkillAvailableToolNames).toEqual([["mcp__demo__ping"]]);
+    expect(loadSkillToolSearchFlags).toEqual([true]);
+    expect(callToolMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: expect.objectContaining({ name: "demo" }),
+      }),
+      "ping",
+      { query: "hello" },
+    );
 
     const resumedCheckpoint = await getAgentTurnSessionCheckpoint(
       "conversation-1",
       "turn-1",
     );
     expect(resumedCheckpoint).toMatchObject({
+      state: "completed",
+      loadedSkillNames: ["demo-skill"],
+      activeMcpProviders: ["demo"],
+    });
+  });
+
+  it("uses loadSkill-disclosed MCP tools in the same turn without replay", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue([
+      {
+        name: "ping",
+        title: "Ping",
+        description: "Ping the demo MCP server",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+      {
+        name: "mutate",
+        title: "Mutate",
+        description: "Write through the demo MCP server",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+    ]);
+
+    const reply = await generateAssistantReply("help me", {
+      assistant: { userName: "junior" },
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-2",
+        turnId: "turn-2",
+        channelId: "C123",
+        threadTs: "1712345.0002",
+      },
+    });
+
+    expect(reply.text).toBe("resumed reply");
+    expect(promptCallCount.value).toBe(1);
+    expect(continueCallCount.value).toBe(0);
+    expect(agentInitialToolNames[0]).toContain("loadSkill");
+    expect(agentInitialToolNames[0]).toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("useTool");
+    expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
+    expect(loadSkillAvailableToolNames).toEqual([["mcp__demo__ping"]]);
+    expect(loadSkillToolSearchFlags).toEqual([true]);
+    expect(callToolMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        manifest: expect.objectContaining({ name: "demo" }),
+      }),
+      "ping",
+      { query: "hello" },
+    );
+
+    const checkpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-2",
+      "turn-2",
+    );
+    expect(checkpoint).toMatchObject({
       state: "completed",
       loadedSkillNames: ["demo-skill"],
       activeMcpProviders: ["demo"],
