@@ -190,7 +190,8 @@ function redactPrivateKeyBlocks(input: string): string {
     const footer = `-----END ${label}-----`;
     const footerStart = input.indexOf(footer, labelEnd + footerMarker.length);
     if (footerStart === -1) {
-      output += input.slice(cursor);
+      output += input.slice(cursor, begin);
+      output += `${header}\n...redacted...`;
       break;
     }
 

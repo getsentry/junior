@@ -8,6 +8,7 @@ const {
   deliverPrivateMessageMock,
   listToolsMock,
   loadSkillAvailableToolNames,
+  loadSkillExecutionErrorCount,
   loadSkillToolSearchFlags,
   loadSkillsByNameMock,
   promptCallCount,
@@ -19,6 +20,7 @@ const {
   deliverPrivateMessageMock: vi.fn(),
   listToolsMock: vi.fn(),
   loadSkillAvailableToolNames: [] as string[][],
+  loadSkillExecutionErrorCount: { value: 0 },
   loadSkillToolSearchFlags: [] as boolean[],
   loadSkillsByNameMock: vi.fn(),
   promptCallCount: { value: 0 },
@@ -35,6 +37,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
       }>;
     };
+    private aborted = false;
 
     constructor(input: {
       initialState: {
@@ -59,7 +62,9 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       return () => undefined;
     }
 
-    abort() {}
+    abort() {
+      this.aborted = true;
+    }
 
     async replaceMessages(messages: unknown[]) {
       this.state.messages = [...messages];
@@ -67,6 +72,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
 
     async prompt(message: unknown) {
       promptCallCount.value += 1;
+      this.aborted = false;
       this.state.messages.push(message);
 
       const loadSkillTool = this.state.tools.find(
@@ -98,6 +104,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
           };
         };
       } catch (error) {
+        loadSkillExecutionErrorCount.value += 1;
         this.state.messages.push({
           role: "assistant",
           content: [{ type: "text", text: "loading demo skill" }],
@@ -111,6 +118,13 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       loadSkillToolSearchFlags.push(
         loadSkillResult.details?.tool_search_available === true,
       );
+      if (this.aborted) {
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "loading demo skill" }],
+        });
+        return {};
+      }
 
       const pingTool = availableTools.find(
         (tool) => tool.tool_name === "mcp__demo__ping",
@@ -334,6 +348,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     deliverPrivateMessageMock.mockReset();
     listToolsMock.mockReset();
     loadSkillAvailableToolNames.length = 0;
+    loadSkillExecutionErrorCount.value = 0;
     loadSkillToolSearchFlags.length = 0;
     loadSkillsByNameMock.mockReset();
     promptCallCount.value = 0;
@@ -449,6 +464,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       role: "assistant",
     });
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
+    expect(loadSkillExecutionErrorCount.value).toBe(0);
 
     const reply = await generateAssistantReply("help me", context);
 
@@ -462,8 +478,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(agentInitialToolNames[1]).toContain("searchTools");
     expect(agentInitialToolNames[1]).toContain("useTool");
     expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
-    expect(loadSkillAvailableToolNames).toEqual([["mcp__demo__ping"]]);
-    expect(loadSkillToolSearchFlags).toEqual([true]);
+    expect(loadSkillAvailableToolNames).toEqual([[], ["mcp__demo__ping"]]);
+    expect(loadSkillToolSearchFlags).toEqual([false, true]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),

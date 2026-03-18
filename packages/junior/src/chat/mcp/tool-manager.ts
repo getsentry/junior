@@ -138,7 +138,7 @@ export interface McpToolManagerOptions {
   onAuthorizationRequired?: (
     provider: string,
     error: McpAuthorizationRequiredError,
-  ) => Promise<void> | void;
+  ) => Promise<boolean | void> | boolean | void;
 }
 
 export interface ManagedMcpToolResult {
@@ -202,7 +202,9 @@ export class McpToolManager {
     }
 
     const activated = await this.activateProvider(skill.pluginProvider);
-    this.assertSkillToolExposure(skill);
+    if (this.activeProviders.has(skill.pluginProvider)) {
+      this.assertSkillToolExposure(skill);
+    }
     return activated;
   }
 
@@ -229,9 +231,9 @@ export class McpToolManager {
     } catch (error) {
       if (
         error instanceof McpAuthorizationRequiredError &&
-        this.options.onAuthorizationRequired
+        (await this.handleAuthorizationRequired(plugin.manifest.name, error))
       ) {
-        await this.options.onAuthorizationRequired(plugin.manifest.name, error);
+        return false;
       }
       throw error;
     }
@@ -387,17 +389,45 @@ export class McpToolManager {
         } catch (error) {
           if (
             error instanceof McpAuthorizationRequiredError &&
-            this.options.onAuthorizationRequired
-          ) {
-            await this.options.onAuthorizationRequired(
+            (await this.handleAuthorizationRequired(
               plugin.manifest.name,
               error,
-            );
+            ))
+          ) {
+            return {
+              // Pi turns thrown tool errors into toolResult isError frames.
+              // Once auth pause has been requested, return a placeholder result
+              // and let the aborted turn park cleanly instead of surfacing a
+              // spurious tool failure to the model.
+              content: [{ type: "text", text: "Authorization pending." }],
+              details: {
+                provider: plugin.manifest.name,
+                tool: tool.name,
+                rawResult: {
+                  toolResult: {
+                    authorizationPending: true,
+                  },
+                },
+              },
+            };
           }
           throw error;
         }
       },
     };
+  }
+
+  private async handleAuthorizationRequired(
+    provider: string,
+    error: McpAuthorizationRequiredError,
+  ): Promise<boolean> {
+    if (!this.options.onAuthorizationRequired) {
+      return false;
+    }
+
+    return (
+      (await this.options.onAuthorizationRequired(provider, error)) === true
+    );
   }
 
   private assertSkillToolExposure(skill: ActiveMcpSkill): void {

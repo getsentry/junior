@@ -177,6 +177,35 @@ describe("McpToolManager", () => {
     );
   });
 
+  it("parks handled MCP authorization challenges without surfacing a tool error", async () => {
+    const plugin = buildPlugin();
+    onAuthorizationRequiredMock.mockResolvedValueOnce(true);
+    const manager = new McpToolManager([plugin], {
+      onAuthorizationRequired: onAuthorizationRequiredMock,
+    });
+    const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
+    await manager.activateProvider("demo");
+    callToolMock.mockRejectedValueOnce(
+      new McpAuthorizationRequiredError("demo", "Auth required"),
+    );
+
+    await expect(
+      manager.executeTool(activeSkills, "mcp__demo__ping", {}),
+    ).resolves.toEqual({
+      content: [{ type: "text", text: "Authorization pending." }],
+      details: {
+        provider: "demo",
+        tool: "ping",
+        rawResult: {
+          toolResult: {
+            authorizationPending: true,
+          },
+        },
+      },
+    });
+    expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces MCP authorization challenges during tool discovery", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin], {
@@ -197,6 +226,21 @@ describe("McpToolManager", () => {
         message: "Discovery auth required",
       }),
     );
+  });
+
+  it("parks handled MCP authorization challenges during discovery", async () => {
+    const plugin = buildPlugin();
+    onAuthorizationRequiredMock.mockResolvedValueOnce(true);
+    const manager = new McpToolManager([plugin], {
+      onAuthorizationRequired: onAuthorizationRequiredMock,
+    });
+    listToolsMock.mockRejectedValueOnce(
+      new McpAuthorizationRequiredError("demo", "Discovery auth required"),
+    );
+
+    await expect(manager.activateProvider("demo")).resolves.toBe(false);
+    expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
+    expect(manager.getActiveProviders()).toEqual([]);
   });
 
   it("closes every active client before surfacing the first close error", async () => {

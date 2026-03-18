@@ -305,4 +305,34 @@ describe("logging context ids", () => {
     expect(records[0]?.body).toContain("-----END PRIVATE KEY-----");
     expect(records[0]?.body).not.toContain("super-secret-material");
   });
+
+  it("redacts malformed PEM private key tails without leaking the remaining body", async () => {
+    const { log, registerLogRecordSink } = await import("@/chat/logging");
+    const records: Array<{ body: string }> = [];
+    const unregister = registerLogRecordSink((record) => {
+      records.push({ body: record.body });
+    });
+
+    try {
+      log.error(
+        "pem_key_logged",
+        {},
+        [
+          "prefix",
+          "-----BEGIN RSA PRIVATE KEY-----",
+          "super-secret-material",
+          "truncated-without-footer",
+        ].join("\n"),
+      );
+    } finally {
+      unregister();
+    }
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.body).toContain("prefix");
+    expect(records[0]?.body).toContain("-----BEGIN RSA PRIVATE KEY-----");
+    expect(records[0]?.body).toContain("...redacted...");
+    expect(records[0]?.body).not.toContain("super-secret-material");
+    expect(records[0]?.body).not.toContain("truncated-without-footer");
+  });
 });

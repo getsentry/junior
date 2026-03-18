@@ -1232,7 +1232,7 @@ export async function generateAssistantReply(
       },
       onAuthorizationRequired: async (provider) => {
         if (pendingMcpAuthorizationPause) {
-          return;
+          return true;
         }
 
         const authSessionId = mcpAuthSessionIdsByProvider.get(provider);
@@ -1276,6 +1276,7 @@ export async function generateAssistantReply(
 
         pendingMcpAuthorizationPause = new McpAuthorizationPauseError(provider);
         agent?.abort();
+        return true;
       },
     });
     const turnMcpToolManager = mcpToolManager;
@@ -1328,6 +1329,12 @@ export async function generateAssistantReply(
           syncResumeState();
           await turnMcpToolManager.activateForSkill(effective);
           syncResumeState();
+          if (pendingMcpAuthorizationPause) {
+            // Pi turns thrown tool errors into toolResult isError frames. Once
+            // auth pause has been requested, stop here and let the aborted turn
+            // park cleanly instead of surfacing a fake loadSkill failure.
+            return undefined;
+          }
           if (!effective.pluginProvider) {
             return undefined;
           }
@@ -1356,21 +1363,21 @@ export async function generateAssistantReply(
     );
 
     syncResumeState();
-    try {
-      for (const skill of activeSkills) {
-        await turnMcpToolManager.activateForSkill(skill);
-        syncResumeState();
-      }
-      for (const provider of existingTurnCheckpoint?.activeMcpProviders ?? []) {
-        await turnMcpToolManager.activateProvider(provider);
-        syncResumeState();
-      }
-    } catch (error) {
+    for (const skill of activeSkills) {
+      await turnMcpToolManager.activateForSkill(skill);
+      syncResumeState();
       if (pendingMcpAuthorizationPause) {
         timeoutResumeMessages = existingTurnCheckpoint?.piMessages ?? [];
         throw pendingMcpAuthorizationPause;
       }
-      throw error;
+    }
+    for (const provider of existingTurnCheckpoint?.activeMcpProviders ?? []) {
+      await turnMcpToolManager.activateProvider(provider);
+      syncResumeState();
+      if (pendingMcpAuthorizationPause) {
+        timeoutResumeMessages = existingTurnCheckpoint?.piMessages ?? [];
+        throw pendingMcpAuthorizationPause;
+      }
     }
     syncResumeState();
 
