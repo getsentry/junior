@@ -440,7 +440,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
         description: "Demo skill",
         skillPath: "/tmp/skills/demo-skill",
         pluginProvider: "demo",
-        allowedMcpTools: ["ping"],
         body: "Skill instructions",
       },
     ]);

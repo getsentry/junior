@@ -157,15 +157,9 @@ export interface ManagedMcpToolDescriptor {
   provider: string;
 }
 
-type ActiveMcpSkillScope = Pick<
-  SkillMetadata,
-  "pluginProvider" | "allowedMcpTools"
->;
+type ActiveMcpSkillScope = Pick<SkillMetadata, "pluginProvider">;
 
-type ActiveMcpSkill = Pick<
-  SkillMetadata,
-  "name" | "pluginProvider" | "allowedMcpTools"
->;
+type ActiveMcpSkill = Pick<SkillMetadata, "name" | "pluginProvider">;
 
 interface ManagedMcpTool extends ManagedMcpToolDescriptor {
   rawName: string;
@@ -201,11 +195,7 @@ export class McpToolManager {
       return false;
     }
 
-    const activated = await this.activateProvider(skill.pluginProvider);
-    if (this.activeProviders.has(skill.pluginProvider)) {
-      this.assertSkillToolExposure(skill);
-    }
-    return activated;
+    return await this.activateProvider(skill.pluginProvider);
   }
 
   async activateProvider(provider: string): Promise<boolean> {
@@ -430,29 +420,6 @@ export class McpToolManager {
     );
   }
 
-  private assertSkillToolExposure(skill: ActiveMcpSkill): void {
-    const provider = skill.pluginProvider;
-    if (
-      !provider ||
-      !skill.allowedMcpTools ||
-      skill.allowedMcpTools.length === 0
-    ) {
-      return;
-    }
-
-    const availableToolNames = new Set(
-      (this.toolsByProvider.get(provider) ?? []).map((tool) => tool.rawName),
-    );
-    const missingTools = skill.allowedMcpTools.filter(
-      (toolName) => !availableToolNames.has(toolName),
-    );
-    if (missingTools.length > 0) {
-      throw new Error(
-        `Skill ${skill.name} declares unavailable MCP tools for plugin ${provider}: ${missingTools.join(", ")}`,
-      );
-    }
-  }
-
   private getResolvedActiveTools(
     skills: ActiveMcpSkillScope[],
     options: { provider?: string } = {},
@@ -485,18 +452,7 @@ export class McpToolManager {
     if (relevantSkills.length === 0) {
       return [];
     }
-
-    const exposeAllProviderTools = relevantSkills.some(
-      (skill) => !skill.allowedMcpTools || skill.allowedMcpTools.length === 0,
-    );
-    if (exposeAllProviderTools) {
-      return providerTools;
-    }
-
-    const allowedToolNames = new Set(
-      relevantSkills.flatMap((skill) => skill.allowedMcpTools ?? []),
-    );
-    return providerTools.filter((tool) => allowedToolNames.has(tool.rawName));
+    return providerTools;
   }
 
   private resolveActiveTool(

@@ -305,7 +305,7 @@ describe("McpToolManager", () => {
     ).toEqual(["mcp__notion__notion-search", "mcp__notion__notion-fetch"]);
   });
 
-  it("narrows the active registry to the skill-level MCP allowlist", async () => {
+  it("exposes the provider tool catalog once a plugin skill is active", async () => {
     const plugin = buildPlugin("notion");
     listToolsMock.mockResolvedValue([
       {
@@ -333,7 +333,6 @@ describe("McpToolManager", () => {
       {
         name: "notion",
         pluginProvider: "notion",
-        allowedMcpTools: ["notion-search", "notion-fetch"],
       },
     ];
 
@@ -341,15 +340,22 @@ describe("McpToolManager", () => {
 
     expect(
       manager.getActiveToolCatalog(activeSkills).map((tool) => tool.name),
-    ).toEqual(["mcp__notion__notion-search", "mcp__notion__notion-fetch"]);
+    ).toEqual([
+      "mcp__notion__notion-search",
+      "mcp__notion__notion-fetch",
+      "mcp__notion__notion-create-pages",
+    ]);
     expect(
       manager.searchTools(activeSkills, "fetch").map((tool) => tool.name),
     ).toEqual(["mcp__notion__notion-fetch"]);
     await expect(
       manager.executeTool(activeSkills, "mcp__notion__notion-create-pages", {}),
-    ).rejects.toThrow(
-      "Unknown active MCP tool: mcp__notion__notion-create-pages",
-    );
+    ).resolves.toMatchObject({
+      details: {
+        provider: "notion",
+        tool: "notion-create-pages",
+      },
+    });
   });
 
   it("fails activation when an allowlisted MCP tool is missing", async () => {
@@ -369,30 +375,6 @@ describe("McpToolManager", () => {
 
     await expect(manager.activateProvider("notion")).rejects.toThrow(
       "Plugin notion MCP discovery missing allowlisted tools: notion-fetch",
-    );
-  });
-
-  it("fails skill activation when the skill declares unavailable MCP tools", async () => {
-    const plugin = buildPlugin("notion");
-    listToolsMock.mockResolvedValue([
-      {
-        name: "notion-search",
-        title: "Search",
-        description: "Search Notion",
-        inputSchema: { type: "object", properties: {} },
-      },
-    ]);
-
-    const manager = new McpToolManager([plugin]);
-
-    await expect(
-      manager.activateForSkill({
-        name: "notion",
-        pluginProvider: "notion",
-        allowedMcpTools: ["notion-search", "notion-fetch"],
-      }),
-    ).rejects.toThrow(
-      "Skill notion declares unavailable MCP tools for plugin notion: notion-fetch",
     );
   });
 });

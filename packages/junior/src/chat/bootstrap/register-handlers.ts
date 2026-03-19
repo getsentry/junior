@@ -5,11 +5,7 @@ import type {
   AppSlackRuntime,
 } from "@/chat/app-runtime";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
-import {
-  deleteMcpAuthSessionsForUserProvider,
-  deleteMcpServerSessionId,
-  deleteMcpStoredOAuthCredentials,
-} from "@/chat/mcp/auth-store";
+import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { logException, withSpan } from "@/chat/observability";
 import { publishAppHomeView } from "@/chat/app-home";
 import { handleSlashCommand } from "@/chat/slash-command";
@@ -79,12 +75,7 @@ export function registerBotHandlers(args: {
       { slackUserId: userId },
       async () => {
         try {
-          await Promise.all([
-            getUserTokenStore().delete(userId, provider),
-            deleteMcpStoredOAuthCredentials(userId, provider),
-            deleteMcpServerSessionId(userId, provider),
-            deleteMcpAuthSessionsForUserProvider(userId, provider),
-          ]);
+          await unlinkProvider(userId, provider, getUserTokenStore());
           await publishAppHomeView(
             getSlackClient(),
             userId,

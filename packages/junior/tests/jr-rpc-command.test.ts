@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  deleteMcpAuthSessionsForUserProviderMock,
-  deleteMcpServerSessionIdMock,
-  deleteMcpStoredOAuthCredentialsMock,
-} = vi.hoisted(() => ({
-  deleteMcpAuthSessionsForUserProviderMock: vi.fn(),
-  deleteMcpServerSessionIdMock: vi.fn(),
-  deleteMcpStoredOAuthCredentialsMock: vi.fn(),
+const { unlinkProviderMock } = vi.hoisted(() => ({
+  unlinkProviderMock: vi.fn(),
 }));
 
 vi.mock("@/chat/capabilities/catalog", () => ({
@@ -33,11 +27,8 @@ vi.mock("@/chat/capabilities/catalog", () => ({
     },
   ],
 }));
-vi.mock("@/chat/mcp/auth-store", () => ({
-  deleteMcpAuthSessionsForUserProvider:
-    deleteMcpAuthSessionsForUserProviderMock,
-  deleteMcpServerSessionId: deleteMcpServerSessionIdMock,
-  deleteMcpStoredOAuthCredentials: deleteMcpStoredOAuthCredentialsMock,
+vi.mock("@/chat/credentials/unlink-provider", () => ({
+  unlinkProvider: unlinkProviderMock,
 }));
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginOAuthConfig: () => undefined,
@@ -106,12 +97,8 @@ function makeRuntime(
 
 describe("jr-rpc custom command", () => {
   beforeEach(() => {
-    deleteMcpAuthSessionsForUserProviderMock.mockReset();
-    deleteMcpAuthSessionsForUserProviderMock.mockResolvedValue(undefined);
-    deleteMcpServerSessionIdMock.mockReset();
-    deleteMcpServerSessionIdMock.mockResolvedValue(undefined);
-    deleteMcpStoredOAuthCredentialsMock.mockReset();
-    deleteMcpStoredOAuthCredentialsMock.mockResolvedValue(undefined);
+    unlinkProviderMock.mockReset();
+    unlinkProviderMock.mockResolvedValue(undefined);
   });
 
   it("deletes both legacy and MCP-backed provider credentials", async () => {
@@ -136,15 +123,10 @@ describe("jr-rpc custom command", () => {
       expect(result.result.exit_code).toBe(0);
       expect(result.result.stdout).toContain("token_deleted provider=notion");
     }
-    expect(userTokenStore.delete).toHaveBeenCalledWith("U123", "notion");
-    expect(deleteMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith(
+    expect(unlinkProviderMock).toHaveBeenCalledWith(
       "U123",
       "notion",
-    );
-    expect(deleteMcpServerSessionIdMock).toHaveBeenCalledWith("U123", "notion");
-    expect(deleteMcpAuthSessionsForUserProviderMock).toHaveBeenCalledWith(
-      "U123",
-      "notion",
+      userTokenStore,
     );
   });
 

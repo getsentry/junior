@@ -16,7 +16,6 @@ export interface ParsedSkillFile {
   compatibility?: string;
   license?: string;
   allowedTools?: string[];
-  allowedMcpTools?: string[];
   requiresCapabilities?: string[];
   usesConfig?: string[];
 }
@@ -143,12 +142,6 @@ const skillFrontmatterSchema = z
           'Frontmatter field "allowed-tools" must be a string when present',
       })
       .optional(),
-    "allowed-mcp-tools": z
-      .string({
-        error:
-          'Frontmatter field "allowed-mcp-tools" must be a string when present',
-      })
-      .optional(),
     "requires-capabilities": createTokenFieldSchema(
       "requires-capabilities",
       "github.issues.write",
@@ -203,7 +196,6 @@ export function parseSkillFile(
   }
 
   const allowedTools = parseTokenList(result.data["allowed-tools"]);
-  const allowedMcpTools = parseTokenList(result.data["allowed-mcp-tools"]);
   const requiresCapabilities = parseTokenList(
     result.data["requires-capabilities"],
   );
@@ -223,7 +215,6 @@ export function parseSkillFile(
         ? { license: result.data.license }
         : {}),
       ...(allowedTools ? { allowedTools } : {}),
-      ...(allowedMcpTools ? { allowedMcpTools } : {}),
       ...(requiresCapabilities ? { requiresCapabilities } : {}),
       ...(usesConfig ? { usesConfig } : {}),
     },

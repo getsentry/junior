@@ -1,7 +1,6 @@
 ---
 name: notion
 description: Search Notion pages and data sources and summarize the best match. Use when users ask to look up docs, specs, notes, meeting notes, project context, roadmaps, trackers, or internal references stored in Notion.
-allowed-mcp-tools: notion-search notion-fetch
 ---
 
 # Notion Operations

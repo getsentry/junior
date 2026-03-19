@@ -5,13 +5,9 @@ import { parseRepoTarget } from "@/chat/capabilities/target";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { logInfo } from "@/chat/observability";
-import {
-  deleteMcpAuthSessionsForUserProvider,
-  deleteMcpServerSessionId,
-  deleteMcpStoredOAuthCredentials,
-} from "@/chat/mcp/auth-store";
 import {
   getPluginOAuthConfig,
   isPluginProvider,
@@ -487,12 +483,7 @@ async function handleDeleteTokenCommand(
     });
   }
 
-  await Promise.all([
-    deps.userTokenStore.delete(deps.requesterId, provider),
-    deleteMcpStoredOAuthCredentials(deps.requesterId, provider),
-    deleteMcpServerSessionId(deps.requesterId, provider),
-    deleteMcpAuthSessionsForUserProvider(deps.requesterId, provider),
-  ]);
+  await unlinkProvider(deps.requesterId, provider, deps.userTokenStore);
 
   logInfo(
     "jr_rpc_delete_token",

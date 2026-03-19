@@ -49,9 +49,6 @@ function toLoadedSkill(
       ? { pluginProvider: metadata.pluginProvider }
       : {}),
     ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : {}),
-    ...(metadata?.allowedMcpTools
-      ? { allowedMcpTools: metadata.allowedMcpTools }
-      : {}),
     ...(metadata?.requiresCapabilities
       ? { requiresCapabilities: metadata.requiresCapabilities }
       : {}),

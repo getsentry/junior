@@ -104,25 +104,6 @@ describe("skill frontmatter validation", () => {
     ]);
   });
 
-  it("accepts valid allowed-mcp-tools tokens", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "allowed-mcp-tools: notion-search notion-fetch",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
-
-    const result = parseSkillFile(raw, "brief");
-    expect(result.ok).toBe(true);
-    expect(result.ok ? result.skill.allowedMcpTools : null).toEqual([
-      "notion-search",
-      "notion-fetch",
-    ]);
-  });
-
   it("rejects invalid uses-config tokens", () => {
     const raw = [
       "---",

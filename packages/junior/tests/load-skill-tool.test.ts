@@ -11,7 +11,6 @@ describe("load_skill tool", () => {
       (skill) =>
         skill.pluginProvider ||
         skill.allowedTools ||
-        skill.allowedMcpTools ||
         skill.requiresCapabilities ||
         skill.usesConfig,
     );
@@ -59,9 +58,6 @@ describe("load_skill tool", () => {
         : {}),
       ...(firstSkill.allowedTools
         ? { allowedTools: firstSkill.allowedTools }
-        : {}),
-      ...(firstSkill.allowedMcpTools
-        ? { allowedMcpTools: firstSkill.allowedMcpTools }
         : {}),
       ...(firstSkill.requiresCapabilities
         ? { requiresCapabilities: firstSkill.requiresCapabilities }

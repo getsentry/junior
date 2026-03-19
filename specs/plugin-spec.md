@@ -14,7 +14,7 @@
 - 2026-03-09: Added OAuth request overrides, optional OAuth scope, and plugin-level API headers.
 - 2026-03-13: Implemented HTTP MCP manifests, same-plugin progressive tool activation, and dedicated MCP OAuth callbacks.
 - 2026-03-18: Added provider-scoped MCP tool allowlists for read-only plugin surfaces.
-- 2026-03-18: Replaced per-MCP-tool Pi registration with stable `searchTools`/`useTool` dispatch and skill-level `allowed-mcp-tools` exposure.
+- 2026-03-18: Replaced per-MCP-tool Pi registration with stable `searchTools`/`useTool` dispatch and plugin-level MCP allowlists.
 
 ## Status
 
@@ -266,7 +266,7 @@ createPluginBroker(provider, deps: PluginBrokerDeps): CredentialBroker
 - Mid-turn `loadSkill` updates the host-managed MCP registry and returns `available_tools` for the newly exposed tools, including canonical `tool_name` values and full input schemas.
 - The prompt includes a compact `<loaded_tools>` section with the active MCP tool registry for the turn.
 - When `mcp.allowed-tools` is set, discovery is filtered before exposure and provider activation fails if any allowlisted tool is absent.
-- Skills may further narrow MCP exposure with `allowed-mcp-tools` frontmatter using raw provider tool names. Skill load fails if any listed tool is unavailable after provider discovery and provider-level allowlist filtering.
+- MCP exposure is owned by the plugin manifest via `mcp.allowed-tools`; skill files do not declare per-tool MCP allowlists.
 - Canonical MCP tool names remain `mcp__<plugin>__<tool>`.
 - MCP authorization uses a dedicated callback path at `/api/oauth/callback/mcp/<plugin>` and resumes the paused turn session after the user authorizes.
 
