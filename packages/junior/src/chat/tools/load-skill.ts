@@ -24,7 +24,10 @@ export type LoadSkillMetadata = Pick<
   "available_tools" | "tool_search_available"
 >;
 
-function toLoadedSkill(result: LoadSkillResult): Skill | null {
+function toLoadedSkill(
+  result: LoadSkillResult,
+  availableSkills: SkillMetadata[],
+): Skill | null {
   if (
     result.ok !== true ||
     typeof result.skill_name !== "string" ||
@@ -35,10 +38,24 @@ function toLoadedSkill(result: LoadSkillResult): Skill | null {
     return null;
   }
 
+  const metadata =
+    availableSkills.find((skill) => skill.name === result.skill_name) ?? null;
+
   return {
     name: result.skill_name,
     description: result.description,
     skillPath: result.skill_dir,
+    ...(metadata?.pluginProvider
+      ? { pluginProvider: metadata.pluginProvider }
+      : {}),
+    ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : {}),
+    ...(metadata?.allowedMcpTools
+      ? { allowedMcpTools: metadata.allowedMcpTools }
+      : {}),
+    ...(metadata?.requiresCapabilities
+      ? { requiresCapabilities: metadata.requiresCapabilities }
+      : {}),
+    ...(metadata?.usesConfig ? { usesConfig: metadata.usesConfig } : {}),
     body: result.instructions,
   };
 }
@@ -101,7 +118,7 @@ export function createLoadSkillTool(
         availableSkills,
         skill_name,
       );
-      const loadedSkill = toLoadedSkill(result);
+      const loadedSkill = toLoadedSkill(result, availableSkills);
       if (loadedSkill) {
         const metadata = await options?.onSkillLoaded?.(loadedSkill);
         if (metadata) {

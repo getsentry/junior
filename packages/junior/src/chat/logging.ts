@@ -159,6 +159,25 @@ function shouldEmitConsole(level: LogLevel): boolean {
   return getSentryEnvironment() !== "production";
 }
 
+function findNextBlankLineBoundary(
+  input: string,
+  start: number,
+): { start: number; end: number } | null {
+  const lfBoundary = input.indexOf("\n\n", start);
+  const crlfBoundary = input.indexOf("\r\n\r\n", start);
+
+  if (lfBoundary === -1 && crlfBoundary === -1) {
+    return null;
+  }
+  if (lfBoundary === -1) {
+    return { start: crlfBoundary, end: crlfBoundary + 4 };
+  }
+  if (crlfBoundary === -1 || lfBoundary < crlfBoundary) {
+    return { start: lfBoundary, end: lfBoundary + 2 };
+  }
+  return { start: crlfBoundary, end: crlfBoundary + 4 };
+}
+
 function redactPrivateKeyBlocks(input: string): string {
   const beginPrefix = "-----BEGIN ";
   const footerMarker = "-----";
@@ -190,9 +209,18 @@ function redactPrivateKeyBlocks(input: string): string {
     const footer = `-----END ${label}-----`;
     const footerStart = input.indexOf(footer, labelEnd + footerMarker.length);
     if (footerStart === -1) {
+      const resumeBoundary = findNextBlankLineBoundary(
+        input,
+        labelEnd + footerMarker.length,
+      );
       output += input.slice(cursor, begin);
       output += `${header}\n...redacted...`;
-      break;
+      if (!resumeBoundary) {
+        break;
+      }
+      output += input.slice(resumeBoundary.start, resumeBoundary.end);
+      cursor = resumeBoundary.end;
+      continue;
     }
 
     output += input.slice(cursor, begin);

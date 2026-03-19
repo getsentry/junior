@@ -306,7 +306,7 @@ describe("logging context ids", () => {
     expect(records[0]?.body).not.toContain("super-secret-material");
   });
 
-  it("redacts malformed PEM private key tails without leaking the remaining body", async () => {
+  it("redacts malformed PEM private key tails without dropping later log content", async () => {
     const { log, registerLogRecordSink } = await import("@/chat/logging");
     const records: Array<{ body: string }> = [];
     const unregister = registerLogRecordSink((record) => {
@@ -322,6 +322,8 @@ describe("logging context ids", () => {
           "-----BEGIN RSA PRIVATE KEY-----",
           "super-secret-material",
           "truncated-without-footer",
+          "",
+          "suffix after malformed key",
         ].join("\n"),
       );
     } finally {
@@ -332,6 +334,7 @@ describe("logging context ids", () => {
     expect(records[0]?.body).toContain("prefix");
     expect(records[0]?.body).toContain("-----BEGIN RSA PRIVATE KEY-----");
     expect(records[0]?.body).toContain("...redacted...");
+    expect(records[0]?.body).toContain("suffix after malformed key");
     expect(records[0]?.body).not.toContain("super-secret-material");
     expect(records[0]?.body).not.toContain("truncated-without-footer");
   });
