@@ -1,4 +1,9 @@
-import { getSlackClient, normalizeSlackConversationId, withSlackRetries } from "@/chat/slack-actions/client";
+import {
+  getSlackClient,
+  normalizeSlackConversationId,
+  withSlackRetries,
+} from "@/chat/slack-actions/client";
+import { normalizeSlackEmojiName } from "@/chat/slack-actions/emoji";
 
 export interface SlackChannelMessage {
   ts?: string;
@@ -37,16 +42,19 @@ export async function postMessageToChannel(input: {
   const client = getSlackClient();
   const channelId = normalizeSlackConversationId(input.channelId);
   if (!channelId) {
-    throw new Error("Slack channel message posting requires a valid channel ID");
+    throw new Error(
+      "Slack channel message posting requires a valid channel ID",
+    );
   }
-  const response = await withSlackRetries(() =>
-    client.chat.postMessage({
-      channel: channelId,
-      text: input.text,
-      mrkdwn: true
-    }),
+  const response = await withSlackRetries(
+    () =>
+      client.chat.postMessage({
+        channel: channelId,
+        text: input.text,
+        mrkdwn: true,
+      }),
     3,
-    { action: "chat.postMessage" }
+    { action: "chat.postMessage" },
   );
 
   if (!response.ts) {
@@ -55,13 +63,14 @@ export async function postMessageToChannel(input: {
 
   let permalink: string | undefined;
   try {
-    const permalinkResponse = await withSlackRetries(() =>
-      client.chat.getPermalink({
-        channel: channelId,
-        message_ts: response.ts as string
-      }),
+    const permalinkResponse = await withSlackRetries(
+      () =>
+        client.chat.getPermalink({
+          channel: channelId,
+          message_ts: response.ts as string,
+        }),
       3,
-      { action: "chat.getPermalink" }
+      { action: "chat.getPermalink" },
     );
     permalink = permalinkResponse.permalink;
   } catch {
@@ -70,7 +79,7 @@ export async function postMessageToChannel(input: {
 
   return {
     ts: response.ts,
-    permalink
+    permalink,
   };
 }
 
@@ -88,19 +97,20 @@ export async function addReactionToMessage(input: {
   if (!timestamp) {
     throw new Error("Slack reaction requires a target message timestamp");
   }
-  const emoji = input.emoji.trim().replaceAll(":", "");
+  const emoji = normalizeSlackEmojiName(input.emoji);
   if (!emoji) {
-    throw new Error("Slack reaction requires a non-empty emoji name");
+    throw new Error("Slack reaction requires a valid emoji alias name");
   }
 
-  await withSlackRetries(() =>
-    client.reactions.add({
-      channel: channelId,
-      timestamp,
-      name: emoji
-    }),
+  await withSlackRetries(
+    () =>
+      client.reactions.add({
+        channel: channelId,
+        timestamp,
+        name: emoji,
+      }),
     3,
-    { action: "reactions.add" }
+    { action: "reactions.add" },
   );
   return { ok: true };
 }
@@ -119,19 +129,20 @@ export async function removeReactionFromMessage(input: {
   if (!timestamp) {
     throw new Error("Slack reaction requires a target message timestamp");
   }
-  const emoji = input.emoji.trim().replaceAll(":", "");
+  const emoji = normalizeSlackEmojiName(input.emoji);
   if (!emoji) {
-    throw new Error("Slack reaction requires a non-empty emoji name");
+    throw new Error("Slack reaction requires a valid emoji alias name");
   }
 
-  await withSlackRetries(() =>
-    client.reactions.remove({
-      channel: channelId,
-      timestamp,
-      name: emoji
-    }),
+  await withSlackRetries(
+    () =>
+      client.reactions.remove({
+        channel: channelId,
+        timestamp,
+        name: emoji,
+      }),
     3,
-    { action: "reactions.remove" }
+    { action: "reactions.remove" },
   );
   return { ok: true };
 }
@@ -159,17 +170,18 @@ export async function listChannelMessages(input: {
   while (messages.length < targetLimit && pages < maxPages) {
     pages += 1;
     const pageLimit = Math.max(1, Math.min(200, targetLimit - messages.length));
-    const response = await withSlackRetries(() =>
-      client.conversations.history({
-        channel: channelId,
-        limit: pageLimit,
-        cursor,
-        oldest: input.oldest,
-        latest: input.latest,
-        inclusive: input.inclusive
-      }),
+    const response = await withSlackRetries(
+      () =>
+        client.conversations.history({
+          channel: channelId,
+          limit: pageLimit,
+          cursor,
+          oldest: input.oldest,
+          latest: input.latest,
+          inclusive: input.inclusive,
+        }),
       3,
-      { action: "conversations.history" }
+      { action: "conversations.history" },
     );
 
     const batch = (response.messages ?? []) as SlackChannelMessage[];
@@ -183,7 +195,7 @@ export async function listChannelMessages(input: {
 
   return {
     messages: messages.slice(0, targetLimit),
-    nextCursor: cursor
+    nextCursor: cursor,
   };
 }
 
@@ -202,7 +214,9 @@ export async function listThreadReplies(input: {
   const targetLimit = Math.max(1, Math.min(input.limit ?? 1000, 1000));
   const maxPages = Math.max(1, Math.min(input.maxPages ?? 10, 10));
   const pendingTargets = new Set(
-    (input.targetMessageTs ?? []).filter((value): value is string => typeof value === "string" && value.length > 0)
+    (input.targetMessageTs ?? []).filter(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    ),
   );
   const replies: SlackThreadReply[] = [];
   let cursor: string | undefined;
@@ -211,15 +225,16 @@ export async function listThreadReplies(input: {
   while (replies.length < targetLimit && pages < maxPages) {
     pages += 1;
     const pageLimit = Math.max(1, Math.min(200, targetLimit - replies.length));
-    const response = await withSlackRetries(() =>
-      client.conversations.replies({
-        channel: channelId,
-        ts: input.threadTs,
-        limit: pageLimit,
-        cursor
-      }),
+    const response = await withSlackRetries(
+      () =>
+        client.conversations.replies({
+          channel: channelId,
+          ts: input.threadTs,
+          limit: pageLimit,
+          cursor,
+        }),
       3,
-      { action: "conversations.replies" }
+      { action: "conversations.replies" },
     );
 
     const batch = (response.messages ?? []) as SlackThreadReply[];

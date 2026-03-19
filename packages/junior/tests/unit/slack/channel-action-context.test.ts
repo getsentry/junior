@@ -6,10 +6,13 @@ const getSlackClient = vi.fn();
 vi.mock("@/chat/slack-actions/client", () => ({
   getSlackClient: () => getSlackClient(),
   normalizeSlackConversationId: (value: string | undefined) => value,
-  withSlackRetries: (...args: unknown[]) => withSlackRetries(...args)
+  withSlackRetries: (...args: unknown[]) => withSlackRetries(...args),
 }));
 
-import { addReactionToMessage, removeReactionFromMessage } from "@/chat/slack-actions/channel";
+import {
+  addReactionToMessage,
+  removeReactionFromMessage,
+} from "@/chat/slack-actions/channel";
 
 describe("slack channel action context", () => {
   beforeEach(() => {
@@ -21,41 +24,75 @@ describe("slack channel action context", () => {
     const reactionsAdd = vi.fn(async () => ({ ok: true }));
     getSlackClient.mockReturnValue({
       reactions: {
-        add: reactionsAdd
-      }
+        add: reactionsAdd,
+      },
     });
 
-    withSlackRetries.mockImplementation(async (task: () => Promise<unknown>) => await task());
+    withSlackRetries.mockImplementation(
+      async (task: () => Promise<unknown>) => await task(),
+    );
 
     await addReactionToMessage({
       channelId: "C123",
       timestamp: "1700000000.100",
-      emoji: "thumbsup"
+      emoji: "thumbsup",
     });
 
     expect(withSlackRetries).toHaveBeenCalledWith(expect.any(Function), 3, {
-      action: "reactions.add"
+      action: "reactions.add",
     });
+    expect(reactionsAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "thumbsup",
+      }),
+    );
   });
 
   it("passes reaction removal action context into retry wrapper", async () => {
     const reactionsRemove = vi.fn(async () => ({ ok: true }));
     getSlackClient.mockReturnValue({
       reactions: {
-        remove: reactionsRemove
-      }
+        remove: reactionsRemove,
+      },
     });
 
-    withSlackRetries.mockImplementation(async (task: () => Promise<unknown>) => await task());
+    withSlackRetries.mockImplementation(
+      async (task: () => Promise<unknown>) => await task(),
+    );
 
     await removeReactionFromMessage({
       channelId: "C123",
       timestamp: "1700000000.100",
-      emoji: "eyes"
+      emoji: "eyes",
     });
 
     expect(withSlackRetries).toHaveBeenCalledWith(expect.any(Function), 3, {
-      action: "reactions.remove"
+      action: "reactions.remove",
     });
+  });
+
+  it("preserves Slack skin-tone modifiers when adding reactions", async () => {
+    const reactionsAdd = vi.fn(async () => ({ ok: true }));
+    getSlackClient.mockReturnValue({
+      reactions: {
+        add: reactionsAdd,
+      },
+    });
+
+    withSlackRetries.mockImplementation(
+      async (task: () => Promise<unknown>) => await task(),
+    );
+
+    await addReactionToMessage({
+      channelId: "C123",
+      timestamp: "1700000000.100",
+      emoji: ":thumbsup::skin-tone-6:",
+    });
+
+    expect(reactionsAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "thumbsup::skin-tone-6",
+      }),
+    );
   });
 });
