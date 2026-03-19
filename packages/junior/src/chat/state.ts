@@ -166,7 +166,6 @@ export interface AgentTurnSessionCheckpoint {
   checkpointVersion: number;
   conversationId: string;
   errorMessage?: string;
-  activeMcpProviders?: string[];
   loadedSkillNames?: string[];
   piMessages: unknown[];
   resumeReason?: AgentTurnResumeReason;
@@ -277,13 +276,6 @@ function parseAgentTurnSessionCheckpoint(
       ...(Array.isArray(parsed.loadedSkillNames)
         ? {
             loadedSkillNames: parsed.loadedSkillNames.filter(
-              (value): value is string => typeof value === "string",
-            ),
-          }
-        : {}),
-      ...(Array.isArray(parsed.activeMcpProviders)
-        ? {
-            activeMcpProviders: parsed.activeMcpProviders.filter(
               (value): value is string => typeof value === "string",
             ),
           }
@@ -483,7 +475,6 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   state: AgentTurnSessionStatus;
   piMessages: unknown[];
   loadedSkillNames?: string[];
-  activeMcpProviders?: string[];
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
@@ -506,13 +497,6 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
     ...(Array.isArray(args.loadedSkillNames)
       ? {
           loadedSkillNames: args.loadedSkillNames.filter(
-            (value): value is string => typeof value === "string",
-          ),
-        }
-      : {}),
-    ...(Array.isArray(args.activeMcpProviders)
-      ? {
-          activeMcpProviders: args.activeMcpProviders.filter(
             (value): value is string => typeof value === "string",
           ),
         }

@@ -152,6 +152,16 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       if (lastMessage?.role === "assistant") {
         throw new Error("Cannot continue from message role: assistant");
       }
+      const useToolTool = this.state.tools.find(
+        (tool) => tool.name === "useTool",
+      );
+      if (!useToolTool) {
+        throw new Error("useTool tool missing");
+      }
+      await useToolTool.execute("tool-call-continue", {
+        tool_name: "mcp__demo__ping",
+        arguments: { query: "hello" },
+      });
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "resumed reply" }],
@@ -182,6 +192,66 @@ vi.mock("@/chat/oauth-flow", () => ({
   deliverPrivateMessage: deliverPrivateMessageMock,
   formatProviderLabel: (provider: string) => provider,
   resolveBaseUrl: () => "https://junior.example.com",
+}));
+
+vi.mock("@/chat/mcp/oauth", () => ({
+  createMcpOAuthClientProvider: async (input: {
+    provider: string;
+    conversationId: string;
+    sessionId: string;
+    userId: string;
+    userMessage: string;
+    channelId?: string;
+    threadTs?: string;
+    toolChannelId?: string;
+    configuration?: Record<string, unknown>;
+    artifactState?: Record<string, unknown>;
+  }) => {
+    const { patchMcpAuthSession, putMcpAuthSession } =
+      await import("@/chat/mcp/auth-store");
+    const authSessionId = `${input.provider}-auth-session`;
+    await putMcpAuthSession({
+      authSessionId,
+      provider: input.provider,
+      userId: input.userId,
+      conversationId: input.conversationId,
+      sessionId: input.sessionId,
+      userMessage: input.userMessage,
+      ...(input.channelId ? { channelId: input.channelId } : {}),
+      ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
+      ...(input.configuration ? { configuration: input.configuration } : {}),
+      ...(input.artifactState ? { artifactState: input.artifactState } : {}),
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+    });
+
+    return {
+      authSessionId,
+      redirectUrl: `https://junior.example.com/api/oauth/callback/mcp/${input.provider}`,
+      clientMetadata: {
+        client_name: "Junior MCP Client",
+        redirect_uris: [
+          `https://junior.example.com/api/oauth/callback/mcp/${input.provider}`,
+        ],
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        token_endpoint_auth_method: "none",
+      },
+      state: async () => `${input.provider}-auth-state`,
+      clientInformation: async () => undefined,
+      saveClientInformation: async () => undefined,
+      tokens: async () => undefined,
+      saveTokens: async () => undefined,
+      redirectToAuthorization: async (authorizationUrl: URL) => {
+        await patchMcpAuthSession(authSessionId, {
+          authorizationUrl: authorizationUrl.toString(),
+        });
+      },
+      saveCodeVerifier: async () => undefined,
+      codeVerifier: async () => "code-verifier",
+    };
+  },
 }));
 
 vi.mock("@/chat/pi/client", () => ({
@@ -457,11 +527,10 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(pausedCheckpoint).toMatchObject({
       state: "awaiting_resume",
       loadedSkillNames: ["demo-skill"],
-      activeMcpProviders: [],
       resumeReason: "auth",
     });
     expect(pausedCheckpoint?.piMessages.at(-1)).toMatchObject({
-      role: "assistant",
+      role: "user",
     });
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
     expect(loadSkillExecutionErrorCount.value).toBe(0);
@@ -469,8 +538,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
     const reply = await generateAssistantReply("help me", context);
 
     expect(reply.text).toBe("resumed reply");
-    expect(promptCallCount.value).toBe(2);
-    expect(continueCallCount.value).toBe(0);
+    expect(promptCallCount.value).toBe(1);
+    expect(continueCallCount.value).toBe(1);
     expect(clientOptions).not.toContainEqual(
       expect.objectContaining({ sessionId: expect.any(String) }),
     );
@@ -478,8 +547,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(agentInitialToolNames[1]).toContain("searchTools");
     expect(agentInitialToolNames[1]).toContain("useTool");
     expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
-    expect(loadSkillAvailableToolNames).toEqual([[], ["mcp__demo__ping"]]);
-    expect(loadSkillToolSearchFlags).toEqual([false, true]);
+    expect(loadSkillAvailableToolNames).toEqual([[]]);
+    expect(loadSkillToolSearchFlags).toEqual([false]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),
@@ -495,7 +564,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(resumedCheckpoint).toMatchObject({
       state: "completed",
       loadedSkillNames: ["demo-skill"],
-      activeMcpProviders: ["demo"],
     });
   });
 
@@ -557,7 +625,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(checkpoint).toMatchObject({
       state: "completed",
       loadedSkillNames: ["demo-skill"],
-      activeMcpProviders: ["demo"],
     });
   });
 });

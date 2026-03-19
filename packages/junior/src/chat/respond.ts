@@ -209,6 +209,14 @@ async function runAgentContinuation(agent: Agent): Promise<unknown> {
   return await resumable.continue();
 }
 
+function trimTrailingAssistantMessages(messages: unknown[]): unknown[] {
+  let end = messages.length;
+  while (end > 0 && getPiMessageRole(messages[end - 1]) === "assistant") {
+    end -= 1;
+  }
+  return end === messages.length ? [...messages] : messages.slice(0, end);
+}
+
 function isExecutionDeferralResponse(text: string): boolean {
   return /\b(want me to proceed|do you want me to proceed|shall i proceed|can i proceed|should i proceed|let me do that now|give me a moment|tag me again|fresh invocation)\b/i.test(
     text,
@@ -993,7 +1001,6 @@ export async function generateAssistantReply(
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
   let loadedSkillNamesForResume: string[] = [];
-  let activeMcpProvidersForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
   let pendingMcpAuthorizationPause: McpAuthorizationPauseError | undefined;
 
@@ -1076,33 +1083,7 @@ export async function generateAssistantReply(
       existingTurnCheckpoint.state === "awaiting_resume" &&
       existingTurnCheckpoint.piMessages.length > 0,
     );
-    const checkpointEndsWithAssistant = Boolean(
-      hasAwaitingResumeCheckpoint &&
-      getPiMessageRole(existingTurnCheckpoint!.piMessages.at(-1)) ===
-        "assistant",
-    );
-    const resumedFromCheckpoint = Boolean(
-      hasAwaitingResumeCheckpoint &&
-      !(
-        existingTurnCheckpoint?.resumeReason === "auth" &&
-        checkpointEndsWithAssistant
-      ),
-    );
-    if (
-      hasAwaitingResumeCheckpoint &&
-      existingTurnCheckpoint?.resumeReason === "auth" &&
-      checkpointEndsWithAssistant
-    ) {
-      logWarn(
-        "agent_turn_resume_replayed_from_prompt",
-        spanContext,
-        {
-          "app.ai.resume_reason": existingTurnCheckpoint.resumeReason,
-          "app.ai.resume_slice_id": existingTurnCheckpoint.sliceId,
-        },
-        "Replaying auth-paused turn from prompt because the saved Pi checkpoint ended on an assistant message",
-      );
-    }
+    const resumedFromCheckpoint = hasAwaitingResumeCheckpoint;
     const currentSliceId = hasAwaitingResumeCheckpoint
       ? existingTurnCheckpoint!.sliceId
       : 1;
@@ -1282,7 +1263,6 @@ export async function generateAssistantReply(
     const turnMcpToolManager = mcpToolManager;
     const syncResumeState = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
-      activeMcpProvidersForResume = mcpToolManager?.getActiveProviders() ?? [];
     };
 
     setTags({
@@ -1365,14 +1345,6 @@ export async function generateAssistantReply(
     syncResumeState();
     for (const skill of activeSkills) {
       await turnMcpToolManager.activateForSkill(skill);
-      syncResumeState();
-      if (pendingMcpAuthorizationPause) {
-        timeoutResumeMessages = existingTurnCheckpoint?.piMessages ?? [];
-        throw pendingMcpAuthorizationPause;
-      }
-    }
-    for (const provider of existingTurnCheckpoint?.activeMcpProviders ?? []) {
-      await turnMcpToolManager.activateProvider(provider);
       syncResumeState();
       if (pendingMcpAuthorizationPause) {
         timeoutResumeMessages = existingTurnCheckpoint?.piMessages ?? [];
@@ -1613,7 +1585,6 @@ export async function generateAssistantReply(
         state: "completed",
         piMessages: agent.state.messages as unknown[],
         loadedSkillNames: activeSkills.map((skill) => skill.name),
-        activeMcpProviders: turnMcpToolManager.getActiveProviders(),
       });
     }
 
@@ -1777,14 +1748,14 @@ export async function generateAssistantReply(
       timeoutResumeSessionId
     ) {
       const nextSliceId = timeoutResumeSliceId + 1;
+      const piMessages = trimTrailingAssistantMessages(timeoutResumeMessages);
       await upsertAgentTurnSessionCheckpoint({
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
         sliceId: nextSliceId,
         state: "awaiting_resume",
-        piMessages: timeoutResumeMessages,
+        piMessages,
         loadedSkillNames: loadedSkillNamesForResume,
-        activeMcpProviders: activeMcpProvidersForResume,
         resumeReason: "auth",
         resumedFromSliceId: timeoutResumeSliceId,
         errorMessage: error.message,
@@ -1837,7 +1808,6 @@ export async function generateAssistantReply(
           state: "awaiting_resume",
           piMessages,
           loadedSkillNames: loadedSkillNamesForResume,
-          activeMcpProviders: activeMcpProvidersForResume,
           resumeReason: "timeout",
           resumedFromSliceId: timeoutResumeSliceId,
           errorMessage: error.message,

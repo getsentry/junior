@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-03-13
+- Last Edited: 2026-03-19
 
 ## Changelog
 
 - 2026-03-05: Initial canonical contract for timeout-safe multi-slice assistant execution with Pi in serverless runtimes.
 - 2026-03-13: Added auth-driven resume reason and checkpointed dynamic tool state for MCP-backed turns.
+- 2026-03-19: Simplified auth resume contract so resumed slices always use `continue()` after trimming trailing uncommitted assistant messages at the auth pause boundary.
 
 ## Status
 
@@ -87,7 +88,6 @@ Each checkpoint must include:
 - `state`: one of `running|awaiting_resume|completed|failed`.
 - `resume_reason`: `timeout|auth|preempted|retry|operator` (when `awaiting_resume`).
 - `loaded_skill_names`: Active skills that must be restored before resume when tool availability depends on loaded skills.
-- `active_mcp_providers`: Active plugin MCP providers that must be restored before resume when tools were progressively disclosed.
 - `deadline_at`: hard deadline for the current slice.
 - `updated_at`
 
@@ -99,11 +99,11 @@ For slice `n+1`, runtime must:
 
 1. Load latest committed checkpoint for `(conversation_id, session_id)`.
 2. Instantiate Pi agent.
-3. Restore any checkpointed dynamic tool state required by the wrapper runtime (for example loaded skills and active MCP providers).
+3. Restore any checkpointed dynamic tool state required by the wrapper runtime (for example loaded skills).
 4. Call `replaceMessages(checkpoint.pi_messages)`.
-5. Resume generation with one of these modes:
-   - Default: call `continue()` to resume generation/tool loop.
-   - Auth fallback: if `resume_reason=auth` and `checkpoint.pi_messages` ends on an assistant message with no queued steering/follow-up input, do not call `continue()`. Replay the original user prompt after restoring dynamic tool state instead.
+5. Resume generation by calling `continue()` to resume generation/tool loop.
+
+For auth-driven pauses, the checkpoint written at the pause boundary must trim any trailing uncommitted assistant-only messages so the restored Pi history is resumable with `continue()`.
 
 If the previous slice timed out after producing uncommitted partial assistant text, that text may be regenerated in the next slice. User-visible output must only include committed transcript content.
 
