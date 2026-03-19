@@ -1755,17 +1755,39 @@ export async function generateAssistantReply(
     ) {
       const nextSliceId = timeoutResumeSliceId + 1;
       const piMessages = trimTrailingAssistantMessages(timeoutResumeMessages);
-      await upsertAgentTurnSessionCheckpoint({
-        conversationId: timeoutResumeConversationId,
-        sessionId: timeoutResumeSessionId,
-        sliceId: nextSliceId,
-        state: "awaiting_resume",
-        piMessages,
-        loadedSkillNames: loadedSkillNamesForResume,
-        resumeReason: "auth",
-        resumedFromSliceId: timeoutResumeSliceId,
-        errorMessage: error.message,
-      });
+      try {
+        await upsertAgentTurnSessionCheckpoint({
+          conversationId: timeoutResumeConversationId,
+          sessionId: timeoutResumeSessionId,
+          sliceId: nextSliceId,
+          state: "awaiting_resume",
+          piMessages,
+          loadedSkillNames: loadedSkillNamesForResume,
+          resumeReason: "auth",
+          resumedFromSliceId: timeoutResumeSliceId,
+          errorMessage: error.message,
+        });
+      } catch (checkpointError) {
+        logException(
+          checkpointError,
+          "agent_turn_auth_resume_checkpoint_failed",
+          {
+            slackThreadId: context.correlation?.threadId,
+            slackUserId: context.correlation?.requesterId,
+            slackChannelId: context.correlation?.channelId,
+            runId: context.correlation?.runId,
+            assistantUserName: context.assistant?.userName,
+            modelId: botConfig.modelId,
+          },
+          {
+            "app.ai.resume_conversation_id": timeoutResumeConversationId,
+            "app.ai.resume_session_id": timeoutResumeSessionId,
+            "app.ai.resume_from_slice_id": timeoutResumeSliceId,
+            "app.ai.resume_next_slice_id": nextSliceId,
+          },
+          "Failed to persist auth checkpoint before retry",
+        );
+      }
       throw new RetryableTurnError(
         "mcp_auth_resume",
         `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,

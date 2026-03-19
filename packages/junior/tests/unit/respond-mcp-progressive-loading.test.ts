@@ -403,6 +403,7 @@ vi.mock("@/chat/mcp/client", () => {
 });
 
 import { generateAssistantReply } from "@/chat/respond";
+import * as stateModule from "@/chat/state";
 import {
   disconnectStateAdapter,
   getAgentTurnSessionCheckpoint,
@@ -625,5 +626,31 @@ describe("generateAssistantReply progressive MCP loading", () => {
       state: "completed",
       loadedSkillNames: ["demo-skill"],
     });
+  });
+
+  it("still returns auth resume when auth checkpoint persistence fails", async () => {
+    const checkpointSpy = vi
+      .spyOn(stateModule, "upsertAgentTurnSessionCheckpoint")
+      .mockImplementationOnce(async () => {
+        throw new Error("state adapter unavailable");
+      });
+
+    const context = {
+      assistant: { userName: "junior" },
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-3",
+        turnId: "turn-3",
+        channelId: "C123",
+        threadTs: "1712345.0003",
+      },
+    };
+
+    const firstError = await generateAssistantReply("help me", context).catch(
+      (error) => error,
+    );
+
+    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
+    expect(checkpointSpy).toHaveBeenCalled();
   });
 });
