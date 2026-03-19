@@ -338,4 +338,31 @@ describe("logging context ids", () => {
     expect(records[0]?.body).not.toContain("super-secret-material");
     expect(records[0]?.body).not.toContain("truncated-without-footer");
   });
+
+  it("redacts PEM private keys embedded in escaped JSON strings", async () => {
+    const { log, registerLogRecordSink } = await import("@/chat/logging");
+    const records: Array<{ body: string }> = [];
+    const unregister = registerLogRecordSink((record) => {
+      records.push({ body: record.body });
+    });
+
+    try {
+      log.error(
+        "pem_key_logged",
+        {},
+        JSON.stringify({
+          key: "-----BEGIN PRIVATE KEY-----\\nsuper-secret-material\\n-----END PRIVATE KEY-----",
+          ok: true,
+        }),
+      );
+    } finally {
+      unregister();
+    }
+
+    expect(records).toHaveLength(1);
+    expect(records[0]?.body).toContain("-----BEGIN PRIVATE KEY-----");
+    expect(records[0]?.body).toContain("...redacted...");
+    expect(records[0]?.body).toContain("-----END PRIVATE KEY-----");
+    expect(records[0]?.body).not.toContain("super-secret-material");
+  });
 });
