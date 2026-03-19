@@ -1523,10 +1523,17 @@ export async function generateAssistantReply(
                 },
                 "Agent turn timed out and was aborted",
               );
+              // The timeout branch wins the race via timeoutPromise, so the
+              // agent loop may still be settling its final message state. Wait
+              // for promptPromise before snapshotting messages for resume.
               await promptPromise.catch(() => {});
               timeoutResumeMessages = [...(agent.state.messages as unknown[])];
             }
             if (pendingMcpAuthorizationPause) {
+              // For non-timeout failures, pi-agent-core only settles
+              // promptPromise after it has finished mutating agent.state.
+              // By the time we get here, the prompt already settled, so the
+              // current message snapshot is final for auth-pause checkpointing.
               timeoutResumeMessages = [...(agent.state.messages as unknown[])];
               throw pendingMcpAuthorizationPause;
             }
