@@ -788,17 +788,6 @@ function createAgentTools(
               "result" in result
                 ? (result as { result: unknown }).result
                 : result;
-            if (shouldLogCredentialInjection) {
-              logInfo(
-                "credential_inject_cleanup",
-                {},
-                {
-                  "app.skill.name": sandbox.getActiveSkill()?.name,
-                },
-                "Scoped credential header injection completed",
-              );
-            }
-
             const durationMs = Date.now() - toolStartedAt;
             const toolResultAttribute = serializeGenAiAttribute(resultDetails);
             setSpanAttributes({
