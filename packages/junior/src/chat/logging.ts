@@ -105,7 +105,6 @@ const CONSOLE_PRIORITY_KEYS = [
   "app.agent.id",
   "messaging.message.conversation_id",
   "messaging.destination.name",
-  "enduser.id",
   "app.run.id",
   "app.message.kind",
 ] as const;
