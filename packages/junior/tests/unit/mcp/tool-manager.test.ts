@@ -4,12 +4,14 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 const {
   callToolMock,
   clientOptions,
+  clientSetupError,
   closeMock,
   listToolsMock,
   onAuthorizationRequiredMock,
 } = vi.hoisted(() => ({
   callToolMock: vi.fn(),
   clientOptions: [] as unknown[],
+  clientSetupError: { value: undefined as unknown },
   closeMock: vi.fn(),
   listToolsMock: vi.fn(),
   onAuthorizationRequiredMock: vi.fn(),
@@ -31,6 +33,9 @@ vi.mock("@/chat/mcp/client", () => {
       private readonly plugin: PluginDefinition,
       options?: unknown,
     ) {
+      if (clientSetupError.value) {
+        throw clientSetupError.value;
+      }
       clientOptions.push(options);
     }
 
@@ -84,6 +89,7 @@ describe("McpToolManager", () => {
     closeMock.mockReset();
     onAuthorizationRequiredMock.mockReset();
     clientOptions.length = 0;
+    clientSetupError.value = undefined;
 
     listToolsMock.mockResolvedValue([
       {
@@ -240,6 +246,24 @@ describe("McpToolManager", () => {
 
     await expect(manager.activateProvider("demo")).resolves.toBe(false);
     expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
+    expect(manager.getActiveProviders()).toEqual([]);
+  });
+
+  it("parks handled MCP authorization challenges during initial client setup", async () => {
+    const plugin = buildPlugin();
+    const authError = new McpAuthorizationRequiredError(
+      "demo",
+      "Connect auth required",
+    );
+    clientSetupError.value = authError;
+    onAuthorizationRequiredMock.mockResolvedValueOnce(true);
+    const manager = new McpToolManager([plugin], {
+      onAuthorizationRequired: onAuthorizationRequiredMock,
+    });
+
+    await expect(manager.activateProvider("demo")).resolves.toBe(false);
+    expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
+    expect(onAuthorizationRequiredMock).toHaveBeenCalledWith("demo", authError);
     expect(manager.getActiveProviders()).toEqual([]);
   });
 

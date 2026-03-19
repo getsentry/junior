@@ -208,9 +208,8 @@ export class McpToolManager {
       return false;
     }
 
-    const client = await this.getClient(plugin);
-
     try {
+      const client = await this.getClient(plugin);
       const tools = this.filterListedTools(plugin, await client.listTools());
       this.toolsByProvider.set(
         provider,
