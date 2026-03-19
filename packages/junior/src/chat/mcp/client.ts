@@ -99,7 +99,6 @@ export class PluginMcpClient {
   }
 
   async close(): Promise<void> {
-    this.listedTools = undefined;
     await this.disposeClient();
   }
 
@@ -207,6 +206,7 @@ export class PluginMcpClient {
 
   private async disposeClient(): Promise<void> {
     const transport = this.transport;
+    this.listedTools = undefined;
     this.transport = undefined;
     this.client = undefined;
 

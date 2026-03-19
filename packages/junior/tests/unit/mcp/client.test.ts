@@ -218,4 +218,49 @@ describe("PluginMcpClient", () => {
       { authProvider },
     ]);
   });
+
+  it("drops cached listed tools when session recovery rebuilds the client", async () => {
+    const authProvider = buildAuthProvider();
+    authProvider.getMcpServerSessionId
+      .mockResolvedValueOnce("stale-session")
+      .mockResolvedValue(undefined);
+    authProvider.saveMcpServerSessionId.mockResolvedValue(undefined);
+    connectMock.mockImplementation(async () => undefined);
+    listToolsMock
+      .mockResolvedValueOnce({
+        tools: [
+          {
+            name: "notion-search",
+            title: "Search",
+            inputSchema: { type: "object", properties: {} },
+          },
+        ],
+        nextCursor: undefined,
+      })
+      .mockResolvedValueOnce({
+        tools: [
+          {
+            name: "notion-query",
+            title: "Query",
+            inputSchema: { type: "object", properties: {} },
+          },
+        ],
+        nextCursor: undefined,
+      });
+    callToolMock
+      .mockRejectedValueOnce(new StreamableHTTPError(404, "Session not found"))
+      .mockResolvedValueOnce({ content: [{ type: "text", text: "ok" }] });
+
+    const client = new PluginMcpClient(buildPlugin(), { authProvider });
+
+    await expect(client.listTools()).resolves.toEqual([
+      expect.objectContaining({ name: "notion-search" }),
+    ]);
+    await expect(client.callTool("notion-search", undefined)).resolves.toEqual({
+      content: [{ type: "text", text: "ok" }],
+    });
+    await expect(client.listTools()).resolves.toEqual([
+      expect.objectContaining({ name: "notion-query" }),
+    ]);
+  });
 });
