@@ -1771,8 +1771,16 @@ export async function generateAssistantReply(
       timeoutResumeSessionId
     ) {
       const nextSliceId = timeoutResumeSliceId + 1;
-      const piMessages = trimTrailingAssistantMessages(timeoutResumeMessages);
       try {
+        const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+          timeoutResumeConversationId,
+          timeoutResumeSessionId,
+        );
+        const piMessages = trimTrailingAssistantMessages(
+          timeoutResumeMessages.length > 0
+            ? timeoutResumeMessages
+            : (latestCheckpoint?.piMessages ?? []),
+        );
         await upsertAgentTurnSessionCheckpoint({
           conversationId: timeoutResumeConversationId,
           sessionId: timeoutResumeSessionId,

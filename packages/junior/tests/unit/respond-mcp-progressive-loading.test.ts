@@ -5,7 +5,9 @@ const {
   callToolMock,
   clientOptions,
   continueCallCount,
+  continueStopsOnAbort,
   deliverPrivateMessageMock,
+  ignoreReplaceMessages,
   listToolsMock,
   loadSkillAvailableToolNames,
   loadSkillExecutionErrorCount,
@@ -17,7 +19,9 @@ const {
   callToolMock: vi.fn(),
   clientOptions: [] as Array<Record<string, unknown>>,
   continueCallCount: { value: 0 },
+  continueStopsOnAbort: { value: false },
   deliverPrivateMessageMock: vi.fn(),
+  ignoreReplaceMessages: { value: false },
   listToolsMock: vi.fn(),
   loadSkillAvailableToolNames: [] as string[][],
   loadSkillExecutionErrorCount: { value: 0 },
@@ -67,6 +71,9 @@ vi.mock("@mariozechner/pi-agent-core", () => {
     }
 
     async replaceMessages(messages: unknown[]) {
+      if (ignoreReplaceMessages.value) {
+        return;
+      }
       this.state.messages = [...messages];
     }
 
@@ -163,6 +170,9 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         tool_name: "mcp__demo__ping",
         arguments: { query: "hello" },
       });
+      if (this.aborted && continueStopsOnAbort.value) {
+        return {};
+      }
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "resumed reply" }],
@@ -418,7 +428,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
     callToolMock.mockReset();
     clientOptions.length = 0;
     continueCallCount.value = 0;
+    continueStopsOnAbort.value = false;
     deliverPrivateMessageMock.mockReset();
+    ignoreReplaceMessages.value = false;
     listToolsMock.mockReset();
     loadSkillAvailableToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
@@ -714,5 +726,66 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
     expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
     expect(checkpointSpy).toHaveBeenCalled();
+  });
+
+  it("falls back to the latest stored checkpoint when auth pause captures no messages", async () => {
+    ignoreReplaceMessages.value = true;
+    continueStopsOnAbort.value = true;
+
+    const priorMessages = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "help me" }],
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "working on it" }],
+      },
+    ];
+    const expectedResumeMessages = [priorMessages[0]];
+    await stateModule.upsertAgentTurnSessionCheckpoint({
+      conversationId: "conversation-5",
+      sessionId: "turn-5",
+      sliceId: 1,
+      state: "awaiting_resume",
+      piMessages: priorMessages,
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "auth",
+    });
+
+    callToolMock.mockImplementationOnce(async (plugin) => {
+      const { McpAuthorizationRequiredError } =
+        await import("@/chat/mcp/client");
+      throw new McpAuthorizationRequiredError(
+        plugin.manifest.name,
+        "Auth required",
+      );
+    });
+
+    const firstError = await generateAssistantReply("help me", {
+      assistant: { userName: "junior" },
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-5",
+        turnId: "turn-5",
+        channelId: "C123",
+        threadTs: "1712345.0005",
+      },
+    }).catch((error) => error);
+
+    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
+
+    const resumedCheckpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-5",
+      "turn-5",
+    );
+    expect(resumedCheckpoint).toMatchObject({
+      state: "awaiting_resume",
+      sliceId: 2,
+      resumedFromSliceId: 1,
+      piMessages: expectedResumeMessages,
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "auth",
+    });
   });
 });
