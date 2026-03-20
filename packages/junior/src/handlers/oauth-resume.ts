@@ -7,11 +7,44 @@ import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { truncateStatusText } from "@/chat/status-format";
 import { isRetryableTurnError } from "@/chat/turn/errors";
 
+type PostSlackMessageObserver = (args: {
+  channelId: string;
+  text: string;
+  threadTs: string;
+}) => void;
+
+let postSlackMessageObserverForTests: PostSlackMessageObserver | undefined;
+
+export function setPostSlackMessageObserverForTests(
+  observer: PostSlackMessageObserver | undefined,
+): void {
+  postSlackMessageObserverForTests = observer;
+}
+
+function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
+  if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
+    return explicitTimeoutMs;
+  }
+
+  const raw = process.env.EVAL_AGENT_REPLY_TIMEOUT_MS?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 export async function postSlackMessage(
   channelId: string,
   threadTs: string,
   text: string,
 ): Promise<void> {
+  postSlackMessageObserverForTests?.({
+    channelId,
+    threadTs,
+    text,
+  });
   try {
     await getSlackClient().chat.postMessage({
       channel: channelId,
@@ -148,18 +181,22 @@ export async function resumeAuthorizedRequest(args: {
   };
   toolChannelId?: string;
   artifactState?: ThreadArtifactsState;
+  conversationContext?: string;
   configuration?: Record<string, unknown>;
+  generateReply?: typeof generateAssistantReply;
   onReply?: (reply: AssistantReply) => Promise<void>;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;
+  replyTimeoutMs?: number;
 }) {
   const postStatus = createDebouncedStatusPoster(args.channelId, args.threadTs);
   await postSlackMessage(args.channelId, args.threadTs, args.connectedText);
   await setAssistantStatus(args.channelId, args.threadTs, "Thinking...");
 
   try {
-    const reply = await generateAssistantReply(args.messageText, {
+    const generateReply = args.generateReply ?? generateAssistantReply;
+    const replyPromise = generateReply(args.messageText, {
       assistant: { userName: botConfig.userName },
       requester: { userId: args.requesterUserId },
       correlation: {
@@ -170,6 +207,7 @@ export async function resumeAuthorizedRequest(args: {
         requesterId: args.correlation?.requesterId ?? args.requesterUserId,
       },
       toolChannelId: args.toolChannelId,
+      conversationContext: args.conversationContext,
       artifactState: args.artifactState,
       configuration: args.configuration,
       channelConfiguration: args.configuration
@@ -177,6 +215,24 @@ export async function resumeAuthorizedRequest(args: {
         : undefined,
       onStatus: postStatus,
     });
+    const replyTimeoutMs = resolveReplyTimeoutMs(args.replyTimeoutMs);
+    const reply =
+      typeof replyTimeoutMs === "number"
+        ? await Promise.race([
+            replyPromise,
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `generateAssistantReply timed out after ${replyTimeoutMs}ms`,
+                    ),
+                  ),
+                replyTimeoutMs,
+              ),
+            ),
+          ])
+        : await replyPromise;
 
     postStatus.stop();
     if (args.onReply) {

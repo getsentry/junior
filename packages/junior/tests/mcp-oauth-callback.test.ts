@@ -4,6 +4,7 @@ const {
   afterCallbacks,
   coerceThreadArtifactsStateMock,
   coerceThreadConversationStateMock,
+  buildConversationContextMock,
   deleteMcpAuthSessionMock,
   finalizeMcpAuthorizationMock,
   generateAssistantReplyMock,
@@ -23,6 +24,7 @@ const {
   afterCallbacks: [] as Array<() => Promise<void> | void>,
   coerceThreadArtifactsStateMock: vi.fn(),
   coerceThreadConversationStateMock: vi.fn(),
+  buildConversationContextMock: vi.fn(),
   deleteMcpAuthSessionMock: vi.fn(),
   finalizeMcpAuthorizationMock: vi.fn(),
   generateAssistantReplyMock: vi.fn(),
@@ -99,6 +101,7 @@ vi.mock("@/chat/runtime/thread-state", () => ({
 }));
 
 vi.mock("@/chat/services/conversation-memory", () => ({
+  buildConversationContext: buildConversationContextMock,
   generateConversationId: () => "assistant-1",
   markConversationMessage: markConversationMessageMock,
   normalizeConversationText: (text: string) => text.trim(),
@@ -132,6 +135,7 @@ describe("mcp oauth callback handler", () => {
     afterCallbacks.length = 0;
     coerceThreadArtifactsStateMock.mockReset();
     coerceThreadConversationStateMock.mockReset();
+    buildConversationContextMock.mockReset();
     deleteMcpAuthSessionMock.mockReset();
     finalizeMcpAuthorizationMock.mockReset();
     generateAssistantReplyMock.mockReset();
@@ -217,6 +221,9 @@ describe("mcp oauth callback handler", () => {
     coerceThreadArtifactsStateMock.mockReturnValue({
       assistantContextChannelId: "C999",
     });
+    buildConversationContextMock.mockReturnValue(
+      "[user] Test User: budget deadline is Friday",
+    );
     mergeArtifactsStateMock.mockImplementation((current, patch) => ({
       ...current,
       ...patch,
@@ -323,6 +330,7 @@ describe("mcp oauth callback handler", () => {
         configuration: {
           "demo.org": "acme",
         },
+        conversationContext: "[user] Test User: budget deadline is Friday",
       }),
     );
 
@@ -333,6 +341,10 @@ describe("mcp oauth callback handler", () => {
     };
     expect(await resumeContext.channelConfiguration?.resolve("demo.org")).toBe(
       "acme",
+    );
+    expect(buildConversationContextMock).toHaveBeenCalledWith(
+      expect.anything(),
+      { excludeMessageId: "msg.1" },
     );
     expect(postMessageMock).toHaveBeenNthCalledWith(2, {
       channel: "C123",

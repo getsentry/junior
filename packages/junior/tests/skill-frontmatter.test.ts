@@ -70,6 +70,28 @@ describe("skill frontmatter validation", () => {
     ]);
   });
 
+  it("accepts hyphenated provider prefixes in dotted tokens", () => {
+    const raw = [
+      "---",
+      "name: brief",
+      "description: Create a candidate brief from public engineering signals.",
+      "requires-capabilities: eval-oauth.read",
+      "uses-config: eval-oauth.repo",
+      "---",
+      "",
+      "# Body",
+    ].join("\n");
+
+    const result = parseSkillFile(raw, "brief");
+    expect(result.ok).toBe(true);
+    expect(result.ok ? result.skill.requiresCapabilities : null).toEqual([
+      "eval-oauth.read",
+    ]);
+    expect(result.ok ? result.skill.usesConfig : null).toEqual([
+      "eval-oauth.repo",
+    ]);
+  });
+
   it("rejects invalid requires-capabilities tokens", () => {
     const raw = [
       "---",

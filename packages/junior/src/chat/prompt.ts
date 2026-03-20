@@ -491,6 +491,7 @@ export function buildSystemPrompt(params: {
       [
         "- Explicit skill triggers may appear as `/skillname`.",
         "- If explicitly invoked skill instructions are already present in <loaded_skills>, apply them immediately.",
+        "- If an explicitly invoked skill is present in <loaded_skills>, never say the skill is unavailable, missing, or unsupported in this environment.",
         "- Otherwise, for an explicitly invoked skill, call `loadSkill` for that exact skill before applying skill-specific behavior.",
         "- For requests without an explicit trigger where a skill clearly matches, call `loadSkill` before applying skill-specific behavior.",
         "- Do not claim to have used a skill unless it is present in <loaded_skills> or `loadSkill` succeeded in this turn.",

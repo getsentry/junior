@@ -155,7 +155,7 @@ async function handleIssueCredentialCommand(
               ? `I need to connect your ${providerLabel} account first. I've sent you a private authorization link.`
               : `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try your command again.`,
           },
-          exitCode: 1,
+          exitCode: 0,
         });
       }
       // OAuth start failed — surface the specific misconfiguration error

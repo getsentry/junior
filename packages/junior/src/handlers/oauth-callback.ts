@@ -1,10 +1,13 @@
 import { after } from "next/server";
+import { ThreadImpl } from "chat";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
+import { coerceThreadConversationState } from "@/chat/conversation-state";
 import {
   formatProviderLabel,
   type OAuthStatePayload,
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
+import { buildConversationContext } from "@/chat/services/conversation-memory";
 import {
   resumeAuthorizedRequest,
   postSlackMessage,
@@ -51,10 +54,40 @@ function htmlErrorResponse(
   });
 }
 
-async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
+function createSlackThread(channelId: string, threadTs: string) {
+  return ThreadImpl.fromJSON({
+    _type: "chat:Thread",
+    adapterName: "slack",
+    channelId,
+    id: `slack:${channelId}:${threadTs}`,
+    isDM: channelId.startsWith("D"),
+  });
+}
+
+async function buildResumeConversationContext(
+  channelId: string,
+  threadTs: string,
+): Promise<string | undefined> {
+  const thread = createSlackThread(channelId, threadTs);
+  const conversation = coerceThreadConversationState(await thread.state);
+  const latestUserMessageId = [...conversation.messages]
+    .reverse()
+    .find((message) => message.role === "user")?.id;
+  return buildConversationContext(conversation, {
+    excludeMessageId: latestUserMessageId,
+  });
+}
+
+export async function resumePendingOAuthMessage(
+  stored: OAuthStatePayload,
+): Promise<void> {
   if (!stored.pendingMessage || !stored.channelId || !stored.threadTs) return;
 
   const providerLabel = formatProviderLabel(stored.provider);
+  const conversationContext = await buildResumeConversationContext(
+    stored.channelId,
+    stored.threadTs,
+  );
   await resumeAuthorizedRequest({
     messageText: stored.pendingMessage,
     requesterUserId: stored.userId,
@@ -63,6 +96,7 @@ async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
     threadTs: stored.threadTs,
     connectedText: `Your ${providerLabel} account is now connected. Processing your request...`,
     failureText: `I connected your account but hit an error processing your request. Please try \`${stored.pendingMessage}\` again.`,
+    conversationContext,
     configuration: stored.configuration,
     onSuccess: async (reply) => {
       logInfo(
@@ -236,7 +270,7 @@ export async function GET(
   });
 
   if (stored.pendingMessage && stored.channelId && stored.threadTs) {
-    after(() => resumePendingMessage(stored));
+    after(() => resumePendingOAuthMessage(stored));
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
     after(async () => {

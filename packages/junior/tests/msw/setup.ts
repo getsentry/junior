@@ -1,3 +1,5 @@
+import { resetEvalOAuthMockState } from "./handlers/eval-oauth";
+import { resetEvalMcpAuthMockState } from "./handlers/eval-mcp-auth";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { resetSlackApiMockState } from "./handlers/slack-api";
 import { enforceUnhandledSlackRequestFailure, mswServer } from "./server";
@@ -10,6 +12,8 @@ process.env.SLACK_SIGNING_SECRET = "test-signing-secret";
 process.env.SLACK_CLIENT_ID = "test-client-id";
 process.env.SLACK_CLIENT_SECRET = "test-client-secret";
 process.env.SLACK_APP_TOKEN = "xapp-test-token";
+process.env.EVAL_OAUTH_CLIENT_ID = "eval-oauth-client-id";
+process.env.EVAL_OAUTH_CLIENT_SECRET = "eval-oauth-client-secret";
 
 // MSW is enabled globally for both tests and evals. Keep Slack HTTP contract
 // assertions in tests/integration and keep evals focused on behavior outcomes.
@@ -17,12 +21,14 @@ beforeAll(() => {
   mswServer.listen({
     onUnhandledRequest(request) {
       enforceUnhandledSlackRequestFailure(request);
-    }
+    },
   });
 });
 
 afterEach(() => {
   mswServer.resetHandlers();
+  resetEvalOAuthMockState();
+  resetEvalMcpAuthMockState();
   resetSlackApiMockState();
 });
 

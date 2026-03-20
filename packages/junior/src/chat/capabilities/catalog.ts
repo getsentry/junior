@@ -13,65 +13,93 @@ export interface CapabilityProviderDefinition {
   target?: CapabilityProviderTargetDefinition;
 }
 
-const CAPABILITY_PROVIDERS: CapabilityProviderDefinition[] = [
-  ...getPluginCapabilityProviders()
-];
+function getCapabilityCatalog(): {
+  providers: CapabilityProviderDefinition[];
+  capabilityToProvider: Map<string, CapabilityProviderDefinition>;
+  configKeys: Set<string>;
+} {
+  const providers = getPluginCapabilityProviders();
+  const capabilityToProvider = new Map<string, CapabilityProviderDefinition>();
+  const configKeys = new Set<string>();
 
-const capabilityToProvider = new Map<string, CapabilityProviderDefinition>();
-const configKeySet = new Set<string>();
-let startupCatalogLogged = false;
-
-for (const provider of CAPABILITY_PROVIDERS) {
-  for (const capability of provider.capabilities) {
-    if (capabilityToProvider.has(capability)) {
-      throw new Error(`Duplicate capability registration for "${capability}"`);
+  for (const provider of providers) {
+    for (const capability of provider.capabilities) {
+      if (capabilityToProvider.has(capability)) {
+        throw new Error(
+          `Duplicate capability registration for "${capability}"`,
+        );
+      }
+      capabilityToProvider.set(capability, provider);
     }
-    capabilityToProvider.set(capability, provider);
+    for (const configKey of provider.configKeys) {
+      configKeys.add(configKey);
+    }
   }
-  for (const configKey of provider.configKeys) {
-    configKeySet.add(configKey);
-  }
+
+  return {
+    providers,
+    capabilityToProvider,
+    configKeys,
+  };
 }
 
-export function getCapabilityProvider(capability: string): CapabilityProviderDefinition | undefined {
-  return capabilityToProvider.get(capability);
+export function getCapabilityProvider(
+  capability: string,
+): CapabilityProviderDefinition | undefined {
+  return getCapabilityCatalog().capabilityToProvider.get(capability);
 }
 
 export function isKnownCapability(capability: string): boolean {
-  return capabilityToProvider.has(capability);
+  return getCapabilityCatalog().capabilityToProvider.has(capability);
 }
 
 export function isKnownConfigKey(key: string): boolean {
-  return configKeySet.has(key);
+  return getCapabilityCatalog().configKeys.has(key);
 }
 
 export function listCapabilityProviders(): CapabilityProviderDefinition[] {
-  return CAPABILITY_PROVIDERS.map((provider) => ({
+  return getCapabilityCatalog().providers.map((provider) => ({
     ...provider,
     capabilities: [...provider.capabilities],
-    configKeys: [...provider.configKeys]
+    configKeys: [...provider.configKeys],
   }));
 }
 
+let startupCatalogSignature: string | null = null;
+
 export function logCapabilityCatalogLoadedOnce(): void {
-  if (startupCatalogLogged) {
+  const providers = listCapabilityProviders();
+  const signature = JSON.stringify(
+    providers.map((provider) => ({
+      provider: provider.provider,
+      capabilities: provider.capabilities,
+      configKeys: provider.configKeys,
+      target: provider.target,
+    })),
+  );
+  if (startupCatalogSignature === signature) {
     return;
   }
-  startupCatalogLogged = true;
+  startupCatalogSignature = signature;
 
-  const providers = listCapabilityProviders();
-  const capabilityNames = providers.flatMap((provider) => provider.capabilities).sort();
-  const configKeys = [...new Set(providers.flatMap((provider) => provider.configKeys))].sort();
+  const capabilityNames = providers
+    .flatMap((provider) => provider.capabilities)
+    .sort();
+  const configKeys = [
+    ...new Set(providers.flatMap((provider) => provider.configKeys)),
+  ].sort();
   logInfo(
     "capability_catalog_loaded",
     {},
     {
-      "app.capability.providers": providers.map((provider) => provider.provider),
+      "app.capability.providers": providers.map(
+        (provider) => provider.provider,
+      ),
       "app.capability.count": capabilityNames.length,
       "app.capability.names": capabilityNames,
       "app.config.key_count": configKeys.length,
-      "app.config.keys": configKeys
+      "app.config.keys": configKeys,
     },
-    "Loaded capability provider catalog"
+    "Loaded capability provider catalog",
   );
 }

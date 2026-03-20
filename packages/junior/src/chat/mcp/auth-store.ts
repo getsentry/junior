@@ -304,6 +304,31 @@ export async function deleteMcpAuthSessionsForUserProvider(
   await stateAdapter.delete(indexKey);
 }
 
+export async function getLatestMcpAuthSessionForUserProvider(
+  userId: string,
+  provider: string,
+): Promise<McpAuthSessionState | undefined> {
+  const stateAdapter = await getConnectedStateAdapter();
+  const authSessionIds = parseSessionIndex(
+    await stateAdapter.get(sessionIndexKey(userId, provider)),
+  );
+
+  let latestSession: McpAuthSessionState | undefined;
+  for (const authSessionId of authSessionIds) {
+    const session = parseMcpAuthSession(
+      await stateAdapter.get(sessionKey(authSessionId)),
+    );
+    if (!session) {
+      continue;
+    }
+    if (!latestSession || session.updatedAtMs > latestSession.updatedAtMs) {
+      latestSession = session;
+    }
+  }
+
+  return latestSession;
+}
+
 export async function getMcpStoredOAuthCredentials(
   userId: string,
   provider: string,

@@ -4,7 +4,8 @@ import { mention, slackEval, threadStart } from "../helpers";
 describe("Conversational Evals: Lifecycle and Resilience", () => {
   slackEval("lifecycle: assistant thread init metadata", {
     events: [threadStart()],
-    criteria: "No reply is posted. Thread title and suggested prompts are each set exactly once.",
+    criteria:
+      "No reply is posted. Thread title and suggested prompts are each set exactly once.",
   });
 
   slackEval("resilience: handler error is user-visible", {

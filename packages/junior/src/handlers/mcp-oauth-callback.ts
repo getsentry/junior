@@ -3,7 +3,10 @@ import { after } from "next/server";
 import { ThreadImpl, type FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { coerceThreadConversationState } from "@/chat/conversation-state";
-import { deleteMcpAuthSession } from "@/chat/mcp/auth-store";
+import {
+  deleteMcpAuthSession,
+  type McpAuthSessionState,
+} from "@/chat/mcp/auth-store";
 import { buildSlackOutputMessage } from "@/chat/output";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
 import { logException, logWarn } from "@/chat/observability";
@@ -13,6 +16,7 @@ import {
   persistThreadState,
 } from "@/chat/runtime/thread-state";
 import {
+  buildConversationContext,
   generateConversationId,
   markConversationMessage,
   normalizeConversationText,
@@ -195,6 +199,19 @@ function getUserMessageIdForTurn(
   return undefined;
 }
 
+async function buildResumeConversationContext(
+  channelId: string,
+  threadTs: string,
+  sessionId: string,
+): Promise<string | undefined> {
+  const thread = createSlackThread(channelId, threadTs);
+  const conversation = coerceThreadConversationState(await thread.state);
+  const userMessageId = getUserMessageIdForTurn(conversation, sessionId);
+  return buildConversationContext(conversation, {
+    excludeMessageId: userMessageId,
+  });
+}
+
 async function persistCompletedReplyState(
   channelId: string,
   threadTs: string,
@@ -263,6 +280,104 @@ async function persistFailedReplyState(
   });
 }
 
+export async function resumeAuthorizedMcpTurn(args: {
+  authSession: McpAuthSessionState;
+  provider: string;
+}): Promise<void> {
+  const { authSession, provider } = args;
+  if (!authSession.channelId || !authSession.threadTs) {
+    return;
+  }
+
+  const conversationContext = await buildResumeConversationContext(
+    authSession.channelId,
+    authSession.threadTs,
+    authSession.sessionId,
+  );
+
+  await resumeAuthorizedRequest({
+    messageText: authSession.userMessage,
+    requesterUserId: authSession.userId,
+    provider,
+    channelId: authSession.channelId,
+    threadTs: authSession.threadTs,
+    connectedText: `Your ${provider} MCP access is now connected. Continuing the original request...`,
+    failureText:
+      "MCP authorization completed, but resuming the request failed. Please retry the original command.",
+    correlation: {
+      conversationId: authSession.conversationId,
+      turnId: authSession.sessionId,
+      channelId: authSession.channelId,
+      threadTs: authSession.threadTs,
+      requesterId: authSession.userId,
+    },
+    toolChannelId:
+      authSession.toolChannelId ??
+      authSession.artifactState?.assistantContextChannelId ??
+      authSession.channelId,
+    conversationContext,
+    artifactState: authSession.artifactState,
+    configuration: authSession.configuration,
+    onReply: async (reply) => {
+      await deliverReplyToThread(
+        authSession.channelId!,
+        authSession.threadTs!,
+        reply,
+      );
+    },
+    onSuccess: async (reply) => {
+      try {
+        await persistCompletedReplyState(
+          authSession.channelId!,
+          authSession.threadTs!,
+          authSession.sessionId,
+          reply,
+        );
+      } catch (persistError) {
+        logException(
+          persistError,
+          "mcp_oauth_callback_resume_persist_failed",
+          {},
+          { "app.credential.provider": provider },
+          "Failed to persist resumed MCP turn state",
+        );
+      }
+    },
+    onFailure: async (error) => {
+      logException(
+        error,
+        "mcp_oauth_callback_resume_failed",
+        {},
+        { "app.credential.provider": provider },
+        "Failed to resume MCP-authorized turn",
+      );
+      try {
+        await persistFailedReplyState(
+          authSession.channelId!,
+          authSession.threadTs!,
+          authSession.sessionId,
+        );
+      } catch (persistError) {
+        logException(
+          persistError,
+          "mcp_oauth_callback_resume_failure_persist_failed",
+          {},
+          { "app.credential.provider": provider },
+          "Failed to persist failed MCP resume state",
+        );
+      }
+    },
+    onAuthPause: async () => {
+      logWarn(
+        "mcp_oauth_callback_resume_reparked_for_auth",
+        {},
+        { "app.credential.provider": provider },
+        "Resumed MCP turn requested another authorization flow",
+      );
+    },
+  });
+}
+
 type Context = {
   params: Promise<{
     provider: string;
@@ -304,89 +419,9 @@ export async function GET(
     }
 
     after(async () => {
-      if (!authSession.channelId || !authSession.threadTs) {
-        return;
-      }
-
-      await resumeAuthorizedRequest({
-        messageText: authSession.userMessage,
-        requesterUserId: authSession.userId,
+      await resumeAuthorizedMcpTurn({
+        authSession,
         provider,
-        channelId: authSession.channelId,
-        threadTs: authSession.threadTs,
-        connectedText: `Your ${provider} MCP access is now connected. Continuing the original request...`,
-        failureText:
-          "MCP authorization completed, but resuming the request failed. Please retry the original command.",
-        correlation: {
-          conversationId: authSession.conversationId,
-          turnId: authSession.sessionId,
-          channelId: authSession.channelId,
-          threadTs: authSession.threadTs,
-          requesterId: authSession.userId,
-        },
-        toolChannelId:
-          authSession.toolChannelId ??
-          authSession.artifactState?.assistantContextChannelId ??
-          authSession.channelId,
-        artifactState: authSession.artifactState,
-        configuration: authSession.configuration,
-        onReply: async (reply) => {
-          await deliverReplyToThread(
-            authSession.channelId!,
-            authSession.threadTs!,
-            reply,
-          );
-        },
-        onSuccess: async (reply) => {
-          try {
-            await persistCompletedReplyState(
-              authSession.channelId!,
-              authSession.threadTs!,
-              authSession.sessionId,
-              reply,
-            );
-          } catch (persistError) {
-            logException(
-              persistError,
-              "mcp_oauth_callback_resume_persist_failed",
-              {},
-              { "app.credential.provider": provider },
-              "Failed to persist resumed MCP turn state",
-            );
-          }
-        },
-        onFailure: async (error) => {
-          logException(
-            error,
-            "mcp_oauth_callback_resume_failed",
-            {},
-            { "app.credential.provider": provider },
-            "Failed to resume MCP-authorized turn",
-          );
-          try {
-            await persistFailedReplyState(
-              authSession.channelId!,
-              authSession.threadTs!,
-              authSession.sessionId,
-            );
-          } catch (persistError) {
-            logException(
-              persistError,
-              "mcp_oauth_callback_resume_failure_persist_failed",
-              {},
-              { "app.credential.provider": provider },
-              "Failed to persist failed MCP resume state",
-            );
-          }
-        },
-        onAuthPause: async () => {
-          logWarn(
-            "mcp_oauth_callback_resume_reparked_for_auth",
-            {},
-            { "app.credential.provider": provider },
-            "Resumed MCP turn requested another authorization flow",
-          );
-        },
       });
     });
 

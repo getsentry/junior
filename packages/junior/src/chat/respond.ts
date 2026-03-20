@@ -559,6 +559,87 @@ function buildExecutionFailureMessage(toolErrorCount: number): string {
   return "I couldn’t complete this request in this turn due to an execution failure. I’ve logged the details for debugging.";
 }
 
+function extractOAuthStartedPayload(
+  value: unknown,
+): { message?: string } | undefined {
+  if (typeof value === "string") {
+    const parsed = parseJsonCandidate(value);
+    return parsed === undefined
+      ? undefined
+      : extractOAuthStartedPayload(parsed);
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = extractOAuthStartedPayload(entry);
+      if (found) {
+        return found;
+      }
+    }
+    return undefined;
+  }
+
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (record.oauth_started === true) {
+    const message =
+      typeof record.message === "string" ? record.message.trim() : undefined;
+    return message ? { message } : {};
+  }
+
+  const content = record.content;
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      const text =
+        part &&
+        typeof part === "object" &&
+        (part as { type?: unknown }).type === "text" &&
+        typeof (part as { text?: unknown }).text === "string"
+          ? (part as { text: string }).text
+          : part;
+      const found = extractOAuthStartedPayload(text);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  for (const key of ["details", "output", "result", "stdout"]) {
+    if (!(key in record)) {
+      continue;
+    }
+    const found = extractOAuthStartedPayload(record[key]);
+    if (found) {
+      return found;
+    }
+  }
+
+  return undefined;
+}
+
+function extractOAuthStartedMessage(
+  toolResults: unknown[],
+): string | undefined {
+  for (const result of toolResults) {
+    if (
+      normalizeToolNameFromResult(result) !== "bash" ||
+      isToolResultError(result)
+    ) {
+      continue;
+    }
+
+    const found = extractOAuthStartedPayload(result);
+    if (found?.message) {
+      return found.message;
+    }
+  }
+
+  return undefined;
+}
+
 function toToolContentText(value: unknown): string {
   if (typeof value === "string") return value;
   try {
@@ -1619,6 +1700,7 @@ export async function generateAssistantReply(
       .map((message) => extractAssistantText(message))
       .join("\n\n")
       .trim();
+    const oauthStartedMessage = extractOAuthStartedMessage(toolResults);
 
     const toolErrorCount = toolResults.filter(
       (result) => result.isError,
@@ -1646,7 +1728,7 @@ export async function generateAssistantReply(
     const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
     const ackStrategy: "none" | "reaction" = deliveryPlan.ack;
 
-    if (!primaryText) {
+    if (!primaryText && !oauthStartedMessage) {
       logWarn(
         "ai_model_response_empty",
         {
@@ -1678,22 +1760,25 @@ export async function generateAssistantReply(
         ? lastAssistant.errorMessage
         : undefined;
     const usedPrimaryText = Boolean(primaryText);
-    const outcome: AgentTurnDiagnostics["outcome"] = primaryText
-      ? stopReason === "error"
-        ? "provider_error"
-        : "success"
-      : "execution_failure";
-
-    const candidateText =
-      primaryText || buildExecutionFailureMessage(toolErrorCount);
+    const outcome: AgentTurnDiagnostics["outcome"] =
+      primaryText || oauthStartedMessage
+        ? stopReason === "error"
+          ? "provider_error"
+          : "success"
+        : "execution_failure";
+    const fallbackText =
+      oauthStartedMessage ?? buildExecutionFailureMessage(toolErrorCount);
+    const candidateText = primaryText || fallbackText;
     const escapedOrRawPayload =
       isExecutionEscapeResponse(candidateText) ||
       isRawToolPayloadResponse(candidateText);
     const resolvedText = escapedOrRawPayload
-      ? buildExecutionFailureMessage(toolErrorCount)
+      ? fallbackText
       : enforceAttachmentClaimTruth(candidateText, replyFiles.length > 0);
     const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
-      ? "execution_failure"
+      ? oauthStartedMessage
+        ? outcome
+        : "execution_failure"
       : outcome;
     if (shouldTrace) {
       logInfo(

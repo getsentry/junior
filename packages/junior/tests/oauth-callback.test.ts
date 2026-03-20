@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { afterCallbacks, generateAssistantReplyMock } = vi.hoisted(() => ({
+  afterCallbacks: [] as Array<() => Promise<void> | void>,
+  generateAssistantReplyMock: vi.fn(async () => ({
+    text: "test reply",
+    diagnostics: { outcome: "success", toolCalls: [] },
+  })),
+}));
+
 // Mock next/server before importing the route handler
 vi.mock("next/server", () => ({
-  after: (fn: () => unknown) => {
-    // Capture the callback but don't execute — we test the HTTP response only
-    void fn;
+  after: (fn: () => Promise<void> | void) => {
+    afterCallbacks.push(fn);
   },
 }));
 
@@ -79,10 +86,7 @@ vi.mock("@/chat/plugins/registry", () => ({
 
 // Mock generateAssistantReply
 vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: vi.fn(async () => ({
-    text: "test reply",
-    diagnostics: { outcome: "success", toolCalls: [] },
-  })),
+  generateAssistantReply: generateAssistantReplyMock,
 }));
 
 // Mock botConfig
@@ -104,6 +108,8 @@ const ORIGINAL_FETCH = globalThis.fetch;
 beforeEach(() => {
   mockStateStore.clear();
   mockTokenStore.clear();
+  afterCallbacks.length = 0;
+  generateAssistantReplyMock.mockClear();
 });
 
 afterEach(() => {
@@ -459,5 +465,40 @@ describe("oauth callback handler", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("being processed in Slack");
+  });
+
+  it("registers after() work to resume pending messages after token exchange", async () => {
+    const stateKey = "oauth-state:resume-test";
+    mockStateStore.set(stateKey, {
+      userId: "U111",
+      provider: "sentry",
+      channelId: "C123",
+      threadTs: "123.789",
+      pendingMessage: "list my sentry issues",
+    });
+
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env.JUNIOR_BASE_URL = "https://example.com";
+
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "token",
+        refresh_token: "refresh",
+        expires_in: 3600,
+      }),
+    })) as unknown as typeof fetch;
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/sentry?code=code&state=resume-test",
+      ),
+      makeContext("sentry"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(afterCallbacks).toHaveLength(2);
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
   });
 });

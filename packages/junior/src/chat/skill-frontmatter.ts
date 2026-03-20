@@ -3,7 +3,7 @@ import { parse as parseYaml } from "yaml";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const SKILL_NAME_RE = /^[a-z0-9-]+$/;
-const CAPABILITY_TOKEN_RE = /^[a-z0-9]+(?:\.[a-z0-9-]+)+$/;
+const DOTTED_TOKEN_RE = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
@@ -51,7 +51,7 @@ function createTokenFieldSchema(
         .filter((token) => token.length > 0);
 
       for (const token of tokens) {
-        if (!CAPABILITY_TOKEN_RE.test(token)) {
+        if (!DOTTED_TOKEN_RE.test(token)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: `${fieldName} token "${token}" is invalid; expected dotted lowercase tokens (for example "${example}")`,

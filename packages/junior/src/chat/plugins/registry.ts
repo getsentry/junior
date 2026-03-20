@@ -26,6 +26,7 @@ const capabilityToPlugin = new Map<string, PluginDefinition>();
 const pluginConfigKeys = new Set<string>();
 const pluginsByName = new Map<string, PluginDefinition>();
 const packageSkillRoots = new Set<string>();
+let additionalPluginRootsForTests: string[] = [];
 
 let pluginsLoaded = false;
 
@@ -69,12 +70,37 @@ function registerPluginManifest(raw: string, pluginDir: string): void {
   }
 }
 
+function resetLoadedPluginState(): void {
+  pluginDefinitions.length = 0;
+  capabilityToPlugin.clear();
+  pluginConfigKeys.clear();
+  pluginsByName.clear();
+  packageSkillRoots.clear();
+  pluginsLoaded = false;
+}
+
+function normalizePluginRootsForTests(roots: string[]): string[] {
+  const resolved: string[] = [];
+  const seen = new Set<string>();
+
+  for (const root of roots) {
+    const normalized = path.resolve(root);
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    resolved.push(normalized);
+  }
+
+  return resolved;
+}
+
 function loadPlugins(): void {
   if (pluginsLoaded) return;
   pluginsLoaded = true;
 
   const packagedContent = discoverInstalledPluginPackageContent();
-  const localRoots = pluginRoots();
+  const localRoots = [...pluginRoots(), ...additionalPluginRootsForTests];
   const roots = [...localRoots, ...packagedContent.manifestRoots];
   for (const pluginsRoot of roots) {
     let entries: string[];
@@ -178,12 +204,13 @@ function ensurePluginsLoaded(): void {
 }
 
 export function resetPluginRegistryForTests(): void {
-  pluginDefinitions.length = 0;
-  capabilityToPlugin.clear();
-  pluginConfigKeys.clear();
-  pluginsByName.clear();
-  packageSkillRoots.clear();
-  pluginsLoaded = false;
+  additionalPluginRootsForTests = [];
+  resetLoadedPluginState();
+}
+
+export function setAdditionalPluginRootsForTests(roots: string[]): void {
+  additionalPluginRootsForTests = normalizePluginRootsForTests(roots);
+  resetLoadedPluginState();
 }
 
 loadPlugins();
