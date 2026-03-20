@@ -657,6 +657,18 @@ function extractAssistantText(message: AssistantMessage): string {
     .join("\n");
 }
 
+function hasCompletedAssistantTurn(messages: unknown[]): boolean {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!isAssistantMessage(message)) {
+      continue;
+    }
+    const stopReason = (message as { stopReason?: unknown }).stopReason;
+    return typeof stopReason === "string" && stopReason !== "error";
+  }
+  return false;
+}
+
 function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
   const existing = activeSkills.find((skill) => skill.name === next.name);
   if (existing) {
@@ -1469,6 +1481,7 @@ export async function generateAssistantReply(
 
     let beforeMessageCount = agent.state.messages.length;
     let newMessages: unknown[] = [];
+    let completedAssistantTurn = false;
 
     try {
       if (resumedFromCheckpoint) {
@@ -1547,9 +1560,13 @@ export async function generateAssistantReply(
           newMessages = agent.state.messages.slice(
             beforeMessageCount,
           ) as unknown[];
-          if (pendingMcpAuthorizationPause) {
+          completedAssistantTurn = hasCompletedAssistantTurn(newMessages);
+          if (pendingMcpAuthorizationPause && !completedAssistantTurn) {
             timeoutResumeMessages = [...(agent.state.messages as unknown[])];
             throw pendingMcpAuthorizationPause;
+          }
+          if (pendingMcpAuthorizationPause && completedAssistantTurn) {
+            pendingMcpAuthorizationPause = undefined;
           }
           const outputMessages = newMessages.filter(isAssistantMessage);
           const outputMessagesAttribute =
@@ -1579,7 +1596,7 @@ export async function generateAssistantReply(
       unsubscribe();
     }
 
-    if (pendingMcpAuthorizationPause) {
+    if (pendingMcpAuthorizationPause && !completedAssistantTurn) {
       throw pendingMcpAuthorizationPause;
     }
 

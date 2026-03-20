@@ -140,6 +140,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "resumed reply" }],
+        stopReason: "stop",
       });
       return {};
     }
@@ -165,6 +166,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "resumed reply" }],
+        stopReason: "stop",
       });
       return {};
     }
@@ -621,6 +623,66 @@ describe("generateAssistantReply progressive MCP loading", () => {
     const checkpoint = await getAgentTurnSessionCheckpoint(
       "conversation-2",
       "turn-2",
+    );
+    expect(checkpoint).toMatchObject({
+      state: "completed",
+      loadedSkillNames: ["demo-skill"],
+    });
+  });
+
+  it("keeps a completed turn when MCP auth is requested during a tool call", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockImplementation(
+      async (
+        plugin: { manifest: { name: string } },
+        options: {
+          authProvider?: {
+            redirectToAuthorization?: (authorizationUrl: URL) => Promise<void>;
+          };
+        },
+      ) => {
+        await options.authProvider?.redirectToAuthorization?.(
+          new URL(`https://auth.example.com/${plugin.manifest.name}`),
+        );
+        return [
+          {
+            name: "ping",
+            title: "Ping",
+            description: "Ping the demo MCP server",
+            inputSchema: {
+              type: "object",
+              properties: {},
+            },
+          },
+        ];
+      },
+    );
+    callToolMock.mockImplementationOnce(async (plugin) => {
+      const { McpAuthorizationRequiredError } =
+        await import("@/chat/mcp/client");
+      throw new McpAuthorizationRequiredError(
+        plugin.manifest.name,
+        "Auth required",
+      );
+    });
+
+    const reply = await generateAssistantReply("help me", {
+      assistant: { userName: "junior" },
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-4",
+        turnId: "turn-4",
+        channelId: "C123",
+        threadTs: "1712345.0004",
+      },
+    });
+
+    expect(reply.text).toBe("resumed reply");
+    expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
+
+    const checkpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-4",
+      "turn-4",
     );
     expect(checkpoint).toMatchObject({
       state: "completed",
