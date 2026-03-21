@@ -38,41 +38,31 @@ export function createProgressReporter(args: {
   let pendingTimer: TimerHandle | null = null;
   let inflightStatusUpdate: Promise<void> = Promise.resolve();
 
-  const commitStatusUpdate = (
-    text: string,
-    suggestions: string[],
-  ): Promise<void> => {
+  const postStatus = async (text: string): Promise<void> => {
+    const channelId = args.channelId;
+    const threadTs = args.threadTs;
+    if (!channelId || !threadTs) {
+      return;
+    }
+    if (!text && !currentStatus) {
+      return;
+    }
+
+    if (!text) {
+      await inflightStatusUpdate;
+    }
+
+    currentStatus = "";
+    currentStatus = text;
+    lastStatusAt = now();
+    const suggestions = text ? [text] : [];
     const request = (async () => {
       try {
-        await args.setAssistantStatus(
-          args.channelId!,
-          args.threadTs!,
-          text,
-          suggestions,
-        );
+        await args.setAssistantStatus(channelId, threadTs, text, suggestions);
       } catch {}
     })();
     inflightStatusUpdate = request;
-    return request;
-  };
-
-  const postStatus = async (text: string): Promise<void> => {
-    if (!args.channelId || !args.threadTs) {
-      return;
-    }
-    currentStatus = text;
-    lastStatusAt = now();
-    await commitStatusUpdate(text, [text]);
-  };
-
-  const clearStatus = async (): Promise<void> => {
-    if (!args.channelId || !args.threadTs || !currentStatus) {
-      return;
-    }
-    await inflightStatusUpdate;
-    currentStatus = "";
-    lastStatusAt = now();
-    await commitStatusUpdate("", []);
+    await request;
   };
 
   const clearPending = () => {
@@ -105,7 +95,7 @@ export function createProgressReporter(args: {
     async stop() {
       active = false;
       clearPending();
-      await clearStatus();
+      await postStatus("");
     },
     async setStatus(text: string) {
       const truncated = truncateStatusText(text);
