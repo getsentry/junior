@@ -38,6 +38,7 @@ Not in scope:
 ## Sources Of Truth
 
 - Eval cases:
+  - `evals/conversational/passive-behavior.eval.ts`
   - `evals/conversational/routing-and-continuity.eval.ts`
   - `evals/conversational/lifecycle-and-resilience.eval.ts`
   - `evals/conversational/media-and-attachments.eval.ts`
@@ -77,12 +78,15 @@ checkpoint save/restore semantics in the core resumability path.
 
 ## Optional CI Runs
 
-- Add the `run-evals` label to a PR to opt into the `Evals` GitHub Actions workflow.
-- The workflow only runs the eval job when eval-related files changed:
+- On pull requests, the `Evals` workflow runs when either eval-related files changed or the PR has the `trigger-evals` label.
+- Adding the `trigger-evals` label triggers a run immediately; adding unrelated labels does not.
+- Eval-related files are:
   - `packages/junior/evals/**`
   - `packages/junior/vitest.evals.config.ts`
-- You can also trigger the `Evals` workflow manually with `run_evals=true`.
-- The CI job requires repo-level AI gateway credentials and working Vercel Sandbox access.
+- The simplest CI setup is `VERCEL_OIDC_TOKEN` alone. It covers both AI Gateway auth and Vercel Sandbox auth.
+- The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
+- This repo is not intended to configure those GitHub Actions secrets right now. The workflow support and setup doc are future-facing.
+- Setup details for GitHub Actions live in `evals/github-actions.md`.
 
 Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval fails immediately (no local fallback path).
 

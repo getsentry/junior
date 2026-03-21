@@ -2,23 +2,6 @@ import { describe } from "vitest";
 import { mention, slackEval, threadMessage } from "../helpers";
 
 describe("Conversational Evals: Routing and Continuity", () => {
-  slackEval("routing: subscribed skip", {
-    behavior: {
-      subscribed_decisions: [
-        { should_reply: false, reason: "side conversation" },
-      ],
-    },
-    events: [threadMessage("thanks everyone")],
-    criteria:
-      "The assistant posts no reply when subscription logic decides to skip this message.",
-  });
-
-  slackEval("routing: acknowledgment-only subscribed message is skipped", {
-    events: [threadMessage("thanks!")],
-    criteria:
-      "The assistant posts no reply for acknowledgment-only subscribed thread messages that are not explicit mentions.",
-  });
-
   slackEval("routing: explicit mention forces reply", {
     events: [threadMessage("<@U_APP> what is 2+2?", { is_mention: true })],
     criteria:
@@ -58,18 +41,6 @@ describe("Conversational Evals: Routing and Continuity", () => {
     ],
     criteria:
       "The assistant posts two replies in-order. The second reply explicitly references the prior context (budget and/or Friday) and does not include sandbox setup failure text.",
-  });
-
-  slackEval("routing: follow-up question without mention still replies", {
-    behavior: { reply_texts: ["You need the budget by Friday."] },
-    events: [
-      mention("I need the budget by Friday.", { thread: continuityThread }),
-      threadMessage("what did you just say about the budget?", {
-        thread: continuityThread,
-      }),
-    ],
-    criteria:
-      "The assistant posts two replies in-order. The second reply plainly restates that the budget is needed by Friday using prior thread context, and does not just repeat unresolved clarifying questions.",
   });
 
   const rapidThread = {

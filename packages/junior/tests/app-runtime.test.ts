@@ -349,6 +349,63 @@ describe("createAppSlackRuntime", () => {
       );
     });
 
+    it("unsubscribes when subscribed-thread routing returns thread opt-out", async () => {
+      const deps = createMockDeps({
+        shouldReplyInSubscribedThread: vi.fn(async () => ({
+          shouldReply: false,
+          shouldUnsubscribe: true,
+          reason: "thread_opt_out:user asked junior to stop participating",
+        })),
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      await thread.subscribe();
+      const message = createTestMessage({
+        text: "<@U123> leave this thread alone",
+        isMention: true,
+      });
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(thread.subscribed).toBe(false);
+      expect(deps.prepareTurnState).toHaveBeenCalled();
+      expect(deps.persistPreparedState).toHaveBeenCalled();
+      expect(deps.shouldReplyInSubscribedThread).toHaveBeenCalled();
+      expect(deps.replyToThread).not.toHaveBeenCalled();
+      expect(thread.posts).toEqual([
+        "Understood. I'll stay out of this thread unless someone @mentions me again.",
+      ]);
+    });
+
+    it("honors pre-approved thread opt-out decisions without reclassifying", async () => {
+      const deps = createMockDeps({
+        shouldReplyInSubscribedThread: vi.fn(async () => {
+          throw new Error("should not reclassify");
+        }),
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      await thread.subscribe();
+      const message = createTestMessage({
+        text: "please stay out of this thread",
+      });
+
+      await runtime.handleSubscribedMessage(thread, message, {
+        preApprovedDecision: {
+          shouldReply: false,
+          shouldUnsubscribe: true,
+          reason: "thread_opt_out:user asked junior to stop",
+        },
+      });
+
+      expect(thread.subscribed).toBe(false);
+      expect(deps.shouldReplyInSubscribedThread).not.toHaveBeenCalled();
+      expect(deps.replyToThread).not.toHaveBeenCalled();
+      expect(thread.posts).toEqual([
+        "Understood. I'll stay out of this thread unless someone @mentions me again.",
+      ]);
+    });
+
     it("passes conversationContext from getPreparedConversationContext to shouldReply", async () => {
       const deps = createMockDeps({
         getPreparedConversationContext: vi.fn(() => "some context"),
@@ -365,17 +422,17 @@ describe("createAppSlackRuntime", () => {
       );
     });
 
-    it("when decision reason is 'explicit mention': passes explicitMention: true to replyToThread", async () => {
+    it("passes explicitMention: true for classifier-approved subscribed mentions", async () => {
       const deps = createMockDeps({
         shouldReplyInSubscribedThread: vi.fn(async () => ({
           shouldReply: true,
-          reason: "explicit mention",
+          reason: "llm_classifier:follow_up_question",
         })),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
       const runtime = createAppSlackRuntime<TestState>(deps);
       const thread = createTestThread({});
-      const message = createTestMessage({});
+      const message = createTestMessage({ isMention: true });
 
       await runtime.handleSubscribedMessage(thread, message);
 

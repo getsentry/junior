@@ -5,6 +5,7 @@ import {
   getPluginRuntimeDependencies,
   getPluginRuntimePostinstall,
 } from "@/chat/plugins/registry";
+import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import type {
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
@@ -476,9 +477,11 @@ async function createDependencySnapshot(
       "app.sandbox.snapshot.dependency_count": profile.dependencyCount,
     },
     async () => {
+      const sandboxCredentials = getVercelSandboxCredentials();
       const sandbox = await Sandbox.create({
         timeout: timeoutMs,
         runtime,
+        ...(sandboxCredentials ?? {}),
       });
 
       try {

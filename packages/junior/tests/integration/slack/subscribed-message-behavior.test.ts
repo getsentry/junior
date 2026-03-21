@@ -116,14 +116,21 @@ describe("Slack behavior: subscribed messages", () => {
     expect(toPostedText(thread.posts[0])).toContain("monitor dashboards");
   });
 
-  it("bypasses classifier for explicit mentions in subscribed threads", async () => {
+  it("uses the router for explicit mentions in subscribed threads", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];
 
     setBotDepsForTests({
       completeObject: async () => {
         classifierCalled = true;
-        throw new Error("classifier should be bypassed for explicit mentions");
+        return {
+          object: {
+            should_reply: true,
+            confidence: 1,
+            reason: "direct mention asking junior for status",
+          },
+          text: '{"should_reply":true,"confidence":1,"reason":"direct mention asking junior for status"}',
+        } as never;
       },
       generateAssistantReply: async (prompt) => {
         replyCalls.push(prompt);
@@ -153,10 +160,99 @@ describe("Slack behavior: subscribed messages", () => {
 
     await appSlackRuntime.handleSubscribedMessage(thread, message);
 
-    expect(classifierCalled).toBe(false);
+    expect(classifierCalled).toBe(true);
     expect(replyCalls).toHaveLength(1);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("Shipping status is green");
+  });
+
+  it("unsubscribes on explicit stop-thread instructions and only re-engages on a later direct mention", async () => {
+    let classifierCalled = false;
+    const replyCalls: string[] = [];
+
+    setBotDepsForTests({
+      completeObject: async () => {
+        classifierCalled = true;
+        return {
+          object: {
+            should_reply: false,
+            should_unsubscribe: true,
+            confidence: 1,
+            reason:
+              "user explicitly asked junior to stop participating in the thread",
+          },
+          text: '{"should_reply":false,"should_unsubscribe":true,"confidence":1,"reason":"user explicitly asked junior to stop participating in the thread"}',
+        } as never;
+      },
+      generateAssistantReply: async (prompt) => {
+        replyCalls.push(prompt);
+        return {
+          text:
+            replyCalls.length === 1
+              ? "I can help with this thread."
+              : "I'm back because you mentioned me again.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true,
+          },
+        };
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002002.500" });
+
+    await appSlackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stop-thread-initial",
+        text: "<@U_APP> can you help here?",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+
+    expect(thread.subscribed).toBe(true);
+
+    await appSlackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-stop-thread-opt-out",
+        text: "<@U_APP> stop watching or participating in this thread",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+
+    expect(classifierCalled).toBe(true);
+    expect(replyCalls).toHaveLength(1);
+    expect(thread.subscribed).toBe(false);
+    expect(toPostedText(thread.posts[1])).toContain(
+      "I'll stay out of this thread unless someone @mentions me again.",
+    );
+
+    await appSlackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stop-thread-remention",
+        text: "<@U_APP> actually, can you jump back in?",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+
+    expect(replyCalls).toHaveLength(2);
+    expect(thread.subscribed).toBe(true);
+    expect(toPostedText(thread.posts[2])).toContain(
+      "I'm back because you mentioned me again.",
+    );
   });
 
   it("bypasses classifier for acknowledgment-only messages", async () => {

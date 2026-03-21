@@ -228,7 +228,11 @@ interface QueueRoutingDeps {
     message: Message;
     normalizedThreadId: string;
     thread: Thread;
-  }) => Promise<{ shouldReply: boolean; reason: string }>;
+  }) => Promise<{
+    shouldReply: boolean;
+    shouldUnsubscribe?: boolean;
+    reason: string;
+  }>;
   addProcessingReaction: (input: {
     channelId: string;
     timestamp: string;
@@ -464,13 +468,14 @@ export async function routeIncomingMessageToQueue(args: {
   const serializedMessage = serializeMessageForQueue(message as Message);
   const serializedThread = serializeThreadForQueue(thread);
   let payloadKind: ThreadMessageKind = kind;
+  let preApprovedDecision: ThreadMessagePayload["preApprovedDecision"];
   if (kind === "subscribed_message" && !isMention) {
     const decision = await deps.shouldReplyInSubscribedThread({
       message: message as Message,
       normalizedThreadId,
       thread,
     });
-    if (!decision.shouldReply) {
+    if (!decision.shouldReply && !decision.shouldUnsubscribe) {
       logIgnoredIngressResult({
         deps,
         eventName: "queue_ingress_ignored_passive_no_reply",
@@ -484,7 +489,16 @@ export async function routeIncomingMessageToQueue(args: {
       });
       return "ignored_passive_no_reply";
     }
-    payloadKind = "subscribed_reply";
+    if (decision.shouldUnsubscribe) {
+      preApprovedDecision = {
+        shouldReply: false,
+        shouldUnsubscribe: true,
+        reason: decision.reason,
+      };
+    }
+    if (decision.shouldReply) {
+      payloadKind = "subscribed_reply";
+    }
   }
 
   const payload: ThreadMessagePayload = {
@@ -492,6 +506,7 @@ export async function routeIncomingMessageToQueue(args: {
     kind: payloadKind,
     message: serializedMessage,
     normalizedThreadId,
+    preApprovedDecision,
     thread: serializedThread,
   };
 

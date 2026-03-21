@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { appSlackRuntime, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
-import { createTestMessage, createTestThread } from "../../fixtures/slack-harness";
+import {
+  appSlackRuntime,
+  resetBotDepsForTests,
+  setBotDepsForTests,
+} from "@/chat/bot";
+import {
+  createTestMessage,
+  createTestThread,
+} from "../../fixtures/slack-harness";
 
 interface CapturedCall {
   contextConversation?: string;
@@ -16,10 +23,20 @@ describe("Slack behavior: message content", () => {
     const calls: CapturedCall[] = [];
 
     setBotDepsForTests({
+      completeObject: async () => {
+        return {
+          object: {
+            should_reply: true,
+            confidence: 1,
+            reason: "direct mention follow-up",
+          },
+          text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
+        } as never;
+      },
       generateAssistantReply: async (prompt, context) => {
         calls.push({
           prompt,
-          contextConversation: context?.conversationContext
+          contextConversation: context?.conversationContext,
         });
         return {
           text: "Summary sent.",
@@ -30,10 +47,10 @@ describe("Slack behavior: message content", () => {
             toolCalls: [],
             toolErrorCount: 0,
             toolResultCount: 0,
-            usedPrimaryText: true
-          }
+            usedPrimaryText: true,
+          },
         };
-      }
+      },
     });
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005000.000" });
@@ -42,7 +59,7 @@ describe("Slack behavior: message content", () => {
       text: "<@U_APP>   please summarize the deploy status",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" }
+      author: { userId: "U_TESTER" },
     });
 
     await appSlackRuntime.handleNewMention(thread, message);
@@ -66,10 +83,10 @@ describe("Slack behavior: message content", () => {
             toolCalls: [],
             toolErrorCount: 0,
             toolResultCount: 0,
-            usedPrimaryText: true
-          }
+            usedPrimaryText: true,
+          },
         };
-      }
+      },
     });
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005001.000" });
@@ -78,7 +95,7 @@ describe("Slack behavior: message content", () => {
       text: "<@U_APP> remind me to message <@U_ONCALL> after deploy",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" }
+      author: { userId: "U_TESTER" },
     });
 
     await appSlackRuntime.handleNewMention(thread, message);
@@ -102,10 +119,10 @@ describe("Slack behavior: message content", () => {
             toolCalls: [],
             toolErrorCount: 0,
             toolResultCount: 0,
-            usedPrimaryText: true
-          }
+            usedPrimaryText: true,
+          },
         };
-      }
+      },
     });
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005002.000" });
@@ -116,8 +133,8 @@ describe("Slack behavior: message content", () => {
       threadId: thread.id,
       author: {
         userId: "U_BOT",
-        isMe: true
-      }
+        isMe: true,
+      },
     });
 
     await appSlackRuntime.handleNewMention(thread, message);
@@ -130,10 +147,20 @@ describe("Slack behavior: message content", () => {
     const calls: CapturedCall[] = [];
 
     setBotDepsForTests({
+      completeObject: async () => {
+        return {
+          object: {
+            should_reply: true,
+            confidence: 1,
+            reason: "direct mention follow-up",
+          },
+          text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
+        } as never;
+      },
       generateAssistantReply: async (prompt, context) => {
         calls.push({
           prompt,
-          contextConversation: context?.conversationContext
+          contextConversation: context?.conversationContext,
         });
         return {
           text: calls.length === 1 ? "First response." : "Second response.",
@@ -144,10 +171,10 @@ describe("Slack behavior: message content", () => {
             toolCalls: [],
             toolErrorCount: 0,
             toolResultCount: 0,
-            usedPrimaryText: true
-          }
+            usedPrimaryText: true,
+          },
         };
-      }
+      },
     });
 
     const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005003.000" });
@@ -156,14 +183,14 @@ describe("Slack behavior: message content", () => {
       text: "<@U_APP> I need the budget by Friday",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" }
+      author: { userId: "U_TESTER" },
     });
     const second = createTestMessage({
       id: "m-content-context-2",
       text: "<@U_APP> what did I just ask?",
       isMention: true,
       threadId: thread.id,
-      author: { userId: "U_TESTER" }
+      author: { userId: "U_TESTER" },
     });
 
     await appSlackRuntime.handleNewMention(thread, first);

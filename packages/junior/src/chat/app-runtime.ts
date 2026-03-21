@@ -24,19 +24,29 @@ export interface AppRuntimeThreadContext {
 export interface AppRuntimeReplyDecision {
   reason: string;
   shouldReply: boolean;
+  shouldUnsubscribe?: boolean;
 }
 
 export interface AppRuntimeReplyHooks {
   beforeFirstResponsePost?: () => Promise<void>;
-  preApprovedReply?: boolean;
+  preApprovedDecision?: AppRuntimeReplyDecision;
 }
 
-function isExplicitMentionDecision(reason: string): boolean {
-  return (
-    reason === "explicit mention" ||
-    reason === "explicit_mention" ||
-    reason.startsWith("explicit_mention:")
-  );
+const THREAD_OPTOUT_ACK =
+  "Understood. I'll stay out of this thread unless someone @mentions me again.";
+async function maybeHandleThreadOptOutDecision(args: {
+  beforeFirstResponsePost?: () => Promise<void>;
+  decision?: { shouldUnsubscribe?: boolean };
+  thread: Thread;
+}): Promise<boolean> {
+  if (!args.decision?.shouldUnsubscribe) {
+    return false;
+  }
+
+  await args.thread.unsubscribe();
+  await args.beforeFirstResponsePost?.();
+  await args.thread.post(THREAD_OPTOUT_ACK);
+  return true;
 }
 
 type AppRuntimeLogContext = Record<string, unknown> & {
@@ -324,7 +334,8 @@ export function createAppSlackRuntime<
           channelId,
           runId,
         };
-        const preflightDecision = hooks?.preApprovedReply
+
+        const preflightDecision = hooks?.preApprovedDecision
           ? undefined
           : getSubscribedReplyPreflightDecision({
               botUserName: deps.assistantUserName,
@@ -382,11 +393,8 @@ export function createAppSlackRuntime<
           preparedState,
         });
 
-        const decision = hooks?.preApprovedReply
-          ? {
-              shouldReply: true,
-              reason: "pre_approved_reply",
-            }
+        const decision = hooks?.preApprovedDecision
+          ? hooks.preApprovedDecision
           : await deps.shouldReplyInSubscribedThread({
               rawText: rawUserText,
               text: userText,
@@ -396,6 +404,37 @@ export function createAppSlackRuntime<
               isExplicitMention: Boolean(message.isMention),
               context,
             });
+
+        if (
+          await maybeHandleThreadOptOutDecision({
+            thread,
+            decision,
+            beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+          })
+        ) {
+          deps.logWarn(
+            "subscribed_message_reply_skipped",
+            logContext({
+              threadId,
+              requesterId: message.author.userId,
+              requesterUserName: message.author.userName,
+              channelId,
+              runId,
+            }),
+            {
+              "app.decision.reason": decision.reason,
+            },
+            "Skipping subscribed message reply",
+          );
+          await deps.onSubscribedMessageSkipped({
+            thread,
+            message,
+            preparedState,
+            decision,
+            completedAtMs: deps.now(),
+          });
+          return;
+        }
 
         if (!decision.shouldReply) {
           deps.logWarn(
@@ -434,7 +473,7 @@ export function createAppSlackRuntime<
           }),
           async () => {
             await deps.replyToThread(thread, message, {
-              explicitMention: isExplicitMentionDecision(decision.reason),
+              explicitMention: Boolean(message.isMention),
               preparedState,
               beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             });

@@ -57,8 +57,14 @@ describe("decideSubscribedThreadReply", () => {
     expect(decision).toBeUndefined();
   });
 
-  it("replies immediately for explicit mention", async () => {
-    const completeObject = vi.fn();
+  it("uses the classifier for explicit mentions in subscribed threads", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        should_reply: true,
+        confidence: 0.95,
+        reason: "direct mention asking junior for help",
+      },
+    }));
     const decision = await decideSubscribedThreadReply({
       botUserName: "junior",
       modelId: "router-model",
@@ -69,9 +75,38 @@ describe("decideSubscribedThreadReply", () => {
 
     expect(decision).toEqual({
       shouldReply: true,
-      reason: SubscribedReplyReason.ExplicitMention,
+      reason: SubscribedReplyReason.Classifier,
+      reasonDetail: "direct mention asking junior for help",
     });
-    expect(completeObject).not.toHaveBeenCalled();
+    expect(completeObject).toHaveBeenCalled();
+  });
+
+  it("does not apply acknowledgment heuristics to explicit mentions", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        should_reply: true,
+        confidence: 0.95,
+        reason: "direct mention acknowledgment",
+      },
+    }));
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        text: "thanks!",
+        rawText: "thanks!",
+        isExplicitMention: true,
+      }),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.Classifier,
+      reasonDetail: "direct mention acknowledgment",
+    });
+    expect(completeObject).toHaveBeenCalled();
   });
 
   it("skips leading slack mentions addressed to another party before classifier", async () => {
@@ -175,6 +210,33 @@ describe("decideSubscribedThreadReply", () => {
     expect(decision.reason).toBe(SubscribedReplyReason.SideConversation);
     expect(decision.reasonDetail).toBe("status chatter");
     expect(decision.shouldReply).toBe(false);
+  });
+
+  it("maps classifier unsubscribe decisions to thread opt-out", async () => {
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        text: "please stop participating here",
+        rawText: "please stop participating here",
+      }),
+      completeObject: vi.fn(async () => ({
+        object: {
+          should_reply: false,
+          should_unsubscribe: true,
+          confidence: 0.95,
+          reason: "user asked junior to stop participating in the thread",
+        },
+      })),
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "user asked junior to stop participating in the thread",
+    });
   });
 
   it("accepts long classifier reasons without failing schema parsing", async () => {

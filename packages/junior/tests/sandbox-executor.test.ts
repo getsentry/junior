@@ -153,6 +153,9 @@ describe("createSandboxExecutor", () => {
     isSnapshotMissingErrorMock.mockReturnValue(false);
     getRuntimeDependencyProfileHashMock.mockReset();
     getRuntimeDependencyProfileHashMock.mockReturnValue(undefined);
+    delete process.env.VERCEL_TOKEN;
+    delete process.env.VERCEL_TEAM_ID;
+    delete process.env.VERCEL_PROJECT_ID;
   });
 
   it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
@@ -181,6 +184,44 @@ describe("createSandboxExecutor", () => {
     expect(freshSandbox.mkDir).toHaveBeenCalled();
     expect(freshSandbox.runCommand).not.toHaveBeenCalled();
     expect(executor.getSandboxId()).toBe("sbx_fresh");
+  });
+
+  it("passes token-based Vercel Sandbox credentials to the sandbox SDK", async () => {
+    process.env.VERCEL_TOKEN = "sandbox-token";
+    process.env.VERCEL_TEAM_ID = "team_123";
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+
+    const stoppedSandbox = makeSandbox("sbx_stopped", {
+      mkDirError: createApiError(
+        410,
+        "Gone",
+        "sandbox_stopped",
+        "Sandbox has stopped execution and is no longer available",
+      ),
+    });
+    const freshSandbox = makeSandbox("sbx_fresh");
+
+    sandboxGetMock.mockResolvedValue(stoppedSandbox);
+    sandboxCreateMock.mockResolvedValue(freshSandbox);
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_stopped" });
+    executor.configureSkills([]);
+
+    await executor.createSandbox();
+
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      sandboxId: "sbx_stopped",
+      token: "sandbox-token",
+      teamId: "team_123",
+      projectId: "prj_123",
+    });
+    expect(sandboxCreateMock).toHaveBeenCalledWith({
+      timeout: 1000 * 60 * 30,
+      runtime: "node22",
+      token: "sandbox-token",
+      teamId: "team_123",
+      projectId: "prj_123",
+    });
   });
 
   it("recreates sandbox when dependency profile hash changed", async () => {
@@ -218,6 +259,18 @@ describe("createSandboxExecutor", () => {
 
     await expect(executor.createSandbox()).rejects.toThrow(
       "sandbox setup failed",
+    );
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("fails fast when token-based Vercel Sandbox credentials are incomplete", async () => {
+    process.env.VERCEL_TOKEN = "sandbox-token";
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await expect(executor.createSandbox()).rejects.toThrow(
+      "Missing Vercel Sandbox credentials",
     );
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });

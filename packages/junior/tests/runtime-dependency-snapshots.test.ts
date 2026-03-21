@@ -1,31 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { sandboxCreateMock, getPluginRuntimeDependenciesMock, getPluginRuntimePostinstallMock } = vi.hoisted(() => ({
+const {
+  sandboxCreateMock,
+  getPluginRuntimeDependenciesMock,
+  getPluginRuntimePostinstallMock,
+} = vi.hoisted(() => ({
   sandboxCreateMock: vi.fn(),
   getPluginRuntimeDependenciesMock: vi.fn(),
-  getPluginRuntimePostinstallMock: vi.fn()
+  getPluginRuntimePostinstallMock: vi.fn(),
 }));
 const { withSpanMock } = vi.hoisted(() => ({
-  withSpanMock: vi.fn(async (
-    _name: string,
-    _op: string,
-    _context: unknown,
-    callback: () => Promise<unknown>
-  ) => callback())
+  withSpanMock: vi.fn(
+    async (
+      _name: string,
+      _op: string,
+      _context: unknown,
+      callback: () => Promise<unknown>,
+    ) => callback(),
+  ),
 }));
 
 vi.mock("@vercel/sandbox", () => ({
   Sandbox: {
-    create: sandboxCreateMock
-  }
+    create: sandboxCreateMock,
+  },
 }));
 
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginRuntimeDependencies: getPluginRuntimeDependenciesMock,
-  getPluginRuntimePostinstall: getPluginRuntimePostinstallMock
+  getPluginRuntimePostinstall: getPluginRuntimePostinstallMock,
 }));
 vi.mock("@/chat/observability", () => ({
-  withSpan: withSpanMock
+  withSpan: withSpanMock,
 }));
 
 const store = new Map<string, string>();
@@ -47,8 +53,8 @@ vi.mock("@/chat/state", () => ({
     }),
     releaseLock: vi.fn(async () => {
       lockHeld = false;
-    })
-  })
+    }),
+  }),
 }));
 
 import { resolveRuntimeDependencySnapshot } from "@/chat/sandbox/runtime-dependency-snapshots";
@@ -59,7 +65,7 @@ function makeSandbox(
     exitCode: number;
     stdout: () => Promise<string>;
     stderr: () => Promise<string>;
-  }>
+  }>,
 ) {
   return {
     runCommand: vi.fn(
@@ -67,11 +73,11 @@ function makeSandbox(
         (async () => ({
           exitCode: 0,
           stdout: async () => "",
-          stderr: async () => ""
-        }))
+          stderr: async () => "",
+        })),
     ),
     snapshot: vi.fn(async () => ({ snapshotId })),
-    stop: vi.fn(async () => {})
+    stop: vi.fn(async () => {}),
   };
 }
 
@@ -81,24 +87,29 @@ describe("runtime dependency snapshots", () => {
     lockHeld = false;
     sandboxCreateMock.mockReset();
     withSpanMock.mockReset();
-    withSpanMock.mockImplementation(async (
-      _name: string,
-      _op: string,
-      _context: unknown,
-      callback: () => Promise<unknown>
-    ) => await callback());
+    withSpanMock.mockImplementation(
+      async (
+        _name: string,
+        _op: string,
+        _context: unknown,
+        callback: () => Promise<unknown>,
+      ) => await callback(),
+    );
     getPluginRuntimeDependenciesMock.mockReset();
     getPluginRuntimePostinstallMock.mockReset();
     getPluginRuntimePostinstallMock.mockReturnValue([]);
     delete process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH;
     delete process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
+    delete process.env.VERCEL_TOKEN;
+    delete process.env.VERCEL_TEAM_ID;
+    delete process.env.VERCEL_PROJECT_ID;
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-01T00:00:00.000Z"));
   });
 
   it("rebuilds stale snapshots for floating dependency selectors", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" }
+      { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_1"))
@@ -106,7 +117,7 @@ describe("runtime dependency snapshots", () => {
 
     const first = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_1");
     expect(first.cacheHit).toBe(false);
@@ -117,7 +128,7 @@ describe("runtime dependency snapshots", () => {
 
     const second = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(second.snapshotId).toBe("snap_2");
     expect(second.cacheHit).toBe(false);
@@ -128,14 +139,16 @@ describe("runtime dependency snapshots", () => {
 
   it("rebuilds stale snapshots for postinstall-only profiles", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([]);
-    getPluginRuntimePostinstallMock.mockReturnValue([{ cmd: "agent-browser", args: ["install"] }]);
+    getPluginRuntimePostinstallMock.mockReturnValue([
+      { cmd: "agent-browser", args: ["install"] },
+    ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_post_1"))
       .mockResolvedValueOnce(makeSandbox("snap_post_2"));
 
     const first = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_post_1");
     expect(first.cacheHit).toBe(false);
@@ -146,7 +159,7 @@ describe("runtime dependency snapshots", () => {
 
     const second = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(second.snapshotId).toBe("snap_post_2");
     expect(second.cacheHit).toBe(false);
@@ -157,7 +170,7 @@ describe("runtime dependency snapshots", () => {
 
   it("rebuilds when rebuild epoch changes", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" }
+      { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_epoch_a"))
@@ -166,7 +179,7 @@ describe("runtime dependency snapshots", () => {
     process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH = "epoch-a";
     const first = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_epoch_a");
     expect(first.cacheHit).toBe(false);
@@ -175,7 +188,7 @@ describe("runtime dependency snapshots", () => {
     process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH = "epoch-b";
     const second = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(second.snapshotId).toBe("snap_epoch_b");
     expect(second.cacheHit).toBe(false);
@@ -185,13 +198,13 @@ describe("runtime dependency snapshots", () => {
 
   it("reuses cached rebuilt snapshot during force rebuild when stale id differs", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" }
+      { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_new"));
 
     const first = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_new");
     expect(first.cacheHit).toBe(false);
@@ -201,7 +214,7 @@ describe("runtime dependency snapshots", () => {
       runtime: "node22",
       timeoutMs: 60_000,
       forceRebuild: true,
-      staleSnapshotId: "snap_old"
+      staleSnapshotId: "snap_old",
     });
     expect(forced.snapshotId).toBe("snap_new");
     expect(forced.cacheHit).toBe(true);
@@ -212,35 +225,60 @@ describe("runtime dependency snapshots", () => {
 
   it("stops the build sandbox after snapshot creation succeeds", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" }
+      { type: "npm", package: "sentry", version: "latest" },
     ]);
     const sandbox = makeSandbox("snap_stopped");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
 
     const snapshot = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_stopped");
     expect(sandbox.stop).toHaveBeenCalledTimes(1);
   });
 
+  it("passes token-based Vercel Sandbox credentials to snapshot builds", async () => {
+    process.env.VERCEL_TOKEN = "sandbox-token";
+    process.env.VERCEL_TEAM_ID = "team_123";
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+    getPluginRuntimeDependenciesMock.mockReturnValue([
+      { type: "npm", package: "sentry", version: "1.0.0" },
+    ]);
+    const sandbox = makeSandbox("snap_creds");
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const snapshot = await resolveRuntimeDependencySnapshot({
+      runtime: "node22",
+      timeoutMs: 60_000,
+    });
+
+    expect(snapshot.snapshotId).toBe("snap_creds");
+    expect(sandboxCreateMock).toHaveBeenCalledWith({
+      timeout: 60_000,
+      runtime: "node22",
+      token: "sandbox-token",
+      teamId: "team_123",
+      projectId: "prj_123",
+    });
+  });
+
   it("installs system dependencies via dnf", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "system", package: "gh" }
+      { type: "system", package: "gh" },
     ]);
     const sandbox = makeSandbox("snap_system");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
 
     const snapshot = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_system");
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "dnf",
       args: ["install", "-y", "gh"],
-      sudo: true
+      sudo: true,
     });
   });
 
@@ -249,15 +287,17 @@ describe("runtime dependency snapshots", () => {
       {
         type: "system",
         url: "https://example.com/tool.rpm",
-        sha256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-      }
+        sha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
     ]);
     const sandbox = makeSandbox("snap_system_url", async (params) => {
       if (params.cmd === "sha256sum") {
         return {
           exitCode: 0,
-          stdout: async () => "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  /tmp/junior-runtime-dep.rpm",
-          stderr: async () => ""
+          stdout: async () =>
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  /tmp/junior-runtime-dep.rpm",
+          stderr: async () => "",
         };
       }
       return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
@@ -266,31 +306,40 @@ describe("runtime dependency snapshots", () => {
 
     const snapshot = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_system_url");
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "curl",
-      args: ["-fsSL", "https://example.com/tool.rpm", "-o", "/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm"]
+      args: [
+        "-fsSL",
+        "https://example.com/tool.rpm",
+        "-o",
+        "/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm",
+      ],
     });
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "sha256sum",
-      args: ["/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm"]
+      args: ["/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm"],
     });
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "dnf",
       args: ["install", "-y", "/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm"],
-      sudo: true
+      sudo: true,
     });
   });
 
   it("falls back to gh-cli repo bootstrap when dnf cannot resolve gh directly", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "system", package: "gh" }
+      { type: "system", package: "gh" },
     ]);
     const sandbox = makeSandbox("snap_system_fallback", async (params) => {
       if (params.cmd !== "dnf") {
-        return { exitCode: 1, stdout: async () => "", stderr: async () => "unsupported command" };
+        return {
+          exitCode: 1,
+          stdout: async () => "",
+          stderr: async () => "unsupported command",
+        };
       }
 
       const joined = (params.args ?? []).join(" ");
@@ -298,7 +347,7 @@ describe("runtime dependency snapshots", () => {
         return {
           exitCode: 1,
           stdout: async () => "",
-          stderr: async () => "Unable to find a match: gh"
+          stderr: async () => "Unable to find a match: gh",
         };
       }
 
@@ -308,30 +357,34 @@ describe("runtime dependency snapshots", () => {
 
     const snapshot = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_system_fallback");
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "dnf",
       args: ["install", "-y", "gh"],
-      sudo: true
+      sudo: true,
     });
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "dnf",
-      args: ["config-manager", "addrepo", "--from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo"],
-      sudo: true
+      args: [
+        "config-manager",
+        "addrepo",
+        "--from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo",
+      ],
+      sudo: true,
     });
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "dnf",
       args: ["install", "-y", "gh", "--repo", "gh-cli"],
-      sudo: true
+      sudo: true,
     });
   });
 
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
     vi.useRealTimers();
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" }
+      { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_old"))
@@ -339,7 +392,7 @@ describe("runtime dependency snapshots", () => {
 
     const first = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_old");
     expect(first.cacheHit).toBe(false);
@@ -354,7 +407,7 @@ describe("runtime dependency snapshots", () => {
       runtime: "node22",
       timeoutMs: 60_000,
       forceRebuild: true,
-      staleSnapshotId: "snap_old"
+      staleSnapshotId: "snap_old",
     });
     expect(second.snapshotId).toBe("snap_new");
     expect(second.cacheHit).toBe(false);
@@ -365,7 +418,7 @@ describe("runtime dependency snapshots", () => {
 
   it("rebuilds when forceRebuild is true without stale snapshot id", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" }
+      { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_initial"))
@@ -373,7 +426,7 @@ describe("runtime dependency snapshots", () => {
 
     const first = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_initial");
     expect(first.cacheHit).toBe(false);
@@ -382,7 +435,7 @@ describe("runtime dependency snapshots", () => {
     const forced = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
       timeoutMs: 60_000,
-      forceRebuild: true
+      forceRebuild: true,
     });
     expect(forced.snapshotId).toBe("snap_forced");
     expect(forced.cacheHit).toBe(false);
@@ -393,7 +446,7 @@ describe("runtime dependency snapshots", () => {
 
   it("reuses a concurrent rebuilt snapshot while waiting on force rebuild lock without stale id", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "sentry", version: "latest" }
+      { type: "npm", package: "sentry", version: "latest" },
     ]);
     sandboxCreateMock
       .mockResolvedValueOnce(makeSandbox("snap_initial"))
@@ -401,7 +454,7 @@ describe("runtime dependency snapshots", () => {
 
     const first = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(first.snapshotId).toBe("snap_initial");
     expect(first.cacheHit).toBe(false);
@@ -423,8 +476,8 @@ describe("runtime dependency snapshots", () => {
         JSON.stringify({
           ...initialCached,
           snapshotId: "snap_from_other_worker",
-          createdAtMs: Date.now()
-        })
+          createdAtMs: Date.now(),
+        }),
       );
     }, 100);
     setTimeout(() => {
@@ -434,7 +487,7 @@ describe("runtime dependency snapshots", () => {
     const concurrent = resolveRuntimeDependencySnapshot({
       runtime: "node22",
       timeoutMs: 60_000,
-      forceRebuild: true
+      forceRebuild: true,
     });
 
     await vi.advanceTimersByTimeAsync(2_000);
@@ -451,13 +504,13 @@ describe("runtime dependency snapshots", () => {
 
     const snapshot = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
 
     expect(snapshot).toMatchObject({
       dependencyCount: 0,
       cacheHit: false,
-      resolveOutcome: "no_profile"
+      resolveOutcome: "no_profile",
     });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
@@ -465,47 +518,58 @@ describe("runtime dependency snapshots", () => {
   it("emits lifecycle snapshot spans for build and install", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
       { type: "system", package: "gh" },
-      { type: "npm", package: "sentry-cli", version: "2.0.0" }
+      { type: "npm", package: "sentry-cli", version: "2.0.0" },
     ]);
     sandboxCreateMock.mockResolvedValueOnce(makeSandbox("snap_observability"));
 
     await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
 
     const spanNames = withSpanMock.mock.calls.map((call) => call[0]);
-    expect(spanNames).toEqual(expect.arrayContaining([
-      "sandbox.snapshot.resolve",
-      "sandbox.snapshot.build",
-      "sandbox.snapshot.install_system",
-      "sandbox.snapshot.install_npm",
-      "sandbox.snapshot.capture"
-    ]));
+    expect(spanNames).toEqual(
+      expect.arrayContaining([
+        "sandbox.snapshot.resolve",
+        "sandbox.snapshot.build",
+        "sandbox.snapshot.install_system",
+        "sandbox.snapshot.install_npm",
+        "sandbox.snapshot.capture",
+      ]),
+    );
   });
 
   it("runs runtime-postinstall commands after dependency install", async () => {
     getPluginRuntimeDependenciesMock.mockReturnValue([
-      { type: "npm", package: "example-cli", version: "latest" }
+      { type: "npm", package: "example-cli", version: "latest" },
     ]);
     getPluginRuntimePostinstallMock.mockReturnValue([
-      { cmd: "example-cli", args: ["install"] }
+      { cmd: "example-cli", args: ["install"] },
     ]);
     const sandbox = makeSandbox("snap_postinstall");
     sandboxCreateMock.mockResolvedValueOnce(sandbox);
 
     const snapshot = await resolveRuntimeDependencySnapshot({
       runtime: "node22",
-      timeoutMs: 60_000
+      timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_postinstall");
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "npm",
-      args: ["install", "--global", "--prefix", "/vercel/sandbox/.junior", "example-cli@latest"]
+      args: [
+        "install",
+        "--global",
+        "--prefix",
+        "/vercel/sandbox/.junior",
+        "example-cli@latest",
+      ],
     });
     expect(sandbox.runCommand).toHaveBeenCalledWith({
       cmd: "bash",
-      args: ["-lc", "export PATH=\"/vercel/sandbox/.junior/bin:$PATH\" && \"example-cli\" \"install\""]
+      args: [
+        "-lc",
+        'export PATH="/vercel/sandbox/.junior/bin:$PATH" && "example-cli" "install"',
+      ],
     });
   });
 });
