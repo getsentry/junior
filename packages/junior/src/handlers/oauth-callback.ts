@@ -1,23 +1,26 @@
 import { after } from "next/server";
+import { ThreadImpl } from "chat";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
+import { coerceThreadConversationState } from "@/chat/conversation-state";
 import {
   formatProviderLabel,
   type OAuthStatePayload,
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
-import { botConfig } from "@/chat/config";
-import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { buildConversationContext } from "@/chat/services/conversation-memory";
+import {
+  resumeAuthorizedRequest,
+  postSlackMessage,
+} from "@/handlers/oauth-resume";
 import { logException, logInfo } from "@/chat/observability";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
 } from "@/chat/plugins/oauth-request";
-import { generateAssistantReply } from "@/chat/respond";
 import { publishAppHomeView } from "@/chat/app-home";
 import { getSlackClient } from "@/chat/slack-actions/client";
 import { getStateAdapter } from "@/chat/state";
-import { truncateStatusText } from "@/chat/status-format";
 import { escapeXml } from "@/chat/xml";
 
 /**
@@ -51,196 +54,72 @@ function htmlErrorResponse(
   });
 }
 
-async function postSlackMessage(
+function createSlackThread(channelId: string, threadTs: string) {
+  return ThreadImpl.fromJSON({
+    _type: "chat:Thread",
+    adapterName: "slack",
+    channelId,
+    id: `slack:${channelId}:${threadTs}`,
+    isDM: channelId.startsWith("D"),
+  });
+}
+
+async function buildResumeConversationContext(
   channelId: string,
   threadTs: string,
-  text: string,
+): Promise<string | undefined> {
+  const thread = createSlackThread(channelId, threadTs);
+  const conversation = coerceThreadConversationState(await thread.state);
+  const latestUserMessageId = [...conversation.messages]
+    .reverse()
+    .find((message) => message.role === "user")?.id;
+  return buildConversationContext(conversation, {
+    excludeMessageId: latestUserMessageId,
+  });
+}
+
+export async function resumePendingOAuthMessage(
+  stored: OAuthStatePayload,
 ): Promise<void> {
-  try {
-    await getSlackClient().chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
-      text,
-    });
-  } catch {
-    // Best effort.
-  }
-}
-
-async function setAssistantStatus(
-  channelId: string,
-  threadTs: string,
-  status: string,
-): Promise<void> {
-  try {
-    await getSlackClient().assistant.threads.setStatus({
-      channel_id: channelId,
-      thread_ts: threadTs,
-      status,
-    });
-  } catch {
-    // Best effort.
-  }
-}
-
-const STATUS_DEBOUNCE_MS = 1000;
-
-function createDebouncedStatusPoster(channelId: string, threadTs: string) {
-  let lastPostAt = 0;
-  let currentStatus = "";
-  let pendingStatus: string | null = null;
-  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-  let stopped = false;
-
-  const flush = async () => {
-    if (stopped || !pendingStatus) return;
-    const status = pendingStatus;
-    pendingStatus = null;
-    pendingTimer = null;
-    lastPostAt = Date.now();
-    currentStatus = status;
-    await setAssistantStatus(channelId, threadTs, status);
-  };
-
-  const post = async (status: string) => {
-    if (stopped) return;
-    const truncated = truncateStatusText(status);
-    if (!truncated || truncated === currentStatus) return;
-
-    const now = Date.now();
-    const elapsed = now - lastPostAt;
-
-    if (elapsed >= STATUS_DEBOUNCE_MS) {
-      if (pendingTimer) {
-        clearTimeout(pendingTimer);
-        pendingTimer = null;
-      }
-      pendingStatus = null;
-      lastPostAt = now;
-      currentStatus = truncated;
-      await setAssistantStatus(channelId, threadTs, truncated);
-      return;
-    }
-
-    pendingStatus = truncated;
-    if (!pendingTimer) {
-      pendingTimer = setTimeout(
-        () => {
-          void flush();
-        },
-        Math.max(1, STATUS_DEBOUNCE_MS - elapsed),
-      );
-    }
-  };
-
-  post.stop = () => {
-    stopped = true;
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      pendingTimer = null;
-    }
-    pendingStatus = null;
-  };
-
-  return post;
-}
-
-function createReadOnlyConfigService(
-  values: Record<string, unknown>,
-): ChannelConfigurationService {
-  const entries = Object.entries(values).map(([key, value]) => ({
-    key,
-    value,
-    scope: "conversation" as const,
-    updatedAt: new Date().toISOString(),
-  }));
-
-  return {
-    get: async (key) => entries.find((e) => e.key === key),
-    set: async () => {
-      throw new Error("Read-only configuration in resumed context");
-    },
-    unset: async () => false,
-    list: async ({ prefix } = {}) =>
-      entries.filter((e) => !prefix || e.key.startsWith(prefix)),
-    resolve: async (key) => values[key],
-    resolveValues: async ({ keys, prefix } = {}) => {
-      const filtered: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(values)) {
-        if (prefix && !key.startsWith(prefix)) continue;
-        if (keys && !keys.includes(key)) continue;
-        filtered[key] = value;
-      }
-      return filtered;
-    },
-  };
-}
-
-async function resumePendingMessage(stored: OAuthStatePayload): Promise<void> {
   if (!stored.pendingMessage || !stored.channelId || !stored.threadTs) return;
 
   const providerLabel = formatProviderLabel(stored.provider);
-  await postSlackMessage(
-    stored.channelId,
-    stored.threadTs,
-    `Your ${providerLabel} account is now connected. Processing your request...`,
-  );
-
-  const postStatus = createDebouncedStatusPoster(
+  const conversationContext = await buildResumeConversationContext(
     stored.channelId,
     stored.threadTs,
   );
-  await setAssistantStatus(stored.channelId, stored.threadTs, "Thinking...");
-
-  try {
-    const reply = await generateAssistantReply(stored.pendingMessage, {
-      assistant: { userName: botConfig.userName },
-      requester: { userId: stored.userId },
-      correlation: {
-        channelId: stored.channelId,
-        threadTs: stored.threadTs,
-        requesterId: stored.userId,
-      },
-      configuration: stored.configuration,
-      channelConfiguration: stored.configuration
-        ? createReadOnlyConfigService(stored.configuration)
-        : undefined,
-      onStatus: postStatus,
-    });
-
-    postStatus.stop();
-
-    if (reply.text) {
-      await postSlackMessage(stored.channelId, stored.threadTs, reply.text);
-    }
-
-    logInfo(
-      "oauth_callback_resume_complete",
-      {},
-      {
-        "app.credential.provider": stored.provider,
-        "app.ai.outcome": reply.diagnostics.outcome,
-        "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
-      },
-      "Auto-resumed pending message after OAuth callback",
-    );
-  } catch (error) {
-    postStatus.stop();
-
-    logException(
-      error,
-      "oauth_callback_resume_failed",
-      {},
-      { "app.credential.provider": stored.provider },
-      "Failed to auto-resume pending message after OAuth callback",
-    );
-
-    await postSlackMessage(
-      stored.channelId,
-      stored.threadTs,
-      `I connected your account but hit an error processing your request. Please try \`${stored.pendingMessage}\` again.`,
-    );
-  }
+  await resumeAuthorizedRequest({
+    messageText: stored.pendingMessage,
+    requesterUserId: stored.userId,
+    provider: stored.provider,
+    channelId: stored.channelId,
+    threadTs: stored.threadTs,
+    connectedText: `Your ${providerLabel} account is now connected. Processing your request...`,
+    failureText: `I connected your account but hit an error processing your request. Please try \`${stored.pendingMessage}\` again.`,
+    conversationContext,
+    configuration: stored.configuration,
+    onSuccess: async (reply) => {
+      logInfo(
+        "oauth_callback_resume_complete",
+        {},
+        {
+          "app.credential.provider": stored.provider,
+          "app.ai.outcome": reply.diagnostics.outcome,
+          "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
+        },
+        "Auto-resumed pending message after OAuth callback",
+      );
+    },
+    onFailure: async (error) => {
+      logException(
+        error,
+        "oauth_callback_resume_failed",
+        {},
+        { "app.credential.provider": stored.provider },
+        "Failed to auto-resume pending message after OAuth callback",
+      );
+    },
+  });
 }
 
 export async function GET(
@@ -391,7 +270,7 @@ export async function GET(
   });
 
   if (stored.pendingMessage && stored.channelId && stored.threadTs) {
-    after(() => resumePendingMessage(stored));
+    after(() => resumePendingOAuthMessage(stored));
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
     after(async () => {

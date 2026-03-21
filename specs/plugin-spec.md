@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-03-06
+- Last Edited: 2026-03-18
 
 ## Changelog
 
@@ -12,6 +12,9 @@
 - 2026-03-06: Added runtime dependency declarations and linked sandbox snapshot lifecycle contract.
 - 2026-03-06: Made plugin credentials/capabilities/config-keys optional to support bundle-only plugins.
 - 2026-03-09: Added OAuth request overrides, optional OAuth scope, and plugin-level API headers.
+- 2026-03-13: Implemented HTTP MCP manifests, same-plugin progressive tool activation, and dedicated MCP OAuth callbacks.
+- 2026-03-18: Added provider-scoped MCP tool allowlists for read-only plugin surfaces.
+- 2026-03-18: Replaced per-MCP-tool Pi registration with stable `searchTools`/`useTool` dispatch and plugin-level MCP allowlists.
 
 ## Status
 
@@ -44,7 +47,9 @@ Define a plugin model where provider integrations are self-contained directories
 3. The registry registers capabilities, config keys, OAuth config, and skill roots from each manifest.
 4. Credential brokers are created on demand only for plugins that declare credentials (`oauth-bearer` or `github-app` type).
 5. Skills in `plugins/<name>/skills/` are auto-discovered alongside existing skill roots.
-6. Core infrastructure (agent loop, sandbox, jr-rpc, Slack tools, web tools) stays unchanged.
+6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded for the turn.
+7. Pi sees a stable MCP tool surface (`searchTools` and `useTool`) instead of one native Pi tool per discovered MCP tool.
+8. `loadSkill` returns the newly exposed MCP tool descriptors for that skill, and the turn prompt mirrors the active registry in `<loaded_tools>`.
 
 ## Plugin directory structure
 
@@ -118,10 +123,13 @@ runtime-postinstall: # optional — post-install commands executed before snapsh
     args: ["install"]
 
 mcp: # optional — MCP server config for tool sources
-  command: npx
-  args: ["-y", "@sentry/mcp-server"]
-  env:
-    SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+  transport: http
+  url: https://mcp.example.com/mcp
+  headers:
+    X-Workspace: acme
+  allowed-tools:
+    - search
+    - fetch
 ```
 
 ## Plugin manifest contract
@@ -170,7 +178,11 @@ mcp: # optional — MCP server config for tool sources
 | `runtime-postinstall[].cmd`          | `string`                 | Non-empty command name.                                                                                                                          |
 | `runtime-postinstall[].args`         | `string[]`               | Optional command arguments.                                                                                                                      |
 | `runtime-postinstall[].sudo`         | `boolean`                | Optional sudo flag for commands requiring elevated privileges.                                                                                   |
-| `mcp`                                | `object`                 | MCP server configuration for external tool sources. Reserved — not yet parsed by the registry.                                                   |
+| `mcp`                                | `object`                 | Optional MCP server configuration for host-managed tool discovery.                                                                               |
+| `mcp.transport`                      | `string`                 | Must be `"http"` in v1. Stdio/command transports are not supported.                                                                              |
+| `mcp.url`                            | `string`                 | HTTPS endpoint for the MCP server.                                                                                                               |
+| `mcp.headers`                        | `Record<string, string>` | Optional static non-Authorization headers sent with MCP HTTP requests. `Authorization` is reserved for runtime-managed auth.                     |
+| `mcp.allowed-tools`                  | `string[]`               | Optional non-empty allowlist of raw MCP tool names to expose for this provider. Activation fails if any listed tool is missing from discovery.   |
 
 Snapshot build/reuse and invalidation behavior for `runtime-dependencies` is defined in [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md).
 
@@ -244,6 +256,19 @@ isPluginConfigKey(key): boolean
 // On-demand broker creation
 createPluginBroker(provider, deps: PluginBrokerDeps): CredentialBroker
 ```
+
+### MCP tool activation
+
+- MCP tools are not sandbox dependencies and are not registered globally at startup.
+- The runtime activates a plugin's MCP tools only after a skill owned by that plugin is loaded in the current turn.
+- Explicit `/skill` invocations preload the skill first, so same-plugin MCP tools are available before the first model step.
+- Pi does not receive one native tool per MCP tool. Instead, MCP execution uses stable dispatcher tools: `searchTools` and `useTool`.
+- Mid-turn `loadSkill` updates the host-managed MCP registry and returns `available_tools` for the newly exposed tools, including canonical `tool_name` values and full input schemas.
+- The prompt includes a compact `<loaded_tools>` section with the active MCP tool registry for the turn.
+- When `mcp.allowed-tools` is set, discovery is filtered before exposure and provider activation fails if any allowlisted tool is absent.
+- MCP exposure is owned by the plugin manifest via `mcp.allowed-tools`; skill files do not declare per-tool MCP allowlists.
+- Canonical MCP tool names remain `mcp__<plugin>__<tool>`.
+- MCP authorization uses a dedicated callback path at `/api/oauth/callback/mcp/<plugin>` and resumes the paused turn session after the user authorizes.
 
 ## Capability and credential integration
 

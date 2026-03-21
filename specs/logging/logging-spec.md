@@ -9,7 +9,7 @@
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated code and test file references to repo-root paths under `packages/junior/`.
-
+- 2026-03-18: Added console rendering policy for compact dev logs and clarified that tool success lifecycle uses spans instead of duplicate start/complete info logs.
 
 ## Status
 
@@ -32,6 +32,7 @@ Define the canonical structured logging contract for application events, context
 - [Tracing Spec](./tracing-spec.md)
 
 ## Goals
+
 - Make logs consistent, structured, and queryable across the app.
 - Use OpenTelemetry semantic attribute names wherever a standard exists.
 - Keep one logging entrypoint (similar to `ash`'s centralized logging model).
@@ -39,10 +40,12 @@ Define the canonical structured logging contract for application events, context
 - Remove repeated per-request/per-turn attributes from log callsites by defaulting to ambient context propagation.
 
 ## Non-goals
+
 - Replacing Sentry tracing setup.
 - Shipping a separate log backend in this phase.
 
 ## Current State (Audit)
+
 - Core logging helper exists: `packages/junior/src/chat/observability.ts`.
 - Callsites are concentrated in:
   - `packages/junior/src/chat/bot.ts`
@@ -56,6 +59,7 @@ Define the canonical structured logging contract for application events, context
   - Context is repeated manually instead of ambient propagation.
 
 ## Design Principles
+
 - Centralized API: no direct `console.*` for application logging.
 - Event-first logging: stable `event.name` for every log record.
 - Semantic-first attributes: use OTel keys first; app keys are namespaced as `app.*`.
@@ -66,7 +70,9 @@ Define the canonical structured logging contract for application events, context
 ## Logging Contract
 
 ### Record Shape
+
 Each emitted log record follows this logical shape (transport can vary):
+
 - `timestamp`
 - `severity_text` (`DEBUG|INFO|WARN|ERROR`)
 - `body` (human-readable summary)
@@ -76,6 +82,7 @@ Each emitted log record follows this logical shape (transport can vary):
 - `span_id` (if active span)
 
 ### Message Semantics
+
 - Every log record must include both:
   - `event.name`: stable snake_case identifier for machines, dashboards, and alert rules.
   - `body`: natural-language message for humans.
@@ -88,6 +95,7 @@ Each emitted log record follows this logical shape (transport can vary):
 - Do not use `event.name` as a prose sentence and do not omit `event.name` in favor of only text.
 
 ### API Surface (`packages/junior/src/chat/logging.ts`)
+
 - `log.debug(eventName, attrs?, body?)`
 - `log.info(eventName, attrs?, body?)`
 - `log.warn(eventName, attrs?, body?)`
@@ -97,6 +105,7 @@ Each emitted log record follows this logical shape (transport can vary):
 - `createLogContextFromRequest(...)`
 
 Compatibility shims in `packages/junior/src/chat/observability.ts` remain supported:
+
 - `logInfo(eventName, context?, attributes?, body?)`
 - `logWarn(eventName, context?, attributes?, body?)`
 - `logError(eventName, context?, attributes?, body?)`
@@ -106,7 +115,9 @@ Compatibility shims in `packages/junior/src/chat/observability.ts` remain suppor
 Context passed directly to compatibility shims is optional and merged with ambient context.
 
 ### Ambient Context Contract
+
 Context is attached in layered order and merged into a single flat attribute map:
+
 - `request_context`
   - Long-lived per incoming request context (for example request ID, HTTP route, platform).
 - `operation_context`
@@ -115,21 +126,39 @@ Context is attached in layered order and merged into a single flat attribute map
   - Per-event attributes passed at log callsites.
 
 Merge precedence (highest wins):
+
 1. `log_call_attributes`
 2. `operation_context`
 3. `request_context`
 
 Rules:
+
 - Explicit per-log context/attributes remain allowed, but should be used only for event-local data.
 - Baseline request/turn keys should be bound once via ambient context instead of repeated in every call.
 - When keys collide, higher precedence overwrites lower precedence; duplicate keys are not emitted.
 
+### Console Rendering Policy
+
+- Structured records remain rich for sinks and Sentry; console rendering may project a smaller view for readability.
+- Default dev console output should keep a small stable core (`event.name`, conversation/turn correlation, trace/span ids, and event-local outcome fields) and suppress low-value ambient fields that are repeated on nearly every line.
+- Default console output should suppress duplicated correlation fields when a stronger equivalent is already present (for example `app.agent.id` when it matches `app.turn.id`).
+- Large payload attributes should be compacted for `debug` and `info` console output using short previews plus length metadata. `warn` and `error` console output may retain fuller payload detail subject to normal redaction/truncation rules.
+- Console projection is a presentation concern only; it must not remove the underlying structured attributes from emitted log records.
+
+### Tool Lifecycle Logging
+
+- Success-path tool execution is primarily traced via spans and span attributes.
+- Do not emit both `agent_tool_call_started` and `agent_tool_call_completed` info logs for ordinary successful tool executions.
+- Keep log events for failures, invalid input, auth interruptions, and other unusual tool states where a discrete log record adds value beyond the span.
+
 ### Runtime Constraints (Next.js)
+
 - Ambient context propagation relies on Node `AsyncLocalStorage`.
 - API routes that rely on ambient context must run in Node runtime.
 - If Edge runtime logging is introduced later, it needs a separate propagation strategy.
 
 ## Event Naming Convention
+
 - `snake_case` identifiers.
 - Format: `<domain>_<action>[_<result>]`.
 - Examples:
@@ -142,12 +171,14 @@ Rules:
 ## OpenTelemetry Semantic Attribute Policy
 
 ### Required (when available)
+
 - `service.name`
 - `service.version`
 - `deployment.environment.name`
 - `event.name`
 
 ### HTTP / Request
+
 - `http.request.method`
 - `url.path`
 - `url.full` (when safe)
@@ -155,6 +186,7 @@ Rules:
 - `user_agent.original` (if available)
 
 ### Messaging / Slack
+
 - `messaging.system` = `slack`
 - `messaging.destination.name` (channel identifier)
 - `messaging.message.id` (message ts/id when available)
@@ -162,6 +194,7 @@ Rules:
 - `enduser.id` (requester user id)
 
 ### GenAI
+
 - `gen_ai.request.model`
 - `gen_ai.provider.name` (provider/gateway)
 - `gen_ai.operation.name` (e.g. `chat`, `invoke_agent`, `execute_tool`)
@@ -171,18 +204,22 @@ Rules:
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` (for tool-call spans when captured)
 
 ### Error
+
 - `error.type`
 - `error.message`
 - `exception.stacktrace` (only on error-level logs/events; truncated)
 
 ### Workflow / App-specific (namespaced)
+
 Only when no semantic key exists:
+
 - `app.workflow.run_id`
 - `app.skill.name`
 - `app.assistant.username`
 - `app.retry.attempt`
 
 ## Attribute Rules
+
 - Flat map only; no nested objects.
 - Value types: string | number | boolean | array of strings.
 - `undefined`, `null`, empty string dropped.
@@ -190,11 +227,13 @@ Only when no semantic key exists:
 - Large strings truncated with suffix `...`.
 
 ## Redaction Rules
+
 - Redact known secret/token patterns before emission.
 - Never log raw auth headers, API keys, or attachment bytes.
 - For user content, log size/metadata by default; content only when explicitly needed and safe.
 
 ## Metrics Derivation Policy
+
 - Default: derive metrics from log events and their attributes.
 - `event.name` is the primary metric grouping key.
 - Avoid direct metric emission when equivalent counters/histograms can be computed from existing logs.
@@ -206,11 +245,13 @@ Only when no semantic key exists:
 ## Rollout Plan
 
 ### Phase 0: Spec Alignment (current)
+
 - Define ambient context merge semantics and precedence.
 - Define compatibility API contract where explicit context remains optional.
 - Track concrete migration and hardening items in `Logging TODOs`.
 
 ### Phase 1: Foundation
+
 - Add `packages/junior/src/chat/logging.ts` with:
   - typed event names (string union + fallback string)
   - semantic key helpers
@@ -222,16 +263,19 @@ Only when no semantic key exists:
   - attribute sanitizer/redactor
 
 ### Phase 2: Context Wiring
+
 - Wire request context in `packages/junior/app/api/webhooks/[platform]/route.ts`.
 - Ensure `trace_id`/`span_id` are attached when spans are active.
 - Remove manual repeated context blocks in `bot.ts` and `respond.ts` by using `withLogContext`.
 
 ### Phase 3: Callsite Migration
+
 - Replace all `logWarn/logError/logException` calls with event-based structured logs.
 - Standardize key names at each callsite using the semantic map above.
 - Keep `observability.ts` as passthrough wrappers to avoid large one-shot breaks.
 
 ### Phase 4: Guardrails
+
 - Add tests for:
   - redaction
   - attribute sanitization
@@ -241,11 +285,13 @@ Only when no semantic key exists:
 - Update docs with examples and migration cheatsheet.
 
 ### Phase 5: Hardening
+
 - Set severity guidance by domain (debug/info/warn/error).
 - Reduce noisy logs and promote high-value operational events.
 - Validate logs in Sentry queries and dashboards.
 
 ## Acceptance Criteria
+
 - 100% of application logs go through `packages/junior/src/chat/logging.ts`.
 - 0 mixed key style for migrated callsites (no `media_type` / ad-hoc keys).
 - Every warning/error log has stable `event.name` and semantic attributes.
@@ -254,6 +300,7 @@ Only when no semantic key exists:
 - Secret redaction tests pass.
 
 ## Migration Matrix (Initial)
+
 - `packages/junior/app/api/webhooks/[platform]/route.ts`
   - unknown platform, handler failures, request lifecycle
 - `packages/junior/src/chat/bot.ts`
@@ -267,6 +314,7 @@ Only when no semantic key exists:
   - output normalization fallback
 
 ## Logging TODOs
+
 - [ ] Migrate duplicated per-turn context in `packages/junior/src/chat/bot.ts` to ambient `withContext`/`withLogContext`.
 - [ ] Migrate duplicated per-turn context in `packages/junior/src/chat/respond.ts` to ambient `withContext`/`withLogContext`.
 - [ ] Update `packages/junior/src/chat/app-runtime.ts` logging call patterns to rely on ambient context by default.
@@ -279,6 +327,7 @@ Only when no semantic key exists:
 - [ ] Investigate and fix duplicate Sentry emission in logger transport path (`emitSentry` currently invokes logger twice).
 
 ## Decision Record
+
 - Keep current logging stack (`packages/junior/src/chat/logging.ts` + `AsyncLocalStorage` + Sentry transport) for this migration.
 - Do not adopt LogTape in this phase.
 - Revisit LogTape (or another logger) only if one or more become true:
@@ -287,5 +336,6 @@ Only when no semantic key exists:
   - Current transport limitations block required queryability, performance, or reliability.
 
 ## Open Questions
+
 - Should we emit logs to local JSONL in addition to Sentry in dev (ash-style local inspectability)?
 - Do we want strict compile-time enums for event names from day 1, or a soft migration with runtime validation first?

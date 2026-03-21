@@ -86,6 +86,7 @@ interface SlackEvalOptions {
   behavior?: BehaviorCaseConfig;
   events: BehaviorCaseEvent[];
   criteria: string;
+  taskTimeout?: number;
   threshold?: number;
   timeout?: number;
   requireSandboxReady?: boolean;
@@ -113,10 +114,27 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
     timeout: opts.timeout ?? 120_000,
     threshold: opts.threshold ?? 0.75,
     task: async () => {
-      const result = await runBehaviorEvalCase({
+      const taskPromise = runBehaviorEvalCase({
         behavior: opts.behavior,
         events: opts.events,
       });
+      const result =
+        typeof opts.taskTimeout === "number" && opts.taskTimeout > 0
+          ? await Promise.race([
+              taskPromise,
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        `Behavior harness timed out after ${opts.taskTimeout}ms before judge evaluation`,
+                      ),
+                    ),
+                  opts.taskTimeout,
+                ),
+              ),
+            ])
+          : await taskPromise;
       if (opts.requireSandboxReady ?? true) {
         assertSandboxReady(name, result);
       }

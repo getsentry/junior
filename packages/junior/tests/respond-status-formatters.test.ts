@@ -41,4 +41,28 @@ describe("respond status formatters", () => {
       }),
     ).toBe("Updated file app.ts");
   });
+
+  it("keeps MCP dispatcher statuses functional", () => {
+    expect(
+      respondStatusFormatters.formatToolStatusWithInput("searchTools", {
+        query: "holiday schedule",
+      }),
+    ).toBe('Searching tools for "holiday schedule"');
+    expect(
+      respondStatusFormatters.formatToolStatusWithInput("searchTools", {
+        query: "holiday schedule",
+        provider: "notion",
+      }),
+    ).toBe('Searching notion tools for "holiday schedule"');
+    expect(
+      respondStatusFormatters.formatToolStatusWithInput("useTool", {
+        tool_name: "mcp__notion__notion-search",
+      }),
+    ).toBe("Running notion/notion-search");
+    expect(
+      respondStatusFormatters.formatToolResultStatusWithInput("useTool", {
+        tool_name: "mcp__notion__notion-search",
+      }),
+    ).toBe("Reviewed notion/notion-search result");
+  });
 });

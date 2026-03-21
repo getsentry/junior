@@ -51,7 +51,6 @@ const SECRETS_RE = [
   /\b(xox[baprs]-[A-Za-z0-9-]{10,})\b/g,
   /\bBearer\s+([A-Za-z0-9._\-+=]{20,})\b/gi,
   /\b[A-Z0-9_]+(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)\s*[=:]\s*([^\s"']{8,})/gi,
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/g
 ];
 
 const LEGACY_KEY_MAP: Record<string, string> = {
@@ -80,7 +79,7 @@ const LEGACY_KEY_MAP: Record<string, string> = {
   responseMessages: "app.ai.response_messages",
   stepDiagnostics: "app.ai.step_diagnostics",
   inferredSkill: "app.skill.name",
-  inferredScore: "app.skill.score"
+  inferredScore: "app.skill.score",
 };
 
 const contextStorage = new AsyncLocalStorage<LogAttributes>();
@@ -93,26 +92,47 @@ const ANSI = {
   green: "\u001b[32m",
   blue: "\u001b[34m",
   cyan: "\u001b[36m",
-  gray: "\u001b[90m"
+  gray: "\u001b[90m",
 } as const;
 const CONSOLE_PRIORITY_KEYS = [
   "app.conversation.id",
   "app.turn.id",
-  "app.agent.id",
   "event.name",
   "error.message",
   "messaging.message.id",
+  "app.trace_id",
+  "app.span_id",
+  "app.agent.id",
   "messaging.message.conversation_id",
   "messaging.destination.name",
-  "enduser.id",
   "app.run.id",
   "app.message.kind",
-  "app.trace_id",
-  "app.span_id"
 ] as const;
 const CONSOLE_PRIORITY_INDEX: Map<string, number> = new Map(
-  CONSOLE_PRIORITY_KEYS.map((key, index) => [key, index])
+  CONSOLE_PRIORITY_KEYS.map((key, index) => [key, index]),
 );
+const CONSOLE_ALWAYS_HIDDEN_KEYS = new Set([
+  "app.assistant.username",
+  "app.platform",
+  "enduser.id",
+  "enduser.pseudo_id",
+  "http.request.method",
+  "messaging.system",
+  "url.full",
+  "url.path",
+  "user_agent.original",
+]);
+const CONSOLE_DROP_WHEN_COUNTED_KEYS = new Set([
+  "app.capability.names",
+  "app.capability.providers",
+  "app.config.keys",
+]);
+const CONSOLE_PREVIEW_KEYS = new Set([
+  "gen_ai.input.messages",
+  "gen_ai.output.messages",
+  "gen_ai.tool.call.arguments",
+  "gen_ai.tool.call.result",
+]);
 
 function getSentryEnvironment(): string {
   return (
@@ -138,14 +158,82 @@ function shouldEmitConsole(level: LogLevel): boolean {
   return getSentryEnvironment() !== "production";
 }
 
+function findNextBlankLineBoundary(
+  input: string,
+  start: number,
+): { start: number; end: number } | null {
+  const lfBoundary = input.indexOf("\n\n", start);
+  const crlfBoundary = input.indexOf("\r\n\r\n", start);
+
+  if (lfBoundary === -1 && crlfBoundary === -1) {
+    return null;
+  }
+  if (lfBoundary === -1) {
+    return { start: crlfBoundary, end: crlfBoundary + 4 };
+  }
+  if (crlfBoundary === -1 || lfBoundary < crlfBoundary) {
+    return { start: lfBoundary, end: lfBoundary + 2 };
+  }
+  return { start: crlfBoundary, end: crlfBoundary + 4 };
+}
+
+function redactPrivateKeyBlocks(input: string): string {
+  const beginPrefix = "-----BEGIN ";
+  const footerMarker = "-----";
+  let cursor = 0;
+  let output = "";
+
+  while (cursor < input.length) {
+    const begin = input.indexOf(beginPrefix, cursor);
+    if (begin === -1) {
+      output += input.slice(cursor);
+      break;
+    }
+
+    const labelStart = begin + beginPrefix.length;
+    const labelEnd = input.indexOf(footerMarker, labelStart);
+    if (labelEnd === -1) {
+      output += input.slice(cursor);
+      break;
+    }
+
+    const label = input.slice(labelStart, labelEnd);
+    if (!label.endsWith("PRIVATE KEY")) {
+      output += input.slice(cursor, labelEnd + footerMarker.length);
+      cursor = labelEnd + footerMarker.length;
+      continue;
+    }
+
+    const header = input.slice(begin, labelEnd + footerMarker.length);
+    const footer = `-----END ${label}-----`;
+    const footerStart = input.indexOf(footer, labelEnd + footerMarker.length);
+    if (footerStart === -1) {
+      const resumeBoundary = findNextBlankLineBoundary(
+        input,
+        labelEnd + footerMarker.length,
+      );
+      output += input.slice(cursor, begin);
+      output += `${header}\n...redacted...`;
+      if (!resumeBoundary) {
+        break;
+      }
+      output += input.slice(resumeBoundary.start, resumeBoundary.end);
+      cursor = resumeBoundary.end;
+      continue;
+    }
+
+    output += input.slice(cursor, begin);
+    output += `${header}\n...redacted...\n${footer}`;
+    cursor = footerStart + footer.length;
+  }
+
+  return output;
+}
+
 function redactSecrets(input: string): string {
-  let out = input;
+  let out = redactPrivateKeyBlocks(input);
   for (const pattern of SECRETS_RE) {
     out = out.replace(pattern, (full, token: string) => {
-      if (full.includes("PRIVATE KEY")) {
-        const lines = full.trim().split("\n");
-        return lines.length >= 2 ? `${lines[0]}\n...redacted...\n${lines[lines.length - 1]}` : "***PRIVATE KEY***";
-      }
       if (typeof token !== "string") {
         return "***";
       }
@@ -196,7 +284,9 @@ function sanitizePrimitive(value: unknown): Primitive | undefined {
     const trimmed = value.trim();
     if (!trimmed) return undefined;
     const redacted = redactSecrets(trimmed);
-    return redacted.length > MAX_STRING_VALUE ? `${redacted.slice(0, MAX_STRING_VALUE)}...` : redacted;
+    return redacted.length > MAX_STRING_VALUE
+      ? `${redacted.slice(0, MAX_STRING_VALUE)}...`
+      : redacted;
   }
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : undefined;
@@ -210,7 +300,9 @@ function sanitizePrimitive(value: unknown): Primitive | undefined {
     const json = JSON.stringify(value);
     if (!json) return undefined;
     const redacted = redactSecrets(json);
-    return redacted.length > MAX_STRING_VALUE ? `${redacted.slice(0, MAX_STRING_VALUE)}...` : redacted;
+    return redacted.length > MAX_STRING_VALUE
+      ? `${redacted.slice(0, MAX_STRING_VALUE)}...`
+      : redacted;
   } catch {
     return undefined;
   }
@@ -234,7 +326,8 @@ function contextToAttributes(context: LogContext): LogAttributes {
     "app.agent.id": context.agentId,
     "app.platform": context.platform,
     "app.request.id": context.requestId,
-    "messaging.system": context.platform === "slack" ? "slack" : context.platform,
+    "messaging.system":
+      context.platform === "slack" ? "slack" : context.platform,
     "messaging.message.conversation_id": context.slackThreadId,
     "messaging.destination.name": context.slackChannelId,
     "enduser.id": context.slackUserId,
@@ -246,7 +339,7 @@ function contextToAttributes(context: LogContext): LogAttributes {
     "http.request.method": context.httpMethod,
     "url.path": context.httpPath,
     "url.full": context.urlFull,
-    "user_agent.original": context.userAgent
+    "user_agent.original": context.userAgent,
   };
 
   const normalized: LogAttributes = {};
@@ -259,7 +352,10 @@ function contextToAttributes(context: LogContext): LogAttributes {
 
 function getTraceCorrelationAttributes(): LogAttributes {
   const sentry = Sentry as unknown as SentryLike;
-  if (typeof sentry.getActiveSpan !== "function" || typeof sentry.spanToJSON !== "function") {
+  if (
+    typeof sentry.getActiveSpan !== "function" ||
+    typeof sentry.spanToJSON !== "function"
+  ) {
     return {};
   }
 
@@ -276,7 +372,9 @@ function getTraceCorrelationAttributes(): LogAttributes {
   }
 }
 
-function mergeAttributes(...maps: Array<Record<string, unknown> | undefined>): LogAttributes {
+function mergeAttributes(
+  ...maps: Array<Record<string, unknown> | undefined>
+): LogAttributes {
   const merged: LogAttributes = {};
   for (const map of maps) {
     if (!map) continue;
@@ -291,7 +389,11 @@ function mergeAttributes(...maps: Array<Record<string, unknown> | undefined>): L
   return merged;
 }
 
-function emitSentry(level: LogLevel, body: string, attributes: LogAttributes): void {
+function emitSentry(
+  level: LogLevel,
+  body: string,
+  attributes: LogAttributes,
+): void {
   if (shouldSuppressInfoLog(level)) {
     return;
   }
@@ -303,13 +405,25 @@ function emitSentry(level: LogLevel, body: string, attributes: LogAttributes): v
     return;
   }
 
-  const sentryWithScope = (sentry as unknown as { withScope?: (callback: (scope: Sentry.Scope) => void) => void }).withScope;
-  const sentryCaptureMessage = (sentry as unknown as {
-    captureMessage?: (message: string, level?: "debug" | "info" | "warning" | "error") => void;
-  }).captureMessage;
+  const sentryWithScope = (
+    sentry as unknown as {
+      withScope?: (callback: (scope: Sentry.Scope) => void) => void;
+    }
+  ).withScope;
+  const sentryCaptureMessage = (
+    sentry as unknown as {
+      captureMessage?: (
+        message: string,
+        level?: "debug" | "info" | "warning" | "error",
+      ) => void;
+    }
+  ).captureMessage;
   const sentryLevel = level === "warn" ? "warning" : level;
 
-  if (typeof sentryWithScope === "function" && typeof sentryCaptureMessage === "function") {
+  if (
+    typeof sentryWithScope === "function" &&
+    typeof sentryCaptureMessage === "function"
+  ) {
     sentryWithScope((scope) => {
       for (const [key, value] of Object.entries(attributes)) {
         scope.setExtra(key, value);
@@ -358,25 +472,164 @@ function formatConsoleValue(value: AttributeValue): string {
   return quoteConsoleValue(value);
 }
 
-function formatConsoleLine(level: LogLevel, body: string, attributes: LogAttributes): string {
+function shouldShowConsoleDestinationName(eventName: string): boolean {
+  return /^(app_home_|oauth_|queue_|slash_command_|slack_|webhook_)/.test(
+    eventName,
+  );
+}
+
+function shouldShowConsoleModel(level: LogLevel, eventName: string): boolean {
+  if (level === "warn" || level === "error") {
+    return true;
+  }
+
+  return (
+    eventName.startsWith("ai_") ||
+    eventName.startsWith("assistant_") ||
+    eventName === "agent_turn_started" ||
+    eventName === "agent_turn_completed" ||
+    eventName === "agent_turn_provider_error"
+  );
+}
+
+function shouldHideConsoleAttribute(
+  level: LogLevel,
+  eventName: string,
+  key: string,
+  attributes: LogAttributes,
+): boolean {
+  if (CONSOLE_ALWAYS_HIDDEN_KEYS.has(key)) {
+    return true;
+  }
+  if (CONSOLE_DROP_WHEN_COUNTED_KEYS.has(key)) {
+    return true;
+  }
+  if (key === "app.agent.id" && attributes[key] === attributes["app.turn.id"]) {
+    return true;
+  }
+  if (
+    key === "messaging.message.conversation_id" &&
+    attributes[key] === attributes["app.conversation.id"]
+  ) {
+    return true;
+  }
+  if (
+    key === "app.message.id" &&
+    attributes[key] === attributes["messaging.message.id"]
+  ) {
+    return true;
+  }
+  if (
+    key === "messaging.destination.name" &&
+    !shouldShowConsoleDestinationName(eventName)
+  ) {
+    return true;
+  }
+  if (
+    key === "gen_ai.request.model" &&
+    !shouldShowConsoleModel(level, eventName)
+  ) {
+    return true;
+  }
+  if (
+    key === "gen_ai.provider.name" &&
+    eventName.startsWith("agent_tool_call_") &&
+    level !== "warn" &&
+    level !== "error"
+  ) {
+    return true;
+  }
+  if (
+    key === "gen_ai.operation.name" &&
+    eventName.startsWith("agent_tool_call_")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function summarizeConsoleString(value: string, maxChars: number): string {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= maxChars) {
+    return collapsed;
+  }
+  return `${collapsed.slice(0, maxChars)}... [${collapsed.length} chars]`;
+}
+
+function projectConsoleValue(
+  level: LogLevel,
+  key: string,
+  value: AttributeValue,
+): AttributeValue | undefined {
+  if (
+    (level === "debug" || level === "info") &&
+    CONSOLE_PREVIEW_KEYS.has(key) &&
+    typeof value === "string"
+  ) {
+    return summarizeConsoleString(
+      value,
+      key === "gen_ai.tool.call.result" ? 220 : 140,
+    );
+  }
+
+  return value;
+}
+
+function projectConsoleAttributes(
+  level: LogLevel,
+  eventName: string,
+  attributes: LogAttributes,
+): LogAttributes {
+  const projected: LogAttributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (shouldHideConsoleAttribute(level, eventName, key, attributes)) {
+      continue;
+    }
+
+    const nextValue = projectConsoleValue(level, key, value);
+    if (nextValue !== undefined) {
+      projected[key] = nextValue;
+    }
+  }
+
+  return projected;
+}
+
+function formatConsoleLine(
+  level: LogLevel,
+  eventName: string,
+  body: string,
+  attributes: LogAttributes,
+): string {
   const timestamp = new Date().toISOString();
-  const useColor = process.env.NODE_ENV === "development" && Boolean(process.stdout?.isTTY);
+  const useColor =
+    process.env.NODE_ENV === "development" && Boolean(process.stdout?.isTTY);
   const levelColor = consoleLevelColor(level);
-  const colorize = (text: string, color: string) => (useColor ? `${color}${text}${ANSI.reset}` : text);
+  const colorize = (text: string, color: string) =>
+    useColor ? `${color}${text}${ANSI.reset}` : text;
 
   const parts = [
-    `${colorize(timestamp, ANSI.gray)} ${colorize(formatConsoleLevel(level), levelColor)} ${body}`
+    `${colorize(timestamp, ANSI.gray)} ${colorize(formatConsoleLevel(level), levelColor)} ${body}`,
   ];
-  const sortedAttributes = Object.entries(attributes).sort(([left], [right]) => {
-    const leftRank = CONSOLE_PRIORITY_INDEX.get(left);
-    const rightRank = CONSOLE_PRIORITY_INDEX.get(right);
-    if (leftRank !== undefined || rightRank !== undefined) {
-      if (leftRank === undefined) return 1;
-      if (rightRank === undefined) return -1;
-      return leftRank - rightRank;
-    }
-    return left.localeCompare(right);
-  });
+  const projectedAttributes = projectConsoleAttributes(
+    level,
+    eventName,
+    attributes,
+  );
+  const sortedAttributes = Object.entries(projectedAttributes).sort(
+    ([left], [right]) => {
+      const leftRank = CONSOLE_PRIORITY_INDEX.get(left);
+      const rightRank = CONSOLE_PRIORITY_INDEX.get(right);
+      if (leftRank !== undefined || rightRank !== undefined) {
+        if (leftRank === undefined) return 1;
+        if (rightRank === undefined) return -1;
+        return leftRank - rightRank;
+      }
+      return left.localeCompare(right);
+    },
+  );
   for (const [key, value] of sortedAttributes) {
     const rendered = `${colorize(key, ANSI.cyan)}=${colorize(formatConsoleValue(value), ANSI.faint)}`;
     parts.push(rendered);
@@ -384,12 +637,17 @@ function formatConsoleLine(level: LogLevel, body: string, attributes: LogAttribu
   return parts.join(" ");
 }
 
-function emitConsole(level: LogLevel, _eventName: string, body: string, attributes: LogAttributes): void {
+function emitConsole(
+  level: LogLevel,
+  eventName: string,
+  body: string,
+  attributes: LogAttributes,
+): void {
   if (!shouldEmitConsole(level)) {
     return;
   }
 
-  const line = formatConsoleLine(level, body, attributes);
+  const line = formatConsoleLine(level, eventName, body, attributes);
   if (level === "error") {
     console.error(line);
     return;
@@ -405,19 +663,20 @@ function emitConsole(level: LogLevel, _eventName: string, body: string, attribut
   console.debug(line);
 }
 
-function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown> = {}, body?: string): void {
+function emit(
+  level: LogLevel,
+  eventName: string,
+  attrs: Record<string, unknown> = {},
+  body?: string,
+): void {
   const contextAttributes = contextStorage.getStore() ?? {};
   const traceAttributes = getTraceCorrelationAttributes();
   const normalizedEventName = toSnakeCase(eventName);
   const message = body ? redactSecrets(body) : normalizedEventName;
-  const attributes = mergeAttributes(
-    contextAttributes,
-    traceAttributes,
-    {
-      "event.name": normalizedEventName,
-      ...attrs
-    }
-  );
+  const attributes = mergeAttributes(contextAttributes, traceAttributes, {
+    "event.name": normalizedEventName,
+    ...attrs,
+  });
 
   for (const sink of logRecordSinks) {
     try {
@@ -425,7 +684,7 @@ function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown>
         level,
         eventName: normalizedEventName,
         body: message,
-        attributes
+        attributes,
       });
     } catch {
       // Test-only sink failures must not break runtime logging.
@@ -437,40 +696,76 @@ function emit(level: LogLevel, eventName: string, attrs: Record<string, unknown>
 }
 
 export const log = {
-  debug(eventName: string, attrs: Record<string, unknown> = {}, body?: string): void {
+  debug(
+    eventName: string,
+    attrs: Record<string, unknown> = {},
+    body?: string,
+  ): void {
     emit("debug", eventName, attrs, body);
   },
-  info(eventName: string, attrs: Record<string, unknown> = {}, body?: string): void {
+  info(
+    eventName: string,
+    attrs: Record<string, unknown> = {},
+    body?: string,
+  ): void {
     emit("info", eventName, attrs, body);
   },
-  warn(eventName: string, attrs: Record<string, unknown> = {}, body?: string): void {
+  warn(
+    eventName: string,
+    attrs: Record<string, unknown> = {},
+    body?: string,
+  ): void {
     emit("warn", eventName, attrs, body);
   },
-  error(eventName: string, attrs: Record<string, unknown> = {}, body?: string): void {
+  error(
+    eventName: string,
+    attrs: Record<string, unknown> = {},
+    body?: string,
+  ): void {
     emit("error", eventName, attrs, body);
   },
-  exception(eventName: string, error: unknown, attrs: Record<string, unknown> = {}, body?: string): string | undefined {
-    const normalizedError = error instanceof Error ? error : new Error(String(error));
-    emit("error", eventName, {
-      ...attrs,
-      "error.type": normalizedError.name,
-      "error.message": normalizedError.message,
-      "exception.type": normalizedError.name,
-      "exception.message": normalizedError.message,
-      "exception.stacktrace": normalizedError.stack
-    }, body ?? normalizedError.message);
+  exception(
+    eventName: string,
+    error: unknown,
+    attrs: Record<string, unknown> = {},
+    body?: string,
+  ): string | undefined {
+    const normalizedError =
+      error instanceof Error ? error : new Error(String(error));
+    emit(
+      "error",
+      eventName,
+      {
+        ...attrs,
+        "error.type": normalizedError.name,
+        "error.message": normalizedError.message,
+        "exception.type": normalizedError.name,
+        "exception.message": normalizedError.message,
+        "exception.stacktrace": normalizedError.stack,
+      },
+      body ?? normalizedError.message,
+    );
 
     let eventId: string | undefined;
-    const sentryWithScope = (Sentry as unknown as {
-      withScope?: (callback: (scope: Sentry.Scope) => void) => void;
-    }).withScope;
-    const sentryCaptureException = (Sentry as unknown as {
-      captureException?: (error: unknown) => string | undefined;
-    }).captureException;
+    const sentryWithScope = (
+      Sentry as unknown as {
+        withScope?: (callback: (scope: Sentry.Scope) => void) => void;
+      }
+    ).withScope;
+    const sentryCaptureException = (
+      Sentry as unknown as {
+        captureException?: (error: unknown) => string | undefined;
+      }
+    ).captureException;
 
-    if (typeof sentryWithScope === "function" && typeof sentryCaptureException === "function") {
+    if (
+      typeof sentryWithScope === "function" &&
+      typeof sentryCaptureException === "function"
+    ) {
       sentryWithScope((scope) => {
-        for (const [key, value] of Object.entries(mergeAttributes(contextStorage.getStore(), attrs))) {
+        for (const [key, value] of Object.entries(
+          mergeAttributes(contextStorage.getStore(), attrs),
+        )) {
           scope.setExtra(key, value);
         }
         eventId = sentryCaptureException(normalizedError);
@@ -482,16 +777,25 @@ export const log = {
       eventId = sentryCaptureException(normalizedError);
     }
     return eventId;
-  }
+  },
 };
 
-export function withLogContext<T>(context: LogContext, callback: () => Promise<T>): Promise<T> {
-  const next = mergeAttributes(contextStorage.getStore(), contextToAttributes(context));
+export function withLogContext<T>(
+  context: LogContext,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const next = mergeAttributes(
+    contextStorage.getStore(),
+    contextToAttributes(context),
+  );
   return contextStorage.run(next, callback);
 }
 
 export function setLogContext(context: LogContext): void {
-  const merged = mergeAttributes(contextStorage.getStore(), contextToAttributes(context));
+  const merged = mergeAttributes(
+    contextStorage.getStore(),
+    contextToAttributes(context),
+  );
   contextStorage.enterWith(merged);
 }
 
@@ -499,29 +803,37 @@ export function getLogContextAttributes(): LogAttributes {
   return contextStorage.getStore() ?? {};
 }
 
-export function registerLogRecordSink(sink: (record: EmittedLogRecord) => void): () => void {
+export function registerLogRecordSink(
+  sink: (record: EmittedLogRecord) => void,
+): () => void {
   logRecordSinks.add(sink);
   return () => {
     logRecordSinks.delete(sink);
   };
 }
 
-export function createLogContextFromRequest(request: Request, context: Partial<LogContext> = {}): LogContext {
+export function createLogContextFromRequest(
+  request: Request,
+  context: Partial<LogContext> = {},
+): LogContext {
   const url = new URL(request.url);
   return {
     ...context,
-    requestId: context.requestId ?? request.headers.get("x-request-id") ?? undefined,
+    requestId:
+      context.requestId ?? request.headers.get("x-request-id") ?? undefined,
     httpMethod: request.method,
     httpPath: url.pathname,
     urlFull: url.toString(),
-    userAgent: request.headers.get("user-agent") ?? undefined
+    userAgent: request.headers.get("user-agent") ?? undefined,
   };
 }
 
 export function toSpanAttributes(context: LogContext): Record<string, string> {
   const attrs = contextToAttributes(context);
   return Object.fromEntries(
-    Object.entries(attrs).filter(([, value]) => typeof value === "string" && value.length > 0)
+    Object.entries(attrs).filter(
+      ([, value]) => typeof value === "string" && value.length > 0,
+    ),
   ) as Record<string, string>;
 }
 
@@ -533,11 +845,17 @@ export function setSentryTagsFromContext(context: LogContext): void {
     }
   }
   if (context.slackUserId) {
-    Sentry.setUser({ id: context.slackUserId, username: context.slackUserName });
+    Sentry.setUser({
+      id: context.slackUserId,
+      username: context.slackUserName,
+    });
   }
 }
 
-export function setSentryScopeContext(scope: Sentry.Scope, context: LogContext): void {
+export function setSentryScopeContext(
+  scope: Sentry.Scope,
+  context: LogContext,
+): void {
   const attrs = contextToAttributes(context);
   for (const [key, value] of Object.entries(attrs)) {
     if (typeof value === "string" && value.length > 0) {

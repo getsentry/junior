@@ -264,6 +264,16 @@ export function createAppSlackRuntime<
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
+        if (isRetryableTurnError(error, "mcp_auth_resume")) {
+          deps.logException(
+            error,
+            "mention_handler_auth_pause",
+            errorContext,
+            { "app.turn.retryable_reason": error.reason },
+            "onNewMention parked turn for MCP auth resume",
+          );
+          return;
+        }
         if (isRetryableTurnError(error)) {
           deps.logException(
             error,
@@ -438,6 +448,16 @@ export function createAppSlackRuntime<
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
+        if (isRetryableTurnError(error, "mcp_auth_resume")) {
+          deps.logException(
+            error,
+            "subscribed_message_handler_auth_pause",
+            errorContext,
+            { "app.turn.retryable_reason": error.reason },
+            "onSubscribedMessage parked turn for MCP auth resume",
+          );
+          return;
+        }
         if (isRetryableTurnError(error)) {
           deps.logException(
             error,

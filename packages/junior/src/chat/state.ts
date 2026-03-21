@@ -152,6 +152,7 @@ export type AgentTurnSessionStatus =
   | "awaiting_resume"
   | "completed"
   | "failed";
+export type AgentTurnResumeReason = "timeout" | "auth";
 
 export interface QueueMessageProcessingState {
   status: QueueMessageProcessingStatus;
@@ -165,7 +166,9 @@ export interface AgentTurnSessionCheckpoint {
   checkpointVersion: number;
   conversationId: string;
   errorMessage?: string;
+  loadedSkillNames?: string[];
   piMessages: unknown[];
+  resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
   sessionId: string;
   sliceId: number;
@@ -270,6 +273,16 @@ function parseAgentTurnSessionCheckpoint(
       state: status,
       updatedAtMs,
       piMessages: Array.isArray(parsed.piMessages) ? parsed.piMessages : [],
+      ...(Array.isArray(parsed.loadedSkillNames)
+        ? {
+            loadedSkillNames: parsed.loadedSkillNames.filter(
+              (value): value is string => typeof value === "string",
+            ),
+          }
+        : {}),
+      ...(parsed.resumeReason === "timeout" || parsed.resumeReason === "auth"
+        ? { resumeReason: parsed.resumeReason }
+        : {}),
       ...(typeof parsed.errorMessage === "string"
         ? { errorMessage: parsed.errorMessage }
         : {}),
@@ -461,6 +474,8 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   sliceId: number;
   state: AgentTurnSessionStatus;
   piMessages: unknown[];
+  loadedSkillNames?: string[];
+  resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
   ttlMs?: number;
@@ -479,6 +494,14 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
     state: args.state,
     updatedAtMs: Date.now(),
     piMessages: Array.isArray(args.piMessages) ? args.piMessages : [],
+    ...(Array.isArray(args.loadedSkillNames)
+      ? {
+          loadedSkillNames: args.loadedSkillNames.filter(
+            (value): value is string => typeof value === "string",
+          ),
+        }
+      : {}),
+    ...(args.resumeReason ? { resumeReason: args.resumeReason } : {}),
     ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
     ...(typeof args.resumedFromSliceId === "number"
       ? { resumedFromSliceId: args.resumedFromSliceId }

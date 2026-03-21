@@ -5,9 +5,13 @@ import { parseRepoTarget } from "@/chat/capabilities/target";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { logInfo } from "@/chat/observability";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import {
+  getPluginOAuthConfig,
+  isPluginProvider,
+} from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
 
 type JrRpcDeps = {
@@ -151,7 +155,7 @@ async function handleIssueCredentialCommand(
               ? `I need to connect your ${providerLabel} account first. I've sent you a private authorization link.`
               : `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try your command again.`,
           },
-          exitCode: 1,
+          exitCode: 0,
         });
       }
       // OAuth start failed — surface the specific misconfiguration error
@@ -364,7 +368,10 @@ async function handleConfigCommand(
 }
 
 function isKnownProvider(provider: string): boolean {
-  return listCapabilityProviders().some((p) => p.provider === provider);
+  return (
+    listCapabilityProviders().some((p) => p.provider === provider) ||
+    isPluginProvider(provider)
+  );
 }
 
 async function handleOAuthStartCommand(
@@ -476,7 +483,7 @@ async function handleDeleteTokenCommand(
     });
   }
 
-  await deps.userTokenStore.delete(deps.requesterId, provider);
+  await unlinkProvider(deps.requesterId, provider, deps.userTokenStore);
 
   logInfo(
     "jr_rpc_delete_token",

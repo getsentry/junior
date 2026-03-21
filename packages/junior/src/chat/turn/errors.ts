@@ -1,4 +1,6 @@
-export type RetryableTurnReason = "agent_turn_timeout_resume";
+export type RetryableTurnReason =
+  | "agent_turn_timeout_resume"
+  | "mcp_auth_resume";
 
 export class RetryableTurnError extends Error {
   readonly code = "retryable_turn";
@@ -11,7 +13,10 @@ export class RetryableTurnError extends Error {
   }
 }
 
-export function isRetryableTurnError(error: unknown, reason?: RetryableTurnReason): error is RetryableTurnError {
+export function isRetryableTurnError(
+  error: unknown,
+  reason?: RetryableTurnReason,
+): error is RetryableTurnError {
   if (!(error instanceof RetryableTurnError)) {
     return false;
   }

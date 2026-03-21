@@ -1,7 +1,11 @@
 import type { Chat } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
-import type { AppRuntimeAssistantLifecycleEvent, AppSlackRuntime } from "@/chat/app-runtime";
+import type {
+  AppRuntimeAssistantLifecycleEvent,
+  AppSlackRuntime,
+} from "@/chat/app-runtime";
 import { getUserTokenStore } from "@/chat/capabilities/factory";
+import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { logException, withSpan } from "@/chat/observability";
 import { publishAppHomeView } from "@/chat/app-home";
 import { handleSlashCommand } from "@/chat/slash-command";
@@ -16,10 +20,10 @@ export function registerBotHandlers(args: {
   bot.onNewMention(appSlackRuntime.handleNewMention);
   bot.onSubscribedMessage(appSlackRuntime.handleSubscribedMessage);
   bot.onAssistantThreadStarted((event: AppRuntimeAssistantLifecycleEvent) =>
-    appSlackRuntime.handleAssistantThreadStarted(event)
+    appSlackRuntime.handleAssistantThreadStarted(event),
   );
   bot.onAssistantContextChanged((event: AppRuntimeAssistantLifecycleEvent) =>
-    appSlackRuntime.handleAssistantContextChanged(event)
+    appSlackRuntime.handleAssistantContextChanged(event),
   );
 
   bot.onSlashCommand("/jr", (event) =>
@@ -31,11 +35,13 @@ export function registerBotHandlers(args: {
         try {
           await handleSlashCommand(event);
         } catch (error) {
-          logException(error, "slash_command_failed", { slackUserId: event.user.userId });
+          logException(error, "slash_command_failed", {
+            slackUserId: event.user.userId,
+          });
           throw error;
         }
-      }
-    )
+      },
+    ),
   );
 
   bot.onAppHomeOpened((event) =>
@@ -45,12 +51,18 @@ export function registerBotHandlers(args: {
       { slackUserId: event.userId },
       async () => {
         try {
-          await publishAppHomeView(getSlackClient(), event.userId, getUserTokenStore());
+          await publishAppHomeView(
+            getSlackClient(),
+            event.userId,
+            getUserTokenStore(),
+          );
         } catch (error) {
-          logException(error, "app_home_opened_failed", { slackUserId: event.userId });
+          logException(error, "app_home_opened_failed", {
+            slackUserId: event.userId,
+          });
         }
-      }
-    )
+      },
+    ),
   );
 
   bot.onAction("app_home_disconnect", async (event) => {
@@ -63,14 +75,23 @@ export function registerBotHandlers(args: {
       { slackUserId: userId },
       async () => {
         try {
-          await getUserTokenStore().delete(userId, provider);
-          await publishAppHomeView(getSlackClient(), userId, getUserTokenStore());
+          await unlinkProvider(userId, provider, getUserTokenStore());
+          await publishAppHomeView(
+            getSlackClient(),
+            userId,
+            getUserTokenStore(),
+          );
         } catch (error) {
-          logException(error, "app_home_disconnect_failed", { slackUserId: userId }, {
-            "app.credential.provider": provider
-          });
+          logException(
+            error,
+            "app_home_disconnect_failed",
+            { slackUserId: userId },
+            {
+              "app.credential.provider": provider,
+            },
+          );
         }
-      }
+      },
     );
   });
 }

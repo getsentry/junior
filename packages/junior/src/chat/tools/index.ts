@@ -4,6 +4,7 @@ import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/image-generate";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
 import { createReadFileTool } from "@/chat/tools/read-file";
+import { createSearchToolsTool } from "@/chat/tools/search-tools";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
@@ -14,6 +15,7 @@ import { createSlackListCreateTool } from "@/chat/tools/slack-list-create";
 import { createSlackListGetItemsTool } from "@/chat/tools/slack-list-get-items";
 import { createSlackListUpdateItemTool } from "@/chat/tools/slack-list-update-item";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
+import { createUseToolTool } from "@/chat/tools/use-tool";
 import type {
   ToolHooks,
   ToolRuntimeContext,
@@ -154,6 +156,19 @@ export function createTools(
       hooks,
     ),
   };
+
+  if (context.mcpToolManager && context.getActiveSkills) {
+    tools.searchTools = wrapToolExecution(
+      "searchTools",
+      createSearchToolsTool(context.mcpToolManager, context.getActiveSkills),
+      hooks,
+    );
+    tools.useTool = wrapToolExecution(
+      "useTool",
+      createUseToolTool(context.mcpToolManager, context.getActiveSkills),
+      hooks,
+    );
+  }
 
   if (isConversationScopedChannel(context.channelId)) {
     tools.slackCanvasCreate = wrapToolExecution(

@@ -306,6 +306,108 @@ async function writePackagedPluginWithForbiddenApiHeader(
   );
 }
 
+async function writePackagedPluginWithMcp(tempRoot: string): Promise<void> {
+  const packageRoot = path.join(
+    tempRoot,
+    "node_modules",
+    "@acme",
+    "junior-plugin-mcp",
+  );
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo MCP plugin",
+      "mcp:",
+      "  transport: http",
+      "  url: https://mcp.example.com",
+      "  headers:",
+      '    X-Workspace: "acme"',
+      "  allowed-tools:",
+      "    - search",
+      "    - fetch",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+async function writePackagedPluginWithInvalidMcpAllowedTools(
+  tempRoot: string,
+): Promise<void> {
+  const packageRoot = path.join(
+    tempRoot,
+    "node_modules",
+    "@acme",
+    "junior-plugin-mcp-invalid-allowed-tools",
+  );
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo MCP plugin",
+      "mcp:",
+      "  transport: http",
+      "  url: https://mcp.example.com",
+      '  allowed-tools: "search"',
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+async function writePackagedPluginWithForbiddenMcpHeader(
+  tempRoot: string,
+): Promise<void> {
+  const packageRoot = path.join(
+    tempRoot,
+    "node_modules",
+    "@acme",
+    "junior-plugin-mcp-forbidden-header",
+  );
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo MCP plugin",
+      "mcp:",
+      "  transport: http",
+      "  url: https://mcp.example.com",
+      "  headers:",
+      '    Authorization: "Bearer nope"',
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+async function writePackagedPluginWithInvalidMcpTransport(
+  tempRoot: string,
+): Promise<void> {
+  const packageRoot = path.join(
+    tempRoot,
+    "node_modules",
+    "@acme",
+    "junior-plugin-mcp-invalid-transport",
+  );
+  const skillsDir = path.join(packageRoot, "skills", "demo");
+  await fs.mkdir(skillsDir, { recursive: true });
+  await fs.writeFile(
+    path.join(packageRoot, "plugin.yaml"),
+    [
+      "name: demo",
+      "description: Demo MCP plugin",
+      "mcp:",
+      "  transport: stdio",
+      "  url: https://mcp.example.com",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
 async function writeBundlingOnlyPlugin(tempRoot: string): Promise<void> {
   const packageRoot = path.join(
     tempRoot,
@@ -700,6 +802,128 @@ describe("plugin registry package discovery", () => {
 
     await expect(import("@/chat/plugins/registry")).rejects.toThrow(
       "Plugin demo credentials.api-headers.Authorization is not allowed",
+    );
+  });
+
+  it("parses HTTP MCP configuration from packaged plugins", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-package-"),
+    );
+    await writePackagedPluginWithMcp(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-mcp": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => [],
+    }));
+
+    const registry = await import("@/chat/plugins/registry");
+    const provider = registry.getPluginProviders()[0];
+    expect(provider?.manifest.mcp).toEqual({
+      transport: "http",
+      url: "https://mcp.example.com",
+      headers: {
+        "X-Workspace": "acme",
+      },
+      allowedTools: ["search", "fetch"],
+    });
+    expect(
+      registry.getPluginMcpProviders().map((plugin) => plugin.manifest.name),
+    ).toEqual(["demo"]);
+  });
+
+  it("rejects invalid MCP allowed-tools declarations", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-package-"),
+    );
+    await writePackagedPluginWithInvalidMcpAllowedTools(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-mcp-invalid-allowed-tools": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => [],
+    }));
+
+    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+      "Plugin demo mcp.allowed-tools must be an array of strings when provided",
+    );
+  });
+
+  it("rejects Authorization in plugin MCP headers", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-package-"),
+    );
+    await writePackagedPluginWithForbiddenMcpHeader(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-mcp-forbidden-header": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => [],
+    }));
+
+    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+      "Plugin demo mcp.headers.Authorization is not allowed",
+    );
+  });
+
+  it("rejects non-http MCP transports", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-package-"),
+    );
+    await writePackagedPluginWithInvalidMcpTransport(tempRoot);
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-mcp-invalid-transport": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/home", () => ({
+      pluginRoots: () => [],
+    }));
+
+    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+      'Plugin demo mcp.transport must be "http"',
     );
   });
 });

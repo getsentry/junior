@@ -147,6 +147,7 @@ runtime-postinstall:
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
 - `mcp`: optional MCP server configuration for provider-scoped tool sources
+- `mcp.allowed-tools`: optional raw MCP tool-name allowlist when a plugin should expose only part of a provider's tool surface
 
 ### Add skills to the plugin
 

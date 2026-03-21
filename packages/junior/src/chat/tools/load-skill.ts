@@ -4,6 +4,7 @@ import type { Sandbox } from "@vercel/sandbox";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import { stripFrontmatter } from "@/chat/skill-frontmatter";
 import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { ExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
 
 export type LoadSkillResult = {
   ok?: boolean;
@@ -14,9 +15,19 @@ export type LoadSkillResult = {
   skill_dir?: string;
   location?: string;
   instructions?: string;
+  available_tools?: ExposedToolSummary[];
+  tool_search_available?: boolean;
 };
 
-function toLoadedSkill(result: LoadSkillResult): Skill | null {
+export type LoadSkillMetadata = Pick<
+  LoadSkillResult,
+  "available_tools" | "tool_search_available"
+>;
+
+function toLoadedSkill(
+  result: LoadSkillResult,
+  availableSkills: SkillMetadata[],
+): Skill | null {
   if (
     result.ok !== true ||
     typeof result.skill_name !== "string" ||
@@ -27,10 +38,21 @@ function toLoadedSkill(result: LoadSkillResult): Skill | null {
     return null;
   }
 
+  const metadata =
+    availableSkills.find((skill) => skill.name === result.skill_name) ?? null;
+
   return {
     name: result.skill_name,
     description: result.description,
     skillPath: result.skill_dir,
+    ...(metadata?.pluginProvider
+      ? { pluginProvider: metadata.pluginProvider }
+      : {}),
+    ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : {}),
+    ...(metadata?.requiresCapabilities
+      ? { requiresCapabilities: metadata.requiresCapabilities }
+      : {}),
+    ...(metadata?.usesConfig ? { usesConfig: metadata.usesConfig } : {}),
     body: result.instructions,
   };
 }
@@ -73,12 +95,14 @@ export function createLoadSkillTool(
   sandbox: Sandbox,
   availableSkills: SkillMetadata[],
   options?: {
-    onSkillLoaded?: (skill: Skill) => void | Promise<void>;
+    onSkillLoaded?: (
+      skill: Skill,
+    ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
   },
 ) {
   return tool({
     description:
-      "Load a skill by name so its instructions are available for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
+      "Load a skill by name so its instructions are available for this turn. When the skill exposes MCP tools, the result includes `available_tools` with exact tool_name values and argument schemas for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,
@@ -91,9 +115,12 @@ export function createLoadSkillTool(
         availableSkills,
         skill_name,
       );
-      const loadedSkill = toLoadedSkill(result);
+      const loadedSkill = toLoadedSkill(result, availableSkills);
       if (loadedSkill) {
-        await options?.onSkillLoaded?.(loadedSkill);
+        const metadata = await options?.onSkillLoaded?.(loadedSkill);
+        if (metadata) {
+          Object.assign(result, metadata);
+        }
       }
       return result;
     },

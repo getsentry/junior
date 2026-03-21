@@ -1,3 +1,4 @@
+import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
 import { POST as queueCallbackPOST } from "@/handlers/queue-callback";
@@ -12,8 +13,22 @@ type RouteContext = {
  * Keep this router thin and explicit so app code can export one handler module while
  * runtime internals continue to evolve behind it.
  */
+function trimEdgeSlashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+
+  while (start < end && value[start] === "/") {
+    start += 1;
+  }
+  while (end > start && value[end - 1] === "/") {
+    end -= 1;
+  }
+
+  return value.slice(start, end);
+}
+
 function normalizeRoutePath(pathParts: string[]): string {
-  const route = pathParts.join("/").replace(/^\/+|\/+$/g, "");
+  const route = trimEdgeSlashes(pathParts.join("/"));
   return route.startsWith("api/") ? route.slice("api/".length) : route;
 }
 
@@ -23,7 +38,10 @@ function getRoutePathParts(params: unknown): string[] {
   }
 
   const candidate = (params as { path?: unknown }).path;
-  if (!Array.isArray(candidate) || candidate.some((segment) => typeof segment !== "string")) {
+  if (
+    !Array.isArray(candidate) ||
+    candidate.some((segment) => typeof segment !== "string")
+  ) {
     return [];
   }
 
@@ -35,20 +53,32 @@ function getRoutePathParts(params: unknown): string[] {
  *
  * Supported routes:
  * - `api/health`
+ * - `api/oauth/callback/mcp/:provider`
  * - `api/oauth/callback/:provider`
  */
-export async function GET(request: Request, context: RouteContext): Promise<Response> {
+export async function GET(
+  request: Request,
+  context: RouteContext,
+): Promise<Response> {
   const route = normalizeRoutePath(getRoutePathParts(await context.params));
 
   if (route === "health") {
     return healthGET();
   }
 
+  const mcpOauthCallbackMatch = route.match(/^oauth\/callback\/mcp\/([^/]+)$/);
+  if (mcpOauthCallbackMatch) {
+    const provider = mcpOauthCallbackMatch[1];
+    return mcpOauthCallbackGET(request, {
+      params: Promise.resolve({ provider }),
+    });
+  }
+
   const oauthCallbackMatch = route.match(/^oauth\/callback\/([^/]+)$/);
   if (oauthCallbackMatch) {
     const provider = oauthCallbackMatch[1];
     return oauthCallbackGET(request, {
-      params: Promise.resolve({ provider })
+      params: Promise.resolve({ provider }),
     });
   }
 
@@ -65,7 +95,10 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
  * `queue/callback` is routed here for local/dev parity, but production queue triggers
  * should still target the dedicated `app/api/queue/callback/route.ts` endpoint.
  */
-export async function POST(request: Request, context: RouteContext): Promise<Response> {
+export async function POST(
+  request: Request,
+  context: RouteContext,
+): Promise<Response> {
   const route = normalizeRoutePath(getRoutePathParts(await context.params));
 
   if (route === "queue/callback") {
@@ -76,7 +109,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   if (webhookMatch) {
     const platform = webhookMatch[1];
     return webhooksPOST(request, {
-      params: Promise.resolve({ platform })
+      params: Promise.resolve({ platform }),
     });
   }
 

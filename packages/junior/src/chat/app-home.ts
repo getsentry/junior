@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import type { WebClient, KnownBlock, SectionBlock } from "@slack/web-api";
 import { homeDir } from "@/chat/home";
+import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { getPluginProviders } from "@/chat/plugins/registry";
+import type { PluginDefinition } from "@/chat/plugins/types";
 import { discoverSkills } from "@/chat/skills";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { getRuntimeMetadata } from "@/chat/runtime-metadata";
@@ -12,7 +14,8 @@ interface HomeView {
   blocks: KnownBlock[];
 }
 
-const DEFAULT_ABOUT_TEXT = "I help your team investigate, summarize, and act on work in Slack.";
+const DEFAULT_ABOUT_TEXT =
+  "I help your team investigate, summarize, and act on work in Slack.";
 const MAX_HOME_SKILLS = 6;
 const MAX_SECTION_TEXT_CHARS = 3000;
 const HIDDEN_HOME_SKILLS = new Set(["jr-rpc"]);
@@ -38,22 +41,45 @@ function loadAboutText(): string {
 }
 
 async function buildSkillsSummaryText(): Promise<string> {
-  const skills = (await discoverSkills()).filter((skill) => !HIDDEN_HOME_SKILLS.has(skill.name));
+  const skills = (await discoverSkills()).filter(
+    (skill) => !HIDDEN_HOME_SKILLS.has(skill.name),
+  );
   if (skills.length === 0) {
     return "No skills installed.";
   }
 
   const visible = skills.slice(0, MAX_HOME_SKILLS);
-  const lines = visible.map((skill) => `• *${skill.name}* — ${skill.description}`);
+  const lines = visible.map(
+    (skill) => `• *${skill.name}* — ${skill.description}`,
+  );
   if (skills.length > visible.length) {
     lines.push(`• …and ${skills.length - visible.length} more`);
   }
   return lines.join("\n");
 }
 
+async function hasConnectedAccount(
+  userId: string,
+  plugin: PluginDefinition,
+  userTokenStore: UserTokenStore,
+): Promise<boolean> {
+  if (plugin.manifest.credentials?.type === "oauth-bearer") {
+    return Boolean(await userTokenStore.get(userId, plugin.manifest.name));
+  }
+
+  if (plugin.manifest.mcp) {
+    return Boolean(
+      (await getMcpStoredOAuthCredentials(userId, plugin.manifest.name))
+        ?.tokens,
+    );
+  }
+
+  return false;
+}
+
 export async function buildHomeView(
   userId: string,
-  userTokenStore: UserTokenStore
+  userTokenStore: UserTokenStore,
 ): Promise<HomeView> {
   const runtimeMetadata = getRuntimeMetadata();
   const aboutText = loadAboutText();
@@ -62,38 +88,36 @@ export async function buildHomeView(
   const connectedSections: SectionBlock[] = [];
 
   for (const plugin of providers) {
-    if (plugin.manifest.credentials?.type !== "oauth-bearer") continue;
-
-    const tokens = await userTokenStore.get(userId, plugin.manifest.name);
-    if (!tokens) continue;
+    if (!(await hasConnectedAccount(userId, plugin, userTokenStore))) continue;
 
     connectedSections.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*${plugin.manifest.name}*\n${plugin.manifest.description}`
+        text: `*${plugin.manifest.name}*\n${plugin.manifest.description}`,
       },
       accessory: {
         type: "button",
         text: { type: "plain_text", text: "Unlink" },
         action_id: "app_home_disconnect",
         value: plugin.manifest.name,
-        style: "danger"
-      }
+        style: "danger",
+      },
     });
   }
 
-  const accountBlocks: KnownBlock[] = connectedSections.length > 0
-    ? connectedSections
-    : [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "No connected accounts"
-          }
-        }
-      ];
+  const accountBlocks: KnownBlock[] =
+    connectedSections.length > 0
+      ? connectedSections
+      : [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "No connected accounts",
+            },
+          },
+        ];
 
   return {
     type: "home",
@@ -102,38 +126,38 @@ export async function buildHomeView(
         type: "header",
         text: {
           type: "plain_text",
-          text: "Junior"
-        }
+          text: "Junior",
+        },
       },
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: aboutText
-        }
+          text: aboutText,
+        },
       },
       { type: "divider" },
       {
         type: "header",
         text: {
           type: "plain_text",
-          text: "What I can help with"
-        }
+          text: "What I can help with",
+        },
       },
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: skillsSummaryText
-        }
+          text: skillsSummaryText,
+        },
       },
       { type: "divider" },
       {
         type: "header",
         text: {
           type: "plain_text",
-          text: "Connected accounts"
-        }
+          text: "Connected accounts",
+        },
       },
       ...accountBlocks,
       {
@@ -141,18 +165,18 @@ export async function buildHomeView(
         elements: [
           {
             type: "mrkdwn",
-            text: `*junior version:* \`${runtimeMetadata.version ?? "unknown"}\``
-          }
-        ]
-      }
-    ]
+            text: `*junior version:* \`${runtimeMetadata.version ?? "unknown"}\``,
+          },
+        ],
+      },
+    ],
   };
 }
 
 export async function publishAppHomeView(
   slackClient: WebClient,
   userId: string,
-  userTokenStore: UserTokenStore
+  userTokenStore: UserTokenStore,
 ): Promise<void> {
   const view = await buildHomeView(userId, userTokenStore);
   await slackClient.views.publish({ user_id: userId, view });

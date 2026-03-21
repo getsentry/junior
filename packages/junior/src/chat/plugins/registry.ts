@@ -26,8 +26,17 @@ const capabilityToPlugin = new Map<string, PluginDefinition>();
 const pluginConfigKeys = new Set<string>();
 const pluginsByName = new Map<string, PluginDefinition>();
 const packageSkillRoots = new Set<string>();
+let additionalPluginRootsForTests: string[] = [];
 
 let pluginsLoaded = false;
+
+function getLoggedPluginNames(): Set<string> {
+  const globalState = globalThis as typeof globalThis & {
+    __juniorLoggedPluginNames?: Set<string>;
+  };
+  globalState.__juniorLoggedPluginNames ??= new Set<string>();
+  return globalState.__juniorLoggedPluginNames;
+}
 
 function registerPluginManifest(raw: string, pluginDir: string): void {
   const manifest = parsePluginManifest(raw, pluginDir);
@@ -61,12 +70,37 @@ function registerPluginManifest(raw: string, pluginDir: string): void {
   }
 }
 
+function resetLoadedPluginState(): void {
+  pluginDefinitions.length = 0;
+  capabilityToPlugin.clear();
+  pluginConfigKeys.clear();
+  pluginsByName.clear();
+  packageSkillRoots.clear();
+  pluginsLoaded = false;
+}
+
+function normalizePluginRootsForTests(roots: string[]): string[] {
+  const resolved: string[] = [];
+  const seen = new Set<string>();
+
+  for (const root of roots) {
+    const normalized = path.resolve(root);
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    resolved.push(normalized);
+  }
+
+  return resolved;
+}
+
 function loadPlugins(): void {
   if (pluginsLoaded) return;
   pluginsLoaded = true;
 
   const packagedContent = discoverInstalledPluginPackageContent();
-  const localRoots = pluginRoots();
+  const localRoots = [...pluginRoots(), ...additionalPluginRootsForTests];
   const roots = [...localRoots, ...packagedContent.manifestRoots];
   for (const pluginsRoot of roots) {
     let entries: string[];
@@ -141,19 +175,28 @@ function loadPlugins(): void {
     packageSkillRoots.add(skillRoot);
   }
 
-  logInfo(
-    "plugins_loaded",
-    {},
-    {
-      "file.directories": [...localRoots, ...packagedContent.manifestRoots],
-      "app.plugin.count": pluginDefinitions.length,
-      "app.plugin.names": pluginDefinitions
-        .map((plugin) => plugin.manifest.name)
-        .sort(),
-      "app.plugin.package_skill_roots": [...packageSkillRoots].sort(),
-    },
-    "Loaded plugins",
-  );
+  const loggedPluginNames = getLoggedPluginNames();
+  for (const plugin of [...pluginDefinitions].sort((left, right) =>
+    left.manifest.name.localeCompare(right.manifest.name),
+  )) {
+    if (loggedPluginNames.has(plugin.manifest.name)) {
+      continue;
+    }
+    loggedPluginNames.add(plugin.manifest.name);
+    logInfo(
+      "plugin_loaded",
+      {},
+      {
+        "app.plugin.name": plugin.manifest.name,
+        "app.plugin.capability_count": plugin.manifest.capabilities.length,
+        "app.plugin.config_key_count": plugin.manifest.configKeys.length,
+        "app.plugin.has_mcp": Boolean(plugin.manifest.mcp),
+        "file.directory": plugin.dir,
+        "file.skill_directory": plugin.skillsDir,
+      },
+      "Loaded plugin",
+    );
+  }
 }
 
 function ensurePluginsLoaded(): void {
@@ -161,12 +204,13 @@ function ensurePluginsLoaded(): void {
 }
 
 export function resetPluginRegistryForTests(): void {
-  pluginDefinitions.length = 0;
-  capabilityToPlugin.clear();
-  pluginConfigKeys.clear();
-  pluginsByName.clear();
-  packageSkillRoots.clear();
-  pluginsLoaded = false;
+  additionalPluginRootsForTests = [];
+  resetLoadedPluginState();
+}
+
+export function setAdditionalPluginRootsForTests(roots: string[]): void {
+  additionalPluginRootsForTests = normalizePluginRootsForTests(roots);
+  resetLoadedPluginState();
 }
 
 loadPlugins();
@@ -188,6 +232,11 @@ export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
 export function getPluginProviders(): PluginDefinition[] {
   ensurePluginsLoaded();
   return [...pluginDefinitions];
+}
+
+export function getPluginMcpProviders(): PluginDefinition[] {
+  ensurePluginsLoaded();
+  return pluginDefinitions.filter((plugin) => Boolean(plugin.manifest.mcp));
 }
 
 export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
@@ -282,6 +331,28 @@ export function getPluginSkillRoots(): string[] {
       ...packageSkillRoots,
     ]),
   ];
+}
+
+export function getPluginForSkillPath(
+  skillPath: string,
+): PluginDefinition | undefined {
+  ensurePluginsLoaded();
+  const resolvedSkillPath = path.resolve(skillPath);
+
+  return pluginDefinitions.find((plugin) => {
+    const resolvedSkillsDir = path.resolve(plugin.skillsDir);
+    return (
+      resolvedSkillPath === resolvedSkillsDir ||
+      resolvedSkillPath.startsWith(`${resolvedSkillsDir}${path.sep}`)
+    );
+  });
+}
+
+export function getPluginDefinition(
+  provider: string,
+): PluginDefinition | undefined {
+  ensurePluginsLoaded();
+  return pluginsByName.get(provider);
 }
 
 export function isPluginProvider(provider: string): boolean {

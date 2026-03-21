@@ -2,21 +2,43 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Message } from "chat";
 import type { AppRuntimeAssistantLifecycleEvent } from "@/chat/app-runtime";
+import { getUserTokenStore } from "@/chat/capabilities/factory";
 import {
   appSlackRuntime,
   bot,
   resetBotDepsForTests,
   setBotDepsForTests,
 } from "@/chat/bot";
-import { resetPluginRegistryForTests } from "@/chat/plugins/registry";
+import {
+  deleteMcpAuthSessionsForUserProvider,
+  deleteMcpServerSessionId,
+  deleteMcpStoredOAuthCredentials,
+  getLatestMcpAuthSessionForUserProvider,
+} from "@/chat/mcp/auth-store";
+import {
+  getPluginOAuthConfig,
+  setAdditionalPluginRootsForTests,
+} from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
+import { getStateAdapter } from "@/chat/state";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
+import { setPostSlackMessageObserverForTests } from "@/handlers/oauth-resume";
 import {
   FakeSlackAdapter,
   createTestThread,
   type TestThread,
 } from "../tests/fixtures/slack-harness";
+import {
+  EVAL_OAUTH_CODE,
+  EVAL_OAUTH_PROVIDER,
+} from "../tests/msw/handlers/eval-oauth";
+import {
+  EVAL_MCP_AUTH_CODE,
+  EVAL_MCP_AUTH_PROVIDER,
+} from "../tests/msw/handlers/eval-mcp-auth";
+import { runMcpOauthCallbackRoute } from "../tests/fixtures/mcp-oauth-callback-harness";
+import { runOauthCallbackRoute } from "../tests/fixtures/oauth-callback-harness";
 import {
   readCapturedSlackApiCalls,
   type CapturedSlackApiCall,
@@ -79,9 +101,12 @@ interface SubscribedDecisionFixture {
 }
 
 export interface BehaviorCaseConfig {
+  auto_complete_mcp_oauth?: string[];
+  auto_complete_oauth?: string[];
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
   mock_image_generation?: boolean;
+  plugin_dirs?: string[];
   mock_slack_api?: boolean;
   plugin_packages?: string[];
   reply_texts?: string[];
@@ -117,6 +142,7 @@ export interface BehaviorCaseResult {
 const EVAL_PACKAGE_ROOT = path.resolve(
   fileURLToPath(new URL("..", import.meta.url)),
 );
+type HarnessStateAdapter = ReturnType<typeof getStateAdapter>;
 
 function resolveEvalRelativePath(entry: string): string {
   return path.isAbsolute(entry)
@@ -136,6 +162,60 @@ function toFirstString(value: unknown): string | undefined {
     }
   }
   return undefined;
+}
+
+function buildRuntimeThreadId(fixture: BehaviorEventThreadFixture): string {
+  if (fixture.channel_id && fixture.thread_ts) {
+    return `slack:${fixture.channel_id}:${fixture.thread_ts}`;
+  }
+  return fixture.id;
+}
+
+const THREAD_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+async function cleanupHarnessThreadState(
+  stateAdapter: HarnessStateAdapter,
+  events: readonly BehaviorCaseEvent[],
+): Promise<void> {
+  const runtimeThreadIds = new Set(
+    events.map((event) => buildRuntimeThreadId(event.thread)),
+  );
+  const channelIds = new Set(
+    events
+      .map((event) => event.thread.channel_id?.trim())
+      .filter((value): value is string => Boolean(value)),
+  );
+
+  for (const threadId of runtimeThreadIds) {
+    await stateAdapter.delete(`thread-state:${threadId}`);
+  }
+  for (const channelId of channelIds) {
+    await stateAdapter.delete(`channel-state:${channelId}`);
+  }
+}
+
+function createEvalThread(args: {
+  fixture: BehaviorEventThreadFixture;
+  channelStateRef?: { value: Record<string, unknown> };
+  stateAdapter: HarnessStateAdapter;
+}): TestThread {
+  const thread = createTestThread({
+    id: buildRuntimeThreadId(args.fixture),
+    channelId: args.fixture.channel_id,
+    runId: args.fixture.run_id,
+    threadTs: args.fixture.thread_ts,
+    channelStateRef: args.channelStateRef,
+  });
+  const originalSetState = thread.setState.bind(thread);
+  thread.setState = async (next, options) => {
+    await originalSetState(next, options);
+    await args.stateAdapter.set(
+      `thread-state:${thread.id}`,
+      thread.getState(),
+      THREAD_STATE_TTL_MS,
+    );
+  };
+  return thread;
 }
 
 function createMockImageGenerateDeps(): ImageGenerateToolDeps {
@@ -242,6 +322,7 @@ function toPostedText(value: unknown): string {
 }
 
 function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
+  const runtimeThreadId = buildRuntimeThreadId(event.thread);
   // In Slack payloads, `ts` identifies the specific message while `thread_ts`
   // identifies the thread root. Eval fixtures provide unique `message.id` per
   // event, so prefer it for `raw.ts` to avoid collapsing all replies to the
@@ -254,7 +335,7 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     attachments: [],
     metadata: { dateSent: new Date(), edited: false },
     channelId: event.thread.channel_id,
-    threadId: event.thread.id,
+    threadId: runtimeThreadId,
     threadTs: event.thread.thread_ts,
     runId: event.thread.run_id,
     raw: {
@@ -272,10 +353,164 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
   };
 }
 
+async function cleanupMcpAuthState(
+  userIds: Iterable<string>,
+  providers: Iterable<string>,
+): Promise<void> {
+  for (const provider of providers) {
+    for (const userId of userIds) {
+      await deleteMcpAuthSessionsForUserProvider(userId, provider);
+      await deleteMcpStoredOAuthCredentials(userId, provider);
+      await deleteMcpServerSessionId(userId, provider);
+    }
+  }
+}
+
+async function cleanupOAuthTokens(
+  userIds: Iterable<string>,
+  providers: Iterable<string>,
+): Promise<void> {
+  const userTokenStore = getUserTokenStore();
+  for (const provider of providers) {
+    for (const userId of userIds) {
+      await userTokenStore.delete(userId, provider);
+    }
+  }
+}
+
+function getDefaultMcpOauthCode(provider: string): string {
+  if (provider === EVAL_MCP_AUTH_PROVIDER) {
+    return EVAL_MCP_AUTH_CODE;
+  }
+  throw new Error(
+    `No default eval MCP OAuth code configured for provider "${provider}"`,
+  );
+}
+
+async function runMcpOauthCallback(args: {
+  provider: string;
+  requesterUserId: string;
+}): Promise<boolean> {
+  const provider = args.provider.trim() || EVAL_MCP_AUTH_PROVIDER;
+  const requesterUserId = args.requesterUserId || "U-test";
+  const authSession = await getLatestMcpAuthSessionForUserProvider(
+    requesterUserId,
+    provider,
+  );
+
+  if (!authSession) {
+    return false;
+  }
+
+  const response = await runMcpOauthCallbackRoute({
+    provider,
+    state: authSession.authSessionId,
+    code: getDefaultMcpOauthCode(provider),
+  });
+
+  if (response.status !== 200) {
+    throw new Error(
+      `MCP OAuth callback returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  return true;
+}
+
+function extractSlackLinkUrl(text: string): URL | undefined {
+  const match = text.match(/<([^|>]+)\|/);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  try {
+    return new URL(match[1]);
+  } catch {
+    return undefined;
+  }
+}
+
+function findLatestOAuthStateFromSlackCalls(args: {
+  authorizeEndpoint: string;
+  consumedStates: Set<string>;
+}): string | undefined {
+  const expectedUrl = new URL(args.authorizeEndpoint);
+  const calls = readCapturedSlackApiCalls();
+
+  for (let index = calls.length - 1; index >= 0; index -= 1) {
+    const call = calls[index];
+    if (
+      call.method !== "chat.postEphemeral" &&
+      call.method !== "chat.postMessage"
+    ) {
+      continue;
+    }
+    const text = toFirstString(call.params.text);
+    if (!text) {
+      continue;
+    }
+    const authLink = extractSlackLinkUrl(text);
+    if (!authLink) {
+      continue;
+    }
+    if (
+      authLink.origin !== expectedUrl.origin ||
+      authLink.pathname !== expectedUrl.pathname
+    ) {
+      continue;
+    }
+    const state = authLink.searchParams.get("state")?.trim();
+    if (state && !args.consumedStates.has(state)) {
+      return state;
+    }
+  }
+  return undefined;
+}
+
+function getDefaultOAuthCode(provider: string): string {
+  if (provider === EVAL_OAUTH_PROVIDER) {
+    return EVAL_OAUTH_CODE;
+  }
+  throw new Error(
+    `No default eval OAuth code configured for provider "${provider}"`,
+  );
+}
+
+async function runOauthCallback(args: {
+  provider: string;
+  consumedStates: Set<string>;
+}): Promise<boolean> {
+  const provider = args.provider.trim() || EVAL_OAUTH_PROVIDER;
+  const providerConfig = getPluginOAuthConfig(provider);
+  if (!providerConfig) {
+    throw new Error(`Unknown OAuth provider "${provider}" in eval harness`);
+  }
+
+  const state = findLatestOAuthStateFromSlackCalls({
+    authorizeEndpoint: providerConfig.authorizeEndpoint,
+    consumedStates: args.consumedStates,
+  });
+  if (!state) {
+    return false;
+  }
+  const response = await runOauthCallbackRoute({
+    provider,
+    state,
+    code: getDefaultOAuthCode(provider),
+  });
+
+  if (response.status !== 200) {
+    throw new Error(
+      `OAuth callback returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  args.consumedStates.add(state);
+  return true;
+}
+
 export async function runBehaviorEvalCase(
   testCase: BehaviorEvalCase,
 ): Promise<BehaviorCaseResult> {
   const slackAdapter = new FakeSlackAdapter();
+  const resumedChannelPosts: BehaviorCaseResult["channelPosts"] = [];
   const threadsById = new Map<string, TestThread>();
   const channelStateById = new Map<
     string,
@@ -301,12 +536,42 @@ export async function runBehaviorEvalCase(
   const originalEnableTestCredentials =
     process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   const originalTestCredentialToken = process.env.EVAL_TEST_CREDENTIAL_TOKEN;
+  const originalJuniorBaseUrl = process.env.JUNIOR_BASE_URL;
   const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
   const originalSlackBotToken = process.env.SLACK_BOT_TOKEN;
+  const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
   const configuredSkillDirs =
     testCase.behavior?.skill_dirs?.map((entry) =>
       resolveEvalRelativePath(entry),
     ) ?? [];
+  const configuredPluginDirs =
+    testCase.behavior?.plugin_dirs?.map((entry) =>
+      resolveEvalRelativePath(entry),
+    ) ?? [];
+  const autoCompleteMcpOauthProviders = new Set(
+    testCase.behavior?.auto_complete_mcp_oauth?.map((provider) =>
+      provider.trim(),
+    ) ?? [],
+  );
+  const autoCompleteOauthProviders = new Set(
+    testCase.behavior?.auto_complete_oauth?.map((provider) =>
+      provider.trim(),
+    ) ?? [],
+  );
+  const authRequesterUsers = new Set(
+    testCase.events.flatMap((event) =>
+      "message" in event
+        ? [event.message.author?.user_id?.trim() || "U-test"]
+        : event.user_id
+          ? [event.user_id]
+          : [],
+    ),
+  );
+  if (authRequesterUsers.size === 0) {
+    authRequesterUsers.add("U-test");
+  }
+  const consumedOauthStates = new Set<string>();
+  const consumedMcpAuthSessions = new Set<string>();
   if (testCase.behavior?.enable_test_credentials) {
     process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
     if (testCase.behavior?.test_credential_token) {
@@ -317,11 +582,56 @@ export async function runBehaviorEvalCase(
   if (testCase.behavior?.mock_slack_api) {
     process.env.SLACK_BOT_TOKEN = "xoxb-eval-test-token";
   }
+  process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+  process.env.JUNIOR_STATE_ADAPTER = "memory";
   process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
     testCase.behavior?.plugin_packages ?? [],
   );
-  resetPluginRegistryForTests();
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  setAdditionalPluginRootsForTests(configuredPluginDirs);
   resetSkillDiscoveryCache();
+  setPostSlackMessageObserverForTests(({ channelId, text, threadTs }) => {
+    resumedChannelPosts.push({
+      channel: channelId,
+      text,
+      thread_ts: threadTs,
+    });
+  });
+  await cleanupHarnessThreadState(stateAdapter, testCase.events);
+  await cleanupMcpAuthState(authRequesterUsers, autoCompleteMcpOauthProviders);
+  await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
+
+  const maybeAutoCompleteAuth = async (): Promise<void> => {
+    for (const provider of autoCompleteMcpOauthProviders) {
+      for (const requesterUserId of authRequesterUsers) {
+        const authSession = await getLatestMcpAuthSessionForUserProvider(
+          requesterUserId,
+          provider,
+        );
+        if (!authSession) {
+          continue;
+        }
+        if (consumedMcpAuthSessions.has(authSession.authSessionId)) {
+          continue;
+        }
+        const completed = await runMcpOauthCallback({
+          provider,
+          requesterUserId,
+        });
+        if (completed) {
+          consumedMcpAuthSessions.add(authSession.authSessionId);
+        }
+      }
+    }
+
+    for (const provider of autoCompleteOauthProviders) {
+      await runOauthCallback({
+        provider,
+        consumedStates: consumedOauthStates,
+      });
+    }
+  };
 
   const getChannelStateRef = (
     channelId: string | undefined,
@@ -340,12 +650,10 @@ export async function runBehaviorEvalCase(
     if (existing) {
       return existing;
     }
-    const created = createTestThread({
-      id: fixture.id,
-      channelId: fixture.channel_id,
-      runId: fixture.run_id,
-      threadTs: fixture.thread_ts,
+    const created = createEvalThread({
+      fixture,
       channelStateRef: getChannelStateRef(fixture.channel_id),
+      stateAdapter,
     });
     threadsById.set(fixture.id, created);
     return created;
@@ -495,6 +803,7 @@ export async function runBehaviorEvalCase(
             toIncomingMessage(event) as any,
           );
         });
+        await maybeAutoCompleteAuth();
         continue;
       }
 
@@ -506,6 +815,7 @@ export async function runBehaviorEvalCase(
             toIncomingMessage(event) as any,
           );
         });
+        await maybeAutoCompleteAuth();
         continue;
       }
 
@@ -517,17 +827,31 @@ export async function runBehaviorEvalCase(
       };
       if (event.type === "assistant_thread_started") {
         await appSlackRuntime.handleAssistantThreadStarted(lifecycleEvent);
+        await maybeAutoCompleteAuth();
         continue;
       }
 
       await appSlackRuntime.handleAssistantContextChanged(lifecycleEvent);
+      await maybeAutoCompleteAuth();
     }
   } finally {
     resetBotDepsForTests();
-    resetPluginRegistryForTests();
+    setAdditionalPluginRootsForTests([]);
     resetSkillDiscoveryCache();
+    setPostSlackMessageObserverForTests(undefined);
+    await cleanupHarnessThreadState(stateAdapter, testCase.events);
+    await cleanupMcpAuthState(
+      authRequesterUsers,
+      autoCompleteMcpOauthProviders,
+    );
+    await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
     (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter =
       originalGetAdapter;
+    if (originalJuniorBaseUrl === undefined) {
+      delete process.env.JUNIOR_BASE_URL;
+    } else {
+      process.env.JUNIOR_BASE_URL = originalJuniorBaseUrl;
+    }
     if (originalPluginPackages === undefined) {
       delete process.env.JUNIOR_PLUGIN_PACKAGES;
     } else {
@@ -537,6 +861,11 @@ export async function runBehaviorEvalCase(
       delete process.env.SLACK_BOT_TOKEN;
     } else {
       process.env.SLACK_BOT_TOKEN = originalSlackBotToken;
+    }
+    if (originalStateAdapter === undefined) {
+      delete process.env.JUNIOR_STATE_ADAPTER;
+    } else {
+      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
     }
     if (testCase.behavior?.enable_test_credentials) {
       if (originalEnableTestCredentials === undefined) {
@@ -556,9 +885,22 @@ export async function runBehaviorEvalCase(
   const posts = [...threadsById.values()].flatMap((thread) =>
     thread.posts.map(toPostedText),
   );
-  const { channelPosts, reactions } = collectSlackArtifactsFromCapturedCalls(
-    readCapturedSlackApiCalls(),
-  );
+  const { channelPosts: capturedChannelPosts, reactions } =
+    collectSlackArtifactsFromCapturedCalls(readCapturedSlackApiCalls());
+  const channelPosts = [...capturedChannelPosts];
+  for (const post of resumedChannelPosts) {
+    if (
+      channelPosts.some(
+        (existing) =>
+          existing.channel === post.channel &&
+          existing.text === post.text &&
+          existing.thread_ts === post.thread_ts,
+      )
+    ) {
+      continue;
+    }
+    channelPosts.push(post);
+  }
 
   return {
     channelPosts,

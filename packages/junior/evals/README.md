@@ -41,6 +41,7 @@ Not in scope:
   - `evals/conversational/routing-and-continuity.eval.ts`
   - `evals/conversational/lifecycle-and-resilience.eval.ts`
   - `evals/conversational/media-and-attachments.eval.ts`
+  - `evals/conversational/oauth-workflows.eval.ts`
   - `evals/conversational/skill-workflows.eval.ts`
 - Helpers and event builders: `evals/helpers.ts`
 - Harness/runtime adapter: `evals/behavior-harness.ts`
@@ -55,11 +56,15 @@ For each case (`slackEval()` call):
 
 Harness behavior knobs (in `BehaviorCaseConfig`):
 
+- `auto_complete_mcp_oauth`: after our app genuinely starts an MCP OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
+- `auto_complete_oauth`: after our app genuinely starts a generic OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
 - `fail_reply_call`: force a non-retryable reply failure on a specific call.
 - `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
+- `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
 - `retryable_timeout_calls`: force retryable timeout-shaped failures on selected reply calls.
 - `retryable_max_attempts`: max retries for retryable timeout-shaped failures during one event.
 - `reply_texts`: override returned reply text per call.
+- `subscribed_decisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
 
 `retryable_timeout_calls` validates handler-level retry propagation only. It does not validate
 checkpoint save/restore semantics in the core resumability path.
@@ -85,9 +90,13 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 
 - Add new conversational cases under `evals/conversational/*.eval.ts` using `slackEval()`.
 - Use event builders (`mention`, `threadMessage`, `threadStart`) from `evals/helpers.ts`.
+- Use `auto_complete_mcp_oauth` or `auto_complete_oauth` when the harness should instantly complete the fake provider callback after our app has genuinely initiated auth.
 - For multi-turn, pass the same `thread` override so events land in one thread.
 - Keep each case focused on one primary behavior.
 - Encode all expectations in `criteria`; do not add deterministic inline assertions.
+- Keep user prompts natural. They should read like plausible user requests, not scripted implementation instructions.
+- Do not tell the assistant which exact internal command, tool, skill-loading step, or transport sequence to use unless that exact surface is what the user would naturally say and is the behavior under evaluation.
+- If an eval only passes when the prompt prescribes internal mechanics, the eval is invalid and the product behavior is not adequately covered.
 
 Do not do these in eval files:
 
@@ -103,6 +112,7 @@ Do not do these in eval files:
   - Examples:
     - `routing-and-continuity.eval.ts`
     - `lifecycle-and-resilience.eval.ts`
+    - `oauth-workflows.eval.ts`
     - `skill-workflows.eval.ts`
 - Test naming: `<area>: <user-observable outcome>`
   - Examples:
@@ -123,6 +133,7 @@ Good conversational evals should:
 Avoid:
 
 - Criteria tied to exact internal tool call names (`bash`, etc.) when user-visible behavior is what matters.
+- User prompts that prescribe exact internal commands or tool choices just to force the desired path.
 - Cases that only validate mocks or internal state transitions without conversational context.
 
 ## Minimal Case

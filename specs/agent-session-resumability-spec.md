@@ -3,11 +3,13 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-03-05
+- Last Edited: 2026-03-19
 
 ## Changelog
 
 - 2026-03-05: Initial canonical contract for timeout-safe multi-slice assistant execution with Pi in serverless runtimes.
+- 2026-03-13: Added auth-driven resume reason and checkpointed dynamic tool state for MCP-backed turns.
+- 2026-03-19: Simplified auth resume contract so resumed slices always use `continue()` after trimming trailing uncommitted assistant messages at the auth pause boundary.
 
 ## Status
 
@@ -84,7 +86,8 @@ Each checkpoint must include:
 - `tool_call_log`: Ordered committed tool calls and results.
 - `transcript_log`: Ordered committed user/assistant visible messages.
 - `state`: one of `running|awaiting_resume|completed|failed`.
-- `resume_reason`: `timeout|preempted|retry|operator` (when `awaiting_resume`).
+- `resume_reason`: `timeout|auth|preempted|retry|operator` (when `awaiting_resume`).
+- `loaded_skill_names`: Active skills that must be restored before resume when tool availability depends on loaded skills.
 - `deadline_at`: hard deadline for the current slice.
 - `updated_at`
 
@@ -96,8 +99,11 @@ For slice `n+1`, runtime must:
 
 1. Load latest committed checkpoint for `(conversation_id, session_id)`.
 2. Instantiate Pi agent.
-3. Call `replaceMessages(checkpoint.pi_messages)`.
-4. Call `continue()` to resume generation/tool loop.
+3. Restore any checkpointed dynamic tool state required by the wrapper runtime (for example loaded skills).
+4. Call `replaceMessages(checkpoint.pi_messages)`.
+5. Resume generation by calling `continue()` to resume generation/tool loop.
+
+For auth-driven pauses, the checkpoint written at the pause boundary must trim any trailing uncommitted assistant-only messages so the restored Pi history is resumable with `continue()`.
 
 If the previous slice timed out after producing uncommitted partial assistant text, that text may be regenerated in the next slice. User-visible output must only include committed transcript content.
 
@@ -181,7 +187,8 @@ Required attributes on slice/session events when available:
 3. Integration: forced timeout at safe boundary resumes with `replaceMessages` + `continue` and reaches same terminal output.
 4. Integration: duplicate continuation message does not produce duplicate tool side effects.
 5. Integration: crash-after-commit-before-enqueue is recovered by sweeper.
-6. Eval: long-running thread surpassing single serverless timeout completes across multiple slices without user-visible corruption.
+6. Integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
+7. Eval: long-running thread surpassing single serverless timeout completes across multiple slices without user-visible corruption.
 
 ## Related Specs
 

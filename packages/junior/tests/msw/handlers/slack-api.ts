@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import {
+  slackOk,
   canvasesCreateOk,
   canvasesEditOk,
   canvasesSectionsLookupOk,
@@ -24,9 +25,11 @@ import {
 const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
 
 export const SUPPORTED_SLACK_API_METHODS = [
+  "assistant.threads.setStatus",
   "chat.postMessage",
   "chat.postEphemeral",
   "chat.getPermalink",
+  "views.publish",
   "reactions.add",
   "reactions.remove",
   "conversations.history",
@@ -168,12 +171,16 @@ function defaultSlackApiResponse(
   method: SlackApiMethod,
 ): SlackMockHttpResponse {
   switch (method) {
+    case "assistant.threads.setStatus":
+      return { body: slackOk() };
     case "chat.postMessage":
       return { body: chatPostMessageOk() };
     case "chat.postEphemeral":
       return { body: chatPostEphemeralOk() };
     case "chat.getPermalink":
       return { body: chatGetPermalinkOk() };
+    case "views.publish":
+      return { body: slackOk() };
     case "reactions.add":
       return { body: reactionsAddOk() };
     case "reactions.remove":

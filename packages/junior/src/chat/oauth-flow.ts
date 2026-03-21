@@ -45,7 +45,7 @@ export function resolveBaseUrl(): string | undefined {
  * Authorization links must only be visible to the requesting user.
  * Try in-context private delivery first, then fall back to a DM.
  */
-async function deliverPrivateMessage(input: {
+export async function deliverPrivateMessage(input: {
   channelId?: string;
   threadTs?: string;
   userId: string;

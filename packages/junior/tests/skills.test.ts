@@ -2,15 +2,24 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getCapabilityProvider } from "@/chat/capabilities/catalog";
+import {
+  resetPluginRegistryForTests,
+  setAdditionalPluginRootsForTests,
+} from "@/chat/plugins/registry";
 import {
   discoverSkills,
   parseSkillInvocation,
-  resetSkillDiscoveryCache
+  resetSkillDiscoveryCache,
 } from "@/chat/skills";
 import type { SkillMetadata } from "@/chat/skills";
 import * as observability from "@/chat/observability";
 
-async function writeSkillFile(rootDir: string, name: string, lines: string[]): Promise<void> {
+async function writeSkillFile(
+  rootDir: string,
+  name: string,
+  lines: string[],
+): Promise<void> {
   const skillDir = path.join(rootDir, name);
   await fs.mkdir(skillDir, { recursive: true });
   await fs.writeFile(path.join(skillDir, "SKILL.md"), lines.join("\n"), "utf8");
@@ -18,16 +27,19 @@ async function writeSkillFile(rootDir: string, name: string, lines: string[]): P
 
 const stubSkills: SkillMetadata[] = [
   { name: "brief", description: "Candidate brief", skillPath: "/tmp/brief" },
-  { name: "sum", description: "Summarize", skillPath: "/tmp/sum" }
+  { name: "sum", description: "Summarize", skillPath: "/tmp/sum" },
 ];
 
 describe("skills", () => {
   afterEach(() => {
     resetSkillDiscoveryCache();
+    resetPluginRegistryForTests();
   });
 
   it("discovers valid skills from configured skill directories", async () => {
-    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-default-"));
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-skills-default-"),
+    );
     const originalSkillDirs = process.env.SKILL_DIRS;
 
     await writeSkillFile(tempRoot, "brief", [
@@ -36,7 +48,7 @@ describe("skills", () => {
       "description: Candidate brief",
       "---",
       "",
-      "# Body"
+      "# Body",
     ]);
     await writeSkillFile(tempRoot, "sum", [
       "---",
@@ -44,7 +56,7 @@ describe("skills", () => {
       "description: Summarize",
       "---",
       "",
-      "# Body"
+      "# Body",
     ]);
 
     resetSkillDiscoveryCache();
@@ -68,20 +80,26 @@ describe("skills", () => {
   });
 
   it("does not parse invocation without slash command", () => {
-    expect(parseSkillInvocation("please summarize this candidate", stubSkills)).toBeNull();
+    expect(
+      parseSkillInvocation("please summarize this candidate", stubSkills),
+    ).toBeNull();
   });
 
   it("parses /skill tokens anywhere in the message", () => {
-    expect(parseSkillInvocation("hey /brief github: octocat", stubSkills)).toEqual({
+    expect(
+      parseSkillInvocation("hey /brief github: octocat", stubSkills),
+    ).toEqual({
       skillName: "brief",
-      args: "github: octocat"
+      args: "github: octocat",
     });
   });
 
   it("parses /skill invocation", () => {
-    expect(parseSkillInvocation("hey /brief github: octocat", stubSkills)).toEqual({
+    expect(
+      parseSkillInvocation("hey /brief github: octocat", stubSkills),
+    ).toEqual({
       skillName: "brief",
-      args: "github: octocat"
+      args: "github: octocat",
     });
   });
 
@@ -96,7 +114,9 @@ describe("skills", () => {
   it("skips skills with unknown capability/config metadata and logs warnings", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-"));
     const originalSkillDirs = process.env.SKILL_DIRS;
-    const warnSpy = vi.spyOn(observability, "logWarn").mockImplementation(() => undefined);
+    const warnSpy = vi
+      .spyOn(observability, "logWarn")
+      .mockImplementation(() => undefined);
 
     try {
       await writeSkillFile(tempRoot, "tmp-valid-metadata", [
@@ -105,7 +125,7 @@ describe("skills", () => {
         "description: Valid metadata skill.",
         "---",
         "",
-        "# Body"
+        "# Body",
       ]);
       await writeSkillFile(tempRoot, "tmp-invalid-capability", [
         "---",
@@ -114,7 +134,7 @@ describe("skills", () => {
         "requires-capabilities: github.unknown.read",
         "---",
         "",
-        "# Body"
+        "# Body",
       ]);
       await writeSkillFile(tempRoot, "tmp-invalid-config", [
         "---",
@@ -123,7 +143,7 @@ describe("skills", () => {
         "uses-config: github.organization",
         "---",
         "",
-        "# Body"
+        "# Body",
       ]);
 
       process.env.SKILL_DIRS = tempRoot;
@@ -136,12 +156,22 @@ describe("skills", () => {
       expect(names).not.toContain("tmp-invalid-capability");
       expect(names).not.toContain("tmp-invalid-config");
 
-      const warningCalls = warnSpy.mock.calls.filter(([event]) => event === "skill_frontmatter_invalid");
+      const warningCalls = warnSpy.mock.calls.filter(
+        ([event]) => event === "skill_frontmatter_invalid",
+      );
       const warningMessages = warningCalls
         .map((call) => call[2])
         .map((attributes) => String(attributes?.["error.message"] ?? ""));
-      expect(warningMessages.some((message) => message.includes("Unknown requires-capabilities values"))).toBe(true);
-      expect(warningMessages.some((message) => message.includes("Unknown uses-config values"))).toBe(true);
+      expect(
+        warningMessages.some((message) =>
+          message.includes("Unknown requires-capabilities values"),
+        ),
+      ).toBe(true);
+      expect(
+        warningMessages.some((message) =>
+          message.includes("Unknown uses-config values"),
+        ),
+      ).toBe(true);
     } finally {
       warnSpy.mockRestore();
       resetSkillDiscoveryCache();
@@ -150,6 +180,66 @@ describe("skills", () => {
       } else {
         process.env.SKILL_DIRS = originalSkillDirs;
       }
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("discovers plugin skills and capabilities added after module load", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-skill-late-load-"),
+    );
+    const pluginRoot = path.join(tempRoot, "demo");
+
+    try {
+      await fs.mkdir(path.join(pluginRoot, "skills", "demo-connect"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(pluginRoot, "plugin.yaml"),
+        [
+          "name: demo",
+          "description: Demo plugin",
+          "capabilities:",
+          "  - read",
+          "credentials:",
+          "  type: oauth-bearer",
+          "  api-domains:",
+          "    - demo.example.test",
+          "  auth-token-env: DEMO_ACCESS_TOKEN",
+        ].join("\n"),
+        "utf8",
+      );
+      await fs.writeFile(
+        path.join(pluginRoot, "skills", "demo-connect", "SKILL.md"),
+        [
+          "---",
+          "name: demo-connect",
+          "description: Demo plugin skill",
+          "allowed-tools: bash",
+          "requires-capabilities: demo.read",
+          "---",
+          "",
+          "# Body",
+        ].join("\n"),
+        "utf8",
+      );
+
+      setAdditionalPluginRootsForTests([pluginRoot]);
+      resetSkillDiscoveryCache();
+
+      const skills = await discoverSkills();
+      expect(
+        skills.find((skill) => skill.name === "demo-connect"),
+      ).toMatchObject({
+        name: "demo-connect",
+        pluginProvider: "demo",
+        requiresCapabilities: ["demo.read"],
+      });
+      expect(getCapabilityProvider("demo.read")).toMatchObject({
+        provider: "demo",
+        capabilities: ["demo.read"],
+      });
+    } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });

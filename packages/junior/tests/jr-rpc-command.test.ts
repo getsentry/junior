@@ -1,4 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
+
+const { startOAuthFlowMock, unlinkProviderMock } = vi.hoisted(() => ({
+  startOAuthFlowMock: vi.fn(),
+  unlinkProviderMock: vi.fn(),
+}));
 
 vi.mock("@/chat/capabilities/catalog", () => ({
   getCapabilityProvider: (capability: string) =>
@@ -21,8 +27,29 @@ vi.mock("@/chat/capabilities/catalog", () => ({
       capabilities: ["sentry.api"],
       configKeys: ["sentry.org", "sentry.project"],
     },
-    { provider: "notion", capabilities: ["notion.api"], configKeys: [] },
   ],
+}));
+vi.mock("@/chat/credentials/unlink-provider", () => ({
+  unlinkProvider: unlinkProviderMock,
+}));
+vi.mock("@/chat/plugins/registry", () => ({
+  getPluginOAuthConfig: (provider: string) =>
+    provider === "github"
+      ? {
+          clientIdEnv: "GITHUB_CLIENT_ID",
+          clientSecretEnv: "GITHUB_CLIENT_SECRET",
+          authorizeEndpoint: "https://github.example.test/oauth/authorize",
+          tokenEndpoint: "https://github.example.test/oauth/token",
+          callbackPath: "/api/oauth/callback/github",
+        }
+      : undefined,
+  isPluginProvider: (provider: string) =>
+    provider === "github" || provider === "sentry" || provider === "notion",
+}));
+vi.mock("@/chat/oauth-flow", () => ({
+  formatProviderLabel: (provider: string) =>
+    provider.charAt(0).toUpperCase() + provider.slice(1),
+  startOAuthFlow: startOAuthFlowMock,
 }));
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
@@ -85,6 +112,45 @@ function makeRuntime(
 }
 
 describe("jr-rpc custom command", () => {
+  beforeEach(() => {
+    startOAuthFlowMock.mockReset();
+    startOAuthFlowMock.mockImplementation(async (provider: string) => ({
+      ok: false,
+      error: `Provider "${provider}" does not support OAuth authorization`,
+    }));
+    unlinkProviderMock.mockReset();
+    unlinkProviderMock.mockResolvedValue(undefined);
+  });
+
+  it("deletes both legacy and MCP-backed provider credentials", async () => {
+    const userTokenStore = {
+      get: vi.fn(async () => undefined),
+      set: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    };
+
+    const result = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc delete-token notion",
+      {
+        capabilityRuntime: makeRuntime(),
+        activeSkill,
+        requesterId: "U123",
+        userTokenStore,
+      },
+    );
+
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.result.exit_code).toBe(0);
+      expect(result.result.stdout).toContain("token_deleted provider=notion");
+    }
+    expect(unlinkProviderMock).toHaveBeenCalledWith(
+      "U123",
+      "notion",
+      userTokenStore,
+    );
+  });
+
   it("does not handle non jr-rpc commands", async () => {
     const result = await maybeExecuteJrRpcCustomCommand("echo hi", {
       capabilityRuntime: makeRuntime(),
@@ -204,6 +270,56 @@ describe("jr-rpc custom command", () => {
       expect(result.result.exit_code).toBe(1);
       expect(result.result.stderr).toContain("credential broker unavailable");
     }
+  });
+
+  it("treats oauth initiation as a successful issue-credential outcome", async () => {
+    startOAuthFlowMock.mockResolvedValue({
+      ok: true,
+      delivery: "in_context",
+    });
+
+    const runtime = new SkillCapabilityRuntime({
+      broker: {
+        issue: async () => {
+          throw new CredentialUnavailableError(
+            "github",
+            "No github credentials available.",
+          );
+        },
+      },
+      invocationArgs: "--repo getsentry/junior",
+      requesterId: "U123",
+    });
+
+    const result = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential github.issues.write",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        userMessage: "Connect my github account",
+      },
+    );
+
+    expect(result.handled).toBe(true);
+    if (result.handled) {
+      expect(result.result.exit_code).toBe(0);
+      const payload = JSON.parse(result.result.stdout) as {
+        oauth_started: boolean;
+        private_delivery_sent: boolean;
+      };
+      expect(payload).toMatchObject({
+        oauth_started: true,
+        private_delivery_sent: true,
+      });
+    }
+    expect(startOAuthFlowMock).toHaveBeenCalledWith(
+      "github",
+      expect.objectContaining({
+        requesterId: "U123",
+        userMessage: "Connect my github account",
+      }),
+    );
   });
 
   it("returns structured runtime errors when repo context is missing", async () => {
