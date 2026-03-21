@@ -43,18 +43,6 @@ describe("Conversational Evals: Routing and Continuity", () => {
       "The assistant posts two replies in-order. The second reply explicitly references the prior context (budget and/or Friday) and does not include sandbox setup failure text.",
   });
 
-  slackEval("routing: follow-up question without mention still replies", {
-    behavior: { reply_texts: ["You need the budget by Friday."] },
-    events: [
-      mention("I need the budget by Friday.", { thread: continuityThread }),
-      threadMessage("what did you just say about the budget?", {
-        thread: continuityThread,
-      }),
-    ],
-    criteria:
-      "The assistant posts two replies in-order. The second reply plainly restates that the budget is needed by Friday using prior thread context, and does not just repeat unresolved clarifying questions.",
-  });
-
   const rapidThread = {
     id: "thread-rapid",
     channel_id: "C-rapid",

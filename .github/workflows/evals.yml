@@ -11,13 +11,6 @@ on:
       - reopened
       - synchronize
       - labeled
-  workflow_dispatch:
-    inputs:
-      run_evals:
-        description: Run conversational evals when eval-related files changed relative to main
-        required: false
-        default: true
-        type: boolean
 
 jobs:
   gate:
@@ -33,42 +26,27 @@ jobs:
           fetch-depth: 0
 
       - id: request
-        env:
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
+          action="$(jq -r '.action // ""' "$GITHUB_EVENT_PATH")"
           requested=false
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            requested_input="$(jq -r '.inputs.run_evals // "false"' "$GITHUB_EVENT_PATH")"
-            if [[ "$requested_input" == "true" ]]; then
+          if [[ "$action" == "labeled" ]]; then
+            if [[ "$(jq -r '.label.name // ""' "$GITHUB_EVENT_PATH")" == "run-evals" ]]; then
               requested=true
             fi
-          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
-            if jq -e '.pull_request.labels[]?.name | select(. == "run-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
-              requested=true
-            fi
+          elif jq -e '.pull_request.labels[]?.name | select(. == "run-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
+            requested=true
           fi
 
           echo "evals_requested=$requested" >> "$GITHUB_OUTPUT"
 
       - id: changes
-        env:
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            git fetch --no-tags --depth=1 origin main
-            base_ref="$(git merge-base HEAD origin/main)"
-            head_ref="$GITHUB_SHA"
-          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
-            base_ref="$(jq -r '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
-            head_ref="$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
-          else
-            echo "Unsupported event: $EVENT_NAME" >&2
-            exit 1
-          fi
+          base_ref="$(jq -r '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
+          head_ref="$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
 
           if git diff --quiet "$base_ref" "$head_ref" -- \
             packages/junior/evals \
@@ -99,7 +77,7 @@ jobs:
           set -euo pipefail
 
           should_run=false
-          if [[ "$EVALS_CHANGED" == "true" && "$EVALS_REQUESTED" == "true" && "$GATEWAY_READY" == "true" ]]; then
+          if [[ "$GATEWAY_READY" == "true" && ( "$EVALS_CHANGED" == "true" || "$EVALS_REQUESTED" == "true" ) ]]; then
             should_run=true
           fi
 

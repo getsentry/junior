@@ -2,21 +2,54 @@ import { describe } from "vitest";
 import { mention, slackEval, threadMessage } from "../helpers";
 
 describe("Conversational Evals: Passive Behavior", () => {
-  slackEval("passive: subscribed side conversation is skipped", {
+  const sideConversationThread = {
+    id: "thread-passive-side-conversation",
+    channel_id: "C-passive-side-conversation",
+    thread_ts: "17000000.passive-side-conversation",
+  };
+
+  slackEval("passive: human follow-up question is skipped", {
     behavior: {
-      subscribed_decisions: [
-        { should_reply: false, reason: "side conversation" },
+      live_subscribed_routing: true,
+      reply_texts: [
+        "The deploy changed the billing worker and the API auth flow.",
       ],
     },
-    events: [threadMessage("thanks everyone")],
+    events: [
+      mention(
+        "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
+        {
+          thread: sideConversationThread,
+        },
+      ),
+      threadMessage("@sam can you take the billing worker rollback?", {
+        thread: sideConversationThread,
+      }),
+    ],
     criteria:
-      "The assistant posts no reply when subscribed-thread routing decides the message is just side conversation.",
+      "The assistant posts exactly one reply: the initial helpful answer about the deploy. It does not answer the later human-to-human question addressed to @sam about who should take the rollback, even though that later message is phrased as a question.",
   });
 
-  slackEval("passive: acknowledgment-only subscribed message is skipped", {
-    events: [threadMessage("thanks!")],
+  const directedFollowUpThread = {
+    id: "thread-passive-directed-follow-up",
+    channel_id: "C-passive-directed-follow-up",
+    thread_ts: "17000000.passive-directed-follow-up",
+  };
+
+  slackEval("passive: follow-up to Junior response gets a reply", {
+    behavior: {
+      reply_texts: ["You need the budget by Friday."],
+    },
+    events: [
+      mention("I need the budget by Friday.", {
+        thread: directedFollowUpThread,
+      }),
+      threadMessage("What did you just say about the budget?", {
+        thread: directedFollowUpThread,
+      }),
+    ],
     criteria:
-      "The assistant posts no reply for acknowledgment-only subscribed thread messages that are not explicit mentions.",
+      "The assistant posts two replies in order. The second reply plainly restates that the budget is needed by Friday because the follow-up is clearly directed at Junior's previous response, even without another @mention.",
   });
 
   const optOutThread = {

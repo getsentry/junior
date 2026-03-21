@@ -38,6 +38,7 @@ Not in scope:
 ## Sources Of Truth
 
 - Eval cases:
+  - `evals/conversational/passive-behavior.eval.ts`
   - `evals/conversational/routing-and-continuity.eval.ts`
   - `evals/conversational/lifecycle-and-resilience.eval.ts`
   - `evals/conversational/media-and-attachments.eval.ts`
@@ -77,11 +78,11 @@ checkpoint save/restore semantics in the core resumability path.
 
 ## Optional CI Runs
 
-- Add the `run-evals` label to a PR to opt into the `Evals` GitHub Actions workflow.
-- The workflow only runs the eval job when eval-related files changed:
+- On pull requests, the `Evals` workflow runs when either eval-related files changed or the PR has the `run-evals` label.
+- Adding the `run-evals` label triggers a run immediately; adding unrelated labels does not.
+- Eval-related files are:
   - `packages/junior/evals/**`
   - `packages/junior/vitest.evals.config.ts`
-- You can also trigger the `Evals` workflow manually with `run_evals=true`.
 - The CI job requires repo-level AI gateway credentials and working Vercel Sandbox access.
 
 Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval fails immediately (no local fallback path).
