@@ -3,7 +3,6 @@ import { escapeXml } from "@/chat/xml";
 
 export enum SubscribedReplyReason {
   ThreadOptOut = "thread_opt_out",
-  ExplicitMention = "explicit_mention",
   DirectedToOtherParty = "directed_to_other_party",
   EmptyMessage = "empty_message",
   AttachmentOnly = "attachment_only",
@@ -295,14 +294,21 @@ export async function decideSubscribedThreadReply(args: {
   if (!text && args.input.hasAttachments) {
     return { shouldReply: true, reason: SubscribedReplyReason.AttachmentOnly };
   }
-  if (isLikelyAcknowledgment(text)) {
-    return { shouldReply: false, reason: SubscribedReplyReason.Acknowledgment };
-  }
-  if (isLikelyAssistantDirectedFollowUp(text, args.input.conversationContext)) {
-    return {
-      shouldReply: true,
-      reason: SubscribedReplyReason.FollowUpQuestion,
-    };
+  if (!args.input.isExplicitMention) {
+    if (isLikelyAcknowledgment(text)) {
+      return {
+        shouldReply: false,
+        reason: SubscribedReplyReason.Acknowledgment,
+      };
+    }
+    if (
+      isLikelyAssistantDirectedFollowUp(text, args.input.conversationContext)
+    ) {
+      return {
+        shouldReply: true,
+        reason: SubscribedReplyReason.FollowUpQuestion,
+      };
+    }
   }
 
   try {

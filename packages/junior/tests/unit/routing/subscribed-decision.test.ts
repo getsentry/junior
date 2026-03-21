@@ -81,6 +81,34 @@ describe("decideSubscribedThreadReply", () => {
     expect(completeObject).toHaveBeenCalled();
   });
 
+  it("does not apply acknowledgment heuristics to explicit mentions", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        should_reply: true,
+        confidence: 0.95,
+        reason: "direct mention acknowledgment",
+      },
+    }));
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        text: "thanks!",
+        rawText: "thanks!",
+        isExplicitMention: true,
+      }),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.Classifier,
+      reasonDetail: "direct mention acknowledgment",
+    });
+    expect(completeObject).toHaveBeenCalled();
+  });
+
   it("skips leading slack mentions addressed to another party before classifier", async () => {
     const completeObject = vi.fn();
     const decision = await decideSubscribedThreadReply({
