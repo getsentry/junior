@@ -106,6 +106,7 @@ export interface BehaviorCaseConfig {
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
   mock_image_generation?: boolean;
+  live_subscribed_routing?: boolean;
   plugin_dirs?: string[];
   mock_slack_api?: boolean;
   plugin_packages?: string[];
@@ -527,6 +528,8 @@ export async function runBehaviorEvalCase(
     testCase.behavior?.retryable_max_attempts ?? 3,
   );
   const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
+  const liveSubscribedRouting =
+    testCase.behavior?.live_subscribed_routing === true;
   const replyTimeoutMs = Number.parseInt(
     process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000",
     10,
@@ -672,35 +675,39 @@ export async function runBehaviorEvalCase(
   };
 
   setBotDepsForTests({
-    completeObject: async () => {
-      if (subscribedDecisions.length === 0) {
-        return {
-          object: {
-            should_reply: false,
-            confidence: 0,
-            reason: "passive conversation",
+    ...(liveSubscribedRouting && subscribedDecisions.length === 0
+      ? {}
+      : {
+          completeObject: async () => {
+            if (subscribedDecisions.length === 0) {
+              return {
+                object: {
+                  should_reply: false,
+                  confidence: 0,
+                  reason: "passive conversation",
+                },
+                text: '{"should_reply":false,"confidence":0,"reason":"passive conversation"}',
+              } as any;
+            }
+            const next =
+              subscribedDecisions[
+                Math.min(decisionIndex, subscribedDecisions.length - 1)
+              ];
+            decisionIndex += 1;
+            return {
+              object: {
+                should_reply: next.should_reply,
+                confidence: next.should_reply ? 1 : 0,
+                reason: next.reason,
+              },
+              text: JSON.stringify({
+                should_reply: next.should_reply,
+                confidence: next.should_reply ? 1 : 0,
+                reason: next.reason,
+              }),
+            } as any;
           },
-          text: '{"should_reply":false,"confidence":0,"reason":"passive conversation"}',
-        } as any;
-      }
-      const next =
-        subscribedDecisions[
-          Math.min(decisionIndex, subscribedDecisions.length - 1)
-        ];
-      decisionIndex += 1;
-      return {
-        object: {
-          should_reply: next.should_reply,
-          confidence: next.should_reply ? 1 : 0,
-          reason: next.reason,
-        },
-        text: JSON.stringify({
-          should_reply: next.should_reply,
-          confidence: next.should_reply ? 1 : 0,
-          reason: next.reason,
         }),
-      } as any;
-    },
     generateAssistantReply: async (text, context) => {
       replyCallCount += 1;
       const mockImageGeneration = testCase.behavior?.mock_image_generation;

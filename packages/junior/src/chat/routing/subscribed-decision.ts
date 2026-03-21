@@ -2,6 +2,7 @@ import { z } from "zod";
 import { escapeXml } from "@/chat/xml";
 
 export enum SubscribedReplyReason {
+  ThreadOptOut = "thread_opt_out",
   ExplicitMention = "explicit_mention",
   DirectedToOtherParty = "directed_to_other_party",
   EmptyMessage = "empty_message",
@@ -30,12 +31,14 @@ export interface SubscribedDecisionInput {
 
 export interface SubscribedDecisionResult {
   shouldReply: boolean;
+  shouldUnsubscribe?: boolean;
   reason: SubscribedReplyReason;
   reasonDetail?: string;
 }
 
 interface ClassifierResult {
   should_reply: boolean;
+  should_unsubscribe?: boolean;
   confidence: number;
   reason?: string;
 }
@@ -44,6 +47,12 @@ const replyDecisionSchema = z.object({
   should_reply: z
     .boolean()
     .describe("Whether Junior should respond to this thread message."),
+  should_unsubscribe: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether Junior should unsubscribe from this thread because the user clearly asked it to stop participating.",
+    ),
   confidence: z
     .number()
     .min(0)
@@ -190,7 +199,6 @@ function detectLeadingOtherPartyAddress(
 
   return `named_mention:${directedName}`;
 }
-
 export function getSubscribedReplyPreflightDecision(args: {
   botUserName: string;
   rawText: string;
@@ -201,7 +209,7 @@ export function getSubscribedReplyPreflightDecision(args: {
   const rawText = args.rawText.trim();
 
   if (args.isExplicitMention) {
-    return { shouldReply: true, reason: SubscribedReplyReason.ExplicitMention };
+    return undefined;
   }
 
   const leadingOtherPartyAddress = detectLeadingOtherPartyAddress(
@@ -223,23 +231,31 @@ export function getSubscribedReplyPreflightDecision(args: {
 function buildRouterSystemPrompt(
   botUserName: string,
   conversationContext: string | undefined,
+  isExplicitMention: boolean | undefined,
 ): string {
   return [
     "You are a message router for a Slack assistant named Junior in a subscribed Slack thread.",
     "Decide whether Junior should reply to the latest message.",
+    "Subscribed threads are passive by default.",
     "Default to should_reply=false unless the user is clearly asking Junior for help or follow-up.",
+    "A direct @mention is a strong signal to reply unless the message is clearly telling Junior to stop participating.",
     "",
     "Reply should be true only when the user is clearly asking Junior a question, requesting help,",
     "or when a direct follow-up is contextually aimed at Junior's previous response in the thread context.",
     "",
     "Reply should be false for side conversations between humans, acknowledgements (thanks, +1),",
     "status chatter, or messages not seeking assistant input.",
-    "Junior must not participate in casual banter.",
+    "Junior must not participate in casual banter or keep chiming in just because it replied earlier.",
+    "If the user is clearly telling Junior to stop watching, replying, or participating in the thread,",
+    "set should_unsubscribe=true and should_reply=false.",
+    "Use should_unsubscribe only for clear thread opt-out instructions, not for ordinary side conversation.",
     "If uncertain, set should_reply=false and use low confidence.",
     "",
-    "Return JSON with should_reply, confidence, and a short reason. Do not return any extra keys.",
+    "Return JSON with should_reply, should_unsubscribe, confidence, and a short reason.",
+    "Do not return any extra keys.",
     "",
     `<assistant-name>${escapeXml(botUserName)}</assistant-name>`,
+    `<explicit-mention>${isExplicitMention ? "true" : "false"}</explicit-mention>`,
     `<thread-context>${escapeXml(conversationContext?.trim() || "[none]")}</thread-context>`,
   ].join("\n");
 }
@@ -298,6 +314,7 @@ export async function decideSubscribedThreadReply(args: {
       system: buildRouterSystemPrompt(
         args.botUserName,
         args.input.conversationContext,
+        args.input.isExplicitMention,
       ),
       prompt: rawText,
       metadata: {
@@ -311,6 +328,23 @@ export async function decideSubscribedThreadReply(args: {
 
     const parsed = replyDecisionSchema.parse(result.object) as ClassifierResult;
     const reason = parsed.reason?.trim() || "classifier";
+    if (parsed.should_unsubscribe) {
+      if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
+        return {
+          shouldReply: false,
+          reason: SubscribedReplyReason.LowConfidence,
+          reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
+        };
+      }
+
+      return {
+        shouldReply: false,
+        shouldUnsubscribe: true,
+        reason: SubscribedReplyReason.ThreadOptOut,
+        reasonDetail: reason,
+      };
+    }
+
     if (!parsed.should_reply) {
       return {
         shouldReply: false,

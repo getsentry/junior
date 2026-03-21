@@ -47,9 +47,11 @@ function createDeps(
       payload: ThreadMessagePayload,
       dedupKey: string,
     ) => Promise<string | undefined>;
-    shouldReplyInSubscribedThread: (
-      args: unknown,
-    ) => Promise<{ shouldReply: boolean; reason: string }>;
+    shouldReplyInSubscribedThread: (args: unknown) => Promise<{
+      shouldReply: boolean;
+      shouldUnsubscribe?: boolean;
+      reason: string;
+    }>;
     addProcessingReaction: (input: {
       channelId: string;
       timestamp: string;
@@ -108,6 +110,34 @@ describe("routeIncomingMessageToQueue", () => {
     const [payload] = (deps.enqueueThreadMessage as ReturnType<typeof vi.fn>)
       .mock.calls[0] as [ThreadMessagePayload, string];
     expect(payload.kind).toBe("subscribed_reply");
+  });
+
+  it("routes passive subscribed messages when router requests unsubscribe", async () => {
+    const runtime = createRuntime();
+    const deps = createDeps({
+      getIsSubscribed: vi.fn(async () => true),
+      shouldReplyInSubscribedThread: vi.fn(async () => ({
+        shouldReply: false,
+        shouldUnsubscribe: true,
+        reason: "thread_opt_out:user asked junior to stop",
+      })),
+    });
+    const message = createMessage({
+      isMention: false,
+    });
+
+    const result = await routeIncomingMessageToQueue({
+      adapter: {},
+      threadId: "slack:C123:",
+      message,
+      runtime,
+      deps,
+    });
+
+    expect(result).toBe("routed");
+    const [payload] = (deps.enqueueThreadMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0] as [ThreadMessagePayload, string];
+    expect(payload.kind).toBe("subscribed_message");
   });
 
   it("does not claim dedupe key for unsubscribed non-mention messages", async () => {

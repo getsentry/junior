@@ -228,7 +228,11 @@ interface QueueRoutingDeps {
     message: Message;
     normalizedThreadId: string;
     thread: Thread;
-  }) => Promise<{ shouldReply: boolean; reason: string }>;
+  }) => Promise<{
+    shouldReply: boolean;
+    shouldUnsubscribe?: boolean;
+    reason: string;
+  }>;
   addProcessingReaction: (input: {
     channelId: string;
     timestamp: string;
@@ -470,7 +474,7 @@ export async function routeIncomingMessageToQueue(args: {
       normalizedThreadId,
       thread,
     });
-    if (!decision.shouldReply) {
+    if (!decision.shouldReply && !decision.shouldUnsubscribe) {
       logIgnoredIngressResult({
         deps,
         eventName: "queue_ingress_ignored_passive_no_reply",
@@ -484,7 +488,9 @@ export async function routeIncomingMessageToQueue(args: {
       });
       return "ignored_passive_no_reply";
     }
-    payloadKind = "subscribed_reply";
+    if (decision.shouldReply) {
+      payloadKind = "subscribed_reply";
+    }
   }
 
   const payload: ThreadMessagePayload = {

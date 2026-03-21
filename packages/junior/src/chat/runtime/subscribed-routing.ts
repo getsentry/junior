@@ -15,7 +15,11 @@ export async function shouldReplyInSubscribedThread(args: {
     channelId?: string;
     runId?: string;
   };
-}): Promise<{ shouldReply: boolean; reason: string }> {
+}): Promise<{
+  shouldReply: boolean;
+  shouldUnsubscribe?: boolean;
+  reason: string;
+}> {
   const decision = await decideSubscribedThreadReply({
     botUserName: botConfig.userName,
     modelId: botConfig.fastModelId,
@@ -30,14 +34,15 @@ export async function shouldReplyInSubscribedThread(args: {
           slackChannelId: input.context.channelId,
           runId: input.context.runId,
           assistantUserName: botConfig.userName,
-          modelId: botConfig.fastModelId
+          modelId: botConfig.fastModelId,
         },
         {
-          "error.message": error instanceof Error ? error.message : String(error)
+          "error.message":
+            error instanceof Error ? error.message : String(error),
         },
-        "Subscribed-thread reply classifier failed; skipping reply"
+        "Subscribed-thread reply classifier failed; skipping reply",
       );
-    }
+    },
   });
 
   const reason = decision.reasonDetail
@@ -45,6 +50,7 @@ export async function shouldReplyInSubscribedThread(args: {
     : decision.reason;
   return {
     shouldReply: decision.shouldReply,
-    reason
+    shouldUnsubscribe: decision.shouldUnsubscribe,
+    reason,
   };
 }

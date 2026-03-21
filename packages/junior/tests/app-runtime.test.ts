@@ -349,6 +349,34 @@ describe("createAppSlackRuntime", () => {
       );
     });
 
+    it("unsubscribes when subscribed-thread routing returns thread opt-out", async () => {
+      const deps = createMockDeps({
+        shouldReplyInSubscribedThread: vi.fn(async () => ({
+          shouldReply: false,
+          shouldUnsubscribe: true,
+          reason: "thread_opt_out:user asked junior to stop participating",
+        })),
+      });
+      const runtime = createAppSlackRuntime<TestState>(deps);
+      const thread = createTestThread({});
+      await thread.subscribe();
+      const message = createTestMessage({
+        text: "<@U123> leave this thread alone",
+        isMention: true,
+      });
+
+      await runtime.handleSubscribedMessage(thread, message);
+
+      expect(thread.subscribed).toBe(false);
+      expect(deps.prepareTurnState).toHaveBeenCalled();
+      expect(deps.persistPreparedState).toHaveBeenCalled();
+      expect(deps.shouldReplyInSubscribedThread).toHaveBeenCalled();
+      expect(deps.replyToThread).not.toHaveBeenCalled();
+      expect(thread.posts).toEqual([
+        "Understood. I'll stay out of this thread unless someone @mentions me again.",
+      ]);
+    });
+
     it("passes conversationContext from getPreparedConversationContext to shouldReply", async () => {
       const deps = createMockDeps({
         getPreparedConversationContext: vi.fn(() => "some context"),
