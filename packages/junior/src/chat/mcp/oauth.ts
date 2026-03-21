@@ -4,7 +4,12 @@ import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getPluginDefinition } from "@/chat/plugins/registry";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
-import { getMcpAuthSession, type McpAuthSessionState } from "./auth-store";
+import {
+  getLatestMcpAuthSessionForUserProvider,
+  getMcpAuthSession,
+  putMcpAuthSession,
+  type McpAuthSessionState,
+} from "./auth-store";
 import { StateBackedMcpOAuthClientProvider } from "./oauth-provider";
 
 export function getMcpOAuthCallbackPath(provider: string): string {
@@ -40,8 +45,43 @@ export async function createMcpOAuthClientProvider(input: {
     );
   }
 
+  const existingSession = await getLatestMcpAuthSessionForUserProvider(
+    input.userId,
+    input.provider,
+  );
+  const reusableSession =
+    existingSession &&
+    existingSession.conversationId === input.conversationId &&
+    existingSession.sessionId === input.sessionId
+      ? existingSession
+      : undefined;
+  const now = Date.now();
+  const authSessionId = reusableSession?.authSessionId ?? randomUUID();
+
+  await putMcpAuthSession({
+    authSessionId,
+    provider: input.provider,
+    userId: input.userId,
+    conversationId: input.conversationId,
+    sessionId: input.sessionId,
+    userMessage: input.userMessage,
+    ...(input.channelId ? { channelId: input.channelId } : {}),
+    ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+    ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
+    ...(input.configuration ? { configuration: input.configuration } : {}),
+    ...(input.artifactState ? { artifactState: input.artifactState } : {}),
+    ...(reusableSession?.authorizationUrl
+      ? { authorizationUrl: reusableSession.authorizationUrl }
+      : {}),
+    ...(reusableSession?.codeVerifier
+      ? { codeVerifier: reusableSession.codeVerifier }
+      : {}),
+    createdAtMs: reusableSession?.createdAtMs ?? now,
+    updatedAtMs: now,
+  });
+
   return new StateBackedMcpOAuthClientProvider(
-    randomUUID(),
+    authSessionId,
     `${baseUrl}${getMcpOAuthCallbackPath(input.provider)}`,
     {
       provider: input.provider,
