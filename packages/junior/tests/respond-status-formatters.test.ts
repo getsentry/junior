@@ -13,11 +13,6 @@ describe("respond status formatters", () => {
       }),
     ).toBe("Running pnpm");
     expect(
-      respondStatusFormatters.formatToolResultStatusWithInput("bash", {
-        command: "pnpm test",
-      }),
-    ).toBe("Reviewed results from pnpm");
-    expect(
       respondStatusFormatters.formatToolStatusWithInput("bash", {
         command: 'CI=1 DEBUG=1 "/usr/local/bin/pnpm" test',
       }),
@@ -35,11 +30,6 @@ describe("respond status formatters", () => {
         path: "/workspace/src/app.ts",
       }),
     ).toBe("Updating file app.ts");
-    expect(
-      respondStatusFormatters.formatToolResultStatusWithInput("writeFile", {
-        path: "/workspace/src/app.ts",
-      }),
-    ).toBe("Updated file app.ts");
   });
 
   it("keeps MCP dispatcher statuses functional", () => {
@@ -59,10 +49,5 @@ describe("respond status formatters", () => {
         tool_name: "mcp__notion__notion-search",
       }),
     ).toBe("Running notion/notion-search");
-    expect(
-      respondStatusFormatters.formatToolResultStatusWithInput("useTool", {
-        tool_name: "mcp__notion__notion-search",
-      }),
-    ).toBe("Reviewed notion/notion-search result");
   });
 });

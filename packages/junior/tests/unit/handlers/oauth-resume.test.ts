@@ -69,5 +69,15 @@ describe("resumeAuthorizedRequest", () => {
       thread_ts: "1700000000.0001",
       text: "resume failed",
     });
+    expect(setStatusMock).toHaveBeenNthCalledWith(1, {
+      channel_id: "C-test",
+      thread_ts: "1700000000.0001",
+      status: "Thinking...",
+    });
+    expect(setStatusMock).toHaveBeenNthCalledWith(2, {
+      channel_id: "C-test",
+      thread_ts: "1700000000.0001",
+      status: "",
+    });
   });
 });

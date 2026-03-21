@@ -14,20 +14,47 @@ export interface ProgressReporter {
 export function createProgressReporter(args: {
   channelId?: string;
   threadTs?: string;
-  setAssistantStatus: (channelId: string, threadTs: string, text: string, suggestions: string[]) => Promise<void>;
+  setAssistantStatus: (
+    channelId: string,
+    threadTs: string,
+    text: string,
+    suggestions: string[],
+  ) => Promise<void>;
   now?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => TimerHandle;
   clearTimer?: (timer: TimerHandle) => void;
 }): ProgressReporter {
   const now = args.now ?? (() => Date.now());
-  const setTimer = args.setTimer ?? ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
-  const clearTimer = args.clearTimer ?? ((timer: TimerHandle) => clearTimeout(timer));
+  const setTimer =
+    args.setTimer ??
+    ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
+  const clearTimer =
+    args.clearTimer ?? ((timer: TimerHandle) => clearTimeout(timer));
 
   let active = false;
   let currentStatus = "";
   let lastStatusAt = 0;
   let pendingStatus: string | null = null;
   let pendingTimer: TimerHandle | null = null;
+  let inflightStatusUpdate: Promise<void> = Promise.resolve();
+
+  const commitStatusUpdate = (
+    text: string,
+    suggestions: string[],
+  ): Promise<void> => {
+    const request = (async () => {
+      try {
+        await args.setAssistantStatus(
+          args.channelId!,
+          args.threadTs!,
+          text,
+          suggestions,
+        );
+      } catch {}
+    })();
+    inflightStatusUpdate = request;
+    return request;
+  };
 
   const postStatus = async (text: string): Promise<void> => {
     if (!args.channelId || !args.threadTs) {
@@ -35,9 +62,17 @@ export function createProgressReporter(args: {
     }
     currentStatus = text;
     lastStatusAt = now();
-    try {
-      await args.setAssistantStatus(args.channelId, args.threadTs, text, [text]);
-    } catch {}
+    await commitStatusUpdate(text, [text]);
+  };
+
+  const clearStatus = async (): Promise<void> => {
+    if (!args.channelId || !args.threadTs || !currentStatus) {
+      return;
+    }
+    await inflightStatusUpdate;
+    currentStatus = "";
+    lastStatusAt = now();
+    await commitStatusUpdate("", []);
   };
 
   const clearPending = () => {
@@ -70,10 +105,16 @@ export function createProgressReporter(args: {
     async stop() {
       active = false;
       clearPending();
+      await clearStatus();
     },
     async setStatus(text: string) {
       const truncated = truncateStatusText(text);
-      if (!active || !truncated || truncated === currentStatus || truncated === pendingStatus) {
+      if (
+        !active ||
+        !truncated ||
+        truncated === currentStatus ||
+        truncated === pendingStatus
+      ) {
         return;
       }
 
@@ -81,7 +122,7 @@ export function createProgressReporter(args: {
       const waitMs = Math.max(
         STATUS_UPDATE_DEBOUNCE_MS - elapsed,
         STATUS_MIN_VISIBLE_MS - elapsed,
-        0
+        0,
       );
 
       if (waitMs <= 0) {
@@ -95,10 +136,13 @@ export function createProgressReporter(args: {
         return;
       }
 
-      pendingTimer = setTimer(() => {
-        pendingTimer = null;
-        void flushPending();
-      }, Math.max(1, waitMs));
-    }
+      pendingTimer = setTimer(
+        () => {
+          pendingTimer = null;
+          void flushPending();
+        },
+        Math.max(1, waitMs),
+      );
+    },
   };
 }

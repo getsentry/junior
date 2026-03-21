@@ -630,6 +630,12 @@ describe("bot handlers (integration)", () => {
           threadTs: "1700000000.000",
         }),
       );
+      expect(fakeAdapter.statusCalls.at(-1)).toEqual({
+        channelId: "C_STATUS",
+        threadTs: "1700000000.000",
+        text: "",
+        suggestions: [],
+      });
     } finally {
       (
         bot as unknown as { getAdapter?: (name: string) => unknown }

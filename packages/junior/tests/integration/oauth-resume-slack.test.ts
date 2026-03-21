@@ -28,6 +28,13 @@ describe("oauth resume slack integration", () => {
           status: "Thinking...",
         }),
       }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel_id: "C123",
+          thread_ts: "1700000000.001",
+          status: "",
+        }),
+      }),
     ]);
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([

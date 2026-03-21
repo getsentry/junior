@@ -72,6 +72,13 @@ async function setAssistantStatus(
   }
 }
 
+async function clearAssistantStatus(
+  channelId: string,
+  threadTs: string,
+): Promise<void> {
+  await setAssistantStatus(channelId, threadTs, "");
+}
+
 const STATUS_DEBOUNCE_MS = 1000;
 
 function createDebouncedStatusPoster(channelId: string, threadTs: string) {
@@ -235,6 +242,7 @@ export async function resumeAuthorizedRequest(args: {
         : await replyPromise;
 
     postStatus.stop();
+    await clearAssistantStatus(args.channelId, args.threadTs);
     if (args.onReply) {
       await args.onReply(reply);
     } else if (reply.text) {
@@ -243,6 +251,7 @@ export async function resumeAuthorizedRequest(args: {
     await args.onSuccess?.(reply);
   } catch (error) {
     postStatus.stop();
+    await clearAssistantStatus(args.channelId, args.threadTs);
 
     if (isRetryableTurnError(error, "mcp_auth_resume") && args.onAuthPause) {
       await args.onAuthPause(error);

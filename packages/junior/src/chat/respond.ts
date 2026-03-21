@@ -393,92 +393,6 @@ function formatToolStatusWithInput(toolName: string, input: unknown): string {
   return formatToolStatus(toolName);
 }
 
-function formatToolResultStatus(toolName: string): string {
-  const known: Record<string, string> = {
-    loadSkill: "Integrating loaded skill guidance",
-    systemTime: "Applying current time context",
-    bash: "Reviewing command results",
-    readFile: "Analyzing file contents",
-    writeFile: "Saving file update",
-    webSearch: "Reviewing search results",
-    webFetch: "Reviewing page content",
-    slackChannelPostMessage: "Posted message to channel",
-    slackMessageAddReaction: "Added emoji reaction",
-    slackChannelListMessages: "Reviewed channel messages",
-    slackCanvasCreate: "Preparing canvas response",
-    slackCanvasUpdate: "Preparing canvas update",
-    slackListCreate: "Preparing list update",
-    slackListAddItems: "Preparing list update",
-    slackListUpdateItem: "Preparing list update",
-    imageGenerate: "Preparing generated image",
-    searchTools: "Reviewing tool matches",
-    useTool: "Reviewing tool result",
-  };
-
-  if (known[toolName]) {
-    return known[toolName];
-  }
-
-  const readable = toolName.replaceAll("_", " ").trim();
-  return readable.length > 0
-    ? `Reviewing ${readable} result`
-    : "Reviewing tool result";
-}
-
-function formatToolResultStatusWithInput(
-  toolName: string,
-  input: unknown,
-): string {
-  const obj =
-    input && typeof input === "object"
-      ? (input as Record<string, unknown>)
-      : undefined;
-  const command = obj ? compactStatusCommand(obj.command) : undefined;
-  const path = obj ? compactStatusPath(obj.path) : undefined;
-  const filename = obj ? compactStatusFilename(obj.path) : undefined;
-  const query = obj ? compactStatusText(obj.query, 70) : undefined;
-  const domain = obj ? extractStatusUrlDomain(obj.url) : undefined;
-  const skillName = obj
-    ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
-    : undefined;
-  const provider = obj ? compactStatusText(obj.provider, 20) : undefined;
-  const activeToolName = obj
-    ? formatCanonicalToolStatusName(obj.tool_name ?? obj.toolName)
-    : undefined;
-
-  if (command && toolName === "bash") {
-    return `Reviewed results from ${command}`;
-  }
-  if (filename && toolName === "readFile") {
-    return `Reviewed file ${filename}`;
-  }
-  if (filename && toolName === "writeFile") {
-    return `Updated file ${filename}`;
-  }
-  if (path && toolName === "writeFile") {
-    return `Updated file ${path}`;
-  }
-  if (skillName && toolName === "loadSkill") {
-    return `Loaded skill ${skillName}`;
-  }
-  if (query && toolName === "webSearch") {
-    return `Reviewed web results for "${query}"`;
-  }
-  if (query && provider && toolName === "searchTools") {
-    return `Reviewed ${provider} tool matches`;
-  }
-  if (query && toolName === "searchTools") {
-    return `Reviewed tool matches for "${query}"`;
-  }
-  if (activeToolName && toolName === "useTool") {
-    return `Reviewed ${activeToolName} result`;
-  }
-  if (domain && toolName === "webFetch") {
-    return `Reviewed page from ${domain}`;
-  }
-  return formatToolResultStatus(toolName);
-}
-
 function toObservablePromptPart(
   part:
     | { type: "text"; text: string }
@@ -601,8 +515,6 @@ function isStructuredToolExecutionResult(value: unknown): value is {
 export const respondStatusFormatters = {
   formatToolStatus,
   formatToolStatusWithInput,
-  formatToolResultStatus,
-  formatToolResultStatusWithInput,
 };
 
 function isToolResultMessage(value: unknown): value is ToolResultMessage<any> {
@@ -818,9 +730,6 @@ function createAgentTools(
                   : {}),
               });
               setSpanStatus("ok");
-              await onStatus?.(
-                `${formatToolResultStatusWithInput(toolName, parsed)}...`,
-              );
               return {
                 content: [{ type: "text", text: "ok" }],
                 details: resultDetails,
@@ -912,9 +821,6 @@ function createAgentTools(
                 : {}),
             });
             setSpanStatus("ok");
-            await onStatus?.(
-              `${formatToolResultStatusWithInput(toolName, parsed)}...`,
-            );
             if (structuredToolResult) {
               return structuredToolResult;
             }
@@ -1296,11 +1202,6 @@ export async function generateAssistantReply(
         onToolCallStart: async (toolName, input) => {
           await context.onStatus?.(
             `${formatToolStatusWithInput(toolName, input)}...`,
-          );
-        },
-        onToolCallEnd: async (toolName, input) => {
-          await context.onStatus?.(
-            `${formatToolResultStatusWithInput(toolName, input)}...`,
           );
         },
         toolOverrides: context.toolOverrides,

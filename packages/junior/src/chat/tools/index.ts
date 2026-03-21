@@ -90,11 +90,7 @@ function wrapToolExecution<T>(
   maybeExecutable.execute = async (...args: any[]) => {
     const input = args[0];
     await hooks.onToolCallStart?.(toolName, input);
-    try {
-      return await originalExecute(...args);
-    } finally {
-      await hooks.onToolCallEnd?.(toolName, input);
-    }
+    return await originalExecute(...args);
   };
 
   return toolDef;
