@@ -59,10 +59,11 @@ jobs:
       - id: secrets
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
         run: |
           set -euo pipefail
 
-          if [[ -n "${AI_GATEWAY_API_KEY:-}" ]]; then
+          if [[ -n "${AI_GATEWAY_API_KEY:-}" || -n "${VERCEL_OIDC_TOKEN:-}" ]]; then
             echo "gateway_ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "gateway_ready=false" >> "$GITHUB_OUTPUT"

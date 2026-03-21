@@ -83,7 +83,7 @@ checkpoint save/restore semantics in the core resumability path.
 - Eval-related files are:
   - `packages/junior/evals/**`
   - `packages/junior/vitest.evals.config.ts`
-- The CI job requires repo-level AI gateway credentials and working Vercel Sandbox access.
+- The CI job requires repo-level gateway credentials (`AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN`) and working Vercel Sandbox access.
 
 Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval fails immediately (no local fallback path).
 
