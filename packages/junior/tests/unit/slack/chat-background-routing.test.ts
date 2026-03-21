@@ -138,6 +138,11 @@ describe("routeIncomingMessageToQueue", () => {
     const [payload] = (deps.enqueueThreadMessage as ReturnType<typeof vi.fn>)
       .mock.calls[0] as [ThreadMessagePayload, string];
     expect(payload.kind).toBe("subscribed_message");
+    expect(payload.preApprovedDecision).toEqual({
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: "thread_opt_out:user asked junior to stop",
+    });
   });
 
   it("does not claim dedupe key for unsubscribed non-mention messages", async () => {

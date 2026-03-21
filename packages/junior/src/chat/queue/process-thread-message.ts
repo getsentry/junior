@@ -239,6 +239,7 @@ export async function processQueuedThreadMessage(
       kind: runtimePayload.kind,
       thread: runtimePayload.thread,
       message: runtimePayload.message,
+      preApprovedDecision: runtimePayload.preApprovedDecision,
     });
     await clearProcessingReaction();
 

@@ -123,6 +123,35 @@ describe("processQueuedThreadMessage reaction regressions", () => {
     );
   });
 
+  it("forwards pre-approved subscribed decisions to the runtime", async () => {
+    const payload = createPayload();
+    payload.kind = "subscribed_message";
+    payload.preApprovedDecision = {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: "thread_opt_out:user asked junior to stop",
+    };
+    const processRuntime = vi.fn(async () => undefined);
+
+    await processQueuedThreadMessage(payload, {
+      clearProcessingReaction: vi.fn(async () => undefined),
+      logInfo: vi.fn(),
+      processRuntime,
+      logWarn: vi.fn(),
+    });
+
+    expect(processRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "subscribed_message",
+        preApprovedDecision: {
+          shouldReply: false,
+          shouldUnsubscribe: true,
+          reason: "thread_opt_out:user asked junior to stop",
+        },
+      }),
+    );
+  });
+
   it("logs and returns when the queue message is already completed", async () => {
     const payload = createPayload();
     const logInfo = vi.fn();

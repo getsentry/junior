@@ -29,7 +29,7 @@ export interface AppRuntimeReplyDecision {
 
 export interface AppRuntimeReplyHooks {
   beforeFirstResponsePost?: () => Promise<void>;
-  preApprovedReply?: boolean;
+  preApprovedDecision?: AppRuntimeReplyDecision;
 }
 
 const THREAD_OPTOUT_ACK =
@@ -335,7 +335,7 @@ export function createAppSlackRuntime<
           runId,
         };
 
-        const preflightDecision = hooks?.preApprovedReply
+        const preflightDecision = hooks?.preApprovedDecision
           ? undefined
           : getSubscribedReplyPreflightDecision({
               botUserName: deps.assistantUserName,
@@ -393,11 +393,8 @@ export function createAppSlackRuntime<
           preparedState,
         });
 
-        const decision = hooks?.preApprovedReply
-          ? {
-              shouldReply: true,
-              reason: "pre_approved_reply",
-            }
+        const decision = hooks?.preApprovedDecision
+          ? hooks.preApprovedDecision
           : await deps.shouldReplyInSubscribedThread({
               rawText: rawUserText,
               text: userText,

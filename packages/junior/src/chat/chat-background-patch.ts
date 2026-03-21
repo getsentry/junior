@@ -468,6 +468,7 @@ export async function routeIncomingMessageToQueue(args: {
   const serializedMessage = serializeMessageForQueue(message as Message);
   const serializedThread = serializeThreadForQueue(thread);
   let payloadKind: ThreadMessageKind = kind;
+  let preApprovedDecision: ThreadMessagePayload["preApprovedDecision"];
   if (kind === "subscribed_message" && !isMention) {
     const decision = await deps.shouldReplyInSubscribedThread({
       message: message as Message,
@@ -488,6 +489,13 @@ export async function routeIncomingMessageToQueue(args: {
       });
       return "ignored_passive_no_reply";
     }
+    if (decision.shouldUnsubscribe) {
+      preApprovedDecision = {
+        shouldReply: false,
+        shouldUnsubscribe: true,
+        reason: decision.reason,
+      };
+    }
     if (decision.shouldReply) {
       payloadKind = "subscribed_reply";
     }
@@ -498,6 +506,7 @@ export async function routeIncomingMessageToQueue(args: {
     kind: payloadKind,
     message: serializedMessage,
     normalizedThreadId,
+    preApprovedDecision,
     thread: serializedThread,
   };
 
