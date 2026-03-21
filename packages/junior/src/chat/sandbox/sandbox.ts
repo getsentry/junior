@@ -15,6 +15,7 @@ import {
   SANDBOX_WORKSPACE_ROOT,
   sandboxSkillDir,
 } from "@/chat/sandbox/paths";
+import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   getRuntimeDependencyProfileHash,
   isSnapshotMissingError,
@@ -489,6 +490,7 @@ export function createSandboxExecutor(options?: {
         "app.sandbox.skills_count": availableSkills.length,
       },
       async () => {
+        const sandboxCredentials = getVercelSandboxCredentials();
         const assignSandbox = (nextSandbox: Sandbox): Sandbox => {
           sandbox = nextSandbox;
           sandboxIdHint = nextSandbox.sandboxId;
@@ -578,6 +580,7 @@ export function createSandboxExecutor(options?: {
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     runtime,
+                    ...(sandboxCredentials ?? {}),
                   });
                 }
 
@@ -589,6 +592,7 @@ export function createSandboxExecutor(options?: {
                       type: "snapshot",
                       snapshotId: snapshot.snapshotId,
                     },
+                    ...(sandboxCredentials ?? {}),
                   });
                 } catch (error) {
                   if (!isSnapshotMissingError(error)) {
@@ -610,15 +614,14 @@ export function createSandboxExecutor(options?: {
                     throw error;
                   }
 
-                  await emitSandboxStatus(
-                    "Booting up...",
-                  );
+                  await emitSandboxStatus("Booting up...");
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     source: {
                       type: "snapshot",
                       snapshotId: rebuiltSnapshot.snapshotId,
                     },
+                    ...(sandboxCredentials ?? {}),
                   });
                 }
               },
@@ -706,7 +709,11 @@ export function createSandboxExecutor(options?: {
                 "app.sandbox.reused": true,
                 "app.sandbox.source": "id_hint",
               },
-              async () => Sandbox.get({ sandboxId: sandboxIdHint as string }),
+              async () =>
+                Sandbox.get({
+                  sandboxId: sandboxIdHint as string,
+                  ...(sandboxCredentials ?? {}),
+                }),
             );
           } catch {
             acquiredSandbox = null;
