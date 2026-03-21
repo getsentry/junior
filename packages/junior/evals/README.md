@@ -78,8 +78,8 @@ checkpoint save/restore semantics in the core resumability path.
 
 ## Optional CI Runs
 
-- On pull requests, the `Evals` workflow runs when either eval-related files changed or the PR has the `run-evals` label.
-- Adding the `run-evals` label triggers a run immediately; adding unrelated labels does not.
+- On pull requests, the `Evals` workflow runs when either eval-related files changed or the PR has the `trigger-evals` label.
+- Adding the `trigger-evals` label triggers a run immediately; adding unrelated labels does not.
 - Eval-related files are:
   - `packages/junior/evals/**`
   - `packages/junior/vitest.evals.config.ts`

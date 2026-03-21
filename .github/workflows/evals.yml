@@ -32,10 +32,10 @@ jobs:
           action="$(jq -r '.action // ""' "$GITHUB_EVENT_PATH")"
           requested=false
           if [[ "$action" == "labeled" ]]; then
-            if [[ "$(jq -r '.label.name // ""' "$GITHUB_EVENT_PATH")" == "run-evals" ]]; then
+            if [[ "$(jq -r '.label.name // ""' "$GITHUB_EVENT_PATH")" == "trigger-evals" ]]; then
               requested=true
             fi
-          elif jq -e '.pull_request.labels[]?.name | select(. == "run-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
+          elif jq -e '.pull_request.labels[]?.name | select(. == "trigger-evals")' "$GITHUB_EVENT_PATH" >/dev/null; then
             requested=true
           fi
 
