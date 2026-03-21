@@ -32,14 +32,6 @@ export interface AppRuntimeReplyHooks {
   preApprovedReply?: boolean;
 }
 
-function isExplicitMentionDecision(reason: string): boolean {
-  return (
-    reason === "explicit mention" ||
-    reason === "explicit_mention" ||
-    reason.startsWith("explicit_mention:")
-  );
-}
-
 const THREAD_OPTOUT_ACK =
   "Understood. I'll stay out of this thread unless someone @mentions me again.";
 async function maybeHandleThreadOptOutDecision(args: {
@@ -484,7 +476,7 @@ export function createAppSlackRuntime<
           }),
           async () => {
             await deps.replyToThread(thread, message, {
-              explicitMention: isExplicitMentionDecision(decision.reason),
+              explicitMention: Boolean(message.isMention),
               preparedState,
               beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
             });

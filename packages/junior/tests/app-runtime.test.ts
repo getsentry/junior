@@ -393,17 +393,17 @@ describe("createAppSlackRuntime", () => {
       );
     });
 
-    it("when decision reason is 'explicit mention': passes explicitMention: true to replyToThread", async () => {
+    it("passes explicitMention: true for classifier-approved subscribed mentions", async () => {
       const deps = createMockDeps({
         shouldReplyInSubscribedThread: vi.fn(async () => ({
           shouldReply: true,
-          reason: "explicit mention",
+          reason: "llm_classifier:follow_up_question",
         })),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
       const runtime = createAppSlackRuntime<TestState>(deps);
       const thread = createTestThread({});
-      const message = createTestMessage({});
+      const message = createTestMessage({ isMention: true });
 
       await runtime.handleSubscribedMessage(thread, message);
 
