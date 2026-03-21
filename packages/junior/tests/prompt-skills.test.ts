@@ -25,6 +25,7 @@ describe("buildSystemPrompt skill paths", () => {
         name: "brief",
         description: "Create a candidate brief",
         skillPath: "/host/path/skills/brief",
+        requiresCapabilities: ["github.issues.read"],
         usesConfig: ["github.repo"],
       },
     ];
@@ -49,6 +50,7 @@ describe("buildSystemPrompt skill paths", () => {
     expect(prompt).toContain(
       `<skill name="brief" location="${sandboxSkillFile("brief")}">`,
     );
+    expect(prompt).toContain("Requires capabilities: github.issues.read.");
     expect(prompt).toContain("Uses config keys: github.repo.");
     expect(prompt).toContain(
       `References are relative to ${sandboxSkillDir("brief")}.`,
@@ -77,6 +79,9 @@ describe("buildSystemPrompt skill paths", () => {
     expect(prompt).toContain("- provider: github");
     expect(prompt).toContain("  - config_keys: github.repo");
     expect(prompt).toContain("github.issues.read");
+    expect(prompt).toContain(
+      "If a loaded skill or `loadSkill` result declares `requires_capabilities`",
+    );
   });
 
   it("documents harness-owned Slack artifact targeting and explicit channel-post behavior", () => {

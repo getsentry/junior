@@ -421,7 +421,7 @@ async function handleOAuthStartCommand(
   }
 
   // Explicit oauth-start must not store pendingMessage — the auth request
-  // itself is the intent, and auto-resuming "/sentry auth" would loop.
+  // itself is the intent, and auto-resuming an explicit reconnect request would loop.
   const result = await startOAuthFlow(provider, {
     requesterId: deps.requesterId,
     channelId: deps.channelId,

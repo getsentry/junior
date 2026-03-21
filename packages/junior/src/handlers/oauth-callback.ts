@@ -151,7 +151,7 @@ export async function GET(
     if (errorParam === "access_denied") {
       return htmlErrorResponse(
         "Authorization declined",
-        `You declined the ${providerLabel} authorization request. Return to Slack and run the auth command again if you change your mind.`,
+        `You declined the ${providerLabel} authorization request. Return to Slack and ask Junior to connect your ${providerLabel} account again if you change your mind.`,
         400,
       );
     }
@@ -176,7 +176,7 @@ export async function GET(
   if (!stored) {
     return htmlErrorResponse(
       "Link expired",
-      `This authorization link has expired (links are valid for 10 minutes). Return to Slack and ask to connect your ${providerLabel} account again, or retry your original command to get a new link.`,
+      `This authorization link has expired (links are valid for 10 minutes). Return to Slack and ask Junior to connect your ${providerLabel} account again to get a new link.`,
       400,
     );
   }

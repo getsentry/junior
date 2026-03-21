@@ -42,6 +42,9 @@ describe("load_skill tool", () => {
     expect(result).toMatchObject({
       ok: true,
       skill_name: firstSkill.name,
+      ...(firstSkill.requiresCapabilities
+        ? { requires_capabilities: firstSkill.requiresCapabilities }
+        : {}),
     });
     expect((result as any).location).toBe(sandboxSkillFile(firstSkill.name));
     expect((result as any).skill_dir).toBe(sandboxSkillDir(firstSkill.name));

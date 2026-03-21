@@ -5,14 +5,11 @@ description: Search Notion pages and data sources and summarize the best match. 
 
 # Notion Operations
 
-Use this skill for `/notion` workflows in the harness.
+Use this skill for Notion search and summarization workflows in the harness.
 
 ## Workflow
 
-1. Classify the request:
-
-- `disconnect`: run `jr-rpc delete-token notion` in `bash`, then confirm that the user's Notion connection was removed.
-- otherwise treat the request as a read-only query.
+1. Treat the request as a read-only query.
 
 2. Keep tool work mostly silent:
 
@@ -26,7 +23,6 @@ Use this skill for `/notion` workflows in the harness.
 - `loadSkill` returns `available_tools` for this skill, including the exact `tool_name` values and argument schemas for the Notion tools exposed in this turn.
 - Use `useTool` with those exact `tool_name` values.
 - Use `searchTools` only if you need to rediscover or filter the active Notion tools later in the turn.
-- The first MCP call may trigger a private OAuth link. Do not try to start auth manually. The runtime will pause and resume automatically after the user completes the flow.
 - Decide the actual search phrases first. Notion search is title-biased, so search for the likely page or data source title, not the user's full sentence.
 - Use 1-3 short explicit search phrases.
 - Good: `deployment pipeline`, `launch tracker`, `incident review`
