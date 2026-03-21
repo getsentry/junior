@@ -249,6 +249,24 @@ describe("McpToolManager", () => {
     expect(manager.getActiveProviders()).toEqual([]);
   });
 
+  it("does not retry activation for a provider already parked for auth", async () => {
+    const plugin = buildPlugin();
+    onAuthorizationRequiredMock.mockResolvedValueOnce(true);
+    const manager = new McpToolManager([plugin], {
+      onAuthorizationRequired: onAuthorizationRequiredMock,
+    });
+    listToolsMock.mockRejectedValueOnce(
+      new McpAuthorizationRequiredError("demo", "Discovery auth required"),
+    );
+
+    await expect(manager.activateProvider("demo")).resolves.toBe(false);
+    await expect(manager.activateProvider("demo")).resolves.toBe(false);
+
+    expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
+    expect(listToolsMock).toHaveBeenCalledTimes(1);
+    expect(clientOptions).toHaveLength(1);
+  });
+
   it("parks handled MCP authorization challenges during initial client setup", async () => {
     const plugin = buildPlugin();
     const authError = new McpAuthorizationRequiredError(

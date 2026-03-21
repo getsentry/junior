@@ -170,6 +170,7 @@ interface ManagedMcpTool extends ManagedMcpToolDescriptor {
 export class McpToolManager {
   private readonly pluginsByProvider = new Map<string, PluginDefinition>();
   private readonly activeProviders = new Set<string>();
+  private readonly authorizationPendingProviders = new Set<string>();
   private readonly clientsByProvider = new Map<string, PluginMcpClient>();
   private readonly toolsByProvider = new Map<string, ManagedMcpTool[]>();
 
@@ -200,6 +201,9 @@ export class McpToolManager {
 
   async activateProvider(provider: string): Promise<boolean> {
     if (this.activeProviders.has(provider)) {
+      return false;
+    }
+    if (this.authorizationPendingProviders.has(provider)) {
       return false;
     }
 
@@ -242,6 +246,7 @@ export class McpToolManager {
     this.clientsByProvider.clear();
     this.toolsByProvider.clear();
     this.activeProviders.clear();
+    this.authorizationPendingProviders.clear();
 
     if (firstError) {
       throw firstError;
@@ -414,9 +419,17 @@ export class McpToolManager {
       return false;
     }
 
-    return (
-      (await this.options.onAuthorizationRequired(provider, error)) === true
-    );
+    const handled =
+      (await this.options.onAuthorizationRequired(provider, error)) === true;
+    if (!handled) {
+      return false;
+    }
+
+    this.authorizationPendingProviders.add(provider);
+    this.clientsByProvider.delete(provider);
+    this.toolsByProvider.delete(provider);
+    this.activeProviders.delete(provider);
+    return true;
   }
 
   private getResolvedActiveTools(
