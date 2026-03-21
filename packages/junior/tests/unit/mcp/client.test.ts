@@ -187,6 +187,24 @@ describe("PluginMcpClient", () => {
     );
   });
 
+  it("does not relabel raw 401 transport failures as auth challenges", async () => {
+    const authProvider = buildAuthProvider();
+    authProvider.getMcpServerSessionId.mockResolvedValue(undefined);
+    authProvider.saveMcpServerSessionId.mockResolvedValue(undefined);
+    connectMock.mockRejectedValueOnce(
+      new StreamableHTTPError(
+        401,
+        "Server returned 401 after successful authentication",
+      ),
+    );
+
+    const client = new PluginMcpClient(buildPlugin(), { authProvider });
+
+    await expect(client.listTools()).rejects.toBeInstanceOf(
+      StreamableHTTPError,
+    );
+  });
+
   it("clears a stale MCP server session and retries once with a fresh transport", async () => {
     const authProvider = buildAuthProvider();
     authProvider.getMcpServerSessionId

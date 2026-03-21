@@ -177,12 +177,6 @@ export class PluginMcpClient {
           `MCP authorization required for plugin "${this.plugin.manifest.name}"`,
         );
       }
-      if (error instanceof StreamableHTTPError && error.code === 401) {
-        throw new McpAuthorizationRequiredError(
-          this.plugin.manifest.name,
-          `MCP authorization required for plugin "${this.plugin.manifest.name}"`,
-        );
-      }
       throw error;
     }
   }
