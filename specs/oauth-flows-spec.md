@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-18
+- Last Edited: 2026-03-20
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-03-09: Added provider-configured token request auth/headers and optional token expiry semantics.
 - 2026-03-13: Documented MCP challenge-driven OAuth, MCP callback routing, and auth-driven turn resume.
 - 2026-03-18: Clarified lazy MCP auth-session creation, host-managed MCP server-session storage, and disconnect cleanup for stored credentials plus pending auth sessions.
+- 2026-03-20: Removed stale slash-command examples in favor of generic connect/disconnect requests and direct jr-rpc initiation.
 
 ## Status
 
@@ -54,7 +55,7 @@ Device code grant (RFC 8628) was rejected because it requires agent-side polling
 ### Authorization (connect)
 
 ```
-User: /sentry auth (in Slack thread)
+User: asks Junior to connect their Sentry account in a Slack thread
   │
   ▼
 Agent: jr-rpc oauth-start sentry
@@ -130,7 +131,7 @@ After a user has connected their account, credential issuance works transparentl
 ### Disconnect
 
 ```
-User: /sentry disconnect
+User: asks Junior to disconnect their Sentry account
   │
   ▼
 Agent: jr-rpc delete-token sentry
@@ -248,11 +249,11 @@ This section describes what the user actually sees in their Slack thread for eac
 What the thread looks like:
 
 ```
-User:     @Junior /sentry auth
+User:     @Junior connect my Sentry account
 Junior:   I've sent you a private link to connect your Sentry account.
           [ephemeral — only this user sees: "Click here to connect your Sentry account" with link]
           ... user clicks link, authorizes in browser, sees "Sentry account connected" page ...
-Junior:   Your Sentry account is now connected. You can start using Sentry commands.
+Junior:   Your Sentry account is now connected. You can continue with Sentry requests.
 ```
 
 Three messages from Junior appear in the thread:
@@ -266,9 +267,9 @@ The user also sees a success page in their browser after authorizing, telling th
 What happens under the hood:
 
 ```
-1. User sends "@Junior /sentry auth"
+1. User asks Junior to connect their Sentry account
 2. Agent turn starts
-   a. Agent loads sentry skill, sees "auth" operation
+   a. Agent detects an explicit Sentry connect request
    b. Runs `jr-rpc oauth-start sentry`
    c. oauth-start: stores { userId, provider, channelId, threadTs } in Redis (10-min TTL)
    d. oauth-start: sends authorize URL privately via SLACK_BOT_TOKEN (ephemeral in channels, DM fallback)
@@ -293,7 +294,7 @@ What happens under the hood:
 What the thread looks like:
 
 ```
-User:     @Junior /sentry issue list
+User:     @Junior show me recent Sentry issues
 Junior:   [responds with issue list — no auth prompts, no delays]
 ```
 
@@ -304,7 +305,7 @@ The auth machinery is invisible. On every turn, the broker looks up stored token
 What the thread looks like:
 
 ```
-User:     @Junior /sentry issue list
+User:     @Junior show me recent Sentry issues
 Junior:   [responds normally — identical to above]
 ```
 
@@ -315,7 +316,7 @@ If the access token is within 5 minutes of expiry, the broker silently refreshes
 What the thread looks like:
 
 ```
-User:     @Junior /sentry issue list
+User:     @Junior show me recent Sentry issues
 Junior:   I need to reconnect your Sentry account. I've sent you a private authorization link.
           [ephemeral — only this user sees: "Click here to connect your Sentry account" with link]
           ... user clicks link, authorizes in browser ...
@@ -330,7 +331,7 @@ This happens when the refresh token itself is revoked or Sentry's token endpoint
 What the thread looks like:
 
 ```
-User:     @Junior /sentry issue list
+User:     @Junior show me recent Sentry issues
 Junior:   I need to connect your Sentry account first. I've sent you a private link.
           [private — only this user sees: "Click here to connect your Sentry account" with link]
           ... user clicks link, authorizes in browser ...
@@ -343,7 +344,7 @@ The broker throws `CredentialUnavailableError`. The harness (`issue-credential` 
 What happens under the hood:
 
 ```
-1. User sends "@Junior /sentry issue list"
+1. User asks Junior to show recent Sentry issues
 2. Agent turn starts
    a. Agent loads sentry skill, runs jr-rpc issue-credential sentry.api
    b. Broker throws CredentialUnavailableError("sentry", ...)
@@ -358,7 +359,7 @@ What happens under the hood:
    a. Exchanges code for tokens, stores in Redis
    b. Returns HTML success page to browser
    c. after(): posts "Your Sentry account is now connected. Processing your request..."
-   d. after(): calls generateAssistantReply("/sentry issue list", { configuration, ... })
+   d. after(): calls generateAssistantReply("show me recent Sentry issues", { configuration, ... })
    e. after(): posts the agent's reply to the Slack thread
 5. User sees results without any additional action
 ```
@@ -368,7 +369,7 @@ What happens under the hood:
 What the thread looks like:
 
 ```
-User:     @Junior /sentry disconnect
+User:     @Junior disconnect my Sentry account
 Junior:   Your Sentry account has been disconnected.
 ```
 
@@ -388,7 +389,7 @@ Under the hood: `jr-rpc delete-token sentry` deletes the stored provider credent
 
 **Harness-driven auto-start.** The agent never passes pending message context. When `issue-credential` fails with `CredentialUnavailableError` for an OAuth-capable provider, the harness automatically starts the OAuth flow with the original user message (from `JrRpcDeps.userMessage`) and channel configuration stored in the OAuth state. The agent only needs to interpret the `credential_unavailable` + `oauth_started` result and inform the user.
 
-**Explicit `/sentry auth` skips auto-resume.** When the user explicitly requests auth via `oauth-start`, no `userMessage` is stored (the auth request itself is the intent), and the callback posts a simple "connected" confirmation without triggering an agent turn.
+**Explicit connect requests via `oauth-start` skip auto-resume.** When the user explicitly requests account connection via `oauth-start`, no `userMessage` is stored (the connect request itself is the intent), and the callback posts a simple "connected" confirmation without triggering an agent turn.
 
 ## Adding a new provider
 

@@ -165,6 +165,9 @@ describe("oauth callback handler", () => {
     const body = await response.text();
     expect(body).toContain("<!DOCTYPE html>");
     expect(body).toContain("expired");
+    expect(body).toContain(
+      "ask Junior to connect your Sentry account again to get a new link",
+    );
   });
 
   it("returns styled HTML 400 for provider mismatch", async () => {
@@ -386,6 +389,10 @@ describe("oauth callback handler", () => {
     const body = await response.text();
     expect(body).toContain("<!DOCTYPE html>");
     expect(body).toContain("declined");
+    expect(body).toContain(
+      "ask Junior to connect your Sentry account again if you change your mind",
+    );
+    expect(body).not.toContain("auth command");
     // State should be cleaned up
     expect(mockStateStore.has(stateKey)).toBe(false);
   });

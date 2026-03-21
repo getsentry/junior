@@ -177,6 +177,11 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
       `  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skillDir}/SKILL.md`)}">`,
     );
     lines.push(`References are relative to ${escapeXml(skillDir)}.`);
+    if (skill.requiresCapabilities && skill.requiresCapabilities.length > 0) {
+      lines.push(
+        `Requires capabilities: ${escapeXml(skill.requiresCapabilities.join(", "))}.`,
+      );
+    }
     if (skill.usesConfig && skill.usesConfig.length > 0) {
       lines.push(
         `Uses config keys: ${escapeXml(skill.usesConfig.join(", "))}.`,
@@ -474,7 +479,10 @@ export function buildSystemPrompt(params: {
         "- Use `slackMessageAddReaction` for rare lightweight acknowledgements. It reacts to the current inbound message via runtime context; never pick a target message yourself.",
         "- If the user explicitly asks for an emoji reaction instead of text, use `slackMessageAddReaction` with a Slack emoji alias name (for example `thumbsup`, `white_check_mark`, or `eyes`, not unicode emoji), and avoid redundant acknowledgment text.",
         "- Suggested acknowledgement reactions include `wave`, `white_check_mark`, `thumbsup`, and `eyes`, but choose what best fits the request.",
-        "- To enable provider credentials for this turn, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before commands that need authenticated API calls. GitHub capabilities need repository context, which can come from `--repo` or a configured `github.repo` default.",
+        "- If a loaded skill or `loadSkill` result declares `requires_capabilities`, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before authenticated bash/API work for that skill.",
+        "- Use the minimum declared capability needed for the current operation.",
+        "- If `jr-rpc issue-credential` returns `oauth_started`, relay its `message` to the user and stop. The runtime will resume after authorization.",
+        "- GitHub capabilities need repository context, which can come from `--repo` or a configured `github.repo` default.",
         "- To persist or read conversation defaults (for example `github.repo`), run `jr-rpc config get|set|unset|list ...` as a bash command.",
         "- Capabilities are provider-qualified (for example `github.issues.write`).",
         "- When your work is complete, provide the exact user-facing markdown response.",

@@ -3,13 +3,13 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-03-04
+- Last Edited: 2026-03-20
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated repo-root file paths and aligned OAuth URL visibility contract with security policy.
-
+- 2026-03-20: Documented prompt exposure of declared capabilities and clarified Sentry OAuth initiation paths.
 
 ## Status
 
@@ -27,7 +27,7 @@ Define a capability model where skills declare required capabilities and runtime
 ## Core model
 
 1. Skill loads normally.
-2. Runtime reads `requires-capabilities` from active skill.
+2. Prompt/runtime expose `requires-capabilities` from the loaded skill for agent guidance.
 3. Agent enables credential with bash custom command `jr-rpc issue-credential <capability>`.
 4. Runtime issues short-lived credentials and applies sandbox header transforms.
 5. Runtime does not persist long-lived secrets in sandbox env/files or skill files.
@@ -56,6 +56,7 @@ Rules:
 ### Capability resolution
 
 - Resolve capabilities from active skill context for guidance and observability.
+- Expose declared capabilities to the agent through loaded-skill prompt context and `loadSkill` results.
 - Declarations are currently soft-enforced (warn-only) when missing/mismatched.
 
 ### Credential issuance
@@ -114,7 +115,7 @@ Rules:
 
 ### OAuth authorization code flow
 
-- Auth initiated by `/sentry auth` command.
+- Auth initiated by `jr-rpc oauth-start sentry` directly or by auto-OAuth during `jr-rpc issue-credential sentry.api`.
 - Uses Authorization Code Grant (RFC 6749 §4.1) via `jr-rpc oauth-start sentry`.
 - Callback handler at `/api/oauth/callback/sentry` exchanges code for tokens server-side.
 - Tokens stored per Slack user ID via `StateAdapterTokenStore` (Redis-backed).

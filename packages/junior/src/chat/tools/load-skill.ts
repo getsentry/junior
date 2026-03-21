@@ -12,6 +12,7 @@ export type LoadSkillResult = {
   available_skills?: string[];
   skill_name?: string;
   description?: string;
+  requires_capabilities?: string[];
   skill_dir?: string;
   location?: string;
   instructions?: string;
@@ -85,6 +86,9 @@ export async function loadSkillFromSandbox(
     ok: true,
     skill_name: skill.name,
     description: skill.description,
+    ...(skill.requiresCapabilities
+      ? { requires_capabilities: skill.requiresCapabilities }
+      : {}),
     skill_dir: skillDir,
     location: skillFilePath,
     instructions: stripFrontmatter(file.toString("utf8")),
@@ -102,7 +106,7 @@ export function createLoadSkillTool(
 ) {
   return tool({
     description:
-      "Load a skill by name so its instructions are available for this turn. When the skill exposes MCP tools, the result includes `available_tools` with exact tool_name values and argument schemas for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
+      "Load a skill by name so its instructions are available for this turn. The result includes `requires_capabilities` when the skill declares authenticated provider access, and `available_tools` when the skill exposes MCP tools for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,
