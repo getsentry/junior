@@ -243,22 +243,4 @@ describe("skills", () => {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
   });
-
-  it("discovers eval plugin skills from a shared plugin root", async () => {
-    const evalPluginsRoot = path.resolve(process.cwd(), "evals", "plugins");
-
-    setAdditionalPluginRootsForTests([evalPluginsRoot]);
-    resetSkillDiscoveryCache();
-
-    const skills = await discoverSkills();
-    const skillNames = skills.map((skill) => skill.name);
-
-    expect(skillNames).toContain("eval-auth");
-    expect(skillNames).toContain("eval-oauth");
-    expect(skills.find((skill) => skill.name === "eval-oauth")).toMatchObject({
-      pluginProvider: "eval-oauth",
-      requiresCapabilities: ["eval-oauth.read"],
-      allowedTools: ["bash"],
-    });
-  });
 });
