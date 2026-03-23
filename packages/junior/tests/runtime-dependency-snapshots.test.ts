@@ -37,7 +37,7 @@ vi.mock("@/chat/observability", () => ({
 const store = new Map<string, string>();
 let lockHeld = false;
 
-vi.mock("@/chat/state", () => ({
+vi.mock("@/chat/state/adapter", () => ({
   getStateAdapter: () => ({
     connect: vi.fn(async () => {}),
     get: vi.fn(async (key: string) => store.get(key)),

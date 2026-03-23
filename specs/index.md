@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-06
+- Last Edited: 2026-03-21
 
 ## Changelog
 
@@ -11,7 +11,7 @@
 - 2026-03-04: Added canonical agent execution discipline spec.
 - 2026-03-05: Added canonical session resumability spec for multi-slice serverless execution.
 - 2026-03-06: Added canonical sandbox snapshot lifecycle spec.
-
+- 2026-03-21: Added canonical chat architecture spec.
 
 ## Status
 
@@ -43,6 +43,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 ## Canonical Specs
 
 - `specs/security-policy.md`
+- `specs/chat-architecture-spec.md`
 - `specs/skill-capabilities-spec.md`
 - `specs/oauth-flows-spec.md`
 - `specs/harness-agent-spec.md`

@@ -14,7 +14,7 @@ import {
 import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/progress-reporter";
-import { getBotDeps } from "@/chat/runtime/deps";
+import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   createTextStreamBridge,
@@ -47,22 +47,25 @@ import {
 import { resolveUserAttachments } from "@/chat/services/vision-context";
 import { isDmChannel } from "@/chat/slack-actions/client";
 import { type ThreadArtifactsState } from "@/chat/slack-actions/types";
+import { lookupSlackUser } from "@/chat/slack-user";
 import { resolveReplyDelivery } from "@/chat/turn/execute";
 import { isRetryableTurnError } from "@/chat/turn/errors";
+import { buildDeterministicTurnId } from "@/chat/turn/id";
 import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
 import { startActiveTurn } from "@/chat/turn/prepare";
 import { isPotentialRedundantReactionAckText } from "@/chat/delivery/plan";
-
-function buildDeterministicTurnId(messageId: string): string {
-  const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return `turn_${sanitized}`;
-}
 
 type SlackReplyPostStage =
   | "streaming_initial_post"
   | "thread_reply"
   | "thread_reply_after_stream_failure"
   | "thread_reply_files_followup";
+
+export interface ReplyExecutorServices {
+  generateAssistantReply: typeof generateAssistantReplyImpl;
+  generateThreadTitle: typeof generateThreadTitle;
+  lookupSlackUser: typeof lookupSlackUser;
+}
 
 interface ReplyExecutorDeps {
   getSlackAdapter: () => SlackAdapter;
@@ -78,6 +81,7 @@ interface ReplyExecutorDeps {
       runId?: string;
     };
   }) => Promise<PreparedTurnState>;
+  services: ReplyExecutorServices;
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -175,7 +179,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           conversation: preparedState.conversation,
         });
 
-        const fallbackIdentity = await getBotDeps().lookupSlackUser(
+        const fallbackIdentity = await deps.services.lookupSlackUser(
           message.author.userId,
         );
         const resolvedUserName =
@@ -263,7 +267,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         try {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
-          const reply = await getBotDeps().generateAssistantReply(userText, {
+          const reply = await deps.services.generateAssistantReply(userText, {
             assistant: {
               userName: botConfig.userName,
             },
@@ -462,7 +466,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             isDmChannel(channelId) &&
             threadTs
           ) {
-            void generateThreadTitle(userText, reply.text)
+            void deps.services
+              .generateThreadTitle(userText, reply.text)
               .then((title) =>
                 deps
                   .getSlackAdapter()

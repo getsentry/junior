@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FileUpload } from "chat";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createAttachFileTool } from "@/chat/tools/attach-file";
 
 function getUploadBytes(data: FileUpload["data"]): number {
@@ -30,7 +31,7 @@ function makeSandbox(overrides?: {
         stdout: async () => "image/png\n",
         stderr: async () => "",
       })),
-  } as any;
+  } satisfies SandboxWorkspace;
 }
 
 describe("createAttachFileTool", () => {

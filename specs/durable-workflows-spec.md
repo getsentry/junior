@@ -11,7 +11,6 @@
 - 2026-03-04: Updated runtime and test file references to repo-root paths under `packages/junior/`.
 - 2026-03-05: Added reference to canonical agent session resumability spec.
 
-
 ## Status
 
 Accepted
@@ -51,7 +50,7 @@ This revision closes those gaps.
 
 1. Eliminate silent message loss for concurrent messages in one Slack thread.
 2. Guarantee in-order processing per thread.
-3. Preserve existing business logic in `appSlackRuntime` and `bot.ts`.
+3. Preserve existing business logic in `slackRuntime` and `bot.ts`.
 4. Keep Slack UX unchanged, including streaming via `AsyncIterable<string>` to `thread.post(...)`.
 5. Keep migration as hard cutover with no feature flag.
 
@@ -91,7 +90,7 @@ Slack Event -> Webhook -> processMessage (patched, new behavior)
 slackThreadWorkflow(threadId):
   for await (payload of messageHook) {
     processThreadMessage(payload)  // "use step"
-      -> appSlackRuntime.handleNewMention / handleSubscribedMessage
+      -> slackRuntime.handleNewMention / handleSubscribedMessage
         -> existing pipeline unchanged (prepare -> classify -> reply -> stream -> persist)
   }
 ```
@@ -100,7 +99,7 @@ slackThreadWorkflow(threadId):
 
 ### Chat SDK Boundary
 
-1. We do not change `appSlackRuntime` public behavior. Workflow ingress only decides `kind` and forwards to existing handlers.
+1. We do not change `slackRuntime` public behavior. Workflow ingress only decides `kind` and forwards to existing handlers.
 2. `onNewMention` semantics remain "only for unsubscribed mentions".
 3. `onSubscribedMessage` semantics remain "all subscribed-thread messages", including mentions.
 4. Mention detection order is fixed: `message.isMention` first, then `detectMention(...)` fallback.
@@ -108,14 +107,14 @@ slackThreadWorkflow(threadId):
 
 ### Workflow Boundary
 
-| Concern | Lives In Workflow Function (`"use workflow"`) | Lives In Step (`"use step"`) |
-|---------|-----------------------------------------------|------------------------------|
-| Hook creation and async message loop | ✅ | ❌ |
-| In-loop dedupe memory (`Set`) | ✅ | ❌ |
-| Slack/business side effects | ❌ | ✅ |
-| Chat singleton registration | ❌ | ✅ |
-| Attachment fetcher rehydration | ❌ | ✅ |
-| Runtime handler dispatch (`appSlackRuntime.*`) | ❌ | ✅ |
+| Concern                                     | Lives In Workflow Function (`"use workflow"`) | Lives In Step (`"use step"`) |
+| ------------------------------------------- | --------------------------------------------- | ---------------------------- |
+| Hook creation and async message loop        | ✅                                            | ❌                           |
+| In-loop dedupe memory (`Set`)               | ✅                                            | ❌                           |
+| Slack/business side effects                 | ❌                                            | ✅                           |
+| Chat singleton registration                 | ❌                                            | ✅                           |
+| Attachment fetcher rehydration              | ❌                                            | ✅                           |
+| Runtime handler dispatch (`slackRuntime.*`) | ❌                                            | ✅                           |
 
 ### Direct Step Invocation Requirement
 
@@ -163,7 +162,7 @@ export interface ThreadMessagePayload {
 
 ## End-to-End Algorithm
 
-### A. Ingress (`chat-background-patch.ts` `processMessage`)
+### A. Ingress (`chat/ingress/junior-chat.ts` `processMessage` -> `chat/ingress/message-router.ts`)
 
 1. Resolve message factory.
 2. Normalize Slack thread ID.
@@ -240,7 +239,7 @@ Rules:
 3. Set `processThreadMessageStep.maxRetries = 1`.
 4. Dynamically import `@/chat/bot` and call `bot.registerSingleton()`.
 5. Rehydrate attachment `fetchData` from `url` before runtime call.
-6. Dispatch by `kind` to `appSlackRuntime`.
+6. Dispatch by `kind` to `slackRuntime`.
 
 Attachment rehydration contract:
 
@@ -292,20 +291,20 @@ Required correlation attributes when available:
 
 ## File-Level Change Plan
 
-| File | Change |
-|------|--------|
-| `next.config.ts` | Wrap Next config with `withWorkflow()` before `withSentryConfig(...)`. |
-| `packages/junior/src/chat/bot.ts` | Register Chat singleton at construction-time (with test-safe compatibility for mocked Chat instances). |
-| `packages/junior/src/chat/state.ts` | Expose helper for atomic ingress dedupe claim using Redis `SET NX`. |
-| `packages/junior/src/chat/workflow/types.ts` | Add payload contract types. |
-| `packages/junior/src/chat/workflow/thread-workflow.ts` | Keep workflow-only orchestration: hook definition, dedupe loop, direct calls to explicit step functions. |
-| `packages/junior/src/chat/workflow/thread-steps.ts` | Add all step IO: singleton registration, attachment rehydration, runtime dispatch, and failure logging. |
-| `packages/junior/src/chat/workflow/router.ts` | Add resume-or-start router with bounded retry. |
-| `packages/junior/src/chat/chat-background-patch.ts` | Replace `handleIncomingMessage` call path in `processMessage` with routing algorithm above. |
-| `packages/junior/tests/unit/workflow/router.test.ts` | Unit tests for resume/start race paths and retry behavior. |
-| `packages/junior/tests/integration/workflow/thread-workflow.test.ts` | Validate orchestration ordering/dedupe/keep-alive behavior through real runtime step execution with fake agent output only. |
-| `packages/junior/tests/integration/workflow/thread-step-boundaries.test.ts` | Validate step-level Slack/runtime side effects through real runtime wiring. |
-| `packages/junior/tests/unit/slack/chat-background-routing.test.ts` | Extend with routing classification and dedupe coverage. |
+| File                                                                        | Change                                                                                                                      |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `next.config.ts`                                                            | Wrap Next config with `withWorkflow()` before `withSentryConfig(...)`.                                                      |
+| `packages/junior/src/chat/bot.ts`                                           | Register Chat singleton at construction-time (with test-safe compatibility for mocked Chat instances).                      |
+| `packages/junior/src/chat/state/queue-ingress-store.ts`                     | Expose helper for atomic ingress dedupe claim using Redis `SET NX`.                                                         |
+| `packages/junior/src/chat/workflow/types.ts`                                | Add payload contract types.                                                                                                 |
+| `packages/junior/src/chat/workflow/thread-workflow.ts`                      | Keep workflow-only orchestration: hook definition, dedupe loop, direct calls to explicit step functions.                    |
+| `packages/junior/src/chat/workflow/thread-steps.ts`                         | Add all step IO: singleton registration, attachment rehydration, runtime dispatch, and failure logging.                     |
+| `packages/junior/src/chat/workflow/router.ts`                               | Add resume-or-start router with bounded retry.                                                                              |
+| `packages/junior/src/chat/ingress/junior-chat.ts`                           | Route `processMessage` through the canonical ingress router boundary.                                                       |
+| `packages/junior/tests/unit/workflow/router.test.ts`                        | Unit tests for resume/start race paths and retry behavior.                                                                  |
+| `packages/junior/tests/integration/workflow/thread-workflow.test.ts`        | Validate orchestration ordering/dedupe/keep-alive behavior through real runtime step execution with fake agent output only. |
+| `packages/junior/tests/integration/workflow/thread-step-boundaries.test.ts` | Validate step-level Slack/runtime side effects through real runtime wiring.                                                 |
+| `packages/junior/tests/unit/slack/ingress-message-router.test.ts`           | Extend with routing classification and dedupe coverage.                                                                     |
 
 ## Verification Plan
 
@@ -340,9 +339,9 @@ Rollback:
 
 ## Risks
 
-| Risk | Mitigation |
-|------|------------|
-| Step retry can emit duplicate user-visible output | `maxRetries = 1`; monitor and add persisted idempotency guard if needed |
-| Router failure in background path can still lose a message | bounded retry and explicit error telemetry |
-| Workflow SDK beta behavior changes | keep business logic outside workflow; workflow layer remains coordination-only |
-| Long-lived workflow run growth over time | accepted for v1; monitor run volume and add idle shutdown policy if needed |
+| Risk                                                       | Mitigation                                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Step retry can emit duplicate user-visible output          | `maxRetries = 1`; monitor and add persisted idempotency guard if needed        |
+| Router failure in background path can still lose a message | bounded retry and explicit error telemetry                                     |
+| Workflow SDK beta behavior changes                         | keep business logic outside workflow; workflow layer remains coordination-only |
+| Long-lived workflow run growth over time                   | accepted for v1; monitor run volume and add idle shutdown policy if needed     |

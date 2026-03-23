@@ -17,7 +17,7 @@ vi.mock("next/server", () => ({
 
 // Mock state adapter
 const mockStateStore = new Map<string, unknown>();
-vi.mock("@/chat/state", () => ({
+vi.mock("@/chat/state/adapter", () => ({
   getStateAdapter: () => ({
     get: async <T>(key: string): Promise<T | null> =>
       (mockStateStore.get(key) as T) ?? null,
@@ -33,7 +33,7 @@ vi.mock("@/chat/state", () => ({
 // Mock user token store
 const mockTokenStore = new Map<string, unknown>();
 vi.mock("@/chat/capabilities/factory", () => ({
-  getUserTokenStore: () => ({
+  createUserTokenStore: () => ({
     get: async (userId: string, provider: string) =>
       mockTokenStore.get(`${userId}:${provider}`),
     set: async (userId: string, provider: string, tokens: unknown) => {

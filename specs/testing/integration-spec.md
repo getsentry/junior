@@ -3,22 +3,24 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-04
+- Last Edited: 2026-03-22
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated integration fixture and MSW path references to repo-root paths under `packages/junior/`.
 - 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
-
+- 2026-03-21: Replaced runtime-global test mutation guidance with composition-bound runtime/service fixtures.
+- 2026-03-22: Clarified that integration is the default layer for real runtime behavior when the LLM does not need to be in the loop.
 
 ## Intent
 
-Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary.
+Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary. This is the default behavior-test layer when the contract does not require real LLM behavior.
 
 ## Scope
 
 In scope:
+
 - Slack event ingestion and routing behavior.
 - Runtime orchestration and state interactions.
 - Slack HTTP contracts (request shape, retries, error mapping) through MSW.
@@ -38,10 +40,13 @@ In scope:
 ## Substitution Policy
 
 Allowed:
-- Fake agent substitution at the agent boundary only (`setBotDepsForTests` / `resetBotDepsForTests`, or approved wrapper helpers).
+
+- Fake agent or service substitution at the composition boundary only (`createSlackRuntime(...)`, `createTestChatRuntime(...)`, or approved thin wrapper helpers over them).
 
 Disallowed in integration behavior tests:
-- `vi.mock` for runtime behavior modules (`@/chat/state`, workflow router/runtime handlers, webhook patching paths, etc.).
+
+- Mutable runtime-global behavior seams or singleton patching for core chat behavior.
+- `vi.mock` for runtime behavior modules (`@/chat/state/*`, workflow router/runtime handlers, ingress binding/router paths, etc.).
 - Ad-hoc stubbing of Slack HTTP fetch/webclient internals in test files.
 
 ## Fixture and Harness Rules
@@ -53,6 +58,8 @@ Disallowed in integration behavior tests:
 ## Classification Guidance
 
 If a test relies on runtime module mocks to drive control-flow branches, classify it as unit (not integration).
+
+If the behavior under test depends on natural-language interpretation, continuity, or model choice, classify it as eval instead of integration.
 
 ## Core Scenarios to Cover
 
@@ -83,6 +90,7 @@ For tools governed by harness context (for example Slack channel/canvas/list ope
 Integration tests should prove wiring and external behavior contracts, not exhaust every edge-case permutation.
 
 Required approach:
+
 1. Cover one representative happy path per runtime contract.
 2. Add failure-path coverage only for distinct, realistic regressions.
 3. Add edge-case coverage when:
@@ -90,6 +98,7 @@ Required approach:
    - the edge case changes routing/safety semantics.
 
 Avoid:
+
 1. Duplicating the same assertion across multiple near-identical payload variants.
 2. Asserting internal call choreography that is not part of the contract.
 3. Encoding speculative edge cases with no concrete bug history or risk signal.

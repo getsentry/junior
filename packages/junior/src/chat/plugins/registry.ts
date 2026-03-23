@@ -19,16 +19,22 @@ import type {
   PluginRuntimePostinstallCommand,
 } from "./types";
 
-// --- Sync phase: module-level initialization ---
+interface LoadedPluginState {
+  capabilityToPlugin: Map<string, PluginDefinition>;
+  packageSkillRoots: Set<string>;
+  pluginConfigKeys: Set<string>;
+  pluginDefinitions: PluginDefinition[];
+  pluginsByName: Map<string, PluginDefinition>;
+  signature: string;
+}
 
-const pluginDefinitions: PluginDefinition[] = [];
-const capabilityToPlugin = new Map<string, PluginDefinition>();
-const pluginConfigKeys = new Set<string>();
-const pluginsByName = new Map<string, PluginDefinition>();
-const packageSkillRoots = new Set<string>();
-let additionalPluginRootsForTests: string[] = [];
+interface PluginCatalogSource {
+  manifestRoots: string[];
+  packagedSkillRoots: string[];
+  signature: string;
+}
 
-let pluginsLoaded = false;
+let loadedPluginState: LoadedPluginState | undefined;
 
 function getLoggedPluginNames(): Set<string> {
   const globalState = globalThis as typeof globalThis & {
@@ -38,15 +44,30 @@ function getLoggedPluginNames(): Set<string> {
   return globalState.__juniorLoggedPluginNames;
 }
 
-function registerPluginManifest(raw: string, pluginDir: string): void {
+function createLoadedPluginState(signature: string): LoadedPluginState {
+  return {
+    signature,
+    pluginDefinitions: [],
+    capabilityToPlugin: new Map(),
+    pluginConfigKeys: new Set(),
+    pluginsByName: new Map(),
+    packageSkillRoots: new Set(),
+  };
+}
+
+function registerPluginManifest(
+  state: LoadedPluginState,
+  raw: string,
+  pluginDir: string,
+): void {
   const manifest = parsePluginManifest(raw, pluginDir);
 
-  if (pluginsByName.has(manifest.name)) {
+  if (state.pluginsByName.has(manifest.name)) {
     return;
   }
 
   for (const cap of manifest.capabilities) {
-    if (capabilityToPlugin.has(cap)) {
+    if (state.capabilityToPlugin.has(cap)) {
       throw new Error(
         `Duplicate capability "${cap}" in plugin "${manifest.name}"`,
       );
@@ -59,27 +80,18 @@ function registerPluginManifest(raw: string, pluginDir: string): void {
     skillsDir: path.join(pluginDir, "skills"),
   };
 
-  pluginDefinitions.push(definition);
-  pluginsByName.set(manifest.name, definition);
+  state.pluginDefinitions.push(definition);
+  state.pluginsByName.set(manifest.name, definition);
 
   for (const cap of manifest.capabilities) {
-    capabilityToPlugin.set(cap, definition);
+    state.capabilityToPlugin.set(cap, definition);
   }
   for (const key of manifest.configKeys) {
-    pluginConfigKeys.add(key);
+    state.pluginConfigKeys.add(key);
   }
 }
 
-function resetLoadedPluginState(): void {
-  pluginDefinitions.length = 0;
-  capabilityToPlugin.clear();
-  pluginConfigKeys.clear();
-  pluginsByName.clear();
-  packageSkillRoots.clear();
-  pluginsLoaded = false;
-}
-
-function normalizePluginRootsForTests(roots: string[]): string[] {
+function normalizePluginRoots(roots: string[]): string[] {
   const resolved: string[] = [];
   const seen = new Set<string>();
 
@@ -95,13 +107,66 @@ function normalizePluginRootsForTests(roots: string[]): string[] {
   return resolved;
 }
 
-function loadPlugins(): void {
-  if (pluginsLoaded) return;
-  pluginsLoaded = true;
+function getExtraPluginRoots(): string[] {
+  const raw = process.env.JUNIOR_EXTRA_PLUGIN_ROOTS?.trim();
+  if (!raw) {
+    return [];
+  }
 
+  if (raw.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return normalizePluginRoots(
+          parsed.filter((value): value is string => typeof value === "string"),
+        );
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  return normalizePluginRoots(
+    raw
+      .split(path.delimiter)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+  );
+}
+
+function getPluginCatalogSource(): PluginCatalogSource {
   const packagedContent = discoverInstalledPluginPackageContent();
-  const localRoots = [...pluginRoots(), ...additionalPluginRootsForTests];
-  const roots = [...localRoots, ...packagedContent.manifestRoots];
+  const localRoots = normalizePluginRoots([
+    ...pluginRoots(),
+    ...getExtraPluginRoots(),
+  ]);
+  const manifestRoots = normalizePluginRoots([
+    ...localRoots,
+    ...packagedContent.manifestRoots,
+  ]);
+  const packagedSkillRoots = normalizePluginRoots(packagedContent.skillRoots);
+
+  return {
+    manifestRoots,
+    packagedSkillRoots,
+    signature: JSON.stringify({
+      manifestRoots,
+      packagedSkillRoots,
+      packageNames: [...packagedContent.packageNames].sort(),
+    }),
+  };
+}
+
+function buildLoadedPluginState(
+  source: PluginCatalogSource,
+): LoadedPluginState {
+  const state = createLoadedPluginState(source.signature);
+
+  for (const skillRoot of source.packagedSkillRoots) {
+    state.packageSkillRoots.add(skillRoot);
+  }
+
+  const roots = source.manifestRoots;
   for (const pluginsRoot of roots) {
     let entries: string[];
     let rootStat: ReturnType<typeof statSync>;
@@ -130,7 +195,7 @@ function loadPlugins(): void {
       }
       if (hasRootManifest) {
         const rawRootManifest = readFileSync(manifestPath, "utf8");
-        registerPluginManifest(rawRootManifest, pluginsRoot);
+        registerPluginManifest(state, rawRootManifest, pluginsRoot);
         continue;
       }
     }
@@ -167,16 +232,16 @@ function loadPlugins(): void {
         continue; // No manifest — skip
       }
 
-      registerPluginManifest(raw, pluginDir);
+      registerPluginManifest(state, raw, pluginDir);
     }
   }
 
-  for (const skillRoot of packagedContent.skillRoots) {
-    packageSkillRoots.add(skillRoot);
-  }
+  return state;
+}
 
+function logLoadedPlugins(state: LoadedPluginState): void {
   const loggedPluginNames = getLoggedPluginNames();
-  for (const plugin of [...pluginDefinitions].sort((left, right) =>
+  for (const plugin of [...state.pluginDefinitions].sort((left, right) =>
     left.manifest.name.localeCompare(right.manifest.name),
   )) {
     if (loggedPluginNames.has(plugin.manifest.name)) {
@@ -199,27 +264,23 @@ function loadPlugins(): void {
   }
 }
 
-function ensurePluginsLoaded(): void {
-  loadPlugins();
-}
+function ensurePluginsLoaded(): LoadedPluginState {
+  const source = getPluginCatalogSource();
+  if (loadedPluginState?.signature === source.signature) {
+    return loadedPluginState;
+  }
 
-export function resetPluginRegistryForTests(): void {
-  additionalPluginRootsForTests = [];
-  resetLoadedPluginState();
+  const state = buildLoadedPluginState(source);
+  loadedPluginState = state;
+  logLoadedPlugins(state);
+  return state;
 }
-
-export function setAdditionalPluginRootsForTests(roots: string[]): void {
-  additionalPluginRootsForTests = normalizePluginRootsForTests(roots);
-  resetLoadedPluginState();
-}
-
-loadPlugins();
 
 // --- Sync exports ---
 
 export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
-  ensurePluginsLoaded();
-  return pluginDefinitions.map((plugin) => ({
+  const state = ensurePluginsLoaded();
+  return state.pluginDefinitions.map((plugin) => ({
     provider: plugin.manifest.name,
     capabilities: [...plugin.manifest.capabilities],
     configKeys: [...plugin.manifest.configKeys],
@@ -230,20 +291,20 @@ export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
 }
 
 export function getPluginProviders(): PluginDefinition[] {
-  ensurePluginsLoaded();
-  return [...pluginDefinitions];
+  return [...ensurePluginsLoaded().pluginDefinitions];
 }
 
 export function getPluginMcpProviders(): PluginDefinition[] {
-  ensurePluginsLoaded();
-  return pluginDefinitions.filter((plugin) => Boolean(plugin.manifest.mcp));
+  return ensurePluginsLoaded().pluginDefinitions.filter((plugin) =>
+    Boolean(plugin.manifest.mcp),
+  );
 }
 
 export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
-  ensurePluginsLoaded();
+  const state = ensurePluginsLoaded();
   const seen = new Set<string>();
   const deps: PluginRuntimeDependency[] = [];
-  for (const plugin of pluginDefinitions) {
+  for (const plugin of state.pluginDefinitions) {
     for (const dep of plugin.manifest.runtimeDependencies ?? []) {
       const key =
         dep.type === "npm"
@@ -282,9 +343,9 @@ export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {
 }
 
 export function getPluginRuntimePostinstall(): PluginRuntimePostinstallCommand[] {
-  ensurePluginsLoaded();
+  const state = ensurePluginsLoaded();
   const commands: PluginRuntimePostinstallCommand[] = [];
-  for (const plugin of pluginDefinitions) {
+  for (const plugin of state.pluginDefinitions) {
     for (const command of plugin.manifest.runtimePostinstall ?? []) {
       commands.push({
         cmd: command.cmd,
@@ -300,8 +361,7 @@ export function getPluginRuntimePostinstall(): PluginRuntimePostinstallCommand[]
 export function getPluginOAuthConfig(
   provider: string,
 ): OAuthProviderConfig | undefined {
-  ensurePluginsLoaded();
-  const plugin = pluginsByName.get(provider);
+  const plugin = ensurePluginsLoaded().pluginsByName.get(provider);
   if (!plugin?.manifest.oauth) return undefined;
   const oauth = plugin.manifest.oauth;
   return {
@@ -324,11 +384,11 @@ export function getPluginOAuthConfig(
 }
 
 export function getPluginSkillRoots(): string[] {
-  ensurePluginsLoaded();
+  const state = ensurePluginsLoaded();
   return [
     ...new Set([
-      ...pluginDefinitions.map((plugin) => plugin.skillsDir),
-      ...packageSkillRoots,
+      ...state.pluginDefinitions.map((plugin) => plugin.skillsDir),
+      ...state.packageSkillRoots,
     ]),
   ];
 }
@@ -336,10 +396,10 @@ export function getPluginSkillRoots(): string[] {
 export function getPluginForSkillPath(
   skillPath: string,
 ): PluginDefinition | undefined {
-  ensurePluginsLoaded();
+  const state = ensurePluginsLoaded();
   const resolvedSkillPath = path.resolve(skillPath);
 
-  return pluginDefinitions.find((plugin) => {
+  return state.pluginDefinitions.find((plugin) => {
     const resolvedSkillsDir = path.resolve(plugin.skillsDir);
     return (
       resolvedSkillPath === resolvedSkillsDir ||
@@ -351,23 +411,19 @@ export function getPluginForSkillPath(
 export function getPluginDefinition(
   provider: string,
 ): PluginDefinition | undefined {
-  ensurePluginsLoaded();
-  return pluginsByName.get(provider);
+  return ensurePluginsLoaded().pluginsByName.get(provider);
 }
 
 export function isPluginProvider(provider: string): boolean {
-  ensurePluginsLoaded();
-  return pluginsByName.has(provider);
+  return ensurePluginsLoaded().pluginsByName.has(provider);
 }
 
 export function isPluginCapability(capability: string): boolean {
-  ensurePluginsLoaded();
-  return capabilityToPlugin.has(capability);
+  return ensurePluginsLoaded().capabilityToPlugin.has(capability);
 }
 
 export function isPluginConfigKey(key: string): boolean {
-  ensurePluginsLoaded();
-  return pluginConfigKeys.has(key);
+  return ensurePluginsLoaded().pluginConfigKeys.has(key);
 }
 
 // --- Broker creation ---
@@ -376,8 +432,7 @@ export function createPluginBroker(
   provider: string,
   deps: PluginBrokerDeps,
 ): CredentialBroker {
-  ensurePluginsLoaded();
-  const plugin = pluginsByName.get(provider);
+  const plugin = ensurePluginsLoaded().pluginsByName.get(provider);
   if (!plugin) {
     throw new Error(`Unknown plugin provider: "${provider}"`);
   }

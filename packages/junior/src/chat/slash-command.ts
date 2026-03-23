@@ -1,5 +1,5 @@
 import type { SlashCommandEvent } from "chat";
-import { getUserTokenStore } from "@/chat/capabilities/factory";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { isPluginProvider } from "@/chat/plugins/registry";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
@@ -70,7 +70,7 @@ async function handleUnlink(
     return;
   }
 
-  const tokenStore = getUserTokenStore();
+  const tokenStore = createUserTokenStore();
   await tokenStore.delete(event.user.userId, provider);
 
   logInfo(

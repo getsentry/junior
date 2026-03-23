@@ -1,9 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  appSlackRuntime,
-  resetBotDepsForTests,
-  setBotDepsForTests,
-} from "@/chat/bot";
+import { describe, expect, it } from "vitest";
+import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
@@ -15,41 +11,43 @@ interface CapturedCall {
 }
 
 describe("Slack behavior: message content", () => {
-  afterEach(() => {
-    resetBotDepsForTests();
-  });
-
   it("strips leading Slack mention token before invoking the agent", async () => {
     const calls: CapturedCall[] = [];
 
-    setBotDepsForTests({
-      completeObject: async () => {
-        return {
-          object: {
-            should_reply: true,
-            confidence: 1,
-            reason: "direct mention follow-up",
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            return {
+              object: {
+                should_reply: true,
+                confidence: 1,
+                reason: "direct mention follow-up",
+              },
+              text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
+            } as never;
           },
-          text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
-        } as never;
-      },
-      generateAssistantReply: async (prompt, context) => {
-        calls.push({
-          prompt,
-          contextConversation: context?.conversationContext,
-        });
-        return {
-          text: "Summary sent.",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
+        },
+        replyExecutor: {
+          generateAssistantReply: async (prompt, context) => {
+            calls.push({
+              prompt,
+              contextConversation: context?.conversationContext,
+            });
+            return {
+              text: "Summary sent.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
           },
-        };
+        },
       },
     });
 
@@ -62,7 +60,7 @@ describe("Slack behavior: message content", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await appSlackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message);
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.prompt).toBe("please summarize the deploy status");
@@ -71,21 +69,25 @@ describe("Slack behavior: message content", () => {
   it("preserves non-leading mention tokens in user content", async () => {
     const calls: CapturedCall[] = [];
 
-    setBotDepsForTests({
-      generateAssistantReply: async (prompt) => {
-        calls.push({ prompt });
-        return {
-          text: "Done.",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (prompt) => {
+            calls.push({ prompt });
+            return {
+              text: "Done.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
           },
-        };
+        },
       },
     });
 
@@ -98,7 +100,7 @@ describe("Slack behavior: message content", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await appSlackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message);
 
     expect(calls).toHaveLength(1);
     expect(calls[0]?.prompt).toContain("message <@U_ONCALL> after deploy");
@@ -107,21 +109,25 @@ describe("Slack behavior: message content", () => {
   it("does not invoke the agent for self-authored mention messages", async () => {
     let replyCalled = false;
 
-    setBotDepsForTests({
-      generateAssistantReply: async () => {
-        replyCalled = true;
-        return {
-          text: "Should not happen",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyCalled = true;
+            return {
+              text: "Should not happen",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
           },
-        };
+        },
       },
     });
 
@@ -137,7 +143,7 @@ describe("Slack behavior: message content", () => {
       },
     });
 
-    await appSlackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message);
 
     expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
@@ -146,34 +152,40 @@ describe("Slack behavior: message content", () => {
   it("carries prior turn context into the next turn", async () => {
     const calls: CapturedCall[] = [];
 
-    setBotDepsForTests({
-      completeObject: async () => {
-        return {
-          object: {
-            should_reply: true,
-            confidence: 1,
-            reason: "direct mention follow-up",
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            return {
+              object: {
+                should_reply: true,
+                confidence: 1,
+                reason: "direct mention follow-up",
+              },
+              text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
+            } as never;
           },
-          text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
-        } as never;
-      },
-      generateAssistantReply: async (prompt, context) => {
-        calls.push({
-          prompt,
-          contextConversation: context?.conversationContext,
-        });
-        return {
-          text: calls.length === 1 ? "First response." : "Second response.",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
+        },
+        replyExecutor: {
+          generateAssistantReply: async (prompt, context) => {
+            calls.push({
+              prompt,
+              contextConversation: context?.conversationContext,
+            });
+            return {
+              text: calls.length === 1 ? "First response." : "Second response.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
           },
-        };
+        },
       },
     });
 
@@ -193,8 +205,8 @@ describe("Slack behavior: message content", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await appSlackRuntime.handleNewMention(thread, first);
-    await appSlackRuntime.handleSubscribedMessage(thread, second);
+    await slackRuntime.handleNewMention(thread, first);
+    await slackRuntime.handleSubscribedMessage(thread, second);
 
     expect(calls).toHaveLength(2);
     expect(calls[1]?.contextConversation ?? "").toContain("budget by Friday");

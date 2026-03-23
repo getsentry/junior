@@ -7,7 +7,7 @@ import {
   resolveRuntimeDependencySnapshot,
   type RuntimeDependencySnapshotProgressPhase,
 } from "@/chat/sandbox/runtime-dependency-snapshots";
-import { disconnectStateAdapter } from "@/chat/state";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 
 const DEFAULT_RUNTIME = "node22";
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;

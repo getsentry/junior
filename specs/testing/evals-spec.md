@@ -3,17 +3,18 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-04
+- Last Edited: 2026-03-22
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
 - 2026-03-20: Added natural-prompt authoring rule and explicit ban on scripting internal commands/tools into eval prompts.
+- 2026-03-22: Clarified that evals are the preferred layer for end-to-end behavior when model behavior is part of the contract.
 
 ## Intent
 
-Evals validate end-to-end conversational behavior outcomes through the runtime harness and LLM-judged criteria.
+Evals validate end-to-end conversational behavior outcomes through the runtime harness and LLM-judged criteria. They are the preferred test layer for user-visible product behavior when the model is part of the contract.
 
 ## Scope
 
@@ -50,9 +51,12 @@ Do not in eval files:
 ## Relationship to Other Layers
 
 - Integration tests own Slack HTTP contract assertions.
+- Integration tests own real runtime behavior when a deterministic fake agent is sufficient.
 - Unit tests own isolated logic invariants.
 - Evals own conversational outcome quality across realistic flows.
 
 ## Execution
 
 Operational commands and harness details live in `evals/README.md`.
+
+The eval artifact contract should preserve user-visible output structure. In particular, assistant thread posts must retain attachment metadata instead of flattening attachments into synthetic text.

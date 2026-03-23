@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { appSlackRuntime, resetBotDepsForTests, setBotDepsForTests } from "@/chat/bot";
-import { createTestMessage, createTestThread } from "../../fixtures/slack-harness";
+import { describe, expect, it } from "vitest";
+import { createTestChatRuntime } from "../../fixtures/chat-runtime";
+import {
+  createTestMessage,
+  createTestThread,
+} from "../../fixtures/slack-harness";
 
 interface FakeReplyCall {
   prompt: string;
@@ -22,33 +25,33 @@ function toPostedText(value: unknown): string {
 }
 
 describe("Slack behavior: new mention", () => {
-  afterEach(() => {
-    resetBotDepsForTests();
-  });
-
   it("handles a mention with real runtime wiring and fake agent response", async () => {
     const fakeReplyCalls: FakeReplyCall[] = [];
 
-    setBotDepsForTests({
-      generateAssistantReply: async (prompt) => {
-        fakeReplyCalls.push({ prompt });
-        return {
-          text: "Acknowledged. Rollback is complete and error rates are stable.",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true
-          }
-        };
-      }
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (prompt) => {
+            fakeReplyCalls.push({ prompt });
+            return {
+              text: "Acknowledged. Rollback is complete and error rates are stable.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
     });
 
     const thread = createTestThread({
-      id: "slack:C_BEHAVIOR:1700001234.000"
+      id: "slack:C_BEHAVIOR:1700001234.000",
     });
     const message = createTestMessage({
       id: "m-behavior-1",
@@ -57,11 +60,11 @@ describe("Slack behavior: new mention", () => {
       threadId: thread.id,
       author: {
         userId: "U_TESTER",
-        userName: "tester"
-      }
+        userName: "tester",
+      },
     });
 
-    await appSlackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message);
 
     expect(fakeReplyCalls).toHaveLength(1);
     expect(fakeReplyCalls[0]?.prompt).toContain("give me a status update");
@@ -71,26 +74,30 @@ describe("Slack behavior: new mention", () => {
   });
 
   it("suppresses thread reply when assistant marks delivery as channel_only", async () => {
-    setBotDepsForTests({
-      generateAssistantReply: async () => {
-        return {
-          text: "Posted in channel.",
-          deliveryMode: "channel_only",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: ["slackChannelPostMessage"],
-            toolErrorCount: 0,
-            toolResultCount: 1,
-            usedPrimaryText: true
-          }
-        };
-      }
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            return {
+              text: "Posted in channel.",
+              deliveryMode: "channel_only",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: ["slackChannelPostMessage"],
+                toolErrorCount: 0,
+                toolResultCount: 1,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
     });
 
     const thread = createTestThread({
-      id: "slack:C_BEHAVIOR:1700005678.000"
+      id: "slack:C_BEHAVIOR:1700005678.000",
     });
     const message = createTestMessage({
       id: "m-behavior-2",
@@ -99,11 +106,11 @@ describe("Slack behavior: new mention", () => {
       threadId: thread.id,
       author: {
         userId: "U_TESTER",
-        userName: "tester"
-      }
+        userName: "tester",
+      },
     });
 
-    await appSlackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message);
 
     expect(thread.subscribeCalls).toBe(1);
     expect(thread.posts).toHaveLength(0);

@@ -1,11 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Thread } from "chat";
-import {
-  appSlackRuntime,
-  resetBotDepsForTests,
-  setBotDepsForTests,
-} from "@/chat/bot";
 import { createTestMessage, createTestThread } from "./fixtures/slack-harness";
+import { createTestChatRuntime } from "./fixtures/chat-runtime";
 
 const listThreadRepliesMock = vi.fn();
 
@@ -29,7 +25,7 @@ describe("bot image hydration", () => {
     listThreadRepliesMock.mockReset();
   });
   afterEach(() => {
-    resetBotDepsForTests();
+    vi.restoreAllMocks();
   });
 
   it("hydrates thread image backfill once across agent instances with shared state", async () => {
@@ -40,9 +36,15 @@ describe("bot image hydration", () => {
       },
     ]);
 
-    setBotDepsForTests({
-      listThreadReplies: listThreadRepliesMock,
-      generateAssistantReply: async () => makeSuccessReply(),
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        visionContext: {
+          listThreadReplies: listThreadRepliesMock,
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => makeSuccessReply(),
+        },
+      },
     });
     const firstThread = createTestThread({
       id: "slack:C_IMAGE:1700000000.000",
@@ -83,7 +85,7 @@ describe("bot image hydration", () => {
       },
     });
 
-    await appSlackRuntime.handleNewMention(
+    await slackRuntime.handleNewMention(
       firstThread,
       createTestMessage({
         id: "1700000000.200",
@@ -106,7 +108,7 @@ describe("bot image hydration", () => {
       state: persisted,
     });
 
-    await appSlackRuntime.handleNewMention(
+    await slackRuntime.handleNewMention(
       secondThread,
       createTestMessage({
         id: "1700000000.300",
@@ -133,12 +135,18 @@ describe("bot image hydration", () => {
       mimeType: "image/png",
     };
 
-    setBotDepsForTests({
-      listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
-      generateAssistantReply: async () => ({
-        ...makeSuccessReply("Here is your image"),
-        files: [generatedFile],
-      }),
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        visionContext: {
+          listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            ...makeSuccessReply("Here is your image"),
+            files: [generatedFile],
+          }),
+        },
+      },
     });
 
     const postSpy = vi.fn().mockResolvedValue(undefined);
@@ -148,7 +156,7 @@ describe("bot image hydration", () => {
     });
     thread.post = postSpy as unknown as Thread["post"];
 
-    await appSlackRuntime.handleNewMention(
+    await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "1700000000.200",
@@ -181,21 +189,27 @@ describe("bot image hydration", () => {
   });
 
   it("posts files separately when streamed reply is already in progress", async () => {
-    setBotDepsForTests({
-      listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
-      generateAssistantReply: async (_text: string, context: any) => {
-        context?.onTextDelta?.("streamed ");
-        context?.onTextDelta?.("content");
-        return {
-          ...makeSuccessReply("streamed content"),
-          files: [
-            {
-              data: Buffer.from("fake-png"),
-              filename: "generated.png",
-              mimeType: "image/png",
-            },
-          ],
-        };
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        visionContext: {
+          listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
+        },
+        replyExecutor: {
+          generateAssistantReply: async (_text: string, context: any) => {
+            context?.onTextDelta?.("streamed ");
+            context?.onTextDelta?.("content");
+            return {
+              ...makeSuccessReply("streamed content"),
+              files: [
+                {
+                  data: Buffer.from("fake-png"),
+                  filename: "generated.png",
+                  mimeType: "image/png",
+                },
+              ],
+            };
+          },
+        },
       },
     });
 
@@ -206,7 +220,7 @@ describe("bot image hydration", () => {
     });
     thread.post = postSpy as unknown as Thread["post"];
 
-    await appSlackRuntime.handleNewMention(
+    await slackRuntime.handleNewMention(
       thread,
       createTestMessage({
         id: "1700000000.200",

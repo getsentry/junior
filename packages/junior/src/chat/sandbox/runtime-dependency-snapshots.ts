@@ -11,7 +11,7 @@ import type {
   PluginRuntimePostinstallCommand,
 } from "@/chat/plugins/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-import { getStateAdapter } from "@/chat/state";
+import { getStateAdapter } from "@/chat/state/adapter";
 
 const SNAPSHOT_CACHE_PREFIX = "junior:sandbox_snapshot_profile";
 const SNAPSHOT_LOCK_PREFIX = "junior:sandbox_snapshot_lock";

@@ -7,20 +7,6 @@ import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import { truncateStatusText } from "@/chat/status-format";
 import { isRetryableTurnError } from "@/chat/turn/errors";
 
-type PostSlackMessageObserver = (args: {
-  channelId: string;
-  text: string;
-  threadTs: string;
-}) => void;
-
-let postSlackMessageObserverForTests: PostSlackMessageObserver | undefined;
-
-export function setPostSlackMessageObserverForTests(
-  observer: PostSlackMessageObserver | undefined,
-): void {
-  postSlackMessageObserverForTests = observer;
-}
-
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
     return explicitTimeoutMs;
@@ -40,11 +26,6 @@ export async function postSlackMessage(
   threadTs: string,
   text: string,
 ): Promise<void> {
-  postSlackMessageObserverForTests?.({
-    channelId,
-    threadTs,
-    text,
-  });
   try {
     await getSlackClient().chat.postMessage({
       channel: channelId,

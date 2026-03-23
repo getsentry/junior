@@ -1,7 +1,7 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
-import type { Sandbox } from "@vercel/sandbox";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { stripFrontmatter } from "@/chat/skill-frontmatter";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { ExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
@@ -59,7 +59,7 @@ function toLoadedSkill(
 }
 
 export async function loadSkillFromSandbox(
-  sandbox: Sandbox,
+  sandbox: SandboxWorkspace,
   availableSkills: SkillMetadata[],
   skillName: string,
 ): Promise<LoadSkillResult> {
@@ -96,7 +96,7 @@ export async function loadSkillFromSandbox(
 }
 
 export function createLoadSkillTool(
-  sandbox: Sandbox,
+  sandbox: SandboxWorkspace,
   availableSkills: SkillMetadata[],
   options?: {
     onSkillLoaded?: (

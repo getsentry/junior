@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Chat } from "chat";
+import type { Adapter } from "chat";
 import {
   createTestMessage,
   createTestThread,
@@ -30,12 +30,15 @@ vi.mock("@/chat/queue/client", () => ({
   enqueueThreadMessage: enqueueThreadMessageMock,
 }));
 
-vi.mock("@/chat/state", () => ({
-  hasQueueIngressDedup: hasQueueIngressDedupMock,
-  claimQueueIngressDedup: claimQueueIngressDedupMock,
+vi.mock("@/chat/state/adapter", () => ({
   getStateAdapter: () => ({
     isSubscribed: isSubscribedMock,
   }),
+}));
+
+vi.mock("@/chat/state/queue-ingress-store", () => ({
+  hasQueueIngressDedup: hasQueueIngressDedupMock,
+  claimQueueIngressDedup: claimQueueIngressDedupMock,
 }));
 
 vi.mock("@/chat/slack-actions/channel", () => ({
@@ -43,14 +46,7 @@ vi.mock("@/chat/slack-actions/channel", () => ({
   removeReactionFromMessage: removeReactionFromMessageMock,
 }));
 
-vi.mock("@/chat/runtime/subscribed-routing", () => ({
-  shouldReplyInSubscribedThread: vi.fn(async () => ({
-    shouldReply: true,
-    reason: "explicit_ask",
-  })),
-}));
-
-import "@/chat/chat-background-patch";
+import { JuniorChat } from "@/chat/ingress/junior-chat";
 
 describe("chat background queue enqueue", () => {
   afterEach(() => {
@@ -64,9 +60,9 @@ describe("chat background queue enqueue", () => {
 
   it("enqueues subscribed messages through default queue routing", async () => {
     const waitUntilTasks: Array<Promise<unknown>> = [];
-    const processMessage = (
-      Chat.prototype as unknown as { processMessage: Function }
-    ).processMessage;
+    const processMessage = JuniorChat.prototype
+      .processMessage as unknown as Function;
+    const adapter = {} as Adapter;
 
     const fakeChat = {
       logger: {
@@ -89,7 +85,7 @@ describe("chat background queue enqueue", () => {
 
     processMessage.call(
       fakeChat,
-      {},
+      adapter,
       "slack:C123:1700000000.100",
       {
         id: "1700000000.200",
@@ -118,8 +114,8 @@ describe("chat background queue enqueue", () => {
         },
       },
       {
-        waitUntil(taskFactory: () => Promise<unknown>) {
-          waitUntilTasks.push(taskFactory());
+        waitUntil(task: Promise<unknown>) {
+          waitUntilTasks.push(task);
         },
       },
     );
@@ -143,7 +139,7 @@ describe("chat background queue enqueue", () => {
       expect.objectContaining({
         dedupKey: "slack:C123:1700000000.100:1700000000.200",
         normalizedThreadId: "slack:C123:1700000000.100",
-        kind: "subscribed_reply",
+        kind: "subscribed_message",
       }),
       {
         idempotencyKey: "slack:C123:1700000000.100:1700000000.200",
@@ -159,9 +155,9 @@ describe("chat background queue enqueue", () => {
 
   it("enqueues non-mention DM messages through the new mention path", async () => {
     const waitUntilTasks: Array<Promise<unknown>> = [];
-    const processMessage = (
-      Chat.prototype as unknown as { processMessage: Function }
-    ).processMessage;
+    const processMessage = JuniorChat.prototype
+      .processMessage as unknown as Function;
+    const adapter = {} as Adapter;
     const threadId = slackThreadId(TEST_DM_CHANNEL_ID, TEST_THREAD_TS);
     const message = createTestMessage({
       id: "1700000000.201",
@@ -185,9 +181,9 @@ describe("chat background queue enqueue", () => {
       detectMention: vi.fn(() => false),
     };
 
-    processMessage.call(fakeChat, {}, threadId, message, {
-      waitUntil(taskFactory: () => Promise<unknown>) {
-        waitUntilTasks.push(taskFactory());
+    processMessage.call(fakeChat, adapter, threadId, message, {
+      waitUntil(task: Promise<unknown>) {
+        waitUntilTasks.push(task);
       },
     });
 
@@ -218,9 +214,9 @@ describe("chat background queue enqueue", () => {
 
   it("preserves fallback-detected mentions in subscribed thread payloads", async () => {
     const waitUntilTasks: Array<Promise<unknown>> = [];
-    const processMessage = (
-      Chat.prototype as unknown as { processMessage: Function }
-    ).processMessage;
+    const processMessage = JuniorChat.prototype
+      .processMessage as unknown as Function;
+    const adapter = {} as Adapter;
     const threadId = "slack:C123:1700000000.300";
     const message = {
       id: "1700000000.301",
@@ -272,9 +268,9 @@ describe("chat background queue enqueue", () => {
       detectMention: vi.fn(() => true),
     };
 
-    processMessage.call(fakeChat, {}, threadId, message, {
-      waitUntil(taskFactory: () => Promise<unknown>) {
-        waitUntilTasks.push(taskFactory());
+    processMessage.call(fakeChat, adapter, threadId, message, {
+      waitUntil(task: Promise<unknown>) {
+        waitUntilTasks.push(task);
       },
     });
 
@@ -297,9 +293,9 @@ describe("chat background queue enqueue", () => {
 
   it("cleans up :eyes: when enqueue fails", async () => {
     const waitUntilTasks: Array<Promise<unknown>> = [];
-    const processMessage = (
-      Chat.prototype as unknown as { processMessage: Function }
-    ).processMessage;
+    const processMessage = JuniorChat.prototype
+      .processMessage as unknown as Function;
+    const adapter = {} as Adapter;
 
     enqueueThreadMessageMock.mockRejectedValueOnce(
       new Error("queue unavailable"),
@@ -326,7 +322,7 @@ describe("chat background queue enqueue", () => {
 
     processMessage.call(
       fakeChat,
-      {},
+      adapter,
       "slack:C123:1700000000.100",
       {
         id: "1700000000.250",
@@ -344,8 +340,8 @@ describe("chat background queue enqueue", () => {
         },
       },
       {
-        waitUntil(taskFactory: () => Promise<unknown>) {
-          waitUntilTasks.push(taskFactory());
+        waitUntil(task: Promise<unknown>) {
+          waitUntilTasks.push(task);
         },
       },
     );

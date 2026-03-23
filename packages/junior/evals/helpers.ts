@@ -2,10 +2,10 @@ import { configure, evaluate } from "vitest-evals/evaluate";
 import { gateway } from "@ai-sdk/gateway";
 import { z } from "zod";
 import {
-  type BehaviorCaseConfig,
-  type BehaviorCaseEvent,
-  type BehaviorCaseResult,
-  runBehaviorEvalCase,
+  type EvalEvent,
+  type EvalOverrides,
+  type EvalResult,
+  runEvalScenario,
 } from "./behavior-harness";
 
 configure({ model: gateway("openai/gpt-5.2") });
@@ -23,10 +23,34 @@ const slackMetadataSchema = z.object({
     ),
 });
 
+const attachedFileSchema = z.object({
+  filename: z
+    .string()
+    .describe("Filename of an actual file attached to the assistant post"),
+  isImage: z.boolean().describe("Whether the attached file is an image"),
+  mimeType: z
+    .string()
+    .optional()
+    .describe("MIME type of the attached file when known"),
+  sizeBytes: z
+    .number()
+    .optional()
+    .describe("File size in bytes when the harness has the binary payload"),
+});
+
+const assistantPostSchema = z.object({
+  files: z
+    .array(attachedFileSchema)
+    .describe(
+      "Actual files attached to this assistant thread post, not text describing files",
+    ),
+  text: z.string().describe("Visible text the assistant posted in the thread"),
+});
+
 const evalOutputSchema = z.object({
   assistant_posts: z
-    .array(z.string())
-    .describe("Messages the assistant posted to the thread"),
+    .array(assistantPostSchema)
+    .describe("Assistant posts sent to the thread, including attached files"),
   channel_posts: z
     .array(
       z.object({
@@ -67,7 +91,7 @@ const evalOutputSchema = z.object({
   ),
 });
 
-function serializeBehaviorCaseResult(result: BehaviorCaseResult): string {
+function serializeEvalResult(result: EvalResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
     channel_posts: result.channelPosts,
@@ -83,8 +107,8 @@ function serializeBehaviorCaseResult(result: BehaviorCaseResult): string {
 // ── Core eval wrapper ──────────────────────────────────────
 
 interface SlackEvalOptions {
-  behavior?: BehaviorCaseConfig;
-  events: BehaviorCaseEvent[];
+  events: EvalEvent[];
+  overrides?: EvalOverrides;
   criteria: string;
   taskTimeout?: number;
   threshold?: number;
@@ -94,15 +118,15 @@ interface SlackEvalOptions {
 
 const SANDBOX_SETUP_FAILED_TEXT = "Error: sandbox setup failed";
 
-function assertSandboxReady(name: string, result: BehaviorCaseResult): void {
+function assertSandboxReady(name: string, result: EvalResult): void {
   const failingPosts = result.posts.filter((post) =>
-    post.includes(SANDBOX_SETUP_FAILED_TEXT),
+    post.text.includes(SANDBOX_SETUP_FAILED_TEXT),
   );
   if (failingPosts.length === 0) {
     return;
   }
 
-  const sample = failingPosts[0];
+  const sample = failingPosts[0]?.text ?? SANDBOX_SETUP_FAILED_TEXT;
   throw new Error(
     `Eval sandbox bootstrap failed for "${name}". Received "${sample}". ` +
       "Evals require a working Vercel Sandbox and do not permit local fallback.",
@@ -114,9 +138,9 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
     timeout: opts.timeout ?? 120_000,
     threshold: opts.threshold ?? 0.75,
     task: async () => {
-      const taskPromise = runBehaviorEvalCase({
-        behavior: opts.behavior,
+      const taskPromise = runEvalScenario({
         events: opts.events,
+        overrides: opts.overrides,
       });
       const result =
         typeof opts.taskTimeout === "number" && opts.taskTimeout > 0
@@ -127,7 +151,7 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
                   () =>
                     reject(
                       new Error(
-                        `Behavior harness timed out after ${opts.taskTimeout}ms before judge evaluation`,
+                        `Eval harness timed out after ${opts.taskTimeout}ms before judge evaluation`,
                       ),
                     ),
                   opts.taskTimeout,
@@ -138,7 +162,7 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
       if (opts.requireSandboxReady ?? true) {
         assertSandboxReady(name, result);
       }
-      return serializeBehaviorCaseResult(result);
+      return serializeEvalResult(result);
     },
     criteria: opts.criteria,
   });

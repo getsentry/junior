@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { ThreadImpl } from "chat";
-import { getUserTokenStore } from "@/chat/capabilities/factory";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { coerceThreadConversationState } from "@/chat/conversation-state";
 import {
   formatProviderLabel,
@@ -20,7 +20,7 @@ import {
 } from "@/chat/plugins/oauth-request";
 import { publishAppHomeView } from "@/chat/app-home";
 import { getSlackClient } from "@/chat/slack-actions/client";
-import { getStateAdapter } from "@/chat/state";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { escapeXml } from "@/chat/xml";
 
 /**
@@ -258,7 +258,7 @@ export async function GET(
     );
   }
 
-  const userTokenStore = getUserTokenStore();
+  const userTokenStore = createUserTokenStore();
   await userTokenStore.set(stored.userId, provider, parsedTokenResponse);
 
   after(async () => {

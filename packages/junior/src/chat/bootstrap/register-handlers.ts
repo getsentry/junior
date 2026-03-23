@@ -1,10 +1,10 @@
 import type { Chat } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type {
-  AppRuntimeAssistantLifecycleEvent,
-  AppSlackRuntime,
-} from "@/chat/app-runtime";
-import { getUserTokenStore } from "@/chat/capabilities/factory";
+  AssistantLifecycleEvent,
+  SlackTurnRuntime,
+} from "@/chat/runtime/slack-runtime";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { logException, withSpan } from "@/chat/observability";
 import { publishAppHomeView } from "@/chat/app-home";
@@ -13,17 +13,17 @@ import { getSlackClient } from "@/chat/slack-actions/client";
 
 export function registerBotHandlers(args: {
   bot: Chat<{ slack: SlackAdapter }>;
-  appSlackRuntime: AppSlackRuntime<unknown, AppRuntimeAssistantLifecycleEvent>;
+  runtime: SlackTurnRuntime<unknown, AssistantLifecycleEvent>;
 }): void {
-  const { bot, appSlackRuntime } = args;
+  const { bot, runtime } = args;
 
-  bot.onNewMention(appSlackRuntime.handleNewMention);
-  bot.onSubscribedMessage(appSlackRuntime.handleSubscribedMessage);
-  bot.onAssistantThreadStarted((event: AppRuntimeAssistantLifecycleEvent) =>
-    appSlackRuntime.handleAssistantThreadStarted(event),
+  bot.onNewMention(runtime.handleNewMention);
+  bot.onSubscribedMessage(runtime.handleSubscribedMessage);
+  bot.onAssistantThreadStarted((event: AssistantLifecycleEvent) =>
+    runtime.handleAssistantThreadStarted(event),
   );
-  bot.onAssistantContextChanged((event: AppRuntimeAssistantLifecycleEvent) =>
-    appSlackRuntime.handleAssistantContextChanged(event),
+  bot.onAssistantContextChanged((event: AssistantLifecycleEvent) =>
+    runtime.handleAssistantContextChanged(event),
   );
 
   bot.onSlashCommand("/jr", (event) =>
@@ -54,7 +54,7 @@ export function registerBotHandlers(args: {
           await publishAppHomeView(
             getSlackClient(),
             event.userId,
-            getUserTokenStore(),
+            createUserTokenStore(),
           );
         } catch (error) {
           logException(error, "app_home_opened_failed", {
@@ -75,11 +75,11 @@ export function registerBotHandlers(args: {
       { slackUserId: userId },
       async () => {
         try {
-          await unlinkProvider(userId, provider, getUserTokenStore());
+          await unlinkProvider(userId, provider, createUserTokenStore());
           await publishAppHomeView(
             getSlackClient(),
             userId,
-            getUserTokenStore(),
+            createUserTokenStore(),
           );
         } catch (error) {
           logException(

@@ -1,12 +1,16 @@
 import type { Message, Thread } from "chat";
 import { botConfig } from "@/chat/config";
+import { completeText } from "@/chat/pi/client";
 import type {
   ConversationCompaction,
   ConversationMessage,
-  ThreadConversationState
+  ThreadConversationState,
 } from "@/chat/conversation-state";
-import { logWarn, setSpanAttributes, toOptionalString } from "@/chat/observability";
-import { getBotDeps } from "@/chat/runtime/deps";
+import {
+  logWarn,
+  setSpanAttributes,
+  toOptionalString,
+} from "@/chat/observability";
 
 const CONTEXT_COMPACTION_TRIGGER_TOKENS = 9000;
 const CONTEXT_COMPACTION_TARGET_TOKENS = 7000;
@@ -16,7 +20,29 @@ const CONTEXT_MAX_COMPACTIONS = 16;
 const CONTEXT_MAX_MESSAGE_CHARS = 3200;
 const BACKFILL_MESSAGE_LIMIT = 80;
 
-export function generateConversationId(prefix: "assistant" | "backfill" | "compaction" | "turn"): string {
+export interface ConversationMemoryDeps {
+  completeText: typeof completeText;
+}
+
+export interface ConversationMemoryService {
+  compactConversationIfNeeded: (
+    conversation: ThreadConversationState,
+    context: {
+      threadId?: string;
+      channelId?: string;
+      requesterId?: string;
+      runId?: string;
+    },
+  ) => Promise<void>;
+  generateThreadTitle: (
+    userText: string,
+    assistantText: string,
+  ) => Promise<string>;
+}
+
+export function generateConversationId(
+  prefix: "assistant" | "backfill" | "compaction" | "turn",
+): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -30,7 +56,7 @@ function estimateTokenCount(text: string): number {
 
 function buildImageContextSuffix(
   message: ConversationMessage,
-  conversation: ThreadConversationState | undefined
+  conversation: ThreadConversationState | undefined,
 ): string {
   const byFileId = conversation?.vision.byFileId;
   const imageFileIds = message.meta?.imageFileIds ?? [];
@@ -50,7 +76,7 @@ function buildImageContextSuffix(
 
 function renderConversationMessageLine(
   message: ConversationMessage,
-  conversation?: ThreadConversationState
+  conversation?: ThreadConversationState,
 ): string {
   const displayName =
     message.author?.fullName ||
@@ -59,7 +85,9 @@ function renderConversationMessageLine(
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {
-    markers.push(`assistant skipped: ${message.meta?.skippedReason ?? "no-reply route"}`);
+    markers.push(
+      `assistant skipped: ${message.meta?.skippedReason ?? "no-reply route"}`,
+    );
   }
   if (message.meta?.explicitMention) {
     markers.push("explicit mention");
@@ -70,23 +98,32 @@ function renderConversationMessageLine(
   return `[${message.role}] ${displayName}: ${message.text}${imageContext}${markerSuffix}`;
 }
 
-export function updateConversationStats(conversation: ThreadConversationState): void {
+export function updateConversationStats(
+  conversation: ThreadConversationState,
+): void {
   const contextText = buildConversationContext(conversation);
-  conversation.stats.estimatedContextTokens = estimateTokenCount(contextText ?? "");
+  conversation.stats.estimatedContextTokens = estimateTokenCount(
+    contextText ?? "",
+  );
   conversation.stats.totalMessageCount = conversation.messages.length;
   conversation.stats.updatedAtMs = Date.now();
 }
 
-export function upsertConversationMessage(conversation: ThreadConversationState, message: ConversationMessage): string {
-  const existingIndex = conversation.messages.findIndex((entry) => entry.id === message.id);
+export function upsertConversationMessage(
+  conversation: ThreadConversationState,
+  message: ConversationMessage,
+): string {
+  const existingIndex = conversation.messages.findIndex(
+    (entry) => entry.id === message.id,
+  );
   if (existingIndex >= 0) {
     conversation.messages[existingIndex] = {
       ...conversation.messages[existingIndex],
       ...message,
       meta: {
         ...conversation.messages[existingIndex]?.meta,
-        ...message.meta
-      }
+        ...message.meta,
+      },
     };
     updateConversationStats(conversation);
     return message.id;
@@ -100,11 +137,13 @@ export function upsertConversationMessage(conversation: ThreadConversationState,
 export function markConversationMessage(
   conversation: ThreadConversationState,
   messageId: string | undefined,
-  patch: Partial<NonNullable<ConversationMessage["meta"]>>
+  patch: Partial<NonNullable<ConversationMessage["meta"]>>,
 ): void {
   if (!messageId) return;
 
-  const messageIndex = conversation.messages.findIndex((entry) => entry.id === messageId);
+  const messageIndex = conversation.messages.findIndex(
+    (entry) => entry.id === messageId,
+  );
   if (messageIndex < 0) return;
 
   const current = conversation.messages[messageIndex];
@@ -112,8 +151,8 @@ export function markConversationMessage(
     ...current,
     meta: {
       ...(current.meta ?? {}),
-      ...patch
-    }
+      ...patch,
+    },
   };
   updateConversationStats(conversation);
 }
@@ -122,9 +161,11 @@ export function buildConversationContext(
   conversation: ThreadConversationState,
   options: {
     excludeMessageId?: string;
-  } = {}
+  } = {},
 ): string | undefined {
-  const messages = conversation.messages.filter((entry) => entry.id !== options.excludeMessageId);
+  const messages = conversation.messages.filter(
+    (entry) => entry.id !== options.excludeMessageId,
+  );
   if (messages.length === 0 && conversation.compactions.length === 0) {
     return undefined;
   }
@@ -138,8 +179,8 @@ export function buildConversationContext(
           `summary_${index + 1}:`,
           compaction.summary,
           `covered_messages: ${compaction.coveredMessageIds.length}`,
-          `created_at: ${new Date(compaction.createdAtMs).toISOString()}`
-        ].join(" ")
+          `created_at: ${new Date(compaction.createdAtMs).toISOString()}`,
+        ].join(" "),
       );
     }
     lines.push("</thread-compactions>");
@@ -154,21 +195,28 @@ export function buildConversationContext(
   return lines.join("\n");
 }
 
-function pruneCompactions(compactions: ConversationCompaction[]): ConversationCompaction[] {
+function pruneCompactions(
+  compactions: ConversationCompaction[],
+): ConversationCompaction[] {
   if (compactions.length <= CONTEXT_MAX_COMPACTIONS) {
     return compactions;
   }
 
   const overflowCount = compactions.length - CONTEXT_MAX_COMPACTIONS + 1;
   const merged = compactions.slice(0, overflowCount);
-  const mergedSummary = merged.map((entry) => entry.summary).join("\n").slice(0, 3500);
-  const mergedIds = merged.flatMap((entry) => entry.coveredMessageIds).slice(0, 500);
+  const mergedSummary = merged
+    .map((entry) => entry.summary)
+    .join("\n")
+    .slice(0, 3500);
+  const mergedIds = merged
+    .flatMap((entry) => entry.coveredMessageIds)
+    .slice(0, 500);
 
   const compacted: ConversationCompaction = {
     id: generateConversationId("compaction"),
     createdAtMs: Date.now(),
     summary: mergedSummary,
-    coveredMessageIds: mergedIds
+    coveredMessageIds: mergedIds,
   };
   return [compacted, ...compactions.slice(overflowCount)];
 }
@@ -181,12 +229,15 @@ async function summarizeConversationChunk(
     channelId?: string;
     requesterId?: string;
     runId?: string;
-  }
+  },
+  deps: ConversationMemoryDeps,
 ): Promise<string> {
-  const transcript = messages.map((message) => renderConversationMessageLine(message, conversation)).join("\n");
+  const transcript = messages
+    .map((message) => renderConversationMessageLine(message, conversation))
+    .join("\n");
 
   try {
-    const result = await getBotDeps().completeText({
+    const result = await deps.completeText({
       modelId: botConfig.fastModelId,
       temperature: 0,
       messages: [
@@ -198,18 +249,18 @@ async function summarizeConversationChunk(
             "Preserve decisions, commitments, constraints, locations, hiring criteria, and unresolved asks.",
             "Do not invent details.",
             "",
-            transcript
+            transcript,
           ].join("\n"),
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ],
       metadata: {
         modelId: botConfig.fastModelId,
         threadId: context.threadId ?? "",
         channelId: context.channelId ?? "",
         requesterId: context.requesterId ?? "",
-        runId: context.runId ?? ""
-      }
+        runId: context.runId ?? "",
+      },
     });
     const summary = result.text.trim();
     if (summary.length > 0) {
@@ -224,21 +275,25 @@ async function summarizeConversationChunk(
         slackChannelId: context.channelId,
         runId: context.runId,
         assistantUserName: botConfig.userName,
-        modelId: botConfig.fastModelId
+        modelId: botConfig.fastModelId,
       },
       {
         "error.message": error instanceof Error ? error.message : String(error),
-        "app.compaction_messages_covered": messages.length
+        "app.compaction_messages_covered": messages.length,
       },
-      "Compaction summarization failed; using fallback summary"
+      "Compaction summarization failed; using fallback summary",
     );
   }
 
   return transcript.slice(0, 2800);
 }
 
-export async function generateThreadTitle(userText: string, assistantText: string): Promise<string> {
-  const result = await getBotDeps().completeText({
+async function generateThreadTitleWithDeps(
+  userText: string,
+  assistantText: string,
+  deps: ConversationMemoryDeps,
+): Promise<string> {
+  const result = await deps.completeText({
     modelId: botConfig.fastModelId,
     temperature: 0,
     messages: [
@@ -248,28 +303,29 @@ export async function generateThreadTitle(userText: string, assistantText: strin
           "Generate a concise 5-8 word title for this conversation. Reply with ONLY the title, no quotes or punctuation.",
           "",
           `User: ${userText.slice(0, 500)}`,
-          `Assistant: ${assistantText.slice(0, 500)}`
+          `Assistant: ${assistantText.slice(0, 500)}`,
         ].join("\n"),
-        timestamp: Date.now()
-      }
-    ]
+        timestamp: Date.now(),
+      },
+    ],
   });
   return result.text.trim().slice(0, 60);
 }
 
-export async function compactConversationIfNeeded(
+async function compactConversationIfNeededWithDeps(
   conversation: ThreadConversationState,
   context: {
     threadId?: string;
     channelId?: string;
     requesterId?: string;
     runId?: string;
-  }
+  },
+  deps: ConversationMemoryDeps,
 ): Promise<void> {
   updateConversationStats(conversation);
   let estimatedTokens = conversation.stats.estimatedContextTokens;
   setSpanAttributes({
-    "app.context_tokens_estimated": estimatedTokens
+    "app.context_tokens_estimated": estimatedTokens,
   });
 
   while (
@@ -278,19 +334,24 @@ export async function compactConversationIfNeeded(
   ) {
     const compactCount = Math.min(
       CONTEXT_COMPACTION_BATCH_SIZE,
-      conversation.messages.length - CONTEXT_MIN_LIVE_MESSAGES
+      conversation.messages.length - CONTEXT_MIN_LIVE_MESSAGES,
     );
     if (compactCount <= 0) {
       break;
     }
 
     const compactedChunk = conversation.messages.slice(0, compactCount);
-    const summary = await summarizeConversationChunk(compactedChunk, conversation, context);
+    const summary = await summarizeConversationChunk(
+      compactedChunk,
+      conversation,
+      context,
+      deps,
+    );
     conversation.compactions.push({
       id: generateConversationId("compaction"),
       createdAtMs: Date.now(),
       summary,
-      coveredMessageIds: compactedChunk.map((entry) => entry.id)
+      coveredMessageIds: compactedChunk.map((entry) => entry.id),
     });
     conversation.compactions = pruneCompactions(conversation.compactions);
     conversation.messages = conversation.messages.slice(compactCount);
@@ -300,7 +361,7 @@ export async function compactConversationIfNeeded(
     estimatedTokens = conversation.stats.estimatedContextTokens;
     setSpanAttributes({
       "app.compaction_messages_covered": compactCount,
-      "app.context_tokens_estimated": estimatedTokens
+      "app.context_tokens_estimated": estimatedTokens,
     });
 
     if (estimatedTokens <= CONTEXT_COMPACTION_TARGET_TOKENS) {
@@ -309,7 +370,29 @@ export async function compactConversationIfNeeded(
   }
 }
 
-function createConversationMessageFromSdkMessage(entry: Message): ConversationMessage | null {
+export function createConversationMemoryService(
+  deps: ConversationMemoryDeps,
+): ConversationMemoryService {
+  return {
+    compactConversationIfNeeded: async (conversation, context) =>
+      await compactConversationIfNeededWithDeps(conversation, context, deps),
+    generateThreadTitle: async (userText, assistantText) =>
+      await generateThreadTitleWithDeps(userText, assistantText, deps),
+  };
+}
+
+const defaultConversationMemoryService = createConversationMemoryService({
+  completeText,
+});
+
+export const compactConversationIfNeeded =
+  defaultConversationMemoryService.compactConversationIfNeeded;
+export const generateThreadTitle =
+  defaultConversationMemoryService.generateThreadTitle;
+
+function createConversationMessageFromSdkMessage(
+  entry: Message,
+): ConversationMessage | null {
   const rawText = normalizeConversationText(entry.text);
   if (!rawText) {
     return null;
@@ -324,11 +407,14 @@ function createConversationMessageFromSdkMessage(entry: Message): ConversationMe
       userId: entry.author.userId,
       userName: entry.author.userName,
       fullName: entry.author.fullName,
-      isBot: typeof entry.author.isBot === "boolean" ? entry.author.isBot : undefined
+      isBot:
+        typeof entry.author.isBot === "boolean"
+          ? entry.author.isBot
+          : undefined,
     },
     meta: {
-      slackTs: entry.id
-    }
+      slackTs: entry.id,
+    },
   };
 }
 
@@ -338,7 +424,7 @@ export async function seedConversationBackfill(
   currentTurn: {
     messageId: string;
     messageCreatedAtMs: number;
-  }
+  },
 ): Promise<void> {
   if (conversation.backfill.completedAtMs) {
     return;
@@ -346,7 +432,7 @@ export async function seedConversationBackfill(
   if (conversation.messages.length > 0 || conversation.compactions.length > 0) {
     conversation.backfill = {
       completedAtMs: Date.now(),
-      source: "recent_messages"
+      source: "recent_messages",
     };
     updateConversationStats(conversation);
     return;
@@ -391,7 +477,10 @@ export async function seedConversationBackfill(
   }
 
   for (const message of seeded) {
-    if (message.id !== currentTurn.messageId && message.createdAtMs > currentTurn.messageCreatedAtMs) {
+    if (
+      message.id !== currentTurn.messageId &&
+      message.createdAtMs > currentTurn.messageCreatedAtMs
+    ) {
       continue;
     }
     if (
@@ -406,15 +495,19 @@ export async function seedConversationBackfill(
 
   conversation.backfill = {
     completedAtMs: Date.now(),
-    source
+    source,
   };
   updateConversationStats(conversation);
 }
 
-export function isHumanConversationMessage(message: ConversationMessage): boolean {
+export function isHumanConversationMessage(
+  message: ConversationMessage,
+): boolean {
   return message.role === "user" && message.author?.isBot !== true;
 }
 
-export function getConversationMessageSlackTs(message: ConversationMessage): string | undefined {
+export function getConversationMessageSlackTs(
+  message: ConversationMessage,
+): string | undefined {
   return message.meta?.slackTs ?? toOptionalString(message.id);
 }

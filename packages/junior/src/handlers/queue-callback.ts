@@ -1,8 +1,10 @@
+import { slackRuntime } from "@/chat/app/production";
 import {
   createQueueCallbackHandler,
   getThreadMessageTopic,
 } from "@/chat/queue/client";
 import { processQueuedThreadMessage } from "@/chat/queue/process-thread-message";
+import { createThreadMessageDispatcher } from "@/chat/queue/thread-message-dispatcher";
 import type { ThreadMessagePayload } from "@/chat/queue/types";
 import {
   createRequestContext,
@@ -21,6 +23,10 @@ import {
  * configured out-of-band. A catch-all route is not sufficient as the canonical
  * production endpoint because providers target an exact path.
  */
+const dispatch = createThreadMessageDispatcher({
+  runtime: slackRuntime,
+});
+
 const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(
   async (message, metadata) => {
     if (metadata.topicName === getThreadMessageTopic()) {
@@ -55,7 +61,9 @@ const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(
           slackUserId: payload.message.author?.userId,
         },
         async () => {
-          await processQueuedThreadMessage(payload);
+          await processQueuedThreadMessage(payload, {
+            dispatch,
+          });
         },
         {
           "messaging.message.id": payload.message.id,

@@ -28,7 +28,7 @@ import { deliverPrivateMessage, formatProviderLabel } from "@/chat/oauth-flow";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
   createSkillCapabilityRuntime,
-  getUserTokenStore,
+  createUserTokenStore,
 } from "@/chat/capabilities/factory";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
@@ -70,7 +70,7 @@ import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   getAgentTurnSessionCheckpoint,
   upsertAgentTurnSessionCheckpoint,
-} from "@/chat/state";
+} from "@/chat/state/turn-session-store";
 import {
   compactStatusCommand,
   compactStatusFilename,
@@ -1110,7 +1110,7 @@ export async function generateAssistantReply(
           channelId: context.correlation?.channelId,
           threadTs: context.correlation?.threadTs,
           userMessage: userInput,
-          userTokenStore: getUserTokenStore(),
+          userTokenStore: createUserTokenStore(),
           onConfigurationValueChanged: (key, value) => {
             if (value === undefined) {
               delete configurationValues[key];

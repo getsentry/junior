@@ -4,10 +4,6 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getCapabilityProvider } from "@/chat/capabilities/catalog";
 import {
-  resetPluginRegistryForTests,
-  setAdditionalPluginRootsForTests,
-} from "@/chat/plugins/registry";
-import {
   discoverSkills,
   parseSkillInvocation,
   resetSkillDiscoveryCache,
@@ -29,11 +25,16 @@ const stubSkills: SkillMetadata[] = [
   { name: "brief", description: "Candidate brief", skillPath: "/tmp/brief" },
   { name: "sum", description: "Summarize", skillPath: "/tmp/sum" },
 ];
+const ORIGINAL_EXTRA_PLUGIN_ROOTS = process.env.JUNIOR_EXTRA_PLUGIN_ROOTS;
 
 describe("skills", () => {
   afterEach(() => {
     resetSkillDiscoveryCache();
-    resetPluginRegistryForTests();
+    if (ORIGINAL_EXTRA_PLUGIN_ROOTS === undefined) {
+      delete process.env.JUNIOR_EXTRA_PLUGIN_ROOTS;
+    } else {
+      process.env.JUNIOR_EXTRA_PLUGIN_ROOTS = ORIGINAL_EXTRA_PLUGIN_ROOTS;
+    }
   });
 
   it("discovers valid skills from configured skill directories", async () => {
@@ -224,7 +225,7 @@ describe("skills", () => {
         "utf8",
       );
 
-      setAdditionalPluginRootsForTests([pluginRoot]);
+      process.env.JUNIOR_EXTRA_PLUGIN_ROOTS = JSON.stringify([pluginRoot]);
       resetSkillDiscoveryCache();
 
       const skills = await discoverSkills();

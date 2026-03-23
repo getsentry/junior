@@ -32,12 +32,12 @@ describe("createMcpOAuthClientProvider", () => {
         provider === "demo" ? buildPlugin() : undefined,
     }));
 
-    const { disconnectStateAdapter } = await import("@/chat/state");
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state");
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
     vi.unmock("@/chat/plugins/registry");
     vi.resetModules();

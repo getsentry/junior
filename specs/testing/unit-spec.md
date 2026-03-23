@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-17
+- Last Edited: 2026-03-22
 
 ## Changelog
 
@@ -11,10 +11,11 @@
 - 2026-03-04: Updated unit test path references to repo-root paths under `packages/junior/`.
 - 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
 - 2026-03-17: Clarified that unit tests should not treat internal logs and telemetry as behavior contracts.
+- 2026-03-22: Clarified that unit tests are the last-choice layer for local invariants, not the default for runtime behavior.
 
 ## Intent
 
-Unit tests validate isolated logic with tight control of dependencies.
+Unit tests validate isolated logic with tight control of dependencies. They are the last-choice layer for chat behavior work and should only be used when higher-fidelity integration or eval coverage would not add confidence.
 
 ## Scope
 

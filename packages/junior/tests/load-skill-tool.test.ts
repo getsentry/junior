@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { discoverSkills } from "@/chat/skills";
 import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createLoadSkillTool } from "@/chat/tools/load-skill";
 import type { Skill } from "@/chat/skills";
 
@@ -23,7 +24,12 @@ describe("load_skill tool", () => {
         path === sandboxSkillFile(firstSkill.name)
           ? Buffer.from("---\nname: test\n---\nInstruction body", "utf8")
           : null,
-    } as any;
+      runCommand: async () => ({
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => "",
+      }),
+    } satisfies SandboxWorkspace;
     const loaded: Skill[] = [];
     const tool = createLoadSkillTool(sandbox, availableSkills, {
       onSkillLoaded: (skill) => {
@@ -73,7 +79,12 @@ describe("load_skill tool", () => {
     const availableSkills = await discoverSkills();
     const sandbox = {
       readFileToBuffer: async () => null,
-    } as any;
+      runCommand: async () => ({
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => "",
+      }),
+    } satisfies SandboxWorkspace;
     const tool = createLoadSkillTool(sandbox, availableSkills);
     if (typeof tool.execute !== "function") {
       throw new Error("load_skill execute function missing");

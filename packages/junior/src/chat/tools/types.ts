@@ -1,6 +1,6 @@
 import type { FileUpload } from "chat";
-import type { Sandbox } from "@vercel/sandbox";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/load-skill";
@@ -33,7 +33,7 @@ export interface ToolRuntimeContext {
   configuration?: Record<string, unknown>;
   getActiveSkills?: () => Skill[];
   mcpToolManager?: McpToolManager;
-  sandbox: Sandbox;
+  sandbox: SandboxWorkspace;
 }
 
 export interface ToolState {

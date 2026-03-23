@@ -3,7 +3,7 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logInfo, logWarn } from "@/chat/observability";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { getSlackClient, isDmChannel } from "@/chat/slack-actions/client";
-import { getStateAdapter } from "@/chat/state";
+import { getStateAdapter } from "@/chat/state/adapter";
 
 type PrivateDeliveryResult = "in_context" | "fallback_dm" | false;
 

@@ -31,12 +31,12 @@ describe("MCP auth session store", () => {
       JUNIOR_STATE_ADAPTER: "memory",
     };
     vi.resetModules();
-    const { disconnectStateAdapter } = await import("@/chat/state");
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state");
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
     vi.resetModules();
     process.env = { ...ORIGINAL_ENV };

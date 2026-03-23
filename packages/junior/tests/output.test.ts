@@ -4,7 +4,7 @@ import {
   ensureBlockSpacing,
   slackOutputPolicy,
 } from "@/chat/output";
-import { createNormalizingStream } from "@/chat/bot";
+import { createNormalizingStream } from "@/chat/runtime/streaming";
 
 describe("buildSlackOutputMessage", () => {
   it("returns inline markdown for short content", () => {

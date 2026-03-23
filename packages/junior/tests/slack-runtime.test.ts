@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Attachment } from "chat";
 import {
-  createAppSlackRuntime,
-  type AppRuntimeReplyDecision,
-  type AppSlackRuntimeDependencies,
-} from "@/chat/app-runtime";
+  createSlackTurnRuntime,
+  type SlackTurnRuntimeDependencies,
+} from "@/chat/runtime/slack-runtime";
+import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import { createTestThread, createTestMessage } from "./fixtures/slack-harness";
 
 interface TestState {
@@ -22,8 +22,8 @@ function createSlackInternalError(requestId: string): Error {
 }
 
 function createMockDeps(
-  overrides?: Partial<AppSlackRuntimeDependencies<TestState>>,
-): AppSlackRuntimeDependencies<TestState> {
+  overrides?: Partial<SlackTurnRuntimeDependencies<TestState>>,
+): SlackTurnRuntimeDependencies<TestState> {
   return {
     assistantUserName: "test-bot",
     modelId: "test-model",
@@ -42,10 +42,10 @@ function createMockDeps(
       .fn()
       .mockResolvedValue({ prepared: true } satisfies TestState),
     replyToThread: vi.fn().mockResolvedValue(undefined),
-    shouldReplyInSubscribedThread: vi.fn().mockResolvedValue({
+    decideSubscribedReply: vi.fn().mockResolvedValue({
       shouldReply: true,
       reason: "test",
-    } satisfies AppRuntimeReplyDecision),
+    } satisfies SubscribedReplyDecision),
     stripLeadingBotMention: vi.fn((text: string) => text),
     getPreparedConversationContext: vi.fn(() => undefined),
     withSpan: vi.fn(async (_name, _op, _ctx, cb) => cb()),
@@ -53,11 +53,11 @@ function createMockDeps(
   };
 }
 
-describe("createAppSlackRuntime", () => {
+describe("createSlackTurnRuntime", () => {
   describe("handleNewMention", () => {
     it("subscribes thread and calls replyToThread with explicitMention: true", async () => {
       const deps = createMockDeps();
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({ text: "hey bot" });
 
@@ -71,7 +71,7 @@ describe("createAppSlackRuntime", () => {
 
     it("wraps call in withSpan with correct log context", async () => {
       const deps = createMockDeps();
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({
         author: { userId: "U-caller" },
@@ -97,7 +97,7 @@ describe("createAppSlackRuntime", () => {
         replyToThread: vi.fn().mockRejectedValue(replyError),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({});
 
@@ -120,7 +120,7 @@ describe("createAppSlackRuntime", () => {
       const deps = createMockDeps({
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       // Override subscribe to throw
       thread.subscribe = async () => {
@@ -153,7 +153,7 @@ describe("createAppSlackRuntime", () => {
           traceId: "trace_ignored",
         }),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({});
 
@@ -172,7 +172,7 @@ describe("createAppSlackRuntime", () => {
         logException: vi.fn(() => undefined),
         getErrorReference: () => ({ traceId: "trace_123" }),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({});
 
@@ -192,7 +192,7 @@ describe("createAppSlackRuntime", () => {
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
         logException,
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       thread.post = vi
         .fn()
@@ -232,7 +232,7 @@ describe("createAppSlackRuntime", () => {
         persistPreparedState: vi.fn(async () => {
           callOrder.push("persistPreparedState");
         }),
-        shouldReplyInSubscribedThread: vi.fn(async () => {
+        decideSubscribedReply: vi.fn(async () => {
           callOrder.push("shouldReply");
           return { shouldReply: true, reason: "test" };
         }),
@@ -241,7 +241,7 @@ describe("createAppSlackRuntime", () => {
         }),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({});
 
@@ -260,7 +260,7 @@ describe("createAppSlackRuntime", () => {
         stripLeadingBotMention: vi.fn(() => "stripped text"),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({
         text: "<@U123> stripped text",
@@ -280,12 +280,12 @@ describe("createAppSlackRuntime", () => {
 
     it("when shouldReply: false, skips replyToThread and logs skip", async () => {
       const deps = createMockDeps({
-        shouldReplyInSubscribedThread: vi.fn(async () => ({
+        decideSubscribedReply: vi.fn(async () => ({
           shouldReply: false,
           reason: "passive conversation",
         })),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({});
 
@@ -311,7 +311,7 @@ describe("createAppSlackRuntime", () => {
 
     it("preflight-skips messages addressed to another party before preparing turn state", async () => {
       const deps = createMockDeps();
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({
         text: "@Cursor can you take this one?",
@@ -322,7 +322,7 @@ describe("createAppSlackRuntime", () => {
 
       expect(deps.prepareTurnState).not.toHaveBeenCalled();
       expect(deps.persistPreparedState).not.toHaveBeenCalled();
-      expect(deps.shouldReplyInSubscribedThread).not.toHaveBeenCalled();
+      expect(deps.decideSubscribedReply).not.toHaveBeenCalled();
       expect(deps.replyToThread).not.toHaveBeenCalled();
       expect(deps.onSubscribedMessageSkipped).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -351,13 +351,13 @@ describe("createAppSlackRuntime", () => {
 
     it("unsubscribes when subscribed-thread routing returns thread opt-out", async () => {
       const deps = createMockDeps({
-        shouldReplyInSubscribedThread: vi.fn(async () => ({
+        decideSubscribedReply: vi.fn(async () => ({
           shouldReply: false,
           shouldUnsubscribe: true,
           reason: "thread_opt_out:user asked junior to stop participating",
         })),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       await thread.subscribe();
       const message = createTestMessage({
@@ -370,36 +370,7 @@ describe("createAppSlackRuntime", () => {
       expect(thread.subscribed).toBe(false);
       expect(deps.prepareTurnState).toHaveBeenCalled();
       expect(deps.persistPreparedState).toHaveBeenCalled();
-      expect(deps.shouldReplyInSubscribedThread).toHaveBeenCalled();
-      expect(deps.replyToThread).not.toHaveBeenCalled();
-      expect(thread.posts).toEqual([
-        "Understood. I'll stay out of this thread unless someone @mentions me again.",
-      ]);
-    });
-
-    it("honors pre-approved thread opt-out decisions without reclassifying", async () => {
-      const deps = createMockDeps({
-        shouldReplyInSubscribedThread: vi.fn(async () => {
-          throw new Error("should not reclassify");
-        }),
-      });
-      const runtime = createAppSlackRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      await thread.subscribe();
-      const message = createTestMessage({
-        text: "please stay out of this thread",
-      });
-
-      await runtime.handleSubscribedMessage(thread, message, {
-        preApprovedDecision: {
-          shouldReply: false,
-          shouldUnsubscribe: true,
-          reason: "thread_opt_out:user asked junior to stop",
-        },
-      });
-
-      expect(thread.subscribed).toBe(false);
-      expect(deps.shouldReplyInSubscribedThread).not.toHaveBeenCalled();
+      expect(deps.decideSubscribedReply).toHaveBeenCalled();
       expect(deps.replyToThread).not.toHaveBeenCalled();
       expect(thread.posts).toEqual([
         "Understood. I'll stay out of this thread unless someone @mentions me again.",
@@ -411,26 +382,26 @@ describe("createAppSlackRuntime", () => {
         getPreparedConversationContext: vi.fn(() => "some context"),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({});
 
       await runtime.handleSubscribedMessage(thread, message);
 
-      expect(deps.shouldReplyInSubscribedThread).toHaveBeenCalledWith(
+      expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
         expect.objectContaining({ conversationContext: "some context" }),
       );
     });
 
     it("passes explicitMention: true for classifier-approved subscribed mentions", async () => {
       const deps = createMockDeps({
-        shouldReplyInSubscribedThread: vi.fn(async () => ({
+        decideSubscribedReply: vi.fn(async () => ({
           shouldReply: true,
           reason: "llm_classifier:follow_up_question",
         })),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({ isMention: true });
 
@@ -444,13 +415,13 @@ describe("createAppSlackRuntime", () => {
 
     it("passes hasAttachments: true when message has attachments", async () => {
       const deps = createMockDeps({
-        shouldReplyInSubscribedThread: vi.fn(async (args) => ({
+        decideSubscribedReply: vi.fn(async (args) => ({
           shouldReply: Boolean(args.hasAttachments),
           reason: args.hasAttachments ? "attachment" : "empty message",
         })),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({
         text: "",
@@ -464,7 +435,7 @@ describe("createAppSlackRuntime", () => {
 
       await runtime.handleSubscribedMessage(thread, message);
 
-      expect(deps.shouldReplyInSubscribedThread).toHaveBeenCalledWith(
+      expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
         expect.objectContaining({ hasAttachments: true }),
       );
       expect(deps.replyToThread).toHaveBeenCalled();
@@ -474,13 +445,13 @@ describe("createAppSlackRuntime", () => {
       const deps = createMockDeps({
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({ text: "hello" });
 
       await runtime.handleSubscribedMessage(thread, message);
 
-      expect(deps.shouldReplyInSubscribedThread).toHaveBeenCalledWith(
+      expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
         expect.objectContaining({ hasAttachments: false }),
       );
     });
@@ -490,7 +461,7 @@ describe("createAppSlackRuntime", () => {
       const deps = createMockDeps({
         prepareTurnState: vi.fn().mockRejectedValue(err),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       const message = createTestMessage({});
 
@@ -516,7 +487,7 @@ describe("createAppSlackRuntime", () => {
         prepareTurnState: vi.fn().mockRejectedValue(primaryError),
         logException,
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
       thread.post = vi
         .fn()
@@ -548,7 +519,7 @@ describe("createAppSlackRuntime", () => {
   describe("handleAssistantThreadStarted", () => {
     it("calls initializeAssistantThread with correct fields", async () => {
       const deps = createMockDeps();
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
 
       await runtime.handleAssistantThreadStarted({
         threadId: "T-1",
@@ -570,7 +541,7 @@ describe("createAppSlackRuntime", () => {
       const deps = createMockDeps({
         initializeAssistantThread: vi.fn().mockRejectedValue(err),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
 
       await runtime.handleAssistantThreadStarted({
         threadId: "T-1",
@@ -594,7 +565,7 @@ describe("createAppSlackRuntime", () => {
   describe("handleAssistantContextChanged", () => {
     it("calls initializeAssistantThread with correct fields", async () => {
       const deps = createMockDeps();
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
 
       await runtime.handleAssistantContextChanged({
         threadId: "T-2",
@@ -613,7 +584,7 @@ describe("createAppSlackRuntime", () => {
 
     it("forwards source channel context when provided", async () => {
       const deps = createMockDeps();
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
 
       await runtime.handleAssistantContextChanged({
         threadId: "T-2",
@@ -638,7 +609,7 @@ describe("createAppSlackRuntime", () => {
       const deps = createMockDeps({
         initializeAssistantThread: vi.fn().mockRejectedValue(err),
       });
-      const runtime = createAppSlackRuntime<TestState>(deps);
+      const runtime = createSlackTurnRuntime<TestState>(deps);
 
       await runtime.handleAssistantContextChanged({
         threadId: "T-2",

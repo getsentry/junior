@@ -3,8 +3,9 @@ import { getSubscribedReplyPreflightDecision } from "@/chat/routing/subscribed-d
 import { isRetryableTurnError } from "@/chat/turn/errors";
 import type { ErrorReference } from "@/chat/observability";
 import { getSlackErrorObservabilityAttributes } from "@/chat/runtime/thread-context";
+import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 
-export interface AppRuntimeAssistantLifecycleEvent {
+export interface AssistantLifecycleEvent {
   channelId: string;
   context?: {
     channelId?: string;
@@ -14,22 +15,15 @@ export interface AppRuntimeAssistantLifecycleEvent {
   userId?: string;
 }
 
-export interface AppRuntimeThreadContext {
+export interface ThreadContext {
   channelId?: string;
   requesterId?: string;
   threadId?: string;
   runId?: string;
 }
 
-export interface AppRuntimeReplyDecision {
-  reason: string;
-  shouldReply: boolean;
-  shouldUnsubscribe?: boolean;
-}
-
-export interface AppRuntimeReplyHooks {
+export interface ReplyHooks {
   beforeFirstResponsePost?: () => Promise<void>;
-  preApprovedDecision?: AppRuntimeReplyDecision;
 }
 
 const THREAD_OPTOUT_ACK =
@@ -49,7 +43,7 @@ async function maybeHandleThreadOptOutDecision(args: {
   return true;
 }
 
-type AppRuntimeLogContext = Record<string, unknown> & {
+type RuntimeLogContext = Record<string, unknown> & {
   assistantUserName: string;
   modelId: string;
   slackChannelId?: string;
@@ -59,7 +53,7 @@ type AppRuntimeLogContext = Record<string, unknown> & {
   runId?: string;
 };
 
-export interface AppSlackRuntimeDependencies<TPreparedState> {
+export interface SlackTurnRuntimeDependencies<TPreparedState> {
   assistantUserName: string;
   getChannelId: (thread: Thread, message: Message) => string | undefined;
   getPreparedConversationContext: (
@@ -91,14 +85,14 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
   getErrorReference: (eventId?: string) => ErrorReference | null;
   recordSkippedSubscribedMessage: (args: {
     completedAtMs: number;
-    decision: AppRuntimeReplyDecision;
+    decision: SubscribedReplyDecision;
     message: Message;
     thread: Thread;
     userText: string;
   }) => Promise<void>;
   onSubscribedMessageSkipped: (args: {
     completedAtMs: number;
-    decision: AppRuntimeReplyDecision;
+    decision: SubscribedReplyDecision;
     message: Message;
     preparedState?: TPreparedState;
     thread: Thread;
@@ -108,7 +102,7 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
     thread: Thread;
   }) => Promise<void>;
   prepareTurnState: (args: {
-    context: AppRuntimeThreadContext;
+    context: ThreadContext;
     explicitMention: boolean;
     message: Message;
     thread: Thread;
@@ -123,14 +117,14 @@ export interface AppSlackRuntimeDependencies<TPreparedState> {
       preparedState?: TPreparedState;
     },
   ) => Promise<void>;
-  shouldReplyInSubscribedThread: (args: {
-    context: AppRuntimeThreadContext;
+  decideSubscribedReply: (args: {
+    context: ThreadContext;
     conversationContext?: string;
     hasAttachments?: boolean;
     isExplicitMention?: boolean;
     rawText: string;
     text: string;
-  }) => Promise<AppRuntimeReplyDecision>;
+  }) => Promise<SubscribedReplyDecision>;
   stripLeadingBotMention: (
     text: string,
     options: {
@@ -155,28 +149,27 @@ function buildFailureMessage(reference: ErrorReference | null): string {
   return `I ran into an internal error while processing that. Reference: \`trace_id=${reference.traceId}\`.`;
 }
 
-export interface AppSlackRuntime<
+export interface SlackTurnRuntime<
   TPreparedState,
-  TAssistantEvent extends AppRuntimeAssistantLifecycleEvent =
-    AppRuntimeAssistantLifecycleEvent,
+  TAssistantEvent extends AssistantLifecycleEvent = AssistantLifecycleEvent,
 > {
   handleAssistantContextChanged: (event: TAssistantEvent) => Promise<void>;
   handleAssistantThreadStarted: (event: TAssistantEvent) => Promise<void>;
   handleNewMention: (
     thread: Thread,
     message: Message,
-    hooks?: AppRuntimeReplyHooks,
+    hooks?: ReplyHooks,
   ) => Promise<void>;
   handleSubscribedMessage: (
     thread: Thread,
     message: Message,
-    hooks?: AppRuntimeReplyHooks,
+    hooks?: ReplyHooks,
   ) => Promise<void>;
 }
 
 function buildLogContext(
   deps: Pick<
-    AppSlackRuntimeDependencies<unknown>,
+    SlackTurnRuntimeDependencies<unknown>,
     "assistantUserName" | "modelId"
   >,
   args: {
@@ -186,7 +179,7 @@ function buildLogContext(
     threadId?: string;
     runId?: string;
   },
-): AppRuntimeLogContext {
+): RuntimeLogContext {
   return {
     slackThreadId: args.threadId,
     slackUserId: args.requesterId,
@@ -198,25 +191,24 @@ function buildLogContext(
   };
 }
 
-export function createAppSlackRuntime<
+export function createSlackTurnRuntime<
   TPreparedState,
-  TAssistantEvent extends AppRuntimeAssistantLifecycleEvent =
-    AppRuntimeAssistantLifecycleEvent,
+  TAssistantEvent extends AssistantLifecycleEvent = AssistantLifecycleEvent,
 >(
-  deps: AppSlackRuntimeDependencies<TPreparedState>,
-): AppSlackRuntime<TPreparedState, TAssistantEvent> {
+  deps: SlackTurnRuntimeDependencies<TPreparedState>,
+): SlackTurnRuntime<TPreparedState, TAssistantEvent> {
   const logContext = (args: {
     channelId?: string;
     requesterId?: string;
     requesterUserName?: string;
     threadId?: string;
     runId?: string;
-  }): AppRuntimeLogContext => buildLogContext(deps, args);
+  }): RuntimeLogContext => buildLogContext(deps, args);
 
   const postFallbackErrorReplyWithLogging = async (args: {
     thread: Thread;
     reference: ErrorReference | null;
-    errorContext: AppRuntimeLogContext;
+    errorContext: RuntimeLogContext;
     eventId?: string;
     postFailureEventName: string;
     postFailureBody: string;
@@ -241,11 +233,52 @@ export function createAppSlackRuntime<
     }
   };
 
+  const skipSubscribedMessage = async (args: {
+    thread: Thread;
+    message: Message;
+    decision: SubscribedReplyDecision;
+    context: ThreadContext;
+    preparedState?: TPreparedState;
+    userText: string;
+  }): Promise<void> => {
+    const completedAtMs = deps.now();
+    deps.logWarn(
+      "subscribed_message_reply_skipped",
+      logContext({
+        threadId: args.context.threadId,
+        requesterId: args.context.requesterId,
+        requesterUserName: args.message.author.userName,
+        channelId: args.context.channelId,
+        runId: args.context.runId,
+      }),
+      {
+        "app.decision.reason": args.decision.reason,
+      },
+      "Skipping subscribed message reply",
+    );
+    await deps.onSubscribedMessageSkipped({
+      thread: args.thread,
+      message: args.message,
+      preparedState: args.preparedState,
+      decision: args.decision,
+      completedAtMs,
+    });
+    if (!args.preparedState) {
+      await deps.recordSkippedSubscribedMessage({
+        thread: args.thread,
+        message: args.message,
+        decision: args.decision,
+        completedAtMs,
+        userText: args.userText,
+      });
+    }
+  };
+
   return {
     async handleNewMention(
       thread: Thread,
       message: Message,
-      hooks?: AppRuntimeReplyHooks,
+      hooks?: ReplyHooks,
     ): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
@@ -318,7 +351,7 @@ export function createAppSlackRuntime<
     async handleSubscribedMessage(
       thread: Thread,
       message: Message,
-      hooks?: AppRuntimeReplyHooks,
+      hooks?: ReplyHooks,
     ): Promise<void> {
       try {
         const threadId = deps.getThreadId(thread, message);
@@ -328,53 +361,29 @@ export function createAppSlackRuntime<
         const userText = deps.stripLeadingBotMention(rawUserText, {
           stripLeadingSlackMentionToken: Boolean(message.isMention),
         });
-        const context: AppRuntimeThreadContext = {
+        const context: ThreadContext = {
           threadId,
           requesterId: message.author.userId,
           channelId,
           runId,
         };
 
-        const preflightDecision = hooks?.preApprovedDecision
-          ? undefined
-          : getSubscribedReplyPreflightDecision({
-              botUserName: deps.assistantUserName,
-              rawText: rawUserText,
-              text: userText,
-              isExplicitMention: Boolean(message.isMention),
-            });
+        const preflightDecision = getSubscribedReplyPreflightDecision({
+          botUserName: deps.assistantUserName,
+          rawText: rawUserText,
+          text: userText,
+          isExplicitMention: Boolean(message.isMention),
+        });
 
         if (preflightDecision && !preflightDecision.shouldReply) {
-          const completedAtMs = deps.now();
           const reason = preflightDecision.reasonDetail
             ? `${preflightDecision.reason}:${preflightDecision.reasonDetail}`
             : preflightDecision.reason;
-          deps.logWarn(
-            "subscribed_message_reply_skipped",
-            logContext({
-              threadId,
-              requesterId: message.author.userId,
-              requesterUserName: message.author.userName,
-              channelId,
-              runId,
-            }),
-            {
-              "app.decision.reason": reason,
-            },
-            "Skipping subscribed message reply",
-          );
-          await deps.onSubscribedMessageSkipped({
+          await skipSubscribedMessage({
             thread,
             message,
             decision: { shouldReply: false, reason },
-            completedAtMs,
-            preparedState: undefined,
-          });
-          await deps.recordSkippedSubscribedMessage({
-            thread,
-            message,
-            decision: { shouldReply: false, reason },
-            completedAtMs,
+            context,
             userText,
           });
           return;
@@ -393,17 +402,15 @@ export function createAppSlackRuntime<
           preparedState,
         });
 
-        const decision = hooks?.preApprovedDecision
-          ? hooks.preApprovedDecision
-          : await deps.shouldReplyInSubscribedThread({
-              rawText: rawUserText,
-              text: userText,
-              conversationContext:
-                deps.getPreparedConversationContext(preparedState),
-              hasAttachments: message.attachments.length > 0,
-              isExplicitMention: Boolean(message.isMention),
-              context,
-            });
+        const decision = await deps.decideSubscribedReply({
+          rawText: rawUserText,
+          text: userText,
+          conversationContext:
+            deps.getPreparedConversationContext(preparedState),
+          hasAttachments: message.attachments.length > 0,
+          isExplicitMention: Boolean(message.isMention),
+          context,
+        });
 
         if (
           await maybeHandleThreadOptOutDecision({
@@ -412,51 +419,25 @@ export function createAppSlackRuntime<
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
           })
         ) {
-          deps.logWarn(
-            "subscribed_message_reply_skipped",
-            logContext({
-              threadId,
-              requesterId: message.author.userId,
-              requesterUserName: message.author.userName,
-              channelId,
-              runId,
-            }),
-            {
-              "app.decision.reason": decision.reason,
-            },
-            "Skipping subscribed message reply",
-          );
-          await deps.onSubscribedMessageSkipped({
+          await skipSubscribedMessage({
             thread,
             message,
-            preparedState,
             decision,
-            completedAtMs: deps.now(),
+            context,
+            preparedState,
+            userText,
           });
           return;
         }
 
         if (!decision.shouldReply) {
-          deps.logWarn(
-            "subscribed_message_reply_skipped",
-            logContext({
-              threadId,
-              requesterId: message.author.userId,
-              requesterUserName: message.author.userName,
-              channelId,
-              runId,
-            }),
-            {
-              "app.decision.reason": decision.reason,
-            },
-            "Skipping subscribed message reply",
-          );
-          await deps.onSubscribedMessageSkipped({
+          await skipSubscribedMessage({
             thread,
             message,
-            preparedState,
             decision,
-            completedAtMs: deps.now(),
+            context,
+            preparedState,
+            userText,
           });
           return;
         }

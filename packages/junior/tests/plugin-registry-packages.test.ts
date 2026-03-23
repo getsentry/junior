@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const originalCwd = process.cwd();
 
+async function expectRegistryLoadFailure(message: string): Promise<void> {
+  const registry = await import("@/chat/plugins/registry");
+  expect(() => registry.getPluginProviders()).toThrow(message);
+}
+
 async function writePackagedPlugin(tempRoot: string): Promise<void> {
   const packageRoot = path.join(
     tempRoot,
@@ -637,7 +642,7 @@ describe("plugin registry package discovery", () => {
       pluginRoots: () => [],
     }));
 
-    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+    await expectRegistryLoadFailure(
       "credentials.api-domains entries must be valid domain names",
     );
   });
@@ -665,7 +670,7 @@ describe("plugin registry package discovery", () => {
       pluginRoots: () => [],
     }));
 
-    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+    await expectRegistryLoadFailure(
       "auth-token-env must be an uppercase env var name",
     );
   });
@@ -693,7 +698,7 @@ describe("plugin registry package discovery", () => {
       pluginRoots: () => [],
     }));
 
-    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+    await expectRegistryLoadFailure(
       "runtime-postinstall cmd must be a single executable token",
     );
   });
@@ -721,9 +726,7 @@ describe("plugin registry package discovery", () => {
       pluginRoots: () => [],
     }));
 
-    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
-      "oauth.authorize-endpoint must use https",
-    );
+    await expectRegistryLoadFailure("oauth.authorize-endpoint must use https");
   });
 
   it("parses optional oauth overrides and api headers from packaged plugins", async () => {
@@ -800,7 +803,7 @@ describe("plugin registry package discovery", () => {
       pluginRoots: () => [],
     }));
 
-    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+    await expectRegistryLoadFailure(
       "Plugin demo credentials.api-headers.Authorization is not allowed",
     );
   });
@@ -866,7 +869,7 @@ describe("plugin registry package discovery", () => {
       pluginRoots: () => [],
     }));
 
-    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+    await expectRegistryLoadFailure(
       "Plugin demo mcp.allowed-tools must be an array of strings when provided",
     );
   });
@@ -894,7 +897,7 @@ describe("plugin registry package discovery", () => {
       pluginRoots: () => [],
     }));
 
-    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
+    await expectRegistryLoadFailure(
       "Plugin demo mcp.headers.Authorization is not allowed",
     );
   });
@@ -922,8 +925,6 @@ describe("plugin registry package discovery", () => {
       pluginRoots: () => [],
     }));
 
-    await expect(import("@/chat/plugins/registry")).rejects.toThrow(
-      'Plugin demo mcp.transport must be "http"',
-    );
+    await expectRegistryLoadFailure('Plugin demo mcp.transport must be "http"');
   });
 });

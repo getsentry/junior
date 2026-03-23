@@ -2,12 +2,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadMessagePayload } from "@/chat/queue/types";
 
 const {
+  connectStateAdapterMock,
+  acquireThreadLockMock,
+  extendThreadLockMock,
+  releaseThreadLockMock,
   getQueueMessageProcessingStateMock,
   acquireQueueMessageProcessingOwnershipMock,
   refreshQueueMessageProcessingOwnershipMock,
   completeQueueMessageProcessingOwnershipMock,
   failQueueMessageProcessingOwnershipMock,
 } = vi.hoisted(() => ({
+  connectStateAdapterMock: vi.fn(async () => undefined),
+  acquireThreadLockMock: vi.fn<() => Promise<{ id: string } | null>>(
+    async () => ({ id: "lock-1" }),
+  ),
+  extendThreadLockMock: vi.fn(async () => undefined),
+  releaseThreadLockMock: vi.fn(async () => undefined),
   getQueueMessageProcessingStateMock: vi.fn(async () => undefined),
   acquireQueueMessageProcessingOwnershipMock: vi.fn(async () => "acquired"),
   refreshQueueMessageProcessingOwnershipMock: vi.fn(async () => true),
@@ -15,10 +25,16 @@ const {
   failQueueMessageProcessingOwnershipMock: vi.fn(async () => true),
 }));
 
-vi.mock("@/chat/state", () => ({
+vi.mock("@/chat/state/adapter", () => ({
   getStateAdapter: () => ({
-    connect: vi.fn(async () => undefined),
+    connect: connectStateAdapterMock,
+    acquireLock: acquireThreadLockMock,
+    extendLock: extendThreadLockMock,
+    releaseLock: releaseThreadLockMock,
   }),
+}));
+
+vi.mock("@/chat/state/queue-processing-store", () => ({
   getQueueMessageProcessingState: getQueueMessageProcessingStateMock,
   acquireQueueMessageProcessingOwnership:
     acquireQueueMessageProcessingOwnershipMock,
@@ -31,9 +47,15 @@ vi.mock("@/chat/state", () => ({
 
 import { processQueuedThreadMessage } from "@/chat/queue/process-thread-message";
 
-function createPayload(): ThreadMessagePayload {
+function createPayload(
+  overrides: Partial<{
+    messageId: string;
+    threadState: Record<string, unknown>;
+  }> = {},
+): ThreadMessagePayload {
+  const messageId = overrides.messageId ?? "1700000000.200";
   return {
-    dedupKey: "slack:C123:1700000000.100:1700000000.200",
+    dedupKey: `slack:C123:1700000000.100:${messageId}`,
     kind: "new_mention",
     normalizedThreadId: "slack:C123:1700000000.100",
     queueMessageId: "msg_123",
@@ -41,9 +63,10 @@ function createPayload(): ThreadMessagePayload {
       id: "slack:C123:1700000000.100",
       channelId: "C123",
       isDM: false,
+      state: Promise.resolve(overrides.threadState ?? {}),
     } as unknown as ThreadMessagePayload["thread"],
     message: {
-      id: "1700000000.200",
+      id: messageId,
       author: {
         userId: "U_TEST",
         isMe: false,
@@ -55,6 +78,14 @@ function createPayload(): ThreadMessagePayload {
 
 describe("processQueuedThreadMessage reaction regressions", () => {
   beforeEach(() => {
+    connectStateAdapterMock.mockReset();
+    connectStateAdapterMock.mockResolvedValue(undefined);
+    acquireThreadLockMock.mockReset();
+    acquireThreadLockMock.mockResolvedValue({ id: "lock-1" });
+    extendThreadLockMock.mockReset();
+    extendThreadLockMock.mockResolvedValue(undefined);
+    releaseThreadLockMock.mockReset();
+    releaseThreadLockMock.mockResolvedValue(undefined);
     getQueueMessageProcessingStateMock.mockReset();
     getQueueMessageProcessingStateMock.mockResolvedValue(undefined);
     acquireQueueMessageProcessingOwnershipMock.mockReset();
@@ -72,7 +103,7 @@ describe("processQueuedThreadMessage reaction regressions", () => {
     const clearProcessingReaction = vi.fn(async () => {
       steps.push("clear");
     });
-    const processRuntime = vi.fn(async () => {
+    const dispatch = vi.fn(async () => {
       steps.push("runtime");
       steps.push("post");
     });
@@ -80,7 +111,7 @@ describe("processQueuedThreadMessage reaction regressions", () => {
 
     await processQueuedThreadMessage(payload, {
       clearProcessingReaction,
-      processRuntime,
+      dispatch,
       logInfo: vi.fn(),
       logWarn: vi.fn(),
     });
@@ -89,13 +120,13 @@ describe("processQueuedThreadMessage reaction regressions", () => {
       channelId: "C123",
       timestamp: "1700000000.200",
     });
-    expect(processRuntime).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(1);
     expect(steps).toEqual(["runtime", "post", "clear"]);
   });
 
   it("continues queue turn when :eyes: removal fails after queue completion", async () => {
     const payload = createPayload();
-    const processRuntime = vi.fn(async () => undefined);
+    const dispatch = vi.fn(async () => undefined);
     const logWarn = vi.fn();
 
     await processQueuedThreadMessage(payload, {
@@ -103,11 +134,11 @@ describe("processQueuedThreadMessage reaction regressions", () => {
         throw new Error("reaction remove failed");
       }),
       logInfo: vi.fn(),
-      processRuntime,
+      dispatch,
       logWarn,
     });
 
-    expect(processRuntime).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(1);
     expect(logWarn).toHaveBeenCalledWith(
       "queue_processing_reaction_clear_failed",
       expect.objectContaining({
@@ -123,39 +154,10 @@ describe("processQueuedThreadMessage reaction regressions", () => {
     );
   });
 
-  it("forwards pre-approved subscribed decisions to the runtime", async () => {
-    const payload = createPayload();
-    payload.kind = "subscribed_message";
-    payload.preApprovedDecision = {
-      shouldReply: false,
-      shouldUnsubscribe: true,
-      reason: "thread_opt_out:user asked junior to stop",
-    };
-    const processRuntime = vi.fn(async () => undefined);
-
-    await processQueuedThreadMessage(payload, {
-      clearProcessingReaction: vi.fn(async () => undefined),
-      logInfo: vi.fn(),
-      processRuntime,
-      logWarn: vi.fn(),
-    });
-
-    expect(processRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "subscribed_message",
-        preApprovedDecision: {
-          shouldReply: false,
-          shouldUnsubscribe: true,
-          reason: "thread_opt_out:user asked junior to stop",
-        },
-      }),
-    );
-  });
-
   it("logs and returns when the queue message is already completed", async () => {
     const payload = createPayload();
     const logInfo = vi.fn();
-    const processRuntime = vi.fn();
+    const dispatch = vi.fn();
 
     getQueueMessageProcessingStateMock.mockResolvedValueOnce({
       status: "completed",
@@ -166,12 +168,12 @@ describe("processQueuedThreadMessage reaction regressions", () => {
 
     await processQueuedThreadMessage(payload, {
       clearProcessingReaction: vi.fn(),
+      dispatch,
       logInfo,
-      processRuntime,
       logWarn: vi.fn(),
     });
 
-    expect(processRuntime).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
     expect(logInfo).toHaveBeenCalledWith(
       "queue_message_skipped_completed",
       expect.objectContaining({
@@ -191,18 +193,18 @@ describe("processQueuedThreadMessage reaction regressions", () => {
   it("logs and returns when queue message ownership is blocked", async () => {
     const payload = createPayload();
     const logInfo = vi.fn();
-    const processRuntime = vi.fn();
+    const dispatch = vi.fn();
 
     acquireQueueMessageProcessingOwnershipMock.mockResolvedValueOnce("blocked");
 
     await processQueuedThreadMessage(payload, {
       clearProcessingReaction: vi.fn(),
+      dispatch,
       logInfo,
-      processRuntime,
       logWarn: vi.fn(),
     });
 
-    expect(processRuntime).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
     expect(logInfo).toHaveBeenCalledWith(
       "queue_message_skipped_blocked",
       expect.objectContaining({
@@ -218,5 +220,73 @@ describe("processQueuedThreadMessage reaction regressions", () => {
       }),
       "Skipping queue message because another worker owns it",
     );
+  });
+
+  it("defers queued messages while another worker owns the thread lock", async () => {
+    const payload = createPayload();
+
+    acquireThreadLockMock.mockResolvedValueOnce(null);
+
+    await expect(
+      processQueuedThreadMessage(payload, {
+        clearProcessingReaction: vi.fn(),
+        dispatch: vi.fn(),
+        logInfo: vi.fn(),
+        logWarn: vi.fn(),
+      }),
+    ).rejects.toThrow("already locked");
+
+    expect(acquireQueueMessageProcessingOwnershipMock).not.toHaveBeenCalled();
+    expect(releaseThreadLockMock).not.toHaveBeenCalled();
+  });
+
+  it("defers later queued messages while a different active turn is parked for resume", async () => {
+    const payload = createPayload({
+      messageId: "msg-next",
+      threadState: {
+        conversation: {
+          processing: {
+            activeTurnId: "turn_msg-current",
+          },
+        },
+      },
+    });
+
+    await expect(
+      processQueuedThreadMessage(payload, {
+        clearProcessingReaction: vi.fn(),
+        dispatch: vi.fn(),
+        logInfo: vi.fn(),
+        logWarn: vi.fn(),
+      }),
+    ).rejects.toThrow("activeTurnId=turn_msg-current");
+
+    expect(acquireQueueMessageProcessingOwnershipMock).not.toHaveBeenCalled();
+    expect(releaseThreadLockMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows the same queued message to resume when it already owns the active turn", async () => {
+    const payload = createPayload({
+      messageId: "msg-retry",
+      threadState: {
+        conversation: {
+          processing: {
+            activeTurnId: "turn_msg-retry",
+          },
+        },
+      },
+    });
+    const dispatch = vi.fn(async () => undefined);
+
+    await processQueuedThreadMessage(payload, {
+      clearProcessingReaction: vi.fn(async () => undefined),
+      dispatch,
+      logInfo: vi.fn(),
+      logWarn: vi.fn(),
+    });
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(acquireQueueMessageProcessingOwnershipMock).toHaveBeenCalledTimes(1);
+    expect(releaseThreadLockMock).toHaveBeenCalledTimes(1);
   });
 });

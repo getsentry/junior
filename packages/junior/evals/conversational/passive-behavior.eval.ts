@@ -9,8 +9,7 @@ describe("Conversational Evals: Passive Behavior", () => {
   };
 
   slackEval("passive: human follow-up question is skipped", {
-    behavior: {
-      live_subscribed_routing: true,
+    overrides: {
       reply_texts: [
         "The deploy changed the billing worker and the API auth flow.",
       ],
@@ -37,7 +36,7 @@ describe("Conversational Evals: Passive Behavior", () => {
   };
 
   slackEval("passive: follow-up to Junior response gets a reply", {
-    behavior: {
+    overrides: {
       reply_texts: ["You need the budget by Friday."],
     },
     events: [
@@ -59,8 +58,7 @@ describe("Conversational Evals: Passive Behavior", () => {
   };
 
   slackEval("passive: explicit stop request opts out until re-mentioned", {
-    behavior: {
-      live_subscribed_routing: true,
+    overrides: {
       reply_texts: [
         "I can help in this thread.",
         "I'm back because you mentioned me again.",

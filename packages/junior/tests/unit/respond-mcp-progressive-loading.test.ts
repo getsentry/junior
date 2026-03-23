@@ -292,7 +292,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
   createSkillCapabilityRuntime: () => ({
     getTurnHeaderTransforms: () => undefined,
   }),
-  getUserTokenStore: () => ({
+  createUserTokenStore: () => ({
     get: async () => undefined,
     set: async () => undefined,
     delete: async () => undefined,
@@ -415,11 +415,11 @@ vi.mock("@/chat/mcp/client", () => {
 });
 
 import { generateAssistantReply } from "@/chat/respond";
-import * as stateModule from "@/chat/state";
 import {
-  disconnectStateAdapter,
   getAgentTurnSessionCheckpoint,
-} from "@/chat/state";
+  upsertAgentTurnSessionCheckpoint,
+} from "@/chat/state/turn-session-store";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { isRetryableTurnError } from "@/chat/turn/errors";
 
 describe("generateAssistantReply progressive MCP loading", () => {
@@ -704,7 +704,10 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
   it("still returns auth resume when auth checkpoint persistence fails", async () => {
     const checkpointSpy = vi
-      .spyOn(stateModule, "upsertAgentTurnSessionCheckpoint")
+      .spyOn(
+        await import("@/chat/state/turn-session-store"),
+        "upsertAgentTurnSessionCheckpoint",
+      )
       .mockImplementationOnce(async () => {
         throw new Error("state adapter unavailable");
       });
@@ -743,7 +746,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     ];
     const expectedResumeMessages = [priorMessages[0]];
-    await stateModule.upsertAgentTurnSessionCheckpoint({
+    await upsertAgentTurnSessionCheckpoint({
       conversationId: "conversation-5",
       sessionId: "turn-5",
       sliceId: 1,

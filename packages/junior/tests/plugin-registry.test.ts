@@ -84,7 +84,6 @@ describe("plugin registry", () => {
     packagedContent.packageNames = ["@acme/demo-plugin"];
     packagedContent.manifestRoots = [pluginRoot];
     packagedContent.skillRoots = [skillsRoot];
-    registry.resetPluginRegistryForTests();
 
     expect(registry.getPluginProviders()).toHaveLength(1);
     expect(registry.getPluginProviders()[0]?.manifest.name).toBe("demo");

@@ -3,7 +3,7 @@ import {
   buildQueueIngressDedupKey,
   determineThreadMessageKind,
   normalizeIncomingSlackThreadId,
-} from "@/chat/chat-background-patch";
+} from "@/chat/ingress/message-router";
 
 describe("normalizeIncomingSlackThreadId", () => {
   it("keeps canonical slack thread ids unchanged", () => {

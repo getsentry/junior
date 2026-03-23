@@ -1,8 +1,8 @@
 import path from "node:path";
 import type { FileUpload } from "chat";
-import type { Sandbox } from "@vercel/sandbox";
 import { Type } from "@sinclair/typebox";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { tool } from "@/chat/tools/definition";
 import type { ToolHooks } from "@/chat/tools/types";
 
@@ -67,7 +67,7 @@ function inferMimeType(filename: string, explicitMimeType?: string): string {
 }
 
 async function detectMimeType(
-  sandbox: Sandbox,
+  sandbox: SandboxWorkspace,
   targetPath: string,
 ): Promise<string | undefined> {
   try {
@@ -85,7 +85,10 @@ async function detectMimeType(
   }
 }
 
-export function createAttachFileTool(sandbox: Sandbox, hooks: ToolHooks = {}) {
+export function createAttachFileTool(
+  sandbox: SandboxWorkspace,
+  hooks: ToolHooks = {},
+) {
   return tool({
     description:
       "Attach a file to the Slack reply. Use this for files that exist in the sandbox, such as screenshots, PDFs, or logs, or for generated image `attachment_path` values returned earlier in the turn.",

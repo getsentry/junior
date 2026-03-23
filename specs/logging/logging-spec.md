@@ -317,7 +317,7 @@ Only when no semantic key exists:
 
 - [ ] Migrate duplicated per-turn context in `packages/junior/src/chat/bot.ts` to ambient `withContext`/`withLogContext`.
 - [ ] Migrate duplicated per-turn context in `packages/junior/src/chat/respond.ts` to ambient `withContext`/`withLogContext`.
-- [ ] Update `packages/junior/src/chat/app-runtime.ts` logging call patterns to rely on ambient context by default.
+- [ ] Update `packages/junior/src/chat/runtime/slack-runtime.ts` logging call patterns to rely on ambient context by default.
 - [ ] Normalize remaining ad-hoc context passing in `packages/junior/src/chat/capabilities/*`, `packages/junior/src/chat/workflow/*`, and `packages/junior/src/chat/slack-actions/*`.
 - [ ] Add unit tests for context merge precedence and async propagation in `packages/junior/src/chat/logging.ts`.
 - [ ] Add regression tests to verify optional context behavior for `logInfo`, `logWarn`, `logError`, and `logException`.
