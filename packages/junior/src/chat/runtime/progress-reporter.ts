@@ -49,14 +49,12 @@ export function createProgressReporter(args: {
       return;
     }
 
-    if (!text) {
-      await inflightStatusUpdate;
-    }
-
     currentStatus = text;
     lastStatusAt = now();
     const suggestions = text ? [text] : [];
+    const previous = inflightStatusUpdate;
     const request = (async () => {
+      await previous;
       try {
         await args.setAssistantStatus(channelId, threadTs, text, suggestions);
       } catch {}

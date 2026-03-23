@@ -181,6 +181,40 @@ describe("createProgressReporter", () => {
     expect(statuses).toEqual(["Thinking...", "Reviewing results"]);
   });
 
+  it("serializes status updates so a slow request cannot reorder with the clear", async () => {
+    const scheduler = createFakeScheduler();
+    const statuses: string[] = [];
+    let resolveThinking: (() => void) | undefined;
+    const reporter = createProgressReporter({
+      channelId: "C1",
+      threadTs: "123.45",
+      setAssistantStatus: async (_channelId, _threadTs, text) => {
+        if (text === "Thinking...") {
+          await new Promise<void>((resolve) => {
+            resolveThinking = resolve;
+          });
+        }
+        statuses.push(text);
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+    });
+
+    await reporter.start();
+    // "Thinking..." is now in flight but blocked
+
+    const stopPromise = reporter.stop();
+    // stop() should wait for the inflight "Thinking..." before sending ""
+
+    // Unblock the slow "Thinking..." call
+    resolveThinking!();
+    await stopPromise;
+
+    // The clear must always be the last status sent to Slack
+    expect(statuses).toEqual(["Thinking...", ""]);
+  });
+
   it("clears after the latest visible status when stopping", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];

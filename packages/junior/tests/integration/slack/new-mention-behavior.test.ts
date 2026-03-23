@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FakeSlackAdapter } from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -71,6 +72,140 @@ describe("Slack behavior: new mention", () => {
     expect(thread.subscribeCalls).toBe(1);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("Rollback is complete");
+  });
+
+  it("clears assistant status after successful reply", async () => {
+    const slackAdapter = new FakeSlackAdapter();
+    const { slackRuntime } = createTestChatRuntime({
+      slackAdapter,
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onStatus?.("Running bash...");
+            return {
+              text: "Done.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: ["bash"],
+                toolErrorCount: 0,
+                toolResultCount: 1,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_STATUS:1700002000.000",
+    });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-status-clear",
+        text: "<@U_APP> run a command",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
+    expect(slackAdapter.statusCalls.at(-1)).toEqual({
+      channelId: "C_STATUS",
+      threadTs: "1700002000.000",
+      text: "",
+      suggestions: [],
+    });
+  });
+
+  it("clears assistant status after reaction-only reply with no thread post", async () => {
+    const slackAdapter = new FakeSlackAdapter();
+    const { slackRuntime } = createTestChatRuntime({
+      slackAdapter,
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onStatus?.("Adding reaction...");
+            return {
+              text: "Done!",
+              deliveryMode: "thread",
+              ackStrategy: "reaction",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: ["slackMessageAddReaction"],
+                toolErrorCount: 0,
+                toolResultCount: 1,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_STATUS:1700004000.000",
+    });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-reaction-only",
+        text: "<@U_APP> add a reaction to this message",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    // No thread reply posted (reaction ack suppressed)
+    expect(thread.posts).toHaveLength(0);
+    // Status must still be cleared
+    expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
+    expect(slackAdapter.statusCalls.at(-1)).toEqual({
+      channelId: "C_STATUS",
+      threadTs: "1700004000.000",
+      text: "",
+      suggestions: [],
+    });
+  });
+
+  it("clears assistant status after agent error", async () => {
+    const slackAdapter = new FakeSlackAdapter();
+    const { slackRuntime } = createTestChatRuntime({
+      slackAdapter,
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            throw new Error("model exploded");
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_STATUS:1700003000.000",
+    });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-status-error",
+        text: "<@U_APP> do something",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
+    expect(slackAdapter.statusCalls.at(-1)).toEqual({
+      channelId: "C_STATUS",
+      threadTs: "1700003000.000",
+      text: "",
+      suggestions: [],
+    });
   });
 
   it("suppresses thread reply when assistant marks delivery as channel_only", async () => {
