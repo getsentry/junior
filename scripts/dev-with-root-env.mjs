@@ -3,14 +3,17 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const workspaceRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const nodeEnv = process.env.NODE_ENV ?? "development";
 
 const envCandidates = [
   `.env.${nodeEnv}.local`,
   nodeEnv === "test" ? null : ".env.local",
   `.env.${nodeEnv}`,
-  ".env"
+  ".env",
 ].filter(Boolean);
 
 for (const relativePath of envCandidates) {
@@ -22,12 +25,59 @@ for (const relativePath of envCandidates) {
   process.loadEnvFile(absolutePath);
 }
 
-const child = spawn("pnpm", ["--filter", "@sentry/junior-example", "dev"], {
-  stdio: "inherit",
-  env: process.env
-});
+const children = new Set();
+
+function spawnChild(command, args, options = {}) {
+  const child = spawn(command, args, {
+    stdio: "inherit",
+    env: process.env,
+    ...options,
+  });
+
+  children.add(child);
+  child.on("exit", () => {
+    children.delete(child);
+  });
+
+  return child;
+}
+
+function terminateChildren(signal = "SIGTERM") {
+  for (const child of children) {
+    if (child.killed) {
+      continue;
+    }
+
+    child.kill(signal);
+  }
+}
+
+const tunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
+const tunnelUrl =
+  process.env.CLOUDFLARE_TUNNEL_URL?.trim() || "http://localhost:3000";
+
+if (tunnelToken) {
+  spawnChild("cloudflared", [
+    "tunnel",
+    "run",
+    "--token",
+    tunnelToken,
+    "--url",
+    tunnelUrl,
+  ]);
+}
+
+const child = spawnChild("pnpm", ["--filter", "@sentry/junior-example", "dev"]);
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => {
+    terminateChildren(signal);
+  });
+}
 
 child.on("exit", (code, signal) => {
+  terminateChildren(signal ?? "SIGTERM");
+
   if (signal) {
     process.kill(process.pid, signal);
     return;
