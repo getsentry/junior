@@ -28,8 +28,8 @@ Implemented (Sentry + GitHub migrated)
 - [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md)
 - Plugin Registry: `packages/junior/src/chat/plugins/registry.ts`
 - Plugin Types: `packages/junior/src/chat/plugins/types.ts`
-- Generic OAuth Bearer Broker: `packages/junior/src/chat/plugins/oauth-bearer-broker.ts`
-- GitHub App Broker: `packages/junior/src/chat/plugins/github-app-broker.ts`
+- Generic OAuth Bearer Broker: `packages/junior/src/chat/plugins/auth/oauth-bearer-broker.ts`
+- GitHub App Broker: `packages/junior/src/chat/plugins/auth/github-app-broker.ts`
 - Provider Catalog: `packages/junior/src/chat/capabilities/catalog.ts`
 - Broker Factory: `packages/junior/src/chat/capabilities/factory.ts`
 - OAuth Providers: `packages/junior/src/chat/capabilities/jr-rpc-command.ts`

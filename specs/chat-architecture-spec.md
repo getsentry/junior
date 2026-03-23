@@ -52,7 +52,7 @@ Define the normative architecture contract for `packages/junior/src/chat` so new
 - `runtime/`: turn orchestration only.
 - `services/`: domain services with injected collaborators.
 - `state/`: adapter selection plus store modules split by concern.
-- `slack/`: Slack-specific client and action helpers.
+- `slack/`: Slack-specific client, output formatting, and channel/user helpers.
 - `ai/`: provider-facing AI clients.
 - `queue/`: queue transport and queue worker orchestration.
 - `turn/`: turn lifecycle state and resumability.
@@ -240,7 +240,6 @@ Legacy modules may remain during cutover, but new code must follow this contract
 ## Verification
 
 - `rg "getBotDeps|setBotDepsForTests|resetBotDepsForTests|runtime/deps"` should stay empty for production chat runtime code.
-- `rg "@/chat/bot" packages/junior/src/chat/queue packages/junior/src/handlers/queue-callback.ts` should stay empty once queue dispatch cutover is complete.
 - Typecheck and focused tests must pass for any touched runtime/service/state path.
 - Behavior changes to chat architecture must update this spec, `AGENTS.md`, and the relevant testing docs in the same change.
 

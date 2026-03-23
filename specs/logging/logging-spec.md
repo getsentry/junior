@@ -46,13 +46,13 @@ Define the canonical structured logging contract for application events, context
 
 ## Current State (Audit)
 
-- Core logging helper exists: `packages/junior/src/chat/observability.ts`.
+- Core logging helper exists: `packages/junior/src/chat/logging.ts`.
 - Callsites are concentrated in:
-  - `packages/junior/src/chat/bot.ts`
   - `packages/junior/src/chat/respond.ts`
   - `packages/junior/src/chat/skills.ts`
-  - `packages/junior/src/chat/output.ts`
-  - `packages/junior/app/api/webhooks/[platform]/route.ts`
+  - `packages/junior/src/chat/slack/output.ts`
+  - `packages/junior/src/chat/runtime/slack-runtime.ts`
+  - `packages/junior/src/handlers/webhooks.ts`
 - Key inconsistencies today:
   - Mixed naming styles (`media_type`, `error`, `request.id`, `gen_ai.request.model`).
   - Message text is often prose, not stable event names.
@@ -104,7 +104,7 @@ Each emitted log record follows this logical shape (transport can vary):
 - `withLogContext(context, fn)` using `AsyncLocalStorage`
 - `createLogContextFromRequest(...)`
 
-Compatibility shims in `packages/junior/src/chat/observability.ts` remain supported:
+Compatibility shims in `packages/junior/src/chat/logging.ts` remain supported:
 
 - `logInfo(eventName, context?, attributes?, body?)`
 - `logWarn(eventName, context?, attributes?, body?)`
@@ -301,24 +301,23 @@ Only when no semantic key exists:
 
 ## Migration Matrix (Initial)
 
-- `packages/junior/app/api/webhooks/[platform]/route.ts`
+- `packages/junior/src/handlers/webhooks.ts`
   - unknown platform, handler failures, request lifecycle
-- `packages/junior/src/chat/bot.ts`
+- `packages/junior/src/chat/runtime/slack-runtime.ts`
   - attachment handling, thread lifecycle, handler failures
 - `packages/junior/src/chat/respond.ts`
   - empty/fallback behaviors, retries, model/tool anomalies
   - per-turn diagnostics are captured on turn spans (not required as info logs)
 - `packages/junior/src/chat/skills.ts`
   - skill discovery/read/frontmatter parse issues
-- `packages/junior/src/chat/output.ts`
+- `packages/junior/src/chat/slack/output.ts`
   - output normalization fallback
 
 ## Logging TODOs
 
-- [ ] Migrate duplicated per-turn context in `packages/junior/src/chat/bot.ts` to ambient `withContext`/`withLogContext`.
 - [ ] Migrate duplicated per-turn context in `packages/junior/src/chat/respond.ts` to ambient `withContext`/`withLogContext`.
 - [ ] Update `packages/junior/src/chat/runtime/slack-runtime.ts` logging call patterns to rely on ambient context by default.
-- [ ] Normalize remaining ad-hoc context passing in `packages/junior/src/chat/capabilities/*`, `packages/junior/src/chat/workflow/*`, and `packages/junior/src/chat/slack-actions/*`.
+- [ ] Normalize remaining ad-hoc context passing in `packages/junior/src/chat/capabilities/*` and `packages/junior/src/chat/queue/*`.
 - [ ] Add unit tests for context merge precedence and async propagation in `packages/junior/src/chat/logging.ts`.
 - [ ] Add regression tests to verify optional context behavior for `logInfo`, `logWarn`, `logError`, and `logException`.
 - [ ] Add a lint/check rule that flags repeated baseline context keys when ambient context is already bound.

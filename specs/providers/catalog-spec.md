@@ -9,10 +9,9 @@
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 
-
 ## Status
 
-Draft
+Draft — largely superseded by `specs/plugin-spec.md` which now drives the provider catalog model.
 
 ## Related
 
