@@ -25,17 +25,29 @@ describe("init cli", () => {
     await runInit(target, () => undefined);
 
     expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "app", "api", "[...path]", "route.js"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "app", "api", "queue", "callback", "route.js"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "app", "data", "SOUL.md"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "app", "data", "ABOUT.md"))).toBe(true);
+    expect(
+      fs.existsSync(path.join(target, "app", "api", "[...path]", "route.js")),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(target, "app", "api", "queue", "callback", "route.js"),
+      ),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(target, "app", "data", "SOUL.md"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(target, "app", "data", "ABOUT.md"))).toBe(
+      true,
+    );
   });
 
   it("refuses to initialize a non-empty directory", async () => {
     const target = makeTempDir("junior-init-non-empty-");
     fs.writeFileSync(path.join(target, "README.md"), "# existing\n");
 
-    await expect(runInit(target, () => undefined)).rejects.toThrow("refusing to initialize non-empty directory");
+    await expect(runInit(target, () => undefined)).rejects.toThrow(
+      "refusing to initialize non-empty directory",
+    );
   });
 
   it("refuses to initialize a file path", async () => {
@@ -43,6 +55,8 @@ describe("init cli", () => {
     const filePath = path.join(targetRoot, "not-a-dir.txt");
     fs.writeFileSync(filePath, "hello");
 
-    await expect(runInit(filePath, () => undefined)).rejects.toThrow("refusing to initialize non-directory path");
+    await expect(runInit(filePath, () => undefined)).rejects.toThrow(
+      "refusing to initialize non-directory path",
+    );
   });
 });

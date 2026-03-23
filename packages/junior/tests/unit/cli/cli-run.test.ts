@@ -7,7 +7,11 @@ describe("cli command dispatch", () => {
     const runSnapshotCreate = vi.fn(async () => undefined);
     const runCheck = vi.fn(async () => undefined);
 
-    const exitCode = await runCli(["init", "my-bot"], { runInit, runSnapshotCreate, runCheck });
+    const exitCode = await runCli(["init", "my-bot"], {
+      runInit,
+      runSnapshotCreate,
+      runCheck,
+    });
 
     expect(exitCode).toBe(0);
     expect(runInit).toHaveBeenCalledTimes(1);
@@ -21,7 +25,11 @@ describe("cli command dispatch", () => {
     const runSnapshotCreate = vi.fn(async () => undefined);
     const runCheck = vi.fn(async () => undefined);
 
-    const exitCode = await runCli(["snapshot", "create"], { runInit, runSnapshotCreate, runCheck });
+    const exitCode = await runCli(["snapshot", "create"], {
+      runInit,
+      runSnapshotCreate,
+      runCheck,
+    });
 
     expect(exitCode).toBe(0);
     expect(runSnapshotCreate).toHaveBeenCalledTimes(1);
@@ -34,8 +42,16 @@ describe("cli command dispatch", () => {
     const runSnapshotCreate = vi.fn(async () => undefined);
     const runCheck = vi.fn(async () => undefined);
 
-    const explicitExitCode = await runCli(["check", "/tmp/repo"], { runInit, runSnapshotCreate, runCheck });
-    const implicitExitCode = await runCli(["check"], { runInit, runSnapshotCreate, runCheck });
+    const explicitExitCode = await runCli(["check", "/tmp/repo"], {
+      runInit,
+      runSnapshotCreate,
+      runCheck,
+    });
+    const implicitExitCode = await runCli(["check"], {
+      runInit,
+      runSnapshotCreate,
+      runCheck,
+    });
 
     expect(explicitExitCode).toBe(0);
     expect(implicitExitCode).toBe(0);
@@ -51,22 +67,48 @@ describe("cli command dispatch", () => {
     const runCheck = vi.fn(async () => undefined);
     const lines: string[] = [];
 
-    const missingInitArg = await runCli(["init"], { runInit, runSnapshotCreate, runCheck }, { error: (line) => lines.push(line) });
-    const extraInitArg = await runCli(["init", "my-bot", "extra"], { runInit, runSnapshotCreate, runCheck }, { error: (line) => lines.push(line) });
-    const extraSnapshotArg = await runCli(["snapshot", "create", "extra"], { runInit, runSnapshotCreate, runCheck }, {
-      error: (line) => lines.push(line)
-    });
-    const extraCheckArg = await runCli(["check", "repo", "extra"], { runInit, runSnapshotCreate, runCheck }, {
-      error: (line) => lines.push(line)
-    });
-    const unknown = await runCli(["whoami"], { runInit, runSnapshotCreate, runCheck }, { error: (line) => lines.push(line) });
+    const missingInitArg = await runCli(
+      ["init"],
+      { runInit, runSnapshotCreate, runCheck },
+      { error: (line) => lines.push(line) },
+    );
+    const extraInitArg = await runCli(
+      ["init", "my-bot", "extra"],
+      { runInit, runSnapshotCreate, runCheck },
+      { error: (line) => lines.push(line) },
+    );
+    const extraSnapshotArg = await runCli(
+      ["snapshot", "create", "extra"],
+      { runInit, runSnapshotCreate, runCheck },
+      {
+        error: (line) => lines.push(line),
+      },
+    );
+    const extraCheckArg = await runCli(
+      ["check", "repo", "extra"],
+      { runInit, runSnapshotCreate, runCheck },
+      {
+        error: (line) => lines.push(line),
+      },
+    );
+    const unknown = await runCli(
+      ["whoami"],
+      { runInit, runSnapshotCreate, runCheck },
+      { error: (line) => lines.push(line) },
+    );
 
     expect(missingInitArg).toBe(1);
     expect(extraInitArg).toBe(1);
     expect(extraSnapshotArg).toBe(1);
     expect(extraCheckArg).toBe(1);
     expect(unknown).toBe(1);
-    expect(lines).toEqual([CLI_USAGE, CLI_USAGE, CLI_USAGE, CLI_USAGE, CLI_USAGE]);
+    expect(lines).toEqual([
+      CLI_USAGE,
+      CLI_USAGE,
+      CLI_USAGE,
+      CLI_USAGE,
+      CLI_USAGE,
+    ]);
     expect(runInit).not.toHaveBeenCalled();
     expect(runSnapshotCreate).not.toHaveBeenCalled();
     expect(runCheck).not.toHaveBeenCalled();

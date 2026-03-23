@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Thread } from "chat";
-import { createTestMessage, createTestThread } from "./fixtures/slack-harness";
-import { createTestChatRuntime } from "./fixtures/chat-runtime";
+import {
+  createTestMessage,
+  createTestThread,
+} from "../../fixtures/slack-harness";
+import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 
 const listThreadRepliesMock = vi.fn();
 

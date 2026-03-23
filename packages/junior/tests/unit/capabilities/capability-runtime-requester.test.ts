@@ -8,9 +8,9 @@ vi.mock("@/chat/capabilities/catalog", () => ({
       ? {
           provider: "sentry",
           capabilities: ["sentry.api"],
-          configKeys: []
+          configKeys: [],
         }
-      : undefined
+      : undefined,
 }));
 
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
@@ -20,7 +20,7 @@ const fakeSkill: Skill = {
   description: "Sentry helper",
   skillPath: "/tmp/sentry",
   body: "instructions",
-  requiresCapabilities: ["sentry.api"]
+  requiresCapabilities: ["sentry.api"],
 };
 
 describe("skill capability runtime requester binding", () => {
@@ -28,7 +28,7 @@ describe("skill capability runtime requester binding", () => {
     const broker: CredentialBroker = {
       issue: async () => {
         throw new Error("should not be called");
-      }
+      },
     };
 
     const runtime = new SkillCapabilityRuntime({ broker });
@@ -36,8 +36,8 @@ describe("skill capability runtime requester binding", () => {
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
         capability: "sentry.api",
-        reason: "test:missing-requester"
-      })
+        reason: "test:missing-requester",
+      }),
     ).rejects.toThrow("requires requester context");
   });
 
@@ -55,13 +55,13 @@ describe("skill capability runtime requester binding", () => {
             {
               domain: "sentry.io",
               headers: {
-                Authorization: "Bearer token-1"
-              }
-            }
+                Authorization: "Bearer token-1",
+              },
+            },
           ],
-          expiresAt: new Date(Date.now() + 60_000).toISOString()
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
         };
-      }
+      },
     };
 
     const runtime = new SkillCapabilityRuntime({ broker, requesterId: "U123" });
@@ -69,15 +69,15 @@ describe("skill capability runtime requester binding", () => {
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
         capability: "sentry.api",
-        reason: "test:first"
-      })
+        reason: "test:first",
+      }),
     ).resolves.toMatchObject({ reused: false });
     await expect(
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
         capability: "sentry.api",
-        reason: "test:second"
-      })
+        reason: "test:second",
+      }),
     ).resolves.toMatchObject({ reused: true });
     expect(issueCalls).toBe(1);
   });

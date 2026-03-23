@@ -8,13 +8,13 @@ function createInMemoryService() {
     save: async (next) => {
       state = {
         ...(state ?? {}),
-        configuration: next
+        configuration: next,
       };
-    }
+    },
   });
   return {
     service,
-    getState: () => state
+    getState: () => state,
   };
 }
 
@@ -26,7 +26,7 @@ describe("channel configuration service", () => {
       key: "github.repo",
       value: "getsentry/junior",
       updatedBy: "U123",
-      source: "test"
+      source: "test",
     });
     expect(created.key).toBe("github.repo");
     expect(created.scope).toBe("conversation");
@@ -42,19 +42,23 @@ describe("channel configuration service", () => {
 
     await service.set({
       key: "jira.project",
-      value: "PLAT"
+      value: "PLAT",
     });
     const prefixed = await service.list({ prefix: "github." });
     expect(prefixed).toHaveLength(1);
     expect(prefixed[0]?.key).toBe("github.repo");
 
-    await expect(service.resolve("github.repo")).resolves.toBe("getsentry/junior");
+    await expect(service.resolve("github.repo")).resolves.toBe(
+      "getsentry/junior",
+    );
     await expect(service.resolveValues()).resolves.toEqual({
       "github.repo": "getsentry/junior",
-      "jira.project": "PLAT"
+      "jira.project": "PLAT",
     });
-    await expect(service.resolveValues({ keys: ["jira.project"] })).resolves.toEqual({
-      "jira.project": "PLAT"
+    await expect(
+      service.resolveValues({ keys: ["jira.project"] }),
+    ).resolves.toEqual({
+      "jira.project": "PLAT",
     });
 
     await expect(service.unset("github.repo")).resolves.toBe(true);
@@ -68,10 +72,10 @@ describe("channel configuration service", () => {
           "jira.project": expect.objectContaining({
             key: "jira.project",
             value: "PLAT",
-            scope: "conversation"
-          })
-        }
-      }
+            scope: "conversation",
+          }),
+        },
+      },
     });
   });
 
@@ -81,15 +85,15 @@ describe("channel configuration service", () => {
     await expect(
       service.set({
         key: "token.value",
-        value: "abc"
-      })
+        value: "abc",
+      }),
     ).rejects.toThrow("secret-related");
 
     await expect(
       service.set({
         key: "github.repo",
-        value: "Bearer abcdefghijklmnopqrstuvwxyz123456"
-      })
+        value: "Bearer abcdefghijklmnopqrstuvwxyz123456",
+      }),
     ).rejects.toThrow("secret material");
   });
 });

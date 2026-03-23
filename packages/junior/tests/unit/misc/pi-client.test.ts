@@ -6,7 +6,7 @@ const ORIGINAL_ENV = {
   VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN,
   VERCEL: process.env.VERCEL,
   VERCEL_ENV: process.env.VERCEL_ENV,
-  VERCEL_REGION: process.env.VERCEL_REGION
+  VERCEL_REGION: process.env.VERCEL_REGION,
 };
 
 function restoreEnvVar(name: keyof typeof ORIGINAL_ENV): void {

@@ -5,7 +5,10 @@ import {
   type SlackTurnRuntimeDependencies,
 } from "@/chat/runtime/slack-runtime";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
-import { createTestThread, createTestMessage } from "./fixtures/slack-harness";
+import {
+  createTestThread,
+  createTestMessage,
+} from "../../fixtures/slack-harness";
 
 interface TestState {
   prepared: boolean;

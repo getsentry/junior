@@ -5,8 +5,8 @@ import {
   FakeSlackAdapter,
   createTestThread,
   createTestMessage,
-} from "./fixtures/slack-harness";
-import { createTestChatRuntime } from "./fixtures/chat-runtime";
+} from "../../fixtures/slack-harness";
+import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 
 const emptyThreadReplies = async () => [];
 

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/bot", () => {
-  throw new Error("chat/bot must not be imported when loading handlers/webhooks");
+  throw new Error(
+    "chat/bot must not be imported when loading handlers/webhooks",
+  );
 });
 
 describe("handlers webhooks module loading", () => {
