@@ -1,3 +1,4 @@
+import { logWarn } from "@/chat/logging";
 import { truncateStatusText } from "@/chat/runtime/status-format";
 
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
@@ -57,7 +58,18 @@ export function createProgressReporter(args: {
       await previous;
       try {
         await args.setAssistantStatus(channelId, threadTs, text, suggestions);
-      } catch {}
+      } catch (error) {
+        logWarn(
+          "assistant_status_update_failed",
+          {},
+          {
+            "app.slack.status_text": text || "(clear)",
+            "error.message":
+              error instanceof Error ? error.message : String(error),
+          },
+          "Failed to update assistant status",
+        );
+      }
     })();
     inflightStatusUpdate = request;
     await request;
