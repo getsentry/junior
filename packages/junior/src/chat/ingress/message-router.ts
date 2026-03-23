@@ -5,7 +5,7 @@ import {
   setSpanAttributes,
   withContext,
   withSpan,
-} from "@/chat/observability";
+} from "@/chat/logging";
 import { enqueueThreadMessage as enqueueThreadMessageImpl } from "@/chat/queue/client";
 import type {
   ThreadMessageKind,
@@ -14,7 +14,7 @@ import type {
 import {
   addReactionToMessage,
   removeReactionFromMessage,
-} from "@/chat/slack-actions/channel";
+} from "@/chat/slack/channel";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   claimQueueIngressDedup,

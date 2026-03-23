@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SlackActionError, withSlackRetries } from "@/chat/slack-actions/client";
+import { SlackActionError, withSlackRetries } from "@/chat/slack/client";
 
 describe("withSlackRetries", () => {
   afterEach(() => {
@@ -14,7 +14,7 @@ describe("withSlackRetries", () => {
         code: "slack_webapi_rate_limited_error",
         statusCode: 429,
         retryAfter: 1,
-        message: "rate limited"
+        message: "rate limited",
       })
       .mockResolvedValue("ok");
 
@@ -30,9 +30,9 @@ describe("withSlackRetries", () => {
       data: {
         error: "missing_scope",
         needed: "files:write",
-        provided: "chat:write"
+        provided: "chat:write",
       },
-      message: "missing scope"
+      message: "missing scope",
     });
 
     await expect(withSlackRetries(task, 3)).rejects.toEqual(
@@ -40,22 +40,22 @@ describe("withSlackRetries", () => {
         name: "SlackActionError",
         code: "missing_scope",
         needed: "files:write",
-        provided: "chat:write"
-      })
+        provided: "chat:write",
+      }),
     );
     expect(task).toHaveBeenCalledTimes(1);
   });
 
   it("does not retry internal errors", async () => {
     const task = vi.fn<() => Promise<string>>().mockRejectedValue({
-      message: "unknown failure"
+      message: "unknown failure",
     });
 
     await expect(withSlackRetries(task, 3)).rejects.toEqual(
       expect.objectContaining<Partial<SlackActionError>>({
         name: "SlackActionError",
-        code: "internal_error"
-      })
+        code: "internal_error",
+      }),
     );
     expect(task).toHaveBeenCalledTimes(1);
   });
@@ -63,16 +63,16 @@ describe("withSlackRetries", () => {
   it("maps canvas_creation_failed as a dedicated non-retryable error", async () => {
     const task = vi.fn<() => Promise<string>>().mockRejectedValue({
       data: {
-        error: "canvas_creation_failed"
+        error: "canvas_creation_failed",
       },
-      message: "An API error occurred: canvas_creation_failed"
+      message: "An API error occurred: canvas_creation_failed",
     });
 
     await expect(withSlackRetries(task, 3)).rejects.toEqual(
       expect.objectContaining<Partial<SlackActionError>>({
         name: "SlackActionError",
-        code: "canvas_creation_failed"
-      })
+        code: "canvas_creation_failed",
+      }),
     );
     expect(task).toHaveBeenCalledTimes(1);
   });
@@ -81,9 +81,9 @@ describe("withSlackRetries", () => {
     const task = vi.fn<() => Promise<string>>().mockRejectedValue({
       data: {
         error: "canvas_creation_failed",
-        detail: "'content' error: line 55: Unsupported heading depth (4)"
+        detail: "'content' error: line 55: Unsupported heading depth (4)",
       },
-      message: "An API error occurred: canvas_creation_failed"
+      message: "An API error occurred: canvas_creation_failed",
     });
 
     await expect(withSlackRetries(task, 3)).rejects.toEqual(
@@ -92,8 +92,8 @@ describe("withSlackRetries", () => {
         code: "canvas_creation_failed",
         detail: "'content' error: line 55: Unsupported heading depth (4)",
         detailLine: 55,
-        detailRule: "unsupported_heading_depth"
-      })
+        detailRule: "unsupported_heading_depth",
+      }),
     );
     expect(task).toHaveBeenCalledTimes(1);
   });
@@ -101,16 +101,16 @@ describe("withSlackRetries", () => {
   it("maps canvas_editing_failed as a dedicated non-retryable error", async () => {
     const task = vi.fn<() => Promise<string>>().mockRejectedValue({
       data: {
-        error: "canvas_editing_failed"
+        error: "canvas_editing_failed",
       },
-      message: "An API error occurred: canvas_editing_failed"
+      message: "An API error occurred: canvas_editing_failed",
     });
 
     await expect(withSlackRetries(task, 3)).rejects.toEqual(
       expect.objectContaining<Partial<SlackActionError>>({
         name: "SlackActionError",
-        code: "canvas_editing_failed"
-      })
+        code: "canvas_editing_failed",
+      }),
     );
     expect(task).toHaveBeenCalledTimes(1);
   });
@@ -118,17 +118,17 @@ describe("withSlackRetries", () => {
   it("maps invalid_name as invalid_arguments", async () => {
     const task = vi.fn<() => Promise<string>>().mockRejectedValue({
       data: {
-        error: "invalid_name"
+        error: "invalid_name",
       },
-      message: "An API error occurred: invalid_name"
+      message: "An API error occurred: invalid_name",
     });
 
     await expect(withSlackRetries(task, 3)).rejects.toEqual(
       expect.objectContaining<Partial<SlackActionError>>({
         name: "SlackActionError",
         code: "invalid_arguments",
-        apiError: "invalid_name"
-      })
+        apiError: "invalid_name",
+      }),
     );
     expect(task).toHaveBeenCalledTimes(1);
   });

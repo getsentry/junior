@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getRuntimeMetadata } from "@/chat/runtime-metadata";
+import { getRuntimeMetadata } from "@/chat/config";
 
 describe("getRuntimeMetadata", () => {
   afterEach(() => {

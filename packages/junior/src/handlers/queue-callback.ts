@@ -14,7 +14,7 @@ import {
   setSpanStatus,
   withContext,
   withSpan,
-} from "@/chat/observability";
+} from "@/chat/logging";
 
 /**
  * Queue callback contract for `@sentry/junior`.

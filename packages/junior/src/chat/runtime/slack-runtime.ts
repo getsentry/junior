@@ -1,7 +1,7 @@
 import type { Message, Thread } from "chat";
-import { getSubscribedReplyPreflightDecision } from "@/chat/routing/subscribed-decision";
-import { isRetryableTurnError } from "@/chat/turn/errors";
-import type { ErrorReference } from "@/chat/observability";
+import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
+import { isRetryableTurnError } from "@/chat/runtime/turn";
+import type { ErrorReference } from "@/chat/logging";
 import { getSlackErrorObservabilityAttributes } from "@/chat/runtime/thread-context";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 

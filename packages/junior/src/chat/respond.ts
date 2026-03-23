@@ -1,17 +1,11 @@
-import { Agent, type AgentTool } from "@mariozechner/pi-agent-core";
-import type {
-  AssistantMessage,
-  ImageContent,
-  TextContent,
-  ToolResultMessage,
-} from "@mariozechner/pi-ai";
-import { Value } from "@sinclair/typebox/value";
+import { Agent } from "@mariozechner/pi-agent-core";
+import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
   extractGenAiUsageAttributes,
   serializeGenAiAttribute,
-} from "@/chat/gen-ai-attributes";
+} from "@/chat/logging";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import { getMcpAuthSession, patchMcpAuthSession } from "@/chat/mcp/auth-store";
 import {
@@ -22,23 +16,22 @@ import {
   setSpanStatus,
   setTags,
   withSpan,
-  type ObservabilityContext,
-} from "@/chat/observability";
+  type LogContext,
+} from "@/chat/logging";
 import { deliverPrivateMessage, formatProviderLabel } from "@/chat/oauth-flow";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
   createSkillCapabilityRuntime,
   createUserTokenStore,
 } from "@/chat/capabilities/factory";
-import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
-import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
+import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import {
   buildReplyDeliveryPlan,
   type ReplyDeliveryPlan,
-} from "@/chat/delivery/plan";
-import { SkillSandbox } from "@/chat/skill-sandbox";
+} from "@/chat/services/reply-delivery-plan";
+import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   discoverSkills,
   findSkillByName,
@@ -50,8 +43,7 @@ import {
   getPluginProviders,
 } from "@/chat/plugins/registry";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
-import { SlackActionError } from "@/chat/slack-actions/client";
-import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { toExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
@@ -61,26 +53,18 @@ import {
   getGatewayApiKey,
   resolveGatewayModel,
 } from "@/chat/pi/client";
-import {
-  createSandboxExecutor,
-  type SandboxExecutor,
-} from "@/chat/sandbox/sandbox";
-import { getRuntimeMetadata } from "@/chat/runtime-metadata";
+import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
+import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   getAgentTurnSessionCheckpoint,
   upsertAgentTurnSessionCheckpoint,
 } from "@/chat/state/turn-session-store";
-import {
-  compactStatusCommand,
-  compactStatusFilename,
-  compactStatusPath,
-  compactStatusText,
-  extractStatusUrlDomain,
-} from "@/chat/status-format";
-import { extractOAuthStartedMessageFromToolResults } from "@/chat/tool-result-oauth";
-import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
-import { enforceAttachmentClaimTruth } from "@/chat/attachment-claims";
+import { formatToolStatusWithInput } from "@/chat/runtime/tool-status";
+import { createAgentTools } from "@/chat/tools/agent-tools";
+import { extractOAuthStartedMessageFromToolResults } from "@/chat/oauth-flow";
+import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
+import { enforceAttachmentClaimTruth } from "@/chat/services/attachment-claims";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 
 export interface ReplyRequestContext {
@@ -294,191 +278,6 @@ function isRawToolPayloadResponse(text: string): boolean {
   return /"type"\s*:\s*"tool[-_](use|call|result|error)"/i.test(compact);
 }
 
-function formatToolStatus(toolName: string): string {
-  const known: Record<string, string> = {
-    loadSkill: "Loading skill instructions",
-    systemTime: "Reading current system time",
-    bash: "Working in the shell",
-    readFile: "Reading a file",
-    writeFile: "Updating a file",
-    webSearch: "Searching public sources",
-    webFetch: "Reading source pages",
-    slackChannelPostMessage: "Posting message to channel",
-    slackMessageAddReaction: "Adding emoji reaction",
-    slackChannelListMessages: "Listing channel messages",
-    slackCanvasCreate: "Creating detailed brief",
-    slackCanvasUpdate: "Updating detailed brief",
-    slackListCreate: "Creating tracking list",
-    slackListAddItems: "Updating tracking list",
-    slackListUpdateItem: "Updating tracking list",
-    imageGenerate: "Generating image",
-    searchTools: "Searching active tools",
-    useTool: "Running active tool",
-  };
-
-  if (known[toolName]) {
-    return known[toolName];
-  }
-
-  const readable = toolName.replaceAll("_", " ").trim();
-  return readable.length > 0 ? `Running ${readable}` : "Running tool";
-}
-
-function formatCanonicalToolStatusName(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  const mcpMatch = /^mcp__([^_]+)__(.+)$/.exec(trimmed);
-  if (mcpMatch) {
-    return compactStatusText(`${mcpMatch[1]}/${mcpMatch[2]}`, 40);
-  }
-
-  return compactStatusText(trimmed, 40);
-}
-
-function formatToolStatusWithInput(toolName: string, input: unknown): string {
-  const obj =
-    input && typeof input === "object"
-      ? (input as Record<string, unknown>)
-      : undefined;
-  const command = obj ? compactStatusCommand(obj.command) : undefined;
-  const path = obj ? compactStatusPath(obj.path) : undefined;
-  const filename = obj ? compactStatusFilename(obj.path) : undefined;
-  const query = obj ? compactStatusText(obj.query, 70) : undefined;
-  const domain = obj ? extractStatusUrlDomain(obj.url) : undefined;
-  const skillName = obj
-    ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
-    : undefined;
-  const provider = obj ? compactStatusText(obj.provider, 20) : undefined;
-  const activeToolName = obj
-    ? formatCanonicalToolStatusName(obj.tool_name ?? obj.toolName)
-    : undefined;
-
-  if (command && toolName === "bash") {
-    return `Running ${command}`;
-  }
-  if (filename && toolName === "readFile") {
-    return `Reading file ${filename}`;
-  }
-  if (filename && toolName === "writeFile") {
-    return `Updating file ${filename}`;
-  }
-  if (path && toolName === "writeFile") {
-    return `Updating file ${path}`;
-  }
-  if (skillName && toolName === "loadSkill") {
-    return `Loading skill ${skillName}`;
-  }
-  if (query && toolName === "webSearch") {
-    return `Searching web for "${query}"`;
-  }
-  if (query && provider && toolName === "searchTools") {
-    return `Searching ${provider} tools for "${query}"`;
-  }
-  if (query && toolName === "searchTools") {
-    return `Searching tools for "${query}"`;
-  }
-  if (activeToolName && toolName === "useTool") {
-    return `Running ${activeToolName}`;
-  }
-  if (domain && toolName === "webFetch") {
-    return `Fetching page from ${domain}`;
-  }
-  return formatToolStatus(toolName);
-}
-
-function formatToolResultStatus(toolName: string): string {
-  const known: Record<string, string> = {
-    loadSkill: "Integrating loaded skill guidance",
-    systemTime: "Applying current time context",
-    bash: "Reviewing command results",
-    readFile: "Analyzing file contents",
-    writeFile: "Saving file update",
-    webSearch: "Reviewing search results",
-    webFetch: "Reviewing page content",
-    slackChannelPostMessage: "Posted message to channel",
-    slackMessageAddReaction: "Added emoji reaction",
-    slackChannelListMessages: "Reviewed channel messages",
-    slackCanvasCreate: "Preparing canvas response",
-    slackCanvasUpdate: "Preparing canvas update",
-    slackListCreate: "Preparing list update",
-    slackListAddItems: "Preparing list update",
-    slackListUpdateItem: "Preparing list update",
-    imageGenerate: "Preparing generated image",
-    searchTools: "Reviewing tool matches",
-    useTool: "Reviewing tool result",
-  };
-
-  if (known[toolName]) {
-    return known[toolName];
-  }
-
-  const readable = toolName.replaceAll("_", " ").trim();
-  return readable.length > 0
-    ? `Reviewing ${readable} result`
-    : "Reviewing tool result";
-}
-
-function formatToolResultStatusWithInput(
-  toolName: string,
-  input: unknown,
-): string {
-  const obj =
-    input && typeof input === "object"
-      ? (input as Record<string, unknown>)
-      : undefined;
-  const command = obj ? compactStatusCommand(obj.command) : undefined;
-  const path = obj ? compactStatusPath(obj.path) : undefined;
-  const filename = obj ? compactStatusFilename(obj.path) : undefined;
-  const query = obj ? compactStatusText(obj.query, 70) : undefined;
-  const domain = obj ? extractStatusUrlDomain(obj.url) : undefined;
-  const skillName = obj
-    ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
-    : undefined;
-  const provider = obj ? compactStatusText(obj.provider, 20) : undefined;
-  const activeToolName = obj
-    ? formatCanonicalToolStatusName(obj.tool_name ?? obj.toolName)
-    : undefined;
-
-  if (command && toolName === "bash") {
-    return `Reviewed results from ${command}`;
-  }
-  if (filename && toolName === "readFile") {
-    return `Reviewed file ${filename}`;
-  }
-  if (filename && toolName === "writeFile") {
-    return `Updated file ${filename}`;
-  }
-  if (path && toolName === "writeFile") {
-    return `Updated file ${path}`;
-  }
-  if (skillName && toolName === "loadSkill") {
-    return `Loaded skill ${skillName}`;
-  }
-  if (query && toolName === "webSearch") {
-    return `Reviewed web results for "${query}"`;
-  }
-  if (query && provider && toolName === "searchTools") {
-    return `Reviewed ${provider} tool matches`;
-  }
-  if (query && toolName === "searchTools") {
-    return `Reviewed tool matches for "${query}"`;
-  }
-  if (activeToolName && toolName === "useTool") {
-    return `Reviewed ${activeToolName} result`;
-  }
-  if (domain && toolName === "webFetch") {
-    return `Reviewed page from ${domain}`;
-  }
-  return formatToolResultStatus(toolName);
-}
-
 function toObservablePromptPart(
   part:
     | { type: "text"; text: string }
@@ -560,50 +359,6 @@ function buildExecutionFailureMessage(toolErrorCount: number): string {
 
   return "I couldn’t complete this request in this turn due to an execution failure. I’ve logged the details for debugging.";
 }
-
-function toToolContentText(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function isStructuredToolExecutionResult(value: unknown): value is {
-  content: Array<TextContent | ImageContent>;
-  details: unknown;
-} {
-  const content = (value as { content?: unknown } | null)?.content;
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    Array.isArray(content) &&
-    content.every((part) => {
-      if (!part || typeof part !== "object") {
-        return false;
-      }
-      const record = part as Record<string, unknown>;
-      if (record.type === "text") {
-        return typeof record.text === "string";
-      }
-      if (record.type === "image") {
-        return (
-          typeof record.data === "string" && typeof record.mimeType === "string"
-        );
-      }
-      return false;
-    }) &&
-    "details" in value
-  );
-}
-
-export const respondStatusFormatters = {
-  formatToolStatus,
-  formatToolStatusWithInput,
-  formatToolResultStatus,
-  formatToolResultStatusWithInput,
-};
 
 function isToolResultMessage(value: unknown): value is ToolResultMessage<any> {
   return (
@@ -703,294 +458,6 @@ function collectRelevantConfigurationKeys(
   return [...keys].sort((a, b) => a.localeCompare(b));
 }
 
-function getToolErrorAttributes(
-  error: unknown,
-): Record<string, string | number> {
-  if (!(error instanceof SlackActionError)) {
-    return {};
-  }
-
-  return {
-    "app.slack.error_code": error.code,
-    ...(error.apiError ? { "app.slack.api_error": error.apiError } : {}),
-    ...(error.detail ? { "app.slack.detail": error.detail } : {}),
-    ...(error.detailLine !== undefined
-      ? { "app.slack.detail_line": error.detailLine }
-      : {}),
-    ...(error.detailRule ? { "app.slack.detail_rule": error.detailRule } : {}),
-  };
-}
-
-function createAgentTools(
-  tools: Record<string, ToolDefinition<any>>,
-  sandbox: SkillSandbox,
-  spanContext: ObservabilityContext,
-  onStatus?: (status: string) => void | Promise<void>,
-  sandboxExecutor?: SandboxExecutor,
-  capabilityRuntime?: SkillCapabilityRuntime,
-  hooks?: {
-    onToolCall?: (toolName: string) => void;
-  },
-): AgentTool[] {
-  const shouldTrace = shouldEmitDevAgentTrace();
-  return Object.entries(tools).map(([toolName, toolDef]) => ({
-    name: toolName,
-    label: toolName,
-    description: toolDef.description,
-    parameters: toolDef.inputSchema,
-    execute: async (toolCallId: unknown, params: unknown) => {
-      const normalizedToolCallId =
-        typeof toolCallId === "string" && toolCallId.length > 0
-          ? toolCallId
-          : undefined;
-      const toolArgumentsAttribute = serializeGenAiAttribute(params);
-      hooks?.onToolCall?.(toolName);
-      const toolStartedAt = Date.now();
-      const traceToolContext = {
-        ...spanContext,
-        conversationId: spanContext.conversationId,
-        turnId: spanContext.turnId,
-        agentId: spanContext.agentId,
-      };
-      await onStatus?.(`${formatToolStatusWithInput(toolName, params)}...`);
-      return withSpan(
-        `execute_tool ${toolName}`,
-        "gen_ai.execute_tool",
-        spanContext,
-        async () => {
-          if (!Value.Check(toolDef.inputSchema, params)) {
-            const details = [...Value.Errors(toolDef.inputSchema, params)]
-              .slice(0, 3)
-              .map((entry) => `${entry.path || "/"}: ${entry.message}`)
-              .join("; ");
-            const validationMessage =
-              details.length > 0 ? details : "Invalid tool input";
-            const durationMs = Date.now() - toolStartedAt;
-            setSpanAttributes({
-              "app.ai.tool_duration_ms": durationMs,
-              "error.type": "tool_input_validation_error",
-            });
-            setSpanStatus("error");
-            logWarn(
-              "agent_tool_call_invalid_input",
-              {},
-              {
-                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": toolName,
-                ...(normalizedToolCallId
-                  ? { "gen_ai.tool.call.id": normalizedToolCallId }
-                  : {}),
-                "app.ai.tool_duration_ms": durationMs,
-              },
-              "Agent tool call input validation failed",
-            );
-            logException(
-              new Error(validationMessage),
-              "agent_tool_call_invalid_input_exception",
-              {},
-              {
-                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": toolName,
-                ...(normalizedToolCallId
-                  ? { "gen_ai.tool.call.id": normalizedToolCallId }
-                  : {}),
-                "app.ai.tool_duration_ms": durationMs,
-              },
-              "Agent tool call input validation failed with exception",
-            );
-            throw new Error(validationMessage);
-          }
-          const parsed = params as Record<string, unknown>;
-
-          try {
-            if (typeof toolDef.execute !== "function") {
-              const resultDetails = { ok: true };
-              const durationMs = Date.now() - toolStartedAt;
-              const toolResultAttribute =
-                serializeGenAiAttribute(resultDetails);
-              setSpanAttributes({
-                "app.ai.tool_duration_ms": durationMs,
-                "app.ai.tool_outcome": "success",
-                ...(toolResultAttribute
-                  ? { "gen_ai.tool.call.result": toolResultAttribute }
-                  : {}),
-              });
-              setSpanStatus("ok");
-              await onStatus?.(
-                `${formatToolResultStatusWithInput(toolName, parsed)}...`,
-              );
-              return {
-                content: [{ type: "text", text: "ok" }],
-                details: resultDetails,
-              };
-            }
-
-            const injectedHeaders =
-              toolName === "bash"
-                ? capabilityRuntime?.getTurnHeaderTransforms()
-                : undefined;
-            const injectedEnv =
-              toolName === "bash" ? capabilityRuntime?.getTurnEnv() : undefined;
-            const bashCommand =
-              toolName === "bash" && typeof parsed.command === "string"
-                ? parsed.command.trim()
-                : "";
-            const isCustomBashCommand =
-              toolName === "bash" && /^jr-rpc(?:\s|$)/.test(bashCommand);
-            const shouldLogCredentialInjection =
-              toolName === "bash" &&
-              !isCustomBashCommand &&
-              Boolean(injectedHeaders && injectedHeaders.length > 0);
-            if (shouldLogCredentialInjection) {
-              const headerDomains = (injectedHeaders ?? []).map(
-                (transform) => transform.domain,
-              );
-              logInfo(
-                "credential_inject_start",
-                {},
-                {
-                  "app.skill.name": sandbox.getActiveSkill()?.name,
-                  "app.credential.delivery": "header_transform",
-                  "app.credential.header_domains": headerDomains,
-                },
-                "Injecting scoped credential headers for sandbox command",
-              );
-            }
-
-            const hasBashCredentials = injectedHeaders || injectedEnv;
-            const sandboxInput =
-              toolName === "bash"
-                ? { command: String(parsed.command ?? "") }
-                : toolName === "readFile"
-                  ? { path: String(parsed.path ?? "") }
-                  : toolName === "writeFile"
-                    ? {
-                        path: String(parsed.path ?? ""),
-                        content: String(parsed.content ?? ""),
-                      }
-                    : parsed;
-            const result = sandboxExecutor?.canExecute(toolName)
-              ? await sandboxExecutor.execute({
-                  toolName,
-                  input:
-                    toolName === "bash" && hasBashCredentials
-                      ? {
-                          ...sandboxInput,
-                          ...(injectedHeaders
-                            ? { headerTransforms: injectedHeaders }
-                            : {}),
-                          ...(injectedEnv ? { env: injectedEnv } : {}),
-                        }
-                      : sandboxInput,
-                })
-              : await toolDef.execute(parsed as never, {
-                  experimental_context: sandbox,
-                });
-            const resultDetails =
-              sandboxExecutor?.canExecute(toolName) &&
-              result &&
-              typeof result === "object" &&
-              "result" in result
-                ? (result as { result: unknown }).result
-                : result;
-            const durationMs = Date.now() - toolStartedAt;
-            const structuredToolResult = isStructuredToolExecutionResult(
-              resultDetails,
-            )
-              ? resultDetails
-              : undefined;
-            const toolResultAttribute = serializeGenAiAttribute(
-              structuredToolResult?.details ?? resultDetails,
-            );
-            setSpanAttributes({
-              "app.ai.tool_duration_ms": durationMs,
-              "app.ai.tool_outcome": "success",
-              ...(toolResultAttribute
-                ? { "gen_ai.tool.call.result": toolResultAttribute }
-                : {}),
-            });
-            setSpanStatus("ok");
-            await onStatus?.(
-              `${formatToolResultStatusWithInput(toolName, parsed)}...`,
-            );
-            if (structuredToolResult) {
-              return structuredToolResult;
-            }
-            return {
-              content: [
-                { type: "text", text: toToolContentText(resultDetails) },
-              ],
-              details: resultDetails,
-            };
-          } catch (error) {
-            const durationMs = Date.now() - toolStartedAt;
-            setSpanAttributes({
-              "app.ai.tool_duration_ms": durationMs,
-              "app.ai.tool_outcome": "error",
-              "error.type":
-                error instanceof Error ? error.name : "tool_execution_error",
-            });
-            setSpanStatus("error");
-            if (shouldTrace) {
-              logWarn(
-                "agent_tool_call_failed",
-                traceToolContext,
-                {
-                  "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                  "gen_ai.operation.name": "execute_tool",
-                  "gen_ai.tool.name": toolName,
-                  ...(normalizedToolCallId
-                    ? { "gen_ai.tool.call.id": normalizedToolCallId }
-                    : {}),
-                  "app.ai.tool_duration_ms": durationMs,
-                  "app.ai.tool_outcome": "error",
-                  "error.type":
-                    error instanceof Error
-                      ? error.name
-                      : "tool_execution_error",
-                  "error.message":
-                    error instanceof Error ? error.message : String(error),
-                },
-                "Agent tool call failed",
-              );
-            }
-            logException(
-              error,
-              "agent_tool_call_failed",
-              {},
-              {
-                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": toolName,
-                ...(normalizedToolCallId
-                  ? { "gen_ai.tool.call.id": normalizedToolCallId }
-                  : {}),
-                "app.ai.tool_duration_ms": durationMs,
-                ...getToolErrorAttributes(error),
-              },
-              "Agent tool call failed",
-            );
-            throw error;
-          }
-        },
-        {
-          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-          "gen_ai.operation.name": "execute_tool",
-          "gen_ai.tool.name": toolName,
-          ...(normalizedToolCallId
-            ? { "gen_ai.tool.call.id": normalizedToolCallId }
-            : {}),
-          ...(toolArgumentsAttribute
-            ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute }
-            : {}),
-        },
-      );
-    },
-  }));
-}
-
 export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {},
@@ -1008,7 +475,7 @@ export async function generateAssistantReply(
 
   try {
     const shouldTrace = shouldEmitDevAgentTrace();
-    const spanContext: ObservabilityContext = {
+    const spanContext: LogContext = {
       conversationId:
         context.correlation?.conversationId ??
         context.correlation?.threadId ??
@@ -1296,11 +763,6 @@ export async function generateAssistantReply(
         onToolCallStart: async (toolName, input) => {
           await context.onStatus?.(
             `${formatToolStatusWithInput(toolName, input)}...`,
-          );
-        },
-        onToolCallEnd: async (toolName, input) => {
-          await context.onStatus?.(
-            `${formatToolResultStatusWithInput(toolName, input)}...`,
           );
         },
         toolOverrides: context.toolOverrides,

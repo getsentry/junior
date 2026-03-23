@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const withSlackRetries = vi.fn();
 const getSlackClient = vi.fn();
 
-vi.mock("@/chat/slack-actions/client", () => ({
+vi.mock("@/chat/slack/client", () => ({
   getSlackClient: () => getSlackClient(),
   normalizeSlackConversationId: (value: string | undefined) => value,
   withSlackRetries: (...args: unknown[]) => withSlackRetries(...args),
@@ -12,7 +12,7 @@ vi.mock("@/chat/slack-actions/client", () => ({
 import {
   addReactionToMessage,
   removeReactionFromMessage,
-} from "@/chat/slack-actions/channel";
+} from "@/chat/slack/channel";
 
 describe("slack channel action context", () => {
   beforeEach(() => {

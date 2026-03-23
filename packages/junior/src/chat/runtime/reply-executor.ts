@@ -1,7 +1,7 @@
 import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
-import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
+import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
 import {
   logError,
   logException,
@@ -10,10 +10,13 @@ import {
   setSpanAttributes,
   setTags,
   withSpan,
-} from "@/chat/observability";
-import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
+} from "@/chat/logging";
+import {
+  buildSlackOutputMessage,
+  ensureBlockSpacing,
+} from "@/chat/slack/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
-import { createProgressReporter } from "@/chat/progress-reporter";
+import { createProgressReporter } from "@/chat/runtime/progress-reporter";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
@@ -45,15 +48,15 @@ import {
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { resolveUserAttachments } from "@/chat/services/vision-context";
-import { isDmChannel } from "@/chat/slack-actions/client";
-import { type ThreadArtifactsState } from "@/chat/slack-actions/types";
-import { lookupSlackUser } from "@/chat/slack-user";
-import { resolveReplyDelivery } from "@/chat/turn/execute";
-import { isRetryableTurnError } from "@/chat/turn/errors";
-import { buildDeterministicTurnId } from "@/chat/turn/id";
-import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
-import { startActiveTurn } from "@/chat/turn/prepare";
-import { isPotentialRedundantReactionAckText } from "@/chat/delivery/plan";
+import { isDmChannel } from "@/chat/slack/client";
+import { type ThreadArtifactsState } from "@/chat/state/artifacts";
+import { lookupSlackUser } from "@/chat/slack/user";
+import { resolveReplyDelivery } from "@/chat/runtime/turn";
+import { isRetryableTurnError } from "@/chat/runtime/turn";
+import { buildDeterministicTurnId } from "@/chat/runtime/turn";
+import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
+import { startActiveTurn } from "@/chat/runtime/turn";
+import { isPotentialRedundantReactionAckText } from "@/chat/services/reply-delivery-plan";
 
 type SlackReplyPostStage =
   | "streaming_initial_post"

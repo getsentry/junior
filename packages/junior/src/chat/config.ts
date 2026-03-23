@@ -89,6 +89,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   };
 }
 
+/** Parse all chat configuration from environment variables. */
 export function readChatConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): ChatConfig {
@@ -115,10 +116,12 @@ export function readChatConfig(
   };
 }
 
+/** Return the chat configuration derived from the current process environment. */
 export function getChatConfig(): ChatConfig {
   return readChatConfig(process.env);
 }
 
+/** Lazy-evaluated bot configuration accessor backed by environment variables. */
 export const botConfig = {
   get userName(): string {
     return getChatConfig().bot.userName;
@@ -152,4 +155,19 @@ export function getSlackClientSecret(): string | undefined {
 
 export function hasRedisConfig(): boolean {
   return Boolean(getChatConfig().state.redisUrl);
+}
+
+// ---------------------------------------------------------------------------
+// Runtime metadata
+// ---------------------------------------------------------------------------
+
+export interface RuntimeMetadata {
+  version?: string;
+}
+
+/** Return runtime metadata (version from deploy environment). */
+export function getRuntimeMetadata(): RuntimeMetadata {
+  return {
+    version: toOptionalTrimmed(process.env.VERCEL_GIT_COMMIT_SHA),
+  };
 }

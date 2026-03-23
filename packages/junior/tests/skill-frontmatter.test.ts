@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSkillFile } from "@/chat/skill-frontmatter";
+import { parseSkillFile } from "@/chat/skills";
 
 describe("skill frontmatter validation", () => {
   it("accepts valid frontmatter", () => {

@@ -432,7 +432,7 @@ async function writeBundlingOnlyPlugin(tempRoot: string): Promise<void> {
 afterEach(() => {
   process.chdir(originalCwd);
   vi.resetModules();
-  vi.doUnmock("@/chat/home");
+  vi.doUnmock("@/chat/discovery");
 });
 
 describe("plugin registry package discovery", () => {
@@ -455,7 +455,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -496,7 +497,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -527,7 +529,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -568,7 +571,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -604,7 +608,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -638,7 +643,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -666,7 +672,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -694,7 +701,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -722,7 +730,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -748,7 +757,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -799,7 +809,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -827,7 +838,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -865,7 +877,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -893,7 +906,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 
@@ -921,7 +935,8 @@ describe("plugin registry package discovery", () => {
     process.chdir(tempRoot);
 
     vi.resetModules();
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
       pluginRoots: () => [],
     }));
 

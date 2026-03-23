@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractOAuthStartedMessageFromToolResults } from "@/chat/tool-result-oauth";
+import { extractOAuthStartedMessageFromToolResults } from "@/chat/oauth-flow";
 
 describe("tool result oauth parsing", () => {
   it("extracts oauth_started messages from bash tool results", () => {

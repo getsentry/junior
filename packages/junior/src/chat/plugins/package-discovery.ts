@@ -3,9 +3,10 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import {
   discoverNodeModulesDirs,
+  isDirectory,
+  isFile,
   listTopLevelPackages,
-} from "@/chat/discovery-roots";
-import { isDirectory, isFile } from "@/chat/fs-utils";
+} from "@/chat/discovery";
 
 interface InstalledJuniorContentPackage {
   name: string;

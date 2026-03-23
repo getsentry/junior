@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveReplyDelivery } from "@/chat/turn/execute";
+import { resolveReplyDelivery } from "@/chat/runtime/turn";
 
 describe("resolveReplyDelivery", () => {
   it("uses delivery plan directly when available", () => {

@@ -41,7 +41,7 @@ vi.mock("@/chat/state/queue-ingress-store", () => ({
   claimQueueIngressDedup: claimQueueIngressDedupMock,
 }));
 
-vi.mock("@/chat/slack-actions/channel", () => ({
+vi.mock("@/chat/slack/channel", () => ({
   addReactionToMessage: addReactionToMessageMock,
   removeReactionFromMessage: removeReactionFromMessageMock,
 }));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coerceThreadArtifactsState } from "@/chat/slack-actions/types";
+import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 
 describe("coerceThreadArtifactsState", () => {
   it("returns empty state for invalid input", () => {
@@ -17,10 +17,10 @@ describe("coerceThreadArtifactsState", () => {
         lastListUrl: "https://example.com/list/L123",
         listColumnMap: {
           titleColumnId: "c1",
-          completedColumnId: "c2"
+          completedColumnId: "c2",
         },
-        updatedAt: "2026-02-25T00:00:00.000Z"
-      }
+        updatedAt: "2026-02-25T00:00:00.000Z",
+      },
     });
 
     expect(state.lastCanvasId).toBe("F123");

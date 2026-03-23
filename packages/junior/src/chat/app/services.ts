@@ -5,9 +5,9 @@ import {
   type ConversationMemoryDeps,
   type ConversationMemoryService,
 } from "@/chat/services/conversation-memory";
-import { downloadPrivateSlackFile } from "@/chat/slack-actions/client";
-import { listThreadReplies } from "@/chat/slack-actions/channel";
-import { lookupSlackUser } from "@/chat/slack-user";
+import { downloadPrivateSlackFile } from "@/chat/slack/client";
+import { listThreadReplies } from "@/chat/slack/channel";
+import { lookupSlackUser } from "@/chat/slack/user";
 import {
   createSubscribedReplyPolicy,
   type SubscribedReplyPolicy,

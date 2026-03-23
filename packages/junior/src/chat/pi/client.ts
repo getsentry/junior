@@ -1,7 +1,16 @@
-import { completeSimple, getEnvApiKey, getModels, type Message, type Model } from "@mariozechner/pi-ai";
+import {
+  completeSimple,
+  getEnvApiKey,
+  getModels,
+  type Message,
+  type Model,
+} from "@mariozechner/pi-ai";
 import type { ZodTypeAny, z } from "zod";
-import { extractGenAiUsageAttributes, serializeGenAiAttribute } from "@/chat/gen-ai-attributes";
-import { logException, logWarn, setSpanAttributes } from "@/chat/observability";
+import {
+  extractGenAiUsageAttributes,
+  serializeGenAiAttribute,
+} from "@/chat/logging";
+import { logException, logWarn, setSpanAttributes } from "@/chat/logging";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
@@ -18,7 +27,11 @@ function toOptionalTrimmed(value: string | undefined): string | undefined {
 }
 
 function isVercelRuntime(): boolean {
-  return process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV) || Boolean(process.env.VERCEL_REGION);
+  return (
+    process.env.VERCEL === "1" ||
+    Boolean(process.env.VERCEL_ENV) ||
+    Boolean(process.env.VERCEL_REGION)
+  );
 }
 
 export function getGatewayApiKey(): string | undefined {
@@ -32,7 +45,9 @@ export function getGatewayApiKey(): string | undefined {
   return toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN);
 }
 
-function extractText(message: { content?: Array<{ type: string; text?: string }> }): string {
+function extractText(message: {
+  content?: Array<{ type: string; text?: string }>;
+}): string {
   return (message.content ?? [])
     .filter((part) => part.type === "text" && typeof part.text === "string")
     .map((part) => part.text ?? "")
@@ -47,7 +62,9 @@ function parseJsonCandidate(text: string): unknown {
   try {
     return JSON.parse(trimmed) as unknown;
   } catch {
-    const fencedBlocks = [...trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)];
+    const fencedBlocks = [
+      ...trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi),
+    ];
     for (const block of fencedBlocks) {
       try {
         return JSON.parse(block[1]) as unknown;
@@ -70,12 +87,12 @@ function parseJsonCandidate(text: string): unknown {
             escaped = true;
             continue;
           }
-          if (char === "\"") {
+          if (char === '"') {
             inString = false;
           }
           continue;
         }
-        if (char === "\"") {
+        if (char === '"') {
           inString = true;
           continue;
         }
@@ -109,7 +126,7 @@ export function resolveGatewayModel(modelId: string): Model<any> {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('missing "key" field')) {
       throw new Error(
-        "Invalid AI gateway credentials: Vercel API did not return a key. Set AI_GATEWAY_API_KEY, or ensure VERCEL_OIDC_TOKEN is valid in a Vercel runtime."
+        "Invalid AI gateway credentials: Vercel API did not return a key. Set AI_GATEWAY_API_KEY, or ensure VERCEL_OIDC_TOKEN is valid in a Vercel runtime.",
       );
     }
     throw error;
@@ -141,40 +158,49 @@ export async function completeText(params: {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
-    ...(requestMessagesAttribute ? { "gen_ai.input.messages": requestMessagesAttribute } : {}),
-    "app.ai.auth_mode": apiKey ? "api_key" : "ambient"
+    ...(requestMessagesAttribute
+      ? { "gen_ai.input.messages": requestMessagesAttribute }
+      : {}),
+    "app.ai.auth_mode": apiKey ? "api_key" : "ambient",
   };
   setSpanAttributes(startAttributes);
-  const message = await completeSimple(model, {
-    systemPrompt: params.system,
-    messages: params.messages
-  }, {
-    ...(apiKey ? { apiKey } : {}),
-    temperature: params.temperature,
-    maxTokens: params.maxTokens,
-    signal: params.signal,
-    metadata: params.metadata
-  });
+  const message = await completeSimple(
+    model,
+    {
+      systemPrompt: params.system,
+      messages: params.messages,
+    },
+    {
+      ...(apiKey ? { apiKey } : {}),
+      temperature: params.temperature,
+      maxTokens: params.maxTokens,
+      signal: params.signal,
+      metadata: params.metadata,
+    },
+  );
   const outputText = extractText(message);
   const outputMessagesAttribute = serializeGenAiAttribute([
     {
       role: "assistant",
-      content: outputText ? [{ type: "text", text: outputText }] : []
-    }
+      content: outputText ? [{ type: "text", text: outputText }] : [],
+    },
   ]);
   const usageAttributes = extractGenAiUsageAttributes(message);
   const endAttributes = {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
-    ...(outputMessagesAttribute ? { "gen_ai.output.messages": outputMessagesAttribute } : {}),
+    ...(outputMessagesAttribute
+      ? { "gen_ai.output.messages": outputMessagesAttribute }
+      : {}),
     ...usageAttributes,
     "app.ai.duration_ms": Date.now() - startedAt,
-    "app.ai.stop_reason": message.stopReason ?? "unknown"
+    "app.ai.stop_reason": message.stopReason ?? "unknown",
   };
   setSpanAttributes(endAttributes);
   if (message.stopReason === "error") {
-    const providerMessage = message.errorMessage?.trim() || "Unknown provider error";
+    const providerMessage =
+      message.errorMessage?.trim() || "Unknown provider error";
     logWarn(
       "ai_completion_provider_error",
       {},
@@ -182,16 +208,16 @@ export async function completeText(params: {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
-        "error.message": providerMessage
+        "error.message": providerMessage,
       },
-      "AI completion returned provider error"
+      "AI completion returned provider error",
     );
     throw new Error(`AI provider error: ${providerMessage}`);
   }
 
   return {
     message,
-    text: outputText
+    text: outputText,
   };
 }
 
@@ -219,9 +245,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         {
           role: "user",
           content: params.prompt,
-          timestamp: Date.now()
-        }
-      ]
+          timestamp: Date.now(),
+        },
+      ],
     }));
   } catch (error) {
     logException(
@@ -232,9 +258,9 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
-        "app.ai.duration_ms": Date.now() - startedAt
+        "app.ai.duration_ms": Date.now() - startedAt,
       },
-      "AI object completion failed"
+      "AI object completion failed",
     );
     throw error;
   }
@@ -251,15 +277,17 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
         "app.ai.duration_ms": Date.now() - startedAt,
-        "app.ai.response_preview": preview
+        "app.ai.response_preview": preview,
       },
-      "AI object completion schema parse failed"
+      "AI object completion schema parse failed",
     );
-    throw new Error(`Model did not return valid JSON for schema: ${parsed.error.message}. Raw response: ${preview}`);
+    throw new Error(
+      `Model did not return valid JSON for schema: ${parsed.error.message}. Raw response: ${preview}`,
+    );
   }
 
   return {
     object: parsed.data,
-    text
+    text,
   };
 }

@@ -108,7 +108,7 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 
 Do not do these in eval files:
 
-- Do not import `@/chat/slack-actions/*` directly.
+- Do not import `@/chat/slack/*` directly.
 - Do not use MSW Slack helpers (`queueSlackApiResponse`, `getCapturedSlackApiCalls`, `queueSlackApiError`, `queueSlackRateLimit`).
 - Do not validate raw Slack Web API request payload shapes from evals.
 - Do not validate implementation internals (exact tool names, sandbox IDs, or other non-user-visible details) unless the scenario explicitly evaluates those surfaces.

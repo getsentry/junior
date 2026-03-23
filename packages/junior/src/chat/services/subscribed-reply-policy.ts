@@ -1,6 +1,6 @@
 import { botConfig } from "@/chat/config";
-import { logWarn } from "@/chat/observability";
-import { decideSubscribedThreadReply } from "@/chat/routing/subscribed-decision";
+import { logWarn } from "@/chat/logging";
+import { decideSubscribedThreadReply } from "@/chat/services/subscribed-decision";
 import type { completeObject } from "@/chat/pi/client";
 
 export interface SubscribedReplyPolicyDeps {

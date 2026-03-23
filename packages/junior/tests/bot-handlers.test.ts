@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { RetryableTurnError } from "@/chat/turn/errors";
+import { RetryableTurnError } from "@/chat/runtime/turn";
 import {
   FakeSlackAdapter,
   createTestThread,
@@ -670,6 +670,12 @@ describe("bot handlers (integration)", () => {
         threadTs: "1700000000.000",
       }),
     );
+    expect(fakeAdapter.statusCalls.at(-1)).toEqual({
+      channelId: "C_STATUS",
+      threadTs: "1700000000.000",
+      text: "",
+      suggestions: [],
+    });
   });
 
   it("thread title: generates and sets title after first assistant reply", async () => {

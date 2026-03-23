@@ -163,9 +163,11 @@ describe("buildSystemPrompt skill paths", () => {
         }),
       },
     }));
-    vi.doMock("@/chat/home", async () => {
+    vi.doMock("@/chat/discovery", async () => {
       const actual =
-        await vi.importActual<typeof import("@/chat/home")>("@/chat/home");
+        await vi.importActual<typeof import("@/chat/discovery")>(
+          "@/chat/discovery",
+        );
       return {
         ...actual,
         soulPathCandidates: () => ["/mock/app/SOUL.md"],

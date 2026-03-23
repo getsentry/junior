@@ -3,7 +3,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { getPluginDefinition } from "@/chat/plugins/registry";
 import type { PluginDefinition } from "@/chat/plugins/types";
-import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   getLatestMcpAuthSessionForUserProvider,
   getMcpAuthSession,

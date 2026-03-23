@@ -95,7 +95,7 @@ vi.mock("@/chat/config", () => ({
 }));
 
 // Mock observability
-vi.mock("@/chat/observability", () => ({
+vi.mock("@/chat/logging", () => ({
   logException: vi.fn(),
   logInfo: vi.fn(),
 }));

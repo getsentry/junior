@@ -1,15 +1,15 @@
 import type { Message, Thread } from "chat";
-import { coerceThreadConversationState } from "@/chat/conversation-state";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type {
   ConversationMessage,
   ThreadConversationState,
-} from "@/chat/conversation-state";
-import { setSpanAttributes, toOptionalString } from "@/chat/observability";
+} from "@/chat/state/conversation";
+import { setSpanAttributes, toOptionalString } from "@/chat/logging";
 import { getThreadTs } from "@/chat/runtime/thread-context";
 import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState,
-} from "@/chat/slack-actions/types";
+} from "@/chat/state/artifacts";
 import {
   compactConversationIfNeeded,
   buildConversationContext,

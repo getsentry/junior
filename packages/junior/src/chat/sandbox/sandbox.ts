@@ -2,14 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
-import { extractHttpErrorDetails } from "@/chat/http-error-details";
+import { extractHttpErrorDetails } from "@/chat/sandbox/http-error-details";
 import {
   logWarn,
   setSpanAttributes,
   setSpanStatus,
   withSpan,
-  type ObservabilityContext,
-} from "@/chat/observability";
+  type LogContext,
+} from "@/chat/logging";
 import {
   SANDBOX_SKILLS_ROOT,
   SANDBOX_WORKSPACE_ROOT,
@@ -384,7 +384,7 @@ export function createSandboxExecutor(options?: {
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
-  traceContext?: ObservabilityContext;
+  traceContext?: LogContext;
   onStatus?: (status: string) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,

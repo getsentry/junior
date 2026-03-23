@@ -1,4 +1,4 @@
-import { logInfo } from "@/chat/observability";
+import { logInfo } from "@/chat/logging";
 import { getPluginCapabilityProviders } from "@/chat/plugins/registry";
 
 export interface CapabilityProviderTargetDefinition {

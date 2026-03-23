@@ -6,13 +6,13 @@ import {
 } from "@/chat/runtime/slack-runtime";
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { coerceThreadConversationState } from "@/chat/conversation-state";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   logException,
   logWarn,
   resolveErrorReference,
   withSpan,
-} from "@/chat/observability";
+} from "@/chat/logging";
 import { createReplyToThread } from "@/chat/runtime/reply-executor";
 import { initializeAssistantThread as initializeAssistantThreadImpl } from "@/chat/runtime/assistant-lifecycle";
 import {

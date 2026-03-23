@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import { botConfig } from "@/chat/config";
-import { aboutPathCandidates, soulPathCandidates } from "@/chat/home";
-import { logInfo, logWarn } from "@/chat/observability";
-import { slackOutputPolicy } from "@/chat/output";
-import type { RuntimeMetadata } from "@/chat/runtime-metadata";
+import { aboutPathCandidates, soulPathCandidates } from "@/chat/discovery";
+import { logInfo, logWarn } from "@/chat/logging";
+import { slackOutputPolicy } from "@/chat/slack/output";
+import type { RuntimeMetadata } from "@/chat/config";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
-import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 import type { ExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";

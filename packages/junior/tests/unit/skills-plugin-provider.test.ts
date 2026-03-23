@@ -33,7 +33,7 @@ afterEach(() => {
     process.env.SKILL_DIRS = originalSkillDirs;
   }
   vi.resetModules();
-  vi.doUnmock("@/chat/home");
+  vi.doUnmock("@/chat/discovery");
   vi.doUnmock("@/chat/plugins/package-discovery");
 });
 
@@ -57,7 +57,7 @@ describe("discoverSkills plugin ownership", () => {
 
     process.env.SKILL_DIRS = localSkillsRoot;
 
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", () => ({
       pluginRoots: () => [pluginsRoot],
       skillRoots: () => [],
     }));

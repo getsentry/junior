@@ -4,7 +4,7 @@ import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
 import { botConfig } from "@/chat/config";
 import { completeText } from "@/chat/pi/client";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
-import { logInfo, logWarn } from "@/chat/observability";
+import { logInfo, logWarn } from "@/chat/logging";
 
 const DEFAULT_IMAGE_MODEL = "google/gemini-3-pro-image";
 

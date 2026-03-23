@@ -30,7 +30,7 @@ vi.mock("@/chat/plugins/registry", () => ({
   getPluginRuntimeDependencies: getPluginRuntimeDependenciesMock,
   getPluginRuntimePostinstall: getPluginRuntimePostinstallMock,
 }));
-vi.mock("@/chat/observability", () => ({
+vi.mock("@/chat/logging", () => ({
   withSpan: withSpanMock,
 }));
 

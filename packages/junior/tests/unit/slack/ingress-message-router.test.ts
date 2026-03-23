@@ -40,13 +40,13 @@ vi.mock("@/chat/state/queue-ingress-store", () => ({
   hasQueueIngressDedup: hasQueueIngressDedupMock,
 }));
 
-vi.mock("@/chat/slack-actions/channel", () => ({
+vi.mock("@/chat/slack/channel", () => ({
   addReactionToMessage: addReactionToMessageMock,
   removeReactionFromMessage: removeReactionFromMessageMock,
 }));
 
-vi.mock("@/chat/observability", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/chat/observability")>();
+vi.mock("@/chat/logging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/logging")>();
   return {
     ...actual,
     logInfo: logInfoMock,

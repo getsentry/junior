@@ -1,11 +1,11 @@
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { logException } from "@/chat/observability";
+import { logException } from "@/chat/logging";
 import { generateAssistantReply, type AssistantReply } from "@/chat/respond";
-import { getSlackClient } from "@/chat/slack-actions/client";
-import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
-import { truncateStatusText } from "@/chat/status-format";
-import { isRetryableTurnError } from "@/chat/turn/errors";
+import { getSlackClient } from "@/chat/slack/client";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
+import { truncateStatusText } from "@/chat/runtime/status-format";
+import { isRetryableTurnError } from "@/chat/runtime/turn";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
@@ -216,6 +216,7 @@ export async function resumeAuthorizedRequest(args: {
         : await replyPromise;
 
     postStatus.stop();
+    await setAssistantStatus(args.channelId, args.threadTs, "");
     if (args.onReply) {
       await args.onReply(reply);
     } else if (reply.text) {
@@ -224,6 +225,7 @@ export async function resumeAuthorizedRequest(args: {
     await args.onSuccess?.(reply);
   } catch (error) {
     postStatus.stop();
+    await setAssistantStatus(args.channelId, args.threadTs, "");
 
     if (isRetryableTurnError(error, "mcp_auth_resume") && args.onAuthPause) {
       await args.onAuthPause(error);

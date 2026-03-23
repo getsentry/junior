@@ -8,7 +8,7 @@ vi.mock("@/chat/prompt", () => ({
   JUNIOR_PERSONALITY: "test persona",
 }));
 
-vi.mock("@/chat/observability", () => ({
+vi.mock("@/chat/logging", () => ({
   logInfo: vi.fn(),
   logWarn: vi.fn(),
 }));

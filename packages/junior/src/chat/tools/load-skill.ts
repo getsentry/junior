@@ -2,7 +2,7 @@ import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import { stripFrontmatter } from "@/chat/skill-frontmatter";
+import { stripFrontmatter } from "@/chat/skills";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 import type { ExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
 

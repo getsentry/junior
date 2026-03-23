@@ -6,7 +6,7 @@ import {
   compactStatusText,
   extractStatusUrlDomain,
   truncateStatusText,
-} from "@/chat/status-format";
+} from "@/chat/runtime/status-format";
 
 describe("status formatting", () => {
   it("truncates long status text with ellipsis", () => {

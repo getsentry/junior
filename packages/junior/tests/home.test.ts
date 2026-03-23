@@ -15,7 +15,7 @@ import {
   skillsDir,
   soulPath,
   soulPathCandidates,
-} from "@/chat/home";
+} from "@/chat/discovery";
 
 describe("home paths", () => {
   it("uses app as project root", () => {

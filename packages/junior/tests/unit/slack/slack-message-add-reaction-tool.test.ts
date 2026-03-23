@@ -3,7 +3,7 @@ import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-ad
 
 const addReactionToMessage = vi.fn();
 
-vi.mock("@/chat/slack-actions/channel", () => ({
+vi.mock("@/chat/slack/channel", () => ({
   addReactionToMessage: (...args: unknown[]) => addReactionToMessage(...args),
 }));
 

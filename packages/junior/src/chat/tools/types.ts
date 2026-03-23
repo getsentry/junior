@@ -1,7 +1,7 @@
 import type { FileUpload } from "chat";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/load-skill";
 
@@ -15,7 +15,6 @@ export interface ToolHooks {
   onGeneratedFiles?: (files: FileUpload[]) => void;
   onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
   onToolCallStart?: (toolName: string, input?: unknown) => void | Promise<void>;
-  onToolCallEnd?: (toolName: string, input?: unknown) => void | Promise<void>;
   onSkillLoaded?: (
     skill: Skill,
   ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;

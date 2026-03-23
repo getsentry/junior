@@ -6,11 +6,11 @@ import type {
   SerializedThread,
   Thread,
 } from "chat";
-import { coerceThreadConversationState } from "@/chat/conversation-state";
-import { logError, logInfo, logWarn } from "@/chat/observability";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { logError, logInfo, logWarn } from "@/chat/logging";
 import { DeferredThreadMessageError } from "@/chat/queue/errors";
 import type { ThreadMessageDispatcher } from "@/chat/queue/thread-message-dispatcher";
-import { removeReactionFromMessage } from "@/chat/slack-actions/channel";
+import { removeReactionFromMessage } from "@/chat/slack/channel";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   acquireQueueMessageProcessingOwnership,
@@ -20,7 +20,7 @@ import {
   refreshQueueMessageProcessingOwnership,
 } from "@/chat/state/queue-processing-store";
 import type { ThreadMessagePayload } from "@/chat/queue/types";
-import { buildDeterministicTurnId } from "@/chat/turn/id";
+import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 
 const THREAD_PROCESSING_LOCK_TTL_MS = 5 * 60 * 1000;
 const THREAD_PROCESSING_LOCK_HEARTBEAT_MS = 60 * 1000;

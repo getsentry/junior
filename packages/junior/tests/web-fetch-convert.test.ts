@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { extractContent } from "@/chat/tools/web_fetch/convert";
+import { extractContent } from "@/chat/tools/web-fetch";
 
 describe("web fetch content conversion", () => {
   it("converts HTML to markdown with links and headings", () => {
     const html = [
       "<html><body>",
       "<h1>Title</h1>",
-      "<p>Hello <a href=\"https://example.com\">world</a>.</p>",
+      '<p>Hello <a href="https://example.com">world</a>.</p>',
       "<ul><li>One</li><li>Two</li></ul>",
-      "</body></html>"
+      "</body></html>",
     ].join("");
 
     const result = extractContent(html, "text/html", 5000);
@@ -19,7 +19,11 @@ describe("web fetch content conversion", () => {
   });
 
   it("pretty-prints json content", () => {
-    const result = extractContent('{"name":"junior","ok":true}', "application/json", 5000);
+    const result = extractContent(
+      '{"name":"junior","ok":true}',
+      "application/json",
+      5000,
+    );
     expect(result).toContain('"name": "junior"');
     expect(result).toContain('"ok": true');
   });

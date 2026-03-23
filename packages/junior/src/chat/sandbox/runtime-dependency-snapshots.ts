@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
-import { withSpan } from "@/chat/observability";
+import { withSpan } from "@/chat/logging";
 import {
   getPluginRuntimeDependencies,
   getPluginRuntimePostinstall,

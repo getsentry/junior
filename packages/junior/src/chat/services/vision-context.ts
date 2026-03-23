@@ -1,10 +1,10 @@
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
 import { completeText } from "@/chat/pi/client";
-import type { ThreadConversationState } from "@/chat/conversation-state";
-import { logInfo, logWarn, toOptionalString } from "@/chat/observability";
-import { listThreadReplies } from "@/chat/slack-actions/channel";
-import { downloadPrivateSlackFile } from "@/chat/slack-actions/client";
+import type { ThreadConversationState } from "@/chat/state/conversation";
+import { logInfo, logWarn, toOptionalString } from "@/chat/logging";
+import { listThreadReplies } from "@/chat/slack/channel";
+import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import {
   getConversationMessageSlackTs,
   isHumanConversationMessage,

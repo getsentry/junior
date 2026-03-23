@@ -9,7 +9,7 @@ import {
   resetSkillDiscoveryCache,
 } from "@/chat/skills";
 import type { SkillMetadata } from "@/chat/skills";
-import * as observability from "@/chat/observability";
+import * as observability from "@/chat/logging";
 
 async function writeSkillFile(
   rootDir: string,

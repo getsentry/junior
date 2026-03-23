@@ -72,7 +72,7 @@ vi.mock("@/chat/config", () => ({
   },
 }));
 
-vi.mock("@/chat/slack-actions/client", () => ({
+vi.mock("@/chat/slack/client", () => ({
   getSlackClient: () => ({
     chat: {
       postMessage: postMessageMock,
@@ -86,12 +86,12 @@ vi.mock("@/chat/slack-actions/client", () => ({
   uploadFilesToThread: uploadFilesToThreadMock,
 }));
 
-vi.mock("@/chat/observability", () => ({
+vi.mock("@/chat/logging", () => ({
   logException: vi.fn(),
   logWarn: logWarnMock,
 }));
 
-vi.mock("@/chat/conversation-state", () => ({
+vi.mock("@/chat/state/conversation", () => ({
   coerceThreadConversationState: coerceThreadConversationStateMock,
 }));
 
@@ -109,11 +109,12 @@ vi.mock("@/chat/services/conversation-memory", () => ({
   updateConversationStats: updateConversationStatsMock,
 }));
 
-vi.mock("@/chat/slack-actions/types", () => ({
+vi.mock("@/chat/state/artifacts", () => ({
   coerceThreadArtifactsState: coerceThreadArtifactsStateMock,
 }));
 
-vi.mock("@/chat/turn/persist", () => ({
+vi.mock("@/chat/runtime/turn", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/runtime/turn")>()),
   markTurnCompleted: markTurnCompletedMock,
   markTurnFailed: markTurnFailedMock,
 }));
@@ -490,7 +491,7 @@ describe("mcp oauth callback handler", () => {
   });
 
   it("re-parks the resumed turn when another MCP auth challenge is required", async () => {
-    const { RetryableTurnError } = await import("@/chat/turn/errors");
+    const { RetryableTurnError } = await import("@/chat/runtime/turn");
     generateAssistantReplyMock.mockRejectedValueOnce(
       new RetryableTurnError("mcp_auth_resume", "auth required again"),
     );

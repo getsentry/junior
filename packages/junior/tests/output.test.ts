@@ -3,7 +3,7 @@ import {
   buildSlackOutputMessage,
   ensureBlockSpacing,
   slackOutputPolicy,
-} from "@/chat/output";
+} from "@/chat/slack/output";
 import { createNormalizingStream } from "@/chat/runtime/streaming";
 
 describe("buildSlackOutputMessage", () => {

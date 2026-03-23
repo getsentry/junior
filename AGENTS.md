@@ -51,6 +51,7 @@ Co-Authored-By: (agent model name) <email>
 - Let file/module structure carry context so names do not have to.
 - Keep exported names role-specific; keep local helper names short.
 - Prefer domain language over mechanism language.
+- Every exported function must have a brief JSDoc comment explaining its intent (the _why_, not the _what_).
 
 ## Architecture Discipline
 
@@ -59,7 +60,7 @@ Co-Authored-By: (agent model name) <email>
 - Do not add mutable runtime behavior globals or test-only singleton mutation APIs (`set*ForTests`, `reset*ForTests`, observer globals for core behavior).
 - Prefer small consumer-owned service interfaces over broad deps bags or service locators.
 - Do not leak third-party SDK types across chat subsystem boundaries when a small local interface will do; keep vendor SDKs inside infrastructure modules.
-- `runtime/` orchestrates turns, `services/` do domain work, `state/` persists by concern, `ingress/` only normalizes/routes.
+- `runtime/` orchestrates turns and turn-scoped formatting, `services/` do domain work (reply policy, delivery planning, channel intent, attachment validation), `state/` persists by concern, `ingress/` only normalizes/routes.
 - Queue and worker paths must depend on injected runtime interfaces or factories, not import the production singleton from `@/chat/bot`.
 - Do not use prototype patching or import-side-effect modules as the intended long-term ingress architecture.
 - Prefer domain-role names over mechanism names: avoid `patch`, vague `behavior`, and ambiguous `runtime` labels for non-runtime modules.

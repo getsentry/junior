@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   buildConversationStatePatch,
   coerceThreadConversationState,
-  type ThreadConversationState
-} from "@/chat/conversation-state";
+  type ThreadConversationState,
+} from "@/chat/state/conversation";
 
 describe("conversation state", () => {
   it("defaults vision cache when missing from persisted state", () => {
     const conversation = coerceThreadConversationState({
       conversation: {
         schemaVersion: 1,
-        messages: []
-      }
+        messages: [],
+      },
     });
 
     expect(conversation.vision.byFileId).toEqual({});
@@ -28,23 +28,23 @@ describe("conversation state", () => {
             createdAtMs: 1700000000100,
             meta: {
               imageFileIds: ["F123", "", 10],
-              slackTs: "1700000000.100"
-            }
-          }
+              slackTs: "1700000000.100",
+            },
+          },
         ],
         vision: {
           byFileId: {
             F123: {
               summary: "Candidate name appears as Jane Doe.",
-              analyzedAtMs: 1700000000500
+              analyzedAtMs: 1700000000500,
             },
             bad: {
               summary: "",
-              analyzedAtMs: 10
-            }
-          }
-        }
-      }
+              analyzedAtMs: 10,
+            },
+          },
+        },
+      },
     });
 
     expect(conversation.messages[0]?.meta?.imageFileIds).toEqual(["F123"]);
@@ -52,8 +52,8 @@ describe("conversation state", () => {
     expect(conversation.vision.byFileId).toEqual({
       F123: {
         summary: "Candidate name appears as Jane Doe.",
-        analyzedAtMs: 1700000000500
-      }
+        analyzedAtMs: 1700000000500,
+      },
     });
   });
 
@@ -65,21 +65,23 @@ describe("conversation state", () => {
             id: "m1",
             role: "user",
             text: "hello",
-            createdAtMs: 1
-          }
+            createdAtMs: 1,
+          },
         ],
         vision: {
           byFileId: {
             F321: {
               summary: "Text includes staff engineer at Example Inc.",
-              analyzedAtMs: 99
-            }
-          }
-        }
-      }
+              analyzedAtMs: 99,
+            },
+          },
+        },
+      },
     });
 
     const patch = buildConversationStatePatch(state);
-    expect(patch.conversation.vision.byFileId.F321?.summary).toContain("staff engineer");
+    expect(patch.conversation.vision.byFileId.F321?.summary).toContain(
+      "staff engineer",
+    );
   });
 });

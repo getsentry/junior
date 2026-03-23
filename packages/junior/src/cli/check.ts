@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ParsedSkillFile } from "@/chat/skill-frontmatter";
-import { parseSkillFile } from "@/chat/skill-frontmatter";
+import type { ParsedSkillFile } from "@/chat/skills";
+import { parseSkillFile } from "@/chat/skills";
 import { parsePluginManifest } from "@/chat/plugins/manifest";
 import type { PluginManifest } from "@/chat/plugins/types";
 

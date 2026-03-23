@@ -8,7 +8,7 @@ const originalCwd = process.cwd();
 afterEach(() => {
   process.chdir(originalCwd);
   vi.resetModules();
-  vi.doUnmock("@/chat/home");
+  vi.doUnmock("@/chat/discovery");
   vi.doUnmock("@/chat/plugins/package-discovery");
 });
 
@@ -19,7 +19,7 @@ describe("plugin registry", () => {
     );
     process.chdir(tempRoot);
 
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", () => ({
       pluginRoots: () => [],
     }));
     vi.doMock("@/chat/plugins/package-discovery", () => ({
@@ -59,7 +59,7 @@ describe("plugin registry", () => {
       tracingIncludes: [] as string[],
     };
 
-    vi.doMock("@/chat/home", () => ({
+    vi.doMock("@/chat/discovery", () => ({
       pluginRoots: () => [],
     }));
     vi.doMock("@/chat/plugins/package-discovery", () => ({

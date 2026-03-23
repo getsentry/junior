@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildReplyDeliveryPlan,
   isPotentialRedundantReactionAckText,
-} from "@/chat/delivery/plan";
+} from "@/chat/services/reply-delivery-plan";
 
 describe("buildReplyDeliveryPlan", () => {
   it("returns channel_only mode when explicit channel intent and channel post succeeds", () => {

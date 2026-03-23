@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createCanvas } from "@/chat/slack-actions/canvases";
+import { createCanvas } from "@/chat/tools/slack/canvases";
 import {
   conversationsCanvasesCreateOk,
   filesInfoOk,

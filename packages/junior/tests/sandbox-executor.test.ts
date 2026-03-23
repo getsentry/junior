@@ -23,7 +23,7 @@ vi.mock("bash-tool", () => ({
   createBashTool: vi.fn(),
 }));
 
-vi.mock("@/chat/observability", () => ({
+vi.mock("@/chat/logging", () => ({
   withSpan: async (
     _name: string,
     _op: string,

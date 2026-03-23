@@ -867,3 +867,479 @@ export function setSentryScopeContext(
   }
   scope.setContext("app", attrs);
 }
+
+// ---------------------------------------------------------------------------
+// High-level observability API (spans, error capture, convenience loggers)
+// ---------------------------------------------------------------------------
+
+export interface ErrorReference {
+  traceId: string;
+  eventId?: string;
+}
+
+type SpanAttributePrimitive = string | number | boolean;
+type SpanAttributeValue = SpanAttributePrimitive | string[];
+
+function toSpanAttributeValue(value: unknown): SpanAttributeValue | undefined {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const sanitized = value.filter(
+    (entry): entry is string => typeof entry === "string",
+  );
+  return sanitized.length > 0 ? sanitized : undefined;
+}
+
+/** Capture an error to Sentry and emit an error log record. */
+export function captureException(
+  error: unknown,
+  context: LogContext = {},
+): void {
+  const normalizedError =
+    error instanceof Error ? error : new Error(String(error));
+  log.exception(
+    "exception_captured",
+    normalizedError,
+    toSpanAttributes(context),
+    "Captured exception",
+  );
+}
+
+/** Log an info-level structured event. */
+export function logInfo(
+  eventName: string,
+  context: LogContext = {},
+  attributes: Record<string, unknown> = {},
+  body?: string,
+): void {
+  log.info(eventName, { ...toSpanAttributes(context), ...attributes }, body);
+}
+
+/** Log a warning-level structured event. */
+export function logWarn(
+  eventName: string,
+  context: LogContext = {},
+  attributes: Record<string, unknown> = {},
+  body?: string,
+): void {
+  log.warn(eventName, { ...toSpanAttributes(context), ...attributes }, body);
+}
+
+/** Log an error-level structured event. */
+export function logError(
+  eventName: string,
+  context: LogContext = {},
+  attributes: Record<string, unknown> = {},
+  body?: string,
+): void {
+  log.error(eventName, { ...toSpanAttributes(context), ...attributes }, body);
+}
+
+/** Log an error with exception capture; returns the Sentry event ID if available. */
+export function logException(
+  error: unknown,
+  eventName: string,
+  context: LogContext = {},
+  attributes: Record<string, unknown> = {},
+  body?: string,
+): string | undefined {
+  const normalizedError =
+    error instanceof Error ? error : new Error(String(error));
+  return log.exception(
+    eventName,
+    normalizedError,
+    { ...toSpanAttributes(context), ...attributes },
+    body,
+  );
+}
+
+/** Set log context and Sentry tags for the current scope. */
+export function setTags(context: LogContext = {}): void {
+  setLogContext(context);
+  setSentryTagsFromContext(context);
+}
+
+/** Create a LogContext from an incoming HTTP request. */
+export function createRequestContext(
+  request: Request,
+  context: Partial<LogContext> = {},
+): LogContext {
+  return createLogContextFromRequest(request, context);
+}
+
+/** Run a callback within a scoped log context. */
+export async function withContext<T>(
+  context: LogContext,
+  callback: () => Promise<T>,
+): Promise<T> {
+  return withLogContext(context, callback);
+}
+
+/** Run a callback within a Sentry span and scoped log context. */
+export async function withSpan<T>(
+  name: string,
+  op: string,
+  context: LogContext,
+  callback: () => Promise<T>,
+  attributes: Record<string, unknown> = {},
+): Promise<T> {
+  const normalizedAttributes: Record<string, SpanAttributeValue> = {};
+  for (const [key, value] of Object.entries(attributes)) {
+    const normalizedValue = toSpanAttributeValue(value);
+    if (normalizedValue !== undefined) {
+      normalizedAttributes[key] = normalizedValue;
+    }
+  }
+
+  return withLogContext(context, () =>
+    Sentry.startSpan(
+      {
+        name,
+        op,
+        attributes: {
+          ...toSpanAttributes(context),
+          ...normalizedAttributes,
+        },
+      },
+      callback,
+    ),
+  );
+}
+
+/** Set attributes on the currently active Sentry span. */
+export function setSpanAttributes(attributes: Record<string, unknown>): void {
+  const sentry = Sentry as unknown as { getActiveSpan?: () => unknown };
+  const span = sentry.getActiveSpan?.();
+  if (!span) {
+    return;
+  }
+
+  const setAttribute = (
+    span as { setAttribute?: (key: string, value: SpanAttributeValue) => void }
+  ).setAttribute;
+  if (typeof setAttribute !== "function") {
+    return;
+  }
+
+  for (const [key, value] of Object.entries(attributes)) {
+    const normalizedValue = toSpanAttributeValue(value);
+    if (normalizedValue !== undefined) {
+      setAttribute.call(span, key, normalizedValue);
+    }
+  }
+}
+
+/** Set the status of the currently active Sentry span. */
+export function setSpanStatus(status: "ok" | "error"): void {
+  const sentry = Sentry as unknown as { getActiveSpan?: () => unknown };
+  const span = sentry.getActiveSpan?.();
+  if (!span) {
+    return;
+  }
+
+  const setStatus = (span as { setStatus?: (value: string) => void }).setStatus;
+  if (typeof setStatus !== "function") {
+    return;
+  }
+
+  setStatus.call(span, status === "ok" ? "ok" : "internal_error");
+}
+
+/** Capture an exception within an isolated Sentry scope. */
+export function captureExceptionInScope(
+  error: unknown,
+  context: LogContext = {},
+): void {
+  const sentryWithScope = (
+    Sentry as unknown as {
+      withScope?: (callback: (scope: Sentry.Scope) => void) => void;
+    }
+  ).withScope;
+  const sentryCaptureException = (
+    Sentry as unknown as {
+      captureException?: (error: unknown) => unknown;
+    }
+  ).captureException;
+  const normalizedError =
+    error instanceof Error ? error : new Error(String(error));
+
+  if (
+    typeof sentryWithScope === "function" &&
+    typeof sentryCaptureException === "function"
+  ) {
+    sentryWithScope((scope) => {
+      setSentryScopeContext(scope, context);
+      sentryCaptureException(normalizedError);
+    });
+    return;
+  }
+
+  if (typeof sentryCaptureException === "function") {
+    sentryCaptureException(normalizedError);
+  }
+}
+
+/** Coerce an unknown value to a trimmed string, or undefined. */
+export function toOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+/** Return the trace ID from the active Sentry span, if any. */
+export function getActiveTraceId(): string | undefined {
+  const sentry = Sentry as unknown as {
+    getActiveSpan?: () => unknown;
+    spanToJSON?: (span: unknown) => { trace_id?: string };
+  };
+  if (
+    typeof sentry.getActiveSpan !== "function" ||
+    typeof sentry.spanToJSON !== "function"
+  ) {
+    return undefined;
+  }
+
+  try {
+    const span = sentry.getActiveSpan();
+    if (!span) {
+      return undefined;
+    }
+    return toOptionalString(sentry.spanToJSON(span).trace_id);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Build a trace + event ID reference for error correlation. */
+export function resolveErrorReference(eventId?: string): ErrorReference | null {
+  const traceId = getActiveTraceId();
+  if (!eventId && !traceId) {
+    return null;
+  }
+
+  if (!traceId) {
+    return null;
+  }
+
+  return {
+    traceId,
+    ...(eventId ? { eventId } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Gen-AI attribute serialization
+// ---------------------------------------------------------------------------
+
+const GEN_AI_DEFAULT_MAX_ATTRIBUTE_CHARS = 12_000;
+const GEN_AI_MAX_STRING_CHARS = 2_000;
+const GEN_AI_MAX_ARRAY_ITEMS = 50;
+const GEN_AI_MAX_OBJECT_KEYS = 50;
+
+function truncateGenAiString(value: string, maxChars: number): string {
+  return value.length > maxChars ? `${value.slice(0, maxChars)}...` : value;
+}
+
+function sanitizeGenAiValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+  keyName?: string,
+): unknown {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    const shouldTreatAsBlob =
+      (keyName === "data" ||
+        keyName === "base64" ||
+        keyName?.endsWith("_base64") === true) &&
+      value.length > 256;
+    if (shouldTreatAsBlob) {
+      return `[omitted:${value.length}]`;
+    }
+    return truncateGenAiString(value, GEN_AI_MAX_STRING_CHARS);
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : undefined;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (depth >= 8) {
+    return "[depth_limit]";
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, GEN_AI_MAX_ARRAY_ITEMS)
+      .map((entry) => sanitizeGenAiValue(entry, seen, depth + 1))
+      .filter((entry) => entry !== undefined);
+  }
+
+  if (typeof value !== "object") {
+    return String(value);
+  }
+
+  if (seen.has(value)) {
+    return "[circular]";
+  }
+  seen.add(value);
+
+  const record = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(record).slice(
+    0,
+    GEN_AI_MAX_OBJECT_KEYS,
+  )) {
+    const sanitized = sanitizeGenAiValue(entryValue, seen, depth + 1, key);
+    if (sanitized !== undefined) {
+      out[key] = sanitized;
+    }
+  }
+  return out;
+}
+
+/** Serialize an AI model response value into a truncated log attribute. */
+export function serializeGenAiAttribute(
+  value: unknown,
+  maxChars = GEN_AI_DEFAULT_MAX_ATTRIBUTE_CHARS,
+): string | undefined {
+  const sanitized = sanitizeGenAiValue(value, new WeakSet<object>(), 0);
+  if (sanitized === undefined) {
+    return undefined;
+  }
+
+  const serialized =
+    typeof sanitized === "string" ? sanitized : JSON.stringify(sanitized);
+  if (!serialized) {
+    return undefined;
+  }
+
+  return truncateGenAiString(serialized, maxChars);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function toFiniteTokenCount(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const rounded = Math.floor(value);
+  return rounded >= 0 ? rounded : undefined;
+}
+
+function readTokenCount(
+  root: Record<string, unknown>,
+  keys: string[],
+): number | undefined {
+  for (const key of keys) {
+    const value = toFiniteTokenCount(root[key]);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function collectUsageRoots(source: unknown): Record<string, unknown>[] {
+  const sourceRecord = asRecord(source);
+  if (!sourceRecord) {
+    return [];
+  }
+
+  const roots: Record<string, unknown>[] = [sourceRecord];
+  const usage = asRecord(sourceRecord.usage);
+  if (usage) {
+    roots.push(usage);
+  }
+
+  const tokenUsage = asRecord(sourceRecord.tokenUsage);
+  if (tokenUsage) {
+    roots.push(tokenUsage);
+  }
+
+  const providerMetadata = asRecord(sourceRecord.providerMetadata);
+  if (providerMetadata) {
+    roots.push(providerMetadata);
+    const providerUsage = asRecord(providerMetadata.usage);
+    if (providerUsage) {
+      roots.push(providerUsage);
+    }
+  }
+
+  const response = asRecord(sourceRecord.response);
+  if (response) {
+    roots.push(response);
+    const responseUsage = asRecord(response.usage);
+    if (responseUsage) {
+      roots.push(responseUsage);
+    }
+  }
+
+  return roots;
+}
+
+/** Extract input/output token counts from AI provider usage metadata. */
+export function extractGenAiUsageAttributes(
+  ...sources: unknown[]
+): Partial<
+  Record<"gen_ai.usage.input_tokens" | "gen_ai.usage.output_tokens", number>
+> {
+  const roots = sources.flatMap((source) => collectUsageRoots(source));
+  if (roots.length === 0) {
+    return {};
+  }
+
+  const inputTokens =
+    roots
+      .map((root) =>
+        readTokenCount(root, [
+          "input_tokens",
+          "inputTokens",
+          "prompt_tokens",
+          "promptTokens",
+          "inputTokenCount",
+          "promptTokenCount",
+        ]),
+      )
+      .find((value) => value !== undefined) ?? undefined;
+
+  const outputTokens =
+    roots
+      .map((root) =>
+        readTokenCount(root, [
+          "output_tokens",
+          "outputTokens",
+          "completion_tokens",
+          "completionTokens",
+          "outputTokenCount",
+          "completionTokenCount",
+        ]),
+      )
+      .find((value) => value !== undefined) ?? undefined;
+
+  return {
+    ...(inputTokens !== undefined
+      ? { "gen_ai.usage.input_tokens": inputTokens }
+      : {}),
+    ...(outputTokens !== undefined
+      ? { "gen_ai.usage.output_tokens": outputTokens }
+      : {}),
+  };
+}

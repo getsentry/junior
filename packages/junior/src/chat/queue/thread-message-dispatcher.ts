@@ -1,7 +1,7 @@
 import type { Message, Thread } from "chat";
 import type { SlackTurnRuntime } from "@/chat/runtime/slack-runtime";
 import type { ThreadMessageKind } from "@/chat/queue/types";
-import { downloadPrivateSlackFile as downloadPrivateSlackFileImpl } from "@/chat/slack-actions/client";
+import { downloadPrivateSlackFile as downloadPrivateSlackFileImpl } from "@/chat/slack/client";
 
 export interface ThreadMessageDispatchArgs {
   beforeFirstResponsePost?: () => Promise<void>;

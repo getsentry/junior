@@ -4,7 +4,7 @@ import {
   getSubscribedReplyPreflightDecision,
   SubscribedReplyReason,
   type SubscribedDecisionInput,
-} from "@/chat/routing/subscribed-decision";
+} from "@/chat/services/subscribed-decision";
 
 function makeInput(
   overrides: Partial<SubscribedDecisionInput> = {},

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { enforceAttachmentClaimTruth } from "@/chat/attachment-claims";
+import { enforceAttachmentClaimTruth } from "@/chat/services/attachment-claims";
 
 describe("enforceAttachmentClaimTruth", () => {
   it("keeps normal responses unchanged when no attachment claim exists", () => {

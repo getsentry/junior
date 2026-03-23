@@ -20,7 +20,7 @@ import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
-import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
+import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
 import {
   FakeSlackAdapter,
   createTestThread,

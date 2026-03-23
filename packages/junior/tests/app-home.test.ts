@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnownBlock, SectionBlock } from "@slack/web-api";
-import { buildHomeView, publishAppHomeView } from "@/chat/app-home";
+import { buildHomeView, publishAppHomeView } from "@/chat/slack/app-home";
 import type {
   UserTokenStore,
   StoredTokens,
@@ -48,7 +48,7 @@ vi.mock("@/chat/plugins/registry", () => ({
   ],
 }));
 
-vi.mock("@/chat/home", () => ({
+vi.mock("@/chat/discovery", () => ({
   homeDir: () => "/mock/app",
 }));
 

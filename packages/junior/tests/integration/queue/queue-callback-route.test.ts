@@ -12,8 +12,8 @@ vi.mock("@/chat/queue/process-thread-message", () => ({
   processQueuedThreadMessage: processQueuedThreadMessageMock,
 }));
 
-vi.mock("@/chat/observability", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/chat/observability")>();
+vi.mock("@/chat/logging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/logging")>();
 
   return {
     ...actual,

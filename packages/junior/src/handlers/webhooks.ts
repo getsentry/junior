@@ -7,8 +7,8 @@ import {
   setSpanAttributes,
   setSpanStatus,
   withContext,
-  withSpan
-} from "@/chat/observability";
+  withSpan,
+} from "@/chat/logging";
 
 /**
  * Webhook route contract for `@sentry/junior`.
@@ -24,7 +24,7 @@ type WebhookRouteContext = {
 };
 
 async function loadBot() {
-  const { bot } = await import("@/chat/bot");
+  const { bot } = await import("@/chat/app/production");
   return bot;
 }
 
@@ -34,7 +34,10 @@ async function loadBot() {
  * The router only resolves the platform and delegates to the adapter webhook
  * implementation; request semantics stay owned by the adapter package.
  */
-export async function POST(request: Request, context: WebhookRouteContext): Promise<Response> {
+export async function POST(
+  request: Request,
+  context: WebhookRouteContext,
+): Promise<Response> {
   const bot = await loadBot();
   const { platform } = await context.params;
   const handler = bot.webhooks[platform as keyof typeof bot.webhooks];
@@ -44,9 +47,15 @@ export async function POST(request: Request, context: WebhookRouteContext): Prom
   return withContext(requestContext, async () => {
     if (!handler) {
       const error = new Error(`Unknown platform: ${platform}`);
-      logException(error, "webhook_platform_unknown", {}, {
-        "http.response.status_code": 404
-      }, `Unknown platform: ${platform}`);
+      logException(
+        error,
+        "webhook_platform_unknown",
+        {},
+        {
+          "http.response.status_code": 404,
+        },
+        `Unknown platform: ${platform}`,
+      );
       return new Response(`Unknown platform: ${platform}`, { status: 404 });
     }
 
@@ -62,19 +71,26 @@ export async function POST(request: Request, context: WebhookRouteContext): Prom
               waitUntil: (task) =>
                 after(() => {
                   const runTask = () => {
-                    const taskOrFactory = task as Promise<unknown> | (() => Promise<unknown>);
-                    return typeof taskOrFactory === "function" ? taskOrFactory() : taskOrFactory;
+                    const taskOrFactory = task as
+                      | Promise<unknown>
+                      | (() => Promise<unknown>);
+                    return typeof taskOrFactory === "function"
+                      ? taskOrFactory()
+                      : taskOrFactory;
                   };
                   if (activeSpan) {
                     return Sentry.withActiveSpan(activeSpan, runTask);
                   }
                   return runTask();
-                })
+                }),
             } as Parameters<typeof handler>[1]);
             if (response.status >= 400) {
               let responseBodySnippet: string | undefined;
               try {
-                responseBodySnippet = (await response.clone().text()).slice(0, 300);
+                responseBodySnippet = (await response.clone().text()).slice(
+                  0,
+                  300,
+                );
               } catch {
                 responseBodySnippet = undefined;
               }
@@ -83,16 +99,20 @@ export async function POST(request: Request, context: WebhookRouteContext): Prom
                 {},
                 {
                   "http.response.status_code": response.status,
-                  "http.request.header.x_slack_signature": request.headers.get("x-slack-signature") ?? undefined,
+                  "http.request.header.x_slack_signature":
+                    request.headers.get("x-slack-signature") ?? undefined,
                   "http.request.header.x_slack_request_timestamp":
-                    request.headers.get("x-slack-request-timestamp") ?? undefined,
-                  ...(responseBodySnippet ? { "app.webhook.response_body": responseBodySnippet } : {})
+                    request.headers.get("x-slack-request-timestamp") ??
+                    undefined,
+                  ...(responseBodySnippet
+                    ? { "app.webhook.response_body": responseBodySnippet }
+                    : {}),
                 },
-                `Webhook ${platform} returned ${response.status}`
+                `Webhook ${platform} returned ${response.status}`,
               );
             }
             setSpanAttributes({
-              "http.response.status_code": response.status
+              "http.response.status_code": response.status,
             });
             setSpanStatus(response.status >= 500 ? "error" : "ok");
             return response;
@@ -103,8 +123,8 @@ export async function POST(request: Request, context: WebhookRouteContext): Prom
         },
         {
           "http.request.method": request.method,
-          "url.path": requestUrl.pathname
-        }
+          "url.path": requestUrl.pathname,
+        },
       );
     } catch (error) {
       logException(error, "webhook_handler_failed");
