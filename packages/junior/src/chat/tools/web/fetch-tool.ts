@@ -4,17 +4,17 @@ import {
   FETCH_TIMEOUT_MS,
   MAX_FETCH_BYTES,
   MAX_REDIRECTS,
-} from "@/chat/tools/constants";
+} from "@/chat/tools/web/constants";
 import {
   assertPublicUrl,
   fetchTextWithRedirects,
   withTimeout,
-} from "@/chat/tools/network";
+} from "@/chat/tools/web/network";
 import type { ToolHooks } from "@/chat/tools/types";
 import {
   extractWebFetchResponse,
   MAX_FETCH_CHARS,
-} from "@/chat/tools/web-fetch";
+} from "@/chat/tools/web/fetch-content";
 
 function extensionForMediaType(mediaType: string): string {
   if (mediaType === "image/png") return "png";

@@ -12,18 +12,18 @@ const {
   extractWebFetchResponseMock: vi.fn(),
 }));
 
-vi.mock("@/chat/tools/network", () => ({
+vi.mock("@/chat/tools/web/network", () => ({
   assertPublicUrl: assertPublicUrlMock,
   fetchTextWithRedirects: fetchTextWithRedirectsMock,
   withTimeout: withTimeoutMock,
 }));
 
-vi.mock("@/chat/tools/web-fetch", () => ({
+vi.mock("@/chat/tools/web/fetch-content", () => ({
   extractWebFetchResponse: extractWebFetchResponseMock,
   MAX_FETCH_CHARS: 120000,
 }));
 
-import { createWebFetchTool } from "@/chat/tools/web-fetch-tool";
+import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 
 describe("web fetch tool", () => {
   beforeEach(() => {

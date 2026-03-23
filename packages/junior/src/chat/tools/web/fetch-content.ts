@@ -4,8 +4,8 @@ import {
   FETCH_TIMEOUT_MS,
   MAX_FETCH_BYTES,
   MAX_FETCH_CHARS,
-} from "@/chat/tools/constants";
-import { readResponseBody, withTimeout } from "@/chat/tools/network";
+} from "@/chat/tools/web/constants";
+import { readResponseBody, withTimeout } from "@/chat/tools/web/network";
 
 export { MAX_FETCH_CHARS };
 

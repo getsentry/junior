@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSlackListGetItemsTool } from "@/chat/tools/slack-list-tools";
+import { createSlackListGetItemsTool } from "@/chat/tools/slack/list-tools";
 import type { ToolState } from "@/chat/tools/types";
 import { slackListsItemsListPage } from "../fixtures/slack/factories/api";
 import {

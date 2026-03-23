@@ -61,6 +61,8 @@ Co-Authored-By: (agent model name) <email>
 - Prefer small consumer-owned service interfaces over broad deps bags or service locators.
 - Do not leak third-party SDK types across chat subsystem boundaries when a small local interface will do; keep vendor SDKs inside infrastructure modules.
 - `runtime/` orchestrates turns and turn-scoped formatting, `services/` do domain work (reply policy, delivery planning, channel intent, attachment validation), `state/` persists by concern, `ingress/` only normalizes/routes.
+- **Feature-based colocation**: group files by domain feature, not by technical role. Within a module, create subdirectories for each feature domain (e.g., `tools/slack/`, `tools/web/`, `tools/sandbox/`, `tools/skill/`). Shared contracts and cross-cutting utilities live at the module root. Only extract to a shared location when 2+ features need the same code.
+- Do not use barrel `index.ts` re-exports inside feature subdirectories — import directly from the source file. A module-root `index.ts` is acceptable as a composition root that wires features together.
 - Queue and worker paths must depend on injected runtime interfaces or factories, not import the production singleton from `@/chat/bot`.
 - Do not use prototype patching or import-side-effect modules as the intended long-term ingress architecture.
 - Prefer domain-role names over mechanism names: avoid `patch`, vague `behavior`, and ambiguous `runtime` labels for non-runtime modules.

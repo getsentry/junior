@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractContent } from "@/chat/tools/web-fetch";
+import { extractContent } from "@/chat/tools/web/fetch-content";
 
 describe("web fetch content conversion", () => {
   it("converts HTML to markdown with links and headings", () => {

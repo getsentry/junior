@@ -2,7 +2,7 @@ import { tool } from "@/chat/tools/definition";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { Type } from "@sinclair/typebox";
-import { withTimeout } from "@/chat/tools/network";
+import { withTimeout } from "@/chat/tools/web/network";
 import { getGatewayApiKey } from "@/chat/pi/client";
 
 const SEARCH_TIMEOUT_MS = 10_000;
@@ -11,22 +11,32 @@ const DEFAULT_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
 const SEARCH_TOOL_NAME = "parallelSearch";
 
 function asString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 }
 
 function parseSearchResults(
   toolResults: unknown,
-  maxResults: number
+  maxResults: number,
 ): Array<{ title: string; url: string; snippet: string }> {
-  const typedResults = Array.isArray(toolResults) ? (toolResults as Array<Record<string, unknown>>) : [];
-  const parsedResults: Array<{ title: string; url: string; snippet: string }> = [];
+  const typedResults = Array.isArray(toolResults)
+    ? (toolResults as Array<Record<string, unknown>>)
+    : [];
+  const parsedResults: Array<{ title: string; url: string; snippet: string }> =
+    [];
 
   for (const toolResult of typedResults) {
-    if (toolResult.type !== "tool-result" || toolResult.toolName !== SEARCH_TOOL_NAME) {
+    if (
+      toolResult.type !== "tool-result" ||
+      toolResult.toolName !== SEARCH_TOOL_NAME
+    ) {
       continue;
     }
 
-    const output = (toolResult as { output?: unknown }).output as { results?: unknown } | undefined;
+    const output = (toolResult as { output?: unknown }).output as
+      | { results?: unknown }
+      | undefined;
     const results = Array.isArray(output?.results)
       ? (output.results as Array<Record<string, unknown>>)
       : [];
@@ -37,7 +47,7 @@ function parseSearchResults(
       parsedResults.push({
         title: asString(result.title) ?? url,
         url,
-        snippet: asString(result.excerpt) ?? asString(result.snippet) ?? ""
+        snippet: asString(result.excerpt) ?? asString(result.snippet) ?? "",
       });
 
       if (parsedResults.length >= maxResults) {
@@ -77,22 +87,24 @@ export function createWebSearchTool() {
       query: Type.String({
         minLength: 1,
         maxLength: 500,
-        description: "Search query."
+        description: "Search query.",
       }),
       max_results: Type.Optional(
         Type.Integer({
           minimum: 1,
           maximum: MAX_RESULTS,
-          description: "Max results to return."
-        })
-      )
+          description: "Max results to return.",
+        }),
+      ),
     }),
     execute: async ({ query, max_results }) => {
       const maxResults = max_results ?? 3;
       try {
         const apiKey = getGatewayApiKey();
         if (!apiKey) {
-          throw new Error("Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)");
+          throw new Error(
+            "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
+          );
         }
         const model =
           process.env.AI_WEB_SEARCH_MODEL ??
@@ -110,20 +122,20 @@ export function createWebSearchTool() {
                 tools: {
                   [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
                     mode: "agentic",
-                    maxResults
-                  })
+                    maxResults,
+                  }),
                 },
                 toolChoice: {
                   type: "tool",
-                  toolName: SEARCH_TOOL_NAME
-                }
+                  toolName: SEARCH_TOOL_NAME,
+                },
               });
             } catch (error) {
               throw new Error(formatSearchFailure(error));
             }
           })(),
           SEARCH_TIMEOUT_MS,
-          "webSearch"
+          "webSearch",
         );
 
         const results = parseSearchResults(response.toolResults, maxResults);
@@ -133,7 +145,7 @@ export function createWebSearchTool() {
           model,
           query,
           result_count: results.length,
-          results
+          results,
         };
       } catch (error) {
         const message = formatSearchFailure(error);
@@ -144,9 +156,9 @@ export function createWebSearchTool() {
           results: [],
           error: message,
           timeout: isTimeoutSearchFailure(message),
-          retryable: !isNonRetryableSearchFailure(message)
+          retryable: !isNonRetryableSearchFailure(message),
         };
       }
-    }
+    },
   });
 }

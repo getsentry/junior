@@ -14,7 +14,7 @@ vi.mock("@/chat/logging", () => ({
 }));
 
 import { completeText } from "@/chat/pi/client";
-import { createImageGenerateTool } from "@/chat/tools/image-generate";
+import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 
 const mockCompleteText = vi.mocked(completeText);
 

@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWebSearchTool } from "@/chat/tools/web-search";
+import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 
 vi.mock("ai", () => ({
-  generateText: vi.fn()
+  generateText: vi.fn(),
 }));
 
 vi.mock("@ai-sdk/gateway", () => ({
-  createGatewayProvider: vi.fn()
+  createGatewayProvider: vi.fn(),
 }));
 
 describe("createWebSearchTool", () => {
@@ -16,8 +16,8 @@ describe("createWebSearchTool", () => {
   const gatewayProvider = {
     chat: vi.fn((model: string) => ({ model })),
     tools: {
-      parallelSearch: vi.fn(() => parallelSearch)
-    }
+      parallelSearch: vi.fn(() => parallelSearch),
+    },
   };
 
   beforeEach(() => {
@@ -47,12 +47,12 @@ describe("createWebSearchTool", () => {
               {
                 title: "Vercel AI Gateway",
                 url: "https://vercel.com/docs/ai-gateway",
-                excerpt: "Gateway docs"
-              }
-            ]
-          }
-        }
-      ]
+                excerpt: "Gateway docs",
+              },
+            ],
+          },
+        },
+      ],
     } as never);
 
     const tool = createWebSearchTool();
@@ -60,19 +60,22 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    const result = await tool.execute({ query: "vercel ai gateway", max_results: 2 }, {} as never);
+    const result = await tool.execute(
+      { query: "vercel ai gateway", max_results: 2 },
+      {} as never,
+    );
 
     expect(createGatewayProvider).toHaveBeenCalledWith({ apiKey: "test-key" });
     expect(gatewayProvider.tools.parallelSearch).toHaveBeenCalledWith({
       mode: "agentic",
-      maxResults: 2
+      maxResults: 2,
     });
     expect(generateText).toHaveBeenCalledWith(
       expect.objectContaining({
         model: { model: "xai/grok-4-fast-reasoning" },
         prompt: "vercel ai gateway",
-        toolChoice: { type: "tool", toolName: "parallelSearch" }
-      })
+        toolChoice: { type: "tool", toolName: "parallelSearch" },
+      }),
     );
     expect(result).toEqual({
       ok: true,
@@ -83,9 +86,9 @@ describe("createWebSearchTool", () => {
         {
           title: "Vercel AI Gateway",
           url: "https://vercel.com/docs/ai-gateway",
-          snippet: "Gateway docs"
-        }
-      ]
+          snippet: "Gateway docs",
+        },
+      ],
     });
   });
 
@@ -95,34 +98,42 @@ describe("createWebSearchTool", () => {
       throw new Error("webSearch execute function missing");
     }
 
-    await expect(tool.execute({ query: "test" }, {} as never)).resolves.toEqual({
-      ok: false,
-      query: "test",
-      result_count: 0,
-      results: [],
-      error: "web search failed: Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
-      timeout: false,
-      retryable: false
-    });
+    await expect(tool.execute({ query: "test" }, {} as never)).resolves.toEqual(
+      {
+        ok: false,
+        query: "test",
+        result_count: 0,
+        results: [],
+        error:
+          "web search failed: Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
+        timeout: false,
+        retryable: false,
+      },
+    );
   });
 
   it("wraps AI SDK errors in web search error message", async () => {
     process.env.AI_GATEWAY_API_KEY = "test-key";
-    vi.mocked(generateText).mockRejectedValueOnce(new Error("400 Invalid input: expected \"function\""));
+    vi.mocked(generateText).mockRejectedValueOnce(
+      new Error('400 Invalid input: expected "function"'),
+    );
 
     const tool = createWebSearchTool();
     if (typeof tool.execute !== "function") {
       throw new Error("webSearch execute function missing");
     }
 
-    await expect(tool.execute({ query: "test query" }, {} as never)).resolves.toEqual({
+    await expect(
+      tool.execute({ query: "test query" }, {} as never),
+    ).resolves.toEqual({
       ok: false,
       query: "test query",
       result_count: 0,
       results: [],
-      error: "web search failed: web search failed: 400 Invalid input: expected \"function\"",
+      error:
+        'web search failed: web search failed: 400 Invalid input: expected "function"',
       timeout: false,
-      retryable: true
+      retryable: true,
     });
   });
 
@@ -133,7 +144,7 @@ describe("createWebSearchTool", () => {
       () =>
         new Promise(() => {
           // Intentionally unresolved to trigger tool timeout.
-        }) as never
+        }) as never,
     );
 
     const tool = createWebSearchTool();
@@ -150,7 +161,7 @@ describe("createWebSearchTool", () => {
       results: [],
       error: "web search failed: webSearch timed out",
       timeout: true,
-      retryable: true
+      retryable: true,
     });
     vi.useRealTimers();
   });

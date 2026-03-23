@@ -2,11 +2,14 @@ import dns from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
-import { FETCH_TIMEOUT_MS, USER_AGENT } from "@/chat/tools/constants";
+import { FETCH_TIMEOUT_MS, USER_AGENT } from "@/chat/tools/web/constants";
 
 function isPrivateIpv4(ip: string): boolean {
   const parts = ip.split(".").map((chunk) => Number.parseInt(chunk, 10));
-  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) {
+  if (
+    parts.length !== 4 ||
+    parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)
+  ) {
     return true;
   }
 
@@ -35,7 +38,11 @@ function parseMappedIpv4FromIpv6(mapped: string): string | undefined {
 
 function isPrivateIpv6(ip: string): boolean {
   const normalized = ip.toLowerCase();
-  if (normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd")) {
+  if (
+    normalized === "::1" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd")
+  ) {
     return true;
   }
 
@@ -72,7 +79,9 @@ function normalizeHostname(hostname: string): string {
   return lowered;
 }
 
-async function resolvePublicHostname(hostname: string): Promise<ResolvedAddress[]> {
+async function resolvePublicHostname(
+  hostname: string,
+): Promise<ResolvedAddress[]> {
   const records = await dns.lookup(hostname, { all: true, verbatim: true });
   if (records.length === 0) {
     throw new Error("Could not resolve hostname");
@@ -87,13 +96,18 @@ async function resolvePublicHostname(hostname: string): Promise<ResolvedAddress[
     if (family === 6 && isPrivateIpv6(record.address)) {
       throw new Error("Resolved to a private IPv6 address");
     }
-    deduped.set(`${family}:${record.address}`, { address: record.address, family });
+    deduped.set(`${family}:${record.address}`, {
+      address: record.address,
+      family,
+    });
   }
 
   return [...deduped.values()];
 }
 
-async function resolvePinnedAddresses(url: URL): Promise<ResolvedAddress[] | undefined> {
+async function resolvePinnedAddresses(
+  url: URL,
+): Promise<ResolvedAddress[] | undefined> {
   const hostname = normalizeHostname(url.hostname);
   if (net.isIP(hostname) !== 0) {
     return undefined;
@@ -109,36 +123,48 @@ function createPinnedLookup(resolved: ResolvedAddress[]) {
     callback: (
       error: NodeJS.ErrnoException | null,
       address: string | Array<{ address: string; family: number }>,
-      family?: number
-    ) => void
+      family?: number,
+    ) => void,
   ) => {
     if (options?.all) {
       callback(
         null,
         resolved.map((entry) => ({
           address: entry.address,
-          family: entry.family
-        }))
+          family: entry.family,
+        })),
       );
       return;
     }
 
     const requestedFamilyRaw = options?.family ?? 0;
-    const requestedFamily = requestedFamilyRaw === "IPv4" ? 4 : requestedFamilyRaw === "IPv6" ? 6 : requestedFamilyRaw;
-    const selected = resolved.find((entry) => requestedFamily === 0 || entry.family === requestedFamily) ?? fallback;
+    const requestedFamily =
+      requestedFamilyRaw === "IPv4"
+        ? 4
+        : requestedFamilyRaw === "IPv6"
+          ? 6
+          : requestedFamilyRaw;
+    const selected =
+      resolved.find(
+        (entry) => requestedFamily === 0 || entry.family === requestedFamily,
+      ) ?? fallback;
     callback(null, selected.address, selected.family);
   };
 }
 
-async function fetchWithPinnedLookup(url: URL, resolved: ResolvedAddress[] | undefined, signal: AbortSignal): Promise<Response> {
+async function fetchWithPinnedLookup(
+  url: URL,
+  resolved: ResolvedAddress[] | undefined,
+  signal: AbortSignal,
+): Promise<Response> {
   if (!resolved) {
     return fetch(url, {
       method: "GET",
       redirect: "manual",
       signal,
       headers: {
-        "user-agent": USER_AGENT
-      }
+        "user-agent": USER_AGENT,
+      },
     });
   }
 
@@ -156,8 +182,8 @@ async function fetchWithPinnedLookup(url: URL, resolved: ResolvedAddress[] | und
         ...(url.protocol === "https:" ? { servername: url.hostname } : {}),
         headers: {
           "user-agent": USER_AGENT,
-          "accept-encoding": "identity"
-        }
+          "accept-encoding": "identity",
+        },
       },
       (response) => {
         const chunks: Buffer[] = [];
@@ -182,11 +208,11 @@ async function fetchWithPinnedLookup(url: URL, resolved: ResolvedAddress[] | und
           resolve(
             new Response(Buffer.concat(chunks), {
               status: response.statusCode ?? 500,
-              headers
-            })
+              headers,
+            }),
           );
         });
-      }
+      },
     );
 
     const onAbort = () => {
@@ -235,10 +261,17 @@ export async function assertPublicUrl(rawUrl: string): Promise<URL> {
   return parsed;
 }
 
-export async function withTimeout<T>(task: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+export async function withTimeout<T>(
+  task: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out`)),
+      timeoutMs,
+    );
   });
 
   try {
@@ -248,11 +281,18 @@ export async function withTimeout<T>(task: Promise<T>, timeoutMs: number, label:
   }
 }
 
-export async function fetchTextWithRedirects(url: URL, redirectsLeft: number): Promise<Response> {
+export async function fetchTextWithRedirects(
+  url: URL,
+  redirectsLeft: number,
+): Promise<Response> {
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), FETCH_TIMEOUT_MS);
   const resolved = await resolvePinnedAddresses(url);
-  const response = await fetchWithPinnedLookup(url, resolved, abortController.signal).finally(() => clearTimeout(timer));
+  const response = await fetchWithPinnedLookup(
+    url,
+    resolved,
+    abortController.signal,
+  ).finally(() => clearTimeout(timer));
 
   const isRedirect = response.status >= 300 && response.status < 400;
   if (!isRedirect) {
@@ -273,7 +313,10 @@ export async function fetchTextWithRedirects(url: URL, redirectsLeft: number): P
   return fetchTextWithRedirects(safeUrl, redirectsLeft - 1);
 }
 
-export async function readResponseBody(response: Response, maxBytes: number): Promise<string> {
+export async function readResponseBody(
+  response: Response,
+  maxBytes: number,
+): Promise<string> {
   if (!response.body) {
     return "";
   }
@@ -294,5 +337,7 @@ export async function readResponseBody(response: Response, maxBytes: number): Pr
     chunks.push(value);
   }
 
-  return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+  return new TextDecoder().decode(
+    Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))),
+  );
 }

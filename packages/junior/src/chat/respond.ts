@@ -46,7 +46,7 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
-import { toExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
+import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,

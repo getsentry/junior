@@ -8,7 +8,7 @@ import type { RuntimeMetadata } from "@/chat/config";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
-import type { ExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
+import type { ExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";

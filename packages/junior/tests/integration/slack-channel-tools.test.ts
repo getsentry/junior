@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
-import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
-import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
+import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
+import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
+import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 import {
   chatGetPermalinkOk,

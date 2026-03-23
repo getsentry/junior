@@ -3,7 +3,7 @@ import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
-import type { LoadSkillMetadata } from "@/chat/tools/load-skill";
+import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;

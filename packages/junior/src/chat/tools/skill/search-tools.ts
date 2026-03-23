@@ -2,7 +2,7 @@ import { Type } from "@sinclair/typebox";
 import type { Skill } from "@/chat/skills";
 import { tool } from "@/chat/tools/definition";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
-import { toExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
+import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 20;

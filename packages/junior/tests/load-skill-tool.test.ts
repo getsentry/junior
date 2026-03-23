@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { discoverSkills } from "@/chat/skills";
 import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import { createLoadSkillTool } from "@/chat/tools/load-skill";
+import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
 import type { Skill } from "@/chat/skills";
 
 describe("load_skill tool", () => {

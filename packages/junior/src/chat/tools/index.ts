@@ -1,33 +1,33 @@
-import { createBashTool } from "@/chat/tools/bash";
-import { createAttachFileTool } from "@/chat/tools/attach-file";
+import { createBashTool } from "@/chat/tools/sandbox/bash";
+import { createAttachFileTool } from "@/chat/tools/sandbox/attach-file";
 import type { SkillMetadata } from "@/chat/skills";
-import { createImageGenerateTool } from "@/chat/tools/image-generate";
-import { createLoadSkillTool } from "@/chat/tools/load-skill";
-import { createReadFileTool } from "@/chat/tools/read-file";
-import { createSearchToolsTool } from "@/chat/tools/search-tools";
-import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
-import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
-import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
+import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
+import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
+import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
+import { createSearchToolsTool } from "@/chat/tools/skill/search-tools";
+import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
+import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
+import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import {
   createSlackCanvasCreateTool,
   createSlackCanvasUpdateTool,
-} from "@/chat/tools/slack-canvas-tools";
+} from "@/chat/tools/slack/canvas-tools";
 import {
   createSlackListAddItemsTool,
   createSlackListCreateTool,
   createSlackListGetItemsTool,
   createSlackListUpdateItemTool,
-} from "@/chat/tools/slack-list-tools";
+} from "@/chat/tools/slack/list-tools";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
-import { createUseToolTool } from "@/chat/tools/use-tool";
+import { createUseToolTool } from "@/chat/tools/skill/use-tool";
 import type {
   ToolHooks,
   ToolRuntimeContext,
   ToolState,
 } from "@/chat/tools/types";
-import { createWebFetchTool } from "@/chat/tools/web-fetch-tool";
-import { createWebSearchTool } from "@/chat/tools/web-search";
-import { createWriteFileTool } from "@/chat/tools/write-file";
+import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
+import { createWebSearchTool } from "@/chat/tools/web/search";
+import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   isConversationChannel,

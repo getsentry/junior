@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-tools";
+import { createSlackCanvasUpdateTool } from "@/chat/tools/slack/canvas-tools";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 import { canvasesEditOk } from "../fixtures/slack/factories/api";
 import {

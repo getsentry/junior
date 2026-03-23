@@ -4,7 +4,7 @@ import { sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { stripFrontmatter } from "@/chat/skills";
 import type { Skill, SkillMetadata } from "@/chat/skills";
-import type { ExposedToolSummary } from "@/chat/tools/mcp-tool-summary";
+import type { ExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 
 export type LoadSkillResult = {
   ok?: boolean;
