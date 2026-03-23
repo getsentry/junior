@@ -199,10 +199,10 @@ function buildRuntimeThreadId(fixture: EvalEventThreadFixture): string {
 }
 
 const THREAD_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const EVAL_QUEUE_INGRESS_DEDUP_PREFIX = "eval:queue_ingress";
+const QUEUE_INGRESS_DEDUP_PREFIX = "junior:queue_ingress";
 
-function buildEvalQueueIngressDedupKey(rawKey: string): string {
-  return `${EVAL_QUEUE_INGRESS_DEDUP_PREFIX}:${rawKey}`;
+function buildQueueIngressDedupKey(rawKey: string): string {
+  return `${QUEUE_INGRESS_DEDUP_PREFIX}:${rawKey}`;
 }
 
 function restoreEnvVar(name: string, value: string | undefined): void {
@@ -271,7 +271,7 @@ async function cleanupHarnessThreadState(
       continue;
     }
     await stateAdapter.delete(
-      buildEvalQueueIngressDedupKey(
+      buildQueueIngressDedupKey(
         `${buildRuntimeThreadId(event.thread)}:${messageId}`,
       ),
     );

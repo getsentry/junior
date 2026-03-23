@@ -116,9 +116,14 @@ export function readChatConfig(
   };
 }
 
+let cachedChatConfig: ChatConfig | undefined;
+
 /** Return the chat configuration derived from the current process environment. */
 export function getChatConfig(): ChatConfig {
-  return readChatConfig(process.env);
+  if (!cachedChatConfig) {
+    cachedChatConfig = readChatConfig(process.env);
+  }
+  return cachedChatConfig;
 }
 
 /** Lazy-evaluated bot configuration accessor backed by environment variables. */
