@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createOAuthBearerBroker } from "@/chat/plugins/oauth-bearer-broker";
+import { createOAuthBearerBroker } from "@/chat/plugins/auth/oauth-bearer-broker";
 import type {
   OAuthBearerCredentials,
   PluginManifest,

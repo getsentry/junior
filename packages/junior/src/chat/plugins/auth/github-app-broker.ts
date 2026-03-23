@@ -5,7 +5,7 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
-import type { GitHubAppCredentials, PluginManifest } from "./types";
+import type { GitHubAppCredentials, PluginManifest } from "../types";
 
 const MAX_LEASE_MS = 60 * 60 * 1000;
 

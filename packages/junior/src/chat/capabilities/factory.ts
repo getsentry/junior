@@ -5,7 +5,7 @@ import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-s
 import { TestCredentialBroker } from "@/chat/credentials/test-broker";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
-import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth-token-placeholder";
+import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import {
   createPluginBroker,
   getPluginProviders,

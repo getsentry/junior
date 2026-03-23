@@ -10,7 +10,7 @@ import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
 } from "./oauth-request";
-import type { OAuthBearerCredentials, PluginManifest } from "./types";
+import type { OAuthBearerCredentials, PluginManifest } from "../types";
 
 const MAX_LEASE_MS = 60 * 60 * 1000;
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;

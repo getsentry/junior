@@ -17,7 +17,7 @@ import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
-} from "@/chat/plugins/oauth-request";
+} from "@/chat/plugins/auth/oauth-request";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";

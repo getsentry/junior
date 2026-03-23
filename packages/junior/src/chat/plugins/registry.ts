@@ -5,9 +5,9 @@ import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { pluginRoots } from "@/chat/discovery";
 import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
-import { createGitHubAppBroker } from "./github-app-broker";
+import { createGitHubAppBroker } from "./auth/github-app-broker";
 import { parsePluginManifest } from "./manifest";
-import { createOAuthBearerBroker } from "./oauth-bearer-broker";
+import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
 import { discoverInstalledPluginPackageContent } from "./package-discovery";
 import type {
   GitHubAppCredentials,

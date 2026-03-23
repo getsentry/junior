@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
-import { createGitHubAppBroker } from "@/chat/plugins/github-app-broker";
-import type { GitHubAppCredentials, PluginManifest } from "@/chat/plugins/types";
+import { createGitHubAppBroker } from "@/chat/plugins/auth/github-app-broker";
+import type {
+  GitHubAppCredentials,
+  PluginManifest,
+} from "@/chat/plugins/types";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -12,21 +15,26 @@ const TEST_CREDENTIALS: GitHubAppCredentials = {
   authTokenEnv: "GITHUB_TOKEN",
   appIdEnv: "GITHUB_APP_ID",
   privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
-  installationIdEnv: "GITHUB_INSTALLATION_ID"
+  installationIdEnv: "GITHUB_INSTALLATION_ID",
 };
 
 const TEST_MANIFEST: PluginManifest = {
   name: "github",
   description: "GitHub issue management via GitHub App",
-  capabilities: ["github.issues.read", "github.issues.write", "github.issues.comment", "github.labels.write"],
+  capabilities: [
+    "github.issues.read",
+    "github.issues.write",
+    "github.issues.comment",
+    "github.labels.write",
+  ],
   configKeys: ["github.repo"],
   credentials: TEST_CREDENTIALS,
-  target: { type: "repo", configKey: "github.repo" }
+  target: { type: "repo", configKey: "github.repo" },
 };
 
 function setupValidEnv() {
-  const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
-    .export({ type: "pkcs8", format: "pem" })
+  const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+    .privateKey.export({ type: "pkcs8", format: "pem" })
     .toString();
   process.env.GITHUB_APP_ID = "12345";
   process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
@@ -37,7 +45,8 @@ function mockGitHubTokenEndpoint(token = "issued-token") {
   globalThis.fetch = vi.fn(async () => ({
     ok: true,
     status: 200,
-    text: async () => JSON.stringify({ token, expires_at: "2099-01-01T00:00:00Z" })
+    text: async () =>
+      JSON.stringify({ token, expires_at: "2099-01-01T00:00:00Z" }),
   })) as unknown as typeof fetch;
 }
 
@@ -55,13 +64,16 @@ describe("github app credential broker", () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.issues.write",
-      reason: "test:lease-shape"
+      reason: "test:lease-shape",
     });
 
     expect(lease.provider).toBe("github");
     expect(lease.env).toEqual({ GITHUB_TOKEN: "ghp_host_managed_credential" });
     expect(lease.headerTransforms).toEqual([
-      { domain: "api.github.com", headers: { Authorization: "Bearer issued-token" } }
+      {
+        domain: "api.github.com",
+        headers: { Authorization: "Bearer issued-token" },
+      },
     ]);
   });
 
@@ -72,7 +84,7 @@ describe("github app credential broker", () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.issues.read",
-      reason: "test:placeholder"
+      reason: "test:placeholder",
     });
 
     expect(lease.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
@@ -85,11 +97,11 @@ describe("github app credential broker", () => {
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, {
       ...TEST_CREDENTIALS,
-      authTokenPlaceholder: "github_host_managed_credential"
+      authTokenPlaceholder: "github_host_managed_credential",
     });
     const lease = await broker.issue({
       capability: "github.issues.read",
-      reason: "test:custom-placeholder"
+      reason: "test:custom-placeholder",
     });
 
     expect(lease.env.GITHUB_TOKEN).toBe("github_host_managed_credential");
@@ -104,7 +116,7 @@ describe("github app credential broker", () => {
     const lease = await broker.issue({
       capability: "github.issues.write",
       target: { owner: "getsentry", repo: "junior" },
-      reason: "test:scoped"
+      reason: "test:scoped",
     });
 
     expect(lease.metadata).toMatchObject({ targetScope: "getsentry/junior" });
@@ -113,7 +125,10 @@ describe("github app credential broker", () => {
   it("rejects unsupported capabilities", async () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
-      broker.issue({ capability: "github.actions.write", reason: "test:unsupported" })
+      broker.issue({
+        capability: "github.actions.write",
+        reason: "test:unsupported",
+      }),
     ).rejects.toThrow("Unsupported GitHub capability: github.actions.write");
   });
 
@@ -122,7 +137,10 @@ describe("github app credential broker", () => {
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
-      broker.issue({ capability: "github.issues.read", reason: "test:missing-app-id" })
+      broker.issue({
+        capability: "github.issues.read",
+        reason: "test:missing-app-id",
+      }),
     ).rejects.toThrow("Missing GITHUB_APP_ID");
   });
 
@@ -132,7 +150,10 @@ describe("github app credential broker", () => {
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
-      broker.issue({ capability: "github.issues.read", reason: "test:missing-installation-id" })
+      broker.issue({
+        capability: "github.issues.read",
+        reason: "test:missing-installation-id",
+      }),
     ).rejects.toThrow("Missing GITHUB_INSTALLATION_ID");
   });
 
@@ -143,7 +164,10 @@ describe("github app credential broker", () => {
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
-      broker.issue({ capability: "github.issues.read", reason: "test:bad-key" })
+      broker.issue({
+        capability: "github.issues.read",
+        reason: "test:bad-key",
+      }),
     ).rejects.toThrow("Invalid GITHUB_APP_PRIVATE_KEY");
   });
 });
