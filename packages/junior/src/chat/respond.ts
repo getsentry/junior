@@ -115,7 +115,6 @@ export interface AssistantReply {
   artifactStatePatch?: Partial<ThreadArtifactsState>;
   deliveryPlan?: ReplyDeliveryPlan;
   deliveryMode?: "thread" | "channel_only";
-  ackStrategy?: "none" | "reaction";
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
   diagnostics: AgentTurnDiagnostics;
@@ -1088,18 +1087,13 @@ export async function generateAssistantReply(
     const channelPostPerformed = successfulToolNames.has(
       "slackChannelPostMessage",
     );
-    const reactionPerformed = successfulToolNames.has(
-      "slackMessageAddReaction",
-    );
     const deliveryPlan = buildReplyDeliveryPlan({
       explicitChannelPostIntent,
       channelPostPerformed,
-      reactionPerformed,
       hasFiles: replyFiles.length > 0,
       streamingThreadReply: Boolean(context.onTextDelta),
     });
     const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
-    const ackStrategy: "none" | "reaction" = deliveryPlan.ack;
 
     if (!primaryText && !oauthStartedMessage) {
       logWarn(
@@ -1178,7 +1172,6 @@ export async function generateAssistantReply(
             : undefined,
         deliveryPlan,
         deliveryMode,
-        ackStrategy,
         sandboxId: sandboxExecutor.getSandboxId(),
         sandboxDependencyProfileHash:
           sandboxExecutor.getDependencyProfileHash(),
@@ -1206,7 +1199,6 @@ export async function generateAssistantReply(
           : undefined,
       deliveryPlan,
       deliveryMode,
-      ackStrategy,
       sandboxId: sandboxExecutor.getSandboxId(),
       sandboxDependencyProfileHash: sandboxExecutor.getDependencyProfileHash(),
       diagnostics: {

@@ -121,7 +121,7 @@ describe("Slack behavior: new mention", () => {
     });
   });
 
-  it("clears assistant status after reaction-only reply with no thread post", async () => {
+  it("deletes redundant reply and clears status for reaction-only turn", async () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createTestChatRuntime({
       slackAdapter,
@@ -132,7 +132,7 @@ describe("Slack behavior: new mention", () => {
             return {
               text: "Done!",
               deliveryMode: "thread",
-              ackStrategy: "reaction",
+
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "fake-agent-model",
@@ -161,9 +161,9 @@ describe("Slack behavior: new mention", () => {
       }),
     );
 
-    // No thread reply posted (reaction ack suppressed)
+    // Reply posted then deleted to complete Slack's response cycle without visible noise
     expect(thread.posts).toHaveLength(0);
-    // Status must still be cleared
+    // Status must be cleared
     expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
     expect(slackAdapter.statusCalls.at(-1)).toEqual({
       channelId: "C_STATUS",

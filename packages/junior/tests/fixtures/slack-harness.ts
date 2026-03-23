@@ -202,6 +202,7 @@ export function createTestThread(args: {
       return Promise.resolve(stateData);
     },
     async post(message: unknown): Promise<SentMessage> {
+      let entry: unknown;
       if (
         message &&
         typeof message === "object" &&
@@ -211,11 +212,20 @@ export function createTestThread(args: {
         for await (const chunk of message as AsyncIterable<string>) {
           text += chunk;
         }
-        posts.push(text);
-        return { id: "sent-1", text } as unknown as SentMessage;
+        entry = text;
+      } else {
+        entry = message;
       }
-      posts.push(message);
-      return { id: "sent-1", text: String(message) } as unknown as SentMessage;
+      posts.push(entry);
+      const sent = {
+        id: `sent-${posts.length}`,
+        text: String(entry),
+        async delete() {
+          const idx = posts.indexOf(entry);
+          if (idx !== -1) posts.splice(idx, 1);
+        },
+      } as unknown as SentMessage;
+      return sent;
     },
     postEphemeral: (async () => null) as unknown as Thread["postEphemeral"],
     schedule: (async () => ({

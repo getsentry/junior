@@ -16,7 +16,7 @@ describe("Slack behavior: file delivery", () => {
               text: "Preview is ready.",
               deliveryPlan: {
                 mode: "thread",
-                ack: "none",
+
                 postThreadText: true,
                 attachFiles: "followup",
               },

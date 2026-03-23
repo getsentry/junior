@@ -305,7 +305,7 @@ describe("bot handlers (integration)", () => {
     );
   });
 
-  it("does not post a streamed thread reply for reaction-only acknowledgements", async () => {
+  it("posts non-streamed reply when ack text bypasses streaming", async () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
@@ -313,7 +313,7 @@ describe("bot handlers (integration)", () => {
             await context?.onTextDelta?.("👍");
             return {
               text: "👍",
-              ackStrategy: "reaction",
+
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "test-model",
@@ -341,10 +341,11 @@ describe("bot handlers (integration)", () => {
       }),
     );
 
-    expect(thread.posts).toHaveLength(0);
+    // Reply always posts to complete Slack's assistant response cycle
+    expect(thread.posts).toHaveLength(1);
   });
 
-  it("does not post a streamed thread reply for split reaction-only acknowledgements", async () => {
+  it("posts non-streamed reply when split ack text bypasses streaming", async () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
@@ -353,7 +354,7 @@ describe("bot handlers (integration)", () => {
             await context?.onTextDelta?.("k");
             return {
               text: "ok",
-              ackStrategy: "reaction",
+
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "test-model",
@@ -383,7 +384,8 @@ describe("bot handlers (integration)", () => {
       }),
     );
 
-    expect(thread.posts).toHaveLength(0);
+    // Reply always posts to complete Slack's assistant response cycle
+    expect(thread.posts).toHaveLength(1);
   });
 
   it("keeps trailing streamed text when the final delta looks like a redundant ack token", async () => {

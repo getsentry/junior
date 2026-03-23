@@ -21,6 +21,11 @@ const slackMetadataSchema = z.object({
     .describe(
       "Whether the assistant set suggested prompts on the Slack thread",
     ),
+  assistant_status_pending: z
+    .boolean()
+    .describe(
+      "Whether any assistant thread still has a non-empty status indicator after the turn completed (should always be false)",
+    ),
 });
 
 const attachedFileSchema = z.object({
@@ -91,6 +96,17 @@ const evalOutputSchema = z.object({
   ),
 });
 
+function hasAssistantStatusPending(result: EvalResult): boolean {
+  const lastByThread = new Map<string, string>();
+  for (const call of result.slackAdapter.statusCalls) {
+    lastByThread.set(`${call.channelId}:${call.threadTs}`, call.text);
+  }
+  for (const text of lastByThread.values()) {
+    if (text !== "") return true;
+  }
+  return false;
+}
+
 function serializeEvalResult(result: EvalResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
@@ -99,6 +115,7 @@ function serializeEvalResult(result: EvalResult): string {
     slack_metadata: {
       thread_title_set: result.slackAdapter.titleCalls.length > 0,
       suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,
+      assistant_status_pending: hasAssistantStatusPending(result),
     },
   };
   return JSON.stringify(output);
@@ -133,6 +150,22 @@ function assertSandboxReady(name: string, result: EvalResult): void {
   );
 }
 
+function assertStatusCleared(name: string, result: EvalResult): void {
+  const lastByThread = new Map<string, string>();
+  for (const call of result.slackAdapter.statusCalls) {
+    const key = `${call.channelId}:${call.threadTs}`;
+    lastByThread.set(key, call.text);
+  }
+  for (const [thread, text] of lastByThread) {
+    if (text !== "") {
+      throw new Error(
+        `Eval "${name}" left assistant status pending on thread ${thread}: "${text}". ` +
+          "Every turn must clear the assistant status indicator before completing.",
+      );
+    }
+  }
+}
+
 export function slackEval(name: string, opts: SlackEvalOptions) {
   evaluate(name, {
     timeout: opts.timeout ?? 120_000,
@@ -162,6 +195,7 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
       if (opts.requireSandboxReady ?? true) {
         assertSandboxReady(name, result);
       }
+      assertStatusCleared(name, result);
       return serializeEvalResult(result);
     },
     criteria: opts.criteria,

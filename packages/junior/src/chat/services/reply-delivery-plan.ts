@@ -1,10 +1,8 @@
 export type ReplyDeliveryMode = "thread" | "channel_only";
-export type ReplyAckStrategy = "none" | "reaction";
 export type ReplyFileDelivery = "none" | "inline" | "followup";
 
 export interface ReplyDeliveryPlan {
   mode: ReplyDeliveryMode;
-  ack: ReplyAckStrategy;
   postThreadText: boolean;
   attachFiles: ReplyFileDelivery;
 }
@@ -37,7 +35,7 @@ export function isRedundantReactionAckText(text: string): boolean {
   );
 }
 
-/** Prefix-aware variant of isRedundantReactionAckText for streaming partial text. */
+/** Prefix-aware check for streaming: delays stream start while text looks like a short ack. */
 export function isPotentialRedundantReactionAckText(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -56,11 +54,10 @@ export function isPotentialRedundantReactionAckText(text: string): boolean {
   );
 }
 
-/** Determine how a reply should be delivered (thread vs channel, ack strategy, file handling). */
+/** Determine how a reply should be delivered (thread vs channel, file handling). */
 export function buildReplyDeliveryPlan(args: {
   explicitChannelPostIntent: boolean;
   channelPostPerformed: boolean;
-  reactionPerformed: boolean;
   hasFiles: boolean;
   streamingThreadReply: boolean;
 }): ReplyDeliveryPlan {
@@ -76,7 +73,6 @@ export function buildReplyDeliveryPlan(args: {
 
   return {
     mode,
-    ack: args.reactionPerformed ? "reaction" : "none",
     postThreadText: mode === "thread",
     attachFiles,
   };

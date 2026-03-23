@@ -104,7 +104,6 @@ export interface EvalOverrides {
   fail_reply_call?: number;
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
-  mock_slack_api?: boolean;
   plugin_packages?: string[];
   reply_texts?: string[];
   retryable_max_attempts?: number;
@@ -794,9 +793,6 @@ export async function runEvalScenario(
         scenario.overrides.test_credential_token;
     }
   }
-  if (scenario.overrides?.mock_slack_api) {
-    process.env.SLACK_BOT_TOKEN = "xoxb-eval-test-token";
-  }
   process.env.JUNIOR_BASE_URL = "https://junior.example.com";
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   process.env.JUNIOR_EXTRA_PLUGIN_ROOTS = JSON.stringify(configuredPluginDirs);
@@ -917,11 +913,9 @@ export async function runEvalScenario(
           successfulReplyCount += 1;
           return {
             text: replyText,
-            ackStrategy: "none",
             deliveryMode: "thread",
             deliveryPlan: {
               mode: "thread",
-              ack: "none",
               postThreadText: true,
               attachFiles: "none",
             },

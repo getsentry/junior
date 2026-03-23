@@ -56,7 +56,10 @@ import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
-import { isPotentialRedundantReactionAckText } from "@/chat/services/reply-delivery-plan";
+import {
+  isRedundantReactionAckText,
+  isPotentialRedundantReactionAckText,
+} from "@/chat/services/reply-delivery-plan";
 
 type SlackReplyPostStage =
   | "streaming_initial_post"
@@ -404,15 +407,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               hasStreamedThreadReply: Boolean(streamedReplyPromise),
             });
 
+          const reactionPerformed = reply.diagnostics.toolCalls.includes(
+            "slackMessageAddReaction",
+          );
+
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
-              await postThreadReply(
+              const sent = await postThreadReply(
                 buildSlackOutputMessage(
                   reply.text,
                   resolvedAttachFiles === "inline" ? replyFiles : undefined,
                 ),
                 "thread_reply",
               );
+              // When a reaction already acknowledged the turn, delete the
+              // redundant thread reply. The post itself completes Slack's
+              // assistant response cycle (clearing the typing indicator).
+              if (reactionPerformed && isRedundantReactionAckText(reply.text)) {
+                await sent.delete();
+              }
             } else {
               await streamedReplyPromise;
               if (

@@ -384,7 +384,7 @@ describe("mcp oauth callback handler", () => {
       ],
       deliveryPlan: {
         mode: "thread",
-        ack: "none",
+
         postThreadText: true,
         attachFiles: "inline",
       },
@@ -428,7 +428,7 @@ describe("mcp oauth callback handler", () => {
       ],
       deliveryPlan: {
         mode: "thread",
-        ack: "reaction",
+
         postThreadText: false,
         attachFiles: "inline",
       },

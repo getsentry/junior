@@ -1,8 +1,5 @@
 import type { ThreadConversationState } from "@/chat/state/conversation";
-import {
-  isRedundantReactionAckText,
-  type ReplyFileDelivery,
-} from "@/chat/services/reply-delivery-plan";
+import type { ReplyFileDelivery } from "@/chat/services/reply-delivery-plan";
 import type { AssistantReply } from "@/chat/respond";
 
 // ---------------------------------------------------------------------------
@@ -111,7 +108,6 @@ export function resolveReplyDelivery(args: {
   );
   const deliveryPlan = args.reply.deliveryPlan ?? {
     mode: args.reply.deliveryMode ?? "thread",
-    ack: args.reply.ackStrategy ?? "none",
     postThreadText: (args.reply.deliveryMode ?? "thread") !== "channel_only",
     attachFiles: replyHasFiles
       ? args.hasStreamedThreadReply
@@ -124,14 +120,9 @@ export function resolveReplyDelivery(args: {
   if (attachFiles === "followup" && !args.hasStreamedThreadReply) {
     attachFiles = "inline";
   }
-  const suppressRedundantReactionReply =
-    deliveryPlan.ack === "reaction" &&
-    !replyHasFiles &&
-    isRedundantReactionAckText(args.reply.text);
 
   return {
-    shouldPostThreadReply:
-      deliveryPlan.postThreadText && !suppressRedundantReactionReply,
+    shouldPostThreadReply: deliveryPlan.postThreadText,
     attachFiles,
   };
 }
