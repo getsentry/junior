@@ -51,6 +51,95 @@ describe("Conversational Evals: Passive Behavior", () => {
       "The assistant posts two replies in order. The second reply plainly restates that the budget is needed by Friday because the follow-up is clearly directed at Junior's previous response, even without another @mention.",
   });
 
+  const casualPronounThread = {
+    id: "thread-passive-casual-pronoun",
+    channel_id: "C-passive-casual-pronoun",
+    thread_ts: "17000000.passive-casual-pronoun",
+  };
+
+  slackEval("passive: casual human question with pronouns is skipped", {
+    overrides: {
+      reply_texts: [
+        "The deploy changed the billing worker and the API auth flow.",
+      ],
+    },
+    events: [
+      mention(
+        "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
+        { thread: casualPronounThread },
+      ),
+      threadMessage("Is that the right approach?", {
+        thread: casualPronounThread,
+      }),
+    ],
+    criteria:
+      "The assistant posts exactly one reply: the initial helpful answer about the deploy. It does not reply to the later casual question 'Is that the right approach?' because it is human-to-human discussion, not directed at Junior.",
+  });
+
+  const domainVocabThread = {
+    id: "thread-passive-domain-vocab",
+    channel_id: "C-passive-domain-vocab",
+    thread_ts: "17000000.passive-domain-vocab",
+  };
+
+  slackEval("passive: question sharing domain vocabulary is skipped", {
+    overrides: {
+      reply_texts: [
+        "The billing worker handles invoice processing and payment retries.",
+      ],
+    },
+    events: [
+      mention("What does the billing worker do?", {
+        thread: domainVocabThread,
+      }),
+      threadMessage("What about the billing worker timeline?", {
+        thread: domainVocabThread,
+      }),
+    ],
+    criteria:
+      "The assistant posts exactly one reply: the initial answer about the billing worker. It does not reply to the later question about the billing worker timeline because it is human-to-human discussion that happens to share domain vocabulary with Junior's earlier response.",
+  });
+
+  const canYouThread = {
+    id: "thread-passive-can-you",
+    channel_id: "C-passive-can-you",
+    thread_ts: "17000000.passive-can-you",
+  };
+
+  slackEval("passive: 'can you' directed at coworker is skipped", {
+    overrides: {
+      reply_texts: ["Here's the deployment status."],
+    },
+    events: [
+      mention("Show me the deployment status.", { thread: canYouThread }),
+      threadMessage("Can you check on this?", { thread: canYouThread }),
+    ],
+    criteria:
+      "The assistant posts exactly one reply: the initial answer about deployment status. It does not reply to the later 'Can you check on this?' because it is a casual request directed at a human coworker, not at Junior.",
+  });
+
+  const genuineFollowUpThread = {
+    id: "thread-passive-genuine-follow-up",
+    channel_id: "C-passive-genuine-follow-up",
+    thread_ts: "17000000.passive-genuine-follow-up",
+  };
+
+  slackEval("passive: genuine follow-up with explicit reference gets a reply", {
+    overrides: {
+      reply_texts: ["The deploy changed three services."],
+    },
+    events: [
+      mention("What changed in the last deploy?", {
+        thread: genuineFollowUpThread,
+      }),
+      threadMessage("Can you explain your last response in more detail?", {
+        thread: genuineFollowUpThread,
+      }),
+    ],
+    criteria:
+      "The assistant posts two replies in order. The second reply provides more detail about the deploy changes because the follow-up explicitly references Junior's last response.",
+  });
+
   const optOutThread = {
     id: "thread-opt-out",
     channel_id: "C-opt-out",

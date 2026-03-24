@@ -81,6 +81,59 @@ describe("decideSubscribedThreadReply", () => {
     expect(completeObject).toHaveBeenCalled();
   });
 
+  it("sends acknowledgment text to the classifier instead of short-circuiting", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        should_reply: false,
+        confidence: 0.95,
+        reason: "acknowledgment",
+      },
+    }));
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({ text: "thanks!", rawText: "thanks!" }),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: false,
+      reason: SubscribedReplyReason.SideConversation,
+      reasonDetail: "acknowledgment",
+    });
+    expect(completeObject).toHaveBeenCalled();
+  });
+
+  it("sends follow-up questions to the classifier instead of short-circuiting", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        should_reply: true,
+        confidence: 0.95,
+        reason: "follow-up to assistant response",
+      },
+    }));
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        text: "what did you just say about the budget?",
+        rawText: "what did you just say about the budget?",
+        conversationContext:
+          "<thread-transcript>\n[assistant] junior: Budget is due Friday.\n</thread-transcript>",
+      }),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.Classifier,
+      reasonDetail: "follow-up to assistant response",
+    });
+    expect(completeObject).toHaveBeenCalled();
+  });
+
   it("does not apply acknowledgment heuristics to explicit mentions", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
@@ -155,41 +208,6 @@ describe("decideSubscribedThreadReply", () => {
 
     expect(decision.reason).toBe(SubscribedReplyReason.AttachmentOnly);
     expect(decision.shouldReply).toBe(true);
-  });
-
-  it("skips acknowledgment-only text", async () => {
-    const completeObject = vi.fn();
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({ text: "thanks!", rawText: "thanks!" }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision.reason).toBe(SubscribedReplyReason.Acknowledgment);
-    expect(decision.shouldReply).toBe(false);
-    expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("replies for assistant-directed follow-up question", async () => {
-    const completeObject = vi.fn();
-    const decision = await decideSubscribedThreadReply({
-      botUserName: "junior",
-      modelId: "router-model",
-      input: makeInput({
-        text: "what did you just say about the budget?",
-        rawText: "what did you just say about the budget?",
-        conversationContext:
-          "<thread-transcript>\n[assistant] junior: Budget is due Friday.\n</thread-transcript>",
-      }),
-      completeObject,
-      logClassifierFailure: vi.fn(),
-    });
-
-    expect(decision.reason).toBe(SubscribedReplyReason.FollowUpQuestion);
-    expect(decision.shouldReply).toBe(true);
-    expect(completeObject).not.toHaveBeenCalled();
   });
 
   it("uses classifier and maps false decision to side conversation", async () => {
@@ -269,7 +287,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => ({
         object: {
           should_reply: true,
-          confidence: 0.6,
+          confidence: 0.85,
           reason: "maybe follow-up",
         },
       })),
