@@ -87,16 +87,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 #### 5. Execute operation
 
-- Issue the matching capability credential before executing:
-  - Repository checkout (`gh repo clone`): `github.contents.read`
-  - Push commits/branches: `github.contents.write`
-  - Read-only (`gh issue view`, comment reads via `gh api`): `github.issues.read`
-  - Create/update/state changes: `github.issues.write`
-  - Comments: `github.issues.comment`
-  - Labels: `github.labels.write`
-  - View PRs (`gh pr view`, `gh pr list`): `github.pull-requests.read`
-  - Create/update/merge PRs: `github.pull-requests.write`
-- Resolve command and flags from [references/api-surface.md](references/api-surface.md).
+- Issue the matching capability credential before executing. See [references/api-surface.md](references/api-surface.md) for capability-to-command mapping.
 - Use [references/common-use-cases.md](references/common-use-cases.md) for ready-to-run operation patterns.
 
 #### 6. Report result
