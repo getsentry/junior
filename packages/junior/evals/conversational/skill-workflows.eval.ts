@@ -67,6 +67,22 @@ describe("Conversational Evals: Skill Workflows", () => {
     thread_ts: "17000000.default-repo",
   };
 
+  slackEval("skills: github issue create skips dupe narration", {
+    overrides: {
+      enable_test_credentials: true,
+      plugin_packages: ["@sentry/junior-github"],
+      test_credential_token: "eval-github-token",
+      skill_dirs: ["skills"],
+    },
+    events: [
+      mention(
+        "Create an issue for adding rate limiting to the API endpoint in getsentry/junior",
+      ),
+    ],
+    criteria:
+      "The assistant creates a GitHub issue without narrating duplicate-search results. The reply must not mention checking for duplicates, searching for similar issues, or reporting that no duplicates were found. The reply should proceed directly to issue creation and report the result.",
+  });
+
   slackEval("skills: default repo setup via natural language", {
     overrides: {
       enable_test_credentials: true,

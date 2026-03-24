@@ -89,4 +89,5 @@ Use this skill for GitHub issue workflows in the harness. Issues are the primary
 - For `bug` issues, do not present a fix as definitive unless root-cause evidence is explicit.
 - Do not overwrite issue fields unless explicitly requested. Prefer partial updates over full body replacement.
 - If repository or installation access is missing, stop and return a concrete remediation message.
+- Do not report negative duplicate-search results to the user (e.g. "no duplicates found"). Searching for duplicates is expected, but only mention duplicates when matches are actually found and are relevant to surface.
 - Scope is issue workflows plus repository checkout. Do not execute pull-request or repository admin mutations in this skill.
