@@ -534,10 +534,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
 
     expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
-    expect(agentInitialToolNames[0]).toContain("loadSkill");
-    expect(agentInitialToolNames[0]).toContain("searchTools");
-    expect(agentInitialToolNames[0]).toContain("useTool");
-    expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
+    // MCP auth errors now throw before Agent creation, so no Agent is
+    // instantiated on the first (paused) call.
+    expect(agentInitialToolNames).toHaveLength(0);
 
     const pausedCheckpoint = await getAgentTurnSessionCheckpoint(
       "conversation-1",
@@ -557,17 +556,21 @@ describe("generateAssistantReply progressive MCP loading", () => {
     const reply = await generateAssistantReply("help me", context);
 
     expect(reply.text).toBe("resumed reply");
-    expect(promptCallCount.value).toBe(1);
+    // MCP auth errors throw before Agent creation, so prompt() is never
+    // called on the first attempt. The resume path uses continue() only.
+    expect(promptCallCount.value).toBe(0);
     expect(continueCallCount.value).toBe(1);
     expect(clientOptions).not.toContainEqual(
       expect.objectContaining({ sessionId: expect.any(String) }),
     );
-    expect(agentInitialToolNames[1]).toContain("loadSkill");
-    expect(agentInitialToolNames[1]).toContain("searchTools");
-    expect(agentInitialToolNames[1]).toContain("useTool");
-    expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
-    expect(loadSkillAvailableToolNames).toEqual([[]]);
-    expect(loadSkillToolSearchFlags).toEqual([false]);
+    expect(agentInitialToolNames[0]).toContain("loadSkill");
+    expect(agentInitialToolNames[0]).toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("useTool");
+    expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
+    // Resume path uses continue() which calls useTool directly without
+    // re-executing loadSkill, so these remain empty.
+    expect(loadSkillAvailableToolNames).toEqual([]);
+    expect(loadSkillToolSearchFlags).toEqual([]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),
