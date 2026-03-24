@@ -243,7 +243,12 @@ export function createGitHubAppBroker(
   const apiBase = `https://${apiDomains[0]}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
 
-  /** Capabilities that require git HTTPS auth (github.com, not just api.github.com). */
+  /**
+   * Capabilities that require git HTTPS auth (github.com, not just api.github.com).
+   * The sandbox network proxy intercepts HTTPS traffic to these domains and injects
+   * the real token via headerTransforms — `gh` and `git` authenticate through the
+   * proxy, not via the GITHUB_TOKEN env var (which holds a placeholder).
+   */
   const GIT_DOMAIN = "github.com";
   const GIT_CAPABILITIES = new Set([
     `${provider}.contents.read`,
