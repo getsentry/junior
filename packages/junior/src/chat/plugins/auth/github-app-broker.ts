@@ -168,6 +168,22 @@ function capabilityToPermissions(
     return { issues: "write" };
   }
 
+  if (capability === `${pluginName}.contents.read`) {
+    return { contents: "read" };
+  }
+
+  if (capability === `${pluginName}.contents.write`) {
+    return { contents: "write" };
+  }
+
+  if (capability === `${pluginName}.pull-requests.read`) {
+    return { pull_requests: "read" };
+  }
+
+  if (capability === `${pluginName}.pull-requests.write`) {
+    return { pull_requests: "write" };
+  }
+
   throw new Error(`Unsupported GitHub capability: ${capability}`);
 }
 
@@ -187,6 +203,18 @@ export function createGitHubAppBroker(
   } = credentials;
   const apiBase = `https://${apiDomains[0]}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
+
+  /** Capabilities that require git HTTPS auth (github.com, not just api.github.com). */
+  const GIT_DOMAIN = "github.com";
+  const GIT_CAPABILITIES = new Set([
+    `${provider}.contents.read`,
+    `${provider}.contents.write`,
+  ]);
+  function leaseDomainsFor(capability: string): string[] {
+    return GIT_CAPABILITIES.has(capability)
+      ? [...apiDomains, GIT_DOMAIN]
+      : apiDomains;
+  }
 
   return {
     async issue(input: {
@@ -213,12 +241,16 @@ export function createGitHubAppBroker(
       const cached = tokenCache.get(cacheKey);
       const now = Date.now();
       if (cached && cached.expiresAt - now > 2 * 60 * 1000) {
+        const domains = leaseDomainsFor(input.capability);
         return {
           id: randomUUID(),
           provider,
           capability: input.capability,
-          env: { [authTokenEnv]: placeholder },
-          headerTransforms: apiDomains.map((domain) => ({
+          env: {
+            [authTokenEnv]:
+              domains.length > apiDomains.length ? cached.token : placeholder,
+          },
+          headerTransforms: domains.map((domain) => ({
             domain,
             headers: {
               ...(apiHeaders ?? {}),
@@ -266,12 +298,18 @@ export function createGitHubAppBroker(
         expiresAt: expiresAtMs,
       });
 
+      const domains = leaseDomainsFor(input.capability);
       return {
         id: randomUUID(),
         provider,
         capability: input.capability,
-        env: { [authTokenEnv]: placeholder },
-        headerTransforms: apiDomains.map((domain) => ({
+        env: {
+          [authTokenEnv]:
+            domains.length > apiDomains.length
+              ? accessTokenResponse.token
+              : placeholder,
+        },
+        headerTransforms: domains.map((domain) => ({
           domain,
           headers: {
             ...(apiHeaders ?? {}),

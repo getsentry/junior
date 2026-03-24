@@ -1,7 +1,7 @@
 ---
 name: github
-description: Manage GitHub issue workflows and repository checkout via GitHub CLI with concise, evidence-backed content. Use when users ask to open, edit, label, comment on, close/reopen, or inspect GitHub issues, or when they need `gh repo clone` guidance, especially shallow-clone defaults and exact CLI commands.
-requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write
+description: Manage GitHub issue workflows, pull request operations, and repository checkout via GitHub CLI with concise, evidence-backed content. Use when users ask to open, edit, label, comment on, close/reopen, or inspect GitHub issues, view or create pull requests, or when they need `gh repo clone` guidance, especially shallow-clone defaults and exact CLI commands.
+requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write github.contents.read github.contents.write github.pull-requests.read github.pull-requests.write
 uses-config: github.repo
 allowed-tools: bash
 ---
@@ -43,6 +43,8 @@ Load references conditionally based on the operation:
 
 ### Clone path
 
+- Issue a `contents.read` credential scoped to the target repository before cloning:
+  - `jr-rpc issue-credential github.contents.read --repo owner/repo`
 - Default to a shallow clone:
   - `gh repo clone owner/repo [directory] -- --depth=1`
 - Pass extra `git clone` flags only after `--`.
@@ -51,6 +53,7 @@ Load references conditionally based on the operation:
   - `git -C <directory> fetch --depth=<n> origin`
   - `git -C <directory> fetch --unshallow`
 - When cloning a fork, keep the default upstream remote behavior unless the user asks otherwise.
+- After cloning, check for `AGENTS.md` in the repo root (and `.github/AGENTS.md`) before making edits. Treat discovered instructions as hard constraints.
 - Report the local directory and whether the clone is shallow or full.
 
 ---
@@ -85,10 +88,14 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 #### 5. Execute operation
 
 - Issue the matching capability credential before executing:
+  - Repository checkout (`gh repo clone`): `github.contents.read`
+  - Push commits/branches: `github.contents.write`
   - Read-only (`gh issue view`, comment reads via `gh api`): `github.issues.read`
   - Create/update/state changes: `github.issues.write`
   - Comments: `github.issues.comment`
   - Labels: `github.labels.write`
+  - View PRs (`gh pr view`, `gh pr list`): `github.pull-requests.read`
+  - Create/update/merge PRs: `github.pull-requests.write`
 - Resolve command and flags from [references/api-surface.md](references/api-surface.md).
 - Use [references/common-use-cases.md](references/common-use-cases.md) for ready-to-run operation patterns.
 
@@ -113,6 +120,6 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 ### Scope
 
-- Issue workflows plus repository checkout only. Do not execute pull-request or repository admin mutations.
+- Issue workflows, pull request operations, and repository checkout. Do not execute repository admin mutations.
 - Default to shallow clones. Do not use a full clone unless the task requires repository history or the user asks for it.
 - If repository or installation access is missing, stop and return a concrete remediation message.

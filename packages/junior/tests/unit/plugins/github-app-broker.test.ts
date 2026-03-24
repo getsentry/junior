@@ -157,6 +157,120 @@ describe("github app credential broker", () => {
     ).rejects.toThrow("Missing GITHUB_INSTALLATION_ID");
   });
 
+  it("maps contents.read to GitHub contents permission", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint();
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const lease = await broker.issue({
+      capability: "github.contents.read",
+      target: { owner: "getsentry", repo: "sentry" },
+      reason: "test:contents-read",
+    });
+
+    const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+    const body = JSON.parse(fetchCall[1]?.body as string);
+    expect(body.permissions).toEqual({ contents: "read" });
+  });
+
+  it("includes github.com in headerTransforms for contents.read", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint("repo-token");
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const lease = await broker.issue({
+      capability: "github.contents.read",
+      target: { owner: "getsentry", repo: "sentry" },
+      reason: "test:contents-read-domains",
+    });
+
+    const domains = lease.headerTransforms!.map((t) => t.domain);
+    expect(domains).toContain("api.github.com");
+    expect(domains).toContain("github.com");
+  });
+
+  it("uses real token in env for contents.read", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint("repo-token");
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const lease = await broker.issue({
+      capability: "github.contents.read",
+      target: { owner: "getsentry", repo: "sentry" },
+      reason: "test:contents-read-env",
+    });
+
+    expect(lease.env.GITHUB_TOKEN).toBe("repo-token");
+  });
+
+  it("maps contents.write to GitHub contents write permission with git domain", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint("push-token");
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const lease = await broker.issue({
+      capability: "github.contents.write",
+      target: { owner: "getsentry", repo: "sentry" },
+      reason: "test:contents-write",
+    });
+
+    const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+    const body = JSON.parse(fetchCall[1]?.body as string);
+    expect(body.permissions).toEqual({ contents: "write" });
+
+    const domains = lease.headerTransforms!.map((t) => t.domain);
+    expect(domains).toContain("github.com");
+    expect(lease.env.GITHUB_TOKEN).toBe("push-token");
+  });
+
+  it("maps pull-requests.read to GitHub pull_requests read permission", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint();
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const lease = await broker.issue({
+      capability: "github.pull-requests.read",
+      reason: "test:pr-read",
+    });
+
+    const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+    const body = JSON.parse(fetchCall[1]?.body as string);
+    expect(body.permissions).toEqual({ pull_requests: "read" });
+
+    const domains = lease.headerTransforms!.map((t) => t.domain);
+    expect(domains).toEqual(["api.github.com"]);
+  });
+
+  it("maps pull-requests.write to GitHub pull_requests write permission", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint();
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const lease = await broker.issue({
+      capability: "github.pull-requests.write",
+      reason: "test:pr-write",
+    });
+
+    const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+    const body = JSON.parse(fetchCall[1]?.body as string);
+    expect(body.permissions).toEqual({ pull_requests: "write" });
+  });
+
+  it("does not include github.com in headerTransforms for issue capabilities", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint("issue-token");
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const lease = await broker.issue({
+      capability: "github.issues.read",
+      reason: "test:no-git-domain",
+    });
+
+    const domains = lease.headerTransforms!.map((t) => t.domain);
+    expect(domains).toEqual(["api.github.com"]);
+    expect(domains).not.toContain("github.com");
+  });
+
   it("fails with clear error when private key is malformed", async () => {
     process.env.GITHUB_APP_ID = "12345";
     process.env.GITHUB_APP_PRIVATE_KEY = "not-a-real-private-key";

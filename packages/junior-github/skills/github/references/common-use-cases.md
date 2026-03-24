@@ -4,15 +4,17 @@ Use these patterns as direct execution playbooks.
 
 ## 1) Clone a repository for local work
 
-Default to a shallow clone unless the task requires full history:
+Issue credentials first, then default to a shallow clone:
 
 ```bash
+jr-rpc issue-credential github.contents.read --repo owner/repo
 gh repo clone owner/repo -- --depth=1
 ```
 
 Clone into a specific directory:
 
 ```bash
+jr-rpc issue-credential github.contents.read --repo owner/repo
 gh repo clone owner/repo worktree/repo -- --depth=1
 ```
 
