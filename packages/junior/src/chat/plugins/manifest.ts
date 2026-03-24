@@ -14,7 +14,7 @@ import type {
 } from "./types";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
-const SHORT_CAPABILITY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
+const SHORT_CAPABILITY_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 const AUTH_TOKEN_ENV_RE = /^[A-Z][A-Z0-9_]*$/;
 const API_DOMAIN_RE =
