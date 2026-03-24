@@ -116,45 +116,35 @@ export function readChatConfig(
   };
 }
 
-/** Return the chat configuration derived from the current process environment. */
+/** Chat configuration parsed once at module load from the process environment. */
+const chatConfig: ChatConfig = readChatConfig(process.env);
+
+/** Return the chat configuration (parsed once at startup). */
 export function getChatConfig(): ChatConfig {
-  return readChatConfig(process.env);
+  return chatConfig;
 }
 
-/** Lazy-evaluated bot configuration accessor backed by environment variables. */
-export const botConfig = {
-  get userName(): string {
-    return getChatConfig().bot.userName;
-  },
-  get modelId(): string {
-    return getChatConfig().bot.modelId;
-  },
-  get fastModelId(): string {
-    return getChatConfig().bot.fastModelId;
-  },
-  get turnTimeoutMs(): number {
-    return getChatConfig().bot.turnTimeoutMs;
-  },
-} satisfies BotConfig;
+/** Bot configuration derived from environment at module load. */
+export const botConfig: BotConfig = chatConfig.bot;
 
 export function getSlackBotToken(): string | undefined {
-  return getChatConfig().slack.botToken;
+  return chatConfig.slack.botToken;
 }
 
 export function getSlackSigningSecret(): string | undefined {
-  return getChatConfig().slack.signingSecret;
+  return chatConfig.slack.signingSecret;
 }
 
 export function getSlackClientId(): string | undefined {
-  return getChatConfig().slack.clientId;
+  return chatConfig.slack.clientId;
 }
 
 export function getSlackClientSecret(): string | undefined {
-  return getChatConfig().slack.clientSecret;
+  return chatConfig.slack.clientSecret;
 }
 
 export function hasRedisConfig(): boolean {
-  return Boolean(getChatConfig().state.redisUrl);
+  return Boolean(chatConfig.state.redisUrl);
 }
 
 // ---------------------------------------------------------------------------
