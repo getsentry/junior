@@ -4,19 +4,20 @@ All operations use `gh` CLI. Commands must be deterministic and non-interactive.
 
 ## Authentication
 
-- Preferred: sandbox network policy injects Authorization headers for `api.github.com`.
-- Optional local fallback: `GITHUB_TOKEN` (short-lived GitHub App installation token).
-- If `GITHUB_TOKEN` is a host placeholder value, rely on header transforms and do not override it.
+Issue credentials with `jr-rpc issue-credential <capability>` before executing commands. The runtime handles token injection transparently.
 
 ## Capability to command mapping
 
-| Capability              | Commands                                                                |
-| ----------------------- | ----------------------------------------------------------------------- |
-| none required           | `gh repo clone`                                                         |
-| `github.issues.read`    | `gh issue view`, `gh api /repos/.../comments`                           |
-| `github.issues.write`   | `gh issue create`, `gh issue edit`, `gh issue close`, `gh issue reopen` |
-| `github.issues.comment` | `gh issue comment`                                                      |
-| `github.labels.write`   | `gh issue edit --add-label/--remove-label`                              |
+| Capability                   | Commands                                                                |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `github.contents.read`       | `gh repo clone`, `git fetch`                                            |
+| `github.contents.write`      | `git push`, `gh api` (create/update file contents)                      |
+| `github.issues.read`         | `gh issue view`, `gh api /repos/.../comments`                           |
+| `github.issues.write`        | `gh issue create`, `gh issue edit`, `gh issue close`, `gh issue reopen` |
+| `github.issues.comment`      | `gh issue comment`                                                      |
+| `github.labels.write`        | `gh issue edit --add-label/--remove-label`                              |
+| `github.pull-requests.read`  | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                |
+| `github.pull-requests.write` | `gh pr create`, `gh pr edit`, `gh pr merge`, `gh pr close`              |
 
 ## Command matrix
 
@@ -52,10 +53,14 @@ jr-rpc config set github.repo owner/repo
 Issue scoped credentials:
 
 ```bash
+jr-rpc issue-credential github.contents.read --repo owner/repo
+jr-rpc issue-credential github.contents.write --repo owner/repo
 jr-rpc issue-credential github.issues.read
 jr-rpc issue-credential github.issues.write
 jr-rpc issue-credential github.issues.comment
 jr-rpc issue-credential github.labels.write
+jr-rpc issue-credential github.pull-requests.read
+jr-rpc issue-credential github.pull-requests.write
 ```
 
 ## Behavior notes

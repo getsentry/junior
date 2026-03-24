@@ -6,6 +6,10 @@ capabilities:
   - issues.write
   - issues.comment
   - labels.write
+  - contents.read
+  - contents.write
+  - pull-requests.read
+  - pull-requests.write
 
 config-keys:
   - repo

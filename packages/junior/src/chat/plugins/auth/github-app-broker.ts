@@ -152,23 +152,78 @@ async function githubRequest<T>(
   return parsed as T;
 }
 
+/**
+ * Capability aliases that map to a different GitHub permission than their name implies.
+ * Key: suffix after plugin name (e.g. "issues.comment"), value: `{ permission, level }`.
+ */
+const CAPABILITY_ALIASES: Record<
+  string,
+  { permission: string; level: "read" | "write" }
+> = {
+  "issues.comment": { permission: "issues", level: "write" },
+  "labels.write": { permission: "issues", level: "write" },
+};
+
+/**
+ * GitHub App permission scopes that the broker can request.
+ * Capabilities follow the convention `<plugin>.<scope>.<read|write>` where
+ * the scope name uses dashes in capabilities and underscores in the GitHub API.
+ */
+const KNOWN_SCOPES = new Set([
+  "actions",
+  "administration",
+  "checks",
+  "codespaces",
+  "contents",
+  "deployments",
+  "environments",
+  "issues",
+  "metadata",
+  "packages",
+  "pages",
+  "pull_requests",
+  "repository_hooks",
+  "repository_projects",
+  "secret_scanning_alerts",
+  "secrets",
+  "security_events",
+  "statuses",
+  "vulnerability_alerts",
+  "workflows",
+]);
+
+/** Map a capability string to the GitHub App permission it requires. */
 function capabilityToPermissions(
   capability: string,
   pluginName: string,
 ): Record<string, "read" | "write"> {
-  if (capability === `${pluginName}.issues.read`) {
-    return { issues: "read" };
+  const prefix = `${pluginName}.`;
+  if (!capability.startsWith(prefix)) {
+    throw new Error(`Unsupported GitHub capability: ${capability}`);
+  }
+  const suffix = capability.slice(prefix.length);
+
+  const alias = CAPABILITY_ALIASES[suffix];
+  if (alias) {
+    return { [alias.permission]: alias.level };
   }
 
-  if (
-    capability === `${pluginName}.issues.write` ||
-    capability === `${pluginName}.issues.comment` ||
-    capability === `${pluginName}.labels.write`
-  ) {
-    return { issues: "write" };
+  const lastDot = suffix.lastIndexOf(".");
+  if (lastDot === -1) {
+    throw new Error(`Unsupported GitHub capability: ${capability}`);
+  }
+  const scopeRaw = suffix.slice(0, lastDot);
+  const level = suffix.slice(lastDot + 1);
+  if (level !== "read" && level !== "write") {
+    throw new Error(`Unsupported GitHub capability: ${capability}`);
   }
 
-  throw new Error(`Unsupported GitHub capability: ${capability}`);
+  const scope = scopeRaw.replace(/-/g, "_");
+  if (!KNOWN_SCOPES.has(scope)) {
+    throw new Error(`Unsupported GitHub capability: ${capability}`);
+  }
+
+  return { [scope]: level };
 }
 
 export function createGitHubAppBroker(
@@ -188,12 +243,36 @@ export function createGitHubAppBroker(
   const apiBase = `https://${apiDomains[0]}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
 
+  /**
+   * Capabilities that require git HTTPS auth (github.com, not just api.github.com).
+   * The sandbox network proxy intercepts HTTPS traffic to these domains and injects
+   * the real token via headerTransforms — `gh` and `git` authenticate through the
+   * proxy, not via the GITHUB_TOKEN env var (which holds a placeholder).
+   */
+  const GIT_DOMAIN = "github.com";
+  const GIT_CAPABILITIES = new Set([
+    `${provider}.contents.read`,
+    `${provider}.contents.write`,
+  ]);
+  function leaseDomainsFor(capability: string): string[] {
+    return GIT_CAPABILITIES.has(capability)
+      ? [...apiDomains, GIT_DOMAIN]
+      : apiDomains;
+  }
+
+  const supportedCapabilities = new Set(manifest.capabilities);
+
   return {
     async issue(input: {
       capability: string;
       target?: CapabilityTarget;
       reason: string;
     }): Promise<CredentialLease> {
+      if (!supportedCapabilities.has(input.capability)) {
+        throw new Error(
+          `Unsupported ${provider} capability: ${input.capability}`,
+        );
+      }
       const permissions = capabilityToPermissions(input.capability, provider);
       const appId = process.env[appIdEnv];
       if (!appId) {
@@ -213,12 +292,13 @@ export function createGitHubAppBroker(
       const cached = tokenCache.get(cacheKey);
       const now = Date.now();
       if (cached && cached.expiresAt - now > 2 * 60 * 1000) {
+        const domains = leaseDomainsFor(input.capability);
         return {
           id: randomUUID(),
           provider,
           capability: input.capability,
           env: { [authTokenEnv]: placeholder },
-          headerTransforms: apiDomains.map((domain) => ({
+          headerTransforms: domains.map((domain) => ({
             domain,
             headers: {
               ...(apiHeaders ?? {}),
@@ -266,12 +346,13 @@ export function createGitHubAppBroker(
         expiresAt: expiresAtMs,
       });
 
+      const domains = leaseDomainsFor(input.capability);
       return {
         id: randomUUID(),
         provider,
         capability: input.capability,
         env: { [authTokenEnv]: placeholder },
-        headerTransforms: apiDomains.map((domain) => ({
+        headerTransforms: domains.map((domain) => ({
           domain,
           headers: {
             ...(apiHeaders ?? {}),

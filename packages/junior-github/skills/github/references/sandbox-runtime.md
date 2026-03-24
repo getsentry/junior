@@ -2,12 +2,6 @@
 
 This skill runs in the harness sandbox (`node22`) and commands execute via the `bash` tool.
 
-## Runtime environment
-
-- Sandbox OS is Amazon Linux 2023.
-- System packages are installed with `dnf`.
-- Any package install command must run with root privileges (`sudo: true` in sandbox command execution).
-
 ## What is currently available
 
 - Node runtime in sandbox (`node22` image).
@@ -15,24 +9,8 @@ This skill runs in the harness sandbox (`node22`) and commands execute via the `
 - Outbound network access (default allow-all unless harness sets a network policy).
 - Skill files are synchronized into `/vercel/sandbox/skills/<skill-name>`.
 
-## Important constraint
-
-Credentials should only be injected per command execution scope. Do not rely on global/session-wide environment for privileged tokens.
-
 ## Credential strategy
 
-1. Enable credentials with the narrowest capability needed:
-   - `github.issues.read` for `view` and comment reads
-   - `github.issues.write` for create/update/close/reopen
-   - `github.issues.comment` for comments
-   - `github.labels.write` for label mutations
-2. Runtime injects `Authorization` header transforms for `api.github.com`.
-3. Execute `gh` CLI commands directly.
-4. Do not persist tokens in files.
-
-## Operational checks
-
-- Verify CLI availability:
-  - `gh --version`
-- Use non-interactive command flags in automation contexts.
-- If 401/403 appears after credential issuance, reissue once, then stop with remediation guidance if still failing.
+1. Issue credentials with `jr-rpc issue-credential <capability>` before executing commands. See [api-surface.md](api-surface.md) for the capability-to-command mapping.
+2. Credentials are scoped per command execution. Do not persist tokens in files.
+3. If 401/403 appears after credential issuance, reissue once, then stop with remediation guidance.
