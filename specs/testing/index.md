@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-17
+- Last Edited: 2026-03-22
 
 ## Changelog
 
@@ -12,11 +12,22 @@
 - 2026-03-04: Clarified layering: baseline behavior coverage belongs in integration tests; unit tests are for local regressions and edge cases.
 - 2026-03-04: Elevated layer selection to mandatory policy before adding/updating tests.
 - 2026-03-17: Clarified that behavior tests should not assert internal logs or telemetry unless instrumentation is the contract under test.
+- 2026-03-22: Defined the default layer preference order: evals first for LLM-dependent behavior, integration next for real wiring without the LLM, unit last for local invariants only.
 
 ## Purpose
 
 This index defines the project testing taxonomy and the contract between test layers.
 Use this file as the source of truth for where a test belongs and what it is allowed to mock.
+
+## Default Preference Order
+
+Choose the highest-fidelity layer that matches the contract:
+
+1. Use evals for end-to-end product behavior when model behavior, continuity, or natural-language interpretation is part of the contract.
+2. Use integration tests when you need real runtime wiring and Slack-facing behavior but do not need the LLM in the loop.
+3. Use unit tests only for small local invariants, parsing/normalization, retry/state logic, and regression edges that do not need real runtime wiring.
+
+Do not default to unit tests for runtime behavior just because they are easier to write.
 
 ## Test Layers
 
@@ -66,19 +77,28 @@ If a proposed test does not add a new contract guarantee, do not add it.
 
 This section is mandatory policy, not guidance.
 
+Default order:
+
+1. Eval
+2. Integration
+3. Unit
+
 Use unit tests when:
 
 - You are validating retry math, parsing/normalization logic, pure state transitions, and regression/edge-case handling in local logic.
 - The contract is not baseline runtime behavior.
+- Running the real runtime path would add indirection without increasing confidence.
 
 Use integration tests when:
 
 - You need baseline confidence in Slack event handling, routing, runtime orchestration, and emitted Slack-side effects.
 - You can keep runtime wiring real and only control the agent output deterministically.
+- The contract does not depend on the model making the right conversational choice.
 
 Use evals when:
 
 - You need conversation-quality validation over multi-turn flows and outcome scoring.
+- The contract depends on model interpretation, continuity, routing by natural language, or other user-visible LLM behavior.
 
 ## Enforcement
 

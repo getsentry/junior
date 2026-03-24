@@ -107,7 +107,7 @@ Rules:
 
 ### Issuance flow
 
-1. Broker checks for per-user OAuth token (stored by Slack user ID via `UserTokenStore`).
+1. `OAuthBearerBroker` checks for per-user OAuth token (stored by Slack user ID via `UserTokenStore`).
 2. If stored token is near expiry, refreshes via Sentry token endpoint (`grant_type=refresh_token`).
 3. Falls back to static `SENTRY_AUTH_TOKEN` env var for dev/testing/CI.
 4. Runtime applies `Authorization` header transform for `sentry.io`.

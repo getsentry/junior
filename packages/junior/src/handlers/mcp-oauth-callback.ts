@@ -2,14 +2,14 @@ import { Buffer } from "node:buffer";
 import { after } from "next/server";
 import { ThreadImpl, type FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
-import { coerceThreadConversationState } from "@/chat/conversation-state";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   deleteMcpAuthSession,
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
-import { buildSlackOutputMessage } from "@/chat/output";
+import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
-import { logException, logWarn } from "@/chat/observability";
+import { logException, logWarn } from "@/chat/logging";
 import type { AssistantReply } from "@/chat/respond";
 import {
   mergeArtifactsState,
@@ -23,14 +23,14 @@ import {
   upsertConversationMessage,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
-import { uploadFilesToThread } from "@/chat/slack-actions/client";
-import { coerceThreadArtifactsState } from "@/chat/slack-actions/types";
+import { uploadFilesToThread } from "@/chat/slack/client";
+import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   postSlackMessage,
   resumeAuthorizedRequest,
 } from "@/handlers/oauth-resume";
-import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
-import { resolveReplyDelivery } from "@/chat/turn/execute";
+import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
+import { resolveReplyDelivery } from "@/chat/runtime/turn";
 
 const CALLBACK_PAGES = {
   missing_state: {

@@ -37,7 +37,7 @@ Define how Junior handles OAuth-based user authentication for third-party provid
 | `/api/oauth/callback/mcp/[provider]` | Completes MCP SDK authorization and resumes the paused MCP-backed turn session                           |
 | `StateAdapterTokenStore`             | Redis-backed `UserTokenStore` for persistent token storage                                               |
 | MCP auth session store               | Stores MCP auth session context and SDK-managed OAuth state across the browser redirect                  |
-| `SentryCredentialBroker`             | Issues short-lived credential leases from stored user tokens                                             |
+| `OAuthBearerBroker`                  | Issues short-lived credential leases from stored user tokens                                             |
 
 ### Why authorization code grant
 
@@ -123,7 +123,7 @@ User: sees the original thread continue without reissuing the request
 After a user has connected their account, credential issuance works transparently:
 
 1. Agent runs `jr-rpc issue-credential <capability>`.
-2. `SentryCredentialBroker.issue()` looks up stored tokens by `requesterId` + provider.
+2. `OAuthBearerBroker.issue()` looks up stored tokens by `requesterId` + provider.
 3. If token is near expiry, broker refreshes via `grant_type=refresh_token` and updates the store.
 4. Broker returns a `CredentialLease` with header transforms.
 5. Runtime applies `Authorization` header on matching domain for the rest of the turn.

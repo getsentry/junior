@@ -11,7 +11,7 @@ vi.mock("@/chat/config", () => ({
   },
 }));
 
-vi.mock("@/chat/slack-actions/client", () => ({
+vi.mock("@/chat/slack/client", () => ({
   getSlackClient: () => ({
     chat: {
       postMessage: postMessageMock,
@@ -68,6 +68,16 @@ describe("resumeAuthorizedRequest", () => {
       channel: "C-test",
       thread_ts: "1700000000.0001",
       text: "resume failed",
+    });
+    expect(setStatusMock).toHaveBeenNthCalledWith(1, {
+      channel_id: "C-test",
+      thread_ts: "1700000000.0001",
+      status: "Thinking...",
+    });
+    expect(setStatusMock).toHaveBeenNthCalledWith(2, {
+      channel_id: "C-test",
+      thread_ts: "1700000000.0001",
+      status: "",
     });
   });
 });

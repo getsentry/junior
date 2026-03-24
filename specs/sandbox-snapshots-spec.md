@@ -120,12 +120,12 @@ Define how Junior builds, caches, invalidates, and uses sandbox filesystem snaps
 ## Verification
 
 - Type and validation coverage:
-  - `packages/junior/tests/plugin-registry.test.ts`
+  - `packages/junior/tests/unit/plugins/plugin-registry.test.ts`
 - Sandbox snapshot acquisition/rebuild paths:
-  - `packages/junior/tests/sandbox-executor.test.ts`
+  - `packages/junior/tests/unit/misc/sandbox-executor.test.ts`
 - Required checks for behavior changes:
   - `pnpm --filter @sentry/junior typecheck`
-  - `pnpm --filter @sentry/junior exec vitest run tests/plugin-registry.test.ts tests/sandbox-executor.test.ts`
+  - `pnpm --filter @sentry/junior exec vitest run tests/unit/plugins/plugin-registry.test.ts tests/unit/misc/sandbox-executor.test.ts`
   - `pnpm --filter @sentry/junior skills:check`
 
 ## Related

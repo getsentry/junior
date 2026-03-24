@@ -1,10 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  resetPluginRegistryForTests,
-  setAdditionalPluginRootsForTests,
-} from "@/chat/plugins/registry";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { runOauthCallbackRoute } from "../fixtures/oauth-callback-harness";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
@@ -16,17 +12,15 @@ describe("oauth callback slack integration", () => {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
+      JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([
+        path.resolve(process.cwd(), "evals/plugins/eval-oauth"),
+      ]),
     };
-    resetPluginRegistryForTests();
-    setAdditionalPluginRootsForTests([
-      path.resolve(process.cwd(), "evals/plugins/eval-oauth"),
-    ]);
     await disconnectStateAdapter();
     await getStateAdapter().connect();
   });
 
   afterEach(async () => {
-    resetPluginRegistryForTests();
     await disconnectStateAdapter();
     process.env = { ...ORIGINAL_ENV };
   });

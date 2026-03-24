@@ -12,27 +12,32 @@ vi.mock("@/chat/queue/process-thread-message", () => ({
   processQueuedThreadMessage: processQueuedThreadMessageMock,
 }));
 
-vi.mock("@/chat/observability", () => ({
-  createRequestContext: vi.fn(
-    (_request: Request, context?: Record<string, unknown>) => context ?? {},
-  ),
-  logError: vi.fn(),
-  logException: vi.fn(),
-  logInfo: logInfoMock,
-  setSpanStatus: vi.fn(),
-  withContext: vi.fn(
-    async (_context: unknown, callback: () => Promise<unknown>) =>
-      await callback(),
-  ),
-  withSpan: vi.fn(
-    async (
-      _name: string,
-      _op: string,
-      _context: unknown,
-      callback: () => Promise<unknown>,
-    ) => await callback(),
-  ),
-}));
+vi.mock("@/chat/logging", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/logging")>();
+
+  return {
+    ...actual,
+    createRequestContext: vi.fn(
+      (_request: Request, context?: Record<string, unknown>) => context ?? {},
+    ),
+    logError: vi.fn(),
+    logException: vi.fn(),
+    logInfo: logInfoMock,
+    setSpanStatus: vi.fn(),
+    withContext: vi.fn(
+      async (_context: unknown, callback: () => Promise<unknown>) =>
+        await callback(),
+    ),
+    withSpan: vi.fn(
+      async (
+        _name: string,
+        _op: string,
+        _context: unknown,
+        callback: () => Promise<unknown>,
+      ) => await callback(),
+    ),
+  };
+});
 
 vi.mock("@/chat/queue/client", () => ({
   getThreadMessageTopic: () => "junior-thread-message",
@@ -104,6 +109,9 @@ describe("queue callback route", () => {
       expect.objectContaining({
         dedupKey: "slack:C123:1700000000.100:1700000000.200",
         queueMessageId: "msg_123",
+      }),
+      expect.objectContaining({
+        dispatch: expect.any(Function),
       }),
     );
     expect(logInfoMock).toHaveBeenCalledWith(

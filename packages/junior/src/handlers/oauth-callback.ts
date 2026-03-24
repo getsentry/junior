@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import { ThreadImpl } from "chat";
-import { getUserTokenStore } from "@/chat/capabilities/factory";
-import { coerceThreadConversationState } from "@/chat/conversation-state";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   formatProviderLabel,
   type OAuthStatePayload,
@@ -12,15 +12,15 @@ import {
   resumeAuthorizedRequest,
   postSlackMessage,
 } from "@/handlers/oauth-resume";
-import { logException, logInfo } from "@/chat/observability";
+import { logException, logInfo } from "@/chat/logging";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
-} from "@/chat/plugins/oauth-request";
-import { publishAppHomeView } from "@/chat/app-home";
-import { getSlackClient } from "@/chat/slack-actions/client";
-import { getStateAdapter } from "@/chat/state";
+} from "@/chat/plugins/auth/oauth-request";
+import { publishAppHomeView } from "@/chat/slack/app-home";
+import { getSlackClient } from "@/chat/slack/client";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { escapeXml } from "@/chat/xml";
 
 /**
@@ -258,7 +258,7 @@ export async function GET(
     );
   }
 
-  const userTokenStore = getUserTokenStore();
+  const userTokenStore = createUserTokenStore();
   await userTokenStore.set(stored.userId, provider, parsedTokenResponse);
 
   after(async () => {

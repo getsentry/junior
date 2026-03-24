@@ -28,7 +28,7 @@ This separation is enforced by `pnpm run test:slack-boundary`.
 
 - Conversation-level behavior under realistic thread/message flows.
 - Tool use and output behavior as observed by the runtime.
-- Logged warnings/exceptions and metadata exposed by the harness.
+- Slack-visible metadata exposed by the runtime and harness.
 
 Not in scope:
 
@@ -51,11 +51,13 @@ Not in scope:
 
 For each case (`slackEval()` call):
 
-1. Replay events through the harness via `runBehaviorEvalCase()`.
-2. Return observed artifacts as JSON for LLM judgment, including `assistant_posts` and Slack-visible metadata.
-3. `vitest-evals` scores the output against `criteria` (A–E → 1.0–0.0).
+1. Replay events through the harness via `runEvalScenario()`.
+2. Create a fresh runtime instance for the case via the chat composition root; do not mutate the production singleton runtime.
+3. Route message events through real ingress + queue-worker behavior, with only the external queue transport replaced by an in-memory harness shim.
+4. Return observed artifacts as JSON for LLM judgment, including structured `assistant_posts` with text plus actual attached-file metadata, and Slack-visible metadata.
+5. `vitest-evals` scores the output against `criteria` (A–E → 1.0–0.0).
 
-Harness behavior knobs (in `BehaviorCaseConfig`):
+Harness override knobs (in `EvalOverrides`):
 
 - `auto_complete_mcp_oauth`: after our app genuinely starts an MCP OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
 - `auto_complete_oauth`: after our app genuinely starts a generic OAuth flow for the listed providers, the harness immediately completes the fake provider callback.
@@ -66,6 +68,8 @@ Harness behavior knobs (in `BehaviorCaseConfig`):
 - `retryable_max_attempts`: max retries for retryable timeout-shaped failures during one event.
 - `reply_texts`: override returned reply text per call.
 - `subscribed_decisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
+
+These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
 
 `retryable_timeout_calls` validates handler-level retry propagation only. It does not validate
 checkpoint save/restore semantics in the core resumability path.
@@ -104,7 +108,7 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 
 Do not do these in eval files:
 
-- Do not import `@/chat/slack-actions/*` directly.
+- Do not import `@/chat/slack/*` directly.
 - Do not use MSW Slack helpers (`queueSlackApiResponse`, `getCapturedSlackApiCalls`, `queueSlackApiError`, `queueSlackRateLimit`).
 - Do not validate raw Slack Web API request payload shapes from evals.
 - Do not validate implementation internals (exact tool names, sandbox IDs, or other non-user-visible details) unless the scenario explicitly evaluates those surfaces.

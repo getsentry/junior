@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { discoverNodeModulesDirs } from "@/chat/discovery-roots";
-import { isDirectory } from "@/chat/fs-utils";
+import { discoverNodeModulesDirs, isDirectory } from "@/chat/discovery";
 import { discoverInstalledPluginPackageContent } from "./chat/plugins/package-discovery";
 
 const require = createRequire(import.meta.url);

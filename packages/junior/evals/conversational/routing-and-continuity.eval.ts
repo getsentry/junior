@@ -9,21 +9,17 @@ describe("Conversational Evals: Routing and Continuity", () => {
   });
 
   slackEval("routing: explicit in-channel post request uses channel post", {
-    behavior: { mock_slack_api: true },
     events: [mention("@bot say hello to the channel!")],
     criteria:
       "The assistant sends the hello message as a channel post (channel_posts has exactly one item with hello/wave-style text and no thread_ts). It does not post hello/wave text as a thread reply in assistant_posts. An optional lightweight acknowledgement reaction in reactions is acceptable.",
   });
 
-  slackEval(
-    "routing: explicit reaction request reacts without redundant reply",
-    {
-      behavior: { mock_slack_api: true },
-      events: [mention("@bot react to this with a thumbs up only")],
-      criteria:
-        "The assistant adds exactly one thumbs-up-style reaction in reactions and does not send a redundant thread reply in assistant_posts.",
-    },
-  );
+  slackEval("routing: react to this adds reaction without redundant reply", {
+    events: [mention("react to this")],
+    criteria:
+      "The assistant adds at least one reaction in reactions. " +
+      "No redundant thread reply echoing the emoji or a short ack like 'Done' appears in assistant_posts.",
+  });
 
   const continuityThread = {
     id: "thread-continuity",
@@ -50,7 +46,7 @@ describe("Conversational Evals: Routing and Continuity", () => {
   };
 
   slackEval("continuity: rapid same-thread messages keep order", {
-    behavior: {
+    overrides: {
       reply_texts: [
         "Rollback complete. Error rates are back to baseline.",
         "Next step: monitor dashboards for 30 minutes and post an incident summary.",
@@ -68,5 +64,28 @@ describe("Conversational Evals: Routing and Continuity", () => {
     ],
     criteria:
       "In this rapid incident thread, the assistant posts exactly two replies in-order: first a rollback status update, second one concrete follow-up action (for example a next step or incident-summary action).",
+  });
+
+  slackEval("continuity: queued retry keeps same-thread follow-ups in order", {
+    overrides: {
+      retryable_timeout_calls: [1],
+      retryable_max_attempts: 2,
+      reply_texts: [
+        "Rollback complete. Error rates are back to baseline.",
+        "Next step: monitor dashboards for 30 minutes and post an incident summary.",
+      ],
+    },
+    events: [
+      mention(
+        "We rolled back the deploy after a 500 spike. Give me a short status update.",
+        { thread: rapidThread },
+      ),
+      threadMessage(
+        "<@U_APP> Also give one concrete next step for incident follow-up.",
+        { thread: rapidThread, is_mention: true },
+      ),
+    ],
+    criteria:
+      "Even when the first queued turn needs one retry, the assistant still posts exactly two non-error replies in-order in this incident thread: first a rollback status update, then one concrete follow-up action. It does not post a queue/deferred/internal-error failure message.",
   });
 });

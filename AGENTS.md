@@ -40,6 +40,33 @@ Co-Authored-By: (agent model name) <email>
 - Pi SDK streaming standard: consume `Agent` events (`message_update`/`text_delta`) and bridge deltas into the `AsyncIterable` shim.
 - Avoid bespoke Slack `chat.update` loops unless required by a hard platform limitation.
 - Prefer hard cutover for command or skill renames and behavior migrations unless backward compatibility is explicitly requested.
+- Prefer evals for end-to-end behavior when model behavior matters.
+- Prefer integration tests over unit tests when real runtime wiring is needed but the LLM is not.
+- Use unit tests only for small local invariants and regression edges.
+
+## Engineering Principles
+
+- Optimize for obvious code over flexible-but-indirect abstractions.
+- Keep public interfaces small and intention-revealing.
+- Let file/module structure carry context so names do not have to.
+- Keep exported names role-specific; keep local helper names short.
+- Prefer domain language over mechanism language.
+- Every exported function must have a brief JSDoc comment explaining its intent (the _why_, not the _what_).
+
+## Architecture Discipline
+
+- `packages/junior/src/chat/app/*` is composition-root only: wire concrete services there, not in runtime/service modules.
+- `packages/junior/src/chat/ingress/*` is the canonical home for inbound routing logic; do not add new patch-style ingress modules.
+- Do not add mutable runtime behavior globals or test-only singleton mutation APIs (`set*ForTests`, `reset*ForTests`, observer globals for core behavior).
+- Prefer small consumer-owned service interfaces over broad deps bags or service locators.
+- Do not leak third-party SDK types across chat subsystem boundaries when a small local interface will do; keep vendor SDKs inside infrastructure modules.
+- `runtime/` orchestrates turns and turn-scoped formatting, `services/` do domain work (reply policy, delivery planning, channel intent, attachment validation), `state/` persists by concern, `ingress/` only normalizes/routes.
+- **Feature-based colocation**: group files by domain feature, not by technical role. Within a module, create subdirectories for each feature domain (e.g., `tools/slack/`, `tools/web/`, `tools/sandbox/`, `tools/skill/`). Shared contracts and cross-cutting utilities live at the module root. Only extract to a shared location when 2+ features need the same code.
+- Do not use barrel `index.ts` re-exports inside feature subdirectories — import directly from the source file. A module-root `index.ts` is acceptable as a composition root that wires features together.
+- Queue and worker paths must depend on injected runtime interfaces or factories, not import the production singleton from `@/chat/bot`.
+- Do not use prototype patching or import-side-effect modules as the intended long-term ingress architecture.
+- Prefer domain-role names over mechanism names: avoid `patch`, vague `behavior`, and ambiguous `runtime` labels for non-runtime modules.
+- Tests and evals should create local runtimes via factories/fixtures and spy at real boundaries instead of patching the production singleton.
 
 ## Codex Execution Checklist
 
@@ -55,6 +82,7 @@ Co-Authored-By: (agent model name) <email>
 
 - `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
 - `specs/security-policy.md` (global runtime/container/token security policy)
+- `specs/chat-architecture-spec.md` (chat composition, service, and test-seam architecture contract)
 - `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
 - `specs/oauth-flows-spec.md` (OAuth authorization code flow + Slack UX contract)
 - `specs/harness-agent-spec.md` (agent loop and output contract)

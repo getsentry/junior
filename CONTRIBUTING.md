@@ -115,17 +115,23 @@ Stable hostname setup:
 ```bash
 cloudflared tunnel login
 cloudflared tunnel create junior-dev
-cloudflared tunnel route dns junior-dev junior-dev.yourdomain.com
+cloudflared tunnel route dns junior-dev junior-dev.sentry.cool
 ```
 
-Run the stable tunnel:
+Add the named tunnel token to `.env.local`:
 
 ```bash
-cloudflared tunnel run --url http://localhost:3000 junior-dev
+CLOUDFLARE_TUNNEL_TOKEN=<output from: cloudflared tunnel token junior-dev>
+```
+
+Run local dev with the stable tunnel:
+
+```bash
+pnpm dev
 ```
 
 Set Slack Event Subscriptions and Interactivity request URL to:
 
 ```text
-https://<tunnel-host>/api/webhooks/slack
+https://junior-dev.sentry.cool/api/webhooks/slack
 ```

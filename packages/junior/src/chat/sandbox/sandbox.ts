@@ -2,14 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
-import { extractHttpErrorDetails } from "@/chat/http-error-details";
+import { extractHttpErrorDetails } from "@/chat/sandbox/http-error-details";
 import {
   logWarn,
   setSpanAttributes,
   setSpanStatus,
   withSpan,
-  type ObservabilityContext,
-} from "@/chat/observability";
+  type LogContext,
+} from "@/chat/logging";
 import {
   SANDBOX_SKILLS_ROOT,
   SANDBOX_WORKSPACE_ROOT,
@@ -22,6 +22,7 @@ import {
   resolveRuntimeDependencySnapshot,
   type RuntimeDependencySnapshotProgressPhase,
 } from "@/chat/sandbox/runtime-dependency-snapshots";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 
 // Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
@@ -53,7 +54,7 @@ export interface SandboxExecutor {
   getSandboxId(): string | undefined;
   getDependencyProfileHash(): string | undefined;
   canExecute(toolName: string): boolean;
-  createSandbox(): Promise<Sandbox>;
+  createSandbox(): Promise<SandboxWorkspace>;
   execute<T>(
     params: SandboxExecutionInput,
   ): Promise<SandboxExecutionEnvelope<T>>;
@@ -383,7 +384,7 @@ export function createSandboxExecutor(options?: {
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
-  traceContext?: ObservabilityContext;
+  traceContext?: LogContext;
   onStatus?: (status: string) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,
@@ -479,7 +480,7 @@ export function createSandboxExecutor(options?: {
     );
   };
 
-  const createSandbox = async (): Promise<Sandbox> => {
+  const acquireSandbox = async (): Promise<Sandbox> => {
     return withSandboxSpan(
       "sandbox.acquire",
       "sandbox.acquire",
@@ -742,7 +743,7 @@ export function createSandboxExecutor(options?: {
       return toolExecutors;
     }
 
-    const activeSandbox = await createSandbox();
+    const activeSandbox = await acquireSandbox();
     const toolkit = await withSandboxSpan(
       "sandbox.bash_tool.init",
       "sandbox.tool.init",
@@ -865,7 +866,7 @@ export function createSandboxExecutor(options?: {
       }
     }
 
-    const activeSandbox = await createSandbox();
+    const activeSandbox = await acquireSandbox();
     const keepAliveMs = Number.parseInt(
       process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
       10,
@@ -1085,7 +1086,9 @@ export function createSandboxExecutor(options?: {
     canExecute(toolName: string) {
       return SANDBOX_TOOL_NAMES.has(toolName);
     },
-    createSandbox,
+    async createSandbox() {
+      return await acquireSandbox();
+    },
     execute,
     dispose,
   };

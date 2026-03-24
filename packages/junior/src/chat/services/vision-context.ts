@@ -1,13 +1,14 @@
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
-import type { ThreadConversationState } from "@/chat/conversation-state";
-import { logInfo, logWarn, toOptionalString } from "@/chat/observability";
-import { getBotDeps } from "@/chat/runtime/deps";
-import type { listThreadReplies } from "@/chat/slack-actions/channel";
+import { completeText } from "@/chat/pi/client";
+import type { ThreadConversationState } from "@/chat/state/conversation";
+import { logInfo, logWarn, toOptionalString } from "@/chat/logging";
+import { listThreadReplies } from "@/chat/slack/channel";
+import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import {
   getConversationMessageSlackTs,
   isHumanConversationMessage,
-  updateConversationStats
+  updateConversationStats,
 } from "@/chat/services/conversation-memory";
 
 export interface UserInputAttachment {
@@ -21,6 +22,25 @@ const MAX_USER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_MESSAGE_IMAGE_ATTACHMENTS = 3;
 const MAX_VISION_SUMMARY_CHARS = 500;
 
+export interface VisionContextDeps {
+  completeText: typeof completeText;
+  downloadPrivateSlackFile: typeof downloadPrivateSlackFile;
+  listThreadReplies: typeof listThreadReplies;
+}
+
+export interface VisionContextService {
+  hydrateConversationVisionContext: (
+    conversation: ThreadConversationState,
+    context: {
+      threadId?: string;
+      channelId?: string;
+      requesterId?: string;
+      runId?: string;
+      threadTs?: string;
+    },
+  ) => Promise<void>;
+}
+
 export async function resolveUserAttachments(
   attachments: Attachment[] | undefined,
   context: {
@@ -28,7 +48,7 @@ export async function resolveUserAttachments(
     requesterId?: string;
     channelId?: string;
     runId?: string;
-  }
+  },
 ): Promise<UserInputAttachment[]> {
   if (!attachments || attachments.length === 0) {
     return [];
@@ -60,13 +80,13 @@ export async function resolveUserAttachments(
             slackChannelId: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId
+            modelId: botConfig.modelId,
           },
           {
             "file.size": data.byteLength,
-            "file.mime_type": mediaType
+            "file.mime_type": mediaType,
           },
-          "Skipping user attachment that exceeds size limit"
+          "Skipping user attachment that exceeds size limit",
         );
         continue;
       }
@@ -74,7 +94,7 @@ export async function resolveUserAttachments(
       results.push({
         data,
         mediaType,
-        filename: attachment.name
+        filename: attachment.name,
       });
     } catch (error) {
       logWarn(
@@ -85,13 +105,14 @@ export async function resolveUserAttachments(
           slackChannelId: context.channelId,
           runId: context.runId,
           assistantUserName: botConfig.userName,
-          modelId: botConfig.modelId
+          modelId: botConfig.modelId,
         },
         {
-          "error.message": error instanceof Error ? error.message : String(error),
-          "file.mime_type": mediaType
+          "error.message":
+            error instanceof Error ? error.message : String(error),
+          "file.mime_type": mediaType,
         },
-        "Failed to resolve user attachment"
+        "Failed to resolve user attachment",
       );
     }
   }
@@ -99,19 +120,22 @@ export async function resolveUserAttachments(
   return results;
 }
 
-async function summarizeConversationImage(args: {
-  imageData: Buffer;
-  mimeType: string;
-  fileId: string;
-  context: {
-    threadId?: string;
-    channelId?: string;
-    requesterId?: string;
-    runId?: string;
-  };
-}): Promise<string | undefined> {
+async function summarizeConversationImage(
+  args: {
+    imageData: Buffer;
+    mimeType: string;
+    fileId: string;
+    context: {
+      threadId?: string;
+      channelId?: string;
+      requesterId?: string;
+      runId?: string;
+    };
+  },
+  deps: VisionContextDeps,
+): Promise<string | undefined> {
   try {
-    const result = await getBotDeps().completeText({
+    const result = await deps.completeText({
       modelId: botConfig.modelId,
       temperature: 0,
       maxTokens: 220,
@@ -125,17 +149,17 @@ async function summarizeConversationImage(args: {
                 "Extract concise, factual context from this image for future thread turns.",
                 "Focus on visible text, names, titles, companies, and candidate-identifying details.",
                 "Do not speculate.",
-                "Return plain text only."
-              ].join(" ")
+                "Return plain text only.",
+              ].join(" "),
             },
             {
               type: "image",
               data: args.imageData.toString("base64"),
-              mimeType: args.mimeType
-            }
+              mimeType: args.mimeType,
+            },
           ],
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ],
       metadata: {
         modelId: botConfig.modelId,
@@ -143,8 +167,8 @@ async function summarizeConversationImage(args: {
         channelId: args.context.channelId ?? "",
         requesterId: args.context.requesterId ?? "",
         runId: args.context.runId ?? "",
-        fileId: args.fileId
-      }
+        fileId: args.fileId,
+      },
     });
     const summary = result.text.trim().replace(/\s+/g, " ");
     if (!summary) {
@@ -160,20 +184,20 @@ async function summarizeConversationImage(args: {
         slackChannelId: args.context.channelId,
         runId: args.context.runId,
         assistantUserName: botConfig.userName,
-        modelId: botConfig.modelId
+        modelId: botConfig.modelId,
       },
       {
         "error.message": error instanceof Error ? error.message : String(error),
         "file.id": args.fileId,
-        "file.mime_type": args.mimeType
+        "file.mime_type": args.mimeType,
       },
-      "Image analysis failed while hydrating conversation context"
+      "Image analysis failed while hydrating conversation context",
     );
     return undefined;
   }
 }
 
-export async function hydrateConversationVisionContext(
+async function hydrateConversationVisionContextWithDeps(
   conversation: ThreadConversationState,
   context: {
     threadId?: string;
@@ -181,13 +205,17 @@ export async function hydrateConversationVisionContext(
     requesterId?: string;
     runId?: string;
     threadTs?: string;
-  }
+  },
+  deps: VisionContextDeps,
 ): Promise<void> {
   if (!context.channelId || !context.threadTs) {
     return;
   }
 
-  const messagesByTs = new Map<string, (typeof conversation.messages)[number]>();
+  const messagesByTs = new Map<
+    string,
+    (typeof conversation.messages)[number]
+  >();
   for (const message of conversation.messages) {
     if (!isHumanConversationMessage(message)) continue;
     if (message.meta?.imagesHydrated) continue;
@@ -201,12 +229,12 @@ export async function hydrateConversationVisionContext(
 
   let replies: Awaited<ReturnType<typeof listThreadReplies>>;
   try {
-    replies = await getBotDeps().listThreadReplies({
+    replies = await deps.listThreadReplies({
       channelId: context.channelId,
       threadTs: context.threadTs,
       limit: 1000,
       maxPages: 10,
-      targetMessageTs: [...messagesByTs.keys()]
+      targetMessageTs: [...messagesByTs.keys()],
     });
   } catch (error) {
     logWarn(
@@ -217,12 +245,12 @@ export async function hydrateConversationVisionContext(
         slackChannelId: context.channelId,
         runId: context.runId,
         assistantUserName: botConfig.userName,
-        modelId: botConfig.modelId
+        modelId: botConfig.modelId,
       },
       {
-        "error.message": error instanceof Error ? error.message : String(error)
+        "error.message": error instanceof Error ? error.message : String(error),
       },
-      "Failed to fetch thread replies for image context hydration"
+      "Failed to fetch thread replies for image context hydration",
     );
     return;
   }
@@ -248,7 +276,9 @@ export async function hydrateConversationVisionContext(
     const imageFiles = (reply.files ?? [])
       .filter((file) => {
         const mimeType = toOptionalString(file.mimetype);
-        return Boolean(toOptionalString(file.id) && mimeType?.startsWith("image/"));
+        return Boolean(
+          toOptionalString(file.id) && mimeType?.startsWith("image/"),
+        );
       })
       .slice(0, MAX_MESSAGE_IMAGE_ATTACHMENTS);
     if (imageFiles.length === 0) {
@@ -263,7 +293,7 @@ export async function hydrateConversationVisionContext(
       ...existingMeta,
       slackTs: existingMeta.slackTs ?? ts,
       imageFileIds,
-      imagesHydrated: true
+      imagesHydrated: true,
     };
     mutated = true;
 
@@ -277,8 +307,12 @@ export async function hydrateConversationVisionContext(
       }
       cacheMisses += 1;
 
-      const mimeType = toOptionalString(file.mimetype) ?? "application/octet-stream";
-      const fileSize = typeof file.size === "number" && Number.isFinite(file.size) ? file.size : undefined;
+      const mimeType =
+        toOptionalString(file.mimetype) ?? "application/octet-stream";
+      const fileSize =
+        typeof file.size === "number" && Number.isFinite(file.size)
+          ? file.size
+          : undefined;
       if (fileSize && fileSize > MAX_USER_ATTACHMENT_BYTES) {
         logWarn(
           "conversation_image_skipped_size_limit",
@@ -288,26 +322,28 @@ export async function hydrateConversationVisionContext(
             slackChannelId: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId
+            modelId: botConfig.modelId,
           },
           {
             "file.id": fileId,
             "file.size": fileSize,
-            "file.mime_type": mimeType
+            "file.mime_type": mimeType,
           },
-          "Skipping thread image that exceeds size limit"
+          "Skipping thread image that exceeds size limit",
         );
         continue;
       }
 
-      const downloadUrl = toOptionalString(file.url_private_download) ?? toOptionalString(file.url_private);
+      const downloadUrl =
+        toOptionalString(file.url_private_download) ??
+        toOptionalString(file.url_private);
       if (!downloadUrl) {
         continue;
       }
 
       let imageData: Buffer;
       try {
-        imageData = await getBotDeps().downloadPrivateSlackFile(downloadUrl);
+        imageData = await deps.downloadPrivateSlackFile(downloadUrl);
       } catch (error) {
         logWarn(
           "conversation_image_download_failed",
@@ -317,14 +353,15 @@ export async function hydrateConversationVisionContext(
             slackChannelId: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId
+            modelId: botConfig.modelId,
           },
           {
-            "error.message": error instanceof Error ? error.message : String(error),
+            "error.message":
+              error instanceof Error ? error.message : String(error),
             "file.id": fileId,
-            "file.mime_type": mimeType
+            "file.mime_type": mimeType,
           },
-          "Failed to download thread image for context hydration"
+          "Failed to download thread image for context hydration",
         );
         continue;
       }
@@ -338,31 +375,34 @@ export async function hydrateConversationVisionContext(
             slackChannelId: context.channelId,
             runId: context.runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId
+            modelId: botConfig.modelId,
           },
           {
             "file.id": fileId,
             "file.size": imageData.byteLength,
-            "file.mime_type": mimeType
+            "file.mime_type": mimeType,
           },
-          "Skipping downloaded thread image that exceeds size limit"
+          "Skipping downloaded thread image that exceeds size limit",
         );
         continue;
       }
 
-      const summary = await summarizeConversationImage({
-        imageData,
-        mimeType,
-        fileId,
-        context
-      });
+      const summary = await summarizeConversationImage(
+        {
+          imageData,
+          mimeType,
+          fileId,
+          context,
+        },
+        deps,
+      );
       if (!summary) {
         continue;
       }
 
       conversation.vision.byFileId[fileId] = {
         summary,
-        analyzedAtMs: Date.now()
+        analyzedAtMs: Date.now(),
       };
       analyzed += 1;
       mutated = true;
@@ -373,7 +413,12 @@ export async function hydrateConversationVisionContext(
     updateConversationStats(conversation);
   }
 
-  if (cacheHits > 0 || cacheMisses > 0 || analyzed > 0 || hydratedMessageIds.size > 0) {
+  if (
+    cacheHits > 0 ||
+    cacheMisses > 0 ||
+    analyzed > 0 ||
+    hydratedMessageIds.size > 0
+  ) {
     logInfo(
       "conversation_image_context_hydrated",
       {
@@ -382,15 +427,15 @@ export async function hydrateConversationVisionContext(
         slackChannelId: context.channelId,
         runId: context.runId,
         assistantUserName: botConfig.userName,
-        modelId: botConfig.modelId
+        modelId: botConfig.modelId,
       },
       {
         "app.conversation_image.cache_hits": cacheHits,
         "app.conversation_image.cache_misses": cacheMisses,
         "app.conversation_image.analyzed": analyzed,
-        "app.conversation_image.messages_hydrated": hydratedMessageIds.size
+        "app.conversation_image.messages_hydrated": hydratedMessageIds.size,
       },
-      "Hydrated conversation image context"
+      "Hydrated conversation image context",
     );
   }
 
@@ -398,3 +443,25 @@ export async function hydrateConversationVisionContext(
     conversation.vision.backfillCompletedAtMs = Date.now();
   }
 }
+
+export function createVisionContextService(
+  deps: VisionContextDeps,
+): VisionContextService {
+  return {
+    hydrateConversationVisionContext: async (conversation, context) =>
+      await hydrateConversationVisionContextWithDeps(
+        conversation,
+        context,
+        deps,
+      ),
+  };
+}
+
+const defaultVisionContextService = createVisionContextService({
+  completeText,
+  downloadPrivateSlackFile,
+  listThreadReplies,
+});
+
+export const hydrateConversationVisionContext =
+  defaultVisionContextService.hydrateConversationVisionContext;

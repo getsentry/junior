@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
+import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 
 const addReactionToMessage = vi.fn();
 
-vi.mock("@/chat/slack-actions/channel", () => ({
+vi.mock("@/chat/slack/channel", () => ({
   addReactionToMessage: (...args: unknown[]) => addReactionToMessage(...args),
 }));
 

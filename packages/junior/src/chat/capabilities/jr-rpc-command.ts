@@ -7,7 +7,7 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
-import { logInfo } from "@/chat/observability";
+import { logInfo } from "@/chat/logging";
 import {
   getPluginOAuthConfig,
   isPluginProvider,

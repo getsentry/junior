@@ -1,9 +1,9 @@
 import type { FileUpload } from "chat";
-import type { Sandbox } from "@vercel/sandbox";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
-import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
-import type { LoadSkillMetadata } from "@/chat/tools/load-skill";
+import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -15,7 +15,6 @@ export interface ToolHooks {
   onGeneratedFiles?: (files: FileUpload[]) => void;
   onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
   onToolCallStart?: (toolName: string, input?: unknown) => void | Promise<void>;
-  onToolCallEnd?: (toolName: string, input?: unknown) => void | Promise<void>;
   onSkillLoaded?: (
     skill: Skill,
   ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
@@ -33,7 +32,7 @@ export interface ToolRuntimeContext {
   configuration?: Record<string, unknown>;
   getActiveSkills?: () => Skill[];
   mcpToolManager?: McpToolManager;
-  sandbox: Sandbox;
+  sandbox: SandboxWorkspace;
 }
 
 export interface ToolState {

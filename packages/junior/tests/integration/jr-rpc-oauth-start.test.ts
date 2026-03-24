@@ -46,12 +46,12 @@ describe("jr-rpc oauth-start integration", () => {
       SENTRY_CLIENT_ID: "sentry-client-id",
     };
     vi.resetModules();
-    const { disconnectStateAdapter } = await import("@/chat/state");
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
-    const { disconnectStateAdapter } = await import("@/chat/state");
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
     vi.resetModules();
     process.chdir(ORIGINAL_CWD);
@@ -63,7 +63,7 @@ describe("jr-rpc oauth-start integration", () => {
       await import("@/chat/capabilities/jr-rpc-command");
     const { SkillCapabilityRuntime } =
       await import("@/chat/capabilities/runtime");
-    const { getStateAdapter } = await import("@/chat/state");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
     await getStateAdapter().connect();
     queueSlackApiResponse("chat.postEphemeral", {
       body: chatPostEphemeralOk({ messageTs: "1700000000.555" }),

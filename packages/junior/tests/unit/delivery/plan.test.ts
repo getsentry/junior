@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildReplyDeliveryPlan,
   isPotentialRedundantReactionAckText,
-} from "@/chat/delivery/plan";
+} from "@/chat/services/reply-delivery-plan";
 
 describe("buildReplyDeliveryPlan", () => {
   it("returns channel_only mode when explicit channel intent and channel post succeeds", () => {
@@ -10,13 +10,11 @@ describe("buildReplyDeliveryPlan", () => {
       buildReplyDeliveryPlan({
         explicitChannelPostIntent: true,
         channelPostPerformed: true,
-        reactionPerformed: false,
         hasFiles: true,
         streamingThreadReply: true,
       }),
     ).toEqual({
       mode: "channel_only",
-      ack: "none",
       postThreadText: false,
       attachFiles: "none",
     });
@@ -27,13 +25,11 @@ describe("buildReplyDeliveryPlan", () => {
       buildReplyDeliveryPlan({
         explicitChannelPostIntent: false,
         channelPostPerformed: false,
-        reactionPerformed: false,
         hasFiles: true,
         streamingThreadReply: true,
       }),
     ).toEqual({
       mode: "thread",
-      ack: "none",
       postThreadText: true,
       attachFiles: "followup",
     });
@@ -44,32 +40,13 @@ describe("buildReplyDeliveryPlan", () => {
       buildReplyDeliveryPlan({
         explicitChannelPostIntent: false,
         channelPostPerformed: false,
-        reactionPerformed: false,
         hasFiles: true,
         streamingThreadReply: false,
       }),
     ).toEqual({
       mode: "thread",
-      ack: "none",
       postThreadText: true,
       attachFiles: "inline",
-    });
-  });
-
-  it("captures reaction ack strategy when reaction tool is used", () => {
-    expect(
-      buildReplyDeliveryPlan({
-        explicitChannelPostIntent: false,
-        channelPostPerformed: false,
-        reactionPerformed: true,
-        hasFiles: false,
-        streamingThreadReply: true,
-      }),
-    ).toEqual({
-      mode: "thread",
-      ack: "reaction",
-      postThreadText: true,
-      attachFiles: "none",
     });
   });
 

@@ -193,7 +193,7 @@ Required attributes on slice/session events when available:
 ## Related Specs
 
 - [Harness Agent Spec](./harness-agent-spec.md)
-- [Durable Slack Thread Workflows Spec](./durable-workflows-spec.md)
+- [Durable Slack Thread Workflows Spec](./archive/durable-workflows-spec.md) (archived — unimplemented design)
 - [Agent Execution Spec](./agent-execution-spec.md)
 - [Logging Spec Index](./logging/index.md)
 

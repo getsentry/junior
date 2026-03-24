@@ -1,7 +1,7 @@
 import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
-import { isExplicitChannelPostIntent } from "@/chat/channel-intent";
+import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
 import {
   logError,
   logException,
@@ -10,11 +10,14 @@ import {
   setSpanAttributes,
   setTags,
   withSpan,
-} from "@/chat/observability";
-import { buildSlackOutputMessage, ensureBlockSpacing } from "@/chat/output";
+} from "@/chat/logging";
+import {
+  buildSlackOutputMessage,
+  ensureBlockSpacing,
+} from "@/chat/slack/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
-import { createProgressReporter } from "@/chat/progress-reporter";
-import { getBotDeps } from "@/chat/runtime/deps";
+import { createProgressReporter } from "@/chat/runtime/progress-reporter";
+import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   createTextStreamBridge,
@@ -45,24 +48,30 @@ import {
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { resolveUserAttachments } from "@/chat/services/vision-context";
-import { isDmChannel } from "@/chat/slack-actions/client";
-import { type ThreadArtifactsState } from "@/chat/slack-actions/types";
-import { resolveReplyDelivery } from "@/chat/turn/execute";
-import { isRetryableTurnError } from "@/chat/turn/errors";
-import { markTurnCompleted, markTurnFailed } from "@/chat/turn/persist";
-import { startActiveTurn } from "@/chat/turn/prepare";
-import { isPotentialRedundantReactionAckText } from "@/chat/delivery/plan";
-
-function buildDeterministicTurnId(messageId: string): string {
-  const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return `turn_${sanitized}`;
-}
+import { isDmChannel } from "@/chat/slack/client";
+import { type ThreadArtifactsState } from "@/chat/state/artifacts";
+import { lookupSlackUser } from "@/chat/slack/user";
+import { resolveReplyDelivery } from "@/chat/runtime/turn";
+import { isRetryableTurnError } from "@/chat/runtime/turn";
+import { buildDeterministicTurnId } from "@/chat/runtime/turn";
+import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
+import { startActiveTurn } from "@/chat/runtime/turn";
+import {
+  isRedundantReactionAckText,
+  isPotentialRedundantReactionAckText,
+} from "@/chat/services/reply-delivery-plan";
 
 type SlackReplyPostStage =
   | "streaming_initial_post"
   | "thread_reply"
   | "thread_reply_after_stream_failure"
   | "thread_reply_files_followup";
+
+export interface ReplyExecutorServices {
+  generateAssistantReply: typeof generateAssistantReplyImpl;
+  generateThreadTitle: typeof generateThreadTitle;
+  lookupSlackUser: typeof lookupSlackUser;
+}
 
 interface ReplyExecutorDeps {
   getSlackAdapter: () => SlackAdapter;
@@ -78,6 +87,7 @@ interface ReplyExecutorDeps {
       runId?: string;
     };
   }) => Promise<PreparedTurnState>;
+  services: ReplyExecutorServices;
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -175,7 +185,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           conversation: preparedState.conversation,
         });
 
-        const fallbackIdentity = await getBotDeps().lookupSlackUser(
+        const fallbackIdentity = await deps.services.lookupSlackUser(
           message.author.userId,
         );
         const resolvedUserName =
@@ -263,7 +273,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         try {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
-          const reply = await getBotDeps().generateAssistantReply(userText, {
+          const reply = await deps.services.generateAssistantReply(userText, {
             assistant: {
               userName: botConfig.userName,
             },
@@ -397,15 +407,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               hasStreamedThreadReply: Boolean(streamedReplyPromise),
             });
 
+          const reactionPerformed = reply.diagnostics.toolCalls.includes(
+            "slackMessageAddReaction",
+          );
+
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
-              await postThreadReply(
+              const sent = await postThreadReply(
                 buildSlackOutputMessage(
                   reply.text,
                   resolvedAttachFiles === "inline" ? replyFiles : undefined,
                 ),
                 "thread_reply",
               );
+              // When a reaction already acknowledged the turn, delete the
+              // redundant thread reply. The post itself completes Slack's
+              // assistant response cycle (clearing the typing indicator).
+              if (reactionPerformed && isRedundantReactionAckText(reply.text)) {
+                await sent.delete();
+              }
             } else {
               await streamedReplyPromise;
               if (
@@ -462,7 +482,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             isDmChannel(channelId) &&
             threadTs
           ) {
-            void generateThreadTitle(userText, reply.text)
+            void deps.services
+              .generateThreadTitle(userText, reply.text)
               .then((title) =>
                 deps
                   .getSlackAdapter()

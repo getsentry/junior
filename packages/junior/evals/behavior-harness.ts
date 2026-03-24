@@ -1,29 +1,26 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Message } from "chat";
-import type { AppRuntimeAssistantLifecycleEvent } from "@/chat/app-runtime";
-import { getUserTokenStore } from "@/chat/capabilities/factory";
-import {
-  appSlackRuntime,
-  bot,
-  resetBotDepsForTests,
-  setBotDepsForTests,
-} from "@/chat/bot";
+import { createSlackRuntime } from "@/chat/app/factory";
+import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
+import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { routeIncomingMessageToQueue } from "@/chat/ingress/message-router";
+import { isDeferredThreadMessageError } from "@/chat/queue/errors";
+import { processQueuedThreadMessage } from "@/chat/queue/process-thread-message";
+import { createThreadMessageDispatcher } from "@/chat/queue/thread-message-dispatcher";
+import type { ThreadMessagePayload } from "@/chat/queue/types";
 import {
   deleteMcpAuthSessionsForUserProvider,
   deleteMcpServerSessionId,
   deleteMcpStoredOAuthCredentials,
   getLatestMcpAuthSessionForUserProvider,
 } from "@/chat/mcp/auth-store";
-import {
-  getPluginOAuthConfig,
-  setAdditionalPluginRootsForTests,
-} from "@/chat/plugins/registry";
+import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
-import { getStateAdapter } from "@/chat/state";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
-import { RetryableTurnError, isRetryableTurnError } from "@/chat/turn/errors";
-import { setPostSlackMessageObserverForTests } from "@/handlers/oauth-resume";
+import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
 import {
   FakeSlackAdapter,
   createTestThread,
@@ -45,14 +42,14 @@ import {
 } from "../tests/msw/captured-slack-api-calls";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 
-interface BehaviorEventThreadFixture {
+interface EvalEventThreadFixture {
   channel_id?: string;
   id: string;
   run_id?: string;
   thread_ts?: string;
 }
 
-interface BehaviorEventMessageFixture {
+interface EvalEventMessageFixture {
   author?: {
     full_name?: string;
     is_bot?: boolean;
@@ -65,31 +62,31 @@ interface BehaviorEventMessageFixture {
   text?: string;
 }
 
-interface BehaviorBaseEvent {
-  thread: BehaviorEventThreadFixture;
+interface EvalBaseEvent {
+  thread: EvalEventThreadFixture;
 }
 
-interface MentionEvent extends BehaviorBaseEvent {
-  message: BehaviorEventMessageFixture;
+interface MentionEvent extends EvalBaseEvent {
+  message: EvalEventMessageFixture;
   type: "new_mention";
 }
 
-interface SubscribedMessageEvent extends BehaviorBaseEvent {
-  message: BehaviorEventMessageFixture;
+interface SubscribedMessageEvent extends EvalBaseEvent {
+  message: EvalEventMessageFixture;
   type: "subscribed_message";
 }
 
-interface AssistantThreadStartedEvent extends BehaviorBaseEvent {
+interface AssistantThreadStartedEvent extends EvalBaseEvent {
   type: "assistant_thread_started";
   user_id?: string;
 }
 
-interface AssistantContextChangedEvent extends BehaviorBaseEvent {
+interface AssistantContextChangedEvent extends EvalBaseEvent {
   type: "assistant_context_changed";
   user_id?: string;
 }
 
-export type BehaviorCaseEvent =
+export type EvalEvent =
   | MentionEvent
   | SubscribedMessageEvent
   | AssistantThreadStartedEvent
@@ -100,15 +97,13 @@ interface SubscribedDecisionFixture {
   should_reply: boolean;
 }
 
-export interface BehaviorCaseConfig {
+export interface EvalOverrides {
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
   enable_test_credentials?: boolean;
   fail_reply_call?: number;
   mock_image_generation?: boolean;
-  live_subscribed_routing?: boolean;
   plugin_dirs?: string[];
-  mock_slack_api?: boolean;
   plugin_packages?: string[];
   reply_texts?: string[];
   retryable_max_attempts?: number;
@@ -120,24 +115,54 @@ export interface BehaviorCaseConfig {
   unset_gateway_api_key?: boolean;
 }
 
-export interface BehaviorEvalCase {
-  behavior?: BehaviorCaseConfig;
-  events: BehaviorCaseEvent[];
+export interface EvalScenario {
+  events: EvalEvent[];
+  overrides?: EvalOverrides;
 }
 
-export interface BehaviorCaseResult {
+export interface EvalResult {
   channelPosts: Array<{
     channel: string;
     text: string;
     thread_ts?: string;
   }>;
+  posts: EvalAssistantPost[];
   reactions: Array<{
     channel: string;
     emoji: string;
     timestamp: string;
   }>;
-  posts: string[];
   slackAdapter: FakeSlackAdapter;
+}
+
+export interface EvalAttachedFile {
+  filename: string;
+  isImage: boolean;
+  mimeType?: string;
+  sizeBytes?: number;
+}
+
+export interface EvalAssistantPost {
+  files: EvalAttachedFile[];
+  text: string;
+}
+
+interface EvalSlackThreadReply {
+  bot_id?: string;
+  text?: string;
+  thread_ts?: string;
+  ts?: string;
+  user?: string;
+}
+
+interface EvalThreadRecord {
+  thread: TestThread;
+  transcript: Message[];
+}
+
+interface QueueDelivery {
+  attempts: number;
+  payload: ThreadMessagePayload;
 }
 
 const EVAL_PACKAGE_ROOT = path.resolve(
@@ -165,7 +190,7 @@ function toFirstString(value: unknown): string | undefined {
   return undefined;
 }
 
-function buildRuntimeThreadId(fixture: BehaviorEventThreadFixture): string {
+function buildRuntimeThreadId(fixture: EvalEventThreadFixture): string {
   if (fixture.channel_id && fixture.thread_ts) {
     return `slack:${fixture.channel_id}:${fixture.thread_ts}`;
   }
@@ -173,10 +198,55 @@ function buildRuntimeThreadId(fixture: BehaviorEventThreadFixture): string {
 }
 
 const THREAD_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const EVAL_QUEUE_INGRESS_DEDUP_PREFIX = "eval:queue_ingress";
+
+function buildEvalQueueIngressDedupKey(rawKey: string): string {
+  return `${EVAL_QUEUE_INGRESS_DEDUP_PREFIX}:${rawKey}`;
+}
+
+function restoreEnvVar(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
+function getEvalEventMessageId(event: EvalEvent): string | undefined {
+  if (!("message" in event)) {
+    return undefined;
+  }
+  const messageId = event.message.id?.trim();
+  return messageId && messageId.length > 0 ? messageId : undefined;
+}
+
+function attachTranscriptAccessors(
+  thread: TestThread,
+  transcript: Message[],
+): void {
+  Object.defineProperty(thread, "recentMessages", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      return [...transcript];
+    },
+  });
+  Object.defineProperty(thread, "messages", {
+    configurable: true,
+    enumerable: true,
+    get() {
+      return (async function* () {
+        for (const message of [...transcript].reverse()) {
+          yield message;
+        }
+      })();
+    },
+  });
+}
 
 async function cleanupHarnessThreadState(
   stateAdapter: HarnessStateAdapter,
-  events: readonly BehaviorCaseEvent[],
+  events: readonly EvalEvent[],
 ): Promise<void> {
   const runtimeThreadIds = new Set(
     events.map((event) => buildRuntimeThreadId(event.thread)),
@@ -189,14 +259,26 @@ async function cleanupHarnessThreadState(
 
   for (const threadId of runtimeThreadIds) {
     await stateAdapter.delete(`thread-state:${threadId}`);
+    await stateAdapter.unsubscribe(threadId);
   }
   for (const channelId of channelIds) {
     await stateAdapter.delete(`channel-state:${channelId}`);
   }
+  for (const event of events) {
+    const messageId = getEvalEventMessageId(event);
+    if (!messageId) {
+      continue;
+    }
+    await stateAdapter.delete(
+      buildEvalQueueIngressDedupKey(
+        `${buildRuntimeThreadId(event.thread)}:${messageId}`,
+      ),
+    );
+  }
 }
 
 function createEvalThread(args: {
-  fixture: BehaviorEventThreadFixture;
+  fixture: EvalEventThreadFixture;
   channelStateRef?: { value: Record<string, unknown> };
   stateAdapter: HarnessStateAdapter;
 }): TestThread {
@@ -216,6 +298,18 @@ function createEvalThread(args: {
       THREAD_STATE_TTL_MS,
     );
   };
+  const originalSubscribe = thread.subscribe.bind(thread);
+  thread.subscribe = async () => {
+    await originalSubscribe();
+    await args.stateAdapter.subscribe(thread.id);
+  };
+  const originalUnsubscribe = thread.unsubscribe.bind(thread);
+  thread.unsubscribe = async () => {
+    await originalUnsubscribe();
+    await args.stateAdapter.unsubscribe(thread.id);
+  };
+  thread.isSubscribed = async () =>
+    await args.stateAdapter.isSubscribed(thread.id);
   return thread;
 }
 
@@ -261,11 +355,63 @@ function createMockImageGenerateDeps(): ImageGenerateToolDeps {
   };
 }
 
+function buildReactionKey(input: {
+  channel: string;
+  emoji: string;
+  timestamp: string;
+}): string {
+  return `${input.channel}:${input.timestamp}:${input.emoji}`;
+}
+
+function toEvalFiles(value: unknown): EvalAttachedFile[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const files = (value as { files?: unknown }).files;
+  if (!Array.isArray(files) || files.length === 0) {
+    return [];
+  }
+
+  return files.map((file) => {
+    if (!file || typeof file !== "object") {
+      return {
+        filename: "file",
+        isImage: false,
+      };
+    }
+    const filename =
+      (typeof (file as { filename?: unknown }).filename === "string"
+        ? (file as { filename: string }).filename
+        : undefined) ??
+      (typeof (file as { name?: unknown }).name === "string"
+        ? (file as { name: string }).name
+        : undefined) ??
+      "file";
+    const mediaType =
+      (typeof (file as { mimeType?: unknown }).mimeType === "string"
+        ? (file as { mimeType: string }).mimeType
+        : undefined) ??
+      (typeof (file as { mediaType?: unknown }).mediaType === "string"
+        ? (file as { mediaType: string }).mediaType
+        : undefined);
+    const data =
+      (file as { data?: unknown }).data instanceof Buffer
+        ? (file as { data: Buffer }).data
+        : undefined;
+    return {
+      filename,
+      isImage: Boolean(mediaType?.startsWith("image/")),
+      ...(mediaType ? { mimeType: mediaType } : {}),
+      ...(data ? { sizeBytes: data.byteLength } : {}),
+    };
+  });
+}
+
 export function collectSlackArtifactsFromCapturedCalls(
   calls: CapturedSlackApiCall[],
-): Pick<BehaviorCaseResult, "channelPosts" | "reactions"> {
-  const channelPosts: BehaviorCaseResult["channelPosts"] = [];
-  const reactions: BehaviorCaseResult["reactions"] = [];
+): Pick<EvalResult, "channelPosts" | "reactions"> {
+  const channelPosts: EvalResult["channelPosts"] = [];
+  const reactions = new Map<string, EvalResult["reactions"][number]>();
 
   for (const call of calls) {
     if (call.method === "chat.postMessage") {
@@ -290,36 +436,61 @@ export function collectSlackArtifactsFromCapturedCalls(
       if (!channel || !emoji || !timestamp) {
         continue;
       }
-      reactions.push({
+      const reaction = {
         channel,
         emoji,
         timestamp,
-      });
+      };
+      reactions.set(buildReactionKey(reaction), reaction);
+      continue;
+    }
+
+    if (call.method === "reactions.remove") {
+      const channel = toFirstString(call.params.channel);
+      const emoji = toFirstString(call.params.name);
+      const timestamp = toFirstString(call.params.timestamp);
+      if (!channel || !emoji || !timestamp) {
+        continue;
+      }
+      reactions.delete(
+        buildReactionKey({
+          channel,
+          emoji,
+          timestamp,
+        }),
+      );
     }
   }
 
   return {
     channelPosts,
-    reactions,
+    reactions: [...reactions.values()],
   };
 }
 
-function toPostedText(value: unknown): string {
+function toEvalAssistantPost(value: unknown): EvalAssistantPost {
   if (typeof value === "string") {
-    return value;
+    return {
+      text: value,
+      files: [],
+    };
   }
   if (value && typeof value === "object") {
     const markdown = (value as { markdown?: unknown }).markdown;
+    const files = toEvalFiles(value);
     if (typeof markdown === "string") {
-      return markdown;
+      return { text: markdown, files };
     }
     const raw = (value as { raw?: unknown }).raw;
     if (typeof raw === "string") {
-      return raw;
+      return { text: raw, files };
     }
-    return "[non-text post]";
+    return { text: "", files };
   }
-  return String(value);
+  return {
+    text: String(value),
+    files: [],
+  };
 }
 
 function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
@@ -354,6 +525,45 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
   };
 }
 
+function upsertThreadTranscriptMessage(
+  transcript: Message[],
+  message: Message,
+): void {
+  const existingIndex = transcript.findIndex(
+    (entry) => entry.id === message.id,
+  );
+  if (existingIndex >= 0) {
+    transcript[existingIndex] = message;
+    return;
+  }
+  transcript.push(message);
+}
+
+function buildThreadReplyFromMessage(
+  threadTs: string | undefined,
+  message: Message,
+): EvalSlackThreadReply {
+  return {
+    ts: message.id,
+    user: message.author.userId,
+    text: message.text,
+    thread_ts: threadTs,
+    ...(message.author.isBot ? { bot_id: message.author.userId } : {}),
+  };
+}
+
+function shouldRetryQueueDelivery(
+  error: unknown,
+  attempt: number,
+  maxAttempts: number,
+): boolean {
+  return (
+    attempt < maxAttempts &&
+    (isRetryableTurnError(error, "agent_turn_timeout_resume") ||
+      isDeferredThreadMessageError(error))
+  );
+}
+
 async function cleanupMcpAuthState(
   userIds: Iterable<string>,
   providers: Iterable<string>,
@@ -371,7 +581,7 @@ async function cleanupOAuthTokens(
   userIds: Iterable<string>,
   providers: Iterable<string>,
 ): Promise<void> {
-  const userTokenStore = getUserTokenStore();
+  const userTokenStore = createUserTokenStore();
   for (const provider of providers) {
     for (const userId of userIds) {
       await userTokenStore.delete(userId, provider);
@@ -507,29 +717,29 @@ async function runOauthCallback(args: {
   return true;
 }
 
-export async function runBehaviorEvalCase(
-  testCase: BehaviorEvalCase,
-): Promise<BehaviorCaseResult> {
+export async function runEvalScenario(
+  scenario: EvalScenario,
+): Promise<EvalResult> {
   const slackAdapter = new FakeSlackAdapter();
-  const resumedChannelPosts: BehaviorCaseResult["channelPosts"] = [];
-  const threadsById = new Map<string, TestThread>();
+  const threadRecordsById = new Map<string, EvalThreadRecord>();
+  const readyQueueDeliveries: QueueDelivery[] = [];
+  const delayedQueueDeliveries: QueueDelivery[] = [];
   const channelStateById = new Map<
     string,
     { value: Record<string, unknown> }
   >();
-  const replyTexts = testCase.behavior?.reply_texts ?? [];
+  const replyTexts = scenario.overrides?.reply_texts ?? [];
+  let successfulReplyCount = 0;
   const retryableTimeoutCalls = new Set(
-    testCase.behavior?.retryable_timeout_calls ?? [],
+    scenario.overrides?.retryable_timeout_calls ?? [],
   );
   const retryableTimeoutMessage =
-    testCase.behavior?.retryable_timeout_message ?? "simulated eval timeout";
+    scenario.overrides?.retryable_timeout_message ?? "simulated eval timeout";
   const retryableMaxAttempts = Math.max(
     1,
-    testCase.behavior?.retryable_max_attempts ?? 3,
+    scenario.overrides?.retryable_max_attempts ?? 3,
   );
-  const subscribedDecisions = testCase.behavior?.subscribed_decisions ?? [];
-  const liveSubscribedRouting =
-    testCase.behavior?.live_subscribed_routing === true;
+  const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
   const replyTimeoutMs = Number.parseInt(
     process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000",
     10,
@@ -540,29 +750,30 @@ export async function runBehaviorEvalCase(
     process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   const originalTestCredentialToken = process.env.EVAL_TEST_CREDENTIAL_TOKEN;
   const originalJuniorBaseUrl = process.env.JUNIOR_BASE_URL;
+  const originalExtraPluginRoots = process.env.JUNIOR_EXTRA_PLUGIN_ROOTS;
   const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
   const originalSlackBotToken = process.env.SLACK_BOT_TOKEN;
   const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
   const configuredSkillDirs =
-    testCase.behavior?.skill_dirs?.map((entry) =>
+    scenario.overrides?.skill_dirs?.map((entry) =>
       resolveEvalRelativePath(entry),
     ) ?? [];
   const configuredPluginDirs =
-    testCase.behavior?.plugin_dirs?.map((entry) =>
+    scenario.overrides?.plugin_dirs?.map((entry) =>
       resolveEvalRelativePath(entry),
     ) ?? [];
   const autoCompleteMcpOauthProviders = new Set(
-    testCase.behavior?.auto_complete_mcp_oauth?.map((provider) =>
+    scenario.overrides?.auto_complete_mcp_oauth?.map((provider) =>
       provider.trim(),
     ) ?? [],
   );
   const autoCompleteOauthProviders = new Set(
-    testCase.behavior?.auto_complete_oauth?.map((provider) =>
+    scenario.overrides?.auto_complete_oauth?.map((provider) =>
       provider.trim(),
     ) ?? [],
   );
   const authRequesterUsers = new Set(
-    testCase.events.flatMap((event) =>
+    scenario.events.flatMap((event) =>
       "message" in event
         ? [event.message.author?.user_id?.trim() || "U-test"]
         : event.user_id
@@ -575,33 +786,23 @@ export async function runBehaviorEvalCase(
   }
   const consumedOauthStates = new Set<string>();
   const consumedMcpAuthSessions = new Set<string>();
-  if (testCase.behavior?.enable_test_credentials) {
+  if (scenario.overrides?.enable_test_credentials) {
     process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
-    if (testCase.behavior?.test_credential_token) {
+    if (scenario.overrides?.test_credential_token) {
       process.env.EVAL_TEST_CREDENTIAL_TOKEN =
-        testCase.behavior.test_credential_token;
+        scenario.overrides.test_credential_token;
     }
-  }
-  if (testCase.behavior?.mock_slack_api) {
-    process.env.SLACK_BOT_TOKEN = "xoxb-eval-test-token";
   }
   process.env.JUNIOR_BASE_URL = "https://junior.example.com";
   process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env.JUNIOR_EXTRA_PLUGIN_ROOTS = JSON.stringify(configuredPluginDirs);
   process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
-    testCase.behavior?.plugin_packages ?? [],
+    scenario.overrides?.plugin_packages ?? [],
   );
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
-  setAdditionalPluginRootsForTests(configuredPluginDirs);
   resetSkillDiscoveryCache();
-  setPostSlackMessageObserverForTests(({ channelId, text, threadTs }) => {
-    resumedChannelPosts.push({
-      channel: channelId,
-      text,
-      thread_ts: threadTs,
-    });
-  });
-  await cleanupHarnessThreadState(stateAdapter, testCase.events);
+  await cleanupHarnessThreadState(stateAdapter, scenario.events);
   await cleanupMcpAuthState(authRequesterUsers, autoCompleteMcpOauthProviders);
   await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
 
@@ -648,266 +849,293 @@ export async function runBehaviorEvalCase(
     return created;
   };
 
-  const getThread = (fixture: BehaviorEventThreadFixture): TestThread => {
-    const existing = threadsById.get(fixture.id);
+  const getThreadRecord = (
+    fixture: EvalEventThreadFixture,
+  ): EvalThreadRecord => {
+    const runtimeThreadId = buildRuntimeThreadId(fixture);
+    const existing = threadRecordsById.get(runtimeThreadId);
     if (existing) {
       return existing;
     }
-    const created = createEvalThread({
+    const thread = createEvalThread({
       fixture,
       channelStateRef: getChannelStateRef(fixture.channel_id),
       stateAdapter,
     });
-    threadsById.set(fixture.id, created);
-    return created;
+    const transcript: Message[] = [];
+    attachTranscriptAccessors(thread, transcript);
+    const record = { thread, transcript };
+    threadRecordsById.set(runtimeThreadId, record);
+    return record;
   };
 
-  const originalGetAdapter = (
-    bot as unknown as { getAdapter?: (name: string) => unknown }
-  ).getAdapter?.bind(bot);
-  (bot as unknown as { getAdapter: (name: string) => unknown }).getAdapter = (
-    name: string,
-  ): unknown => {
-    if (name === "slack") {
-      return slackAdapter;
-    }
-    return originalGetAdapter ? originalGetAdapter(name) : undefined;
-  };
-
-  setBotDepsForTests({
-    ...(liveSubscribedRouting && subscribedDecisions.length === 0
-      ? {}
-      : {
-          completeObject: async () => {
-            if (subscribedDecisions.length === 0) {
+  const runtimeServices: JuniorRuntimeServiceOverrides = {
+    ...(subscribedDecisions.length > 0
+      ? {
+          subscribedReplyPolicy: {
+            completeObject: async () => {
+              const next =
+                subscribedDecisions[
+                  Math.min(decisionIndex, subscribedDecisions.length - 1)
+                ];
+              decisionIndex += 1;
               return {
                 object: {
-                  should_reply: false,
-                  confidence: 0,
-                  reason: "passive conversation",
+                  should_reply: next.should_reply,
+                  confidence: next.should_reply ? 1 : 0,
+                  reason: next.reason,
                 },
-                text: '{"should_reply":false,"confidence":0,"reason":"passive conversation"}',
+                text: JSON.stringify({
+                  should_reply: next.should_reply,
+                  confidence: next.should_reply ? 1 : 0,
+                  reason: next.reason,
+                }),
               } as any;
-            }
-            const next =
-              subscribedDecisions[
-                Math.min(decisionIndex, subscribedDecisions.length - 1)
-              ];
-            decisionIndex += 1;
-            return {
-              object: {
-                should_reply: next.should_reply,
-                confidence: next.should_reply ? 1 : 0,
-                reason: next.reason,
-              },
-              text: JSON.stringify({
-                should_reply: next.should_reply,
-                confidence: next.should_reply ? 1 : 0,
-                reason: next.reason,
-              }),
-            } as any;
+            },
           },
-        }),
-    generateAssistantReply: async (text, context) => {
-      replyCallCount += 1;
-      const mockImageGeneration = testCase.behavior?.mock_image_generation;
-      if (retryableTimeoutCalls.has(replyCallCount)) {
-        throw new RetryableTurnError(
-          "agent_turn_timeout_resume",
-          retryableTimeoutMessage,
-        );
-      }
-      if (testCase.behavior?.fail_reply_call === replyCallCount) {
-        throw new Error(`forced reply failure on call ${replyCallCount}`);
-      }
+        }
+      : {}),
+    replyExecutor: {
+      generateAssistantReply: async (text, context) => {
+        replyCallCount += 1;
+        const mockImageGeneration = scenario.overrides?.mock_image_generation;
+        if (retryableTimeoutCalls.has(replyCallCount)) {
+          throw new RetryableTurnError(
+            "agent_turn_timeout_resume",
+            retryableTimeoutMessage,
+          );
+        }
+        if (scenario.overrides?.fail_reply_call === replyCallCount) {
+          throw new Error(`forced reply failure on call ${replyCallCount}`);
+        }
+        const replyText = replyTexts[successfulReplyCount];
+        if (typeof replyText === "string") {
+          successfulReplyCount += 1;
+          return {
+            text: replyText,
+            deliveryMode: "thread",
+            deliveryPlan: {
+              mode: "thread",
+              postThreadText: true,
+              attachFiles: "none",
+            },
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "eval-reply-text",
+              outcome: "success",
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          };
+        }
 
-      const originalGatewayApiKey = process.env.AI_GATEWAY_API_KEY;
-      const originalOidcToken = process.env.VERCEL_OIDC_TOKEN;
-      if (testCase.behavior?.unset_gateway_api_key) {
-        delete process.env.AI_GATEWAY_API_KEY;
-        delete process.env.VERCEL_OIDC_TOKEN;
-      }
-      let reply: Awaited<ReturnType<typeof generateAssistantReply>>;
-      try {
-        reply = await Promise.race([
-          generateAssistantReply(text, {
-            ...context,
-            ...(configuredSkillDirs.length > 0
-              ? { skillDirs: configuredSkillDirs }
-              : {}),
-            ...(mockImageGeneration
-              ? {
-                  toolOverrides: {
-                    ...(context?.toolOverrides ?? {}),
-                    imageGenerate: createMockImageGenerateDeps(),
-                  },
-                }
-              : {}),
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    `generateAssistantReply timed out after ${replyTimeoutMs}ms`,
+        const originalGatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+        const originalOidcToken = process.env.VERCEL_OIDC_TOKEN;
+        if (scenario.overrides?.unset_gateway_api_key) {
+          delete process.env.AI_GATEWAY_API_KEY;
+          delete process.env.VERCEL_OIDC_TOKEN;
+        }
+        let reply: Awaited<ReturnType<typeof generateAssistantReply>>;
+        try {
+          reply = await Promise.race([
+            generateAssistantReply(text, {
+              ...context,
+              ...(configuredSkillDirs.length > 0
+                ? { skillDirs: configuredSkillDirs }
+                : {}),
+              ...(mockImageGeneration
+                ? {
+                    toolOverrides: {
+                      ...(context?.toolOverrides ?? {}),
+                      imageGenerate: createMockImageGenerateDeps(),
+                    },
+                  }
+                : {}),
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `generateAssistantReply timed out after ${replyTimeoutMs}ms`,
+                    ),
                   ),
-                ),
-              replyTimeoutMs,
+                replyTimeoutMs,
+              ),
             ),
-          ),
-        ]);
-      } finally {
-        if (testCase.behavior?.unset_gateway_api_key) {
-          if (originalGatewayApiKey === undefined) {
-            delete process.env.AI_GATEWAY_API_KEY;
-          } else {
-            process.env.AI_GATEWAY_API_KEY = originalGatewayApiKey;
-          }
-          if (originalOidcToken === undefined) {
-            delete process.env.VERCEL_OIDC_TOKEN;
-          } else {
-            process.env.VERCEL_OIDC_TOKEN = originalOidcToken;
+          ]);
+        } finally {
+          if (scenario.overrides?.unset_gateway_api_key) {
+            restoreEnvVar("AI_GATEWAY_API_KEY", originalGatewayApiKey);
+            restoreEnvVar("VERCEL_OIDC_TOKEN", originalOidcToken);
           }
         }
-      }
 
-      const replyText = replyTexts[replyCallCount - 1];
-      if (typeof replyText === "string") {
-        return {
-          ...reply,
-          text: replyText,
-        };
-      }
-      return reply;
+        successfulReplyCount += 1;
+        return reply;
+      },
     },
+    visionContext: {
+      listThreadReplies: async ({ channelId, threadTs, targetMessageTs }) => {
+        const threadId = buildRuntimeThreadId({
+          id: `slack:${channelId}:${threadTs}`,
+          channel_id: channelId,
+          thread_ts: threadTs,
+        });
+        const replies = (threadRecordsById.get(threadId)?.transcript ?? []).map(
+          (message) => buildThreadReplyFromMessage(threadTs, message),
+        );
+        if (!targetMessageTs || targetMessageTs.length === 0) {
+          return replies;
+        }
+        const targets = new Set(targetMessageTs);
+        return replies.filter(
+          (reply) => typeof reply.ts === "string" && targets.has(reply.ts),
+        );
+      },
+    },
+  };
+  const slackRuntime = createSlackRuntime({
+    getSlackAdapter: () => slackAdapter as any,
+    services: runtimeServices,
+  });
+  const dispatch = createThreadMessageDispatcher({
+    runtime: slackRuntime,
   });
 
   try {
-    const runWithRetryableTurnHandling = async (
-      run: () => Promise<void>,
-    ): Promise<void> => {
-      for (let attempt = 1; attempt <= retryableMaxAttempts; attempt += 1) {
-        try {
-          await run();
-          return;
-        } catch (error) {
-          if (!isRetryableTurnError(error, "agent_turn_timeout_resume")) {
-            throw error;
-          }
-          if (attempt >= retryableMaxAttempts) {
-            throw error;
-          }
+    const flushDelayedQueueDeliveries = (): void => {
+      if (delayedQueueDeliveries.length === 0) {
+        return;
+      }
+      readyQueueDeliveries.push(...delayedQueueDeliveries.splice(0));
+    };
+
+    const processNextQueueDelivery = async (): Promise<boolean> => {
+      const current = readyQueueDeliveries.shift();
+      if (!current) {
+        return false;
+      }
+
+      const attempt = current.attempts + 1;
+
+      try {
+        await processQueuedThreadMessage(current.payload, {
+          dispatch,
+        });
+        return true;
+      } catch (error) {
+        if (shouldRetryQueueDelivery(error, attempt, retryableMaxAttempts)) {
+          current.attempts = attempt;
+          delayedQueueDeliveries.push(current);
+          return true;
         }
+        throw error;
       }
     };
 
-    for (const event of testCase.events) {
-      if (event.type === "new_mention") {
-        const thread = getThread(event.thread);
-        await runWithRetryableTurnHandling(async () => {
-          await appSlackRuntime.handleNewMention(
-            thread,
-            toIncomingMessage(event) as any,
-          );
-        });
-        await maybeAutoCompleteAuth();
-        continue;
-      }
+    const processQueuedEvent = async (
+      event: MentionEvent | SubscribedMessageEvent,
+    ): Promise<void> => {
+      const { thread, transcript } = getThreadRecord(event.thread);
+      const message = toIncomingMessage(event) as unknown as Message;
+      upsertThreadTranscriptMessage(transcript, message);
+      const queueMessageId = `queue-${message.id}`;
+      await routeIncomingMessageToQueue({
+        adapter: {},
+        enqueueThreadMessage: async (payload) => {
+          readyQueueDeliveries.push({
+            attempts: 0,
+            payload: {
+              ...payload,
+              message,
+              thread,
+              queueMessageId,
+            },
+          });
+          return queueMessageId;
+        },
+        threadId: thread.id,
+        message,
+        runtime: {
+          createThread: async () => thread,
+        },
+      });
+    };
 
-      if (event.type === "subscribed_message") {
-        const thread = getThread(event.thread);
-        await runWithRetryableTurnHandling(async () => {
-          await appSlackRuntime.handleSubscribedMessage(
-            thread,
-            toIncomingMessage(event) as any,
-          );
-        });
-        await maybeAutoCompleteAuth();
-        continue;
-      }
-
-      const lifecycleEvent: AppRuntimeAssistantLifecycleEvent = {
+    const runLifecycleEvent = async (
+      event: AssistantThreadStartedEvent | AssistantContextChangedEvent,
+    ): Promise<void> => {
+      const lifecycleEvent: AssistantLifecycleEvent = {
         threadId: event.thread.id,
         channelId: event.thread.channel_id ?? "C_EVAL",
         threadTs: event.thread.thread_ts ?? "0",
         userId: event.user_id ?? "U-eval",
       };
       if (event.type === "assistant_thread_started") {
-        await appSlackRuntime.handleAssistantThreadStarted(lifecycleEvent);
-        await maybeAutoCompleteAuth();
-        continue;
+        await slackRuntime.handleAssistantThreadStarted(lifecycleEvent);
+        return;
       }
 
-      await appSlackRuntime.handleAssistantContextChanged(lifecycleEvent);
+      await slackRuntime.handleAssistantContextChanged(lifecycleEvent);
+    };
+
+    for (const event of scenario.events) {
+      if (event.type === "new_mention" || event.type === "subscribed_message") {
+        await processQueuedEvent(event);
+      } else {
+        await runLifecycleEvent(event);
+      }
+      await maybeAutoCompleteAuth();
+      flushDelayedQueueDeliveries();
+      if (await processNextQueueDelivery()) {
+        await maybeAutoCompleteAuth();
+      }
+    }
+
+    while (
+      readyQueueDeliveries.length > 0 ||
+      delayedQueueDeliveries.length > 0
+    ) {
+      if (readyQueueDeliveries.length === 0) {
+        flushDelayedQueueDeliveries();
+      }
+      const processed = await processNextQueueDelivery();
+      if (!processed) {
+        break;
+      }
       await maybeAutoCompleteAuth();
     }
   } finally {
-    resetBotDepsForTests();
-    setAdditionalPluginRootsForTests([]);
     resetSkillDiscoveryCache();
-    setPostSlackMessageObserverForTests(undefined);
-    await cleanupHarnessThreadState(stateAdapter, testCase.events);
+    await cleanupHarnessThreadState(stateAdapter, scenario.events);
     await cleanupMcpAuthState(
       authRequesterUsers,
       autoCompleteMcpOauthProviders,
     );
     await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
-    (bot as unknown as { getAdapter?: (name: string) => unknown }).getAdapter =
-      originalGetAdapter;
-    if (originalJuniorBaseUrl === undefined) {
-      delete process.env.JUNIOR_BASE_URL;
-    } else {
-      process.env.JUNIOR_BASE_URL = originalJuniorBaseUrl;
-    }
-    if (originalPluginPackages === undefined) {
-      delete process.env.JUNIOR_PLUGIN_PACKAGES;
-    } else {
-      process.env.JUNIOR_PLUGIN_PACKAGES = originalPluginPackages;
-    }
-    if (originalSlackBotToken === undefined) {
-      delete process.env.SLACK_BOT_TOKEN;
-    } else {
-      process.env.SLACK_BOT_TOKEN = originalSlackBotToken;
-    }
-    if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
-    } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
-    }
-    if (testCase.behavior?.enable_test_credentials) {
-      if (originalEnableTestCredentials === undefined) {
-        delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
-      } else {
-        process.env.EVAL_ENABLE_TEST_CREDENTIALS =
-          originalEnableTestCredentials;
-      }
-      if (originalTestCredentialToken === undefined) {
-        delete process.env.EVAL_TEST_CREDENTIAL_TOKEN;
-      } else {
-        process.env.EVAL_TEST_CREDENTIAL_TOKEN = originalTestCredentialToken;
-      }
+    restoreEnvVar("JUNIOR_BASE_URL", originalJuniorBaseUrl);
+    restoreEnvVar("JUNIOR_EXTRA_PLUGIN_ROOTS", originalExtraPluginRoots);
+    restoreEnvVar("JUNIOR_PLUGIN_PACKAGES", originalPluginPackages);
+    restoreEnvVar("SLACK_BOT_TOKEN", originalSlackBotToken);
+    restoreEnvVar("JUNIOR_STATE_ADAPTER", originalStateAdapter);
+    if (scenario.overrides?.enable_test_credentials) {
+      restoreEnvVar(
+        "EVAL_ENABLE_TEST_CREDENTIALS",
+        originalEnableTestCredentials,
+      );
+      restoreEnvVar("EVAL_TEST_CREDENTIAL_TOKEN", originalTestCredentialToken);
     }
   }
 
-  const posts = [...threadsById.values()].flatMap((thread) =>
-    thread.posts.map(toPostedText),
+  const posts = [...threadRecordsById.values()].flatMap((record) =>
+    record.thread.posts.map(toEvalAssistantPost),
   );
-  const { channelPosts: capturedChannelPosts, reactions } =
-    collectSlackArtifactsFromCapturedCalls(readCapturedSlackApiCalls());
-  const channelPosts = [...capturedChannelPosts];
-  for (const post of resumedChannelPosts) {
-    if (
-      channelPosts.some(
-        (existing) =>
-          existing.channel === post.channel &&
-          existing.text === post.text &&
-          existing.thread_ts === post.thread_ts,
-      )
-    ) {
-      continue;
-    }
-    channelPosts.push(post);
-  }
+  const { channelPosts, reactions } = collectSlackArtifactsFromCapturedCalls(
+    readCapturedSlackApiCalls(),
+  );
 
   return {
     channelPosts,

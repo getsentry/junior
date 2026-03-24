@@ -1,34 +1,38 @@
-import { createBashTool } from "@/chat/tools/bash";
-import { createAttachFileTool } from "@/chat/tools/attach-file";
+import { createBashTool } from "@/chat/tools/sandbox/bash";
+import { createAttachFileTool } from "@/chat/tools/sandbox/attach-file";
 import type { SkillMetadata } from "@/chat/skills";
-import { createImageGenerateTool } from "@/chat/tools/image-generate";
-import { createLoadSkillTool } from "@/chat/tools/load-skill";
-import { createReadFileTool } from "@/chat/tools/read-file";
-import { createSearchToolsTool } from "@/chat/tools/search-tools";
-import { createSlackChannelListMessagesTool } from "@/chat/tools/slack-channel-list-messages";
-import { createSlackChannelPostMessageTool } from "@/chat/tools/slack-channel-post-message";
-import { createSlackMessageAddReactionTool } from "@/chat/tools/slack-message-add-reaction";
-import { createSlackCanvasCreateTool } from "@/chat/tools/slack-canvas-create";
-import { createSlackCanvasUpdateTool } from "@/chat/tools/slack-canvas-update";
-import { createSlackListAddItemsTool } from "@/chat/tools/slack-list-add-items";
-import { createSlackListCreateTool } from "@/chat/tools/slack-list-create";
-import { createSlackListGetItemsTool } from "@/chat/tools/slack-list-get-items";
-import { createSlackListUpdateItemTool } from "@/chat/tools/slack-list-update-item";
+import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
+import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
+import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
+import { createSearchToolsTool } from "@/chat/tools/skill/search-tools";
+import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
+import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
+import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
+import {
+  createSlackCanvasCreateTool,
+  createSlackCanvasUpdateTool,
+} from "@/chat/tools/slack/canvas-tools";
+import {
+  createSlackListAddItemsTool,
+  createSlackListCreateTool,
+  createSlackListGetItemsTool,
+  createSlackListUpdateItemTool,
+} from "@/chat/tools/slack/list-tools";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
-import { createUseToolTool } from "@/chat/tools/use-tool";
+import { createUseToolTool } from "@/chat/tools/skill/use-tool";
 import type {
   ToolHooks,
   ToolRuntimeContext,
   ToolState,
 } from "@/chat/tools/types";
-import { createWebFetchTool } from "@/chat/tools/web-fetch";
-import { createWebSearchTool } from "@/chat/tools/web-search";
-import { createWriteFileTool } from "@/chat/tools/write-file";
-import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
+import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
+import { createWebSearchTool } from "@/chat/tools/web/search";
+import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   isConversationChannel,
   isConversationScopedChannel,
-} from "@/chat/slack-actions/client";
+} from "@/chat/slack/client";
 
 function createToolState(
   hooks: ToolHooks,
@@ -90,11 +94,7 @@ function wrapToolExecution<T>(
   maybeExecutable.execute = async (...args: any[]) => {
     const input = args[0];
     await hooks.onToolCallStart?.(toolName, input);
-    try {
-      return await originalExecute(...args);
-    } finally {
-      await hooks.onToolCallEnd?.(toolName, input);
-    }
+    return originalExecute(...args);
   };
 
   return toolDef;

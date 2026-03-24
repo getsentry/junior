@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveReplyDelivery } from "@/chat/turn/execute";
+import { resolveReplyDelivery } from "@/chat/runtime/turn";
 
 describe("resolveReplyDelivery", () => {
   it("uses delivery plan directly when available", () => {
@@ -10,7 +10,7 @@ describe("resolveReplyDelivery", () => {
         files: [],
         deliveryPlan: {
           mode: "channel_only",
-          ack: "none",
+
           postThreadText: false,
           attachFiles: "none",
         },
@@ -39,7 +39,7 @@ describe("resolveReplyDelivery", () => {
         text: "Done.",
         files: [{ data: Buffer.from("x"), filename: "a.txt" }],
         deliveryMode: "thread",
-        ackStrategy: "none",
+
         diagnostics: {
           assistantMessageCount: 1,
           modelId: "model",
@@ -58,13 +58,13 @@ describe("resolveReplyDelivery", () => {
     });
   });
 
-  it("suppresses redundant thread text when a reaction already acknowledges the turn", () => {
+  it("always posts thread reply for reaction-only turns to complete Slack response cycle", () => {
     const resolved = resolveReplyDelivery({
       hasStreamedThreadReply: false,
       reply: {
         text: "👍",
         files: [],
-        ackStrategy: "reaction",
+
         diagnostics: {
           assistantMessageCount: 1,
           modelId: "model",
@@ -78,7 +78,7 @@ describe("resolveReplyDelivery", () => {
     });
 
     expect(resolved).toEqual({
-      shouldPostThreadReply: false,
+      shouldPostThreadReply: true,
       attachFiles: "none",
     });
   });
@@ -89,7 +89,7 @@ describe("resolveReplyDelivery", () => {
       reply: {
         text: "Added the reaction. I also posted the update in channel.",
         files: [],
-        ackStrategy: "reaction",
+
         diagnostics: {
           assistantMessageCount: 1,
           modelId: "model",

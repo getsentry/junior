@@ -1,8 +1,15 @@
-import { handleCallback, send } from "@vercel/queue";
+import { isDeferredThreadMessageError } from "@/chat/queue/errors";
+import {
+  createTransportCallbackHandler,
+  sendQueueMessage,
+  type QueueCallbackMetadata,
+} from "@/chat/queue/transport";
 
 const THREAD_MESSAGE_TOPIC = "junior-thread-message";
 
 const MAX_DELIVERY_ATTEMPTS = 10;
+const THREAD_LOCK_RETRY_MAX_SECONDS = 30;
+const ACTIVE_TURN_RETRY_MAX_SECONDS = 300;
 
 export function getThreadMessageTopic(): string {
   return THREAD_MESSAGE_TOPIC;
@@ -12,34 +19,40 @@ export async function enqueueThreadMessage(
   payload: unknown,
   options?: {
     idempotencyKey?: string;
-  }
+  },
 ): Promise<string | undefined> {
-  const result = await send(getThreadMessageTopic(), payload, {
-    ...(options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {})
-  });
-
-  return result.messageId ?? undefined;
+  return await sendQueueMessage(getThreadMessageTopic(), payload, options);
 }
 
 export function createQueueCallbackHandler<T>(
-  handler: (message: T, metadata: { messageId: string; deliveryCount: number; topicName: string }) => Promise<void>
+  handler: (message: T, metadata: QueueCallbackMetadata) => Promise<void>,
 ): (request: Request) => Promise<Response> {
-  return handleCallback<T>(
-    async (message, metadata) => {
-      await handler(message, {
-        messageId: metadata.messageId,
-        deliveryCount: metadata.deliveryCount,
-        topicName: metadata.topicName
-      });
-    },
-    {
-      retry: (_error, metadata) => {
-        if (metadata.deliveryCount >= MAX_DELIVERY_ATTEMPTS) {
-          return { acknowledge: true };
-        }
-        const backoffSeconds = Math.min(300, Math.max(5, metadata.deliveryCount * 5));
-        return { afterSeconds: backoffSeconds };
+  return createTransportCallbackHandler<T>(handler, {
+    retry: (error, metadata) => {
+      if (isDeferredThreadMessageError(error, "thread_locked")) {
+        return {
+          afterSeconds: Math.min(
+            THREAD_LOCK_RETRY_MAX_SECONDS,
+            Math.max(5, metadata.deliveryCount * 5),
+          ),
+        };
       }
-    }
-  ) as unknown as (request: Request) => Promise<Response>;
+      if (isDeferredThreadMessageError(error, "active_turn")) {
+        return {
+          afterSeconds: Math.min(
+            ACTIVE_TURN_RETRY_MAX_SECONDS,
+            Math.max(30, metadata.deliveryCount * 30),
+          ),
+        };
+      }
+      if (metadata.deliveryCount >= MAX_DELIVERY_ATTEMPTS) {
+        return { acknowledge: true };
+      }
+      const backoffSeconds = Math.min(
+        300,
+        Math.max(5, metadata.deliveryCount * 5),
+      );
+      return { afterSeconds: backoffSeconds };
+    },
+  });
 }

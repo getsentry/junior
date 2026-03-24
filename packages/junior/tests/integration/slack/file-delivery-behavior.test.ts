@@ -1,41 +1,37 @@
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  appSlackRuntime,
-  resetBotDepsForTests,
-  setBotDepsForTests,
-} from "@/chat/bot";
+import { describe, expect, it } from "vitest";
+import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
 
 describe("Slack behavior: file delivery", () => {
-  afterEach(() => {
-    resetBotDepsForTests();
-  });
-
   it("ignores file followup plans when the assistant reply has no files", async () => {
-    setBotDepsForTests({
-      generateAssistantReply: async (_prompt, context) => {
-        await context?.onTextDelta?.("Preview is ready.");
-        return {
-          text: "Preview is ready.",
-          deliveryPlan: {
-            mode: "thread",
-            ack: "none",
-            postThreadText: true,
-            attachFiles: "followup",
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.("Preview is ready.");
+            return {
+              text: "Preview is ready.",
+              deliveryPlan: {
+                mode: "thread",
+
+                postThreadText: true,
+                attachFiles: "followup",
+              },
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
           },
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
-          },
-        };
+        },
       },
     });
 
@@ -48,7 +44,7 @@ describe("Slack behavior: file delivery", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await appSlackRuntime.handleNewMention(thread, message);
+    await slackRuntime.handleNewMention(thread, message);
 
     expect(thread.posts).toEqual(["Preview is ready."]);
   });

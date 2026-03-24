@@ -9,7 +9,7 @@ describe("Conversational Evals: OAuth Workflows", () => {
   };
 
   slackEval("oauth: mcp skill auth resume keeps prior thread context", {
-    behavior: {
+    overrides: {
       auto_complete_mcp_oauth: ["eval-auth"],
       plugin_dirs: ["evals/plugins"],
     },
@@ -36,7 +36,7 @@ describe("Conversational Evals: OAuth Workflows", () => {
   };
 
   slackEval("oauth: generic skill auth resume keeps prior thread context", {
-    behavior: {
+    overrides: {
       auto_complete_oauth: ["eval-oauth"],
       plugin_dirs: ["evals/plugins"],
     },

@@ -9,13 +9,14 @@ describe("Conversational Evals: Lifecycle and Resilience", () => {
   });
 
   slackEval("resilience: handler error is user-visible", {
-    behavior: { fail_reply_call: 1 },
+    overrides: { fail_reply_call: 1 },
     events: [mention("What's the status of the deploy?")],
     criteria: "A single error reply is posted when response generation fails.",
   });
 
   slackEval("resilience: retryable timeout-shaped failure retries cleanly", {
-    behavior: {
+    overrides: {
+      reply_texts: ["Status is stable."],
       retryable_timeout_calls: [1],
       retryable_max_attempts: 2,
     },

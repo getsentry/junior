@@ -5,20 +5,15 @@ import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-s
 import { TestCredentialBroker } from "@/chat/credentials/test-broker";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
-import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth-token-placeholder";
+import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import {
   createPluginBroker,
   getPluginProviders,
 } from "@/chat/plugins/registry";
-import { getStateAdapter } from "@/chat/state";
+import { getStateAdapter } from "@/chat/state/adapter";
 
-let _userTokenStore: UserTokenStore | undefined;
-
-export function getUserTokenStore(): UserTokenStore {
-  if (!_userTokenStore) {
-    _userTokenStore = new StateAdapterTokenStore(getStateAdapter());
-  }
-  return _userTokenStore;
+export function createUserTokenStore(): UserTokenStore {
+  return new StateAdapterTokenStore(getStateAdapter());
 }
 
 // Encapsulation boundary for capability runtime construction.
@@ -33,7 +28,7 @@ export function createSkillCapabilityRuntime(
 ): SkillCapabilityRuntime {
   logCapabilityCatalogLoadedOnce();
   const useTestBroker = process.env.EVAL_ENABLE_TEST_CREDENTIALS === "1";
-  const userTokenStore = getUserTokenStore();
+  const userTokenStore = createUserTokenStore();
 
   const brokersByProvider: Record<string, CredentialBroker> = {};
 

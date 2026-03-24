@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createProgressReporter } from "@/chat/progress-reporter";
+import { createProgressReporter } from "@/chat/runtime/progress-reporter";
 
 interface FakeTimer {
   id: number;
@@ -15,12 +15,15 @@ function createFakeScheduler() {
 
   const now = () => nowMs;
 
-  const setTimer = (callback: () => void, delayMs: number): ReturnType<typeof setTimeout> => {
+  const setTimer = (
+    callback: () => void,
+    delayMs: number,
+  ): ReturnType<typeof setTimeout> => {
     const timer: FakeTimer = {
       id: nextId++,
       runAt: nowMs + delayMs,
       callback,
-      canceled: false
+      canceled: false,
     };
     timers.push(timer);
     return timer.id as unknown as ReturnType<typeof setTimeout>;
@@ -53,7 +56,7 @@ function createFakeScheduler() {
     now,
     setTimer,
     clearTimer,
-    advance
+    advance,
   };
 }
 
@@ -69,13 +72,35 @@ describe("createProgressReporter", () => {
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer
+      clearTimer: scheduler.clearTimer,
     });
 
     await reporter.start();
     await Promise.resolve();
 
     expect(statuses).toEqual(["Thinking..."]);
+  });
+
+  it("clears the assistant status when stopped", async () => {
+    const scheduler = createFakeScheduler();
+    const statuses: string[] = [];
+    const reporter = createProgressReporter({
+      channelId: "C1",
+      threadTs: "123.45",
+      setAssistantStatus: async (_channelId, _threadTs, text) => {
+        statuses.push(text);
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+    });
+
+    await reporter.start();
+    await Promise.resolve();
+
+    await reporter.stop();
+
+    expect(statuses).toEqual(["Thinking...", ""]);
   });
 
   it("suppresses duplicate pending statuses", async () => {
@@ -89,7 +114,7 @@ describe("createProgressReporter", () => {
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer
+      clearTimer: scheduler.clearTimer,
     });
 
     await reporter.start();
@@ -114,7 +139,7 @@ describe("createProgressReporter", () => {
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer
+      clearTimer: scheduler.clearTimer,
     });
 
     await reporter.start();
@@ -141,7 +166,7 @@ describe("createProgressReporter", () => {
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer
+      clearTimer: scheduler.clearTimer,
     });
 
     await reporter.start();
@@ -154,5 +179,65 @@ describe("createProgressReporter", () => {
     await Promise.resolve();
 
     expect(statuses).toEqual(["Thinking...", "Reviewing results"]);
+  });
+
+  it("serializes status updates so a slow request cannot reorder with the clear", async () => {
+    const scheduler = createFakeScheduler();
+    const statuses: string[] = [];
+    let resolveThinking: (() => void) | undefined;
+    const reporter = createProgressReporter({
+      channelId: "C1",
+      threadTs: "123.45",
+      setAssistantStatus: async (_channelId, _threadTs, text) => {
+        if (text === "Thinking...") {
+          await new Promise<void>((resolve) => {
+            resolveThinking = resolve;
+          });
+        }
+        statuses.push(text);
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+    });
+
+    await reporter.start();
+    // "Thinking..." is now in flight but blocked
+
+    const stopPromise = reporter.stop();
+    // stop() should wait for the inflight "Thinking..." before sending ""
+
+    // Unblock the slow "Thinking..." call
+    resolveThinking!();
+    await stopPromise;
+
+    // The clear must always be the last status sent to Slack
+    expect(statuses).toEqual(["Thinking...", ""]);
+  });
+
+  it("clears after the latest visible status when stopping", async () => {
+    const scheduler = createFakeScheduler();
+    const statuses: string[] = [];
+    const reporter = createProgressReporter({
+      channelId: "C1",
+      threadTs: "123.45",
+      setAssistantStatus: async (_channelId, _threadTs, text) => {
+        statuses.push(text);
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+    });
+
+    await reporter.start();
+    await Promise.resolve();
+
+    await reporter.setStatus("Reviewing results");
+    scheduler.advance(1200);
+    await Promise.resolve();
+
+    await reporter.stop();
+
+    expect(statuses).toEqual(["Thinking...", "Reviewing results", ""]);
   });
 });

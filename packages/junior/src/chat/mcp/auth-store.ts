@@ -3,8 +3,8 @@ import type {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
-import type { ThreadArtifactsState } from "@/chat/slack-actions/types";
-import { getStateAdapter } from "@/chat/state";
+import type { ThreadArtifactsState } from "@/chat/state/artifacts";
+import { getStateAdapter } from "@/chat/state/adapter";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_auth_session";
 const MCP_AUTH_CREDENTIALS_PREFIX = "junior:mcp_auth_credentials";

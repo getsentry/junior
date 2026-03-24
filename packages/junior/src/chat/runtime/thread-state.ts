@@ -1,12 +1,12 @@
 import type { Thread } from "chat";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { buildConversationStatePatch } from "@/chat/conversation-state";
-import type { ThreadConversationState } from "@/chat/conversation-state";
+import { buildConversationStatePatch } from "@/chat/state/conversation";
+import type { ThreadConversationState } from "@/chat/state/conversation";
 import {
   buildArtifactStatePatch,
   type ThreadArtifactsState,
-} from "@/chat/slack-actions/types";
+} from "@/chat/state/artifacts";
 
 export function mergeArtifactsState(
   artifacts: ThreadArtifactsState,

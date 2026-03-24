@@ -185,7 +185,8 @@ vi.mock("@mariozechner/pi-agent-core", () => {
   return { Agent: MockAgent };
 });
 
-vi.mock("@/chat/observability", () => ({
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
   logException: vi.fn(),
   logInfo: vi.fn(),
   logWarn: vi.fn(),
@@ -200,7 +201,8 @@ vi.mock("@/chat/observability", () => ({
   ) => await callback(),
 }));
 
-vi.mock("@/chat/oauth-flow", () => ({
+vi.mock("@/chat/oauth-flow", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/oauth-flow")>()),
   deliverPrivateMessage: deliverPrivateMessageMock,
   formatProviderLabel: (provider: string) => provider,
   resolveBaseUrl: () => "https://junior.example.com",
@@ -284,7 +286,8 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
   shouldEmitDevAgentTrace: () => false,
 }));
 
-vi.mock("@/chat/runtime-metadata", () => ({
+vi.mock("@/chat/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/config")>()),
   getRuntimeMetadata: () => ({ version: "test" }),
 }));
 
@@ -292,7 +295,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
   createSkillCapabilityRuntime: () => ({
     getTurnHeaderTransforms: () => undefined,
   }),
-  getUserTokenStore: () => ({
+  createUserTokenStore: () => ({
     get: async () => undefined,
     set: async () => undefined,
     delete: async () => undefined,
@@ -358,7 +361,8 @@ vi.mock("@/chat/plugins/registry", async (importOriginal) => {
   };
 });
 
-vi.mock("@/chat/skills", () => {
+vi.mock("@/chat/skills", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/chat/skills")>();
   const metadata = {
     name: "demo-skill",
     description: "Demo skill",
@@ -367,6 +371,7 @@ vi.mock("@/chat/skills", () => {
   };
 
   return {
+    ...actual,
     discoverSkills: async () => [metadata],
     findSkillByName: () => null,
     loadSkillsByName: loadSkillsByNameMock,
@@ -415,12 +420,12 @@ vi.mock("@/chat/mcp/client", () => {
 });
 
 import { generateAssistantReply } from "@/chat/respond";
-import * as stateModule from "@/chat/state";
 import {
-  disconnectStateAdapter,
   getAgentTurnSessionCheckpoint,
-} from "@/chat/state";
-import { isRetryableTurnError } from "@/chat/turn/errors";
+  upsertAgentTurnSessionCheckpoint,
+} from "@/chat/state/turn-session-store";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { isRetryableTurnError } from "@/chat/runtime/turn";
 
 describe("generateAssistantReply progressive MCP loading", () => {
   beforeEach(async () => {
@@ -704,7 +709,10 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
   it("still returns auth resume when auth checkpoint persistence fails", async () => {
     const checkpointSpy = vi
-      .spyOn(stateModule, "upsertAgentTurnSessionCheckpoint")
+      .spyOn(
+        await import("@/chat/state/turn-session-store"),
+        "upsertAgentTurnSessionCheckpoint",
+      )
       .mockImplementationOnce(async () => {
         throw new Error("state adapter unavailable");
       });
@@ -743,7 +751,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       },
     ];
     const expectedResumeMessages = [priorMessages[0]];
-    await stateModule.upsertAgentTurnSessionCheckpoint({
+    await upsertAgentTurnSessionCheckpoint({
       conversationId: "conversation-5",
       sessionId: "turn-5",
       sliceId: 1,

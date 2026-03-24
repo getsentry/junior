@@ -1,7 +1,10 @@
 import type { Message, Thread } from "chat";
 import { botConfig } from "@/chat/config";
-import { toOptionalString } from "@/chat/observability";
-import { parseSlackThreadId, resolveSlackChannelIdFromMessage } from "@/chat/slack-context";
+import { toOptionalString } from "@/chat/logging";
+import {
+  parseSlackThreadId,
+  resolveSlackChannelIdFromMessage,
+} from "@/chat/slack/context";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -11,7 +14,7 @@ export function stripLeadingBotMention(
   text: string,
   options: {
     stripLeadingSlackMentionToken?: boolean;
-  } = {}
+  } = {},
 ): string {
   if (!text.trim()) return text;
 
@@ -20,19 +23,25 @@ export function stripLeadingBotMention(
     next = next.replace(/^\s*<@[^>]+>[\s,:-]*/, "").trim();
   }
 
-  const mentionByNameRe = new RegExp(`^\\s*@${escapeRegExp(botConfig.userName)}\\b[\\s,:-]*`, "i");
+  const mentionByNameRe = new RegExp(
+    `^\\s*@${escapeRegExp(botConfig.userName)}\\b[\\s,:-]*`,
+    "i",
+  );
   next = next.replace(mentionByNameRe, "").trim();
 
   const mentionByLabeledEntityRe = new RegExp(
     `^\\s*<@[^>|]+\\|${escapeRegExp(botConfig.userName)}>[\\s,:-]*`,
-    "i"
+    "i",
   );
   next = next.replace(mentionByLabeledEntityRe, "").trim();
 
   return next;
 }
 
-export function getThreadId(thread: Thread, _message: Message): string | undefined {
+export function getThreadId(
+  thread: Thread,
+  _message: Message,
+): string | undefined {
   return toOptionalString(thread.id);
 }
 
@@ -43,7 +52,10 @@ export function getRunId(thread: Thread, message: Message): string | undefined {
   );
 }
 
-export function getChannelId(thread: Thread, message: Message): string | undefined {
+export function getChannelId(
+  thread: Thread,
+  message: Message,
+): string | undefined {
   return thread.channelId ?? resolveSlackChannelIdFromMessage(message);
 }
 
@@ -52,7 +64,9 @@ export function getThreadTs(threadId: string | undefined): string | undefined {
 }
 
 export function getMessageTs(message: Message): string | undefined {
-  const directTs = toOptionalString((message as unknown as { ts?: unknown }).ts);
+  const directTs = toOptionalString(
+    (message as unknown as { ts?: unknown }).ts,
+  );
   if (directTs) {
     return directTs;
   }
@@ -80,7 +94,10 @@ export function getSlackApiErrorCode(error: unknown): string | undefined {
     data?: { error?: unknown };
   };
 
-  if (typeof candidate.data?.error === "string" && candidate.data.error.trim().length > 0) {
+  if (
+    typeof candidate.data?.error === "string" &&
+    candidate.data.error.trim().length > 0
+  ) {
     return candidate.data.error;
   }
   if (typeof candidate.code === "string" && candidate.code.trim().length > 0) {
@@ -90,7 +107,10 @@ export function getSlackApiErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-function getSlackHeaderString(headers: unknown, name: string): string | undefined {
+function getSlackHeaderString(
+  headers: unknown,
+  name: string,
+): string | undefined {
   if (!headers || typeof headers !== "object") {
     return undefined;
   }
@@ -113,7 +133,9 @@ function getSlackHeaderString(headers: unknown, name: string): string | undefine
   return undefined;
 }
 
-export function getSlackErrorObservabilityAttributes(error: unknown): Record<string, string | number> {
+export function getSlackErrorObservabilityAttributes(
+  error: unknown,
+): Record<string, string | number> {
   if (!error || typeof error !== "object") {
     return {};
   }
@@ -129,14 +151,20 @@ export function getSlackErrorObservabilityAttributes(error: unknown): Record<str
   if (typeof candidate.code === "string" && candidate.code.trim().length > 0) {
     attributes["app.slack.error_code"] = candidate.code;
   }
-  if (typeof candidate.data?.error === "string" && candidate.data.error.trim().length > 0) {
+  if (
+    typeof candidate.data?.error === "string" &&
+    candidate.data.error.trim().length > 0
+  ) {
     attributes["app.slack.api_error"] = candidate.data.error;
   }
   const requestId = getSlackHeaderString(candidate.headers, "x-slack-req-id");
   if (requestId) {
     attributes["app.slack.request_id"] = requestId;
   }
-  if (typeof candidate.statusCode === "number" && Number.isFinite(candidate.statusCode)) {
+  if (
+    typeof candidate.statusCode === "number" &&
+    Number.isFinite(candidate.statusCode)
+  ) {
     attributes["http.response.status_code"] = candidate.statusCode;
   }
 
@@ -145,5 +173,9 @@ export function getSlackErrorObservabilityAttributes(error: unknown): Record<str
 
 export function isSlackTitlePermissionError(error: unknown): boolean {
   const code = getSlackApiErrorCode(error);
-  return code === "no_permission" || code === "missing_scope" || code === "not_allowed_token_type";
+  return (
+    code === "no_permission" ||
+    code === "missing_scope" ||
+    code === "not_allowed_token_type"
+  );
 }

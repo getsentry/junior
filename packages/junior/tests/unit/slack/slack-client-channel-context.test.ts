@@ -3,12 +3,14 @@ import {
   isConversationChannel,
   isConversationScopedChannel,
   isDmChannel,
-  normalizeSlackConversationId
-} from "@/chat/slack-actions/client";
+  normalizeSlackConversationId,
+} from "@/chat/slack/client";
 
 describe("slack client channel context helpers", () => {
   it("normalizes canonical Slack thread-style identifiers", () => {
-    expect(normalizeSlackConversationId("slack:C123:1700000000.000")).toBe("C123");
+    expect(normalizeSlackConversationId("slack:C123:1700000000.000")).toBe(
+      "C123",
+    );
     expect(normalizeSlackConversationId("slack:D999")).toBe("D999");
   });
 
@@ -31,7 +33,9 @@ describe("slack client channel context helpers", () => {
     expect(isConversationScopedChannel("slack:C123:1700000000.000")).toBe(true);
     expect(isConversationScopedChannel("slack:G123:1700000000.000")).toBe(true);
     expect(isConversationScopedChannel("slack:D123:1700000000.000")).toBe(true);
-    expect(isConversationScopedChannel("slack:X123:1700000000.000")).toBe(false);
+    expect(isConversationScopedChannel("slack:X123:1700000000.000")).toBe(
+      false,
+    );
 
     expect(isConversationChannel("slack:C123:1700000000.000")).toBe(true);
     expect(isConversationChannel("slack:G123:1700000000.000")).toBe(true);

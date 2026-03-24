@@ -1,9 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  appSlackRuntime,
-  resetBotDepsForTests,
-  setBotDepsForTests,
-} from "@/chat/bot";
+import { describe, expect, it } from "vitest";
+import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
@@ -25,10 +21,6 @@ function toPostedText(value: unknown): string {
 }
 
 describe("Slack behavior: thread continuity", () => {
-  afterEach(() => {
-    resetBotDepsForTests();
-  });
-
   it("keeps same-thread replies in arrival order for rapid follow-up messages", async () => {
     const scriptedReplies = [
       "Rollback complete. Error rates are back to baseline.",
@@ -36,31 +28,38 @@ describe("Slack behavior: thread continuity", () => {
     ];
     const prompts: string[] = [];
 
-    setBotDepsForTests({
-      completeObject: async () => {
-        return {
-          object: {
-            should_reply: true,
-            confidence: 1,
-            reason: "direct mention follow-up",
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            return {
+              object: {
+                should_reply: true,
+                confidence: 1,
+                reason: "direct mention follow-up",
+              },
+              text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
+            } as never;
           },
-          text: '{"should_reply":true,"confidence":1,"reason":"direct mention follow-up"}',
-        } as never;
-      },
-      generateAssistantReply: async (prompt) => {
-        prompts.push(prompt);
-        return {
-          text: scriptedReplies[prompts.length - 1] ?? "Unexpected extra reply",
-          diagnostics: {
-            assistantMessageCount: 1,
-            modelId: "fake-agent-model",
-            outcome: "success",
-            toolCalls: [],
-            toolErrorCount: 0,
-            toolResultCount: 0,
-            usedPrimaryText: true,
+        },
+        replyExecutor: {
+          generateAssistantReply: async (prompt) => {
+            prompts.push(prompt);
+            return {
+              text:
+                scriptedReplies[prompts.length - 1] ?? "Unexpected extra reply",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
           },
-        };
+        },
       },
     });
 
@@ -80,8 +79,8 @@ describe("Slack behavior: thread continuity", () => {
       author: { userId: "U_TESTER" },
     });
 
-    await appSlackRuntime.handleNewMention(thread, firstMessage);
-    await appSlackRuntime.handleSubscribedMessage(thread, secondMessage);
+    await slackRuntime.handleNewMention(thread, firstMessage);
+    await slackRuntime.handleSubscribedMessage(thread, secondMessage);
 
     expect(prompts).toHaveLength(2);
     expect(thread.posts).toHaveLength(2);

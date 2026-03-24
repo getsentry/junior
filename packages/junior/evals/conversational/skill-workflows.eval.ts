@@ -3,7 +3,7 @@ import { mention, slackEval, threadMessage } from "../helpers";
 
 describe("Conversational Evals: Skill Workflows", () => {
   slackEval("skills: candidate brief command", {
-    behavior: { skill_dirs: ["evals/skills"] },
+    overrides: { skill_dirs: ["evals/skills"] },
     events: [mention("/candidate-brief David Cramer")],
     criteria:
       "The assistant posts exactly one reply for David Cramer. The reply is a candidate brief with role/team/location-style details and does not include sandbox setup failure text.",
@@ -16,7 +16,7 @@ describe("Conversational Evals: Skill Workflows", () => {
   };
 
   slackEval("skills: candidate brief repeated in one thread", {
-    behavior: { skill_dirs: ["evals/skills"] },
+    overrides: { skill_dirs: ["evals/skills"] },
     events: [
       mention("/candidate-brief Alice Example", {
         thread: candidateBriefThread,
@@ -31,14 +31,14 @@ describe("Conversational Evals: Skill Workflows", () => {
   });
 
   slackEval("skills: list working directory", {
-    behavior: { skill_dirs: ["evals/skills"] },
+    overrides: { skill_dirs: ["evals/skills"] },
     events: [mention("/list-working-directory")],
     criteria:
       "The assistant posts exactly one working-directory listing reply that includes a file-list section (for example 'Working directory files:') and does not include sandbox setup failure text.",
   });
 
   slackEval("skills: capability credential smoke command", {
-    behavior: {
+    overrides: {
       skill_dirs: ["evals/skills"],
       enable_test_credentials: true,
       plugin_packages: ["@sentry/junior-github"],
@@ -50,7 +50,7 @@ describe("Conversational Evals: Skill Workflows", () => {
   });
 
   slackEval("skills: sentry capability credential smoke command", {
-    behavior: {
+    overrides: {
       skill_dirs: ["evals/skills"],
       enable_test_credentials: true,
       plugin_packages: ["@sentry/junior-sentry"],
@@ -68,7 +68,7 @@ describe("Conversational Evals: Skill Workflows", () => {
   };
 
   slackEval("skills: default repo setup via natural language", {
-    behavior: {
+    overrides: {
       enable_test_credentials: true,
       plugin_packages: ["@sentry/junior-github"],
       test_credential_token: "eval-default-repo-token",
