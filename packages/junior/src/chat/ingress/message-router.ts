@@ -270,6 +270,14 @@ export async function routeIncomingMessageToQueue(args: {
   if (isMention && !typedMessage.isMention) {
     typedMessage.isMention = true;
   }
+  // NOTE: All subscribed messages are enqueued regardless of whether the
+  // runtime will ultimately reply. The old ingress filtered passive messages
+  // pre-queue via an LLM classifier, but that coupled reply policy into
+  // ingress. The tradeoff is extra queue/lock/state overhead for messages
+  // that get skipped at runtime. If this becomes a bottleneck in high-traffic
+  // subscribed threads, consider restoring a lightweight pre-queue fast-path
+  // (e.g. the directed-at-other-party preflight) without re-coupling the
+  // full reply decision.
   const isDirectMessage = isSlackDirectMessageThreadId(normalizedThreadId);
   const kind = determineThreadMessageKind({
     isDirectMessage,
