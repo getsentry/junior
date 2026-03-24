@@ -152,39 +152,78 @@ async function githubRequest<T>(
   return parsed as T;
 }
 
+/**
+ * Capability aliases that map to a different GitHub permission than their name implies.
+ * Key: suffix after plugin name (e.g. "issues.comment"), value: `{ permission, level }`.
+ */
+const CAPABILITY_ALIASES: Record<
+  string,
+  { permission: string; level: "read" | "write" }
+> = {
+  "issues.comment": { permission: "issues", level: "write" },
+  "labels.write": { permission: "issues", level: "write" },
+};
+
+/**
+ * GitHub App permission scopes that the broker can request.
+ * Capabilities follow the convention `<plugin>.<scope>.<read|write>` where
+ * the scope name uses dashes in capabilities and underscores in the GitHub API.
+ */
+const KNOWN_SCOPES = new Set([
+  "actions",
+  "administration",
+  "checks",
+  "codespaces",
+  "contents",
+  "deployments",
+  "environments",
+  "issues",
+  "metadata",
+  "packages",
+  "pages",
+  "pull_requests",
+  "repository_hooks",
+  "repository_projects",
+  "secret_scanning_alerts",
+  "secrets",
+  "security_events",
+  "statuses",
+  "vulnerability_alerts",
+  "workflows",
+]);
+
+/** Map a capability string to the GitHub App permission it requires. */
 function capabilityToPermissions(
   capability: string,
   pluginName: string,
 ): Record<string, "read" | "write"> {
-  if (capability === `${pluginName}.issues.read`) {
-    return { issues: "read" };
+  const prefix = `${pluginName}.`;
+  if (!capability.startsWith(prefix)) {
+    throw new Error(`Unsupported GitHub capability: ${capability}`);
+  }
+  const suffix = capability.slice(prefix.length);
+
+  const alias = CAPABILITY_ALIASES[suffix];
+  if (alias) {
+    return { [alias.permission]: alias.level };
   }
 
-  if (
-    capability === `${pluginName}.issues.write` ||
-    capability === `${pluginName}.issues.comment` ||
-    capability === `${pluginName}.labels.write`
-  ) {
-    return { issues: "write" };
+  const lastDot = suffix.lastIndexOf(".");
+  if (lastDot === -1) {
+    throw new Error(`Unsupported GitHub capability: ${capability}`);
+  }
+  const scopeRaw = suffix.slice(0, lastDot);
+  const level = suffix.slice(lastDot + 1);
+  if (level !== "read" && level !== "write") {
+    throw new Error(`Unsupported GitHub capability: ${capability}`);
   }
 
-  if (capability === `${pluginName}.contents.read`) {
-    return { contents: "read" };
+  const scope = scopeRaw.replace(/-/g, "_");
+  if (!KNOWN_SCOPES.has(scope)) {
+    throw new Error(`Unsupported GitHub capability: ${capability}`);
   }
 
-  if (capability === `${pluginName}.contents.write`) {
-    return { contents: "write" };
-  }
-
-  if (capability === `${pluginName}.pull-requests.read`) {
-    return { pull_requests: "read" };
-  }
-
-  if (capability === `${pluginName}.pull-requests.write`) {
-    return { pull_requests: "write" };
-  }
-
-  throw new Error(`Unsupported GitHub capability: ${capability}`);
+  return { [scope]: level };
 }
 
 export function createGitHubAppBroker(

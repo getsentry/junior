@@ -126,10 +126,12 @@ describe("github app credential broker", () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await expect(
       broker.issue({
-        capability: "github.actions.write",
+        capability: "github.nonexistent-scope.write",
         reason: "test:unsupported",
       }),
-    ).rejects.toThrow("Unsupported GitHub capability: github.actions.write");
+    ).rejects.toThrow(
+      "Unsupported GitHub capability: github.nonexistent-scope.write",
+    );
   });
 
   it("requires GITHUB_APP_ID", async () => {
