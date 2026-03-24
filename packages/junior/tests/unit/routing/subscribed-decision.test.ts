@@ -57,7 +57,7 @@ describe("decideSubscribedThreadReply", () => {
     expect(decision).toBeUndefined();
   });
 
-  it("uses the classifier for explicit mentions in subscribed threads", async () => {
+  it("replies directly to explicit mentions in subscribed threads", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         should_reply: true,
@@ -75,10 +75,9 @@ describe("decideSubscribedThreadReply", () => {
 
     expect(decision).toEqual({
       shouldReply: true,
-      reason: SubscribedReplyReason.Classifier,
-      reasonDetail: "direct mention asking junior for help",
+      reason: SubscribedReplyReason.ExplicitMention,
     });
-    expect(completeObject).toHaveBeenCalled();
+    expect(completeObject).not.toHaveBeenCalled();
   });
 
   it("sends acknowledgment text to the classifier instead of short-circuiting", async () => {
@@ -134,7 +133,7 @@ describe("decideSubscribedThreadReply", () => {
     expect(completeObject).toHaveBeenCalled();
   });
 
-  it("does not apply acknowledgment heuristics to explicit mentions", async () => {
+  it("does not suppress acknowledgment text when it is an explicit mention", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         should_reply: true,
@@ -156,10 +155,30 @@ describe("decideSubscribedThreadReply", () => {
 
     expect(decision).toEqual({
       shouldReply: true,
-      reason: SubscribedReplyReason.Classifier,
-      reasonDetail: "direct mention acknowledgment",
+      reason: SubscribedReplyReason.ExplicitMention,
     });
-    expect(completeObject).toHaveBeenCalled();
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
+  it("still honors explicit stop instructions before mention short-circuiting", async () => {
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        rawText: "<@U_APP> stop watching or participating in this thread",
+        text: "stop watching or participating in this thread",
+        isExplicitMention: true,
+      }),
+      completeObject: vi.fn(),
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "explicit stop instruction",
+    });
   });
 
   it("skips leading slack mentions addressed to another party before classifier", async () => {

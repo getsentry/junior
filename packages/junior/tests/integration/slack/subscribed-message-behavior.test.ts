@@ -140,7 +140,7 @@ describe("Slack behavior: subscribed messages", () => {
     expect(toPostedText(thread.posts[0])).toContain("monitor dashboards");
   });
 
-  it("uses the router for explicit mentions in subscribed threads", async () => {
+  it("replies directly to explicit mentions in subscribed threads", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];
 
@@ -190,7 +190,7 @@ describe("Slack behavior: subscribed messages", () => {
 
     await slackRuntime.handleSubscribedMessage(thread, message);
 
-    expect(classifierCalled).toBe(true);
+    expect(classifierCalled).toBe(false);
     expect(replyCalls).toHaveLength(1);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain("Shipping status is green");
@@ -266,7 +266,7 @@ describe("Slack behavior: subscribed messages", () => {
       }),
     );
 
-    expect(classifierCalled).toBe(true);
+    expect(classifierCalled).toBe(false);
     expect(replyCalls).toHaveLength(1);
     expect(thread.subscribed).toBe(false);
     expect(toPostedText(thread.posts[1])).toContain(
