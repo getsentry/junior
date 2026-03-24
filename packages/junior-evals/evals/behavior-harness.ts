@@ -25,21 +25,21 @@ import {
   FakeSlackAdapter,
   createTestThread,
   type TestThread,
-} from "../tests/fixtures/slack-harness";
+} from "@junior-tests/fixtures/slack-harness";
 import {
   EVAL_OAUTH_CODE,
   EVAL_OAUTH_PROVIDER,
-} from "../tests/msw/handlers/eval-oauth";
+} from "@junior-tests/msw/handlers/eval-oauth";
 import {
   EVAL_MCP_AUTH_CODE,
   EVAL_MCP_AUTH_PROVIDER,
-} from "../tests/msw/handlers/eval-mcp-auth";
-import { runMcpOauthCallbackRoute } from "../tests/fixtures/mcp-oauth-callback-harness";
-import { runOauthCallbackRoute } from "../tests/fixtures/oauth-callback-harness";
+} from "@junior-tests/msw/handlers/eval-mcp-auth";
+import { runMcpOauthCallbackRoute } from "@junior-tests/fixtures/mcp-oauth-callback-harness";
+import { runOauthCallbackRoute } from "@junior-tests/fixtures/oauth-callback-harness";
 import {
   readCapturedSlackApiCalls,
   type CapturedSlackApiCall,
-} from "../tests/msw/captured-slack-api-calls";
+} from "@junior-tests/msw/captured-slack-api-calls";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 
 interface EvalEventThreadFixture {

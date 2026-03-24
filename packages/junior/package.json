@@ -29,8 +29,6 @@
     "build": "tsup",
     "test": "pnpm run test:slack-boundary && vitest run",
     "test:watch": "vitest",
-    "preevals": "pnpm run test:slack-boundary",
-    "evals": "JUNIOR_STATE_ADAPTER=memory pnpm exec vitest run -c vitest.evals.config.ts",
     "test:slack-boundary": "node scripts/check-slack-test-boundary.mjs",
     "typecheck": "tsc --noEmit",
     "skills:check": "node scripts/check-skills.mjs"
@@ -73,7 +71,6 @@
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vercel": "^50.32.5",
-    "vitest": "^4.1.0",
-    "vitest-evals": "^0.6.0"
+    "vitest": "^4.1.0"
   }
 }

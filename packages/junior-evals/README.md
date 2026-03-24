@@ -37,13 +37,16 @@ Not in scope:
 
 ## Sources Of Truth
 
-- Eval cases:
-  - `evals/conversational/passive-behavior.eval.ts`
-  - `evals/conversational/routing-and-continuity.eval.ts`
-  - `evals/conversational/lifecycle-and-resilience.eval.ts`
-  - `evals/conversational/media-and-attachments.eval.ts`
-  - `evals/conversational/oauth-workflows.eval.ts`
-  - `evals/conversational/skill-workflows.eval.ts`
+- Core eval cases:
+  - `evals/core/passive-behavior.eval.ts`
+  - `evals/core/routing-and-continuity.eval.ts`
+  - `evals/core/lifecycle-and-resilience.eval.ts`
+  - `evals/core/media-and-attachments.eval.ts`
+  - `evals/core/oauth-workflows.eval.ts`
+  - `evals/core/skill-infra.eval.ts`
+- Plugin eval cases:
+  - `evals/github/skill-workflows.eval.ts`
+  - `evals/sentry/skill-workflows.eval.ts`
 - Helpers and event builders: `evals/helpers.ts`
 - Harness/runtime adapter: `evals/behavior-harness.ts`
 
@@ -76,17 +79,18 @@ checkpoint save/restore semantics in the core resumability path.
 
 ## Running
 
-- `pnpm evals`: Run all eval cases
-- `pnpm evals -- -t "subscribed"`: Filter by test name pattern
-- `pnpm test`: Normal test suite (not evals)
+- `pnpm evals`: Run all eval cases (from workspace root)
+- `pnpm --filter @sentry/junior-evals evals`: Run from any directory
+- `pnpm --filter @sentry/junior-evals evals -- -t "subscribed"`: Filter by test name pattern
 
 ## Optional CI Runs
 
 - On pull requests, the `Evals` workflow runs when either eval-related files changed or the PR has the `trigger-evals` label.
 - Adding the `trigger-evals` label triggers a run immediately; adding unrelated labels does not.
 - Eval-related files are:
-  - `packages/junior/evals/**`
-  - `packages/junior/vitest.evals.config.ts`
+  - `packages/junior-evals/evals/**`
+  - `packages/junior-evals/vitest.evals.config.ts`
+  - `packages/junior/src/**`
 - The simplest CI setup is `VERCEL_OIDC_TOKEN` alone. It covers both AI Gateway auth and Vercel Sandbox auth.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
 - This repo is not intended to configure those GitHub Actions secrets right now. The workflow support and setup doc are future-facing.
@@ -96,7 +100,7 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 
 ## Authoring Rules
 
-- Add new conversational cases under `evals/conversational/*.eval.ts` using `slackEval()`.
+- Add core cases under `evals/core/*.eval.ts` and plugin-specific cases under `evals/<plugin>/` using `slackEval()`.
 - Use event builders (`mention`, `threadMessage`, `threadStart`) from `evals/helpers.ts`.
 - Use `auto_complete_mcp_oauth` or `auto_complete_oauth` when the harness should instantly complete the fake provider callback after our app has genuinely initiated auth.
 - For multi-turn, pass the same `thread` override so events land in one thread.
@@ -115,7 +119,8 @@ Do not do these in eval files:
 
 ## File Naming Strategy
 
-- Directory: `evals/conversational/`
+- Core evals: `evals/core/`
+- Plugin evals: `evals/<plugin-name>/` (e.g. `evals/github/`, `evals/sentry/`)
 - File naming: `<journey>-and-<constraint>.eval.ts` or `<feature>-workflows.eval.ts`
   - Examples:
     - `routing-and-continuity.eval.ts`

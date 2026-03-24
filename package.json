@@ -16,8 +16,7 @@
     "start": "pnpm --filter @sentry/junior-example start",
     "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior test",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
-    "preevals": "pnpm --filter @sentry/junior preevals",
-    "evals": "pnpm --filter @sentry/junior evals",
+    "evals": "pnpm --filter @sentry/junior-evals evals",
     "typecheck": "pnpm --filter @sentry/junior typecheck && pnpm --filter @sentry/junior-example typecheck",
     "skills:check": "pnpm --filter @sentry/junior skills:check"
   },
