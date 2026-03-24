@@ -291,7 +291,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
   });
 
-  it("bypasses classifier for acknowledgment-only messages", async () => {
+  it("routes acknowledgment messages through the classifier", async () => {
     let classifierCalled = false;
     let replyCalled = false;
 
@@ -300,9 +300,14 @@ describe("Slack behavior: subscribed messages", () => {
         subscribedReplyPolicy: {
           completeObject: async () => {
             classifierCalled = true;
-            throw new Error(
-              "classifier should be bypassed for acknowledgments",
-            );
+            return {
+              object: {
+                should_reply: false,
+                confidence: 0.95,
+                reason: "acknowledgment, not a request for help",
+              },
+              text: '{"should_reply":false,"confidence":0.95,"reason":"acknowledgment, not a request for help"}',
+            } as never;
           },
         },
         replyExecutor: {
@@ -336,7 +341,7 @@ describe("Slack behavior: subscribed messages", () => {
 
     await slackRuntime.handleSubscribedMessage(thread, message);
 
-    expect(classifierCalled).toBe(false);
+    expect(classifierCalled).toBe(true);
     expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
   });
@@ -415,7 +420,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
   });
 
-  it("bypasses classifier for assistant-directed follow-up questions", async () => {
+  it("routes follow-up questions through the classifier", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];
 
@@ -424,9 +429,14 @@ describe("Slack behavior: subscribed messages", () => {
         subscribedReplyPolicy: {
           completeObject: async () => {
             classifierCalled = true;
-            throw new Error(
-              "classifier should be bypassed for follow-up questions",
-            );
+            return {
+              object: {
+                should_reply: true,
+                confidence: 0.95,
+                reason: "follow-up directed at assistant's previous response",
+              },
+              text: '{"should_reply":true,"confidence":0.95,"reason":"follow-up directed at assistant\'s previous response"}',
+            } as never;
           },
         },
         replyExecutor: {
@@ -472,7 +482,7 @@ describe("Slack behavior: subscribed messages", () => {
       }),
     );
 
-    expect(classifierCalled).toBe(false);
+    expect(classifierCalled).toBe(true);
     expect(replyCalls).toContain("what did you just say about the budget?");
     expect(thread.posts).toHaveLength(2);
     expect(toPostedText(thread.posts[1])).toContain("budget by Friday");

@@ -6,8 +6,6 @@ export enum SubscribedReplyReason {
   DirectedToOtherParty = "directed_to_other_party",
   EmptyMessage = "empty_message",
   AttachmentOnly = "attachment_only",
-  Acknowledgment = "acknowledgment",
-  FollowUpQuestion = "follow_up_question",
   Classifier = "llm_classifier",
   SideConversation = "side_conversation",
   LowConfidence = "low_confidence",
@@ -60,95 +58,12 @@ const replyDecisionSchema = z.object({
   reason: z.string().optional().describe("Short reason for the decision."),
 });
 
-const ROUTER_CONFIDENCE_THRESHOLD = 0.72;
-const ACK_REGEXES: RegExp[] = [
-  /^(thanks|thank you|thx|ty|tysm|much appreciated)[!. ]*$/i,
-  /^(ok|okay|k|got it|sgtm|lgtm|sounds good|works for me|works|done|resolved|perfect|great|nice|cool)[!. ]*$/i,
-  /^(\+1|\+\+|ack|roger|copy that)[!. ]*$/i,
-  /^(:[a-z0-9_+-]+:|[\p{Extended_Pictographic}\uFE0F\u200D])+[!. ]*$/u,
-];
-const QUESTION_PREFIX_RE =
-  /^(what|why|how|when|where|which|who|can|could|would|should|do|does|did|is|are|was|were|will)\b/i;
-const FOLLOW_UP_REF_RE =
-  /\b(you|your|that|this|it|above|previous|earlier|last|just\s+said)\b/i;
+const ROUTER_CONFIDENCE_THRESHOLD = 0.9;
 const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function tokenizeForOverlap(value: string): string[] {
-  return value
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token.length >= 4);
-}
-
-function getLastAssistantLine(
-  conversationContext: string | undefined,
-): string | undefined {
-  if (!conversationContext) return undefined;
-
-  const lines = conversationContext
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index];
-    if (line.startsWith("[assistant]")) {
-      return line;
-    }
-  }
-
-  return undefined;
-}
-
-function isLikelyAcknowledgment(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  if (trimmed.includes("?")) return false;
-
-  for (const regex of ACK_REGEXES) {
-    if (regex.test(trimmed)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function isLikelyAssistantDirectedFollowUp(
-  text: string,
-  conversationContext: string | undefined,
-): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-
-  const isQuestion = trimmed.includes("?") || QUESTION_PREFIX_RE.test(trimmed);
-  if (!isQuestion) {
-    return false;
-  }
-
-  const lastAssistantLine = getLastAssistantLine(conversationContext);
-  if (!lastAssistantLine) {
-    return false;
-  }
-
-  if (FOLLOW_UP_REF_RE.test(trimmed)) {
-    return true;
-  }
-
-  const questionTokens = tokenizeForOverlap(trimmed);
-  const assistantTokens = new Set(tokenizeForOverlap(lastAssistantLine));
-  for (const token of questionTokens) {
-    if (assistantTokens.has(token)) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 function containsAssistantInvocation(
@@ -243,9 +158,23 @@ function buildRouterSystemPrompt(
     "Reply should be true only when the user is clearly asking Junior a question, requesting help,",
     "or when a direct follow-up is contextually aimed at Junior's previous response in the thread context.",
     "",
-    "Reply should be false for side conversations between humans, acknowledgements (thanks, +1),",
+    "Reply should be false for side conversations between humans, acknowledgements,",
     "status chatter, or messages not seeking assistant input.",
     "Junior must not participate in casual banter or keep chiming in just because it replied earlier.",
+    "",
+    "Examples of messages Junior should NOT reply to (should_reply=false):",
+    "- Questions between humans: 'Is that the right approach?', 'Can you check on this?', 'Did you deploy that?'",
+    "- Acknowledgments: 'thanks', '+1', 'lgtm', 'ok cool', 'sounds good', 'nice'",
+    "- Status updates: 'I just pushed a fix', 'Deploying now', 'Build is green'",
+    "- General thread discussion: 'What about the billing issue?', 'I think we should revert'",
+    "- Reactions to work: 'That looks wrong', 'Nice catch', 'Hmm interesting'",
+    "",
+    "Examples of messages Junior SHOULD reply to (should_reply=true):",
+    "- Direct follow-ups to Junior's response: 'Can you explain that last point in more detail?'",
+    "- Explicit requests for Junior's help: 'Junior, what's causing this error?'",
+    "",
+    "When in doubt, should_reply=false. Most messages in a thread are human-to-human conversation.",
+    "",
     "If the user is clearly telling Junior to stop watching, replying, or participating in the thread,",
     "set should_unsubscribe=true and should_reply=false.",
     "Use should_unsubscribe only for clear thread opt-out instructions, not for ordinary side conversation.",
@@ -260,7 +189,7 @@ function buildRouterSystemPrompt(
   ].join("\n");
 }
 
-/** Decide whether to reply to a message in a subscribed thread using heuristics then an LLM classifier. */
+/** Decide whether to reply to a message in a subscribed thread using an LLM classifier. */
 export async function decideSubscribedThreadReply(args: {
   botUserName: string;
   modelId: string;
@@ -295,22 +224,6 @@ export async function decideSubscribedThreadReply(args: {
   }
   if (!text && args.input.hasAttachments) {
     return { shouldReply: true, reason: SubscribedReplyReason.AttachmentOnly };
-  }
-  if (!args.input.isExplicitMention) {
-    if (isLikelyAcknowledgment(text)) {
-      return {
-        shouldReply: false,
-        reason: SubscribedReplyReason.Acknowledgment,
-      };
-    }
-    if (
-      isLikelyAssistantDirectedFollowUp(text, args.input.conversationContext)
-    ) {
-      return {
-        shouldReply: true,
-        reason: SubscribedReplyReason.FollowUpQuestion,
-      };
-    }
   }
 
   try {
