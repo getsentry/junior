@@ -6,8 +6,7 @@ All operations use `gh` CLI. Commands must be deterministic and non-interactive.
 
 - Preferred: sandbox network policy injects Authorization headers for `api.github.com`.
 - Optional local fallback: `GITHUB_TOKEN` (short-lived GitHub App installation token).
-- For `contents.read` operations (clone, fetch), the real token is set in `GITHUB_TOKEN` for git credential auth.
-- For other capabilities, `GITHUB_TOKEN` holds a placeholder; rely on header transforms for API auth.
+- `GITHUB_TOKEN` holds a placeholder; rely on header transforms for auth. The sandbox injects headers for `api.github.com` and `github.com` (for git-transport capabilities).
 
 ## Capability to command mapping
 

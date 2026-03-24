@@ -246,10 +246,7 @@ export function createGitHubAppBroker(
           id: randomUUID(),
           provider,
           capability: input.capability,
-          env: {
-            [authTokenEnv]:
-              domains.length > apiDomains.length ? cached.token : placeholder,
-          },
+          env: { [authTokenEnv]: placeholder },
           headerTransforms: domains.map((domain) => ({
             domain,
             headers: {
@@ -303,12 +300,7 @@ export function createGitHubAppBroker(
         id: randomUUID(),
         provider,
         capability: input.capability,
-        env: {
-          [authTokenEnv]:
-            domains.length > apiDomains.length
-              ? accessTokenResponse.token
-              : placeholder,
-        },
+        env: { [authTokenEnv]: placeholder },
         headerTransforms: domains.map((domain) => ({
           domain,
           headers: {

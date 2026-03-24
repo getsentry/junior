@@ -189,7 +189,7 @@ describe("github app credential broker", () => {
     expect(domains).toContain("github.com");
   });
 
-  it("uses real token in env for contents.read", async () => {
+  it("uses placeholder in env for contents.read", async () => {
     setupValidEnv();
     mockGitHubTokenEndpoint("repo-token");
 
@@ -200,7 +200,7 @@ describe("github app credential broker", () => {
       reason: "test:contents-read-env",
     });
 
-    expect(lease.env.GITHUB_TOKEN).toBe("repo-token");
+    expect(lease.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
   });
 
   it("maps contents.write to GitHub contents write permission with git domain", async () => {
@@ -220,7 +220,7 @@ describe("github app credential broker", () => {
 
     const domains = lease.headerTransforms!.map((t) => t.domain);
     expect(domains).toContain("github.com");
-    expect(lease.env.GITHUB_TOKEN).toBe("push-token");
+    expect(lease.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
   });
 
   it("maps pull-requests.read to GitHub pull_requests read permission", async () => {

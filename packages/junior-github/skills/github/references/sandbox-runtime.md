@@ -31,9 +31,8 @@ Credentials should only be injected per command execution scope. Do not rely on 
    - `github.pull-requests.read` for viewing PRs
    - `github.pull-requests.write` for creating/updating/merging PRs
 2. Runtime injects `Authorization` header transforms for `api.github.com` (and `github.com` for `contents.read`/`contents.write`).
-3. For `contents.read`/`contents.write`, the real token is also set in `GITHUB_TOKEN` so `gh repo clone` and `git push` can authenticate via git credential helper.
-4. Execute `gh` CLI commands directly.
-5. Do not persist tokens in files.
+3. Execute `gh` CLI commands directly.
+4. Do not persist tokens in files.
 
 ## Operational checks
 
