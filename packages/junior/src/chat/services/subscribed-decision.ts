@@ -3,6 +3,7 @@ import { escapeXml } from "@/chat/xml";
 
 export enum SubscribedReplyReason {
   ThreadOptOut = "thread_opt_out",
+  ExplicitMention = "explicit_mention",
   DirectedToOtherParty = "directed_to_other_party",
   EmptyMessage = "empty_message",
   AttachmentOnly = "attachment_only",
@@ -61,6 +62,13 @@ const replyDecisionSchema = z.object({
 const ROUTER_CONFIDENCE_THRESHOLD = 0.9;
 const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
+const THREAD_OPTOUT_PATTERNS = [
+  /\bstop (?:watching|replying|participating)\b/i,
+  /\bstay out\b/i,
+  /\bdon['’]t (?:reply|participate|watch)\b/i,
+  /\bunsubscribe\b/i,
+  /\bleave (?:this )?thread\b/i,
+];
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -112,6 +120,12 @@ function detectLeadingOtherPartyAddress(
   }
 
   return `named_mention:${directedName}`;
+}
+
+function isThreadOptOutInstruction(rawText: string, text: string): boolean {
+  return THREAD_OPTOUT_PATTERNS.some(
+    (pattern) => pattern.test(rawText) || pattern.test(text),
+  );
 }
 /** Fast heuristic check before the LLM classifier — skips messages directed at another party. */
 export function getSubscribedReplyPreflightDecision(args: {
@@ -224,6 +238,21 @@ export async function decideSubscribedThreadReply(args: {
   }
   if (!text && args.input.hasAttachments) {
     return { shouldReply: true, reason: SubscribedReplyReason.AttachmentOnly };
+  }
+
+  if (args.input.isExplicitMention) {
+    if (isThreadOptOutInstruction(rawText, text)) {
+      return {
+        shouldReply: false,
+        shouldUnsubscribe: true,
+        reason: SubscribedReplyReason.ThreadOptOut,
+        reasonDetail: "explicit stop instruction",
+      };
+    }
+    return {
+      shouldReply: true,
+      reason: SubscribedReplyReason.ExplicitMention,
+    };
   }
 
   try {
