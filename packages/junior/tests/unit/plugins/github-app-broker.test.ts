@@ -26,6 +26,10 @@ const TEST_MANIFEST: PluginManifest = {
     "github.issues.write",
     "github.issues.comment",
     "github.labels.write",
+    "github.contents.read",
+    "github.contents.write",
+    "github.pull-requests.read",
+    "github.pull-requests.write",
   ],
   configKeys: ["github.repo"],
   credentials: TEST_CREDENTIALS,
@@ -130,7 +134,7 @@ describe("github app credential broker", () => {
         reason: "test:unsupported",
       }),
     ).rejects.toThrow(
-      "Unsupported GitHub capability: github.nonexistent-scope.write",
+      "Unsupported github capability: github.nonexistent-scope.write",
     );
   });
 

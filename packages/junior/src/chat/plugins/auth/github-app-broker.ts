@@ -255,12 +255,19 @@ export function createGitHubAppBroker(
       : apiDomains;
   }
 
+  const supportedCapabilities = new Set(manifest.capabilities);
+
   return {
     async issue(input: {
       capability: string;
       target?: CapabilityTarget;
       reason: string;
     }): Promise<CredentialLease> {
+      if (!supportedCapabilities.has(input.capability)) {
+        throw new Error(
+          `Unsupported ${provider} capability: ${input.capability}`,
+        );
+      }
       const permissions = capabilityToPermissions(input.capability, provider);
       const appId = process.env[appIdEnv];
       if (!appId) {
