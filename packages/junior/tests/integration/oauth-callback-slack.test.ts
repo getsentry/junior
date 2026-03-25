@@ -6,8 +6,8 @@ import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
-  process.cwd(),
-  "../junior-evals/evals/fixtures/plugins/eval-oauth",
+  import.meta.dirname,
+  "../fixtures/plugins/eval-oauth",
 );
 
 describe("oauth callback slack integration", () => {
