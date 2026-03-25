@@ -1,3 +1,4 @@
+import { loadCliEnvFiles } from "./env";
 import { runCli } from "./run";
 
 async function runInit(dir: string): Promise<void> {
@@ -16,10 +17,11 @@ async function runCheck(dir?: string): Promise<void> {
 }
 
 async function main(argv: string[]): Promise<void> {
+  loadCliEnvFiles();
   const exitCode = await runCli(argv, {
     runInit,
     runSnapshotCreate,
-    runCheck
+    runCheck,
   });
   if (exitCode !== 0) {
     process.exit(exitCode);

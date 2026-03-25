@@ -13,9 +13,18 @@ function toOptionalTrimmed(value: string | undefined): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function isVercelRuntime(): boolean {
+  return (
+    process.env.VERCEL === "1" ||
+    Boolean(process.env.VERCEL_ENV) ||
+    Boolean(process.env.VERCEL_REGION) ||
+    Boolean(process.env.VERCEL_URL)
+  );
+}
+
 /**
  * Resolve explicit Vercel Sandbox credentials, or return undefined to let
- * the SDK use its built-in OIDC resolution (reads VERCEL_OIDC_TOKEN).
+ * the SDK use its built-in OIDC resolution.
  */
 export function getVercelSandboxCredentials():
   | VercelSandboxCredentials
@@ -28,9 +37,10 @@ export function getVercelSandboxCredentials():
     return { token, teamId, projectId };
   }
 
-  // When the explicit triple is incomplete, let the SDK resolve credentials
-  // via VERCEL_OIDC_TOKEN (extracts teamId/projectId from the JWT payload).
-  if (toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN)) {
+  // Let the SDK resolve credentials whenever Vercel OIDC is available.
+  // In local/dev this may come from VERCEL_OIDC_TOKEN, while on Vercel
+  // the SDK can also resolve runtime request context directly.
+  if (toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN) || isVercelRuntime()) {
     return undefined;
   }
 
