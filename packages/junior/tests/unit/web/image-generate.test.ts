@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/pi/client", () => ({
   completeText: vi.fn(),
+  getGatewayApiKey: vi.fn(
+    () => process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
+  ),
 }));
 
 vi.mock("@/chat/prompt", () => ({

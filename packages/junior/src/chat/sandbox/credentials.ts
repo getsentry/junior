@@ -1,3 +1,5 @@
+import { getAmbientVercelOidcToken } from "@/chat/configuration/vercel-oidc";
+
 interface VercelSandboxCredentials {
   teamId: string;
   projectId: string;
@@ -11,15 +13,6 @@ function toOptionalTrimmed(value: string | undefined): string | undefined {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function isVercelRuntime(): boolean {
-  return (
-    process.env.VERCEL === "1" ||
-    Boolean(process.env.VERCEL_ENV) ||
-    Boolean(process.env.VERCEL_REGION) ||
-    Boolean(process.env.VERCEL_URL)
-  );
 }
 
 /**
@@ -37,10 +30,8 @@ export function getVercelSandboxCredentials():
     return { token, teamId, projectId };
   }
 
-  // Let the SDK resolve credentials whenever Vercel OIDC is available.
-  // In local/dev this may come from VERCEL_OIDC_TOKEN, while on Vercel
-  // the SDK can also resolve runtime request context directly.
-  if (toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN) || isVercelRuntime()) {
+  // Let the SDK resolve credentials whenever ambient Vercel OIDC is present.
+  if (getAmbientVercelOidcToken()) {
     return undefined;
   }
 
@@ -48,7 +39,7 @@ export function getVercelSandboxCredentials():
   // surface a clear error so the misconfiguration is obvious.
   if (token || teamId || projectId) {
     throw new Error(
-      "Missing Vercel Sandbox credentials: set VERCEL_TOKEN, VERCEL_TEAM_ID, and VERCEL_PROJECT_ID together, or provide VERCEL_OIDC_TOKEN.",
+      "Missing Vercel Sandbox credentials: set VERCEL_TOKEN, VERCEL_TEAM_ID, and VERCEL_PROJECT_ID together, or provide ambient Vercel OIDC.",
     );
   }
 

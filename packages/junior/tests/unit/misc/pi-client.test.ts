@@ -1,13 +1,20 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { getGatewayApiKey } from "@/chat/pi/client";
 
+const REQUEST_CONTEXT_SYMBOL = Symbol.for("@vercel/request-context");
+
 const ORIGINAL_ENV = {
   AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
   VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN,
-  VERCEL: process.env.VERCEL,
-  VERCEL_ENV: process.env.VERCEL_ENV,
-  VERCEL_REGION: process.env.VERCEL_REGION,
 };
+
+const ORIGINAL_REQUEST_CONTEXT = (
+  globalThis as typeof globalThis & {
+    [REQUEST_CONTEXT_SYMBOL]?: {
+      get?: () => { headers?: Record<string, string> };
+    };
+  }
+)[REQUEST_CONTEXT_SYMBOL];
 
 function restoreEnvVar(name: keyof typeof ORIGINAL_ENV): void {
   const value = ORIGINAL_ENV[name];
@@ -18,41 +25,62 @@ function restoreEnvVar(name: keyof typeof ORIGINAL_ENV): void {
   process.env[name] = value;
 }
 
+function restoreRequestContext(): void {
+  const target = globalThis as typeof globalThis & {
+    [REQUEST_CONTEXT_SYMBOL]?: {
+      get?: () => { headers?: Record<string, string> };
+    };
+  };
+
+  if (ORIGINAL_REQUEST_CONTEXT === undefined) {
+    delete target[REQUEST_CONTEXT_SYMBOL];
+    return;
+  }
+
+  target[REQUEST_CONTEXT_SYMBOL] = ORIGINAL_REQUEST_CONTEXT;
+}
+
+function setRequestContextOidcToken(token: string): void {
+  (
+    globalThis as typeof globalThis & {
+      [REQUEST_CONTEXT_SYMBOL]?: {
+        get?: () => { headers?: Record<string, string> };
+      };
+    }
+  )[REQUEST_CONTEXT_SYMBOL] = {
+    get: () => ({
+      headers: {
+        "x-vercel-oidc-token": token,
+      },
+    }),
+  };
+}
+
 describe("getGatewayApiKey", () => {
   afterEach(() => {
     restoreEnvVar("AI_GATEWAY_API_KEY");
     restoreEnvVar("VERCEL_OIDC_TOKEN");
-    restoreEnvVar("VERCEL");
-    restoreEnvVar("VERCEL_ENV");
-    restoreEnvVar("VERCEL_REGION");
+    restoreRequestContext();
   });
 
   it("prefers explicit AI gateway API key", () => {
     process.env.AI_GATEWAY_API_KEY = "  api-key  ";
     process.env.VERCEL_OIDC_TOKEN = "oidc-token";
-    delete process.env.VERCEL;
-    delete process.env.VERCEL_ENV;
-    delete process.env.VERCEL_REGION;
 
     expect(getGatewayApiKey()).toBe("api-key");
   });
 
-  it("ignores Vercel OIDC token outside Vercel runtime", () => {
+  it("uses Vercel OIDC token from env when no API key is configured", () => {
     delete process.env.AI_GATEWAY_API_KEY;
     process.env.VERCEL_OIDC_TOKEN = "oidc-token";
-    delete process.env.VERCEL;
-    delete process.env.VERCEL_ENV;
-    delete process.env.VERCEL_REGION;
 
-    expect(getGatewayApiKey()).toBeUndefined();
+    expect(getGatewayApiKey()).toBe("oidc-token");
   });
 
-  it("allows Vercel OIDC token in Vercel runtime", () => {
+  it("uses Vercel OIDC token from request context when env is absent", () => {
     delete process.env.AI_GATEWAY_API_KEY;
-    process.env.VERCEL_OIDC_TOKEN = "oidc-token";
-    process.env.VERCEL = "1";
-    delete process.env.VERCEL_ENV;
-    delete process.env.VERCEL_REGION;
+    delete process.env.VERCEL_OIDC_TOKEN;
+    setRequestContextOidcToken("oidc-token");
 
     expect(getGatewayApiKey()).toBe("oidc-token");
   });

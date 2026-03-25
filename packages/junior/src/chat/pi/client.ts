@@ -10,13 +10,14 @@ import {
   extractGenAiUsageAttributes,
   serializeGenAiAttribute,
 } from "@/chat/logging";
+import { getAmbientVercelOidcToken } from "@/chat/configuration/vercel-oidc";
 import { logException, logWarn, setSpanAttributes } from "@/chat/logging";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
-const MISSING_GATEWAY_CREDENTIALS_ERROR =
-  "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
+export const MISSING_GATEWAY_CREDENTIALS_ERROR =
+  "Missing AI gateway credentials (AI_GATEWAY_API_KEY or ambient Vercel OIDC)";
 
 function toOptionalTrimmed(value: string | undefined): string | undefined {
   if (!value) {
@@ -26,23 +27,12 @@ function toOptionalTrimmed(value: string | undefined): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function isVercelRuntime(): boolean {
-  return (
-    process.env.VERCEL === "1" ||
-    Boolean(process.env.VERCEL_ENV) ||
-    Boolean(process.env.VERCEL_REGION)
-  );
-}
-
 export function getGatewayApiKey(): string | undefined {
   const explicitApiKey = toOptionalTrimmed(getEnvApiKey("vercel-ai-gateway"));
   if (explicitApiKey) {
     return explicitApiKey;
   }
-  if (!isVercelRuntime()) {
-    return undefined;
-  }
-  return toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN);
+  return getAmbientVercelOidcToken();
 }
 
 function extractText(message: {
@@ -126,7 +116,7 @@ export function resolveGatewayModel(modelId: string): Model<any> {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('missing "key" field')) {
       throw new Error(
-        "Invalid AI gateway credentials: Vercel API did not return a key. Set AI_GATEWAY_API_KEY, or ensure VERCEL_OIDC_TOKEN is valid in a Vercel runtime.",
+        "Invalid AI gateway credentials: Vercel API did not return a key. Set AI_GATEWAY_API_KEY, or ensure Vercel OIDC is available through VERCEL_OIDC_TOKEN or request context.",
       );
     }
     throw error;

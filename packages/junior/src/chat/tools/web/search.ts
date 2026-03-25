@@ -3,7 +3,10 @@ import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/web/network";
-import { getGatewayApiKey } from "@/chat/pi/client";
+import {
+  getGatewayApiKey,
+  MISSING_GATEWAY_CREDENTIALS_ERROR,
+} from "@/chat/pi/client";
 
 const SEARCH_TIMEOUT_MS = 10_000;
 const MAX_RESULTS = 5;
@@ -102,9 +105,7 @@ export function createWebSearchTool() {
       try {
         const apiKey = getGatewayApiKey();
         if (!apiKey) {
-          throw new Error(
-            "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
-          );
+          throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
         }
         const model =
           process.env.AI_WEB_SEARCH_MODEL ??

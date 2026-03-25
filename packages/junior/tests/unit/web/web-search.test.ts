@@ -105,7 +105,7 @@ describe("createWebSearchTool", () => {
         result_count: 0,
         results: [],
         error:
-          "web search failed: Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
+          "web search failed: Missing AI gateway credentials (AI_GATEWAY_API_KEY or ambient Vercel OIDC)",
         timeout: false,
         retryable: false,
       },

@@ -51,6 +51,7 @@ import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
   getGatewayApiKey,
+  MISSING_GATEWAY_CREDENTIALS_ERROR,
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
@@ -616,8 +617,7 @@ export async function generateAssistantReply(
     );
 
     if (!getGatewayApiKey()) {
-      const providerError =
-        "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
+      const providerError = MISSING_GATEWAY_CREDENTIALS_ERROR;
       return {
         text: `Error: ${providerError}`,
         sandboxId: sandboxExecutor.getSandboxId(),
