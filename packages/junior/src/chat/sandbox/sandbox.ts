@@ -714,10 +714,11 @@ export function createSandboxExecutor(options?: {
           projectId?: string;
         }
       | undefined,
+    onStatus?: (status: string) => Promise<void>,
   ): Promise<Sandbox> => {
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       try {
-        await emitStatus?.("Booting up...");
+        await onStatus?.("Booting up...");
         return await Sandbox.create({
           timeout: timeoutMs,
           source: {
@@ -938,6 +939,7 @@ export function createSandboxExecutor(options?: {
                   return await createSandboxFromSnapshot(
                     snapshot.snapshotId,
                     sandboxCredentials,
+                    emitSandboxStatus,
                   );
                 } catch (error) {
                   if (!isSnapshotMissingError(error)) {
@@ -962,6 +964,7 @@ export function createSandboxExecutor(options?: {
                   return await createSandboxFromSnapshot(
                     rebuiltSnapshot.snapshotId,
                     sandboxCredentials,
+                    emitSandboxStatus,
                   );
                 }
               },

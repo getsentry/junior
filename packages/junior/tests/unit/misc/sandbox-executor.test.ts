@@ -746,7 +746,6 @@ describe("createSandboxExecutor", () => {
       "Checking sandbox snapshot cache...",
       "Waiting for sandbox snapshot build...",
       "Building sandbox snapshot...",
-      "Booting up...",
     ]);
   });
 });
