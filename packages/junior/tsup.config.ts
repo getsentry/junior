@@ -6,13 +6,14 @@ export default defineConfig({
     "handlers/webhooks": "src/handlers/webhooks.ts",
     "handlers/queue-callback": "src/handlers/queue-callback.ts",
     "handlers/health": "src/handlers/health.ts",
+    "cli/env": "src/cli/env.ts",
     "cli/init": "src/cli/init.ts",
     "cli/run": "src/cli/run.ts",
     "cli/check": "src/cli/check.ts",
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
     "next-config": "src/next-config.ts",
     instrumentation: "src/instrumentation.ts",
-    "app/layout": "src/app/layout.tsx"
+    "app/layout": "src/app/layout.tsx",
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",
@@ -43,6 +44,6 @@ export default defineConfig({
     "just-bash",
     "node-html-markdown",
     "yaml",
-    "zod"
-  ]
+    "zod",
+  ],
 });

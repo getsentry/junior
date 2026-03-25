@@ -24,8 +24,8 @@ type WebhookRouteContext = {
 };
 
 async function loadBot() {
-  const { bot } = await import("@/chat/app/production");
-  return bot;
+  const { getProductionBot } = await import("@/chat/app/production");
+  return getProductionBot();
 }
 
 /**
