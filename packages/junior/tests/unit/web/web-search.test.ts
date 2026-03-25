@@ -35,7 +35,6 @@ describe("createWebSearchTool", () => {
   });
 
   it("uses AI Gateway parallel search and maps tool results", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
     process.env.AI_WEB_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
     vi.mocked(generateText).mockResolvedValueOnce({
       toolResults: [
@@ -65,7 +64,7 @@ describe("createWebSearchTool", () => {
       {} as never,
     );
 
-    expect(createGatewayProvider).toHaveBeenCalledWith({ apiKey: "test-key" });
+    expect(createGatewayProvider).toHaveBeenCalledWith();
     expect(gatewayProvider.tools.parallelSearch).toHaveBeenCalledWith({
       mode: "agentic",
       maxResults: 2,
@@ -92,28 +91,7 @@ describe("createWebSearchTool", () => {
     });
   });
 
-  it("throws when gateway credentials are missing", async () => {
-    const tool = createWebSearchTool();
-    if (typeof tool.execute !== "function") {
-      throw new Error("webSearch execute function missing");
-    }
-
-    await expect(tool.execute({ query: "test" }, {} as never)).resolves.toEqual(
-      {
-        ok: false,
-        query: "test",
-        result_count: 0,
-        results: [],
-        error:
-          "web search failed: Missing AI gateway credentials (AI_GATEWAY_API_KEY or ambient Vercel OIDC)",
-        timeout: false,
-        retryable: false,
-      },
-    );
-  });
-
   it("wraps AI SDK errors in web search error message", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
     vi.mocked(generateText).mockRejectedValueOnce(
       new Error('400 Invalid input: expected "function"'),
     );
@@ -138,7 +116,6 @@ describe("createWebSearchTool", () => {
   });
 
   it("returns a retryable timeout error instead of throwing", async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-key";
     vi.useFakeTimers();
     vi.mocked(generateText).mockImplementation(
       () =>
@@ -164,5 +141,31 @@ describe("createWebSearchTool", () => {
       retryable: true,
     });
     vi.useRealTimers();
+  });
+
+  it("marks authentication failures as non-retryable", async () => {
+    vi.mocked(generateText).mockRejectedValueOnce(
+      new Error(
+        "AI Gateway authentication failed: No authentication provided.",
+      ),
+    );
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    await expect(tool.execute({ query: "test" }, {} as never)).resolves.toEqual(
+      {
+        ok: false,
+        query: "test",
+        result_count: 0,
+        results: [],
+        error:
+          "web search failed: web search failed: AI Gateway authentication failed: No authentication provided.",
+        timeout: false,
+        retryable: false,
+      },
+    );
   });
 });

@@ -50,8 +50,7 @@ import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
-  getGatewayApiKey,
-  MISSING_GATEWAY_CREDENTIALS_ERROR,
+  getPiGatewayApiKeyOverride,
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
@@ -616,26 +615,6 @@ export async function generateAssistantReply(
       context.conversationContext,
     );
 
-    if (!getGatewayApiKey()) {
-      const providerError = MISSING_GATEWAY_CREDENTIALS_ERROR;
-      return {
-        text: `Error: ${providerError}`,
-        sandboxId: sandboxExecutor.getSandboxId(),
-        sandboxDependencyProfileHash:
-          sandboxExecutor.getDependencyProfileHash(),
-        diagnostics: {
-          outcome: "provider_error",
-          modelId: botConfig.modelId,
-          assistantMessageCount: 0,
-          toolCalls: [],
-          toolResultCount: 0,
-          toolErrorCount: 0,
-          usedPrimaryText: false,
-          errorMessage: providerError,
-        },
-      };
-    }
-
     timeoutResumeMessages = [];
     pendingMcpAuthorizationPause = undefined;
     const generatedFiles: FileUpload[] = [];
@@ -881,7 +860,7 @@ export async function generateAssistantReply(
     );
 
     agent = new Agent({
-      getApiKey: () => getGatewayApiKey(),
+      getApiKey: () => getPiGatewayApiKeyOverride(),
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),

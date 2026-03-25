@@ -1,4 +1,3 @@
-import { getAmbientVercelOidcToken } from "@/chat/configuration/vercel-oidc";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 
 interface VercelSandboxCredentials {
@@ -9,7 +8,7 @@ interface VercelSandboxCredentials {
 
 /**
  * Resolve explicit Vercel Sandbox credentials, or return undefined to let
- * the SDK use its built-in OIDC resolution.
+ * the SDK read ambient Vercel auth from its own environment detection.
  */
 export function getVercelSandboxCredentials():
   | VercelSandboxCredentials
@@ -22,19 +21,7 @@ export function getVercelSandboxCredentials():
     return { token, teamId, projectId };
   }
 
-  // The Sandbox SDK already reads ambient Vercel OIDC from env/request context,
-  // so only pass credentials when we're intentionally using the explicit triple.
-  if (getAmbientVercelOidcToken()) {
-    return undefined;
-  }
-
-  // If some — but not all — explicit vars are set and there's no OIDC fallback,
-  // surface a clear error so the misconfiguration is obvious.
-  if (token || teamId || projectId) {
-    throw new Error(
-      "Missing Vercel Sandbox credentials: set VERCEL_TOKEN, VERCEL_TEAM_ID, and VERCEL_PROJECT_ID together, or provide ambient Vercel OIDC.",
-    );
-  }
-
+  // Let the SDK read ambient auth itself unless we're intentionally using the
+  // documented explicit token/team/project fallback.
   return undefined;
 }
