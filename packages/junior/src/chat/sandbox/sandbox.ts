@@ -278,10 +278,6 @@ function getFlag(name) {
   return undefined;
 }
 
-function hasFlag(name) {
-  return args.includes(name) || args.some((value) => value.startsWith(name + "="));
-}
-
 function getPositionals() {
   const values = [];
   for (let index = 0; index < args.length; index += 1) {
