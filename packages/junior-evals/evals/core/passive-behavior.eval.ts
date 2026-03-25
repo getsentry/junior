@@ -129,9 +129,12 @@ describe("Conversational Evals: Passive Behavior", () => {
       reply_texts: ["The deploy changed three services."],
     },
     events: [
-      mention("What changed in the last deploy?", {
-        thread: genuineFollowUpThread,
-      }),
+      mention(
+        "What changed in the last deploy? It updated the API gateway, billing worker, and auth service.",
+        {
+          thread: genuineFollowUpThread,
+        },
+      ),
       threadMessage("Can you explain your last response in more detail?", {
         thread: genuineFollowUpThread,
       }),

@@ -24,7 +24,7 @@ describe("Slack behavior: thread continuity", () => {
   it("keeps same-thread replies in arrival order for rapid follow-up messages", async () => {
     const scriptedReplies = [
       "Rollback complete. Error rates are back to baseline.",
-      "Next step: monitor dashboards for 30 minutes and post an incident summary.",
+      "Next step: monitor dashboards for 30 minutes.",
     ];
     const prompts: string[] = [];
 

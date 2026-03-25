@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-22
+- Last Edited: 2026-03-25
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
 - 2026-03-17: Clarified that unit tests should not treat internal logs and telemetry as behavior contracts.
 - 2026-03-22: Clarified that unit tests are the last-choice layer for local invariants, not the default for runtime behavior.
+- 2026-03-25: Banned unit tests that assert prompt prose or substring presence in generated prompts.
 
 ## Intent
 
@@ -43,6 +44,7 @@ Recommended:
 - Keep the mocked surface minimal.
 - Assert behavior at module outputs rather than internal calls where practical.
 - Do not treat logger or tracer calls as required behavior unless the test is explicitly validating instrumentation.
+- Do not unit test prompt builders by asserting exact or substring prompt prose. If prompt wording matters, cover the resulting user-visible behavior with evals or integration tests.
 
 ## Data and Fixtures
 

@@ -49,7 +49,7 @@ describe("Conversational Evals: Routing and Continuity", () => {
     overrides: {
       reply_texts: [
         "Rollback complete. Error rates are back to baseline.",
-        "Next step: monitor dashboards for 30 minutes and post an incident summary.",
+        "Next step: monitor dashboards for 30 minutes.",
       ],
     },
     events: [
@@ -72,7 +72,7 @@ describe("Conversational Evals: Routing and Continuity", () => {
       retryable_max_attempts: 2,
       reply_texts: [
         "Rollback complete. Error rates are back to baseline.",
-        "Next step: monitor dashboards for 30 minutes and post an incident summary.",
+        "Next step: monitor dashboards for 30 minutes.",
       ],
     },
     events: [

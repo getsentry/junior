@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { FileUpload } from "chat";
 import { Type } from "@sinclair/typebox";
+import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { tool } from "@/chat/tools/definition";
@@ -71,7 +72,7 @@ async function detectMimeType(
   targetPath: string,
 ): Promise<string | undefined> {
   try {
-    const result = await sandbox.runCommand({
+    const result = await runNonInteractiveCommand(sandbox, {
       cmd: "file",
       args: ["--mime-type", "-b", targetPath],
     });

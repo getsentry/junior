@@ -26,7 +26,7 @@ Issue credentials with `jr-rpc issue-credential <capability>` before executing c
 | Clone repository (default shallow) | `gh repo clone owner/repo [DIRECTORY] -- --depth=1`                                                           |
 | Deepen shallow clone               | `git -C DIRECTORY fetch --depth=N origin`                                                                     |
 | Convert shallow clone to full      | `git -C DIRECTORY fetch --unshallow`                                                                          |
-| Create issue                       | `gh issue create --repo owner/repo --title "..." [--body-file PATH]`                                          |
+| Create issue                       | `gh issue create --repo owner/repo --title "..." --body-file PATH`                                            |
 | Update issue fields                | `gh issue edit NUMBER --repo owner/repo [--title "..."] [--body-file PATH]`                                   |
 | Close issue                        | `gh issue close NUMBER --repo owner/repo [--comment "..."]`                                                   |
 | Reopen issue                       | `gh issue reopen NUMBER --repo owner/repo`                                                                    |
@@ -68,4 +68,5 @@ jr-rpc issue-credential github.pull-requests.write
 - Prefer `--json` output for machine-readable parsing where available.
 - Use `gh api` for endpoints not fully covered by `gh issue` subcommands.
 - Pass extra `git clone` flags after `--` (e.g. `gh repo clone owner/repo -- --depth=1`).
+- For automation, always fully specify `gh issue create` with `--title` and `--body` or `--body-file`; never rely on interactive prompts.
 - Return actionable errors for auth, permission, not-found, and validation failures.

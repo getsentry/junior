@@ -5,6 +5,7 @@ import {
   getPluginRuntimeDependencies,
   getPluginRuntimePostinstall,
 } from "@/chat/plugins/registry";
+import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import type {
   PluginRuntimeDependency,
@@ -213,7 +214,7 @@ async function runOrThrow(
   },
   label: string,
 ): Promise<void> {
-  const result = await sandbox.runCommand(params);
+  const result = await runNonInteractiveCommand(sandbox, params);
   if (result.exitCode === 0) {
     return;
   }
@@ -232,7 +233,7 @@ async function tryRun(
     sudo?: boolean;
   },
 ): Promise<{ ok: true } | { ok: false; detail: string }> {
-  const result = await sandbox.runCommand(params);
+  const result = await runNonInteractiveCommand(sandbox, params);
   if (result.exitCode === 0) {
     return { ok: true };
   }
@@ -349,7 +350,7 @@ async function installRuntimeDependencies(
               `curl download ${dep.url}`,
             );
 
-            const checksumResult = await sandbox.runCommand({
+            const checksumResult = await runNonInteractiveCommand(sandbox, {
               cmd: "sha256sum",
               args: [rpmPath],
             });
@@ -445,20 +446,20 @@ async function runRuntimePostinstall(
     },
     async () => {
       for (const command of commands) {
-        const invocation = [
-          JSON.stringify(command.cmd),
-          ...(command.args ?? []).map((arg) => JSON.stringify(arg)),
-        ].join(" ");
-        const pathPrefix = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`;
-        await runOrThrow(
-          sandbox,
-          {
-            cmd: "bash",
-            args: ["-lc", `export PATH="${pathPrefix}" && ${invocation}`],
-            ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
-          },
-          `runtime-postinstall ${command.cmd}`,
-        );
+        const result = await runNonInteractiveCommand(sandbox, {
+          cmd: command.cmd,
+          args: command.args,
+          pathPrefix: `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`,
+          ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
+        });
+        if (result.exitCode === 0) {
+          continue;
+        }
+
+        const stderr = (await result.stderr()).trim();
+        const stdout = (await result.stdout()).trim();
+        const detail = stderr || stdout || "command failed";
+        throw new Error(`runtime-postinstall ${command.cmd} failed: ${detail}`);
       }
     },
   );

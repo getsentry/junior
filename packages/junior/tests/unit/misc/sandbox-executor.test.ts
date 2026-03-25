@@ -156,6 +156,7 @@ describe("createSandboxExecutor", () => {
     delete process.env.VERCEL_TOKEN;
     delete process.env.VERCEL_TEAM_ID;
     delete process.env.VERCEL_PROJECT_ID;
+    delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   });
 
   it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
@@ -319,14 +320,21 @@ describe("createSandboxExecutor", () => {
         ],
       },
     });
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
+    const invocation = sandbox.runCommand.mock.calls[0]?.[0];
+    expect(invocation).toMatchObject({
       cmd: "bash",
-      args: [
-        "-c",
-        'export PATH="/vercel/sandbox/.junior/bin:$PATH" && echo ok',
-      ],
       cwd: "/vercel/sandbox",
     });
+    expect(invocation.args?.[0]).toBe("-c");
+    expect(invocation.args?.[1]).toContain(
+      'export PATH="/vercel/sandbox/.junior/bin:$PATH"',
+    );
+    expect(invocation.args?.[1]).toContain("export CI='1'");
+    expect(invocation.args?.[1]).toContain("export TERM='dumb'");
+    expect(invocation.args?.[1]).toContain("export GH_PROMPT_DISABLED='1'");
+    expect(invocation.args?.[1]).toContain("export GIT_TERMINAL_PROMPT='0'");
+    expect(invocation.args?.[1]).toContain("exec </dev/null");
+    expect(invocation.args?.[1]).toContain("echo ok");
     expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(2, "allow-all");
   });
 
@@ -472,14 +480,13 @@ describe("createSandboxExecutor", () => {
 
     expect(firstSandbox.stop).toHaveBeenCalledTimes(1);
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
-    expect(secondSandbox.runCommand).toHaveBeenCalledWith({
+    const invocation = secondSandbox.runCommand.mock.calls[0]?.[0];
+    expect(invocation).toMatchObject({
       cmd: "bash",
-      args: [
-        "-c",
-        'export PATH="/vercel/sandbox/.junior/bin:$PATH" && echo second',
-      ],
       cwd: "/vercel/sandbox",
     });
+    expect(invocation.args?.[1]).toContain("exec </dev/null");
+    expect(invocation.args?.[1]).toContain("echo second");
   });
 
   it("routes matching bash commands through custom command handler", async () => {
@@ -532,6 +539,38 @@ describe("createSandboxExecutor", () => {
       ok: true,
       exit_code: 0,
     });
+  });
+
+  it("installs the eval gh shim when test credentials are enabled", async () => {
+    process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
+    const sandbox = makeSandbox("sbx_eval_gh");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.createSandbox();
+
+    const syncedFiles = sandbox.writeFiles.mock.calls[0]?.[0] as Array<{
+      path: string;
+      content: Buffer;
+    }>;
+    expect(syncedFiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "/vercel/sandbox/.junior/bin/gh",
+        }),
+      ]),
+    );
+    const chmodCall = sandbox.runCommand.mock.calls.find(
+      (call) =>
+        call[0]?.cmd === "bash" &&
+        typeof call[0]?.args?.[1] === "string" &&
+        call[0].args[1].includes(
+          "'chmod' '0755' '/vercel/sandbox/.junior/bin/gh'",
+        ),
+    );
+    expect(chmodCall).toBeDefined();
   });
 
   it("creates fresh sandboxes from dependency snapshots when available", async () => {
@@ -616,6 +655,48 @@ describe("createSandboxExecutor", () => {
     });
   });
 
+  it("retries snapshot boot when Vercel reports snapshotting in progress", async () => {
+    const snapshotSandbox = makeSandbox("sbx_snapshot_ready");
+    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+      snapshotId: "snap_retry",
+      profileHash: "hash_retry",
+      dependencyCount: 2,
+      cacheHit: true,
+      resolveOutcome: "cache_hit",
+    });
+    const snapshottingError = createApiError(
+      422,
+      "Unprocessable Entity",
+      "sandbox_snapshotting",
+      "Sandbox is creating a snapshot and will be stopped shortly.",
+    );
+    sandboxCreateMock
+      .mockRejectedValueOnce(snapshottingError)
+      .mockResolvedValueOnce(snapshotSandbox);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    const sandbox = await executor.createSandbox();
+
+    expect(sandbox).toBe(snapshotSandbox);
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+    expect(sandboxCreateMock).toHaveBeenNthCalledWith(1, {
+      timeout: 1000 * 60 * 30,
+      source: {
+        type: "snapshot",
+        snapshotId: "snap_retry",
+      },
+    });
+    expect(sandboxCreateMock).toHaveBeenNthCalledWith(2, {
+      timeout: 1000 * 60 * 30,
+      source: {
+        type: "snapshot",
+        snapshotId: "snap_retry",
+      },
+    });
+  });
+
   it("wraps snapshot resolution failures as sandbox setup errors", async () => {
     resolveRuntimeDependencySnapshotMock.mockRejectedValueOnce(
       new Error("lock timeout"),
@@ -630,7 +711,7 @@ describe("createSandboxExecutor", () => {
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
-  it("emits sandbox phase status updates and caps at four", async () => {
+  it("emits sandbox phase status updates before booting", async () => {
     const sandbox = makeSandbox("sbx_status");
     sandboxCreateMock.mockResolvedValue(sandbox);
     const statuses: string[] = [];
@@ -665,6 +746,7 @@ describe("createSandboxExecutor", () => {
       "Checking sandbox snapshot cache...",
       "Waiting for sandbox snapshot build...",
       "Building sandbox snapshot...",
+      "Booting up...",
     ]);
   });
 });
