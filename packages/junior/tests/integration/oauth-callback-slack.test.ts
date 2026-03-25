@@ -5,6 +5,10 @@ import { runOauthCallbackRoute } from "../fixtures/oauth-callback-harness";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 const ORIGINAL_ENV = { ...process.env };
+const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
+  process.cwd(),
+  "../junior-evals/evals/fixtures/plugins/eval-oauth",
+);
 
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
@@ -12,9 +16,7 @@ describe("oauth callback slack integration", () => {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
-      JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([
-        path.resolve(process.cwd(), "evals/plugins/eval-oauth"),
-      ]),
+      JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([EVAL_OAUTH_PLUGIN_ROOT]),
     };
     await disconnectStateAdapter();
     await getStateAdapter().connect();
