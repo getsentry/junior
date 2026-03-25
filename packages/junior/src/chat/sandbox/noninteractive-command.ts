@@ -7,6 +7,7 @@ interface NonInteractiveCommandInput extends NonInteractiveShellOptions {
   args?: string[];
   cmd: string;
   cwd?: string;
+  login?: boolean;
   sudo?: boolean;
 }
 
@@ -76,7 +77,7 @@ function buildNonInteractiveCommand(input: NonInteractiveCommandInput): {
   return {
     cmd: "bash",
     args: [
-      "-c",
+      input.login ? "-lc" : "-c",
       buildNonInteractiveShellScript(toCommandScript(input), {
         env: input.env,
         pathPrefix: input.pathPrefix,

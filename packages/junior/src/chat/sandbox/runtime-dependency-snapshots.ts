@@ -449,6 +449,7 @@ async function runRuntimePostinstall(
         const result = await runNonInteractiveCommand(sandbox, {
           cmd: command.cmd,
           args: command.args,
+          login: true,
           pathPrefix: `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`,
           ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
         });
