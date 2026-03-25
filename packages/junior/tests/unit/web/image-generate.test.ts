@@ -5,6 +5,8 @@ vi.mock("@/chat/pi/client", () => ({
   getGatewayApiKey: vi.fn(
     () => process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
   ),
+  MISSING_GATEWAY_CREDENTIALS_ERROR:
+    "Missing AI gateway credentials (AI_GATEWAY_API_KEY or ambient Vercel OIDC)",
 }));
 
 vi.mock("@/chat/prompt", () => ({

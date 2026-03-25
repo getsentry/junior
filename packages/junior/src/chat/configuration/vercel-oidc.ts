@@ -1,3 +1,5 @@
+import { toOptionalTrimmed } from "@/chat/optional-string";
+
 const REQUEST_CONTEXT_SYMBOL = Symbol.for("@vercel/request-context");
 const VERCEL_OIDC_HEADER = "x-vercel-oidc-token";
 
@@ -7,15 +9,6 @@ interface VercelRequestContext {
 
 interface VercelRequestContextProvider {
   get?: () => VercelRequestContext | undefined;
-}
-
-function toOptionalTrimmed(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function getVercelRequestContext(): VercelRequestContext | undefined {

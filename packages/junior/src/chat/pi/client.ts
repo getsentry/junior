@@ -12,20 +12,13 @@ import {
 } from "@/chat/logging";
 import { getAmbientVercelOidcToken } from "@/chat/configuration/vercel-oidc";
 import { logException, logWarn, setSpanAttributes } from "@/chat/logging";
+import { toOptionalTrimmed } from "@/chat/optional-string";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
 export const MISSING_GATEWAY_CREDENTIALS_ERROR =
   "Missing AI gateway credentials (AI_GATEWAY_API_KEY or ambient Vercel OIDC)";
-
-function toOptionalTrimmed(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 export function getGatewayApiKey(): string | undefined {
   const explicitApiKey = toOptionalTrimmed(getEnvApiKey("vercel-ai-gateway"));
