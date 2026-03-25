@@ -132,9 +132,6 @@ export async function completeText(params: {
   metadata?: Record<string, unknown>;
 }) {
   const startedAt = Date.now();
-  if (!getGatewayApiKey()) {
-    throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
-  }
   const model = resolveGatewayModel(params.modelId);
   const apiKey = getPiGatewayApiKeyOverride();
   const requestMessagesAttribute = serializeGenAiAttribute(params.messages);
