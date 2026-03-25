@@ -22,7 +22,8 @@ export function getVercelSandboxCredentials():
     return { token, teamId, projectId };
   }
 
-  // Let the SDK resolve credentials whenever ambient Vercel OIDC is present.
+  // The Sandbox SDK already reads ambient Vercel OIDC from env/request context,
+  // so only pass credentials when we're intentionally using the explicit triple.
   if (getAmbientVercelOidcToken()) {
     return undefined;
   }

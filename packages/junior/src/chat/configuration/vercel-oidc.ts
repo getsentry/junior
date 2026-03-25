@@ -20,8 +20,10 @@ function getVercelRequestContext(): VercelRequestContext | undefined {
 }
 
 /**
- * Resolve the ambient Vercel OIDC token from build env or request context so
- * callers match Vercel's runtime auth contract.
+ * Resolve the ambient Vercel OIDC token from build env or request context.
+ *
+ * Vercel's own SDKs can read this implicitly, but our pi-ai/manual-fetch paths
+ * still need the raw token string passed in explicitly.
  */
 export function getAmbientVercelOidcToken(): string | undefined {
   return (

@@ -25,6 +25,8 @@ export function getGatewayApiKey(): string | undefined {
   if (explicitApiKey) {
     return explicitApiKey;
   }
+  // pi-ai only auto-reads AI_GATEWAY_API_KEY from env. When auth comes from
+  // ambient Vercel OIDC, hand it the resolved token string ourselves.
   return getAmbientVercelOidcToken();
 }
 
