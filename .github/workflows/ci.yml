@@ -43,6 +43,11 @@ jobs:
       - run: pnpm release:check
       - run: pnpm test
       - run: pnpm docs:check
+      - name: Build example app
+        working-directory: apps/example
+        env:
+          JUNIOR_SKIP_SNAPSHOT_CREATE: "1"
+        run: pnpm build
 
       - name: Pack release artifacts
         if: github.event_name == 'push'
