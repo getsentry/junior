@@ -156,6 +156,7 @@ describe("createSandboxExecutor", () => {
     delete process.env.VERCEL_TOKEN;
     delete process.env.VERCEL_TEAM_ID;
     delete process.env.VERCEL_PROJECT_ID;
+    delete process.env.VERCEL_OIDC_TOKEN;
     delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   });
 
@@ -274,6 +275,25 @@ describe("createSandboxExecutor", () => {
       "Missing Vercel Sandbox credentials",
     );
     expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("defers to SDK OIDC resolution when VERCEL_OIDC_TOKEN is set without explicit credentials", async () => {
+    process.env.VERCEL_OIDC_TOKEN = "oidc-jwt-token";
+    process.env.VERCEL_TEAM_ID = "team_123";
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+
+    const freshSandbox = makeSandbox("sbx_oidc");
+    sandboxCreateMock.mockResolvedValue(freshSandbox);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.createSandbox();
+
+    expect(sandboxCreateMock).toHaveBeenCalledWith({
+      timeout: 1000 * 60 * 30,
+      runtime: "node22",
+    });
   });
 
   it("applies and restores header transforms for bash commands", async () => {
