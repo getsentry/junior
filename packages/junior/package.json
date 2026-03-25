@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": false,
   "publishConfig": {
     "access": "public"
