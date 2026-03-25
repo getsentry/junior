@@ -1,0 +1,22 @@
+{
+  "name": "@sentry/junior-evals",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "preevals": "node ../junior/scripts/check-slack-test-boundary.mjs",
+    "evals": "JUNIOR_STATE_ADAPTER=memory pnpm exec vitest run -c vitest.evals.config.ts"
+  },
+  "devDependencies": {
+    "@ai-sdk/gateway": "^3.0.66",
+    "@sentry/junior": "workspace:*",
+    "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-sentry": "workspace:*",
+    "chat": "4.20.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0",
+    "vitest-evals": "^0.6.0",
+    "zod": "^4.3.6"
+  }
+}

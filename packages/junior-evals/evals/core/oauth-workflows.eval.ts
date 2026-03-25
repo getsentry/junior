@@ -11,7 +11,7 @@ describe("Conversational Evals: OAuth Workflows", () => {
   slackEval("oauth: mcp skill auth resume keeps prior thread context", {
     overrides: {
       auto_complete_mcp_oauth: ["eval-auth"],
-      plugin_dirs: ["evals/plugins"],
+      plugin_dirs: ["evals/fixtures/plugins"],
     },
     events: [
       threadMessage("Remember this for later: the budget deadline is Friday.", {
@@ -38,7 +38,7 @@ describe("Conversational Evals: OAuth Workflows", () => {
   slackEval("oauth: generic skill auth resume keeps prior thread context", {
     overrides: {
       auto_complete_oauth: ["eval-oauth"],
-      plugin_dirs: ["evals/plugins"],
+      plugin_dirs: ["evals/fixtures/plugins"],
     },
     events: [
       threadMessage("Remember this for later: the budget deadline is Friday.", {

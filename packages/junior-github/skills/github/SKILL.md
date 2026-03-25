@@ -14,25 +14,22 @@ Issue workflows and repository checkout via `gh` CLI.
 
 Load references conditionally based on the operation:
 
-| Operation          | Load                                                                                                                                         |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Any operation      | [references/api-surface.md](references/api-surface.md)                                                                                       |
-| `clone`            | [references/sandbox-runtime.md](references/sandbox-runtime.md)                                                                               |
-| `create`           | Type-specific template + research rules (see step 3)                                                                                         |
-| `create`, `update` | [references/issue-quality-checklist.md](references/issue-quality-checklist.md), [references/issue-examples.md](references/issue-examples.md) |
-| On failure         | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                       |
-| Credential issues  | [references/sandbox-runtime.md](references/sandbox-runtime.md)                                                                               |
+| Operation          | Load                                                                                                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Any operation      | [references/api-surface.md](references/api-surface.md)                                                                                                                                      |
+| `clone`            | [references/common-use-cases.md](references/common-use-cases.md)                                                                                                                            |
+| `create`, `update` | [references/issue-examples.md](references/issue-examples.md), the matching type-specific template and type-specific rules, and [references/research-rules.md](references/research-rules.md) |
+| On failure         | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                      |
 
 ## Workflow
 
 ### 1. Resolve operation and target
 
-- Determine `clone`, `create`, `update`, `comment`, `labels`, `state`, or read-only inspection.
-- Resolve repository (`owner/repo`) and issue number for non-create issue operations.
-- If repository is not explicit in args, query channel config:
-  - `jr-rpc config get github.repo`
-- If config exists and is valid `owner/repo`, use it as default.
+- Determine whether the task is `clone` or an issue operation (`create`, `update`, `comment`, `labels`, `state`, or read-only inspection).
+- Resolve repository (`owner/repo`). If it is not explicit, query channel config with `jr-rpc config get github.repo`.
+- If config exists and is valid `owner/repo`, use it as the default.
 - If repository is still missing, ask the user for `owner/repo`.
+- Resolve the issue number for non-create issue operations.
 
 ### 2. Execute by operation type
 
@@ -45,14 +42,9 @@ Load references conditionally based on the operation:
 
 - Issue a `contents.read` credential scoped to the target repository before cloning:
   - `jr-rpc issue-credential github.contents.read --repo owner/repo`
-- Default to a shallow clone:
-  - `gh repo clone owner/repo [directory] -- --depth=1`
-- Pass extra `git clone` flags only after `--`.
-- Use full-history clone only when the task needs `git blame`, `git bisect`, tag/release archaeology, or broad commit-log analysis.
-- Deepen incrementally instead of recloning:
-  - `git -C <directory> fetch --depth=<n> origin`
-  - `git -C <directory> fetch --unshallow`
-- When cloning a fork, keep the default upstream remote behavior unless the user asks otherwise.
+- Default to a shallow clone.
+- Use exact command forms from [references/api-surface.md](references/api-surface.md) or [references/common-use-cases.md](references/common-use-cases.md).
+- Deepen incrementally only when the task needs repository history.
 - After cloning, check for `AGENTS.md` in the repo root (and `.github/AGENTS.md`) before making edits. Treat discovered instructions as hard constraints.
 - Report the local directory and whether the clone is shallow or full.
 
@@ -71,7 +63,7 @@ Load references conditionally based on the operation:
 
 #### 4. Draft issue content
 
-Load the type-specific template and research rules:
+Load the type-specific template and rules:
 
 | Type      | Template                                                                     | Research rules                                                       |
 | --------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------- |
@@ -82,18 +74,21 @@ Load the type-specific template and research rules:
 Follow [references/research-rules.md](references/research-rules.md) for cross-type research standards.
 
 - Generalize conversation context: replace user names, slash-command invocations, channel references, and session-specific fragments with the underlying technical problem.
-- Include code snippets when they clarify the problem pattern or proposed change.
-- Cross-reference related issues and PRs when they provide context.
+- Use [references/issue-examples.md](references/issue-examples.md) to calibrate structure and depth.
+- Include code snippets, related issues, and related PRs only when they materially improve the issue.
 
 #### 5. Execute operation
 
-- Issue the matching capability credential before executing. See [references/api-surface.md](references/api-surface.md) for capability-to-command mapping.
-- Use [references/common-use-cases.md](references/common-use-cases.md) for ready-to-run operation patterns.
+- Issue the narrowest matching capability credential before executing.
+- Use fully specified, non-interactive `gh` commands from [references/api-surface.md](references/api-surface.md).
+- Use [references/common-use-cases.md](references/common-use-cases.md) only when you need a concrete command pattern.
+- Check duplicates silently before creating a new issue. Only mention duplicates when relevant matches are actually found.
 
 #### 6. Report result
 
 - Return canonical issue URL, issue number, issue type, applied changes, and confidence.
 - Include references used for verified claims.
+- Keep routine issue-creation steps silent. Do not post progress chatter about duplicate checks, drafting, credential issuance, or command execution before the final result.
 
 ## Guardrails
 
@@ -107,7 +102,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 - Never claim verification without citing sources.
 - For `bug` issues, do not present a fix as definitive unless root-cause evidence is explicit.
-- Do not report negative duplicate-search results to the user (e.g. "no duplicates found"). Searching for duplicates is expected, but only mention duplicates when matches are actually found and are relevant to surface.
+- If no relevant duplicates are found, continue directly to draft and create the issue, then report the created issue.
 
 ### Scope
 

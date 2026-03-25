@@ -50,8 +50,9 @@ jobs:
           head_ref="$(jq -r '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
 
           if git diff --quiet "$base_ref" "$head_ref" -- \
-            packages/junior/evals \
-            packages/junior/vitest.evals.config.ts; then
+            packages/junior-evals/evals \
+            packages/junior-evals/vitest.evals.config.ts \
+            packages/junior/src; then
             echo "evals_changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "evals_changed=true" >> "$GITHUB_OUTPUT"
@@ -135,4 +136,4 @@ jobs:
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm evals
+      - run: pnpm --filter @sentry/junior-evals evals

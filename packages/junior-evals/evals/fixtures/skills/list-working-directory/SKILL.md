@@ -11,7 +11,7 @@ Generate a short response for `/list-working-directory` requests in eval runs.
 Call `bash` with this input:
 
 ```json
-{"command":"ls -1","timeout_ms":120000,"max_output_chars":12000}
+{ "command": "ls -1", "timeout_ms": 120000, "max_output_chars": 12000 }
 ```
 
 ## Step 2: Return Result

@@ -61,7 +61,11 @@ import { resolveRuntimeDependencySnapshot } from "@/chat/sandbox/runtime-depende
 
 function makeSandbox(
   snapshotId: string,
-  runCommandImpl?: (params: { cmd: string; args?: string[] }) => Promise<{
+  runCommandImpl?: (params: {
+    cmd: string;
+    args?: string[];
+    sudo?: boolean;
+  }) => Promise<{
     exitCode: number;
     stdout: () => Promise<string>;
     stderr: () => Promise<string>;
@@ -79,6 +83,14 @@ function makeSandbox(
     snapshot: vi.fn(async () => ({ snapshotId })),
     stop: vi.fn(async () => {}),
   };
+}
+
+function getScript(params: {
+  cmd: string;
+  args?: string[];
+  sudo?: boolean;
+}): string {
+  return params.args?.[1] ?? "";
 }
 
 describe("runtime dependency snapshots", () => {
@@ -275,11 +287,10 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_system");
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "dnf",
-      args: ["install", "-y", "gh"],
-      sudo: true,
-    });
+    const invocation = sandbox.runCommand.mock.calls[0]?.[0];
+    expect(invocation).toMatchObject({ cmd: "bash", sudo: true });
+    expect(getScript(invocation)).toContain("exec </dev/null");
+    expect(getScript(invocation)).toContain("'dnf' 'install' '-y' 'gh'");
   });
 
   it("installs system dependencies from URL after sha256 verification", async () => {
@@ -292,7 +303,7 @@ describe("runtime dependency snapshots", () => {
       },
     ]);
     const sandbox = makeSandbox("snap_system_url", async (params) => {
-      if (params.cmd === "sha256sum") {
+      if (getScript(params).includes("'sha256sum'")) {
         return {
           exitCode: 0,
           stdout: async () =>
@@ -309,24 +320,22 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_system_url");
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "curl",
-      args: [
-        "-fsSL",
-        "https://example.com/tool.rpm",
-        "-o",
-        "/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm",
-      ],
-    });
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "sha256sum",
-      args: ["/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm"],
-    });
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "dnf",
-      args: ["install", "-y", "/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm"],
-      sudo: true,
-    });
+    const scripts = sandbox.runCommand.mock.calls.map((call) =>
+      getScript(call[0]),
+    );
+    expect(scripts).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "'curl' '-fsSL' 'https://example.com/tool.rpm' '-o' '/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm'",
+        ),
+        expect.stringContaining(
+          "'sha256sum' '/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm'",
+        ),
+        expect.stringContaining(
+          "'dnf' 'install' '-y' '/tmp/junior-runtime-aaaaaaaaaaaa-tool.rpm'",
+        ),
+      ]),
+    );
   });
 
   it("falls back to gh-cli repo bootstrap when dnf cannot resolve gh directly", async () => {
@@ -334,7 +343,8 @@ describe("runtime dependency snapshots", () => {
       { type: "system", package: "gh" },
     ]);
     const sandbox = makeSandbox("snap_system_fallback", async (params) => {
-      if (params.cmd !== "dnf") {
+      const script = getScript(params);
+      if (!script.includes("'dnf'")) {
         return {
           exitCode: 1,
           stdout: async () => "",
@@ -342,8 +352,10 @@ describe("runtime dependency snapshots", () => {
         };
       }
 
-      const joined = (params.args ?? []).join(" ");
-      if (joined === "install -y gh") {
+      if (
+        script.includes("'dnf' 'install' '-y' 'gh'") &&
+        !script.includes("'--repo' 'gh-cli'")
+      ) {
         return {
           exitCode: 1,
           stdout: async () => "",
@@ -360,25 +372,18 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_system_fallback");
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "dnf",
-      args: ["install", "-y", "gh"],
-      sudo: true,
-    });
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "dnf",
-      args: [
-        "config-manager",
-        "addrepo",
-        "--from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo",
-      ],
-      sudo: true,
-    });
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "dnf",
-      args: ["install", "-y", "gh", "--repo", "gh-cli"],
-      sudo: true,
-    });
+    const scripts = sandbox.runCommand.mock.calls.map((call) =>
+      getScript(call[0]),
+    );
+    expect(scripts).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("'dnf' 'install' '-y' 'gh'"),
+        expect.stringContaining(
+          "'dnf' 'config-manager' 'addrepo' '--from-repofile=https://cli.github.com/packages/rpm/gh-cli.repo'",
+        ),
+        expect.stringContaining("'dnf' 'install' '-y' 'gh' '--repo' 'gh-cli'"),
+      ]),
+    );
   });
 
   it("does not return stale cached snapshot while waiting on force rebuild lock", async () => {
@@ -554,22 +559,25 @@ describe("runtime dependency snapshots", () => {
       timeoutMs: 60_000,
     });
     expect(snapshot.snapshotId).toBe("snap_postinstall");
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
-      cmd: "npm",
-      args: [
-        "install",
-        "--global",
-        "--prefix",
-        "/vercel/sandbox/.junior",
-        "example-cli@latest",
-      ],
-    });
-    expect(sandbox.runCommand).toHaveBeenCalledWith({
+    const npmInvocation = sandbox.runCommand.mock.calls[0]?.[0];
+    expect(npmInvocation).toMatchObject({
       cmd: "bash",
-      args: [
-        "-lc",
-        'export PATH="/vercel/sandbox/.junior/bin:$PATH" && "example-cli" "install"',
-      ],
     });
+    expect(npmInvocation.args?.[1]).toContain("exec </dev/null");
+    expect(npmInvocation.args?.[1]).toContain(
+      "'npm' 'install' '--global' '--prefix' '/vercel/sandbox/.junior' 'example-cli@latest'",
+    );
+
+    const postinstallInvocation = sandbox.runCommand.mock.calls[1]?.[0];
+    expect(postinstallInvocation).toMatchObject({
+      cmd: "bash",
+    });
+    expect(postinstallInvocation.args?.[1]).toContain(
+      'export PATH="/vercel/sandbox/.junior/bin:$PATH"',
+    );
+    expect(postinstallInvocation.args?.[1]).toContain("exec </dev/null");
+    expect(postinstallInvocation.args?.[1]).toContain(
+      "'example-cli' 'install'",
+    );
   });
 });
