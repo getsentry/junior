@@ -50,7 +50,7 @@ import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
-  getGatewayApiKey,
+  getPiGatewayApiKeyOverride,
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
@@ -615,27 +615,6 @@ export async function generateAssistantReply(
       context.conversationContext,
     );
 
-    if (!getGatewayApiKey()) {
-      const providerError =
-        "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
-      return {
-        text: `Error: ${providerError}`,
-        sandboxId: sandboxExecutor.getSandboxId(),
-        sandboxDependencyProfileHash:
-          sandboxExecutor.getDependencyProfileHash(),
-        diagnostics: {
-          outcome: "provider_error",
-          modelId: botConfig.modelId,
-          assistantMessageCount: 0,
-          toolCalls: [],
-          toolResultCount: 0,
-          toolErrorCount: 0,
-          usedPrimaryText: false,
-          errorMessage: providerError,
-        },
-      };
-    }
-
     timeoutResumeMessages = [];
     pendingMcpAuthorizationPause = undefined;
     const generatedFiles: FileUpload[] = [];
@@ -881,7 +860,7 @@ export async function generateAssistantReply(
     );
 
     agent = new Agent({
-      getApiKey: () => getGatewayApiKey(),
+      getApiKey: () => getPiGatewayApiKeyOverride(),
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),

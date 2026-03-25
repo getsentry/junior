@@ -2,11 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 
 const TEST_ENV_KEYS = [
-  "VERCEL",
-  "VERCEL_ENV",
-  "VERCEL_REGION",
-  "VERCEL_URL",
-  "VERCEL_OIDC_TOKEN",
   "VERCEL_TOKEN",
   "VERCEL_TEAM_ID",
   "VERCEL_PROJECT_ID",
@@ -35,17 +30,7 @@ describe("getVercelSandboxCredentials", () => {
     });
   });
 
-  it("throws for incomplete explicit credentials outside Vercel runtime", () => {
-    process.env.VERCEL_TEAM_ID = "team_123";
-    process.env.VERCEL_PROJECT_ID = "prj_123";
-
-    expect(() => getVercelSandboxCredentials()).toThrow(
-      "Missing Vercel Sandbox credentials",
-    );
-  });
-
-  it("defers to SDK OIDC resolution in Vercel runtime even without token env", () => {
-    process.env.VERCEL = "1";
+  it("ignores incomplete explicit credentials and lets the SDK resolve auth", () => {
     process.env.VERCEL_TEAM_ID = "team_123";
     process.env.VERCEL_PROJECT_ID = "prj_123";
 

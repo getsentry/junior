@@ -1,3 +1,5 @@
+import { toOptionalTrimmed } from "@/chat/optional-string";
+
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const DEFAULT_QUEUE_CALLBACK_MAX_DURATION_SECONDS = 800;
@@ -60,14 +62,6 @@ function resolveMaxTurnTimeoutMs(
   const budgetSeconds =
     queueCallbackMaxDurationSeconds - TURN_TIMEOUT_BUFFER_SECONDS;
   return Math.max(MIN_AGENT_TURN_TIMEOUT_MS, budgetSeconds * 1000);
-}
-
-function toOptionalTrimmed(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {

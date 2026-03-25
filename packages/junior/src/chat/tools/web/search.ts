@@ -3,7 +3,6 @@ import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/web/network";
-import { getGatewayApiKey } from "@/chat/pi/client";
 
 const SEARCH_TIMEOUT_MS = 10_000;
 const MAX_RESULTS = 5;
@@ -72,7 +71,10 @@ function formatSearchFailure(error: unknown): string {
 
 function isNonRetryableSearchFailure(message: string): boolean {
   const normalized = message.toLowerCase();
-  return normalized.includes("missing ai gateway credentials");
+  return (
+    normalized.includes("missing ai gateway credentials") ||
+    normalized.includes("authentication failed")
+  );
 }
 
 function isTimeoutSearchFailure(message: string): boolean {
@@ -100,19 +102,15 @@ export function createWebSearchTool() {
     execute: async ({ query, max_results }) => {
       const maxResults = max_results ?? 3;
       try {
-        const apiKey = getGatewayApiKey();
-        if (!apiKey) {
-          throw new Error(
-            "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
-          );
-        }
         const model =
           process.env.AI_WEB_SEARCH_MODEL ??
           process.env.AI_FAST_MODEL ??
           process.env.AI_MODEL ??
           DEFAULT_SEARCH_MODEL;
 
-        const provider = createGatewayProvider({ apiKey });
+        // AI SDK Gateway already reads AI_GATEWAY_API_KEY or ambient Vercel
+        // OIDC itself, so this path should not pass auth explicitly.
+        const provider = createGatewayProvider();
         const response = await withTimeout(
           (async () => {
             try {

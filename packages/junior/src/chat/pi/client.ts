@@ -11,37 +11,32 @@ import {
   serializeGenAiAttribute,
 } from "@/chat/logging";
 import { logException, logWarn, setSpanAttributes } from "@/chat/logging";
+import { toOptionalTrimmed } from "@/chat/optional-string";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 export const GEN_AI_PROVIDER_NAME = GATEWAY_PROVIDER;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
-const MISSING_GATEWAY_CREDENTIALS_ERROR =
+export const MISSING_GATEWAY_CREDENTIALS_ERROR =
   "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)";
 
-function toOptionalTrimmed(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function isVercelRuntime(): boolean {
+/**
+ * Resolve the documented AI Gateway env credentials for the paths that need
+ * the bearer token string directly.
+ */
+export function getGatewayApiKey(): string | undefined {
   return (
-    process.env.VERCEL === "1" ||
-    Boolean(process.env.VERCEL_ENV) ||
-    Boolean(process.env.VERCEL_REGION)
+    toOptionalTrimmed(getEnvApiKey("vercel-ai-gateway")) ??
+    toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN)
   );
 }
 
-export function getGatewayApiKey(): string | undefined {
-  const explicitApiKey = toOptionalTrimmed(getEnvApiKey("vercel-ai-gateway"));
-  if (explicitApiKey) {
-    return explicitApiKey;
-  }
-  if (!isVercelRuntime()) {
-    return undefined;
-  }
+/**
+ * Let pi-ai read AI_GATEWAY_API_KEY from env itself and only override the
+ * token when auth comes from VERCEL_OIDC_TOKEN.
+ */
+export function getPiGatewayApiKeyOverride(): string | undefined {
+  // pi-ai already reads AI_GATEWAY_API_KEY from env, so only pass the token
+  // ourselves when auth comes from VERCEL_OIDC_TOKEN.
   return toOptionalTrimmed(process.env.VERCEL_OIDC_TOKEN);
 }
 
@@ -119,18 +114,7 @@ function parseJsonCandidate(text: string): unknown {
 }
 
 export function resolveGatewayModel(modelId: string): Model<any> {
-  let models: Model<any>[];
-  try {
-    models = getModels(GATEWAY_PROVIDER);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('missing "key" field')) {
-      throw new Error(
-        "Invalid AI gateway credentials: Vercel API did not return a key. Set AI_GATEWAY_API_KEY, or ensure VERCEL_OIDC_TOKEN is valid in a Vercel runtime.",
-      );
-    }
-    throw error;
-  }
+  const models = getModels(GATEWAY_PROVIDER);
   const matched = models.find((model: Model<any>) => model.id === modelId);
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
@@ -148,11 +132,8 @@ export async function completeText(params: {
   metadata?: Record<string, unknown>;
 }) {
   const startedAt = Date.now();
-  if (!getGatewayApiKey()) {
-    throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
-  }
   const model = resolveGatewayModel(params.modelId);
-  const apiKey = getGatewayApiKey();
+  const apiKey = getPiGatewayApiKeyOverride();
   const requestMessagesAttribute = serializeGenAiAttribute(params.messages);
   const startAttributes = {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
@@ -161,7 +142,7 @@ export async function completeText(params: {
     ...(requestMessagesAttribute
       ? { "gen_ai.input.messages": requestMessagesAttribute }
       : {}),
-    "app.ai.auth_mode": apiKey ? "api_key" : "ambient",
+    "app.ai.auth_mode": apiKey ? "oidc" : "api_key",
   };
   setSpanAttributes(startAttributes);
   const message = await completeSimple(

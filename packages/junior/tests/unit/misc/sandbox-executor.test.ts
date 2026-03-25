@@ -265,18 +265,6 @@ describe("createSandboxExecutor", () => {
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
-  it("fails fast when token-based Vercel Sandbox credentials are incomplete", async () => {
-    process.env.VERCEL_TOKEN = "sandbox-token";
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    await expect(executor.createSandbox()).rejects.toThrow(
-      "Missing Vercel Sandbox credentials",
-    );
-    expect(sandboxCreateMock).not.toHaveBeenCalled();
-  });
-
   it("defers to SDK OIDC resolution when VERCEL_OIDC_TOKEN is set without explicit credentials", async () => {
     process.env.VERCEL_OIDC_TOKEN = "oidc-jwt-token";
     process.env.VERCEL_TEAM_ID = "team_123";

@@ -2,7 +2,11 @@ import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
 import { botConfig } from "@/chat/config";
-import { completeText } from "@/chat/pi/client";
+import {
+  completeText,
+  getGatewayApiKey,
+  MISSING_GATEWAY_CREDENTIALS_ERROR,
+} from "@/chat/pi/client";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
 
@@ -89,12 +93,11 @@ export function createImageGenerateTool(
     }),
     execute: async ({ prompt }) => {
       const fetchImpl = deps.fetch ?? fetch;
-      const apiKey =
-        process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN;
+      // Raw fetch does not resolve AI Gateway env auth on its own, so this
+      // path has to turn the documented env credential into a bearer token.
+      const apiKey = getGatewayApiKey();
       if (!apiKey) {
-        throw new Error(
-          "Missing AI gateway credentials (AI_GATEWAY_API_KEY or VERCEL_OIDC_TOKEN)",
-        );
+        throw new Error(MISSING_GATEWAY_CREDENTIALS_ERROR);
       }
       const model = process.env.AI_IMAGE_MODEL ?? DEFAULT_IMAGE_MODEL;
       const enrichedPrompt = await enrichImagePrompt(prompt);
