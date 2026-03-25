@@ -13,15 +13,4 @@ describe("Conversational Evals: Lifecycle and Resilience", () => {
     events: [mention("What's the status of the deploy?")],
     criteria: "A single error reply is posted when response generation fails.",
   });
-
-  slackEval("resilience: retryable timeout-shaped failure retries cleanly", {
-    overrides: {
-      reply_texts: ["Status is stable."],
-      retryable_timeout_calls: [1],
-      retryable_max_attempts: 2,
-    },
-    events: [mention("What's the status of the deploy?")],
-    criteria:
-      "The assistant posts one non-error answer after retry and does not post an Error-prefixed failure message.",
-  });
 });

@@ -4,6 +4,7 @@ import {
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
+import { RetryableTurnError } from "@/chat/runtime/turn";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -88,5 +89,58 @@ describe("Slack behavior: thread continuity", () => {
     expect(toPostedText(thread.posts[1])).toContain(
       "Next step: monitor dashboards",
     );
+  });
+
+  it("retryable timeout re-throws without posting an error message", async () => {
+    let callCount = 0;
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            callCount += 1;
+            if (callCount === 1) {
+              throw new RetryableTurnError(
+                "agent_turn_timeout_resume",
+                "simulated timeout",
+              );
+            }
+            return {
+              text: "Status is stable.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_RETRY:1700006000.000" });
+    const message = createTestMessage({
+      id: "m-retry-1",
+      text: "<@U_APP> What's the status of the deploy?",
+      isMention: true,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+    });
+
+    // First attempt: runtime re-throws RetryableTurnError (queue would retry)
+    await expect(
+      slackRuntime.handleNewMention(thread, message),
+    ).rejects.toThrow(RetryableTurnError);
+    expect(thread.posts).toHaveLength(0);
+
+    // Second attempt: succeeds without error message
+    await slackRuntime.handleNewMention(thread, message);
+    expect(callCount).toBe(2);
+    expect(thread.posts).toHaveLength(1);
+    expect(toPostedText(thread.posts[0])).toContain("Status is stable");
   });
 });
