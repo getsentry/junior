@@ -19,16 +19,16 @@ import {
   withSpan,
 } from "@/chat/logging";
 
-let productionDispatch: ThreadMessageDispatcher | undefined;
+let productionThreadDispatch: ThreadMessageDispatcher | undefined;
 
 function getProductionDispatch(): ThreadMessageDispatcher {
-  if (!productionDispatch) {
-    productionDispatch = createThreadMessageDispatcher({
+  if (!productionThreadDispatch) {
+    productionThreadDispatch = createThreadMessageDispatcher({
       runtime: getProductionSlackRuntime(),
     });
   }
 
-  return productionDispatch;
+  return productionThreadDispatch;
 }
 
 /**
@@ -38,10 +38,8 @@ function getProductionDispatch(): ThreadMessageDispatcher {
  * configured out-of-band. A catch-all route is not sufficient as the canonical
  * production endpoint because providers target an exact path.
  */
-const dispatch: ThreadMessageDispatcher = async (args) => {
-  const productionDispatch = await getProductionDispatch();
-  await productionDispatch(args);
-};
+const dispatch: ThreadMessageDispatcher = (args) =>
+  getProductionDispatch()(args);
 
 const callbackHandler = createQueueCallbackHandler<ThreadMessagePayload>(
   async (message, metadata) => {
