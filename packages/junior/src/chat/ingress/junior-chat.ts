@@ -67,7 +67,23 @@ function enqueueBackgroundTask(
 export class JuniorChat<
   TAdapters extends Record<string, Adapter> = Record<string, Adapter>,
 > extends Chat<TAdapters> {
-  /** Fix incomplete Slack DM thread IDs (e.g. `slack:D123:` → `slack:D123:<ts>`). */
+  /**
+   * Normalize Slack thread IDs before the SDK's concurrency queue.
+   *
+   * @chat-adapter/slack (as of 4.22.0) builds DM thread IDs as
+   * `slack:<channel>:` (empty thread_ts) when the Slack event has no
+   * `thread_ts` field — it falls back to `""` instead of `event.ts`.
+   * See @chat-adapter/slack/dist/index.js around line 1466:
+   *   `const threadTs = isDM ? event.thread_ts || "" : ...`
+   *
+   * This causes different messages in the same DM thread to get
+   * different thread IDs, breaking the SDK's per-thread lock/queue.
+   * We fix this by deriving the canonical thread ID from `raw.channel`
+   * + `raw.thread_ts ?? raw.ts` before passing to super.processMessage.
+   *
+   * Remove this override when @chat-adapter/slack uses `event.ts` as
+   * the DM thread_ts fallback.
+   */
   override processMessage(
     adapter: Adapter,
     threadId: string,

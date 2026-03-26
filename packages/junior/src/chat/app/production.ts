@@ -49,7 +49,24 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   });
 }
 
-/** Attach Slack file download functions to attachments that only have a URL. */
+/**
+ * Attach Slack private-file download functions to deserialized attachments.
+ *
+ * The Chat SDK's `concurrency: "queue"` strategy serializes queued messages
+ * via `Message.toJSON()`, which intentionally strips `fetchData` (a function)
+ * and `data` (a Buffer) since they aren't JSON-serializable. See
+ * chat/dist/index.js around line 306. When the SDK later dequeues and
+ * dispatches the message, attachments have a `url` but no way to fetch the
+ * bytes — Slack private file URLs require a bot-token auth'd download.
+ *
+ * This only affects messages that were queued (i.e. arrived while another
+ * handler was running). Direct-dispatch messages retain their original
+ * fetchData. Calling this unconditionally is safe because it no-ops when
+ * fetchData is already present.
+ *
+ * Remove this when the Chat SDK preserves fetchData across queue
+ * serialization, or provides a hook for rehydrating attachments on dequeue.
+ */
 function rehydrateAttachments(message: {
   attachments: Array<{ fetchData?: unknown; url?: string }>;
 }): void {
