@@ -60,16 +60,3 @@ export function determineThreadMessageKind(args: {
 
   return undefined;
 }
-
-/** Determine the message kind for a Slack thread ID. */
-export function classifyIncomingMessage(args: {
-  isMention: boolean;
-  isSubscribed: boolean;
-  normalizedThreadId: string;
-}): ThreadMessageKind | undefined {
-  return determineThreadMessageKind({
-    isDirectMessage: isSlackDirectMessageThreadId(args.normalizedThreadId),
-    isMention: args.isMention,
-    isSubscribed: args.isSubscribed,
-  });
-}

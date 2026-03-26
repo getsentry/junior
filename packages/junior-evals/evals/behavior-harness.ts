@@ -5,7 +5,7 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { classifyIncomingMessage } from "@/chat/ingress/message-router";
+import { determineThreadMessageKind } from "@/chat/ingress/message-router";
 import {
   createThreadMessageDispatcher,
   type ThreadMessageKind,
@@ -1021,10 +1021,10 @@ export async function runEvalScenario(
       const { thread, transcript } = getThreadRecord(event.thread);
       const message = toIncomingMessage(event) as unknown as Message;
       upsertThreadTranscriptMessage(transcript, message);
-      const kind = classifyIncomingMessage({
+      const kind = determineThreadMessageKind({
+        isDirectMessage: thread.id.startsWith("slack:D"),
         isMention: event.message.is_mention ?? event.type === "new_mention",
         isSubscribed: event.type === "subscribed_message",
-        normalizedThreadId: thread.id,
       });
       if (!kind) {
         return;

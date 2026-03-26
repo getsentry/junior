@@ -12,9 +12,8 @@ import {
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { logException, withSpan } from "@/chat/logging";
-import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import { publishAppHomeView } from "@/chat/slack/app-home";
-import { getSlackClient } from "@/chat/slack/client";
+import { downloadPrivateSlackFile, getSlackClient } from "@/chat/slack/client";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { createNormalizingStream } from "@/chat/runtime/streaming";
 import { getStateAdapter } from "@/chat/state/adapter";

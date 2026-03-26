@@ -91,6 +91,13 @@ export class JuniorChat<
     options?: WebhookOptions,
   ): void {
     if (typeof messageOrFactory === "function") {
+      // When the adapter provides a factory, we can't normalize the
+      // threadId param before super uses it as the lock key because
+      // normalization requires message.raw (not yet available).
+      // The un-normalized ID is still consistent per-channel (e.g.
+      // `slack:D123:` for all DM messages in channel D123), so the
+      // SDK's per-thread lock remains correct. We normalize the
+      // message.threadId inside the factory for downstream code.
       const factory = messageOrFactory;
       super.processMessage(
         adapter,
