@@ -49,7 +49,7 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   });
 }
 
-/** Restore fetchData on attachments lost during SDK queue serialization. */
+/** Attach Slack file download functions to attachments that only have a URL. */
 function rehydrateAttachments(message: {
   attachments: Array<{ fetchData?: unknown; url?: string }>;
 }): void {

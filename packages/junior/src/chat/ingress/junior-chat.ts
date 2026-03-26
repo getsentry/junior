@@ -67,7 +67,7 @@ function enqueueBackgroundTask(
 export class JuniorChat<
   TAdapters extends Record<string, Adapter> = Record<string, Adapter>,
 > extends Chat<TAdapters> {
-  /** Normalize Slack thread IDs before the SDK's concurrency logic. */
+  /** Fix incomplete Slack DM thread IDs (e.g. `slack:D123:` → `slack:D123:<ts>`). */
   override processMessage(
     adapter: Adapter,
     threadId: string,
