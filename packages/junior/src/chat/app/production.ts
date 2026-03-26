@@ -24,7 +24,15 @@ let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
 function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   return new JuniorChat<{ slack: SlackAdapter }>({
     userName: botConfig.userName,
-    concurrency: "queue",
+    concurrency: {
+      strategy: "queue",
+      // The SDK's default queueEntryTtlMs is 90s, but Junior turns can
+      // run up to botConfig.turnTimeoutMs (default 12min). A follow-up
+      // message that arrives during a long turn would expire in the
+      // queue before the lock is released. Set the TTL to exceed the
+      // maximum turn duration so queued messages survive.
+      queueEntryTtlMs: botConfig.turnTimeoutMs + 60_000,
+    },
     adapters: {
       slack: (() => {
         const signingSecret = getSlackSigningSecret();
@@ -82,6 +90,17 @@ function registerProductionHandlers(
   slackRuntime: ReturnType<typeof createSlackRuntime>,
 ): void {
   bot.onNewMention((thread, message) => {
+    rehydrateAttachments(message);
+    return slackRuntime.handleNewMention(thread, message);
+  });
+  // Route DMs through the mention handler so every DM gets a reply.
+  // Without this, the SDK routes DMs in subscribed threads to
+  // onSubscribedMessage (Chat.dispatchToHandlers checks isSubscribed
+  // before isDM), where the reply-policy classifier can decide to
+  // stay silent — wrong for 1:1 conversations. onDirectMessage is
+  // checked first (Chat.dispatchToHandlers:3128), bypassing the
+  // subscription branch entirely.
+  bot.onDirectMessage((thread, message) => {
     rehydrateAttachments(message);
     return slackRuntime.handleNewMention(thread, message);
   });

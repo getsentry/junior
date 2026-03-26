@@ -70,16 +70,21 @@ export class JuniorChat<
   /**
    * Normalize Slack thread IDs before the SDK's concurrency queue.
    *
-   * @chat-adapter/slack (as of 4.22.0) builds DM thread IDs as
-   * `slack:<channel>:` (empty thread_ts) when the Slack event has no
-   * `thread_ts` field — it falls back to `""` instead of `event.ts`.
-   * See @chat-adapter/slack/dist/index.js around line 1466:
-   *   `const threadTs = isDM ? event.thread_ts || "" : ...`
+   * The SDK uses the `threadId` parameter as the lock/queue key
+   * (Chat.handleIncomingMessage → getLockKey). @chat-adapter/slack
+   * (as of 4.22.0) builds DM thread IDs as `slack:<channel>:` (empty
+   * thread_ts) when the Slack event has no `thread_ts` field — it uses
+   * `event.thread_ts || ""` instead of falling back to `event.ts`.
+   * See @chat-adapter/slack/dist/index.js:1466.
    *
-   * This causes different messages in the same DM thread to get
-   * different thread IDs, breaking the SDK's per-thread lock/queue.
-   * We fix this by deriving the canonical thread ID from `raw.channel`
-   * + `raw.thread_ts ?? raw.ts` before passing to super.processMessage.
+   * A DM root event arrives as `slack:D123:` while a reply in the same
+   * thread carries `slack:D123:<ts>`, splitting the lock/state/subscription
+   * keys and breaking conversation continuity.
+   *
+   * We fix this by resolving the message eagerly (even when the adapter
+   * provides a factory), deriving the canonical thread ID from
+   * `raw.channel` + `raw.thread_ts ?? raw.ts`, and passing both the
+   * normalized threadId and concrete message to super.processMessage.
    *
    * Remove this override when @chat-adapter/slack uses `event.ts` as
    * the DM thread_ts fallback.
@@ -91,27 +96,21 @@ export class JuniorChat<
     options?: WebhookOptions,
   ): void {
     if (typeof messageOrFactory === "function") {
-      // When the adapter provides a factory, we can't normalize the
-      // threadId param before super uses it as the lock key because
-      // normalization requires message.raw (not yet available).
-      // The un-normalized ID is still consistent per-channel (e.g.
-      // `slack:D123:` for all DM messages in channel D123), so the
-      // SDK's per-thread lock remains correct. We normalize the
-      // message.threadId inside the factory for downstream code.
-      const factory = messageOrFactory;
-      super.processMessage(
-        adapter,
-        threadId,
-        async () => {
-          const message = await factory();
+      // The SDK uses threadId as the lock key *before* resolving the
+      // factory (Chat.processMessage:2207). We must resolve eagerly so
+      // we can pass the normalized threadId to super. The SDK's own
+      // processMessage wraps the work in waitUntil, so we do the same.
+      enqueueBackgroundTask(
+        options,
+        (async (): Promise<void> => {
+          const message = await messageOrFactory();
           const normalized = normalizeIncomingSlackThreadId(threadId, message);
           if (normalized !== threadId && "threadId" in message) {
             (message as unknown as Record<string, unknown>).threadId =
               normalized;
           }
-          return message;
-        },
-        options,
+          super.processMessage(adapter, normalized, message, options);
+        })(),
       );
       return;
     }
