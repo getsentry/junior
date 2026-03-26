@@ -5,11 +5,13 @@ import {
   type AppHomeOpenedEvent,
   type AssistantContextChangedEvent,
   type AssistantThreadStartedEvent,
+  type Message,
   type ModalCloseEvent,
   type ReactionEvent,
   type SlashCommandEvent,
   type WebhookOptions,
 } from "chat";
+import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
 
 type ChatInternals = {
   logger?: {
@@ -65,6 +67,42 @@ function enqueueBackgroundTask(
 export class JuniorChat<
   TAdapters extends Record<string, Adapter> = Record<string, Adapter>,
 > extends Chat<TAdapters> {
+  /** Normalize Slack thread IDs before the SDK's concurrency logic. */
+  override processMessage(
+    adapter: Adapter,
+    threadId: string,
+    messageOrFactory: Message | (() => Promise<Message>),
+    options?: WebhookOptions,
+  ): void {
+    if (typeof messageOrFactory === "function") {
+      const factory = messageOrFactory;
+      super.processMessage(
+        adapter,
+        threadId,
+        async () => {
+          const message = await factory();
+          const normalized = normalizeIncomingSlackThreadId(threadId, message);
+          if (normalized !== threadId && "threadId" in message) {
+            (message as unknown as Record<string, unknown>).threadId =
+              normalized;
+          }
+          return message;
+        },
+        options,
+      );
+      return;
+    }
+    const normalized = normalizeIncomingSlackThreadId(
+      threadId,
+      messageOrFactory,
+    );
+    if (normalized !== threadId && "threadId" in messageOrFactory) {
+      (messageOrFactory as unknown as Record<string, unknown>).threadId =
+        normalized;
+    }
+    super.processMessage(adapter, normalized, messageOrFactory, options);
+  }
+
   override processReaction(
     event: Omit<ReactionEvent, "adapter" | "thread"> & {
       adapter?: Adapter;

@@ -5,7 +5,6 @@ import starlightTypedoc from "starlight-typedoc";
 const juniorEntryPoints = [
   "../junior/src/handlers/router.ts",
   "../junior/src/handlers/webhooks.ts",
-  "../junior/src/handlers/queue-callback.ts",
   "../junior/src/handlers/health.ts",
   "../junior/src/next-config.ts",
   "../junior/src/instrumentation.ts",

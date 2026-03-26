@@ -12,6 +12,7 @@ import {
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { logException, withSpan } from "@/chat/logging";
+import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
@@ -48,16 +49,30 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   });
 }
 
+/** Restore fetchData on attachments lost during SDK queue serialization. */
+function rehydrateAttachments(message: {
+  attachments: Array<{ fetchData?: unknown; url?: string }>;
+}): void {
+  for (const attachment of message.attachments) {
+    if (!attachment.fetchData && attachment.url) {
+      const url = attachment.url;
+      attachment.fetchData = () => downloadPrivateSlackFile(url);
+    }
+  }
+}
+
 function registerProductionHandlers(
   bot: JuniorChat<{ slack: SlackAdapter }>,
   slackRuntime: ReturnType<typeof createSlackRuntime>,
 ): void {
-  bot.onNewMention((thread, message) =>
-    slackRuntime.handleNewMention(thread, message),
-  );
-  bot.onSubscribedMessage((thread, message) =>
-    slackRuntime.handleSubscribedMessage(thread, message),
-  );
+  bot.onNewMention((thread, message) => {
+    rehydrateAttachments(message);
+    return slackRuntime.handleNewMention(thread, message);
+  });
+  bot.onSubscribedMessage((thread, message) => {
+    rehydrateAttachments(message);
+    return slackRuntime.handleSubscribedMessage(thread, message);
+  });
   bot.onAssistantThreadStarted((event) =>
     slackRuntime.handleAssistantThreadStarted(event),
   );
