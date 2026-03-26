@@ -317,16 +317,6 @@ export function createSlackTurnRuntime<
           );
           return;
         }
-        if (isRetryableTurnError(error)) {
-          deps.logException(
-            error,
-            "mention_handler_retryable_failure",
-            errorContext,
-            { "app.turn.retryable_reason": error.reason },
-            "onNewMention failed with retryable error",
-          );
-          throw error;
-        }
         const eventId = deps.logException(
           error,
           "mention_handler_failed",
@@ -477,16 +467,6 @@ export function createSlackTurnRuntime<
             "onSubscribedMessage parked turn for MCP auth resume",
           );
           return;
-        }
-        if (isRetryableTurnError(error)) {
-          deps.logException(
-            error,
-            "subscribed_message_handler_retryable_failure",
-            errorContext,
-            { "app.turn.retryable_reason": error.reason },
-            "onSubscribedMessage failed with retryable error",
-          );
-          throw error;
         }
         const eventId = deps.logException(
           error,

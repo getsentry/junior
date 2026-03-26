@@ -85,16 +85,11 @@ function rehydrateAttachments(message: {
   }
 }
 
-// Known limitation: RetryableTurnError("agent_turn_timeout_resume") is
-// no longer retried. The Slack runtime (slack-runtime.ts:320, :481)
-// rethrows these so that a retry mechanism can resume the checkpointed
-// turn in a new function invocation. The old Vercel Queue provided this
-// by deferring to a new HTTP callback with exponential backoff. The Chat
-// SDK's in-process queue catches handler errors at the processMessage
-// level (chat/dist/index.js:2209) and logs them — it has no retry hook,
-// and in-process retry can't help because the agent needs a fresh
-// timeout budget. Restoring this requires an external trigger (e.g.
-// Vercel Queue, cron self-invoke, or upstream SDK retry support).
+// Timeout turns fail gracefully: the Slack runtime posts an error
+// reply to the thread. The checkpoint infrastructure in respond.ts
+// still writes an "awaiting_resume" checkpoint on timeout for
+// observability, but no retry mechanism picks it up. MCP auth pauses
+// are the only retryable path (resumed via OAuth callback).
 function registerProductionHandlers(
   bot: JuniorChat<{ slack: SlackAdapter }>,
   slackRuntime: ReturnType<typeof createSlackRuntime>,

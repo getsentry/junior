@@ -1,2 +1,2 @@
-export { GET, POST } from "@sentry/junior/handler";
+export { GET, POST, maxDuration } from "@sentry/junior/handler";
 export const runtime = "nodejs";

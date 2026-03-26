@@ -18,13 +18,6 @@ export { GET, POST } from "@sentry/junior/handler";
 export const runtime = "nodejs";
 ```
 
-`app/api/queue/callback/route.js`:
-
-```js
-export { POST } from "@sentry/junior/handlers/queue-callback";
-export const runtime = "nodejs";
-```
-
 `next.config.mjs`:
 
 ```js

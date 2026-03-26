@@ -490,52 +490,6 @@ describe("bot handlers (integration)", () => {
     expect(capturedCorrelation[0].turnId).toBe("turn_msg-correlation");
   });
 
-  it("rethrows retryable turn errors so queue retries can resume", async () => {
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: {
-          generateAssistantReply: async () => {
-            throw new RetryableTurnError(
-              "agent_turn_timeout_resume",
-              "simulated timeout",
-            );
-          },
-        },
-      },
-    });
-
-    const thread = createTestThread({ id: "slack:C_RETRY:1700000000.000" });
-    await expect(
-      slackRuntime.handleNewMention(
-        thread,
-        createTestMessage({
-          id: "msg-retry",
-          threadId: "slack:C_RETRY:1700000000.000",
-          text: "please continue",
-          isMention: true,
-        }),
-      ),
-    ).rejects.toThrow("simulated timeout");
-
-    expect(thread.posts).toHaveLength(0);
-    const state = thread.getState();
-    const conversation = (
-      state as {
-        conversation?: {
-          processing?: { activeTurnId?: string };
-          messages?: Array<{
-            meta?: { replied?: boolean; skippedReason?: string };
-          }>;
-        };
-      }
-    ).conversation;
-    expect(conversation?.processing?.activeTurnId).toBe("turn_msg-retry");
-    const lastMessage =
-      conversation?.messages?.[conversation.messages.length - 1];
-    expect(lastMessage?.meta?.replied).toBeUndefined();
-    expect(lastMessage?.meta?.skippedReason).toBeUndefined();
-  });
-
   it("parks MCP auth resume turns without rethrowing to the queue", async () => {
     const { slackRuntime } = createRuntime({
       services: {

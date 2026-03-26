@@ -67,15 +67,10 @@ Harness override knobs (in `EvalOverrides`):
 - `fail_reply_call`: force a non-retryable reply failure on a specific call.
 - `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
 - `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
-- `retryable_timeout_calls`: force retryable timeout-shaped failures on selected reply calls.
-- `retryable_max_attempts`: max retries for retryable timeout-shaped failures during one event.
 - `reply_texts`: override returned reply text per call.
 - `subscribed_decisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
 
 These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.
-
-`retryable_timeout_calls` validates handler-level retry propagation only. It does not validate
-checkpoint save/restore semantics in the core resumability path.
 
 ## Running
 

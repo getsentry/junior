@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { getProductionBot } from "@/chat/app/production";
+import { getChatConfig } from "@/chat/config";
 import {
   createRequestContext,
   logException,
@@ -10,6 +11,14 @@ import {
   withContext,
   withSpan,
 } from "@/chat/logging";
+
+/**
+ * Vercel function timeout in seconds.
+ *
+ * Agent turns run inside `after()` which shares the function's timeout budget.
+ * This must be at least as large as the configured turn timeout plus buffer.
+ */
+export const maxDuration = getChatConfig().functionMaxDurationSeconds;
 
 /**
  * Webhook route contract for `@sentry/junior`.

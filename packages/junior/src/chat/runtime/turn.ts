@@ -16,9 +16,7 @@ export function buildDeterministicTurnId(messageId: string): string {
 // Turn errors
 // ---------------------------------------------------------------------------
 
-export type RetryableTurnReason =
-  | "agent_turn_timeout_resume"
-  | "mcp_auth_resume";
+export type RetryableTurnReason = "mcp_auth_resume";
 
 /** Error indicating the turn can be retried (timeout or auth pause). */
 export class RetryableTurnError extends Error {

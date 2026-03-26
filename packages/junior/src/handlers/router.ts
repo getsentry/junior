@@ -1,7 +1,9 @@
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
-import { POST as webhooksPOST } from "@/handlers/webhooks";
+import { POST as webhooksPOST, maxDuration } from "@/handlers/webhooks";
+
+export { maxDuration };
 
 type RouteContext = {
   params: Promise<unknown>;

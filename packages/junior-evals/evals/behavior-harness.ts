@@ -20,7 +20,6 @@ import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
-import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
 import {
   FakeSlackAdapter,
   createTestThread,
@@ -106,9 +105,6 @@ export interface EvalOverrides {
   plugin_dirs?: string[];
   plugin_packages?: string[];
   reply_texts?: string[];
-  retryable_max_attempts?: number;
-  retryable_timeout_calls?: number[];
-  retryable_timeout_message?: string;
   skill_dirs?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
   test_credential_token?: string;
@@ -161,7 +157,6 @@ interface EvalThreadRecord {
 }
 
 interface QueueDelivery {
-  attempts: number;
   kind: ThreadMessageKind;
   message: Message;
   thread: TestThread;
@@ -530,17 +525,6 @@ function buildThreadReplyFromMessage(
   };
 }
 
-function shouldRetryDelivery(
-  error: unknown,
-  attempt: number,
-  maxAttempts: number,
-): boolean {
-  return (
-    attempt < maxAttempts &&
-    isRetryableTurnError(error, "agent_turn_timeout_resume")
-  );
-}
-
 async function cleanupMcpAuthState(
   userIds: Iterable<string>,
   providers: Iterable<string>,
@@ -700,22 +684,12 @@ export async function runEvalScenario(
   const slackAdapter = new FakeSlackAdapter();
   const threadRecordsById = new Map<string, EvalThreadRecord>();
   const readyQueueDeliveries: QueueDelivery[] = [];
-  const delayedQueueDeliveries: QueueDelivery[] = [];
   const channelStateById = new Map<
     string,
     { value: Record<string, unknown> }
   >();
   const replyTexts = scenario.overrides?.reply_texts ?? [];
   let successfulReplyCount = 0;
-  const retryableTimeoutCalls = new Set(
-    scenario.overrides?.retryable_timeout_calls ?? [],
-  );
-  const retryableTimeoutMessage =
-    scenario.overrides?.retryable_timeout_message ?? "simulated eval timeout";
-  const retryableMaxAttempts = Math.max(
-    1,
-    scenario.overrides?.retryable_max_attempts ?? 3,
-  );
   const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
   const replyTimeoutMs = Number.parseInt(
     process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000",
@@ -876,12 +850,6 @@ export async function runEvalScenario(
       generateAssistantReply: async (text, context) => {
         replyCallCount += 1;
         const mockImageGeneration = scenario.overrides?.mock_image_generation;
-        if (retryableTimeoutCalls.has(replyCallCount)) {
-          throw new RetryableTurnError(
-            "agent_turn_timeout_resume",
-            retryableTimeoutMessage,
-          );
-        }
         if (scenario.overrides?.fail_reply_call === replyCallCount) {
           throw new Error(`forced reply failure on call ${replyCallCount}`);
         }
@@ -983,36 +951,18 @@ export async function runEvalScenario(
   });
 
   try {
-    const flushDelayedQueueDeliveries = (): void => {
-      if (delayedQueueDeliveries.length === 0) {
-        return;
-      }
-      readyQueueDeliveries.push(...delayedQueueDeliveries.splice(0));
-    };
-
     const processNextDelivery = async (): Promise<boolean> => {
       const current = readyQueueDeliveries.shift();
       if (!current) {
         return false;
       }
 
-      const attempt = current.attempts + 1;
-
-      try {
-        await dispatch({
-          kind: current.kind,
-          thread: current.thread,
-          message: current.message,
-        });
-        return true;
-      } catch (error) {
-        if (shouldRetryDelivery(error, attempt, retryableMaxAttempts)) {
-          current.attempts = attempt;
-          delayedQueueDeliveries.push(current);
-          return true;
-        }
-        throw error;
-      }
+      await dispatch({
+        kind: current.kind,
+        thread: current.thread,
+        message: current.message,
+      });
+      return true;
     };
 
     const enqueueEvent = (
@@ -1030,7 +980,6 @@ export async function runEvalScenario(
         return;
       }
       readyQueueDeliveries.push({
-        attempts: 0,
         kind,
         message,
         thread,
@@ -1061,19 +1010,12 @@ export async function runEvalScenario(
         await runLifecycleEvent(event);
       }
       await maybeAutoCompleteAuth();
-      flushDelayedQueueDeliveries();
       if (await processNextDelivery()) {
         await maybeAutoCompleteAuth();
       }
     }
 
-    while (
-      readyQueueDeliveries.length > 0 ||
-      delayedQueueDeliveries.length > 0
-    ) {
-      if (readyQueueDeliveries.length === 0) {
-        flushDelayedQueueDeliveries();
-      }
+    while (readyQueueDeliveries.length > 0) {
       const processed = await processNextDelivery();
       if (!processed) {
         break;
