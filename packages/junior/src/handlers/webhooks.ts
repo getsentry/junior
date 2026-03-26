@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import * as Sentry from "@sentry/nextjs";
+import { getProductionBot } from "@/chat/app/production";
 import {
   createRequestContext,
   logException,
@@ -23,11 +24,6 @@ type WebhookRouteContext = {
   }>;
 };
 
-async function loadBot() {
-  const { getProductionBot } = await import("@/chat/app/production");
-  return getProductionBot();
-}
-
 /**
  * Handles `POST /api/webhooks/:platform`.
  *
@@ -38,7 +34,7 @@ export async function POST(
   request: Request,
   context: WebhookRouteContext,
 ): Promise<Response> {
-  const bot = await loadBot();
+  const bot = getProductionBot();
   const { platform } = await context.params;
   const handler = bot.webhooks[platform as keyof typeof bot.webhooks];
   const requestContext = createRequestContext(request, { platform });

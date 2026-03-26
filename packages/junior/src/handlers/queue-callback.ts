@@ -1,3 +1,4 @@
+import { getProductionSlackRuntime } from "@/chat/app/production";
 import {
   createQueueCallbackHandler,
   getThreadMessageTopic,
@@ -18,20 +19,16 @@ import {
   withSpan,
 } from "@/chat/logging";
 
-let dispatchPromise: Promise<ThreadMessageDispatcher> | undefined;
+let productionDispatch: ThreadMessageDispatcher | undefined;
 
-async function getProductionDispatch(): Promise<ThreadMessageDispatcher> {
-  if (!dispatchPromise) {
-    dispatchPromise = (async () => {
-      const { getProductionSlackRuntime } =
-        await import("@/chat/app/production");
-      return createThreadMessageDispatcher({
-        runtime: getProductionSlackRuntime(),
-      });
-    })();
+function getProductionDispatch(): ThreadMessageDispatcher {
+  if (!productionDispatch) {
+    productionDispatch = createThreadMessageDispatcher({
+      runtime: getProductionSlackRuntime(),
+    });
   }
 
-  return await dispatchPromise;
+  return productionDispatch;
 }
 
 /**
