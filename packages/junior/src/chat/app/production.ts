@@ -13,7 +13,8 @@ import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { logException, withSpan } from "@/chat/logging";
 import { publishAppHomeView } from "@/chat/slack/app-home";
-import { downloadPrivateSlackFile, getSlackClient } from "@/chat/slack/client";
+import { getSlackClient } from "@/chat/slack/client";
+import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { createNormalizingStream } from "@/chat/runtime/streaming";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -56,33 +57,11 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   });
 }
 
-/**
- * Attach Slack private-file download functions to deserialized attachments.
- *
- * The Chat SDK's `concurrency: "queue"` strategy serializes queued messages
- * via `Message.toJSON()`, which intentionally strips `fetchData` (a function)
- * and `data` (a Buffer) since they aren't JSON-serializable. See
- * chat/dist/index.js around line 306. When the SDK later dequeues and
- * dispatches the message, attachments have a `url` but no way to fetch the
- * bytes — Slack private file URLs require a bot-token auth'd download.
- *
- * This only affects messages that were queued (i.e. arrived while another
- * handler was running). Direct-dispatch messages retain their original
- * fetchData. Calling this unconditionally is safe because it no-ops when
- * fetchData is already present.
- *
- * Remove this when the Chat SDK preserves fetchData across queue
- * serialization, or provides a hook for rehydrating attachments on dequeue.
- */
+/** Rehydrate attachment fetchers stripped during queue serialization. */
 function rehydrateAttachments(message: {
   attachments: Array<{ fetchData?: unknown; url?: string }>;
 }): void {
-  for (const attachment of message.attachments) {
-    if (!attachment.fetchData && attachment.url) {
-      const url = attachment.url;
-      attachment.fetchData = () => downloadPrivateSlackFile(url);
-    }
-  }
+  rehydrateAttachmentFetchers(message);
 }
 
 // Timeout turns fail gracefully: the Slack runtime posts an error

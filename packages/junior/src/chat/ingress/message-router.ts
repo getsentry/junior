@@ -33,13 +33,6 @@ function nonEmptyString(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
-function isSlackDirectMessageThreadId(threadId: string): boolean {
-  const parts = threadId.split(":");
-  return (
-    parts.length === 3 && parts[0] === "slack" && parts[1]?.startsWith("D")
-  );
-}
-
 /** Classify an incoming message as a mention or subscribed message. */
 export function determineThreadMessageKind(args: {
   isDirectMessage: boolean;

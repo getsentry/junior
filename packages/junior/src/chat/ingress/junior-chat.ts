@@ -100,16 +100,27 @@ export class JuniorChat<
       // factory (Chat.processMessage:2207). We must resolve eagerly so
       // we can pass the normalized threadId to super. The SDK's own
       // processMessage wraps the work in waitUntil, so we do the same.
+      const runtime = this as unknown as ChatInternals;
       enqueueBackgroundTask(
         options,
         (async (): Promise<void> => {
-          const message = await messageOrFactory();
-          const normalized = normalizeIncomingSlackThreadId(threadId, message);
-          if (normalized !== threadId && "threadId" in message) {
-            (message as unknown as Record<string, unknown>).threadId =
-              normalized;
+          try {
+            const message = await messageOrFactory();
+            const normalized = normalizeIncomingSlackThreadId(
+              threadId,
+              message,
+            );
+            if (normalized !== threadId && "threadId" in message) {
+              (message as unknown as Record<string, unknown>).threadId =
+                normalized;
+            }
+            super.processMessage(adapter, normalized, message, options);
+          } catch (error) {
+            runtime.logger?.error?.("Message factory resolution error", {
+              error,
+              threadId,
+            });
           }
-          super.processMessage(adapter, normalized, message, options);
         })(),
       );
       return;
