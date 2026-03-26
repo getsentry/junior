@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const originalSigningSecret = process.env.SLACK_SIGNING_SECRET;
 const originalRedisUrl = process.env.REDIS_URL;
 
-describe("handlers webhooks module loading", () => {
+describe("handlers queue callback module loading", () => {
   beforeEach(() => {
     vi.resetModules();
     delete process.env.SLACK_SIGNING_SECRET;
@@ -25,7 +25,7 @@ describe("handlers webhooks module loading", () => {
   });
 
   it("loads without requiring runtime env on module load", async () => {
-    const mod = await import("@/handlers/webhooks");
+    const mod = await import("@/handlers/queue-callback");
     expect(typeof mod.POST).toBe("function");
   });
 });
