@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/build.mjs",
+    "build": "next build && junior snapshot create",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
