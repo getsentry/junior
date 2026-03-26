@@ -181,6 +181,14 @@ export function createTestThread(args: {
     threads(): AsyncIterable<never> {
       return (async function* () {})();
     },
+    toJSON() {
+      return {
+        _type: "chat:Channel" as const,
+        adapterName: "test",
+        id: channelId,
+        isDM: false,
+      };
+    },
   } satisfies Channel;
 
   const thread: TestThread = {
@@ -271,6 +279,15 @@ export function createTestThread(args: {
     },
     getState() {
       return stateData;
+    },
+    toJSON() {
+      return {
+        _type: "chat:Thread" as const,
+        adapterName: "test",
+        id,
+        channelId,
+        isDM: false,
+      };
     },
   };
 

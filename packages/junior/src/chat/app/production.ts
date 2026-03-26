@@ -24,6 +24,7 @@ let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
 function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   return new JuniorChat<{ slack: SlackAdapter }>({
     userName: botConfig.userName,
+    concurrency: "queue",
     adapters: {
       slack: (() => {
         const signingSecret = getSlackSigningSecret();
@@ -51,8 +52,12 @@ function registerProductionHandlers(
   bot: JuniorChat<{ slack: SlackAdapter }>,
   slackRuntime: ReturnType<typeof createSlackRuntime>,
 ): void {
-  bot.onNewMention(slackRuntime.handleNewMention);
-  bot.onSubscribedMessage(slackRuntime.handleSubscribedMessage);
+  bot.onNewMention((thread, message) =>
+    slackRuntime.handleNewMention(thread, message),
+  );
+  bot.onSubscribedMessage((thread, message) =>
+    slackRuntime.handleSubscribedMessage(thread, message),
+  );
   bot.onAssistantThreadStarted((event) =>
     slackRuntime.handleAssistantThreadStarted(event),
   );

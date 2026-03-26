@@ -5,29 +5,16 @@ import {
   type AppHomeOpenedEvent,
   type AssistantContextChangedEvent,
   type AssistantThreadStartedEvent,
-  type Message,
   type ModalCloseEvent,
   type ReactionEvent,
   type SlashCommandEvent,
   type WebhookOptions,
 } from "chat";
-import {
-  normalizeIncomingSlackThreadId,
-  routeIncomingMessageToQueue,
-} from "@/chat/ingress/message-router";
-import type { QueueRoutingRuntime } from "@/chat/ingress/message-router";
 
 type ChatInternals = {
   logger?: {
     error?: (message: string, data?: Record<string, unknown>) => void;
   };
-  createThread: (
-    adapter: Adapter,
-    threadId: string,
-    initialMessage: Message,
-    isSubscribedContext?: boolean,
-  ) => Promise<unknown>;
-  detectMention?: (adapter: Adapter, message: Message) => boolean;
   handleReactionEvent: (
     event: Omit<ReactionEvent, "adapter" | "thread"> & {
       adapter?: Adapter;
@@ -78,55 +65,6 @@ function enqueueBackgroundTask(
 export class JuniorChat<
   TAdapters extends Record<string, Adapter> = Record<string, Adapter>,
 > extends Chat<TAdapters> {
-  override processMessage(
-    adapter: Adapter,
-    threadId: string,
-    messageOrFactory: Message | (() => Promise<Message>),
-    options?: WebhookOptions,
-  ): void {
-    const runtime = this as unknown as ChatInternals;
-
-    enqueueBackgroundTask(
-      options,
-      (async (): Promise<void> => {
-        try {
-          const message =
-            typeof messageOrFactory === "function"
-              ? await messageOrFactory()
-              : messageOrFactory;
-          const result = await routeIncomingMessageToQueue({
-            adapter,
-            threadId,
-            message,
-            runtime: {
-              createThread: runtime.createThread.bind(
-                this,
-              ) as QueueRoutingRuntime["createThread"],
-              detectMention: runtime.detectMention?.bind(this) as
-                | QueueRoutingRuntime["detectMention"]
-                | undefined,
-            },
-          });
-          if (result === "ignored_missing_message_id") {
-            const normalizedThreadId = normalizeIncomingSlackThreadId(
-              threadId,
-              message,
-            );
-            runtime.logger?.error?.("Message processing error", {
-              threadId: normalizedThreadId,
-              reason: "missing_message_id",
-            });
-          }
-        } catch (error) {
-          runtime.logger?.error?.("Message processing error", {
-            error,
-            threadId,
-          });
-        }
-      })(),
-    );
-  }
-
   override processReaction(
     event: Omit<ReactionEvent, "adapter" | "thread"> & {
       adapter?: Adapter;

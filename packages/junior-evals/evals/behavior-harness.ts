@@ -5,11 +5,11 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
-import { routeIncomingMessageToQueue } from "@/chat/ingress/message-router";
-import { isDeferredThreadMessageError } from "@/chat/queue/errors";
-import { processQueuedThreadMessage } from "@/chat/queue/process-thread-message";
-import { createThreadMessageDispatcher } from "@/chat/queue/thread-message-dispatcher";
-import type { ThreadMessagePayload } from "@/chat/queue/types";
+import { classifyIncomingMessage } from "@/chat/ingress/message-router";
+import {
+  createThreadMessageDispatcher,
+  type ThreadMessageKind,
+} from "@/chat/queue/thread-message-dispatcher";
 import {
   deleteMcpAuthSessionsForUserProvider,
   deleteMcpServerSessionId,
@@ -162,7 +162,9 @@ interface EvalThreadRecord {
 
 interface QueueDelivery {
   attempts: number;
-  payload: ThreadMessagePayload;
+  kind: ThreadMessageKind;
+  message: Message;
+  thread: TestThread;
 }
 
 const EVAL_PACKAGE_ROOT = path.resolve(
@@ -198,11 +200,6 @@ function buildRuntimeThreadId(fixture: EvalEventThreadFixture): string {
 }
 
 const THREAD_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const EVAL_QUEUE_INGRESS_DEDUP_PREFIX = "eval:queue_ingress";
-
-function buildEvalQueueIngressDedupKey(rawKey: string): string {
-  return `${EVAL_QUEUE_INGRESS_DEDUP_PREFIX}:${rawKey}`;
-}
 
 function restoreEnvVar(name: string, value: string | undefined): void {
   if (value === undefined) {
@@ -210,14 +207,6 @@ function restoreEnvVar(name: string, value: string | undefined): void {
     return;
   }
   process.env[name] = value;
-}
-
-function getEvalEventMessageId(event: EvalEvent): string | undefined {
-  if (!("message" in event)) {
-    return undefined;
-  }
-  const messageId = event.message.id?.trim();
-  return messageId && messageId.length > 0 ? messageId : undefined;
 }
 
 function attachTranscriptAccessors(
@@ -263,17 +252,6 @@ async function cleanupHarnessThreadState(
   }
   for (const channelId of channelIds) {
     await stateAdapter.delete(`channel-state:${channelId}`);
-  }
-  for (const event of events) {
-    const messageId = getEvalEventMessageId(event);
-    if (!messageId) {
-      continue;
-    }
-    await stateAdapter.delete(
-      buildEvalQueueIngressDedupKey(
-        `${buildRuntimeThreadId(event.thread)}:${messageId}`,
-      ),
-    );
   }
 }
 
@@ -552,15 +530,14 @@ function buildThreadReplyFromMessage(
   };
 }
 
-function shouldRetryQueueDelivery(
+function shouldRetryDelivery(
   error: unknown,
   attempt: number,
   maxAttempts: number,
 ): boolean {
   return (
     attempt < maxAttempts &&
-    (isRetryableTurnError(error, "agent_turn_timeout_resume") ||
-      isDeferredThreadMessageError(error))
+    isRetryableTurnError(error, "agent_turn_timeout_resume")
   );
 }
 
@@ -1013,7 +990,7 @@ export async function runEvalScenario(
       readyQueueDeliveries.push(...delayedQueueDeliveries.splice(0));
     };
 
-    const processNextQueueDelivery = async (): Promise<boolean> => {
+    const processNextDelivery = async (): Promise<boolean> => {
       const current = readyQueueDeliveries.shift();
       if (!current) {
         return false;
@@ -1022,12 +999,14 @@ export async function runEvalScenario(
       const attempt = current.attempts + 1;
 
       try {
-        await processQueuedThreadMessage(current.payload, {
-          dispatch,
+        await dispatch({
+          kind: current.kind,
+          thread: current.thread,
+          message: current.message,
         });
         return true;
       } catch (error) {
-        if (shouldRetryQueueDelivery(error, attempt, retryableMaxAttempts)) {
+        if (shouldRetryDelivery(error, attempt, retryableMaxAttempts)) {
           current.attempts = attempt;
           delayedQueueDeliveries.push(current);
           return true;
@@ -1036,32 +1015,25 @@ export async function runEvalScenario(
       }
     };
 
-    const processQueuedEvent = async (
+    const enqueueEvent = (
       event: MentionEvent | SubscribedMessageEvent,
-    ): Promise<void> => {
+    ): void => {
       const { thread, transcript } = getThreadRecord(event.thread);
       const message = toIncomingMessage(event) as unknown as Message;
       upsertThreadTranscriptMessage(transcript, message);
-      const queueMessageId = `queue-${message.id}`;
-      await routeIncomingMessageToQueue({
-        adapter: {},
-        enqueueThreadMessage: async (payload) => {
-          readyQueueDeliveries.push({
-            attempts: 0,
-            payload: {
-              ...payload,
-              message,
-              thread,
-              queueMessageId,
-            },
-          });
-          return queueMessageId;
-        },
-        threadId: thread.id,
+      const kind = classifyIncomingMessage({
+        isMention: event.message.is_mention ?? event.type === "new_mention",
+        isSubscribed: event.type === "subscribed_message",
+        normalizedThreadId: thread.id,
+      });
+      if (!kind) {
+        return;
+      }
+      readyQueueDeliveries.push({
+        attempts: 0,
+        kind,
         message,
-        runtime: {
-          createThread: async () => thread,
-        },
+        thread,
       });
     };
 
@@ -1084,13 +1056,13 @@ export async function runEvalScenario(
 
     for (const event of scenario.events) {
       if (event.type === "new_mention" || event.type === "subscribed_message") {
-        await processQueuedEvent(event);
+        enqueueEvent(event);
       } else {
         await runLifecycleEvent(event);
       }
       await maybeAutoCompleteAuth();
       flushDelayedQueueDeliveries();
-      if (await processNextQueueDelivery()) {
+      if (await processNextDelivery()) {
         await maybeAutoCompleteAuth();
       }
     }
@@ -1102,7 +1074,7 @@ export async function runEvalScenario(
       if (readyQueueDeliveries.length === 0) {
         flushDelayedQueueDeliveries();
       }
-      const processed = await processNextQueueDelivery();
+      const processed = await processNextDelivery();
       if (!processed) {
         break;
       }

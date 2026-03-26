@@ -1,7 +1,7 @@
 import { createMemoryState } from "@chat-adapter/state-memory";
 import { createRedisState } from "@chat-adapter/state-redis";
 import type { RedisStateAdapter } from "@chat-adapter/state-redis";
-import type { Lock, StateAdapter } from "chat";
+import type { Lock, QueueEntry, StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 
 const MIN_LOCK_TTL_MS = 1000 * 60 * 5;
@@ -31,6 +31,10 @@ function createQueuedStateAdapter(base: StateAdapter): StateAdapter {
     extendLock: (lock, ttlMs) =>
       base.extendLock(lock, Math.max(ttlMs, MIN_LOCK_TTL_MS)),
     forceReleaseLock: (threadId) => base.forceReleaseLock(threadId),
+    enqueue: (threadId: string, entry: QueueEntry, maxSize: number) =>
+      base.enqueue(threadId, entry, maxSize),
+    dequeue: (threadId: string) => base.dequeue(threadId),
+    queueDepth: (threadId: string) => base.queueDepth(threadId),
     get: (key) => base.get(key),
     getList: (key) => base.getList(key),
     set: (key, value, ttlMs) => base.set(key, value, ttlMs),

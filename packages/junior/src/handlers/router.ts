@@ -1,7 +1,6 @@
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
-import { POST as queueCallbackPOST } from "@/handlers/queue-callback";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 
 type RouteContext = {
@@ -90,20 +89,12 @@ export async function GET(
  *
  * Supported routes:
  * - `api/webhooks/:platform`
- * - `api/queue/callback`
- *
- * `queue/callback` is routed here for local/dev parity, but production queue triggers
- * should still target the dedicated `app/api/queue/callback/route.ts` endpoint.
  */
 export async function POST(
   request: Request,
   context: RouteContext,
 ): Promise<Response> {
   const route = normalizeRoutePath(getRoutePathParts(await context.params));
-
-  if (route === "queue/callback") {
-    return queueCallbackPOST(request);
-  }
 
   const webhookMatch = route.match(/^webhooks\/([^/]+)$/);
   if (webhookMatch) {
