@@ -54,7 +54,14 @@ describe("chat config", () => {
     expect(botConfig.turnTimeoutMs).toBe(780000);
   });
 
-  it("derives AGENT_TURN_TIMEOUT_MS cap from QUEUE_CALLBACK_MAX_DURATION_SECONDS", async () => {
+  it("derives AGENT_TURN_TIMEOUT_MS cap from FUNCTION_MAX_DURATION_SECONDS", async () => {
+    process.env.FUNCTION_MAX_DURATION_SECONDS = "500";
+    process.env.AGENT_TURN_TIMEOUT_MS = "999999";
+    const { botConfig } = await loadConfig();
+    expect(botConfig.turnTimeoutMs).toBe(480000);
+  });
+
+  it("falls back to QUEUE_CALLBACK_MAX_DURATION_SECONDS for backward compat", async () => {
     process.env.QUEUE_CALLBACK_MAX_DURATION_SECONDS = "500";
     process.env.AGENT_TURN_TIMEOUT_MS = "999999";
     const { botConfig } = await loadConfig();

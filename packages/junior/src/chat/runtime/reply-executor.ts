@@ -545,7 +545,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
         } catch (error) {
-          shouldPersistFailureState = !isRetryableTurnError(error);
+          shouldPersistFailureState = !isRetryableTurnError(
+            error,
+            "mcp_auth_resume",
+          );
           throw error;
         } finally {
           textStream.end();

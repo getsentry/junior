@@ -28,11 +28,6 @@ describe("init cli", () => {
     expect(
       fs.existsSync(path.join(target, "app", "api", "[...path]", "route.js")),
     ).toBe(true);
-    expect(
-      fs.existsSync(
-        path.join(target, "app", "api", "queue", "callback", "route.js"),
-      ),
-    ).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "data", "SOUL.md"))).toBe(
       true,
     );

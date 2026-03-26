@@ -38,7 +38,6 @@ describe("withJunior", () => {
     expect(config.serverExternalPackages).toEqual(
       expect.arrayContaining([
         "existing-package",
-        "@vercel/queue",
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",
@@ -87,7 +86,6 @@ describe("withJunior", () => {
     );
     expect(resolved.serverExternalPackages).toEqual(
       expect.arrayContaining([
-        "@vercel/queue",
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",
@@ -138,18 +136,13 @@ describe("withJunior", () => {
           pluginsDir: "./my-plugins",
         },
         {
-          serverExternalPackages: [
-            "@vercel/queue",
-            "@vercel/sandbox",
-            "custom-package",
-          ],
+          serverExternalPackages: ["@vercel/sandbox", "custom-package"],
         },
       ) as NextConfig,
     );
 
     expect(config.serverExternalPackages).toEqual(
       expect.arrayContaining([
-        "@vercel/queue",
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",
@@ -160,9 +153,6 @@ describe("withJunior", () => {
         "custom-package",
       ]),
     );
-    expect(
-      config.serverExternalPackages?.filter((pkg) => pkg === "@vercel/queue"),
-    ).toHaveLength(1);
     expect(
       config.serverExternalPackages?.filter((pkg) => pkg === "@vercel/sandbox"),
     ).toHaveLength(1);

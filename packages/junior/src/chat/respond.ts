@@ -154,16 +154,6 @@ type ResumablePiAgent = Agent & {
   replaceMessages?: (messages: unknown[]) => Promise<void> | void;
 };
 
-class AgentTurnTimeoutError extends Error {
-  readonly timeoutMs: number;
-
-  constructor(timeoutMs: number) {
-    super(`Agent turn timed out after ${timeoutMs}ms`);
-    this.name = "AgentTurnTimeoutError";
-    this.timeoutMs = timeoutMs;
-  }
-}
-
 class McpAuthorizationPauseError extends Error {
   readonly provider: string;
 
@@ -948,7 +938,11 @@ export async function generateAssistantReply(
             timeoutId = setTimeout(() => {
               didTimeout = true;
               agent.abort();
-              reject(new AgentTurnTimeoutError(botConfig.turnTimeoutMs));
+              reject(
+                new Error(
+                  `Agent turn timed out after ${botConfig.turnTimeoutMs}ms`,
+                ),
+              );
             }, botConfig.turnTimeoutMs);
           });
 
@@ -1244,79 +1238,6 @@ export async function generateAssistantReply(
       }
       throw new RetryableTurnError(
         "mcp_auth_resume",
-        `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,
-      );
-    }
-
-    if (
-      error instanceof AgentTurnTimeoutError &&
-      timeoutResumeConversationId &&
-      timeoutResumeSessionId
-    ) {
-      const nextSliceId = timeoutResumeSliceId + 1;
-      logException(
-        error,
-        "agent_turn_timeout_resume_triggered",
-        {
-          slackThreadId: context.correlation?.threadId,
-          slackUserId: context.correlation?.requesterId,
-          slackChannelId: context.correlation?.channelId,
-          runId: context.correlation?.runId,
-          assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId,
-        },
-        {
-          "app.ai.turn_timeout_ms": error.timeoutMs,
-          "app.ai.resume_conversation_id": timeoutResumeConversationId,
-          "app.ai.resume_session_id": timeoutResumeSessionId,
-          "app.ai.resume_from_slice_id": timeoutResumeSliceId,
-          "app.ai.resume_next_slice_id": nextSliceId,
-        },
-        "Agent turn timed out and will be resumed",
-      );
-      try {
-        const latestCheckpoint = await getAgentTurnSessionCheckpoint(
-          timeoutResumeConversationId,
-          timeoutResumeSessionId,
-        );
-        const piMessages =
-          timeoutResumeMessages.length > 0
-            ? timeoutResumeMessages
-            : (latestCheckpoint?.piMessages ?? []);
-        await upsertAgentTurnSessionCheckpoint({
-          conversationId: timeoutResumeConversationId,
-          sessionId: timeoutResumeSessionId,
-          sliceId: nextSliceId,
-          state: "awaiting_resume",
-          piMessages,
-          loadedSkillNames: loadedSkillNamesForResume,
-          resumeReason: "timeout",
-          resumedFromSliceId: timeoutResumeSliceId,
-          errorMessage: error.message,
-        });
-      } catch (checkpointError) {
-        logException(
-          checkpointError,
-          "agent_turn_timeout_resume_checkpoint_failed",
-          {
-            slackThreadId: context.correlation?.threadId,
-            slackUserId: context.correlation?.requesterId,
-            slackChannelId: context.correlation?.channelId,
-            runId: context.correlation?.runId,
-            assistantUserName: context.assistant?.userName,
-            modelId: botConfig.modelId,
-          },
-          {
-            "app.ai.resume_conversation_id": timeoutResumeConversationId,
-            "app.ai.resume_session_id": timeoutResumeSessionId,
-            "app.ai.resume_from_slice_id": timeoutResumeSliceId,
-            "app.ai.resume_next_slice_id": nextSliceId,
-          },
-          "Failed to persist timeout checkpoint before retry",
-        );
-      }
-      throw new RetryableTurnError(
-        "agent_turn_timeout_resume",
         `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,
       );
     }

@@ -4,7 +4,6 @@ const {
   healthGetMock,
   mcpOauthCallbackGetMock,
   oauthCallbackGetMock,
-  queueCallbackPostMock,
   webhooksPostMock,
 } = vi.hoisted(() => ({
   healthGetMock: vi.fn(async () => new Response("health", { status: 200 })),
@@ -25,9 +24,6 @@ const {
       const { provider } = await context.params;
       return new Response(`oauth:${provider}`, { status: 200 });
     },
-  ),
-  queueCallbackPostMock: vi.fn(
-    async () => new Response("queue:ok", { status: 200 }),
   ),
   webhooksPostMock: vi.fn(
     async (
@@ -52,10 +48,6 @@ vi.mock("@/handlers/oauth-callback", () => ({
   GET: oauthCallbackGetMock,
 }));
 
-vi.mock("@/handlers/queue-callback", () => ({
-  POST: queueCallbackPostMock,
-}));
-
 vi.mock("@/handlers/webhooks", () => ({
   POST: webhooksPostMock,
 }));
@@ -71,7 +63,6 @@ describe("handlers router", () => {
     healthGetMock.mockClear();
     mcpOauthCallbackGetMock.mockClear();
     oauthCallbackGetMock.mockClear();
-    queueCallbackPostMock.mockClear();
     webhooksPostMock.mockClear();
   });
 
@@ -113,25 +104,6 @@ describe("handlers router", () => {
     expect(await webhooksPostMock.mock.calls[0][1].params).toEqual({
       platform: "slack",
     });
-  });
-
-  it("routes queue callback requests", async () => {
-    const response = await POST(
-      new Request("http://localhost/api/queue/callback", { method: "POST" }),
-      routeContext(["queue", "callback"]),
-    );
-    expect(response.status).toBe(200);
-    expect(await response.text()).toBe("queue:ok");
-    expect(queueCallbackPostMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("accepts legacy api-prefixed queue callback route form", async () => {
-    const response = await POST(
-      new Request("http://localhost/api/queue/callback", { method: "POST" }),
-      routeContext(["api", "queue", "callback"]),
-    );
-    expect(response.status).toBe(200);
-    expect(queueCallbackPostMock).toHaveBeenCalledTimes(1);
   });
 
   it("routes oauth callback requests", async () => {

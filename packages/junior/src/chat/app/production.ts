@@ -14,6 +14,7 @@ import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { logException, withSpan } from "@/chat/logging";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
+import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { createNormalizingStream } from "@/chat/runtime/streaming";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -24,6 +25,15 @@ let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
 function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   return new JuniorChat<{ slack: SlackAdapter }>({
     userName: botConfig.userName,
+    concurrency: {
+      strategy: "queue",
+      // The SDK's default queueEntryTtlMs is 90s, but Junior turns can
+      // run up to botConfig.turnTimeoutMs (default 12min). A follow-up
+      // message that arrives during a long turn would expire in the
+      // queue before the lock is released. Set the TTL to exceed the
+      // maximum turn duration so queued messages survive.
+      queueEntryTtlMs: botConfig.turnTimeoutMs + 60_000,
+    },
     adapters: {
       slack: (() => {
         const signingSecret = getSlackSigningSecret();
@@ -47,12 +57,41 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   });
 }
 
+/** Rehydrate attachment fetchers stripped during queue serialization. */
+function rehydrateAttachments(message: {
+  attachments: Array<{ fetchData?: unknown; url?: string }>;
+}): void {
+  rehydrateAttachmentFetchers(message);
+}
+
+// Timeout turns fail gracefully: the Slack runtime posts an error
+// reply to the thread. The checkpoint infrastructure in respond.ts
+// still writes an "awaiting_resume" checkpoint on timeout for
+// observability, but no retry mechanism picks it up. MCP auth pauses
+// are the only retryable path (resumed via OAuth callback).
 function registerProductionHandlers(
   bot: JuniorChat<{ slack: SlackAdapter }>,
   slackRuntime: ReturnType<typeof createSlackRuntime>,
 ): void {
-  bot.onNewMention(slackRuntime.handleNewMention);
-  bot.onSubscribedMessage(slackRuntime.handleSubscribedMessage);
+  bot.onNewMention((thread, message) => {
+    rehydrateAttachments(message);
+    return slackRuntime.handleNewMention(thread, message);
+  });
+  // Route DMs through the mention handler so every DM gets a reply.
+  // Without this, the SDK routes DMs in subscribed threads to
+  // onSubscribedMessage (Chat.dispatchToHandlers checks isSubscribed
+  // before isDM), where the reply-policy classifier can decide to
+  // stay silent — wrong for 1:1 conversations. onDirectMessage is
+  // checked first (Chat.dispatchToHandlers:3128), bypassing the
+  // subscription branch entirely.
+  bot.onDirectMessage((thread, message) => {
+    rehydrateAttachments(message);
+    return slackRuntime.handleNewMention(thread, message);
+  });
+  bot.onSubscribedMessage((thread, message) => {
+    rehydrateAttachments(message);
+    return slackRuntime.handleSubscribedMessage(thread, message);
+  });
   bot.onAssistantThreadStarted((event) =>
     slackRuntime.handleAssistantThreadStarted(event),
   );

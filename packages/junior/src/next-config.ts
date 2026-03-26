@@ -91,7 +91,6 @@ function applyJuniorConfig(
     serverExternalPackages: Array.from(
       new Set([
         ...(nextConfig?.serverExternalPackages ?? []),
-        "@vercel/queue",
         "@vercel/sandbox",
         "bash-tool",
         "just-bash",

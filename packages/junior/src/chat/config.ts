@@ -2,8 +2,10 @@ import { toOptionalTrimmed } from "@/chat/optional-string";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
-const DEFAULT_QUEUE_CALLBACK_MAX_DURATION_SECONDS = 800;
-const TURN_TIMEOUT_BUFFER_SECONDS = 20;
+const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 800;
+/** Buffer between the Vercel function timeout and the agent turn timeout,
+ *  so the agent can abort and post a failure reply before Vercel kills it. */
+const FUNCTION_TIMEOUT_BUFFER_SECONDS = 20;
 
 export interface BotConfig {
   fastModelId: string;
@@ -14,9 +16,7 @@ export interface BotConfig {
 
 export interface ChatConfig {
   bot: BotConfig;
-  queue: {
-    callbackMaxDurationSeconds: number;
-  };
+  functionMaxDurationSeconds: number;
   slack: {
     botToken?: string;
     clientId?: string;
@@ -43,33 +43,26 @@ function parseAgentTurnTimeoutMs(
   return Math.max(MIN_AGENT_TURN_TIMEOUT_MS, Math.min(value, maxTimeoutMs));
 }
 
-function resolveQueueCallbackMaxDurationSeconds(
-  env: NodeJS.ProcessEnv,
-): number {
-  const value = Number.parseInt(
-    env.QUEUE_CALLBACK_MAX_DURATION_SECONDS ?? "",
-    10,
-  );
+function resolveFunctionMaxDurationSeconds(env: NodeJS.ProcessEnv): number {
+  const raw =
+    env.FUNCTION_MAX_DURATION_SECONDS ??
+    env.QUEUE_CALLBACK_MAX_DURATION_SECONDS;
+  const value = Number.parseInt(raw ?? "", 10);
   if (Number.isNaN(value) || value <= 0) {
-    return DEFAULT_QUEUE_CALLBACK_MAX_DURATION_SECONDS;
+    return DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
   }
   return value;
 }
 
-function resolveMaxTurnTimeoutMs(
-  queueCallbackMaxDurationSeconds: number,
-): number {
+function resolveMaxTurnTimeoutMs(functionMaxDurationSeconds: number): number {
   const budgetSeconds =
-    queueCallbackMaxDurationSeconds - TURN_TIMEOUT_BUFFER_SECONDS;
+    functionMaxDurationSeconds - FUNCTION_TIMEOUT_BUFFER_SECONDS;
   return Math.max(MIN_AGENT_TURN_TIMEOUT_MS, budgetSeconds * 1000);
 }
 
 function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
-  const queueCallbackMaxDurationSeconds =
-    resolveQueueCallbackMaxDurationSeconds(env);
-  const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(
-    queueCallbackMaxDurationSeconds,
-  );
+  const functionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(env);
+  const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
 
   return {
     userName: env.JUNIOR_BOT_NAME ?? "junior",
@@ -89,9 +82,7 @@ export function readChatConfig(
 ): ChatConfig {
   return {
     bot: readBotConfig(env),
-    queue: {
-      callbackMaxDurationSeconds: resolveQueueCallbackMaxDurationSeconds(env),
-    },
+    functionMaxDurationSeconds: resolveFunctionMaxDurationSeconds(env),
     slack: {
       botToken:
         toOptionalTrimmed(env.SLACK_BOT_TOKEN) ??

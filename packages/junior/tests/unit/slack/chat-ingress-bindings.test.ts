@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildQueueIngressDedupKey,
   determineThreadMessageKind,
   normalizeIncomingSlackThreadId,
 } from "@/chat/ingress/message-router";
@@ -59,14 +58,6 @@ describe("normalizeIncomingSlackThreadId", () => {
     expect(normalizeIncomingSlackThreadId("slack:C123:", undefined)).toBe(
       "slack:C123:",
     );
-  });
-});
-
-describe("buildQueueIngressDedupKey", () => {
-  it("uses thread and message identifiers", () => {
-    expect(
-      buildQueueIngressDedupKey("slack:C123:1700000000.100", "1700000000.200"),
-    ).toBe("slack:C123:1700000000.100:1700000000.200");
   });
 });
 

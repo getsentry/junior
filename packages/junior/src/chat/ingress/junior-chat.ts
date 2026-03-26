@@ -11,23 +11,12 @@ import {
   type SlashCommandEvent,
   type WebhookOptions,
 } from "chat";
-import {
-  normalizeIncomingSlackThreadId,
-  routeIncomingMessageToQueue,
-} from "@/chat/ingress/message-router";
-import type { QueueRoutingRuntime } from "@/chat/ingress/message-router";
+import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
 
 type ChatInternals = {
   logger?: {
     error?: (message: string, data?: Record<string, unknown>) => void;
   };
-  createThread: (
-    adapter: Adapter,
-    threadId: string,
-    initialMessage: Message,
-    isSubscribedContext?: boolean,
-  ) => Promise<unknown>;
-  detectMention?: (adapter: Adapter, message: Message) => boolean;
   handleReactionEvent: (
     event: Omit<ReactionEvent, "adapter" | "thread"> & {
       adapter?: Adapter;
@@ -78,53 +67,73 @@ function enqueueBackgroundTask(
 export class JuniorChat<
   TAdapters extends Record<string, Adapter> = Record<string, Adapter>,
 > extends Chat<TAdapters> {
+  /**
+   * Normalize Slack thread IDs before the SDK's concurrency queue.
+   *
+   * The SDK uses the `threadId` parameter as the lock/queue key
+   * (Chat.handleIncomingMessage → getLockKey). @chat-adapter/slack
+   * (as of 4.22.0) builds DM thread IDs as `slack:<channel>:` (empty
+   * thread_ts) when the Slack event has no `thread_ts` field — it uses
+   * `event.thread_ts || ""` instead of falling back to `event.ts`.
+   * See @chat-adapter/slack/dist/index.js:1466.
+   *
+   * A DM root event arrives as `slack:D123:` while a reply in the same
+   * thread carries `slack:D123:<ts>`, splitting the lock/state/subscription
+   * keys and breaking conversation continuity.
+   *
+   * We fix this by resolving the message eagerly (even when the adapter
+   * provides a factory), deriving the canonical thread ID from
+   * `raw.channel` + `raw.thread_ts ?? raw.ts`, and passing both the
+   * normalized threadId and concrete message to super.processMessage.
+   *
+   * Remove this override when @chat-adapter/slack uses `event.ts` as
+   * the DM thread_ts fallback.
+   */
   override processMessage(
     adapter: Adapter,
     threadId: string,
     messageOrFactory: Message | (() => Promise<Message>),
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
-
-    enqueueBackgroundTask(
-      options,
-      (async (): Promise<void> => {
-        try {
-          const message =
-            typeof messageOrFactory === "function"
-              ? await messageOrFactory()
-              : messageOrFactory;
-          const result = await routeIncomingMessageToQueue({
-            adapter,
-            threadId,
-            message,
-            runtime: {
-              createThread: runtime.createThread.bind(
-                this,
-              ) as QueueRoutingRuntime["createThread"],
-              detectMention: runtime.detectMention?.bind(this) as
-                | QueueRoutingRuntime["detectMention"]
-                | undefined,
-            },
-          });
-          if (result === "ignored_missing_message_id") {
-            const normalizedThreadId = normalizeIncomingSlackThreadId(
+    if (typeof messageOrFactory === "function") {
+      // The SDK uses threadId as the lock key *before* resolving the
+      // factory (Chat.processMessage:2207). We must resolve eagerly so
+      // we can pass the normalized threadId to super. The SDK's own
+      // processMessage wraps the work in waitUntil, so we do the same.
+      const runtime = this as unknown as ChatInternals;
+      enqueueBackgroundTask(
+        options,
+        (async (): Promise<void> => {
+          try {
+            const message = await messageOrFactory();
+            const normalized = normalizeIncomingSlackThreadId(
               threadId,
               message,
             );
-            runtime.logger?.error?.("Message processing error", {
-              threadId: normalizedThreadId,
-              reason: "missing_message_id",
+            if (normalized !== threadId && "threadId" in message) {
+              (message as unknown as Record<string, unknown>).threadId =
+                normalized;
+            }
+            super.processMessage(adapter, normalized, message, options);
+          } catch (error) {
+            runtime.logger?.error?.("Message factory resolution error", {
+              error,
+              threadId,
             });
           }
-        } catch (error) {
-          runtime.logger?.error?.("Message processing error", {
-            error,
-            threadId,
-          });
-        }
-      })(),
+        })(),
+      );
+      return;
+    }
+    const normalized = normalizeIncomingSlackThreadId(
+      threadId,
+      messageOrFactory,
     );
+    if (normalized !== threadId && "threadId" in messageOrFactory) {
+      (messageOrFactory as unknown as Record<string, unknown>).threadId =
+        normalized;
+    }
+    super.processMessage(adapter, normalized, messageOrFactory, options);
   }
 
   override processReaction(
