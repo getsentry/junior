@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 const {
+  handleSubscribedMessageMock,
   observedRuntimeIds,
   originalStateAdapterEnv,
   noopAsync,
@@ -27,13 +28,23 @@ const {
         await thread.post("observed");
       },
     ),
+    handleSubscribedMessageMock: vi.fn(
+      async (
+        thread: { id: string; post: (value: unknown) => Promise<void> },
+        message: { threadId?: string },
+      ) => {
+        observedRuntimeIds.threadId = thread.id;
+        observedRuntimeIds.messageThreadId = message.threadId;
+        await thread.post("observed");
+      },
+    ),
   };
 });
 
 vi.mock("@/chat/app/factory", () => ({
   createSlackRuntime: vi.fn(() => ({
     handleNewMention: handleNewMentionMock,
-    handleSubscribedMessage: noopAsync,
+    handleSubscribedMessage: handleSubscribedMessageMock,
     handleAssistantThreadStarted: noopAsync,
     handleAssistantContextChanged: noopAsync,
   })),
@@ -54,6 +65,7 @@ describe("behavior harness", () => {
     observedRuntimeIds.threadId = undefined;
     observedRuntimeIds.messageThreadId = undefined;
     handleNewMentionMock.mockClear();
+    handleSubscribedMessageMock.mockClear();
     noopAsync.mockClear();
   });
 
@@ -123,7 +135,8 @@ describe("behavior harness", () => {
       ],
     });
 
-    expect(handleNewMentionMock).toHaveBeenCalledTimes(2);
+    expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
+    expect(handleSubscribedMessageMock).toHaveBeenCalledTimes(1);
     expect(result.posts).toEqual([
       { text: "observed", files: [] },
       { text: "observed", files: [] },

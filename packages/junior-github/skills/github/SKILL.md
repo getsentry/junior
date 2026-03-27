@@ -89,6 +89,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 - Return canonical issue URL, issue number, issue type, applied changes, and confidence.
 - Include references used for verified claims.
 - Keep routine issue-creation steps silent. Do not post progress chatter about duplicate checks, drafting, credential issuance, or command execution before the final result.
+- If duplicate checking found no relevant matches, omit that fact entirely and report only the created issue, for example `Created issue #123: ...`, not `No duplicates found. Creating the issue now.`
 
 ## Guardrails
 

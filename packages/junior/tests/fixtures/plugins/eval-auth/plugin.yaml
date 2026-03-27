@@ -1,0 +1,8 @@
+name: eval-auth
+description: Eval-only MCP OAuth auth-resume fixture
+
+mcp:
+  transport: http
+  url: https://eval-auth.example.test/mcp
+  allowed-tools:
+    - budget-echo

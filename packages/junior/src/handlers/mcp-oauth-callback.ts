@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { after } from "next/server";
-import { ThreadImpl, type FileUpload } from "chat";
+import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
@@ -13,7 +13,8 @@ import { logException, logWarn } from "@/chat/logging";
 import type { AssistantReply } from "@/chat/respond";
 import {
   mergeArtifactsState,
-  persistThreadState,
+  getPersistedThreadState,
+  persistThreadStateById,
 } from "@/chat/runtime/thread-state";
 import {
   buildConversationContext,
@@ -167,16 +168,6 @@ async function deliverReplyToThread(
   }
 }
 
-function createSlackThread(channelId: string, threadTs: string) {
-  return ThreadImpl.fromJSON({
-    _type: "chat:Thread",
-    adapterName: "slack",
-    channelId,
-    id: `slack:${channelId}:${threadTs}`,
-    isDM: channelId.startsWith("D"),
-  });
-}
-
 function buildDeterministicTurnId(messageId: string): string {
   const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");
   return `turn_${sanitized}`;
@@ -204,8 +195,10 @@ async function buildResumeConversationContext(
   threadTs: string,
   sessionId: string,
 ): Promise<string | undefined> {
-  const thread = createSlackThread(channelId, threadTs);
-  const conversation = coerceThreadConversationState(await thread.state);
+  const threadId = `slack:${channelId}:${threadTs}`;
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(threadId),
+  );
   const userMessageId = getUserMessageIdForTurn(conversation, sessionId);
   return buildConversationContext(conversation, {
     excludeMessageId: userMessageId,
@@ -218,8 +211,8 @@ async function persistCompletedReplyState(
   sessionId: string,
   reply: AssistantReply,
 ): Promise<void> {
-  const thread = createSlackThread(channelId, threadTs);
-  const currentState = await thread.state;
+  const threadId = `slack:${channelId}:${threadTs}`;
+  const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
   const artifacts = coerceThreadArtifactsState(currentState);
   const nextArtifacts = reply.artifactStatePatch
@@ -250,7 +243,7 @@ async function persistCompletedReplyState(
     updateConversationStats,
   });
 
-  await persistThreadState(thread, {
+  await persistThreadStateById(threadId, {
     artifacts: nextArtifacts,
     conversation,
     sandboxId: reply.sandboxId,
@@ -263,8 +256,8 @@ async function persistFailedReplyState(
   threadTs: string,
   sessionId: string,
 ): Promise<void> {
-  const thread = createSlackThread(channelId, threadTs);
-  const currentState = await thread.state;
+  const threadId = `slack:${channelId}:${threadTs}`;
+  const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
 
   markTurnFailed({
@@ -275,7 +268,7 @@ async function persistFailedReplyState(
     updateConversationStats,
   });
 
-  await persistThreadState(thread, {
+  await persistThreadStateById(threadId, {
     conversation,
   });
 }

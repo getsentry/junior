@@ -59,9 +59,11 @@ const replyDecisionSchema = z.object({
   reason: z.string().optional().describe("Short reason for the decision."),
 });
 
-const ROUTER_CONFIDENCE_THRESHOLD = 0.9;
+const ROUTER_CONFIDENCE_THRESHOLD = 0.8;
 const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
+const TRANSCRIPT_MESSAGE_LINE_RE =
+  /^\[(assistant|system|user)\]\s+[^:]+:\s+([\s\S]+)$/i;
 const THREAD_OPTOUT_PATTERNS = [
   /\bstop (?:watching|replying|participating)\b/i,
   /\bstay out\b/i,
@@ -127,6 +129,53 @@ function isThreadOptOutInstruction(rawText: string, text: string): boolean {
     (pattern) => pattern.test(rawText) || pattern.test(text),
   );
 }
+
+function getTranscriptMessageHints(conversationContext: string | undefined) {
+  if (!conversationContext) {
+    return {
+      latestPriorMessageRole: "[none]",
+      latestPriorAssistantMessage: "[none]",
+    };
+  }
+
+  const lines = conversationContext
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  let latestPriorMessageRole = "[none]";
+  let latestPriorAssistantMessage = "[none]";
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const match = lines[index]?.match(TRANSCRIPT_MESSAGE_LINE_RE);
+    if (!match) {
+      continue;
+    }
+
+    if (latestPriorMessageRole === "[none]") {
+      latestPriorMessageRole = match[1].toLowerCase();
+    }
+    if (
+      latestPriorAssistantMessage === "[none]" &&
+      match[1].toLowerCase() === "assistant"
+    ) {
+      latestPriorAssistantMessage = match[2];
+    }
+
+    if (
+      latestPriorMessageRole !== "[none]" &&
+      latestPriorAssistantMessage !== "[none]"
+    ) {
+      break;
+    }
+  }
+
+  return {
+    latestPriorMessageRole,
+    latestPriorAssistantMessage,
+  };
+}
+
 /** Fast heuristic check before the LLM classifier — skips messages directed at another party. */
 export function getSubscribedReplyPreflightDecision(args: {
   botUserName: string;
@@ -162,6 +211,9 @@ function buildRouterSystemPrompt(
   conversationContext: string | undefined,
   isExplicitMention: boolean | undefined,
 ): string {
+  const { latestPriorMessageRole, latestPriorAssistantMessage } =
+    getTranscriptMessageHints(conversationContext);
+
   return [
     "You are a message router for a Slack assistant named Junior in a subscribed Slack thread.",
     "Decide whether Junior should reply to the latest message.",
@@ -185,7 +237,13 @@ function buildRouterSystemPrompt(
     "",
     "Examples of messages Junior SHOULD reply to (should_reply=true):",
     "- Direct follow-ups to Junior's response: 'Can you explain that last point in more detail?'",
+    "- Self-referential follow-ups after Junior just answered: 'What did you just say about the budget?', 'Can you explain your last response in more detail?'",
     "- Explicit requests for Junior's help: 'Junior, what's causing this error?'",
+    "",
+    "Treat a message as directed at Junior when it explicitly refers to Junior's immediately previous reply",
+    "using language like 'you just said', 'your last response', 'your last answer', or similar self-reference.",
+    "Do not confuse that with general topic continuation. A message like 'What about the billing worker timeline?'",
+    "still should_reply=false unless it clearly asks Junior for help.",
     "",
     "When in doubt, should_reply=false. Most messages in a thread are human-to-human conversation.",
     "",
@@ -199,6 +257,8 @@ function buildRouterSystemPrompt(
     "",
     `<assistant-name>${escapeXml(botUserName)}</assistant-name>`,
     `<explicit-mention>${isExplicitMention ? "true" : "false"}</explicit-mention>`,
+    `<latest-prior-message-role>${escapeXml(latestPriorMessageRole)}</latest-prior-message-role>`,
+    `<latest-prior-assistant-message>${escapeXml(latestPriorAssistantMessage)}</latest-prior-assistant-message>`,
     `<thread-context>${escapeXml(conversationContext?.trim() || "[none]")}</thread-context>`,
   ].join("\n");
 }

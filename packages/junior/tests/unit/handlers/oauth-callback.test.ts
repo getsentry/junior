@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { afterCallbacks, generateAssistantReplyMock } = vi.hoisted(() => ({
   afterCallbacks: [] as Array<() => Promise<void> | void>,
-  generateAssistantReplyMock: vi.fn(async () => ({
+  generateAssistantReplyMock: vi.fn(async (..._args: unknown[]) => ({
     text: "test reply",
     diagnostics: { outcome: "success", toolCalls: [] },
   })),
@@ -19,6 +19,8 @@ vi.mock("next/server", () => ({
 const mockStateStore = new Map<string, unknown>();
 vi.mock("@/chat/state/adapter", () => ({
   getStateAdapter: () => ({
+    connect: async () => {},
+    disconnect: async () => {},
     get: async <T>(key: string): Promise<T | null> =>
       (mockStateStore.get(key) as T) ?? null,
     set: async (key: string, value: unknown) => {
@@ -474,7 +476,7 @@ describe("oauth callback handler", () => {
     expect(body).toContain("being processed in Slack");
   });
 
-  it("registers after() work to resume pending messages after token exchange", async () => {
+  it("resumes pending messages with persisted thread context after token exchange", async () => {
     const stateKey = "oauth-state:resume-test";
     mockStateStore.set(stateKey, {
       userId: "U111",
@@ -482,6 +484,32 @@ describe("oauth callback handler", () => {
       channelId: "C123",
       threadTs: "123.789",
       pendingMessage: "list my sentry issues",
+    });
+    mockStateStore.set("thread-state:slack:C123:123.789", {
+      conversation: {
+        messages: [
+          {
+            id: "assistant-1",
+            role: "assistant",
+            text: "You need the budget by Friday.",
+            createdAtMs: 1,
+            author: {
+              userName: "junior",
+              isBot: true,
+            },
+          },
+          {
+            id: "user-1",
+            role: "user",
+            text: "list my sentry issues",
+            createdAtMs: 2,
+            author: {
+              userId: "U111",
+              userName: "dcramer",
+            },
+          },
+        ],
+      },
     });
 
     process.env.SENTRY_CLIENT_ID = "client-id";
@@ -506,6 +534,24 @@ describe("oauth callback handler", () => {
 
     expect(response.status).toBe(200);
     expect(afterCallbacks).toHaveLength(2);
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+
+    for (const callback of afterCallbacks) {
+      await callback();
+    }
+
+    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+      "list my sentry issues",
+      expect.objectContaining({
+        conversationContext: expect.stringContaining(
+          "You need the budget by Friday.",
+        ),
+      }),
+    );
+    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
+      conversationContext?: string;
+    };
+    expect(resumeContext.conversationContext).not.toContain(
+      "list my sentry issues",
+    );
   });
 });

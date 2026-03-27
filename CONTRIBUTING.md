@@ -121,8 +121,10 @@ cloudflared tunnel route dns junior-dev junior-dev.sentry.cool
 Add the named tunnel token to `.env.local`:
 
 ```bash
-CLOUDFLARE_TUNNEL_TOKEN=<output from: cloudflared tunnel token junior-dev>
+pnpm cloudflare:token
 ```
+
+Run `pnpm cloudflare:token` again after `vercel env pull` whenever it rewrites `.env.local`.
 
 Run local dev with the stable tunnel:
 

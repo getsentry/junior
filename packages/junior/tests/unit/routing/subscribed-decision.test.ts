@@ -306,7 +306,7 @@ describe("decideSubscribedThreadReply", () => {
       completeObject: vi.fn(async () => ({
         object: {
           should_reply: true,
-          confidence: 0.85,
+          confidence: 0.75,
           reason: "maybe follow-up",
         },
       })),
