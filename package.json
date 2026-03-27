@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node scripts/dev-with-root-env.mjs",
     "cli": "node scripts/cli-with-root-env.mjs",
+    "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
     "lint-staged": "lint-staged",
     "build": "pnpm --filter @sentry/junior build",
