@@ -146,8 +146,8 @@ function getSentryEnvironment(): string {
     .toLowerCase();
 }
 
-function shouldSuppressInfoLog(_level: LogLevel): boolean {
-  return false;
+function shouldSuppressInfoLog(level: LogLevel): boolean {
+  return level === "info";
 }
 
 function shouldEmitConsole(level: LogLevel): boolean {
