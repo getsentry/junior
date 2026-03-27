@@ -780,10 +780,7 @@ function buildRuntimeServices(
   scenario: EvalScenario,
   env: HarnessEnvironment,
   threadRecordsById: Map<string, EvalThreadRecord>,
-): {
-  services: JuniorRuntimeServiceOverrides;
-  replyState: { successfulCount: number };
-} {
+): JuniorRuntimeServiceOverrides {
   const replyTexts = scenario.overrides?.reply_texts ?? [];
   const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
   const replyTimeoutMs = Number.parseInt(
@@ -920,7 +917,7 @@ function buildRuntimeServices(
     },
   };
 
-  return { services, replyState };
+  return services;
 }
 
 // ---------------------------------------------------------------------------
@@ -1104,7 +1101,7 @@ export async function runEvalScenario(
     return record;
   };
 
-  const { services } = buildRuntimeServices(scenario, env, threadRecordsById);
+  const services = buildRuntimeServices(scenario, env, threadRecordsById);
 
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => slackAdapter as any,
