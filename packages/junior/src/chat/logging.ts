@@ -95,7 +95,7 @@ const ANSI = {
   gray: "\u001b[90m",
 } as const;
 const CONSOLE_PRIORITY_KEYS = [
-  "app.conversation.id",
+  "gen_ai.conversation.id",
   "app.turn.id",
   "event.name",
   "error.message",
@@ -112,7 +112,7 @@ const CONSOLE_PRIORITY_INDEX: Map<string, number> = new Map(
   CONSOLE_PRIORITY_KEYS.map((key, index) => [key, index]),
 );
 const CONSOLE_ALWAYS_HIDDEN_KEYS = new Set([
-  "app.assistant.username",
+  "gen_ai.agent.name",
   "app.platform",
   "enduser.id",
   "enduser.pseudo_id",
@@ -321,7 +321,7 @@ function sanitizeValue(value: unknown): AttributeValue | undefined {
 
 function contextToAttributes(context: LogContext): LogAttributes {
   const attributes: Record<string, unknown> = {
-    "app.conversation.id": context.conversationId,
+    "gen_ai.conversation.id": context.conversationId,
     "app.turn.id": context.turnId,
     "app.agent.id": context.agentId,
     "app.platform": context.platform,
@@ -333,7 +333,7 @@ function contextToAttributes(context: LogContext): LogAttributes {
     "enduser.id": context.slackUserId,
     "enduser.pseudo_id": context.slackUserName,
     "app.run.id": context.runId,
-    "app.assistant.username": context.assistantUserName,
+    "gen_ai.agent.name": context.assistantUserName,
     "gen_ai.request.model": context.modelId,
     "app.skill.name": context.skillName,
     "http.request.method": context.httpMethod,
@@ -509,7 +509,7 @@ function shouldHideConsoleAttribute(
   }
   if (
     key === "messaging.message.conversation_id" &&
-    attributes[key] === attributes["app.conversation.id"]
+    attributes[key] === attributes["gen_ai.conversation.id"]
   ) {
     return true;
   }

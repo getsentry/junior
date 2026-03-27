@@ -215,7 +215,7 @@ Only when no semantic key exists:
 
 - `app.workflow.run_id`
 - `app.skill.name`
-- `app.assistant.username`
+- `gen_ai.agent.name`
 - `app.retry.attempt`
 
 ## Attribute Rules
