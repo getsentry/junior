@@ -9,13 +9,13 @@
     "evals": "JUNIOR_STATE_ADAPTER=memory pnpm exec vitest run -c vitest.evals.config.ts"
   },
   "devDependencies": {
-    "@ai-sdk/gateway": "^3.0.80",
+    "@ai-sdk/gateway": "^3.0.83",
     "@sentry/junior": "workspace:*",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "chat": "4.22.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.1",
+    "vitest": "^4.1.2",
     "vitest-evals": "^0.6.0",
     "zod": "^4.3.6"
   }
