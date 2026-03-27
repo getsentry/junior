@@ -8,15 +8,15 @@ const {
   deleteMcpAuthSessionMock,
   finalizeMcpAuthorizationMock,
   generateAssistantReplyMock,
+  getPersistedThreadStateMock,
   logWarnMock,
   markConversationMessageMock,
   markTurnCompletedMock,
   markTurnFailedMock,
   mergeArtifactsStateMock,
-  persistThreadStateMock,
+  persistThreadStateByIdMock,
   postMessageMock,
   setStatusMock,
-  threadFromJsonMock,
   updateConversationStatsMock,
   uploadFilesToThreadMock,
   upsertConversationMessageMock,
@@ -28,24 +28,18 @@ const {
   deleteMcpAuthSessionMock: vi.fn(),
   finalizeMcpAuthorizationMock: vi.fn(),
   generateAssistantReplyMock: vi.fn(),
+  getPersistedThreadStateMock: vi.fn(),
   logWarnMock: vi.fn(),
   markConversationMessageMock: vi.fn(),
   markTurnCompletedMock: vi.fn(),
   markTurnFailedMock: vi.fn(),
   mergeArtifactsStateMock: vi.fn(),
-  persistThreadStateMock: vi.fn(),
+  persistThreadStateByIdMock: vi.fn(),
   postMessageMock: vi.fn(),
   setStatusMock: vi.fn(),
-  threadFromJsonMock: vi.fn(),
   updateConversationStatsMock: vi.fn(),
   uploadFilesToThreadMock: vi.fn(),
   upsertConversationMessageMock: vi.fn(),
-}));
-
-vi.mock("chat", () => ({
-  ThreadImpl: {
-    fromJSON: threadFromJsonMock,
-  },
 }));
 
 vi.mock("next/server", () => ({
@@ -96,8 +90,9 @@ vi.mock("@/chat/state/conversation", () => ({
 }));
 
 vi.mock("@/chat/runtime/thread-state", () => ({
+  getPersistedThreadState: getPersistedThreadStateMock,
   mergeArtifactsState: mergeArtifactsStateMock,
-  persistThreadState: persistThreadStateMock,
+  persistThreadStateById: persistThreadStateByIdMock,
 }));
 
 vi.mock("@/chat/services/conversation-memory", () => ({
@@ -140,15 +135,15 @@ describe("mcp oauth callback handler", () => {
     deleteMcpAuthSessionMock.mockReset();
     finalizeMcpAuthorizationMock.mockReset();
     generateAssistantReplyMock.mockReset();
+    getPersistedThreadStateMock.mockReset();
     logWarnMock.mockReset();
     markConversationMessageMock.mockReset();
     markTurnCompletedMock.mockReset();
     markTurnFailedMock.mockReset();
     mergeArtifactsStateMock.mockReset();
-    persistThreadStateMock.mockReset();
+    persistThreadStateByIdMock.mockReset();
     postMessageMock.mockReset();
     setStatusMock.mockReset();
-    threadFromJsonMock.mockReset();
     updateConversationStatsMock.mockReset();
     uploadFilesToThreadMock.mockReset();
     upsertConversationMessageMock.mockReset();
@@ -188,11 +183,9 @@ describe("mcp oauth callback handler", () => {
     postMessageMock.mockResolvedValue(undefined);
     setStatusMock.mockResolvedValue(undefined);
     uploadFilesToThreadMock.mockResolvedValue(undefined);
-    threadFromJsonMock.mockReturnValue({
-      state: Promise.resolve({
-        conversation: {},
-        artifacts: {},
-      }),
+    getPersistedThreadStateMock.mockResolvedValue({
+      conversation: {},
+      artifacts: {},
     });
     coerceThreadConversationStateMock.mockReturnValue({
       backfill: {},
@@ -230,7 +223,7 @@ describe("mcp oauth callback handler", () => {
       ...patch,
     }));
     deleteMcpAuthSessionMock.mockResolvedValue(undefined);
-    persistThreadStateMock.mockResolvedValue(undefined);
+    persistThreadStateByIdMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -360,8 +353,11 @@ describe("mcp oauth callback handler", () => {
       { replied: true, skippedReason: undefined },
     );
     expect(markTurnCompletedMock).toHaveBeenCalledTimes(1);
-    expect(persistThreadStateMock).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(getPersistedThreadStateMock).toHaveBeenCalledWith(
+      "slack:C123:1712345.0001",
+    );
+    expect(persistThreadStateByIdMock).toHaveBeenCalledWith(
+      "slack:C123:1712345.0001",
       expect.objectContaining({
         artifacts: {
           assistantContextChannelId: "C999",
@@ -477,8 +473,8 @@ describe("mcp oauth callback handler", () => {
     await afterCallbacks[0]!();
 
     expect(markTurnFailedMock).toHaveBeenCalledTimes(1);
-    expect(persistThreadStateMock).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(persistThreadStateByIdMock).toHaveBeenCalledWith(
+      "slack:C123:1712345.0001",
       expect.objectContaining({
         conversation: expect.anything(),
       }),

@@ -465,6 +465,7 @@ export function buildSystemPrompt(params: {
         "- Use `bash` to inspect skill files from `skill_dir` and run shell commands inside the sandbox workspace.",
         "- When using CLI tools through `bash`, prefer deterministic non-interactive flags and avoid commands that wait for prompts or editors.",
         "- Keep routine setup and research steps silent in user-facing replies. Do not narrate duplicate checks, credential issuance, file writes, or similar internal progress unless the result is user-relevant.",
+        "- If a routine prerequisite check finds nothing notable, omit it entirely from the final reply and report only the user-relevant outcome.",
         "- Prefer a single result-focused reply after tool work completes. Only send an interim reply when you need user input or have a concrete blocking problem to report.",
         "- Use `attachFile` for files that actually exist in the sandbox (for example screenshots, PDFs, logs), or for `attachment_path` values returned by `imageGenerate`.",
         "- If the user asks to see/share/show a screenshot or file, attach the file with `attachFile` instead of only reporting its path.",

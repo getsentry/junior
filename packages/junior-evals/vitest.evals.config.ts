@@ -2,9 +2,11 @@ import { defineConfig } from "vitest/config";
 import DefaultEvalReporter from "vitest-evals/reporter";
 import path from "node:path";
 import fs from "node:fs";
+import { createEnvFileLoader } from "../junior/src/env/files";
 
 const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
+const applyEnvFile = createEnvFileLoader();
 
 // Load workspace env first, then junior package env, with test env files last.
 for (const envRoot of [workspaceRoot, juniorPackageRoot]) {
@@ -16,7 +18,7 @@ for (const envRoot of [workspaceRoot, juniorPackageRoot]) {
   ]) {
     const absolutePath = path.resolve(envRoot, envFile);
     if (!fs.existsSync(absolutePath)) continue;
-    process.loadEnvFile(absolutePath);
+    applyEnvFile(absolutePath);
   }
 }
 

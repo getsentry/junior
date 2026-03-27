@@ -5,6 +5,7 @@ import { createSlackRuntime } from "@/chat/app/factory";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
+import type { EmittedLogRecord } from "@/chat/logging";
 import { determineThreadMessageKind } from "@/chat/ingress/message-router";
 import {
   createThreadMessageDispatcher,
@@ -116,12 +117,17 @@ export interface EvalScenario {
   overrides?: EvalOverrides;
 }
 
+interface EvalScenarioRunOptions {
+  logRecords?: EmittedLogRecord[];
+}
+
 export interface EvalResult {
   channelPosts: Array<{
     channel: string;
     text: string;
     thread_ts?: string;
   }>;
+  logRecords: EmittedLogRecord[];
   posts: EvalAssistantPost[];
   reactions: Array<{
     channel: string;
@@ -680,7 +686,9 @@ async function runOauthCallback(args: {
 
 export async function runEvalScenario(
   scenario: EvalScenario,
+  options: EvalScenarioRunOptions = {},
 ): Promise<EvalResult> {
+  const logRecords = options.logRecords ?? [];
   const slackAdapter = new FakeSlackAdapter();
   const threadRecordsById = new Map<string, EvalThreadRecord>();
   const readyQueueDeliveries: QueueDelivery[] = [];
@@ -1053,6 +1061,7 @@ export async function runEvalScenario(
 
   return {
     channelPosts,
+    logRecords,
     reactions,
     posts,
     slackAdapter,

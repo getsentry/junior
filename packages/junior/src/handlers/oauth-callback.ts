@@ -1,5 +1,4 @@
 import { after } from "next/server";
-import { ThreadImpl } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
@@ -13,6 +12,7 @@ import {
   postSlackMessage,
 } from "@/handlers/oauth-resume";
 import { logException, logInfo } from "@/chat/logging";
+import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
   buildOAuthTokenRequest,
@@ -54,22 +54,13 @@ function htmlErrorResponse(
   });
 }
 
-function createSlackThread(channelId: string, threadTs: string) {
-  return ThreadImpl.fromJSON({
-    _type: "chat:Thread",
-    adapterName: "slack",
-    channelId,
-    id: `slack:${channelId}:${threadTs}`,
-    isDM: channelId.startsWith("D"),
-  });
-}
-
 async function buildResumeConversationContext(
   channelId: string,
   threadTs: string,
 ): Promise<string | undefined> {
-  const thread = createSlackThread(channelId, threadTs);
-  const conversation = coerceThreadConversationState(await thread.state);
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(`slack:${channelId}:${threadTs}`),
+  );
   const latestUserMessageId = [...conversation.messages]
     .reverse()
     .find((message) => message.role === "user")?.id;

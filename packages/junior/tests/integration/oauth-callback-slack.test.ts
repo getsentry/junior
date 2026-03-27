@@ -1,8 +1,17 @@
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { runOauthCallbackRoute } from "../fixtures/oauth-callback-harness";
-import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  getCapturedSlackApiCalls,
+  resetSlackApiMockState,
+} from "../msw/handlers/slack-api";
+
+const { generateAssistantReplyMock } = vi.hoisted(() => ({
+  generateAssistantReplyMock: vi.fn(),
+}));
+
+vi.mock("@/chat/respond", () => ({
+  generateAssistantReply: generateAssistantReplyMock,
+}));
 
 const ORIGINAL_ENV = { ...process.env };
 const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
@@ -10,30 +19,52 @@ const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
   "../fixtures/plugins/eval-oauth",
 );
 
+type StateAdapterModule = typeof import("@/chat/state/adapter");
+type OAuthCallbackHarnessModule =
+  typeof import("../fixtures/oauth-callback-harness");
+
+let stateAdapterModule: StateAdapterModule;
+let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
+
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
+    generateAssistantReplyMock.mockReset();
+    generateAssistantReplyMock.mockResolvedValue({
+      text: "Here are your Sentry issues.",
+      diagnostics: {
+        outcome: "success",
+        toolCalls: [],
+      },
+    });
+    resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
       JUNIOR_BASE_URL: "https://junior.example.com",
       JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([EVAL_OAUTH_PLUGIN_ROOT]),
     };
-    await disconnectStateAdapter();
-    await getStateAdapter().connect();
+    vi.resetModules();
+    stateAdapterModule = await import("@/chat/state/adapter");
+    oauthCallbackHarnessModule =
+      await import("../fixtures/oauth-callback-harness");
+    await stateAdapterModule.disconnectStateAdapter();
+    await stateAdapterModule.getStateAdapter().connect();
   });
 
   afterEach(async () => {
-    await disconnectStateAdapter();
+    await stateAdapterModule.disconnectStateAdapter();
     process.env = { ...ORIGINAL_ENV };
   });
 
   it("publishes app home through the Slack MSW harness after generic OAuth callback", async () => {
-    await getStateAdapter().set("oauth-state:eval-oauth-state", {
-      userId: "U123",
-      provider: "eval-oauth",
-    });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("oauth-state:eval-oauth-state", {
+        userId: "U123",
+        provider: "eval-oauth",
+      });
 
-    const response = await runOauthCallbackRoute({
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
       provider: "eval-oauth",
       state: "eval-oauth-state",
       code: "eval-oauth-code",
@@ -50,5 +81,86 @@ describe("oauth callback slack integration", () => {
         }),
       }),
     ]);
+  });
+
+  it("resumes a pending OAuth request with persisted thread context", async () => {
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("oauth-state:eval-oauth-resume-state", {
+        userId: "U123",
+        provider: "eval-oauth",
+        channelId: "C123",
+        threadTs: "1700000000.001",
+        pendingMessage: "list my sentry issues",
+      });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("thread-state:slack:C123:1700000000.001", {
+        conversation: {
+          messages: [
+            {
+              id: "assistant-1",
+              role: "assistant",
+              text: "You need the budget by Friday.",
+              createdAtMs: 1,
+              author: {
+                userName: "junior",
+                isBot: true,
+              },
+            },
+            {
+              id: "user-1",
+              role: "user",
+              text: "list my sentry issues",
+              createdAtMs: 2,
+              author: {
+                userId: "U123",
+                userName: "dcramer",
+              },
+            },
+          ],
+        },
+      });
+
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      provider: "eval-oauth",
+      state: "eval-oauth-resume-state",
+      code: "eval-oauth-code",
+    });
+
+    expect(response.status).toBe(200);
+    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+      "list my sentry issues",
+      expect.objectContaining({
+        conversationContext: expect.stringContaining(
+          "You need the budget by Friday.",
+        ),
+      }),
+    );
+    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
+      conversationContext?: string;
+    };
+    expect(resumeContext.conversationContext).not.toContain(
+      "list my sentry issues",
+    );
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          params: expect.objectContaining({
+            channel: "C123",
+            thread_ts: "1700000000.001",
+            text: "Your Eval-oauth account is now connected. Processing your request...",
+          }),
+        }),
+        expect.objectContaining({
+          params: expect.objectContaining({
+            channel: "C123",
+            thread_ts: "1700000000.001",
+            text: "Here are your Sentry issues.",
+          }),
+        }),
+      ]),
+    );
   });
 });

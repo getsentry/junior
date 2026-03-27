@@ -1,6 +1,7 @@
 import { configure, evaluate } from "vitest-evals/evaluate";
 import { gateway } from "@ai-sdk/gateway";
 import { z } from "zod";
+import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import {
   type EvalEvent,
   type EvalOverrides,
@@ -127,6 +128,7 @@ interface SlackEvalOptions {
   events: EvalEvent[];
   overrides?: EvalOverrides;
   criteria: string;
+  requireGatewayReady?: boolean;
   taskTimeout?: number;
   threshold?: number;
   timeout?: number;
@@ -134,6 +136,35 @@ interface SlackEvalOptions {
 }
 
 const SANDBOX_SETUP_FAILED_TEXT = "Error: sandbox setup failed";
+const GATEWAY_AUTH_FAILURE_PATTERNS = [
+  "OIDC token has expired",
+  "Missing AI gateway credentials",
+  '"type":"authentication_error"',
+];
+
+function assertGatewayReady(name: string, result: EvalResult): void {
+  const failure = result.logRecords.find((record) => {
+    if (record.eventName !== "ai_completion_failed") {
+      return false;
+    }
+    const errorMessage = String(record.attributes["error.message"] ?? "");
+    return GATEWAY_AUTH_FAILURE_PATTERNS.some((pattern) =>
+      errorMessage.includes(pattern),
+    );
+  });
+  if (!failure) {
+    return;
+  }
+
+  const message =
+    String(failure.attributes["error.message"] ?? "").trim() ||
+    failure.body ||
+    "AI Gateway authentication failed";
+  throw new Error(
+    `Eval gateway bootstrap failed for "${name}". Received "${message}". ` +
+      "Refresh AI Gateway auth first (for example via `vercel env pull`) and retry.",
+  );
+}
 
 function assertSandboxReady(name: string, result: EvalResult): void {
   const failingPosts = result.posts.filter((post) =>
@@ -171,32 +202,46 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
     timeout: opts.timeout ?? 120_000,
     threshold: opts.threshold ?? 0.75,
     task: async () => {
-      const taskPromise = runEvalScenario({
-        events: opts.events,
-        overrides: opts.overrides,
+      const logRecords: EmittedLogRecord[] = [];
+      const unregisterLogSink = registerLogRecordSink((record) => {
+        logRecords.push(record);
       });
-      const result =
-        typeof opts.taskTimeout === "number" && opts.taskTimeout > 0
-          ? await Promise.race([
-              taskPromise,
-              new Promise<never>((_, reject) =>
-                setTimeout(
-                  () =>
-                    reject(
-                      new Error(
-                        `Eval harness timed out after ${opts.taskTimeout}ms before judge evaluation`,
+      try {
+        const taskPromise = runEvalScenario(
+          {
+            events: opts.events,
+            overrides: opts.overrides,
+          },
+          { logRecords },
+        );
+        const result =
+          typeof opts.taskTimeout === "number" && opts.taskTimeout > 0
+            ? await Promise.race([
+                taskPromise,
+                new Promise<never>((_, reject) =>
+                  setTimeout(
+                    () =>
+                      reject(
+                        new Error(
+                          `Eval harness timed out after ${opts.taskTimeout}ms before judge evaluation`,
+                        ),
                       ),
-                    ),
-                  opts.taskTimeout,
+                    opts.taskTimeout,
+                  ),
                 ),
-              ),
-            ])
-          : await taskPromise;
-      if (opts.requireSandboxReady ?? true) {
-        assertSandboxReady(name, result);
+              ])
+            : await taskPromise;
+        if (opts.requireGatewayReady ?? true) {
+          assertGatewayReady(name, result);
+        }
+        if (opts.requireSandboxReady ?? true) {
+          assertSandboxReady(name, result);
+        }
+        assertStatusCleared(name, result);
+        return serializeEvalResult(result);
+      } finally {
+        unregisterLogSink();
       }
-      assertStatusCleared(name, result);
-      return serializeEvalResult(result);
     },
     criteria: opts.criteria,
   });
