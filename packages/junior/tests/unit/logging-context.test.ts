@@ -72,7 +72,7 @@ describe("logging context ids", () => {
     expect(records[0].eventName).toBe("agent_turn_started");
     expect(records[0].attributes).toEqual(
       expect.objectContaining({
-        "app.conversation.id": "conversation-1",
+        "gen_ai.conversation.id": "conversation-1",
         "app.turn.id": "turn-1",
         "app.agent.id": "turn-1",
         "event.name": "agent_turn_started",
@@ -108,7 +108,7 @@ describe("logging context ids", () => {
 
     expect(infoSpy).toHaveBeenCalledTimes(1);
     const line = String(infoSpy.mock.calls[0]?.[0] ?? "");
-    const conversationIndex = line.indexOf("app.conversation.id=");
+    const conversationIndex = line.indexOf("gen_ai.conversation.id=");
     const turnIndex = line.indexOf("app.turn.id=");
     const eventNameIndex = line.indexOf("event.name=");
     expect(conversationIndex).toBeGreaterThan(-1);
@@ -160,7 +160,7 @@ describe("logging context ids", () => {
 
     expect(infoSpy).toHaveBeenCalledTimes(1);
     const line = String(infoSpy.mock.calls[0]?.[0] ?? "");
-    expect(line).toContain("app.conversation.id=slack:C123:1710000000.001");
+    expect(line).toContain("gen_ai.conversation.id=slack:C123:1710000000.001");
     expect(line).toContain("app.turn.id=turn-3");
     expect(line).toContain("event.name=agent_message_in");
     expect(line).toContain("messaging.message.id=1710000000.002");
@@ -171,7 +171,7 @@ describe("logging context ids", () => {
     expect(line).not.toContain("messaging.message.conversation_id=");
     expect(line).not.toContain("enduser.id=");
     expect(line).not.toContain("enduser.pseudo_id=");
-    expect(line).not.toContain("app.assistant.username=");
+    expect(line).not.toContain("gen_ai.agent.name=");
     expect(line).not.toContain("http.request.method=");
     expect(line).not.toContain("url.path=");
     expect(line).not.toContain("url.full=");
