@@ -322,6 +322,7 @@ function sanitizeValue(value: unknown): AttributeValue | undefined {
 function contextToAttributes(context: LogContext): LogAttributes {
   const attributes: Record<string, unknown> = {
     "app.conversation.id": context.conversationId,
+    "gen_ai.conversation.id": context.conversationId,
     "app.turn.id": context.turnId,
     "app.agent.id": context.agentId,
     "app.platform": context.platform,
