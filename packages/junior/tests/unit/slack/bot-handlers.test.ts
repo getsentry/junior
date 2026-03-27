@@ -630,7 +630,7 @@ describe("bot handlers (integration)", () => {
       channelId: "C_STATUS",
       threadTs: "1700000000.000",
       text: "",
-      suggestions: [],
+      suggestions: undefined,
     });
   });
 
