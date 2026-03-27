@@ -20,7 +20,7 @@ export function createProgressReporter(args: {
     channelId: string,
     threadTs: string,
     text: string,
-    suggestions: string[],
+    suggestions?: string[],
   ) => Promise<void>;
   now?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => TimerHandle;
@@ -52,7 +52,7 @@ export function createProgressReporter(args: {
 
     currentStatus = text;
     lastStatusAt = now();
-    const suggestions = text ? [text] : [];
+    const suggestions = text ? [text] : undefined;
     const previous = inflightStatusUpdate;
     const request = (async () => {
       await previous;

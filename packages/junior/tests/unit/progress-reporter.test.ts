@@ -103,6 +103,31 @@ describe("createProgressReporter", () => {
     expect(statuses).toEqual(["Thinking...", ""]);
   });
 
+  it("omits loading suggestions when clearing the assistant status", async () => {
+    const scheduler = createFakeScheduler();
+    const calls: Array<{ text: string; suggestions?: string[] }> = [];
+    const reporter = createProgressReporter({
+      channelId: "C1",
+      threadTs: "123.45",
+      setAssistantStatus: async (_channelId, _threadTs, text, suggestions) => {
+        calls.push({ text, suggestions });
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+    });
+
+    await reporter.start();
+    await Promise.resolve();
+
+    await reporter.stop();
+
+    expect(calls).toEqual([
+      { text: "Thinking...", suggestions: ["Thinking..."] },
+      { text: "", suggestions: undefined },
+    ]);
+  });
+
   it("suppresses duplicate pending statuses", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
