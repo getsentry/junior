@@ -40,7 +40,11 @@ import {
   readCapturedSlackApiCalls,
   type CapturedSlackApiCall,
 } from "@junior-tests/msw/captured-slack-api-calls";
-import type { ImageGenerateToolDeps } from "@/chat/tools/types";
+import { createMockImageGenerateDeps } from "./fixtures/image-generate";
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
 
 interface EvalEventThreadFixture {
   channel_id?: string;
@@ -168,10 +172,16 @@ interface QueueDelivery {
   thread: TestThread;
 }
 
+// ---------------------------------------------------------------------------
+// Internal constants and small helpers
+// ---------------------------------------------------------------------------
+
 const EVAL_PACKAGE_ROOT = path.resolve(
   fileURLToPath(new URL("..", import.meta.url)),
 );
 type HarnessStateAdapter = ReturnType<typeof getStateAdapter>;
+
+const THREAD_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function resolveEvalRelativePath(entry: string): string {
   return path.isAbsolute(entry)
@@ -200,15 +210,45 @@ function buildRuntimeThreadId(fixture: EvalEventThreadFixture): string {
   return fixture.id;
 }
 
-const THREAD_STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// ---------------------------------------------------------------------------
+// Environment snapshot helper
+// ---------------------------------------------------------------------------
 
-function restoreEnvVar(name: string, value: string | undefined): void {
-  if (value === undefined) {
-    delete process.env[name];
-    return;
-  }
-  process.env[name] = value;
+const HARNESS_ENV_KEYS = [
+  "EVAL_ENABLE_TEST_CREDENTIALS",
+  "EVAL_TEST_CREDENTIAL_TOKEN",
+  "JUNIOR_BASE_URL",
+  "JUNIOR_EXTRA_PLUGIN_ROOTS",
+  "JUNIOR_PLUGIN_PACKAGES",
+  "JUNIOR_STATE_ADAPTER",
+  "SLACK_BOT_TOKEN",
+] as const;
+
+interface EnvSnapshot {
+  restore(): void;
 }
+
+function snapshotEnv(keys: readonly string[]): EnvSnapshot {
+  const saved = new Map<string, string | undefined>();
+  for (const key of keys) {
+    saved.set(key, process.env[key]);
+  }
+  return {
+    restore() {
+      for (const [key, value] of saved) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Thread / message helpers
+// ---------------------------------------------------------------------------
 
 function attachTranscriptAccessors(
   thread: TestThread,
@@ -290,48 +330,6 @@ function createEvalThread(args: {
   thread.isSubscribed = async () =>
     await args.stateAdapter.isSubscribed(thread.id);
   return thread;
-}
-
-function createMockImageGenerateDeps(): ImageGenerateToolDeps {
-  const generatedImageBase64 =
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aH3cAAAAASUVORK5CYII=";
-
-  return {
-    fetch: async (input, init) => {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-      if (url === "https://ai-gateway.vercel.sh/v1/chat/completions") {
-        return new Response(
-          JSON.stringify({
-            choices: [
-              {
-                message: {
-                  images: [
-                    {
-                      image_url: {
-                        url: `data:image/png;base64,${generatedImageBase64}`,
-                      },
-                    },
-                  ],
-                },
-              },
-            ],
-          }),
-          {
-            status: 200,
-            headers: {
-              "content-type": "application/json",
-            },
-          },
-        );
-      }
-      return fetch(input, init);
-    },
-  };
 }
 
 function buildReactionKey(input: {
@@ -531,6 +529,10 @@ function buildThreadReplyFromMessage(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Auth cleanup and auto-complete helpers
+// ---------------------------------------------------------------------------
+
 async function cleanupMcpAuthState(
   userIds: Iterable<string>,
   providers: Iterable<string>,
@@ -556,42 +558,19 @@ async function cleanupOAuthTokens(
   }
 }
 
-function getDefaultMcpOauthCode(provider: string): string {
-  if (provider === EVAL_MCP_AUTH_PROVIDER) {
+function getDefaultAuthCode(
+  type: "mcp-oauth" | "oauth",
+  provider: string,
+): string {
+  if (type === "mcp-oauth" && provider === EVAL_MCP_AUTH_PROVIDER) {
     return EVAL_MCP_AUTH_CODE;
   }
+  if (type === "oauth" && provider === EVAL_OAUTH_PROVIDER) {
+    return EVAL_OAUTH_CODE;
+  }
   throw new Error(
-    `No default eval MCP OAuth code configured for provider "${provider}"`,
+    `No default eval ${type} code configured for provider "${provider}"`,
   );
-}
-
-async function runMcpOauthCallback(args: {
-  provider: string;
-  requesterUserId: string;
-}): Promise<boolean> {
-  const provider = args.provider.trim() || EVAL_MCP_AUTH_PROVIDER;
-  const requesterUserId = args.requesterUserId || "U-test";
-  const authSession = await getLatestMcpAuthSessionForUserProvider(
-    requesterUserId,
-    provider,
-  );
-
-  if (!authSession) {
-    return false;
-  }
-
-  const response = await runMcpOauthCallbackRoute({
-    provider,
-    state: authSession.authSessionId,
-    code: getDefaultMcpOauthCode(provider),
-  });
-
-  if (response.status !== 200) {
-    throw new Error(
-      `MCP OAuth callback returned ${response.status}: ${await response.text()}`,
-    );
-  }
-  return true;
 }
 
 function extractSlackLinkUrl(text: string): URL | undefined {
@@ -643,16 +622,35 @@ function findLatestOAuthStateFromSlackCalls(args: {
   return undefined;
 }
 
-function getDefaultOAuthCode(provider: string): string {
-  if (provider === EVAL_OAUTH_PROVIDER) {
-    return EVAL_OAUTH_CODE;
-  }
-  throw new Error(
-    `No default eval OAuth code configured for provider "${provider}"`,
+async function autoCompleteMcpOauth(args: {
+  provider: string;
+  requesterUserId: string;
+  consumedSessions: Set<string>;
+}): Promise<boolean> {
+  const provider = args.provider.trim() || EVAL_MCP_AUTH_PROVIDER;
+  const authSession = await getLatestMcpAuthSessionForUserProvider(
+    args.requesterUserId,
+    provider,
   );
+  if (!authSession || args.consumedSessions.has(authSession.authSessionId)) {
+    return false;
+  }
+
+  const response = await runMcpOauthCallbackRoute({
+    provider,
+    state: authSession.authSessionId,
+    code: getDefaultAuthCode("mcp-oauth", provider),
+  });
+  if (response.status !== 200) {
+    throw new Error(
+      `MCP OAuth callback returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  args.consumedSessions.add(authSession.authSessionId);
+  return true;
 }
 
-async function runOauthCallback(args: {
+async function autoCompleteOauth(args: {
   provider: string;
   consumedStates: Set<string>;
 }): Promise<boolean> {
@@ -672,9 +670,8 @@ async function runOauthCallback(args: {
   const response = await runOauthCallbackRoute({
     provider,
     state,
-    code: getDefaultOAuthCode(provider),
+    code: getDefaultAuthCode("oauth", provider),
   });
-
   if (response.status !== 200) {
     throw new Error(
       `OAuth callback returned ${response.status}: ${await response.text()}`,
@@ -684,52 +681,34 @@ async function runOauthCallback(args: {
   return true;
 }
 
-export async function runEvalScenario(
+// ---------------------------------------------------------------------------
+// Phase 1 — Environment setup
+// ---------------------------------------------------------------------------
+
+interface HarnessEnvironment {
+  authRequesterUsers: Set<string>;
+  autoCompleteMcpOauthProviders: Set<string>;
+  autoCompleteOauthProviders: Set<string>;
+  configuredPluginDirs: string[];
+  configuredSkillDirs: string[];
+  envSnapshot: EnvSnapshot;
+  stateAdapter: HarnessStateAdapter;
+}
+
+async function setupHarnessEnvironment(
   scenario: EvalScenario,
-  options: EvalScenarioRunOptions = {},
-): Promise<EvalResult> {
-  const logRecords = options.logRecords ?? [];
-  const slackAdapter = new FakeSlackAdapter();
-  const threadRecordsById = new Map<string, EvalThreadRecord>();
-  const readyQueueDeliveries: QueueDelivery[] = [];
-  const channelStateById = new Map<
-    string,
-    { value: Record<string, unknown> }
-  >();
-  const replyTexts = scenario.overrides?.reply_texts ?? [];
-  let successfulReplyCount = 0;
-  const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
-  const replyTimeoutMs = Number.parseInt(
-    process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000",
-    10,
-  );
-  let replyCallCount = 0;
-  let decisionIndex = 0;
-  const originalEnableTestCredentials =
-    process.env.EVAL_ENABLE_TEST_CREDENTIALS;
-  const originalTestCredentialToken = process.env.EVAL_TEST_CREDENTIAL_TOKEN;
-  const originalJuniorBaseUrl = process.env.JUNIOR_BASE_URL;
-  const originalExtraPluginRoots = process.env.JUNIOR_EXTRA_PLUGIN_ROOTS;
-  const originalPluginPackages = process.env.JUNIOR_PLUGIN_PACKAGES;
-  const originalSlackBotToken = process.env.SLACK_BOT_TOKEN;
-  const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
+): Promise<HarnessEnvironment> {
+  const envSnapshot = snapshotEnv(HARNESS_ENV_KEYS);
+
   const configuredSkillDirs =
-    scenario.overrides?.skill_dirs?.map((entry) =>
-      resolveEvalRelativePath(entry),
-    ) ?? [];
+    scenario.overrides?.skill_dirs?.map(resolveEvalRelativePath) ?? [];
   const configuredPluginDirs =
-    scenario.overrides?.plugin_dirs?.map((entry) =>
-      resolveEvalRelativePath(entry),
-    ) ?? [];
+    scenario.overrides?.plugin_dirs?.map(resolveEvalRelativePath) ?? [];
   const autoCompleteMcpOauthProviders = new Set(
-    scenario.overrides?.auto_complete_mcp_oauth?.map((provider) =>
-      provider.trim(),
-    ) ?? [],
+    scenario.overrides?.auto_complete_mcp_oauth?.map((p) => p.trim()) ?? [],
   );
   const autoCompleteOauthProviders = new Set(
-    scenario.overrides?.auto_complete_oauth?.map((provider) =>
-      provider.trim(),
-    ) ?? [],
+    scenario.overrides?.auto_complete_oauth?.map((p) => p.trim()) ?? [],
   );
   const authRequesterUsers = new Set(
     scenario.events.flatMap((event) =>
@@ -743,11 +722,10 @@ export async function runEvalScenario(
   if (authRequesterUsers.size === 0) {
     authRequesterUsers.add("U-test");
   }
-  const consumedOauthStates = new Set<string>();
-  const consumedMcpAuthSessions = new Set<string>();
+
   if (scenario.overrides?.enable_test_credentials) {
     process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
-    if (scenario.overrides?.test_credential_token) {
+    if (scenario.overrides.test_credential_token) {
       process.env.EVAL_TEST_CREDENTIAL_TOKEN =
         scenario.overrides.test_credential_token;
     }
@@ -758,6 +736,7 @@ export async function runEvalScenario(
   process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
     scenario.overrides?.plugin_packages ?? [],
   );
+
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
   resetSkillDiscoveryCache();
@@ -765,73 +744,62 @@ export async function runEvalScenario(
   await cleanupMcpAuthState(authRequesterUsers, autoCompleteMcpOauthProviders);
   await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
 
-  const maybeAutoCompleteAuth = async (): Promise<void> => {
-    for (const provider of autoCompleteMcpOauthProviders) {
-      for (const requesterUserId of authRequesterUsers) {
-        const authSession = await getLatestMcpAuthSessionForUserProvider(
-          requesterUserId,
-          provider,
-        );
-        if (!authSession) {
-          continue;
-        }
-        if (consumedMcpAuthSessions.has(authSession.authSessionId)) {
-          continue;
-        }
-        const completed = await runMcpOauthCallback({
-          provider,
-          requesterUserId,
-        });
-        if (completed) {
-          consumedMcpAuthSessions.add(authSession.authSessionId);
-        }
-      }
-    }
-
-    for (const provider of autoCompleteOauthProviders) {
-      await runOauthCallback({
-        provider,
-        consumedStates: consumedOauthStates,
-      });
-    }
+  return {
+    authRequesterUsers,
+    autoCompleteMcpOauthProviders,
+    autoCompleteOauthProviders,
+    configuredPluginDirs,
+    configuredSkillDirs,
+    envSnapshot,
+    stateAdapter,
   };
+}
 
-  const getChannelStateRef = (
-    channelId: string | undefined,
-  ): { value: Record<string, unknown> } | undefined => {
-    const normalized = channelId?.trim();
-    if (!normalized) return undefined;
-    const existing = channelStateById.get(normalized);
-    if (existing) return existing;
-    const created = { value: {} };
-    channelStateById.set(normalized, created);
-    return created;
-  };
+async function teardownHarnessEnvironment(
+  scenario: EvalScenario,
+  env: HarnessEnvironment,
+): Promise<void> {
+  resetSkillDiscoveryCache();
+  await cleanupHarnessThreadState(env.stateAdapter, scenario.events);
+  await cleanupMcpAuthState(
+    env.authRequesterUsers,
+    env.autoCompleteMcpOauthProviders,
+  );
+  await cleanupOAuthTokens(
+    env.authRequesterUsers,
+    env.autoCompleteOauthProviders,
+  );
+  env.envSnapshot.restore();
+}
 
-  const getThreadRecord = (
-    fixture: EvalEventThreadFixture,
-  ): EvalThreadRecord => {
-    const runtimeThreadId = buildRuntimeThreadId(fixture);
-    const existing = threadRecordsById.get(runtimeThreadId);
-    if (existing) {
-      return existing;
-    }
-    const thread = createEvalThread({
-      fixture,
-      channelStateRef: getChannelStateRef(fixture.channel_id),
-      stateAdapter,
-    });
-    const transcript: Message[] = [];
-    attachTranscriptAccessors(thread, transcript);
-    const record = { thread, transcript };
-    threadRecordsById.set(runtimeThreadId, record);
-    return record;
-  };
+// ---------------------------------------------------------------------------
+// Phase 2 — Runtime services
+// ---------------------------------------------------------------------------
 
-  const runtimeServices: JuniorRuntimeServiceOverrides = {
+function buildRuntimeServices(
+  scenario: EvalScenario,
+  env: HarnessEnvironment,
+  threadRecordsById: Map<string, EvalThreadRecord>,
+): {
+  services: JuniorRuntimeServiceOverrides;
+  replyState: { successfulCount: number };
+} {
+  const replyTexts = scenario.overrides?.reply_texts ?? [];
+  const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
+  const replyTimeoutMs = Number.parseInt(
+    process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000",
+    10,
+  );
+  let replyCallCount = 0;
+  let decisionIndex = 0;
+  const replyState = { successfulCount: 0 };
+
+  const services: JuniorRuntimeServiceOverrides = {
     ...(subscribedDecisions.length > 0
       ? {
           subscribedReplyPolicy: {
+            // The mock bypasses the generic Zod-typed `completeObject` signature
+            // since we return a fixed fixture rather than parsing a schema.
             completeObject: async () => {
               const next =
                 subscribedDecisions[
@@ -861,9 +829,9 @@ export async function runEvalScenario(
         if (scenario.overrides?.fail_reply_call === replyCallCount) {
           throw new Error(`forced reply failure on call ${replyCallCount}`);
         }
-        const replyText = replyTexts[successfulReplyCount];
+        const replyText = replyTexts[replyState.successfulCount];
         if (typeof replyText === "string") {
-          successfulReplyCount += 1;
+          replyState.successfulCount += 1;
           return {
             text: replyText,
             deliveryMode: "thread",
@@ -884,8 +852,10 @@ export async function runEvalScenario(
           };
         }
 
-        const originalGatewayApiKey = process.env.AI_GATEWAY_API_KEY;
-        const originalOidcToken = process.env.VERCEL_OIDC_TOKEN;
+        const gatewaySnapshot = snapshotEnv([
+          "AI_GATEWAY_API_KEY",
+          "VERCEL_OIDC_TOKEN",
+        ]);
         if (scenario.overrides?.unset_gateway_api_key) {
           delete process.env.AI_GATEWAY_API_KEY;
           delete process.env.VERCEL_OIDC_TOKEN;
@@ -895,8 +865,8 @@ export async function runEvalScenario(
           reply = await Promise.race([
             generateAssistantReply(text, {
               ...context,
-              ...(configuredSkillDirs.length > 0
-                ? { skillDirs: configuredSkillDirs }
+              ...(env.configuredSkillDirs.length > 0
+                ? { skillDirs: env.configuredSkillDirs }
                 : {}),
               ...(mockImageGeneration
                 ? {
@@ -921,12 +891,11 @@ export async function runEvalScenario(
           ]);
         } finally {
           if (scenario.overrides?.unset_gateway_api_key) {
-            restoreEnvVar("AI_GATEWAY_API_KEY", originalGatewayApiKey);
-            restoreEnvVar("VERCEL_OIDC_TOKEN", originalOidcToken);
+            gatewaySnapshot.restore();
           }
         }
 
-        successfulReplyCount += 1;
+        replyState.successfulCount += 1;
         return reply;
       },
     },
@@ -950,108 +919,126 @@ export async function runEvalScenario(
       },
     },
   };
-  const slackRuntime = createSlackRuntime({
-    getSlackAdapter: () => slackAdapter as any,
-    services: runtimeServices,
-  });
-  const dispatch = createThreadMessageDispatcher({
-    runtime: slackRuntime,
-  });
 
-  try {
-    const processNextDelivery = async (): Promise<boolean> => {
-      const current = readyQueueDeliveries.shift();
-      if (!current) {
-        return false;
-      }
+  return { services, replyState };
+}
 
-      await dispatch({
-        kind: current.kind,
-        thread: current.thread,
-        message: current.message,
-      });
-      return true;
-    };
+// ---------------------------------------------------------------------------
+// Phase 3 — Event processing
+// ---------------------------------------------------------------------------
 
-    const enqueueEvent = (
-      event: MentionEvent | SubscribedMessageEvent,
-    ): void => {
-      const { thread, transcript } = getThreadRecord(event.thread);
-      const message = toIncomingMessage(event) as unknown as Message;
-      upsertThreadTranscriptMessage(transcript, message);
-      const kind = determineThreadMessageKind({
-        isDirectMessage: thread.id.startsWith("slack:D"),
-        isMention: event.message.is_mention ?? event.type === "new_mention",
-        isSubscribed: event.type === "subscribed_message",
-      });
-      if (!kind) {
-        return;
-      }
-      readyQueueDeliveries.push({
-        kind,
-        message,
-        thread,
-      });
-    };
+async function processEvents(args: {
+  scenario: EvalScenario;
+  env: HarnessEnvironment;
+  slackRuntime: ReturnType<typeof createSlackRuntime>;
+  dispatch: ReturnType<typeof createThreadMessageDispatcher>;
+  getThreadRecord: (fixture: EvalEventThreadFixture) => EvalThreadRecord;
+  readyQueueDeliveries: QueueDelivery[];
+}): Promise<void> {
+  const {
+    scenario,
+    env,
+    slackRuntime,
+    dispatch,
+    getThreadRecord,
+    readyQueueDeliveries,
+  } = args;
 
-    const runLifecycleEvent = async (
-      event: AssistantThreadStartedEvent | AssistantContextChangedEvent,
-    ): Promise<void> => {
-      const lifecycleEvent: AssistantLifecycleEvent = {
-        threadId: event.thread.id,
-        channelId: event.thread.channel_id ?? "C_EVAL",
-        threadTs: event.thread.thread_ts ?? "0",
-        userId: event.user_id ?? "U-eval",
-      };
-      if (event.type === "assistant_thread_started") {
-        await slackRuntime.handleAssistantThreadStarted(lifecycleEvent);
-        return;
-      }
+  const consumedOauthStates = new Set<string>();
+  const consumedMcpAuthSessions = new Set<string>();
 
-      await slackRuntime.handleAssistantContextChanged(lifecycleEvent);
-    };
-
-    for (const event of scenario.events) {
-      if (event.type === "new_mention" || event.type === "subscribed_message") {
-        enqueueEvent(event);
-      } else {
-        await runLifecycleEvent(event);
-      }
-      await maybeAutoCompleteAuth();
-      if (await processNextDelivery()) {
-        await maybeAutoCompleteAuth();
+  const maybeAutoCompleteAuth = async (): Promise<void> => {
+    for (const provider of env.autoCompleteMcpOauthProviders) {
+      for (const requesterUserId of env.authRequesterUsers) {
+        await autoCompleteMcpOauth({
+          provider,
+          requesterUserId,
+          consumedSessions: consumedMcpAuthSessions,
+        });
       }
     }
-
-    while (readyQueueDeliveries.length > 0) {
-      const processed = await processNextDelivery();
-      if (!processed) {
-        break;
-      }
-      await maybeAutoCompleteAuth();
+    for (const provider of env.autoCompleteOauthProviders) {
+      await autoCompleteOauth({
+        provider,
+        consumedStates: consumedOauthStates,
+      });
     }
-  } finally {
-    resetSkillDiscoveryCache();
-    await cleanupHarnessThreadState(stateAdapter, scenario.events);
-    await cleanupMcpAuthState(
-      authRequesterUsers,
-      autoCompleteMcpOauthProviders,
-    );
-    await cleanupOAuthTokens(authRequesterUsers, autoCompleteOauthProviders);
-    restoreEnvVar("JUNIOR_BASE_URL", originalJuniorBaseUrl);
-    restoreEnvVar("JUNIOR_EXTRA_PLUGIN_ROOTS", originalExtraPluginRoots);
-    restoreEnvVar("JUNIOR_PLUGIN_PACKAGES", originalPluginPackages);
-    restoreEnvVar("SLACK_BOT_TOKEN", originalSlackBotToken);
-    restoreEnvVar("JUNIOR_STATE_ADAPTER", originalStateAdapter);
-    if (scenario.overrides?.enable_test_credentials) {
-      restoreEnvVar(
-        "EVAL_ENABLE_TEST_CREDENTIALS",
-        originalEnableTestCredentials,
-      );
-      restoreEnvVar("EVAL_TEST_CREDENTIAL_TOKEN", originalTestCredentialToken);
+  };
+
+  const processNextDelivery = async (): Promise<boolean> => {
+    const current = readyQueueDeliveries.shift();
+    if (!current) {
+      return false;
+    }
+    await dispatch({
+      kind: current.kind,
+      thread: current.thread,
+      message: current.message,
+    });
+    return true;
+  };
+
+  const enqueueEvent = (event: MentionEvent | SubscribedMessageEvent): void => {
+    const { thread, transcript } = getThreadRecord(event.thread);
+    const message = toIncomingMessage(event) as unknown as Message;
+    upsertThreadTranscriptMessage(transcript, message);
+    const kind = determineThreadMessageKind({
+      isDirectMessage: thread.id.startsWith("slack:D"),
+      isMention: event.message.is_mention ?? event.type === "new_mention",
+      isSubscribed: event.type === "subscribed_message",
+    });
+    if (!kind) {
+      return;
+    }
+    readyQueueDeliveries.push({ kind, message, thread });
+  };
+
+  const runLifecycleEvent = async (
+    event: AssistantThreadStartedEvent | AssistantContextChangedEvent,
+  ): Promise<void> => {
+    const lifecycleEvent: AssistantLifecycleEvent = {
+      threadId: event.thread.id,
+      channelId: event.thread.channel_id ?? "C_EVAL",
+      threadTs: event.thread.thread_ts ?? "0",
+      userId: event.user_id ?? "U-eval",
+    };
+    if (event.type === "assistant_thread_started") {
+      await slackRuntime.handleAssistantThreadStarted(lifecycleEvent);
+      return;
+    }
+    await slackRuntime.handleAssistantContextChanged(lifecycleEvent);
+  };
+
+  for (const event of scenario.events) {
+    if (event.type === "new_mention" || event.type === "subscribed_message") {
+      enqueueEvent(event);
+    } else {
+      await runLifecycleEvent(event);
+    }
+    await maybeAutoCompleteAuth();
+    if (await processNextDelivery()) {
+      await maybeAutoCompleteAuth();
     }
   }
 
+  while (readyQueueDeliveries.length > 0) {
+    const processed = await processNextDelivery();
+    if (!processed) {
+      break;
+    }
+    await maybeAutoCompleteAuth();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Result collection
+// ---------------------------------------------------------------------------
+
+function collectResults(
+  threadRecordsById: Map<string, EvalThreadRecord>,
+  slackAdapter: FakeSlackAdapter,
+  logRecords: EmittedLogRecord[],
+): EvalResult {
   const posts = [...threadRecordsById.values()].flatMap((record) =>
     record.thread.posts.map(toEvalAssistantPost),
   );
@@ -1066,6 +1053,79 @@ export async function runEvalScenario(
     posts,
     slackAdapter,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Main orchestrator
+// ---------------------------------------------------------------------------
+
+export async function runEvalScenario(
+  scenario: EvalScenario,
+  options: EvalScenarioRunOptions = {},
+): Promise<EvalResult> {
+  const logRecords = options.logRecords ?? [];
+  const env = await setupHarnessEnvironment(scenario);
+
+  const slackAdapter = new FakeSlackAdapter();
+  const threadRecordsById = new Map<string, EvalThreadRecord>();
+  const readyQueueDeliveries: QueueDelivery[] = [];
+  const channelStateById = new Map<
+    string,
+    { value: Record<string, unknown> }
+  >();
+
+  const getChannelStateRef = (
+    channelId: string | undefined,
+  ): { value: Record<string, unknown> } | undefined => {
+    const normalized = channelId?.trim();
+    if (!normalized) return undefined;
+    const existing = channelStateById.get(normalized);
+    if (existing) return existing;
+    const created = { value: {} };
+    channelStateById.set(normalized, created);
+    return created;
+  };
+
+  const getThreadRecord = (
+    fixture: EvalEventThreadFixture,
+  ): EvalThreadRecord => {
+    const runtimeThreadId = buildRuntimeThreadId(fixture);
+    const existing = threadRecordsById.get(runtimeThreadId);
+    if (existing) return existing;
+    const thread = createEvalThread({
+      fixture,
+      channelStateRef: getChannelStateRef(fixture.channel_id),
+      stateAdapter: env.stateAdapter,
+    });
+    const transcript: Message[] = [];
+    attachTranscriptAccessors(thread, transcript);
+    const record = { thread, transcript };
+    threadRecordsById.set(runtimeThreadId, record);
+    return record;
+  };
+
+  const { services } = buildRuntimeServices(scenario, env, threadRecordsById);
+
+  const slackRuntime = createSlackRuntime({
+    getSlackAdapter: () => slackAdapter as any,
+    services,
+  });
+  const dispatch = createThreadMessageDispatcher({ runtime: slackRuntime });
+
+  try {
+    await processEvents({
+      scenario,
+      env,
+      slackRuntime,
+      dispatch,
+      getThreadRecord,
+      readyQueueDeliveries,
+    });
+  } finally {
+    await teardownHarnessEnvironment(scenario, env);
+  }
+
+  return collectResults(threadRecordsById, slackAdapter, logRecords);
 }
 
 // Compile-time guards for Thread and Message fakes are in tests/fixtures/slack-harness.ts.

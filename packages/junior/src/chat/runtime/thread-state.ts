@@ -30,10 +30,10 @@ function buildThreadStatePayload(
   if (patch.conversation) {
     Object.assign(payload, buildConversationStatePatch(patch.conversation));
   }
-  if (patch.sandboxId) {
+  if (patch.sandboxId !== undefined) {
     payload.app_sandbox_id = patch.sandboxId;
   }
-  if (patch.sandboxDependencyProfileHash) {
+  if (patch.sandboxDependencyProfileHash !== undefined) {
     payload.app_sandbox_dependency_profile_hash =
       patch.sandboxDependencyProfileHash;
   }

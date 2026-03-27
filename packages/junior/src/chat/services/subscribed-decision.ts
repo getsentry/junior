@@ -155,7 +155,10 @@ function getTranscriptMessageHints(conversationContext: string | undefined) {
     if (latestPriorMessageRole === "[none]") {
       latestPriorMessageRole = match[1].toLowerCase();
     }
-    if (latestPriorAssistantMessage === "[none]" && match[1] === "assistant") {
+    if (
+      latestPriorAssistantMessage === "[none]" &&
+      match[1].toLowerCase() === "assistant"
+    ) {
       latestPriorAssistantMessage = match[2];
     }
 
