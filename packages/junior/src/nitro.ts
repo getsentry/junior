@@ -22,7 +22,7 @@ function copyRootIntoServerOutput(
   root: string,
 ): void {
   const relative = path.relative(cwd, root);
-  if (!relative || path.isAbsolute(relative)) {
+  if (!relative || path.isAbsolute(relative) || relative.startsWith("..")) {
     return;
   }
 
