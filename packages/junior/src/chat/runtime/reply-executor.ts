@@ -73,6 +73,26 @@ export interface ReplyExecutorServices {
   lookupSlackUser: typeof lookupSlackUser;
 }
 
+function getExecutionFailureReason(reply: {
+  diagnostics: {
+    assistantMessageCount: number;
+    errorMessage?: string;
+    toolErrorCount: number;
+  };
+}): string {
+  const errorMessage = reply.diagnostics.errorMessage?.trim();
+  if (errorMessage) {
+    return errorMessage;
+  }
+  if (reply.diagnostics.toolErrorCount > 0) {
+    return `${reply.diagnostics.toolErrorCount} tool result error(s)`;
+  }
+  if (reply.diagnostics.assistantMessageCount > 0) {
+    return "assistant returned no text";
+  }
+  return "empty assistant turn";
+}
+
 interface ReplyExecutorDeps {
   getSlackAdapter: () => SlackAdapter;
   prepareTurnState: (args: {
@@ -365,10 +385,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               "Agent turn failed with provider error",
             );
           } else if (reply.diagnostics.outcome !== "success") {
-            logWarn(
-              "agent_turn_diagnostics",
+            const failureReason = getExecutionFailureReason(reply);
+            logException(
+              new Error(`Agent turn execution failure: ${failureReason}`),
+              "agent_turn_execution_failure",
               diagnosticsContext,
-              diagnosticsAttributes,
+              {
+                ...diagnosticsAttributes,
+                "app.ai.execution_failure_reason": failureReason,
+              },
               "Agent turn completed with execution failure",
             );
           }

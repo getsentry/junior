@@ -147,7 +147,7 @@ function getSentryEnvironment(): string {
 }
 
 function shouldSuppressInfoLog(level: LogLevel): boolean {
-  return level === "info";
+  return getSentryEnvironment() === "production" && level === "info";
 }
 
 function shouldEmitConsole(level: LogLevel): boolean {
@@ -155,7 +155,7 @@ function shouldEmitConsole(level: LogLevel): boolean {
     return level === "error";
   }
 
-  return getSentryEnvironment() !== "production";
+  return true;
 }
 
 function findNextBlankLineBoundary(
