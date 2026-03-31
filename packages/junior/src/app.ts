@@ -32,9 +32,7 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
 
 /** Create a Hono app with all Junior routes mounted under `/api`. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
-  if (options?.pluginPackages) {
-    setPluginPackages(options.pluginPackages);
-  }
+  setPluginPackages(options?.pluginPackages);
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
 

@@ -65,7 +65,7 @@ function parseRuntimeConfiguredPackageNames(value: unknown): string[] | null {
 let configuredPluginPackages: string[] | undefined;
 
 /** Set the runtime plugin package allowlist. Called by `createApp()`. */
-export function setPluginPackages(packages: string[]): void {
+export function setPluginPackages(packages: string[] | undefined): void {
   configuredPluginPackages = packages;
 }
 
