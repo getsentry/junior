@@ -29,11 +29,11 @@ pnpm add @sentry/junior @sentry/junior-notion
 Add the package to `pluginPackages` so runtime discovery includes the Notion plugin:
 
 ```ts title="api/index.ts"
-export default handle(
-  createApp({
-    pluginPackages: ["@sentry/junior-notion"],
-  }),
-);
+const app = await createApp({
+  pluginPackages: ["@sentry/junior-notion"],
+});
+
+export default handle(app);
 ```
 
 ## Auth model

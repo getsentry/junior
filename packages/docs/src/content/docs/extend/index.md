@@ -60,15 +60,15 @@ initSentry();
 import { createApp } from "@sentry/junior";
 import { handle } from "hono/vercel";
 
-export default handle(
-  createApp({
-    pluginPackages: [
-      "@sentry/junior-github",
-      "@sentry/junior-notion",
-      "@sentry/junior-sentry",
-    ],
-  }),
-);
+const app = await createApp({
+  pluginPackages: [
+    "@sentry/junior-github",
+    "@sentry/junior-notion",
+    "@sentry/junior-sentry",
+  ],
+});
+
+export default handle(app);
 ```
 
 If you publish your own package, include `plugin.yaml` and `skills` in package `files` so runtime discovery works.

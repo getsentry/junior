@@ -25,11 +25,11 @@ pnpm add @sentry/junior @sentry/junior-sentry
 Add the package to `pluginPackages` so runtime discovery includes the Sentry plugin:
 
 ```ts title="api/index.ts"
-export default handle(
-  createApp({
-    pluginPackages: ["@sentry/junior-sentry"],
-  }),
-);
+const app = await createApp({
+  pluginPackages: ["@sentry/junior-sentry"],
+});
+
+export default handle(app);
 ```
 
 ## Configure environment variables

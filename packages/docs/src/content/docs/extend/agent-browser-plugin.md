@@ -26,11 +26,11 @@ pnpm add @sentry/junior @sentry/junior-agent-browser
 Add the package to `pluginPackages` so runtime discovery includes the browser automation skill:
 
 ```ts title="api/index.ts"
-export default handle(
-  createApp({
-    pluginPackages: ["@sentry/junior-agent-browser"],
-  }),
-);
+const app = await createApp({
+  pluginPackages: ["@sentry/junior-agent-browser"],
+});
+
+export default handle(app);
 ```
 
 ## Configure environment variables

@@ -25,11 +25,11 @@ pnpm add @sentry/junior @sentry/junior-example
 Add the package to `pluginPackages` so runtime discovery includes the plugin:
 
 ```ts title="api/index.ts"
-export default handle(
-  createApp({
-    pluginPackages: ["@sentry/junior-example"],
-  }),
-);
+const app = await createApp({
+  pluginPackages: ["@sentry/junior-example"],
+});
+
+export default handle(app);
 ```
 
 ## Configure environment variables

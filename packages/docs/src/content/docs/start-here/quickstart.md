@@ -88,11 +88,11 @@ initSentry();
 import { createApp } from "@sentry/junior";
 import { handle } from "hono/vercel";
 
-export default handle(
-  createApp({
-    pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
-  }),
-);
+const app = await createApp({
+  pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
+});
+
+export default handle(app);
 ```
 
 See [Plugins](/extend/) for the local-vs-package model.
@@ -110,7 +110,9 @@ initSentry();
 import { createApp } from "@sentry/junior";
 import { handle } from "hono/vercel";
 
-export default handle(createApp());
+const app = await createApp();
+
+export default handle(app);
 ```
 
 ### Vercel config

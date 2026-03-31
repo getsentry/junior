@@ -4,7 +4,7 @@ initSentry();
 import { serve } from "@hono/node-server";
 import { createApp } from "@sentry/junior";
 
-const app = createApp({
+const app = await createApp({
   pluginPackages: [
     "@sentry/junior-agent-browser",
     "@sentry/junior-github",

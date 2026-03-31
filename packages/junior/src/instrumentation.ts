@@ -29,7 +29,7 @@ export function initSentry(): void {
     tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
     sendDefaultPii: true,
     enabled: Boolean(dsn),
-    _experiments: { enableLogs },
+    enableLogs,
     integrations: [
       Sentry.vercelAIIntegration({
         recordInputs: true,

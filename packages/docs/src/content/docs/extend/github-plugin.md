@@ -25,11 +25,11 @@ pnpm add @sentry/junior @sentry/junior-github
 Add the package to `pluginPackages` so runtime discovery includes the GitHub plugin:
 
 ```ts title="api/index.ts"
-export default handle(
-  createApp({
-    pluginPackages: ["@sentry/junior-github"],
-  }),
-);
+const app = await createApp({
+  pluginPackages: ["@sentry/junior-github"],
+});
+
+export default handle(app);
 ```
 
 ## Configure environment variables

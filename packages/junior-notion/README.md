@@ -14,11 +14,11 @@ Then register the plugin package in `createApp(...)`:
 import { createApp } from "@sentry/junior";
 import { handle } from "hono/vercel";
 
-export default handle(
-  createApp({
-    pluginPackages: ["@sentry/junior-notion"],
-  }),
-);
+const app = await createApp({
+  pluginPackages: ["@sentry/junior-notion"],
+});
+
+export default handle(app);
 ```
 
 This package does not use `NOTION_TOKEN` or a shared workspace integration. Each user connects their own Notion account the first time Junior calls a Notion MCP tool. Junior sends the OAuth link privately and resumes the thread automatically after the user authorizes.
