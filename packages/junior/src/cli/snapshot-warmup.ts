@@ -106,6 +106,11 @@ function logSnapshotProfile(log: (line: string) => void): void {
 export async function runSnapshotCreate(
   log: (line: string) => void = console.log,
 ): Promise<void> {
+  if (process.env.JUNIOR_SKIP_SNAPSHOT === "1") {
+    log("Skipping sandbox snapshot create (JUNIOR_SKIP_SNAPSHOT=1)");
+    return;
+  }
+
   const runtime = DEFAULT_RUNTIME;
   const timeoutMs = DEFAULT_TIMEOUT_MS;
 

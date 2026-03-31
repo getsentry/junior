@@ -2,7 +2,6 @@
 title: Plugins
 description: Where Junior plugins live, how to add them, and how to build your own.
 type: tutorial
-summary: Use local or packaged plugins, register them correctly, and build your own plugin manifest and skills.
 prerequisites:
   - /start-here/quickstart/
 related:
@@ -11,7 +10,7 @@ related:
   - /extend/sentry-plugin/
 ---
 
-Junior plugins are just manifests plus skills. Keep the runtime wiring stable, then add behavior by putting plugins in the right place and registering packaged ones explicitly.
+Junior plugins are just manifests plus skills. Keep the runtime wiring stable, then add behavior by putting plugins in the right place. Installed package plugins are discovered automatically by default.
 
 ## Where plugins live
 
@@ -51,7 +50,7 @@ For reuse across apps or teams, package plugin manifests + skills as npm package
 pnpm add @sentry/junior @sentry/junior-github @sentry/junior-notion @sentry/junior-sentry
 ```
 
-Then register those package names in `createApp(...)` so runtime discovery uses the same explicit package list:
+Junior will discover installed `@sentry/junior-*` packages automatically, so the default entrypoint stays minimal:
 
 ```ts title="api/index.ts"
 import { initSentry } from "@sentry/junior/instrumentation";
@@ -60,16 +59,12 @@ initSentry();
 import { createApp } from "@sentry/junior";
 import { handle } from "hono/vercel";
 
-const app = await createApp({
-  pluginPackages: [
-    "@sentry/junior-github",
-    "@sentry/junior-notion",
-    "@sentry/junior-sentry",
-  ],
-});
+const app = await createApp();
 
 export default handle(app);
 ```
+
+Use `createApp({ pluginPackages: [...] })` only when you want an explicit allowlist instead of the default discovery behavior.
 
 If you publish your own package, include `plugin.yaml` and `skills` in package `files` so runtime discovery works.
 
@@ -183,7 +178,21 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-After install, add the package name to `pluginPackages` in `createApp(...)`.
+If you deploy on Vercel, make sure `vercel.json` includes packaged plugin content in the function bundle. The default scaffold uses:
+
+```json title="vercel.json"
+{
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": ["app/**/*", "node_modules/@sentry/junior-*/**/*"]
+    }
+  }
+}
+```
+
+If you publish your own plugin package under a different name, add a matching `node_modules/<scope>/<package>/**/*` include for that package too.
+
+Use `createApp({ pluginPackages: [...] })` only if you need to restrict discovery to a specific package allowlist.
 
 ## Validate extensions
 

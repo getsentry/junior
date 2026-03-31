@@ -2,7 +2,6 @@
 title: Observability
 description: Core signals and queries for webhook, queue, turn, and tool health.
 type: reference
-summary: Use core events, spans, and query patterns to monitor Junior webhook, queue, turn, and tool health.
 prerequisites:
   - /start-here/verify-and-troubleshoot/
 related:

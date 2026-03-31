@@ -2,7 +2,6 @@
 title: Verify & Troubleshoot
 description: Post-deploy checks and first-response troubleshooting.
 type: troubleshooting
-summary: Verify a deployed Junior runtime and isolate common Slack, queue, and auth regressions quickly.
 prerequisites:
   - /start-here/quickstart/
 related:

@@ -2,7 +2,6 @@
 title: API Reference Guide
 description: How to use the generated API reference effectively.
 type: reference
-summary: Navigate generated API docs for handlers, config helpers, and instrumentation exports.
 prerequisites:
   - /reference/handler-surface/
 related:

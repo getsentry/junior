@@ -2,7 +2,6 @@
 title: "junior check"
 description: "Validate Junior plugin manifests and skill files under app/ before build or deploy."
 type: reference
-summary: "`junior check [dir]` validates `app/plugins`, `app/skills`, and plugin-local skills, prints a grouped inventory of what it checked, then exits non-zero on schema or duplicate-name errors."
 prerequisites:
   - /start-here/quickstart/
 related:

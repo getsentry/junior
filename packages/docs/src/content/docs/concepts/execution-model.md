@@ -2,7 +2,6 @@
 title: Execution Model
 description: End-to-end runtime lifecycle from webhook ingress to threaded response.
 type: conceptual
-summary: Understand the request lifecycle from Slack ingress through queue processing to threaded response delivery.
 prerequisites:
   - /start-here/quickstart/
 related:

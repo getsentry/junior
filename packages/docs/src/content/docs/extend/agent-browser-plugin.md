@@ -2,7 +2,6 @@
 title: Agent Browser Plugin
 description: Configure browser automation workflows with agent-browser in Junior.
 type: tutorial
-summary: Install the agent-browser plugin, register it with createApp, and verify browser automation workflows.
 prerequisites:
   - /extend/
 related:
@@ -21,17 +20,17 @@ Install the plugin package alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-agent-browser
 ```
 
-## Register the plugin
+## Runtime discovery
 
-Add the package to `pluginPackages` so runtime discovery includes the browser automation skill:
+Installed `@sentry/junior-*` plugin packages are discovered automatically, so the default app entrypoint stays:
 
 ```ts title="api/index.ts"
-const app = await createApp({
-  pluginPackages: ["@sentry/junior-agent-browser"],
-});
+const app = await createApp();
 
 export default handle(app);
 ```
+
+Use `createApp({ pluginPackages: [...] })` only when you want an explicit allowlist.
 
 ## Configure environment variables
 

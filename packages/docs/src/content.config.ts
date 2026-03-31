@@ -7,11 +7,12 @@ export const collections = {
     loader: docsLoader(),
     schema: docsSchema({
       extend: z.object({
-        type: z.enum(["conceptual", "tutorial", "reference", "troubleshooting"]).optional(),
-        summary: z.string().optional(),
+        type: z
+          .enum(["conceptual", "tutorial", "reference", "troubleshooting"])
+          .optional(),
         prerequisites: z.array(z.string()).optional(),
-        related: z.array(z.string()).optional()
-      })
-    })
-  })
+        related: z.array(z.string()).optional(),
+      }),
+    }),
+  }),
 };

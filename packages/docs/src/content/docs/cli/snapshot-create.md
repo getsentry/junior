@@ -2,7 +2,6 @@
 title: "junior snapshot create"
 description: "Resolve or rebuild the Junior sandbox snapshot used for runtime dependencies."
 type: reference
-summary: "`junior snapshot create` inspects plugin runtime dependencies, builds or reuses the sandbox snapshot, and logs the outcome."
 prerequisites:
   - /start-here/quickstart/
 related:

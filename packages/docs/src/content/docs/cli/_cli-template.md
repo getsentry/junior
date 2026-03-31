@@ -2,7 +2,6 @@
 title: CLI Page Template
 description: Canonical structure for Junior CLI command pages.
 type: reference
-summary: Use this template when writing or updating Junior CLI docs so every command page explains usage, behavior, failure modes, and verification.
 prerequisites:
   - /start-here/quickstart/
 related:

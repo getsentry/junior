@@ -10,39 +10,41 @@ pnpm add @sentry/junior hono @sentry/node
 
 ## Quick usage
 
-`api/index.ts`:
+`server.ts`:
 
 ```ts
 import { initSentry } from "@sentry/junior/instrumentation";
 initSentry();
 
 import { createApp } from "@sentry/junior";
-import { handle } from "hono/vercel";
 
-const app = await createApp({
-  pluginPackages: [
-    "@sentry/junior-github",
-    "@sentry/junior-notion",
-    "@sentry/junior-sentry",
+const app = await createApp();
+
+export default app;
+```
+
+`nitro.config.ts`:
+
+```ts
+import { defineConfig } from "nitro";
+
+export default defineConfig({
+  preset: "vercel",
+  vercel: {
+    functions: {
+      maxDuration: 800,
+    },
+  },
+  serverAssets: [
+    {
+      baseName: "app",
+      dir: "./app",
+    },
   ],
 });
-
-export default handle(app);
 ```
 
-`vercel.json`:
-
-```json
-{
-  "functions": {
-    "api/index.ts": {
-      "maxDuration": 800,
-      "includeFiles": ["app/**/*"]
-    }
-  },
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }]
-}
-```
+Installed `@sentry/junior-*` plugin packages are discovered automatically. Use `createApp({ pluginPackages: [...] })` only when you need to restrict discovery to a specific allowlist.
 
 ## Full docs
 

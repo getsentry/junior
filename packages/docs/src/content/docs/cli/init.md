@@ -2,7 +2,6 @@
 title: "junior init"
 description: "Scaffold a new Junior app in an empty directory."
 type: reference
-summary: "`junior init <dir>` creates the base Hono and Junior runtime files for a new project."
 prerequisites:
   - /start-here/quickstart/
 related:

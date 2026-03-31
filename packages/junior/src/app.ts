@@ -12,13 +12,21 @@ export interface JuniorAppOptions {
   waitUntil?: WaitUntilFn;
 }
 
-/** Build a `WaitUntilFn` backed by the Vercel function lifetime extension. */
+/** Build a `WaitUntilFn`, preferring Vercel's lifetime extension when available. */
 async function defaultWaitUntil(): Promise<WaitUntilFn> {
-  const { waitUntil } = await import("@vercel/functions");
-  return (task) => {
-    const promise = typeof task === "function" ? task() : task;
-    waitUntil(promise);
-  };
+  try {
+    const { waitUntil } = await import("@vercel/functions");
+    return (task) => {
+      const promise = typeof task === "function" ? task() : task;
+      waitUntil(promise);
+    };
+  } catch {
+    // Outside Vercel (e.g. local dev via Nitro/node-server), fire-and-forget.
+    return (task) => {
+      const promise = typeof task === "function" ? task() : task;
+      promise.catch(console.error);
+    };
+  }
 }
 
 /** Create a Hono app with all Junior routes mounted under `/api`. */

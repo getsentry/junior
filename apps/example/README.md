@@ -7,7 +7,7 @@ It demonstrates:
 - one local skill (`/example-local`)
 - one plugin-bundled skill (`/example-bundle-help`)
 - one bundle-only plugin (`app/plugins/example-bundle/plugin.yaml`) with no credential broker config
-- installed plugin packages (`@sentry/junior-github`, `@sentry/junior-notion`, `@sentry/junior-sentry`)
+- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-github`, `@sentry/junior-notion`, `@sentry/junior-sentry`)
 
 ## Run
 
@@ -30,4 +30,5 @@ Copy `.env.example` and set:
 ## Wiring
 
 - `api/index.ts` creates a Hono app via `createApp()` and exports it with `handle()` from `hono/vercel`
-- `vercel.json` configures function settings and rewrites all requests to the API handler
+- installed plugin packages are discovered automatically; there is no per-plugin runtime registration in the app entrypoint
+- `vercel.json` configures function settings, includes `app/**/*`, and includes packaged plugin content with a single `node_modules/@sentry/junior-*` glob

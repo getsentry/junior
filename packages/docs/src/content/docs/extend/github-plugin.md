@@ -2,7 +2,6 @@
 title: GitHub Plugin
 description: Configure GitHub App credentials for issue workflows.
 type: tutorial
-summary: Install the GitHub plugin, register it with createApp, configure GitHub App access, and verify GitHub issue workflows.
 prerequisites:
   - /extend/
 related:
@@ -20,17 +19,17 @@ Install the plugin package alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-github
 ```
 
-## Register the plugin
+## Runtime discovery
 
-Add the package to `pluginPackages` so runtime discovery includes the GitHub plugin:
+Installed `@sentry/junior-*` plugin packages are discovered automatically, so the default app entrypoint stays:
 
 ```ts title="api/index.ts"
-const app = await createApp({
-  pluginPackages: ["@sentry/junior-github"],
-});
+const app = await createApp();
 
 export default handle(app);
 ```
+
+Use `createApp({ pluginPackages: [...] })` only when you want an explicit allowlist.
 
 ## Configure environment variables
 

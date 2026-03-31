@@ -25,8 +25,9 @@ describe("init cli", () => {
     await runInit(target, () => undefined);
 
     expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "api", "index.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "server.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "data", "SOUL.md"))).toBe(
       true,
     );

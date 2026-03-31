@@ -2,7 +2,6 @@
 title: Quickstart
 description: Start from `junior init`, verify locally, then add the few deployment-specific pieces needed for Vercel.
 type: tutorial
-summary: Scaffold a new Junior app with `junior init`, fill in environment and Slack setup, then deploy the same runtime to Vercel.
 prerequisites: []
 related:
   - /extend/
@@ -79,7 +78,7 @@ If you want to use npm-distributed plugins, install them explicitly:
 pnpm add @sentry/junior-github @sentry/junior-notion
 ```
 
-Then register them in `api/index.ts`:
+Junior discovers installed `@sentry/junior-*` plugin packages automatically, so the entrypoint stays minimal:
 
 ```ts title="api/index.ts"
 import { initSentry } from "@sentry/junior/instrumentation";
@@ -88,12 +87,12 @@ initSentry();
 import { createApp } from "@sentry/junior";
 import { handle } from "hono/vercel";
 
-const app = await createApp({
-  pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
-});
+const app = await createApp();
 
 export default handle(app);
 ```
+
+Keep the default auto-discovery path unless you need `createApp({ pluginPackages: [...] })` to restrict runtime loading to a specific list.
 
 See [Plugins](/extend/) for the local-vs-package model.
 
@@ -122,10 +121,10 @@ export default handle(app);
   "functions": {
     "api/index.ts": {
       "maxDuration": 800,
-      "includeFiles": "app/**"
+      "includeFiles": ["app/**/*", "node_modules/@sentry/junior-*/**/*"]
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }]
 }
 ```
 
@@ -149,10 +148,10 @@ Add the queue trigger to your `vercel.json`:
   "functions": {
     "api/index.ts": {
       "maxDuration": 800,
-      "includeFiles": "app/**"
+      "includeFiles": ["app/**/*", "node_modules/@sentry/junior-*/**/*"]
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }]
 }
 ```
 

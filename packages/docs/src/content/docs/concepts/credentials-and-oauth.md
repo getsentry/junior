@@ -2,7 +2,6 @@
 title: Credentials & OAuth
 description: Security model for scoped credentials and provider OAuth flows.
 type: conceptual
-summary: Learn how capability-scoped credentials and OAuth flows protect provider access in Junior.
 prerequisites:
   - /concepts/execution-model/
 related:

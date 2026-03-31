@@ -1,64 +1,65 @@
 import fs from "node:fs";
 import path from "node:path";
 
-function writeEntryPoint(targetDir: string): void {
-  const apiDir = path.join(targetDir, "api");
-  fs.mkdirSync(apiDir, { recursive: true });
+function writeServerEntry(targetDir: string): void {
   fs.writeFileSync(
-    path.join(apiDir, "index.ts"),
+    path.join(targetDir, "server.ts"),
     [
       'import { initSentry } from "@sentry/junior/instrumentation";',
       "initSentry();",
       "",
       'import { createApp } from "@sentry/junior";',
-      'import { handle } from "hono/vercel";',
       "",
       "const app = await createApp();",
       "",
-      "export default handle(app);",
+      "export default app;",
       "",
     ].join("\n"),
   );
 }
 
-function writeDevEntry(targetDir: string): void {
+function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
-    path.join(targetDir, "dev.ts"),
+    path.join(targetDir, "nitro.config.ts"),
     [
-      'import { initSentry } from "@sentry/junior/instrumentation";',
-      "initSentry();",
+      'import { cpSync } from "node:fs";',
+      'import { resolve } from "node:path";',
+      'import { defineConfig } from "nitro";',
       "",
-      'import { serve } from "@hono/node-server";',
-      'import { createApp } from "@sentry/junior";',
-      "",
-      "const app = await createApp({",
-      "  waitUntil: (task) => {",
-      '    const p = typeof task === "function" ? task() : task;',
-      "    p.catch(console.error);",
+      "export default defineConfig({",
+      '  preset: "vercel",',
+      "  vercel: {",
+      "    functions: {",
+      "      maxDuration: 800,",
+      "    },",
+      "  },",
+      "  hooks: {",
+      "    compiled() {",
+      "      cpSync(",
+      '        resolve("app"),',
+      '        resolve(".vercel/output/functions/__server.func/app"),',
+      "        { recursive: true },",
+      "      );",
+      "    },",
       "  },",
       "});",
       "",
-      "serve({ fetch: app.fetch, port: 3000 }, (info) => {",
-      "  console.log(`Listening on http://localhost:${info.port}`);",
-      "});",
-      "",
     ].join("\n"),
   );
 }
 
-function writeVercelJson(targetDir: string): void {
-  const config = {
-    functions: {
-      "api/index.ts": {
-        maxDuration: 800,
-        includeFiles: ["app/**/*"],
-      },
-    },
-    rewrites: [{ source: "/api/(.*)", destination: "/api" }],
-  };
+function writeViteConfig(targetDir: string): void {
   fs.writeFileSync(
-    path.join(targetDir, "vercel.json"),
-    `${JSON.stringify(config, null, 2)}\n`,
+    path.join(targetDir, "vite.config.ts"),
+    [
+      'import { defineConfig } from "vite";',
+      'import { nitro } from "nitro/vite";',
+      "",
+      "export default defineConfig({",
+      "  plugins: [nitro()],",
+      "});",
+      "",
+    ].join("\n"),
   );
 }
 
@@ -91,17 +92,18 @@ export async function runInit(
     private: true,
     type: "module",
     scripts: {
-      dev: "tsx watch dev.ts",
-      build: "junior snapshot create",
+      dev: "vite dev",
+      build: "junior snapshot create && vite build",
     },
     dependencies: {
       "@sentry/junior": "latest",
       "@sentry/node": "^10.0.0",
-      hono: "^4.7.0",
+      hono: "^4.12.0",
     },
     devDependencies: {
-      "@hono/node-server": "^1.14.0",
-      tsx: "^4.21.0",
+      nitro: "3.0.260311-beta",
+      typescript: "^5.9.0",
+      vite: "^8.0.0",
     },
   };
   fs.writeFileSync(
@@ -130,7 +132,15 @@ export async function runInit(
 
   fs.writeFileSync(
     path.join(target, ".gitignore"),
-    ["node_modules/", ".vercel/", ".env", ".env.local", ""].join("\n"),
+    [
+      "node_modules/",
+      ".vercel/",
+      ".output/",
+      ".nitro/",
+      ".env",
+      ".env.local",
+      "",
+    ].join("\n"),
   );
   fs.writeFileSync(
     path.join(target, ".env.example"),
@@ -146,9 +156,9 @@ export async function runInit(
     ].join("\n"),
   );
 
-  writeEntryPoint(target);
-  writeDevEntry(target);
-  writeVercelJson(target);
+  writeServerEntry(target);
+  writeNitroConfig(target);
+  writeViteConfig(target);
 
   log(`Created ${name} at ${target}`);
   log("");

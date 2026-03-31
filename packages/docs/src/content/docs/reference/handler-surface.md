@@ -2,7 +2,6 @@
 title: Route & Handler Surface
 description: Public HTTP routes exposed by Junior runtime handlers.
 type: reference
-summary: Reference the public HTTP routes and behavior exposed by Junior runtime handlers.
 prerequisites:
   - /start-here/quickstart/
 related:

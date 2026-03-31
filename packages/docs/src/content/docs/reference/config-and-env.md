@@ -2,7 +2,6 @@
 title: Config & Environment
 description: Required and optional environment variables for runtime and plugins.
 type: reference
-summary: Reference required and optional environment variables for core runtime and built-in plugins.
 prerequisites:
   - /start-here/quickstart/
 related:
