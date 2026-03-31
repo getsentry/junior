@@ -11,6 +11,7 @@ import {
   postSlackMessage,
 } from "@/handlers/oauth-resume";
 import { logException, logInfo } from "@/chat/logging";
+import { htmlCallbackResponse } from "@/handlers/html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
@@ -35,23 +36,7 @@ function htmlErrorResponse(
   message: string,
   status: number,
 ): Response {
-  const safeTitle = escapeXml(title);
-  const safeMessage = escapeXml(message);
-  const html = `<!DOCTYPE html>
-<html>
-<head><title>${safeTitle}</title></head>
-<body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
-  <div style="text-align: center; max-width: 480px;">
-    <h1>${safeTitle}</h1>
-    <p>${safeMessage}</p>
-    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack to try again.</p>
-  </div>
-</body>
-</html>`;
-  return new Response(html, {
-    status,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+  return htmlCallbackResponse(escapeXml(title), escapeXml(message), status);
 }
 
 async function buildResumeConversationContext(
@@ -69,7 +54,7 @@ async function buildResumeConversationContext(
   });
 }
 
-export async function resumePendingOAuthMessage(
+async function resumePendingOAuthMessage(
   stored: OAuthStatePayload,
 ): Promise<void> {
   if (!stored.pendingMessage || !stored.channelId || !stored.threadTs) return;
@@ -264,13 +249,13 @@ export async function GET(
     waitUntil(() => resumePendingOAuthMessage(stored));
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
-    waitUntil(async () => {
-      await postSlackMessage(
+    waitUntil(() =>
+      postSlackMessage(
         channelId,
         threadTs,
         `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`,
-      );
-    });
+      ),
+    );
   }
 
   const statusMessage = stored.pendingMessage

@@ -28,11 +28,18 @@ describe("init cli", () => {
     expect(fs.existsSync(path.join(target, "server.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "app", "data", "SOUL.md"))).toBe(
-      true,
+    expect(fs.existsSync(path.join(target, "app", "SOUL.md"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "app", "ABOUT.md"))).toBe(true);
+
+    const nitroConfig = fs.readFileSync(
+      path.join(target, "nitro.config.ts"),
+      "utf8",
     );
-    expect(fs.existsSync(path.join(target, "app", "data", "ABOUT.md"))).toBe(
-      true,
+    expect(nitroConfig).toContain(
+      'import { juniorNitroConfig } from "@sentry/junior/nitro";',
+    );
+    expect(nitroConfig).toContain(
+      "export default defineConfig(juniorNitroConfig());",
     );
   });
 

@@ -9,6 +9,7 @@ export default defineConfig({
     "cli/check": "src/cli/check.ts",
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
     instrumentation: "src/instrumentation.ts",
+    nitro: "src/nitro.ts",
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",

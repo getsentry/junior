@@ -51,21 +51,12 @@ export async function POST(
           try {
             const activeSpan = Sentry.getActiveSpan();
             const response = await handler(request, {
-              waitUntil: (task) =>
-                waitUntil(() => {
-                  const runTask = () => {
-                    const taskOrFactory = task as
-                      | Promise<unknown>
-                      | (() => Promise<unknown>);
-                    return typeof taskOrFactory === "function"
-                      ? taskOrFactory()
-                      : taskOrFactory;
-                  };
-                  if (activeSpan) {
-                    return Sentry.withActiveSpan(activeSpan, runTask);
-                  }
-                  return runTask();
-                }),
+              waitUntil: (task: Promise<unknown>) =>
+                waitUntil(
+                  activeSpan
+                    ? Sentry.withActiveSpan(activeSpan, () => task)
+                    : task,
+                ),
             } as Parameters<typeof handler>[1]);
             if (response.status >= 400) {
               let responseBodySnippet: string | undefined;

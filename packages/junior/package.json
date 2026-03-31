@@ -12,7 +12,8 @@
   },
   "exports": {
     ".": "./dist/app.js",
-    "./instrumentation": "./dist/instrumentation.js"
+    "./instrumentation": "./dist/instrumentation.js",
+    "./nitro": "./dist/nitro.js"
   },
   "files": [
     "dist",

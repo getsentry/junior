@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import * as Sentry from "@/chat/sentry";
 import { logException } from "@/chat/logging";
+import { GET as diagnosticsGET } from "@/handlers/diagnostics";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
@@ -40,14 +40,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   const app = new Hono().basePath("/api");
 
-  Sentry.setupHonoErrorHandler(app);
-
   app.onError((err, c) => {
     logException(err, "unhandled_route_error");
     return c.text("Internal Server Error", 500);
   });
 
   app.get("/health", () => healthGET());
+  if (process.env.JUNIOR_ENABLE_DIAGNOSTICS === "1") {
+    app.get("/__junior/discovery", () => diagnosticsGET());
+  }
 
   // MCP callback must be registered before the generic OAuth callback
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.

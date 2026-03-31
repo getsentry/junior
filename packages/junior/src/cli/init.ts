@@ -4,62 +4,42 @@ import path from "node:path";
 function writeServerEntry(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "server.ts"),
-    [
-      'import { initSentry } from "@sentry/junior/instrumentation";',
-      "initSentry();",
-      "",
-      'import { createApp } from "@sentry/junior";',
-      "",
-      "const app = await createApp();",
-      "",
-      "export default app;",
-      "",
-    ].join("\n"),
+    `import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
+
+import { createApp } from "@sentry/junior";
+
+const app = await createApp();
+
+export default app;
+`,
   );
 }
 
 function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "nitro.config.ts"),
-    [
-      'import { cpSync } from "node:fs";',
-      'import { resolve } from "node:path";',
-      'import { defineConfig } from "nitro";',
-      "",
-      "export default defineConfig({",
-      '  preset: "vercel",',
-      "  vercel: {",
-      "    functions: {",
-      "      maxDuration: 800,",
-      "    },",
-      "  },",
-      "  hooks: {",
-      "    compiled() {",
-      "      cpSync(",
-      '        resolve("app"),',
-      '        resolve(".vercel/output/functions/__server.func/app"),',
-      "        { recursive: true },",
-      "      );",
-      "    },",
-      "  },",
-      "});",
-      "",
-    ].join("\n"),
+    `import { juniorNitroConfig } from "@sentry/junior/nitro";
+import { defineConfig } from "nitro";
+
+export default defineConfig(juniorNitroConfig());
+`,
   );
 }
 
 function writeViteConfig(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "vite.config.ts"),
-    [
-      'import { defineConfig } from "vite";',
-      'import { nitro } from "nitro/vite";',
-      "",
-      "export default defineConfig({",
-      "  plugins: [nitro()],",
-      "});",
-      "",
-    ].join("\n"),
+    `import { defineConfig } from "vite";
+import { nitro } from "nitro/vite";
+
+export default defineConfig({
+  server: {
+    allowedHosts: true,
+  },
+  plugins: [nitro()],
+});
+`,
   );
 }
 
@@ -111,49 +91,45 @@ export async function runInit(
     `${JSON.stringify(pkg, null, 2)}\n`,
   );
 
-  const dataDir = path.join(target, "app", "data");
-  fs.mkdirSync(dataDir, { recursive: true });
+  const appDir = path.join(target, "app");
+  fs.mkdirSync(appDir, { recursive: true });
   fs.writeFileSync(
-    path.join(dataDir, "SOUL.md"),
+    path.join(appDir, "SOUL.md"),
     `# ${name}\n\nYou are ${name}, a helpful assistant.\n`,
   );
   fs.writeFileSync(
-    path.join(dataDir, "ABOUT.md"),
+    path.join(appDir, "ABOUT.md"),
     `# About ${name}\n\nDescribe what ${name} helps users do.\n`,
   );
 
-  const skillsDir = path.join(target, "app", "skills");
+  const skillsDir = path.join(appDir, "skills");
   fs.mkdirSync(skillsDir, { recursive: true });
   fs.writeFileSync(path.join(skillsDir, ".gitkeep"), "");
 
-  const pluginsDir = path.join(target, "app", "plugins");
+  const pluginsDir = path.join(appDir, "plugins");
   fs.mkdirSync(pluginsDir, { recursive: true });
   fs.writeFileSync(path.join(pluginsDir, ".gitkeep"), "");
 
   fs.writeFileSync(
     path.join(target, ".gitignore"),
-    [
-      "node_modules/",
-      ".vercel/",
-      ".output/",
-      ".nitro/",
-      ".env",
-      ".env.local",
-      "",
-    ].join("\n"),
+    `node_modules/
+.vercel/
+.output/
+.nitro/
+.env
+.env.local
+`,
   );
   fs.writeFileSync(
     path.join(target, ".env.example"),
-    [
-      "SLACK_BOT_TOKEN=",
-      "SLACK_SIGNING_SECRET=",
-      "JUNIOR_BOT_NAME=",
-      "AI_MODEL=",
-      "AI_FAST_MODEL=",
-      "REDIS_URL=",
-      "SENTRY_DSN=",
-      "",
-    ].join("\n"),
+    `SLACK_BOT_TOKEN=
+SLACK_SIGNING_SECRET=
+JUNIOR_BOT_NAME=
+AI_MODEL=
+AI_FAST_MODEL=
+REDIS_URL=
+SENTRY_DSN=
+`,
   );
 
   writeServerEntry(target);

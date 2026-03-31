@@ -29,6 +29,6 @@ Copy `.env.example` and set:
 
 ## Wiring
 
-- `api/index.ts` creates a Hono app via `createApp()` and exports it with `handle()` from `hono/vercel`
-- installed plugin packages are discovered automatically; there is no per-plugin runtime registration in the app entrypoint
-- `vercel.json` configures function settings, includes `app/**/*`, and includes packaged plugin content with a single `node_modules/@sentry/junior-*` glob
+- `server.ts` creates the Hono app via `createApp()` and passes the installed plugin package list explicitly
+- the example app declares which installed plugin packages should be available at runtime via `pluginPackages`
+- `nitro.config.ts` uses `juniorNitroConfig()` so the build copies `app/**/*` plus installed plugin package manifests and skills into `.vercel/output/functions/__server.func`
