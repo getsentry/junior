@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import * as Sentry from "@/chat/sentry";
 import { logException } from "@/chat/logging";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
@@ -31,8 +32,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   const app = new Hono().basePath("/api");
 
-  // Sentry's honoIntegration captures exceptions automatically; this handler
-  // adds structured logging and returns a clean 500 without double-reporting.
+  Sentry.setupHonoErrorHandler(app);
+
   app.onError((err, c) => {
     logException(err, "unhandled_route_error");
     return c.text("Internal Server Error", 500);

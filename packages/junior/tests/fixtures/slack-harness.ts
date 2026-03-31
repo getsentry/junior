@@ -70,7 +70,7 @@ export class FakeSlackAdapter {
     channelId: string;
     threadTs: string;
     text: string;
-    suggestions: string[];
+    suggestions?: string[];
   }> = [];
   readonly promptCalls: Array<{
     channelId: string;
