@@ -142,6 +142,7 @@ export function createTestThread(args: {
     adapter: stubAdapter,
     id: channelId,
     isDM: false,
+    channelVisibility: "unknown",
     get messages(): AsyncIterable<Message> {
       return (async function* () {})();
     },
@@ -198,6 +199,7 @@ export function createTestThread(args: {
     runId: args.runId,
     threadTs: args.threadTs,
     isDM: false,
+    channelVisibility: "unknown",
     channel,
     get allMessages(): AsyncIterable<Message> {
       return (async function* () {})();

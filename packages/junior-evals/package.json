@@ -13,10 +13,10 @@
     "@sentry/junior": "workspace:*",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
-    "chat": "4.22.0",
+    "chat": "4.23.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.2",
-    "vitest-evals": "^0.6.0",
+    "vitest-evals": "^0.7.0",
     "zod": "^4.3.6"
   }
 }
