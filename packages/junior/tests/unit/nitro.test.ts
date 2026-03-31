@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 describe("juniorNitroConfig", () => {
-  it("copies app and packaged plugin assets into the server output", () => {
+  it("registers a compiled hook that copies app and packaged plugin assets", () => {
     const cwd = makeTempDir("junior-nitro-");
 
     fs.writeFileSync(path.join(cwd, "package.json"), '{"name":"fixture"}\n');
@@ -40,8 +40,6 @@ describe("juniorNitroConfig", () => {
     );
 
     const config = juniorNitroConfig({ cwd });
-    config.hooks.compiled();
-
     const serverRoot = path.join(
       cwd,
       ".vercel",
@@ -49,6 +47,24 @@ describe("juniorNitroConfig", () => {
       "functions",
       "__server.func",
     );
+    const hooks = new Map<string, () => void>();
+
+    config.modules[0].setup({
+      hooks: {
+        hook(name, callback) {
+          hooks.set(name, callback);
+        },
+      },
+      options: {
+        output: {
+          serverDir: serverRoot,
+        },
+      },
+    });
+
+    expect(hooks.has("compiled")).toBe(true);
+    hooks.get("compiled")?.();
+
     expect(fs.existsSync(path.join(serverRoot, "app", "SOUL.md"))).toBe(true);
     expect(
       fs.existsSync(

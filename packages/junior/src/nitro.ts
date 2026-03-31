@@ -7,6 +7,27 @@ export interface JuniorNitroConfigOptions {
   maxDuration?: number;
 }
 
+function copyAppAndPluginContent(cwd: string, serverRoot: string): void {
+  copyIfExists(path.join(cwd, "app"), path.join(serverRoot, "app"));
+
+  const packagedContent = discoverInstalledPluginPackageContent(cwd);
+  for (const root of packagedContent.manifestRoots) {
+    if (existsSync(path.join(root, "plugin.yaml"))) {
+      copyIfExists(
+        path.join(root, "plugin.yaml"),
+        path.join(serverRoot, path.relative(cwd, root), "plugin.yaml"),
+      );
+      continue;
+    }
+
+    copyRootIntoServerOutput(cwd, serverRoot, root);
+  }
+
+  for (const root of packagedContent.skillRoots) {
+    copyRootIntoServerOutput(cwd, serverRoot, root);
+  }
+}
+
 function copyIfExists(source: string, target: string): void {
   if (!existsSync(source)) {
     return;
@@ -40,31 +61,17 @@ export function juniorNitroConfig(options: JuniorNitroConfigOptions = {}) {
         maxDuration: options.maxDuration ?? 800,
       },
     },
-    hooks: {
-      compiled() {
-        const serverRoot = path.join(
-          cwd,
-          ".vercel/output/functions/__server.func",
-        );
-        copyIfExists(path.join(cwd, "app"), path.join(serverRoot, "app"));
-
-        const packagedContent = discoverInstalledPluginPackageContent(cwd);
-        for (const root of packagedContent.manifestRoots) {
-          if (existsSync(path.join(root, "plugin.yaml"))) {
-            copyIfExists(
-              path.join(root, "plugin.yaml"),
-              path.join(serverRoot, path.relative(cwd, root), "plugin.yaml"),
-            );
-            continue;
-          }
-
-          copyRootIntoServerOutput(cwd, serverRoot, root);
-        }
-
-        for (const root of packagedContent.skillRoots) {
-          copyRootIntoServerOutput(cwd, serverRoot, root);
-        }
+    modules: [
+      {
+        setup(nitro: {
+          hooks: { hook(name: "compiled", callback: () => void): void };
+          options: { output: { serverDir: string } };
+        }) {
+          nitro.hooks.hook("compiled", () => {
+            copyAppAndPluginContent(cwd, nitro.options.output.serverDir);
+          });
+        },
       },
-    },
+    ],
   };
 }

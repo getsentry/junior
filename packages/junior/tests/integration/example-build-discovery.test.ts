@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ const outputRoot = path.join(
   ".vercel/output/functions/__server.func",
 );
 const outputEntry = path.join(outputRoot, "index.mjs");
+const buildOutputRoot = path.join(exampleRoot, ".vercel/output");
 
 function getExamplePluginPackages(): string[] {
   const pkg = JSON.parse(
@@ -73,6 +74,9 @@ describe.sequential("example build discovery integration", () => {
   });
 
   it("serves built health and recognizes the sentry oauth callback route", async () => {
+    expect(existsSync(path.join(buildOutputRoot, "config.json"))).toBe(true);
+    expect(existsSync(path.join(outputRoot, ".vc-config.json"))).toBe(true);
+
     process.chdir(outputRoot);
 
     const app = await importBuiltApp();
