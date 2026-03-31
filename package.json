@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.30.2",
   "scripts": {
     "dev": "node scripts/dev-with-root-env.mjs",
+    "dev:env": "pnpx vercel env pull .env.local --environment=development && pnpm run cloudflare:token",
     "cli": "node scripts/cli-with-root-env.mjs",
     "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
@@ -14,7 +15,7 @@
     "docs:build": "pnpm --filter @sentry/junior-docs build",
     "docs:check": "pnpm --filter @sentry/junior-docs check",
     "release:check": "node scripts/check-release-config.mjs",
-    "start": "pnpm --filter @sentry/junior-example start",
+    "start": "pnpm --filter @sentry/junior-example dev",
     "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior test",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",
@@ -36,7 +37,7 @@
     }
   },
   "devDependencies": {
-    "agent-browser": "^0.16.3",
+    "agent-browser": "^0.23.3",
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.1",
     "simple-git-hooks": "^2.13.1",

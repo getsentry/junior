@@ -2,7 +2,6 @@
 title: Plugin Page Template
 description: Canonical structure for plugin setup pages.
 type: tutorial
-summary: Use this template when writing or updating plugin setup pages so readers get the same install-to-verify flow each time.
 prerequisites:
   - /extend/
 related:
@@ -20,17 +19,17 @@ Install the plugin package alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-example
 ```
 
-## Register with `withJunior`
+## Runtime discovery
 
-Add the package to `pluginPackages` so build-time tracing and runtime discovery stay aligned:
+Installed `@sentry/junior-*` plugin packages are discovered automatically, so the default app entrypoint stays:
 
-```ts title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
+```ts title="api/index.ts"
+const app = await createApp();
 
-export default withJunior({
-  pluginPackages: ["@sentry/junior-example"],
-});
+export default handle(app);
 ```
+
+Use `createApp({ pluginPackages: [...] })` only when you want an explicit allowlist.
 
 ## Configure environment variables
 

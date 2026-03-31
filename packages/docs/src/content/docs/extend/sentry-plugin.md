@@ -2,7 +2,6 @@
 title: Sentry Plugin
 description: Configure Sentry OAuth for per-user investigation workflows.
 type: tutorial
-summary: Install the Sentry plugin, register it with withJunior, configure OAuth, and verify Sentry investigation workflows.
 prerequisites:
   - /extend/
 related:
@@ -20,17 +19,17 @@ Install the plugin package alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-sentry
 ```
 
-## Register with `withJunior`
+## Runtime discovery
 
-Add the package to `pluginPackages` so runtime discovery includes the Sentry plugin:
+Installed `@sentry/junior-*` plugin packages are discovered automatically, so the default app entrypoint stays:
 
-```ts title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
+```ts title="api/index.ts"
+const app = await createApp();
 
-export default withJunior({
-  pluginPackages: ["@sentry/junior-sentry"],
-});
+export default handle(app);
 ```
+
+Use `createApp({ pluginPackages: [...] })` only when you want an explicit allowlist.
 
 ## Configure environment variables
 

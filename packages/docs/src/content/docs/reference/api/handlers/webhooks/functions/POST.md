@@ -5,9 +5,9 @@ prev: false
 title: "POST"
 ---
 
-> **POST**(`request`, `context`): `Promise`\<`Response`\>
+> **POST**(`request`, `platform`, `waitUntil`): `Promise`\<`Response`\>
 
-Defined in: [handlers/webhooks.ts:37](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L37)
+Defined in: [handlers/webhooks.ts:20](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L20)
 
 Handles `POST /api/webhooks/:platform`.
 
@@ -20,9 +20,13 @@ implementation; request semantics stay owned by the adapter package.
 
 `Request`
 
-### context
+### platform
 
-`WebhookRouteContext`
+`string`
+
+### waitUntil
+
+`WaitUntilFn`
 
 ## Returns
 

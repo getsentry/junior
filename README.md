@@ -1,6 +1,6 @@
 # junior
 
-Junior is a Slack bot runtime for Next.js apps.
+Junior is a Slack bot runtime powered by Hono.
 
 Use it to investigate issues, summarize context, and take action from Slack with connected tools.
 
@@ -19,7 +19,7 @@ Start here:
 
 | Package                        | Purpose                                             |
 | ------------------------------ | --------------------------------------------------- |
-| `@sentry/junior`               | Core Slack bot runtime for Next.js                  |
+| `@sentry/junior`               | Core Slack bot runtime                              |
 | `@sentry/junior-agent-browser` | Agent Browser plugin package for browser automation |
 | `@sentry/junior-github`        | GitHub plugin package for issue workflows           |
 | `@sentry/junior-notion`        | Notion plugin package for page search workflows     |

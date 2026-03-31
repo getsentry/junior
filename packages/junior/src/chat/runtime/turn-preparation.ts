@@ -153,8 +153,3 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     };
   };
 }
-
-export const prepareTurnState = createPrepareTurnState({
-  compactConversationIfNeeded,
-  hydrateConversationVisionContext,
-});

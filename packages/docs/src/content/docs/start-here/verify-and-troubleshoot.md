@@ -2,7 +2,6 @@
 title: Verify & Troubleshoot
 description: Post-deploy checks and first-response troubleshooting.
 type: troubleshooting
-summary: Verify a deployed Junior runtime and isolate common Slack, queue, and auth regressions quickly.
 prerequisites:
   - /start-here/quickstart/
 related:
@@ -24,7 +23,7 @@ related:
 | ------------------------------------- | ------------------------------------ | ------------------------------------------ |
 | Slack mention receives no reply       | Missing webhook URL or token scopes  | Slack app Event Subscriptions URL + scopes |
 | Webhook 401/signature errors          | Incorrect signing secret             | `SLACK_SIGNING_SECRET` value               |
-| Message accepted but no threaded work | Queue callback trigger misconfigured | `vercel.json` trigger + callback route     |
+| Message accepted but no threaded work | Queue callback trigger misconfigured | Queue trigger config + callback route      |
 | Plugin commands fail auth             | Missing credentials or OAuth state   | Plugin env vars + Sentry connect flow      |
 
 ## Useful signals

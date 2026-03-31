@@ -2,7 +2,6 @@
 title: Plugin Auth & Context
 description: How Junior handles plugin auth, private OAuth prompts, and provider target context.
 type: reference
-summary: Use requests about GitHub, Sentry, and other plugins while Junior handles auth and context behind the scenes.
 prerequisites:
   - /reference/config-and-env/
 related:

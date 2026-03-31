@@ -2,7 +2,6 @@
 title: Releasing
 description: Package and docs release process.
 type: tutorial
-summary: Run package releases and docs preflight checks before publishing Junior updates.
 prerequisites:
   - /contribute/testing/
 related:

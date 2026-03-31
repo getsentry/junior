@@ -7,7 +7,7 @@ It demonstrates:
 - one local skill (`/example-local`)
 - one plugin-bundled skill (`/example-bundle-help`)
 - one bundle-only plugin (`app/plugins/example-bundle/plugin.yaml`) with no credential broker config
-- installed plugin packages (`@sentry/junior-github`, `@sentry/junior-notion`, `@sentry/junior-sentry`)
+- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-github`, `@sentry/junior-notion`, `@sentry/junior-sentry`)
 
 ## Run
 
@@ -29,10 +29,6 @@ Copy `.env.example` and set:
 
 ## Wiring
 
-- `app/api/[...path]/route.ts` routes all Junior API traffic:
-  - `/api/webhooks/:platform` for webhook ingress
-  - `/api/oauth/callback/:provider` for OAuth callbacks
-  - `/api/health` for health checks
-- `app/api/queue/callback/route.ts` provides a dedicated queue callback handler entrypoint for trigger auto-loading.
-- `next.config.ts` enables `withJunior()`.
-- `instrumentation.ts` exports Junior instrumentation hooks.
+- `server.ts` creates the Hono app via `createApp()` and passes the installed plugin package list explicitly
+- the example app declares which installed plugin packages should be available at runtime via `pluginPackages`
+- `nitro.config.ts` uses `juniorNitroConfig()` so the build copies `app/**/*` plus installed plugin package manifests and skills into `.vercel/output/functions/__server.func`

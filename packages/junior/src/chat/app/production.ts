@@ -16,7 +16,6 @@ import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
-import { createNormalizingStream } from "@/chat/runtime/streaming";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 let productionBot: JuniorChat<{ slack: SlackAdapter }> | undefined;
@@ -57,13 +56,6 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   });
 }
 
-/** Rehydrate attachment fetchers stripped during queue serialization. */
-function rehydrateAttachments(message: {
-  attachments: Array<{ fetchData?: unknown; url?: string }>;
-}): void {
-  rehydrateAttachmentFetchers(message);
-}
-
 // Timeout turns fail gracefully: the Slack runtime posts an error
 // reply to the thread. The checkpoint infrastructure in respond.ts
 // still writes an "awaiting_resume" checkpoint on timeout for
@@ -74,7 +66,7 @@ function registerProductionHandlers(
   slackRuntime: ReturnType<typeof createSlackRuntime>,
 ): void {
   bot.onNewMention((thread, message) => {
-    rehydrateAttachments(message);
+    rehydrateAttachmentFetchers(message);
     return slackRuntime.handleNewMention(thread, message);
   });
   // Route DMs through the mention handler so every DM gets a reply.
@@ -85,11 +77,11 @@ function registerProductionHandlers(
   // checked first (Chat.dispatchToHandlers:3128), bypassing the
   // subscription branch entirely.
   bot.onDirectMessage((thread, message) => {
-    rehydrateAttachments(message);
+    rehydrateAttachmentFetchers(message);
     return slackRuntime.handleNewMention(thread, message);
   });
   bot.onSubscribedMessage((thread, message) => {
-    rehydrateAttachments(message);
+    rehydrateAttachmentFetchers(message);
     return slackRuntime.handleSubscribedMessage(thread, message);
   });
   bot.onAssistantThreadStarted((event) =>
@@ -196,13 +188,3 @@ export function getProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   initializeProductionApp();
   return productionBot as JuniorChat<{ slack: SlackAdapter }>;
 }
-
-/** Return the lazily initialized production Slack turn runtime. */
-export function getProductionSlackRuntime(): ReturnType<
-  typeof createSlackRuntime
-> {
-  initializeProductionApp();
-  return productionSlackRuntime as ReturnType<typeof createSlackRuntime>;
-}
-
-export { createNormalizingStream };

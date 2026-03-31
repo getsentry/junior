@@ -2,7 +2,6 @@
 title: Testing
 description: Test layers and execution commands for Junior.
 type: reference
-summary: Choose the right Junior test layer and run targeted unit or eval files with canonical commands.
 prerequisites:
   - /contribute/development/
 related:

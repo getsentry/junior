@@ -1,36 +1,38 @@
 # @sentry/junior
 
-`@sentry/junior` is a Slack bot package for Next.js apps.
+`@sentry/junior` is a Slack bot package built on [Hono](https://hono.dev/).
 
 ## Install
 
 ```bash
-pnpm add @sentry/junior
-pnpm add next react react-dom @sentry/nextjs
+pnpm add @sentry/junior hono @sentry/node
 ```
 
 ## Quick usage
 
-`app/api/[...path]/route.js`:
+`server.ts`:
 
-```js
-export { GET, POST } from "@sentry/junior/handler";
-export const runtime = "nodejs";
+```ts
+import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
+
+import { createApp } from "@sentry/junior";
+
+const app = await createApp();
+
+export default app;
 ```
 
-`next.config.mjs`:
+`nitro.config.ts`:
 
-```js
-import { withJunior } from "@sentry/junior/config";
+```ts
+import { juniorNitroConfig } from "@sentry/junior/nitro";
+import { defineConfig } from "nitro";
 
-export default withJunior({
-  pluginPackages: [
-    "@sentry/junior-github",
-    "@sentry/junior-notion",
-    "@sentry/junior-sentry",
-  ],
-});
+export default defineConfig(juniorNitroConfig());
 ```
+
+Installed `@sentry/junior-*` plugin packages are discovered automatically. Use `createApp({ pluginPackages: [...] })` only when you need to restrict discovery to a specific allowlist.
 
 ## Full docs
 

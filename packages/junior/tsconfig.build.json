@@ -7,9 +7,9 @@
     "outDir": "dist"
   },
   "include": [
+    "src/app.ts",
     "src/handlers/**/*.ts",
-    "src/app/**/*.tsx",
-    "src/next-config.ts",
-    "src/instrumentation.ts"
+    "src/instrumentation.ts",
+    "src/nitro.ts"
   ]
 }

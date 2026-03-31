@@ -1,36 +1,45 @@
 import fs from "node:fs";
 import path from "node:path";
 
-function writeRouteModule(filePath: string, exportLine: string): void {
+function writeServerEntry(targetDir: string): void {
   fs.writeFileSync(
-    filePath,
-    `${exportLine}\nexport const runtime = "nodejs";\n`,
+    path.join(targetDir, "server.ts"),
+    `import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
+
+import { createApp } from "@sentry/junior";
+
+const app = await createApp();
+
+export default app;
+`,
   );
 }
 
-function writeWrapperFiles(targetDir: string): void {
-  const routeDir = path.join(targetDir, "app", "api", "[...path]");
-  fs.mkdirSync(routeDir, { recursive: true });
-  writeRouteModule(
-    path.join(routeDir, "route.js"),
-    'export { GET, POST } from "@sentry/junior/handler";',
-  );
-
-  fs.mkdirSync(path.join(targetDir, "app"), { recursive: true });
+function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
-    path.join(targetDir, "app", "layout.js"),
-    'export { default } from "@sentry/junior/app/layout";\n',
-  );
+    path.join(targetDir, "nitro.config.ts"),
+    `import { juniorNitroConfig } from "@sentry/junior/nitro";
+import { defineConfig } from "nitro";
 
-  fs.writeFileSync(
-    path.join(targetDir, "next.config.mjs"),
-    'import { withJunior } from "@sentry/junior/config";\n' +
-      "export default withJunior();\n",
+export default defineConfig(juniorNitroConfig());
+`,
   );
+}
 
+function writeViteConfig(targetDir: string): void {
   fs.writeFileSync(
-    path.join(targetDir, "instrumentation.js"),
-    'export { register, onRequestError } from "@sentry/junior/instrumentation";\n',
+    path.join(targetDir, "vite.config.ts"),
+    `import { defineConfig } from "vite";
+import { nitro } from "nitro/vite";
+
+export default defineConfig({
+  server: {
+    allowedHosts: true,
+  },
+  plugins: [nitro()],
+});
+`,
   );
 }
 
@@ -63,16 +72,18 @@ export async function runInit(
     private: true,
     type: "module",
     scripts: {
-      dev: "next dev",
-      build: "next build",
-      start: "next start",
+      dev: "vite dev",
+      build: "junior snapshot create && vite build",
     },
     dependencies: {
       "@sentry/junior": "latest",
-      next: "^16.0.0",
-      react: "^19.0.0",
-      "react-dom": "^19.0.0",
-      "@sentry/nextjs": "^10.0.0",
+      "@sentry/node": "^10.0.0",
+      hono: "^4.12.0",
+    },
+    devDependencies: {
+      nitro: "3.0.260311-beta",
+      typescript: "^5.9.0",
+      vite: "^8.0.0",
     },
   };
   fs.writeFileSync(
@@ -80,44 +91,50 @@ export async function runInit(
     `${JSON.stringify(pkg, null, 2)}\n`,
   );
 
-  const dataDir = path.join(target, "app", "data");
-  fs.mkdirSync(dataDir, { recursive: true });
+  const appDir = path.join(target, "app");
+  fs.mkdirSync(appDir, { recursive: true });
   fs.writeFileSync(
-    path.join(dataDir, "SOUL.md"),
+    path.join(appDir, "SOUL.md"),
     `# ${name}\n\nYou are ${name}, a helpful assistant.\n`,
   );
   fs.writeFileSync(
-    path.join(dataDir, "ABOUT.md"),
+    path.join(appDir, "ABOUT.md"),
     `# About ${name}\n\nDescribe what ${name} helps users do.\n`,
   );
 
-  const skillsDir = path.join(target, "app", "skills");
+  const skillsDir = path.join(appDir, "skills");
   fs.mkdirSync(skillsDir, { recursive: true });
   fs.writeFileSync(path.join(skillsDir, ".gitkeep"), "");
 
-  const pluginsDir = path.join(target, "app", "plugins");
+  const pluginsDir = path.join(appDir, "plugins");
   fs.mkdirSync(pluginsDir, { recursive: true });
   fs.writeFileSync(path.join(pluginsDir, ".gitkeep"), "");
 
   fs.writeFileSync(
     path.join(target, ".gitignore"),
-    ["node_modules/", ".next/", ".env", ".env.local", ""].join("\n"),
+    `node_modules/
+.vercel/
+.output/
+.nitro/
+.env
+.env.local
+`,
   );
   fs.writeFileSync(
     path.join(target, ".env.example"),
-    [
-      "SLACK_BOT_TOKEN=",
-      "SLACK_SIGNING_SECRET=",
-      "JUNIOR_BOT_NAME=",
-      "AI_MODEL=",
-      "AI_FAST_MODEL=",
-      "REDIS_URL=",
-      "NEXT_PUBLIC_SENTRY_DSN=",
-      "",
-    ].join("\n"),
+    `SLACK_BOT_TOKEN=
+SLACK_SIGNING_SECRET=
+JUNIOR_BOT_NAME=
+AI_MODEL=
+AI_FAST_MODEL=
+REDIS_URL=
+SENTRY_DSN=
+`,
   );
 
-  writeWrapperFiles(target);
+  writeServerEntry(target);
+  writeNitroConfig(target);
+  writeViteConfig(target);
 
   log(`Created ${name} at ${target}`);
   log("");

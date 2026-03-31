@@ -2,7 +2,6 @@
 title: Security Hardening
 description: Runtime security model, credential boundaries, and incident checks.
 type: conceptual
-summary: Apply core runtime security boundaries, credential controls, and incident checks for Junior deployments.
 prerequisites:
   - /concepts/credentials-and-oauth/
 related:

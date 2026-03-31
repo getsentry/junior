@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import * as Sentry from "@sentry/nextjs";
+import * as Sentry from "@/chat/sentry";
 
 type Primitive = string | number | boolean;
 type AttributeValue = Primitive | string[];
@@ -137,7 +137,6 @@ const CONSOLE_PREVIEW_KEYS = new Set([
 function getSentryEnvironment(): string {
   return (
     process.env.SENTRY_ENVIRONMENT ??
-    process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ??
     process.env.VERCEL_ENV ??
     process.env.NODE_ENV ??
     ""

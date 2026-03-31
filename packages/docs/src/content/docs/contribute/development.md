@@ -2,7 +2,6 @@
 title: Development
 description: Local development workflow for the Junior monorepo.
 type: tutorial
-summary: Set up local development for Junior, run the app, and validate core checks.
 prerequisites: []
 related:
   - /contribute/testing/

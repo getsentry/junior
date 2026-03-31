@@ -1,7 +1,4 @@
-import { after } from "next/server";
-import * as Sentry from "@sentry/nextjs";
 import { getProductionBot } from "@/chat/app/production";
-import { getChatConfig } from "@/chat/config";
 import {
   createRequestContext,
   logException,
@@ -11,27 +8,7 @@ import {
   withContext,
   withSpan,
 } from "@/chat/logging";
-
-/**
- * Vercel function timeout in seconds.
- *
- * Agent turns run inside `after()` which shares the function's timeout budget.
- * This must be at least as large as the configured turn timeout plus buffer.
- */
-export const maxDuration = getChatConfig().functionMaxDurationSeconds;
-
-/**
- * Webhook route contract for `@sentry/junior`.
- *
- * We keep a dedicated `/api/webhooks/:platform` surface so each adapter owns its
- * protocol details (signature verification, challenge flows, retries) while this
- * handler remains a thin dispatcher.
- */
-type WebhookRouteContext = {
-  params: Promise<{
-    platform: string;
-  }>;
-};
+import type { WaitUntilFn } from "@/handlers/types";
 
 /**
  * Handles `POST /api/webhooks/:platform`.
@@ -41,10 +18,10 @@ type WebhookRouteContext = {
  */
 export async function POST(
   request: Request,
-  context: WebhookRouteContext,
+  platform: string,
+  waitUntil: WaitUntilFn,
 ): Promise<Response> {
   const bot = getProductionBot();
-  const { platform } = await context.params;
   const handler = bot.webhooks[platform as keyof typeof bot.webhooks];
   const requestContext = createRequestContext(request, { platform });
   const requestUrl = new URL(request.url);
@@ -71,23 +48,8 @@ export async function POST(
         requestContext,
         async () => {
           try {
-            const activeSpan = Sentry.getActiveSpan();
             const response = await handler(request, {
-              waitUntil: (task) =>
-                after(() => {
-                  const runTask = () => {
-                    const taskOrFactory = task as
-                      | Promise<unknown>
-                      | (() => Promise<unknown>);
-                    return typeof taskOrFactory === "function"
-                      ? taskOrFactory()
-                      : taskOrFactory;
-                  };
-                  if (activeSpan) {
-                    return Sentry.withActiveSpan(activeSpan, runTask);
-                  }
-                  return runTask();
-                }),
+              waitUntil: (task: Promise<unknown>) => waitUntil(task),
             } as Parameters<typeof handler>[1]);
             if (response.status >= 400) {
               let responseBodySnippet: string | undefined;

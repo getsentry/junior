@@ -2,7 +2,6 @@
 title: "junior init"
 description: "Scaffold a new Junior app in an empty directory."
 type: reference
-summary: "`junior init <dir>` creates the base Next.js and Junior runtime files for a new project."
 prerequisites:
   - /start-here/quickstart/
 related:
@@ -26,14 +25,12 @@ The command requires exactly one argument: the target directory.
 
 The scaffold includes:
 
-- `package.json` with `next`, `react`, `react-dom`, `@sentry/nextjs`, and `@sentry/junior`
-- `app/api/[...path]/route.js`
-- `app/api/queue/callback/route.js`
-- `app/layout.js`
-- `next.config.mjs`
-- `instrumentation.js`
-- `app/data/SOUL.md`
-- `app/data/ABOUT.md`
+- `package.json` with `hono`, `@sentry/node`, `@sentry/junior`, and `nitro`
+- `server.ts`
+- `nitro.config.ts`
+- `vite.config.ts`
+- `app/SOUL.md`
+- `app/ABOUT.md`
 - `app/skills/`
 - `app/plugins/`
 - `.env.example`

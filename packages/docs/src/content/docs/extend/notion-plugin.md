@@ -2,7 +2,6 @@
 title: Notion Plugin
 description: Configure the hosted Notion MCP server for read-only page and data source search workflows.
 type: tutorial
-summary: Install the Notion plugin, register it with withJunior, connect user accounts through Notion MCP OAuth, and verify read-only search workflows.
 prerequisites:
   - /extend/
 related:
@@ -24,17 +23,17 @@ Install the plugin package alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-notion
 ```
 
-## Register with `withJunior`
+## Runtime discovery
 
-Add the package to `pluginPackages` so runtime discovery includes the Notion plugin:
+Installed `@sentry/junior-*` plugin packages are discovered automatically, so the default app entrypoint stays:
 
-```ts title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
+```ts title="api/index.ts"
+const app = await createApp();
 
-export default withJunior({
-  pluginPackages: ["@sentry/junior-notion"],
-});
+export default handle(app);
 ```
+
+Use `createApp({ pluginPackages: [...] })` only when you want an explicit allowlist.
 
 ## Auth model
 

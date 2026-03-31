@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { routerGetMock } = vi.hoisted(() => ({
-  routerGetMock: vi.fn(),
+const { oauthCallbackGetMock, mcpOauthCallbackGetMock } = vi.hoisted(() => ({
+  oauthCallbackGetMock: vi.fn(),
+  mcpOauthCallbackGetMock: vi.fn(),
 }));
 
-vi.mock("@/handlers/router", () => ({
-  GET: routerGetMock,
+vi.mock("@/handlers/oauth-callback", () => ({
+  GET: oauthCallbackGetMock,
+}));
+
+vi.mock("@/handlers/mcp-oauth-callback", () => ({
+  GET: mcpOauthCallbackGetMock,
 }));
 
 import { runOauthCallbackRoute } from "../../fixtures/oauth-callback-harness";
@@ -13,7 +18,8 @@ import { runMcpOauthCallbackRoute } from "../../fixtures/mcp-oauth-callback-harn
 
 describe("oauth callback harnesses", () => {
   afterEach(() => {
-    routerGetMock.mockReset();
+    oauthCallbackGetMock.mockReset();
+    mcpOauthCallbackGetMock.mockReset();
   });
 
   it.each([
@@ -26,7 +32,7 @@ describe("oauth callback harnesses", () => {
           code: "eval-oauth-code",
         }),
       expectedError:
-        'OAuth callback route returned 200 without registering after() work for provider "eval-oauth"',
+        'OAuth callback route returned 200 without registering waitUntil() work for provider "eval-oauth"',
     },
     {
       label: "MCP OAuth",
@@ -37,12 +43,17 @@ describe("oauth callback harnesses", () => {
           code: "eval-auth-code",
         }),
       expectedError:
-        'MCP OAuth callback route returned 200 without registering after() work for provider "eval-auth"',
+        'MCP OAuth callback route returned 200 without registering waitUntil() work for provider "eval-auth"',
     },
   ])(
-    "fails when the $label callback route returns success without registering after() work",
+    "fails when the $label callback route returns success without registering waitUntil() work",
     async ({ run, expectedError }) => {
-      routerGetMock.mockResolvedValue(new Response("ok", { status: 200 }));
+      oauthCallbackGetMock.mockResolvedValue(
+        new Response("ok", { status: 200 }),
+      );
+      mcpOauthCallbackGetMock.mockResolvedValue(
+        new Response("ok", { status: 200 }),
+      );
 
       await expect(run()).rejects.toThrow(expectedError);
     },

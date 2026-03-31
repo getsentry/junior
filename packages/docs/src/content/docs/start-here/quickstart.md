@@ -2,7 +2,6 @@
 title: Quickstart
 description: Start from `junior init`, verify locally, then add the few deployment-specific pieces needed for Vercel.
 type: tutorial
-summary: Scaffold a new Junior app with `junior init`, fill in environment and Slack setup, then deploy the same runtime to Vercel.
 prerequisites: []
 related:
   - /extend/
@@ -29,12 +28,9 @@ pnpm install
 
 `junior init` already creates the core runtime wiring for you:
 
-- `app/api/[...path]/route.js`
-- `app/api/queue/callback/route.js`
-- `app/layout.js`
-- `next.config.mjs`
-- `instrumentation.js`
-- `app/data/SOUL.md` and `app/data/ABOUT.md`
+- `server.ts`
+- `nitro.config.ts` and `vite.config.ts`
+- `app/SOUL.md` and `app/ABOUT.md`
 - `app/skills/` and `app/plugins/`
 - `.env.example`
 
@@ -82,48 +78,50 @@ If you want to use npm-distributed plugins, install them explicitly:
 pnpm add @sentry/junior-github @sentry/junior-notion
 ```
 
-Then register them in `next.config.mjs`:
+Junior discovers installed `@sentry/junior-*` plugin packages automatically, so the entrypoint stays minimal:
 
-```js title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
+```ts title="server.ts"
+import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
 
-export default withJunior({
-  pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
-});
+import { createApp } from "@sentry/junior";
+
+const app = await createApp();
+
+export default app;
 ```
+
+Keep the default auto-discovery path unless you need `createApp({ pluginPackages: [...] })` to restrict runtime loading to a specific list.
 
 See [Plugins](/extend/) for the local-vs-package model.
 
 ## What `junior init` created
 
-If you need to wire Junior into an existing Next.js app, this is what `junior init` creates.
+If you need to wire Junior into an existing app, this is what `junior init` creates.
 
-### Catch-all route
+### Server entry point
 
-```js title="app/api/[...path]/route.js"
-export { GET, POST } from "@sentry/junior/handler";
-export const runtime = "nodejs";
+```ts title="server.ts"
+import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
+
+import { createApp } from "@sentry/junior";
+
+const app = await createApp();
+
+export default app;
 ```
 
-### Next.js config
+### Nitro config
 
-```js title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
+```ts title="nitro.config.ts"
+import { juniorNitroConfig } from "@sentry/junior/nitro";
+import { defineConfig } from "nitro";
 
-export default withJunior();
+export default defineConfig(juniorNitroConfig());
 ```
 
-### Instrumentation
-
-```js title="instrumentation.js"
-export { register, onRequestError } from "@sentry/junior/instrumentation";
-```
-
-### Root layout
-
-```js title="app/layout.js"
-export { default } from "@sentry/junior/app/layout";
-```
+The `juniorNitroConfig()` helper sets the Vercel preset, configures `maxDuration`, and copies `app/**/*` plus installed plugin package content into the build output.
 
 ## Deploy to Vercel
 
@@ -136,36 +134,17 @@ pnpm dlx vercel@latest login
 pnpm dlx vercel@latest link
 ```
 
-### Add queue trigger
-
-```json title="vercel.json"
-{
-  "functions": {
-    "app/api/queue/callback/route.js": {
-      "experimentalTriggers": [
-        {
-          "type": "queue/v2beta",
-          "topic": "junior-thread-message"
-        }
-      ]
-    }
-  }
-}
-```
-
 ### Configure build command
 
-Set the Vercel build command to run snapshot warmup after app build.
+The scaffold includes a build script that runs Nitro build with snapshot warmup:
 
 ```json title="package.json"
 {
   "scripts": {
-    "build": "next build && junior snapshot create"
+    "build": "junior snapshot create && vite build"
   }
 }
 ```
-
-If you prefer `postbuild`, ensure Vercel runs `pnpm build` as the build command.
 
 ### Configure production environment
 
@@ -207,9 +186,9 @@ https://<your-domain>/api/webhooks/slack
 ## Common failures
 
 - `401` or signature failures: verify `SLACK_SIGNING_SECRET`.
-- No thread processing: confirm both catch-all and queue callback routes exist.
+- No thread processing: confirm the API handler and queue trigger are configured.
 - No bot post: verify bot token scopes and Slack app installation.
-- Slack timeouts in production: check `vercel.json` queue trigger and callback route path.
+- Slack timeouts in production: check Nitro config `maxDuration` and function deployment.
 - OAuth callback issues for plugins: set `JUNIOR_BASE_URL` to production URL.
 - Snapshot warmup build failures: verify `REDIS_URL` is available to builds and OIDC is enabled for `VERCEL_OIDC_TOKEN`.
 

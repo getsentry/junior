@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
@@ -12,6 +11,7 @@ import {
   postSlackMessage,
 } from "@/handlers/oauth-resume";
 import { logException, logInfo } from "@/chat/logging";
+import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
@@ -22,12 +22,13 @@ import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { escapeXml } from "@/chat/xml";
+import type { WaitUntilFn } from "@/handlers/types";
 
 /**
  * OAuth callback contract for `@sentry/junior`.
  *
  * Providers redirect users to a concrete GET endpoint (`/api/oauth/callback/:provider`).
- * We complete token exchange synchronously for correctness, then use `after(...)`
+ * We complete token exchange synchronously for correctness, then use `waitUntil(...)`
  * for best-effort Slack side effects so the browser response returns quickly.
  */
 function htmlErrorResponse(
@@ -35,23 +36,7 @@ function htmlErrorResponse(
   message: string,
   status: number,
 ): Response {
-  const safeTitle = escapeXml(title);
-  const safeMessage = escapeXml(message);
-  const html = `<!DOCTYPE html>
-<html>
-<head><title>${safeTitle}</title></head>
-<body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
-  <div style="text-align: center; max-width: 480px;">
-    <h1>${safeTitle}</h1>
-    <p>${safeMessage}</p>
-    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack to try again.</p>
-  </div>
-</body>
-</html>`;
-  return new Response(html, {
-    status,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+  return htmlCallbackResponse(escapeXml(title), escapeXml(message), status);
 }
 
 async function buildResumeConversationContext(
@@ -69,7 +54,7 @@ async function buildResumeConversationContext(
   });
 }
 
-export async function resumePendingOAuthMessage(
+async function resumePendingOAuthMessage(
   stored: OAuthStatePayload,
 ): Promise<void> {
   if (!stored.pendingMessage || !stored.channelId || !stored.threadTs) return;
@@ -115,9 +100,9 @@ export async function resumePendingOAuthMessage(
 
 export async function GET(
   request: Request,
-  context: { params: Promise<{ provider: string }> },
+  provider: string,
+  waitUntil: WaitUntilFn,
 ): Promise<Response> {
-  const { provider } = await context.params;
   const providerConfig = getPluginOAuthConfig(provider);
   if (!providerConfig) {
     return htmlErrorResponse(
@@ -252,7 +237,7 @@ export async function GET(
   const userTokenStore = createUserTokenStore();
   await userTokenStore.set(stored.userId, provider, parsedTokenResponse);
 
-  after(async () => {
+  waitUntil(async () => {
     try {
       await publishAppHomeView(getSlackClient(), stored.userId, userTokenStore);
     } catch {
@@ -261,16 +246,16 @@ export async function GET(
   });
 
   if (stored.pendingMessage && stored.channelId && stored.threadTs) {
-    after(() => resumePendingOAuthMessage(stored));
+    waitUntil(() => resumePendingOAuthMessage(stored));
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
-    after(async () => {
-      await postSlackMessage(
+    waitUntil(() =>
+      postSlackMessage(
         channelId,
         threadTs,
         `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`,
-      );
-    });
+      ),
+    );
   }
 
   const statusMessage = stored.pendingMessage

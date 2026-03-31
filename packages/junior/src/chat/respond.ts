@@ -1108,13 +1108,14 @@ export async function generateAssistantReply(
         : "execution_failure";
     const fallbackText =
       oauthStartedMessage ?? buildExecutionFailureMessage(toolErrorCount);
-    const candidateText = primaryText || fallbackText;
+    const responseText = primaryText || fallbackText;
     const escapedOrRawPayload =
-      isExecutionEscapeResponse(candidateText) ||
-      isRawToolPayloadResponse(candidateText);
+      Boolean(primaryText) &&
+      (isExecutionEscapeResponse(primaryText) ||
+        isRawToolPayloadResponse(primaryText));
     const resolvedText = escapedOrRawPayload
       ? fallbackText
-      : enforceAttachmentClaimTruth(candidateText, replyFiles.length > 0);
+      : enforceAttachmentClaimTruth(responseText, replyFiles.length > 0);
     const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
       ? oauthStartedMessage
         ? outcome

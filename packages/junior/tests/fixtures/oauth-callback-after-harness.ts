@@ -1,9 +1,7 @@
-import { vi } from "vitest";
+import type { WaitUntilFn } from "@/handlers/types";
 
-export const afterCallbacks: Array<() => Promise<void> | void> = [];
+export const waitUntilCallbacks: Array<() => Promise<unknown> | void> = [];
 
-vi.mock("next/server", () => ({
-  after: (callback: () => Promise<void> | void) => {
-    afterCallbacks.push(callback);
-  },
-}));
+export const testWaitUntil: WaitUntilFn = (task) => {
+  waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
+};

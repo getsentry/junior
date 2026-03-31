@@ -1,18 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { afterCallbacks, generateAssistantReplyMock } = vi.hoisted(() => ({
-  afterCallbacks: [] as Array<() => Promise<void> | void>,
+const { waitUntilCallbacks, generateAssistantReplyMock } = vi.hoisted(() => ({
+  waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
   generateAssistantReplyMock: vi.fn(async (..._args: unknown[]) => ({
     text: "test reply",
     diagnostics: { outcome: "success", toolCalls: [] },
   })),
-}));
-
-// Mock next/server before importing the route handler
-vi.mock("next/server", () => ({
-  after: (fn: () => Promise<void> | void) => {
-    afterCallbacks.push(fn);
-  },
 }));
 
 // Mock state adapter
@@ -103,14 +96,19 @@ vi.mock("@/chat/logging", () => ({
 }));
 
 import { GET } from "@/handlers/oauth-callback";
+import type { WaitUntilFn } from "@/handlers/types";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
 
+const testWaitUntil: WaitUntilFn = (task) => {
+  waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
+};
+
 beforeEach(() => {
   mockStateStore.clear();
   mockTokenStore.clear();
-  afterCallbacks.length = 0;
+  waitUntilCallbacks.length = 0;
   generateAssistantReplyMock.mockClear();
 });
 
@@ -124,17 +122,14 @@ function makeRequest(url: string): Request {
   return new Request(url, { method: "GET" });
 }
 
-function makeContext(provider: string) {
-  return { params: Promise.resolve({ provider }) };
-}
-
 describe("oauth callback handler", () => {
   it("returns styled HTML 404 for unknown provider", async () => {
     const response = await GET(
       makeRequest(
         "https://example.com/api/oauth/callback/unknown?code=abc&state=xyz",
       ),
-      makeContext("unknown"),
+      "unknown",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(404);
@@ -146,7 +141,8 @@ describe("oauth callback handler", () => {
   it("returns styled HTML 400 when code or state is missing", async () => {
     const response = await GET(
       makeRequest("https://example.com/api/oauth/callback/sentry"),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(400);
@@ -160,7 +156,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?code=abc&state=nonexistent",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(400);
@@ -183,7 +180,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?code=abc&state=test-state-123",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(400);
@@ -216,7 +214,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?code=auth-code&state=test-state-456",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(mockStateStore.has(stateKey)).toBe(false);
@@ -235,7 +234,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?code=abc&state=test-state-789",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(500);
@@ -270,7 +270,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?code=valid-code&state=exchange-test",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(200);
@@ -311,7 +312,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/example?code=valid-code&state=example-exchange",
       ),
-      makeContext("example"),
+      "example",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(200);
@@ -364,7 +366,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?code=bad-code&state=fail-exchange",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(500);
@@ -384,7 +387,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?error=access_denied&state=deny-test",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(400);
@@ -404,7 +408,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?error=server_error&state=some-state",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(400);
@@ -418,7 +423,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?error=%3Cscript%3Ealert(1)%3C/script%3E&state=xss-test",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(400);
@@ -432,7 +438,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?error=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E&state=xss-msg-test",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(400);
@@ -468,7 +475,8 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?code=code&state=pending-test",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(200);
@@ -529,13 +537,14 @@ describe("oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/sentry?code=code&state=resume-test",
       ),
-      makeContext("sentry"),
+      "sentry",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(200);
-    expect(afterCallbacks).toHaveLength(2);
+    expect(waitUntilCallbacks).toHaveLength(2);
 
-    for (const callback of afterCallbacks) {
+    for (const callback of waitUntilCallbacks) {
       await callback();
     }
 

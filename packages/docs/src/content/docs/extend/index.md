@@ -2,7 +2,6 @@
 title: Plugins
 description: Where Junior plugins live, how to add them, and how to build your own.
 type: tutorial
-summary: Use local or packaged plugins, register them correctly, and build your own plugin manifest and skills.
 prerequisites:
   - /start-here/quickstart/
 related:
@@ -11,7 +10,7 @@ related:
   - /extend/sentry-plugin/
 ---
 
-Junior plugins are just manifests plus skills. Keep the runtime wiring stable, then add behavior by putting plugins in the right place and registering packaged ones explicitly.
+Junior plugins are just manifests plus skills. Keep the runtime wiring stable, then add behavior by putting plugins in the right place. Installed package plugins are discovered automatically by default.
 
 ## Where plugins live
 
@@ -51,19 +50,21 @@ For reuse across apps or teams, package plugin manifests + skills as npm package
 pnpm add @sentry/junior @sentry/junior-github @sentry/junior-notion @sentry/junior-sentry
 ```
 
-Then register those package names in `withJunior(...)` so build-time tracing and runtime discovery use the same explicit package list:
+Junior will discover installed `@sentry/junior-*` packages automatically, so the default entrypoint stays minimal:
 
-```ts title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
+```ts title="api/index.ts"
+import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
 
-export default withJunior({
-  pluginPackages: [
-    "@sentry/junior-github",
-    "@sentry/junior-notion",
-    "@sentry/junior-sentry",
-  ],
-});
+import { createApp } from "@sentry/junior";
+import { handle } from "hono/vercel";
+
+const app = await createApp();
+
+export default handle(app);
 ```
+
+Use `createApp({ pluginPackages: [...] })` only when you want an explicit allowlist instead of the default discovery behavior.
 
 If you publish your own package, include `plugin.yaml` and `skills` in package `files` so runtime discovery works.
 
@@ -177,7 +178,9 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-After install, add the package name to `pluginPackages` in `withJunior(...)`.
+The default Nitro config (`juniorNitroConfig()`) automatically copies `app/**/*` and installed `@sentry/junior-*` plugin package content into the build output. No extra configuration is needed for standard plugin packages.
+
+Use `createApp({ pluginPackages: [...] })` only if you need to restrict discovery to a specific package allowlist.
 
 ## Validate extensions
 

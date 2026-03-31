@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-import { after } from "next/server";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -32,6 +31,8 @@ import {
 } from "@/handlers/oauth-resume";
 import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
+import { htmlCallbackResponse } from "@/handlers/oauth-html";
+import type { WaitUntilFn } from "@/handlers/types";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -65,21 +66,7 @@ const CALLBACK_PAGES = {
 
 function htmlResponse(kind: keyof typeof CALLBACK_PAGES): Response {
   const page = CALLBACK_PAGES[kind];
-  const html = `<!DOCTYPE html>
-<html>
-<head><title>${page.title}</title></head>
-<body style="font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;">
-  <div style="text-align: center; max-width: 480px;">
-    <h1>${page.title}</h1>
-    <p>${page.message}</p>
-    <p style="margin-top: 2rem; color: #666; font-size: 0.9em;">You can close this tab and return to Slack.</p>
-  </div>
-</body>
-</html>`;
-  return new Response(html, {
-    status: page.status,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+  return htmlCallbackResponse(page.title, page.message, page.status);
 }
 
 function extractSlackText(text: string, files?: FileUpload[]): string {
@@ -273,7 +260,7 @@ async function persistFailedReplyState(
   });
 }
 
-export async function resumeAuthorizedMcpTurn(args: {
+async function resumeAuthorizedMcpTurn(args: {
   authSession: McpAuthSessionState;
   provider: string;
 }): Promise<void> {
@@ -371,17 +358,11 @@ export async function resumeAuthorizedMcpTurn(args: {
   });
 }
 
-type Context = {
-  params: Promise<{
-    provider: string;
-  }>;
-};
-
 export async function GET(
   request: Request,
-  context: Context,
+  provider: string,
+  waitUntil: WaitUntilFn,
 ): Promise<Response> {
-  const { provider } = await context.params;
   const url = new URL(request.url);
   const state = url.searchParams.get("state")?.trim();
   const code = url.searchParams.get("code")?.trim();
@@ -411,12 +392,12 @@ export async function GET(
       );
     }
 
-    after(async () => {
-      await resumeAuthorizedMcpTurn({
+    waitUntil(() =>
+      resumeAuthorizedMcpTurn({
         authSession,
         provider,
-      });
-    });
+      }),
+    );
 
     return htmlResponse("success");
   } catch (callbackError) {

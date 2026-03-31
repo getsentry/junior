@@ -2,7 +2,6 @@
 title: Reliability Runbooks
 description: Symptom-driven runbooks for production incidents.
 type: troubleshooting
-summary: Triage incidents by symptom across webhook ingress, queue processing, turn execution, and tool failures.
 prerequisites:
   - /operate/observability/
 related:
