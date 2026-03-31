@@ -6,5 +6,10 @@
     "incremental": false,
     "outDir": "dist"
   },
-  "include": ["src/app.ts", "src/handlers/**/*.ts", "src/instrumentation.ts"]
+  "include": [
+    "src/app.ts",
+    "src/handlers/**/*.ts",
+    "src/instrumentation.ts",
+    "src/nitro.ts"
+  ]
 }

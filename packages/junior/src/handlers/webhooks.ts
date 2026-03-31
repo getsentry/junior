@@ -1,4 +1,3 @@
-import * as Sentry from "@/chat/sentry";
 import { getProductionBot } from "@/chat/app/production";
 import {
   createRequestContext,
@@ -49,14 +48,8 @@ export async function POST(
         requestContext,
         async () => {
           try {
-            const activeSpan = Sentry.getActiveSpan();
             const response = await handler(request, {
-              waitUntil: (task: Promise<unknown>) =>
-                waitUntil(
-                  activeSpan
-                    ? Sentry.withActiveSpan(activeSpan, () => task)
-                    : task,
-                ),
+              waitUntil: (task: Promise<unknown>) => waitUntil(task),
             } as Parameters<typeof handler>[1]);
             if (response.status >= 400) {
               let responseBodySnippet: string | undefined;
