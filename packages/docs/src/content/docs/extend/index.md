@@ -178,19 +178,7 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-If you deploy on Vercel, make sure `vercel.json` includes packaged plugin content in the function bundle. The default scaffold uses:
-
-```json title="vercel.json"
-{
-  "functions": {
-    "api/index.ts": {
-      "includeFiles": ["app/**/*", "node_modules/@sentry/junior-*/**/*"]
-    }
-  }
-}
-```
-
-If you publish your own plugin package under a different name, add a matching `node_modules/<scope>/<package>/**/*` include for that package too.
+The default Nitro config (`juniorNitroConfig()`) automatically copies `app/**/*` and installed `@sentry/junior-*` plugin package content into the build output. No extra configuration is needed for standard plugin packages.
 
 Use `createApp({ pluginPackages: [...] })` only if you need to restrict discovery to a specific package allowlist.
 

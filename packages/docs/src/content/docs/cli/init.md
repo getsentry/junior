@@ -25,11 +25,12 @@ The command requires exactly one argument: the target directory.
 
 The scaffold includes:
 
-- `package.json` with `hono`, `@sentry/node`, and `@sentry/junior`
-- `api/index.ts`
-- `vercel.json`
-- `app/data/SOUL.md`
-- `app/data/ABOUT.md`
+- `package.json` with `hono`, `@sentry/node`, `@sentry/junior`, and `nitro`
+- `server.ts`
+- `nitro.config.ts`
+- `vite.config.ts`
+- `app/SOUL.md`
+- `app/ABOUT.md`
 - `app/skills/`
 - `app/plugins/`
 - `.env.example`

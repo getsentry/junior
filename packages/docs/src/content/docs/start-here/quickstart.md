@@ -28,9 +28,9 @@ pnpm install
 
 `junior init` already creates the core runtime wiring for you:
 
-- `api/index.ts`
-- `vercel.json`
-- `app/data/SOUL.md` and `app/data/ABOUT.md`
+- `server.ts`
+- `nitro.config.ts` and `vite.config.ts`
+- `app/SOUL.md` and `app/ABOUT.md`
 - `app/skills/` and `app/plugins/`
 - `.env.example`
 
@@ -80,16 +80,15 @@ pnpm add @sentry/junior-github @sentry/junior-notion
 
 Junior discovers installed `@sentry/junior-*` plugin packages automatically, so the entrypoint stays minimal:
 
-```ts title="api/index.ts"
+```ts title="server.ts"
 import { initSentry } from "@sentry/junior/instrumentation";
 initSentry();
 
 import { createApp } from "@sentry/junior";
-import { handle } from "hono/vercel";
 
 const app = await createApp();
 
-export default handle(app);
+export default app;
 ```
 
 Keep the default auto-discovery path unless you need `createApp({ pluginPackages: [...] })` to restrict runtime loading to a specific list.
@@ -100,33 +99,29 @@ See [Plugins](/extend/) for the local-vs-package model.
 
 If you need to wire Junior into an existing app, this is what `junior init` creates.
 
-### API entry point
+### Server entry point
 
-```ts title="api/index.ts"
+```ts title="server.ts"
 import { initSentry } from "@sentry/junior/instrumentation";
 initSentry();
 
 import { createApp } from "@sentry/junior";
-import { handle } from "hono/vercel";
 
 const app = await createApp();
 
-export default handle(app);
+export default app;
 ```
 
-### Vercel config
+### Nitro config
 
-```json title="vercel.json"
-{
-  "functions": {
-    "api/index.ts": {
-      "maxDuration": 800,
-      "includeFiles": ["app/**/*", "node_modules/@sentry/junior-*/**/*"]
-    }
-  },
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }]
-}
+```ts title="nitro.config.ts"
+import { juniorNitroConfig } from "@sentry/junior/nitro";
+import { defineConfig } from "nitro";
+
+export default defineConfig(juniorNitroConfig());
 ```
+
+The `juniorNitroConfig()` helper sets the Vercel preset, configures `maxDuration`, and copies `app/**/*` plus installed plugin package content into the build output.
 
 ## Deploy to Vercel
 
@@ -139,30 +134,14 @@ pnpm dlx vercel@latest login
 pnpm dlx vercel@latest link
 ```
 
-### Add queue trigger
-
-Add the queue trigger to your `vercel.json`:
-
-```json title="vercel.json"
-{
-  "functions": {
-    "api/index.ts": {
-      "maxDuration": 800,
-      "includeFiles": ["app/**/*", "node_modules/@sentry/junior-*/**/*"]
-    }
-  },
-  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }]
-}
-```
-
 ### Configure build command
 
-Set the Vercel build command to run snapshot warmup after app build.
+The scaffold includes a build script that runs Nitro build with snapshot warmup:
 
 ```json title="package.json"
 {
   "scripts": {
-    "build": "junior snapshot create"
+    "build": "junior snapshot create && vite build"
   }
 }
 ```
@@ -209,7 +188,7 @@ https://<your-domain>/api/webhooks/slack
 - `401` or signature failures: verify `SLACK_SIGNING_SECRET`.
 - No thread processing: confirm the API handler and queue trigger are configured.
 - No bot post: verify bot token scopes and Slack app installation.
-- Slack timeouts in production: check `vercel.json` queue trigger and function config.
+- Slack timeouts in production: check Nitro config `maxDuration` and function deployment.
 - OAuth callback issues for plugins: set `JUNIOR_BASE_URL` to production URL.
 - Snapshot warmup build failures: verify `REDIS_URL` is available to builds and OIDC is enabled for `VERCEL_OIDC_TOKEN`.
 
