@@ -31,7 +31,7 @@ import {
 } from "@/handlers/oauth-resume";
 import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
-import { htmlCallbackResponse } from "@/handlers/html";
+import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 
 const CALLBACK_PAGES = {

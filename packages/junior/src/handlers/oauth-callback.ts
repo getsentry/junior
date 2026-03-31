@@ -11,7 +11,7 @@ import {
   postSlackMessage,
 } from "@/handlers/oauth-resume";
 import { logException, logInfo } from "@/chat/logging";
-import { htmlCallbackResponse } from "@/handlers/html";
+import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
