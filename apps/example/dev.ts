@@ -11,6 +11,10 @@ const app = await createApp({
     "@sentry/junior-notion",
     "@sentry/junior-sentry",
   ],
+  waitUntil: (task) => {
+    const p = typeof task === "function" ? task() : task;
+    p.catch(console.error);
+  },
 });
 
 serve({ fetch: app.fetch, port: 3000 }, (info) => {
