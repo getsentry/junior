@@ -62,7 +62,17 @@ function parseRuntimeConfiguredPackageNames(value: unknown): string[] | null {
   return uniqueStringsInOrder(parsed.map((entry) => entry.trim()));
 }
 
+let configuredPluginPackages: string[] | undefined;
+
+/** Set the runtime plugin package allowlist. Called by `createApp()`. */
+export function setPluginPackages(packages: string[]): void {
+  configuredPluginPackages = packages;
+}
+
 function readNextRuntimeConfiguredPackageNames(): string[] | null {
+  if (configuredPluginPackages !== undefined) {
+    return configuredPluginPackages;
+  }
   const raw = process.env.JUNIOR_PLUGIN_PACKAGES;
   if (raw === undefined) {
     return null;

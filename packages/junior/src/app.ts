@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { logException } from "@/chat/logging";
+import { setPluginPackages } from "@/chat/plugins/package-discovery";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
@@ -31,9 +32,8 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
 
 /** Create a Hono app with all Junior routes mounted under `/api`. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
-  // TODO: thread plugin config through properly instead of global env mutation.
   if (options?.pluginPackages) {
-    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(options.pluginPackages);
+    setPluginPackages(options.pluginPackages);
   }
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
