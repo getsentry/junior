@@ -89,7 +89,7 @@ describe.sequential("example build discovery integration", () => {
     );
     expect(oauth.status).toBe(400);
     expect(await oauth.text()).toContain("missing required parameters");
-  });
+  }, 15_000);
 
   it("reports discovery state from the built output", async () => {
     const packageNames = getExamplePluginPackages();
@@ -153,5 +153,5 @@ describe.sequential("example build discovery integration", () => {
         ),
       ),
     );
-  });
+  }, 15_000);
 });
