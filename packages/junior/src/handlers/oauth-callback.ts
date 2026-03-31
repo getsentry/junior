@@ -1,4 +1,3 @@
-import { after } from "next/server";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
@@ -22,12 +21,13 @@ import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { escapeXml } from "@/chat/xml";
+import type { WaitUntilFn } from "@/handlers/types";
 
 /**
  * OAuth callback contract for `@sentry/junior`.
  *
  * Providers redirect users to a concrete GET endpoint (`/api/oauth/callback/:provider`).
- * We complete token exchange synchronously for correctness, then use `after(...)`
+ * We complete token exchange synchronously for correctness, then use `waitUntil(...)`
  * for best-effort Slack side effects so the browser response returns quickly.
  */
 function htmlErrorResponse(
@@ -115,9 +115,9 @@ export async function resumePendingOAuthMessage(
 
 export async function GET(
   request: Request,
-  context: { params: Promise<{ provider: string }> },
+  provider: string,
+  waitUntil: WaitUntilFn,
 ): Promise<Response> {
-  const { provider } = await context.params;
   const providerConfig = getPluginOAuthConfig(provider);
   if (!providerConfig) {
     return htmlErrorResponse(
@@ -252,7 +252,7 @@ export async function GET(
   const userTokenStore = createUserTokenStore();
   await userTokenStore.set(stored.userId, provider, parsedTokenResponse);
 
-  after(async () => {
+  waitUntil(async () => {
     try {
       await publishAppHomeView(getSlackClient(), stored.userId, userTokenStore);
     } catch {
@@ -261,10 +261,10 @@ export async function GET(
   });
 
   if (stored.pendingMessage && stored.channelId && stored.threadTs) {
-    after(() => resumePendingOAuthMessage(stored));
+    waitUntil(() => resumePendingOAuthMessage(stored));
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
-    after(async () => {
+    waitUntil(async () => {
       await postSlackMessage(
         channelId,
         threadTs,

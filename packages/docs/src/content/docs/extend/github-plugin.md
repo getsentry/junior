@@ -2,7 +2,7 @@
 title: GitHub Plugin
 description: Configure GitHub App credentials for issue workflows.
 type: tutorial
-summary: Install the GitHub plugin, register it with withJunior, configure GitHub App access, and verify GitHub issue workflows.
+summary: Install the GitHub plugin, register it with createApp, configure GitHub App access, and verify GitHub issue workflows.
 prerequisites:
   - /extend/
 related:
@@ -20,16 +20,16 @@ Install the plugin package alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-github
 ```
 
-## Register with `withJunior`
+## Register the plugin
 
-Add the package to `pluginPackages` so build-time tracing and runtime discovery use the same explicit plugin list:
+Add the package to `pluginPackages` so runtime discovery includes the GitHub plugin:
 
-```ts title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
-
-export default withJunior({
-  pluginPackages: ["@sentry/junior-github"],
-});
+```ts title="api/index.ts"
+export default handle(
+  createApp({
+    pluginPackages: ["@sentry/junior-github"],
+  }),
+);
 ```
 
 ## Configure environment variables

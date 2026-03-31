@@ -58,7 +58,7 @@ The common case is a Vercel build command:
 ```json title="package.json"
 {
   "scripts": {
-    "build": "next build && junior snapshot create"
+    "build": "junior snapshot create"
   }
 }
 ```

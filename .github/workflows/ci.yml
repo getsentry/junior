@@ -45,7 +45,7 @@ jobs:
       - run: pnpm docs:check
       - name: Build example app
         working-directory: apps/example
-        run: pnpm exec next build
+        run: pnpm build
 
       - name: Pack release artifacts
         if: github.event_name == 'push'

@@ -20,16 +20,16 @@ Install the plugin package alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-example
 ```
 
-## Register with `withJunior`
+## Register the plugin
 
-Add the package to `pluginPackages` so build-time tracing and runtime discovery stay aligned:
+Add the package to `pluginPackages` so runtime discovery includes the plugin:
 
-```ts title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
-
-export default withJunior({
-  pluginPackages: ["@sentry/junior-example"],
-});
+```ts title="api/index.ts"
+export default handle(
+  createApp({
+    pluginPackages: ["@sentry/junior-example"],
+  }),
+);
 ```
 
 ## Configure environment variables

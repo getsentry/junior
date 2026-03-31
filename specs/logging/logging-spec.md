@@ -151,7 +151,7 @@ Rules:
 - Do not emit both `agent_tool_call_started` and `agent_tool_call_completed` info logs for ordinary successful tool executions.
 - Keep log events for failures, invalid input, auth interruptions, and other unusual tool states where a discrete log record adds value beyond the span.
 
-### Runtime Constraints (Next.js)
+### Runtime Constraints
 
 - Ambient context propagation relies on Node `AsyncLocalStorage`.
 - API routes that rely on ambient context must run in Node runtime.

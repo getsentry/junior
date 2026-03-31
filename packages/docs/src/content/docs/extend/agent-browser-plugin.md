@@ -2,7 +2,7 @@
 title: Agent Browser Plugin
 description: Configure browser automation workflows with agent-browser in Junior.
 type: tutorial
-summary: Install the agent-browser plugin, register it with withJunior, and verify browser automation workflows.
+summary: Install the agent-browser plugin, register it with createApp, and verify browser automation workflows.
 prerequisites:
   - /extend/
 related:
@@ -21,16 +21,16 @@ Install the plugin package alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-agent-browser
 ```
 
-## Register with `withJunior`
+## Register the plugin
 
 Add the package to `pluginPackages` so runtime discovery includes the browser automation skill:
 
-```ts title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
-
-export default withJunior({
-  pluginPackages: ["@sentry/junior-agent-browser"],
-});
+```ts title="api/index.ts"
+export default handle(
+  createApp({
+    pluginPackages: ["@sentry/junior-agent-browser"],
+  }),
+);
 ```
 
 ## Configure environment variables

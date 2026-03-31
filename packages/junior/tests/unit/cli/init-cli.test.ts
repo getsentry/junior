@@ -25,9 +25,8 @@ describe("init cli", () => {
     await runInit(target, () => undefined);
 
     expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
-    expect(
-      fs.existsSync(path.join(target, "app", "api", "[...path]", "route.js")),
-    ).toBe(true);
+    expect(fs.existsSync(path.join(target, "api", "index.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "data", "SOUL.md"))).toBe(
       true,
     );

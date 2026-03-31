@@ -2,17 +2,13 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
-    "handlers/router": "src/handlers/router.ts",
-    "handlers/webhooks": "src/handlers/webhooks.ts",
-    "handlers/health": "src/handlers/health.ts",
+    app: "src/app.ts",
     "cli/env": "src/cli/env.ts",
     "cli/init": "src/cli/init.ts",
     "cli/run": "src/cli/run.ts",
     "cli/check": "src/cli/check.ts",
     "cli/snapshot-warmup": "src/cli/snapshot-warmup.ts",
-    "next-config": "src/next-config.ts",
     instrumentation: "src/instrumentation.ts",
-    "app/layout": "src/app/layout.tsx",
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",
@@ -21,11 +17,8 @@ export default defineConfig({
   clean: true,
   splitting: true,
   external: [
-    "next",
-    "next/server",
-    "react",
-    "react-dom",
-    "@sentry/nextjs",
+    "hono",
+    "@sentry/node",
     // All runtime npm dependencies stay external
     "@ai-sdk/gateway",
     "@chat-adapter/slack",
@@ -35,6 +28,7 @@ export default defineConfig({
     "@mariozechner/pi-ai",
     "@sinclair/typebox",
     "@slack/web-api",
+    "@vercel/functions",
     "@vercel/sandbox",
     "ai",
     "bash-tool",

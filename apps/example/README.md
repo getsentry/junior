@@ -29,10 +29,5 @@ Copy `.env.example` and set:
 
 ## Wiring
 
-- `app/api/[...path]/route.ts` routes all Junior API traffic:
-  - `/api/webhooks/:platform` for webhook ingress
-  - `/api/oauth/callback/:provider` for OAuth callbacks
-  - `/api/health` for health checks
-- `app/api/queue/callback/route.ts` provides a dedicated queue callback handler entrypoint for trigger auto-loading.
-- `next.config.ts` enables `withJunior()`.
-- `instrumentation.ts` exports Junior instrumentation hooks.
+- `api/index.ts` creates a Hono app via `createApp()` and exports it with `handle()` from `hono/vercel`
+- `vercel.json` configures function settings and rewrites all requests to the API handler

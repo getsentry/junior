@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-import { after } from "next/server";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -32,6 +31,7 @@ import {
 } from "@/handlers/oauth-resume";
 import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
+import type { WaitUntilFn } from "@/handlers/types";
 
 const CALLBACK_PAGES = {
   missing_state: {
@@ -371,17 +371,11 @@ export async function resumeAuthorizedMcpTurn(args: {
   });
 }
 
-type Context = {
-  params: Promise<{
-    provider: string;
-  }>;
-};
-
 export async function GET(
   request: Request,
-  context: Context,
+  provider: string,
+  waitUntil: WaitUntilFn,
 ): Promise<Response> {
-  const { provider } = await context.params;
   const url = new URL(request.url);
   const state = url.searchParams.get("state")?.trim();
   const code = url.searchParams.get("code")?.trim();
@@ -411,7 +405,7 @@ export async function GET(
       );
     }
 
-    after(async () => {
+    waitUntil(async () => {
       await resumeAuthorizedMcpTurn({
         authSession,
         provider,

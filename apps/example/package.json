@@ -3,9 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build && junior snapshot create",
-    "start": "next start",
+    "dev": "tsx watch dev.ts",
+    "build": "junior snapshot create",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -14,15 +13,13 @@
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
-    "@sentry/nextjs": "^10.46.0",
-    "next": "^16.2.1",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "@sentry/node": "^10.46.0",
+    "hono": "^4.7.0"
   },
   "devDependencies": {
+    "@hono/node-server": "^1.14.0",
     "@types/node": "^25.5.0",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

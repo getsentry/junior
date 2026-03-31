@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/nextjs";
+import * as Sentry from "@/chat/sentry";
 
 function getSampleRate(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -14,43 +14,27 @@ function getBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback;
 }
 
-function getCommonOptions() {
-  const dsn = process.env.SENTRY_DSN ?? process.env.NEXT_PUBLIC_SENTRY_DSN;
+/** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
+export function initSentry(): void {
+  const dsn = process.env.SENTRY_DSN;
   const enableLogs = getBoolean(process.env.SENTRY_ENABLE_LOGS, Boolean(dsn));
-  return {
+
+  Sentry.init({
     dsn,
-    environment: process.env.SENTRY_ENVIRONMENT ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV,
+    environment:
+      process.env.SENTRY_ENVIRONMENT ??
+      process.env.VERCEL_ENV ??
+      process.env.NODE_ENV,
     release: process.env.SENTRY_RELEASE ?? process.env.VERCEL_GIT_COMMIT_SHA,
     tracesSampleRate: getSampleRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 1),
     sendDefaultPii: true,
     enabled: Boolean(dsn),
-    enableLogs
-  };
+    _experiments: { enableLogs },
+    integrations: [
+      Sentry.vercelAIIntegration({
+        recordInputs: true,
+        recordOutputs: true,
+      }),
+    ],
+  });
 }
-
-/**
- * Initializes Sentry for Next.js runtime contexts used by Junior.
- */
-export async function register(): Promise<void> {
-  if (process.env.NEXT_RUNTIME === "nodejs") {
-    Sentry.init({
-      ...getCommonOptions(),
-      integrations: [
-        Sentry.vercelAIIntegration({
-          recordInputs: true,
-          recordOutputs: true
-        })
-      ]
-    });
-    return;
-  }
-
-  if (process.env.NEXT_RUNTIME === "edge") {
-    Sentry.init(getCommonOptions());
-  }
-}
-
-/**
- * Re-export of Sentry request error handler for Next.js instrumentation wiring.
- */
-export const onRequestError = Sentry.captureRequestError;

@@ -10,19 +10,19 @@ related:
   - /start-here/verify-and-troubleshoot/
 ---
 
-## `@sentry/junior/handler`
+## `@sentry/junior` (via `createApp()`)
 
-Route this in `app/api/[...path]/route.ts`.
+The Hono app created by `createApp()` mounts all routes under `/api`.
 
 Handled `GET` routes:
 
 - `/api/health`
 - `/api/oauth/callback/:provider`
+- `/api/oauth/callback/mcp/:provider`
 
 Handled `POST` routes:
 
 - `/api/webhooks/:platform` (Slack path is `/api/webhooks/slack`)
-- `/api/queue/callback`
 
 ## Expected behavior
 

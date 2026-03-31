@@ -1,36 +1,57 @@
 import fs from "node:fs";
 import path from "node:path";
 
-function writeRouteModule(filePath: string, exportLine: string): void {
+function writeEntryPoint(targetDir: string): void {
+  const apiDir = path.join(targetDir, "api");
+  fs.mkdirSync(apiDir, { recursive: true });
   fs.writeFileSync(
-    filePath,
-    `${exportLine}\nexport const runtime = "nodejs";\n`,
+    path.join(apiDir, "index.ts"),
+    [
+      'import { initSentry } from "@sentry/junior/instrumentation";',
+      "initSentry();",
+      "",
+      'import { createApp } from "@sentry/junior";',
+      'import { handle } from "hono/vercel";',
+      "",
+      "export default handle(createApp());",
+      "",
+    ].join("\n"),
   );
 }
 
-function writeWrapperFiles(targetDir: string): void {
-  const routeDir = path.join(targetDir, "app", "api", "[...path]");
-  fs.mkdirSync(routeDir, { recursive: true });
-  writeRouteModule(
-    path.join(routeDir, "route.js"),
-    'export { GET, POST } from "@sentry/junior/handler";',
-  );
-
-  fs.mkdirSync(path.join(targetDir, "app"), { recursive: true });
+function writeDevEntry(targetDir: string): void {
   fs.writeFileSync(
-    path.join(targetDir, "app", "layout.js"),
-    'export { default } from "@sentry/junior/app/layout";\n',
+    path.join(targetDir, "dev.ts"),
+    [
+      'import { initSentry } from "@sentry/junior/instrumentation";',
+      "initSentry();",
+      "",
+      'import { serve } from "@hono/node-server";',
+      'import { createApp } from "@sentry/junior";',
+      "",
+      "const app = createApp();",
+      "",
+      "serve({ fetch: app.fetch, port: 3000 }, (info) => {",
+      "  console.log(`Listening on http://localhost:${info.port}`);",
+      "});",
+      "",
+    ].join("\n"),
   );
+}
 
+function writeVercelJson(targetDir: string): void {
+  const config = {
+    functions: {
+      "api/index.ts": {
+        maxDuration: 800,
+        includeFiles: ["app/**/*"],
+      },
+    },
+    rewrites: [{ source: "/api/(.*)", destination: "/api" }],
+  };
   fs.writeFileSync(
-    path.join(targetDir, "next.config.mjs"),
-    'import { withJunior } from "@sentry/junior/config";\n' +
-      "export default withJunior();\n",
-  );
-
-  fs.writeFileSync(
-    path.join(targetDir, "instrumentation.js"),
-    'export { register, onRequestError } from "@sentry/junior/instrumentation";\n',
+    path.join(targetDir, "vercel.json"),
+    `${JSON.stringify(config, null, 2)}\n`,
   );
 }
 
@@ -63,16 +84,17 @@ export async function runInit(
     private: true,
     type: "module",
     scripts: {
-      dev: "next dev",
-      build: "next build",
-      start: "next start",
+      dev: "tsx watch dev.ts",
+      build: "junior snapshot create",
     },
     dependencies: {
       "@sentry/junior": "latest",
-      next: "^16.0.0",
-      react: "^19.0.0",
-      "react-dom": "^19.0.0",
-      "@sentry/nextjs": "^10.0.0",
+      "@sentry/node": "^10.0.0",
+      hono: "^4.7.0",
+    },
+    devDependencies: {
+      "@hono/node-server": "^1.14.0",
+      tsx: "^4.21.0",
     },
   };
   fs.writeFileSync(
@@ -101,7 +123,7 @@ export async function runInit(
 
   fs.writeFileSync(
     path.join(target, ".gitignore"),
-    ["node_modules/", ".next/", ".env", ".env.local", ""].join("\n"),
+    ["node_modules/", ".vercel/", ".env", ".env.local", ""].join("\n"),
   );
   fs.writeFileSync(
     path.join(target, ".env.example"),
@@ -112,12 +134,14 @@ export async function runInit(
       "AI_MODEL=",
       "AI_FAST_MODEL=",
       "REDIS_URL=",
-      "NEXT_PUBLIC_SENTRY_DSN=",
+      "SENTRY_DSN=",
       "",
     ].join("\n"),
   );
 
-  writeWrapperFiles(target);
+  writeEntryPoint(target);
+  writeDevEntry(target);
+  writeVercelJson(target);
 
   log(`Created ${name} at ${target}`);
   log("");

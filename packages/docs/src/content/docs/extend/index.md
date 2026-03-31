@@ -51,18 +51,24 @@ For reuse across apps or teams, package plugin manifests + skills as npm package
 pnpm add @sentry/junior @sentry/junior-github @sentry/junior-notion @sentry/junior-sentry
 ```
 
-Then register those package names in `withJunior(...)` so build-time tracing and runtime discovery use the same explicit package list:
+Then register those package names in `createApp(...)` so runtime discovery uses the same explicit package list:
 
-```ts title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
+```ts title="api/index.ts"
+import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
 
-export default withJunior({
-  pluginPackages: [
-    "@sentry/junior-github",
-    "@sentry/junior-notion",
-    "@sentry/junior-sentry",
-  ],
-});
+import { createApp } from "@sentry/junior";
+import { handle } from "hono/vercel";
+
+export default handle(
+  createApp({
+    pluginPackages: [
+      "@sentry/junior-github",
+      "@sentry/junior-notion",
+      "@sentry/junior-sentry",
+    ],
+  }),
+);
 ```
 
 If you publish your own package, include `plugin.yaml` and `skills` in package `files` so runtime discovery works.
@@ -177,7 +183,7 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-After install, add the package name to `pluginPackages` in `withJunior(...)`.
+After install, add the package name to `pluginPackages` in `createApp(...)`.
 
 ## Validate extensions
 

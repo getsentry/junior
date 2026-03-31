@@ -1,35 +1,47 @@
 # @sentry/junior
 
-`@sentry/junior` is a Slack bot package for Next.js apps.
+`@sentry/junior` is a Slack bot package built on [Hono](https://hono.dev/).
 
 ## Install
 
 ```bash
-pnpm add @sentry/junior
-pnpm add next react react-dom @sentry/nextjs
+pnpm add @sentry/junior hono @sentry/node
 ```
 
 ## Quick usage
 
-`app/api/[...path]/route.js`:
+`api/index.ts`:
 
-```js
-export { GET, POST } from "@sentry/junior/handler";
-export const runtime = "nodejs";
+```ts
+import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
+
+import { createApp } from "@sentry/junior";
+import { handle } from "hono/vercel";
+
+export default handle(
+  createApp({
+    pluginPackages: [
+      "@sentry/junior-github",
+      "@sentry/junior-notion",
+      "@sentry/junior-sentry",
+    ],
+  }),
+);
 ```
 
-`next.config.mjs`:
+`vercel.json`:
 
-```js
-import { withJunior } from "@sentry/junior/config";
-
-export default withJunior({
-  pluginPackages: [
-    "@sentry/junior-github",
-    "@sentry/junior-notion",
-    "@sentry/junior-sentry",
-  ],
-});
+```json
+{
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 800,
+      "includeFiles": ["app/**/*"]
+    }
+  },
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }]
+}
 ```
 
 ## Full docs

@@ -1,5 +1,5 @@
 node_modules/
-.next/
+.vercel/
 .env
 .env.local
 tsconfig.tsbuildinfo

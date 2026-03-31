@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  afterCallbacks,
+  waitUntilCallbacks,
   coerceThreadArtifactsStateMock,
   coerceThreadConversationStateMock,
   buildConversationContextMock,
@@ -21,7 +21,7 @@ const {
   uploadFilesToThreadMock,
   upsertConversationMessageMock,
 } = vi.hoisted(() => ({
-  afterCallbacks: [] as Array<() => Promise<void> | void>,
+  waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
   coerceThreadArtifactsStateMock: vi.fn(),
   coerceThreadConversationStateMock: vi.fn(),
   buildConversationContextMock: vi.fn(),
@@ -40,12 +40,6 @@ const {
   updateConversationStatsMock: vi.fn(),
   uploadFilesToThreadMock: vi.fn(),
   upsertConversationMessageMock: vi.fn(),
-}));
-
-vi.mock("next/server", () => ({
-  after: (callback: () => Promise<void> | void) => {
-    afterCallbacks.push(callback);
-  },
 }));
 
 vi.mock("@/chat/mcp/oauth", () => ({
@@ -115,20 +109,19 @@ vi.mock("@/chat/runtime/turn", async (importOriginal) => ({
 }));
 
 import { GET } from "@/handlers/mcp-oauth-callback";
+import type { WaitUntilFn } from "@/handlers/types";
 
 function makeRequest(url: string): Request {
   return new Request(url, { method: "GET" });
 }
 
-function makeContext(provider: string) {
-  return {
-    params: Promise.resolve({ provider }),
-  };
-}
+const testWaitUntil: WaitUntilFn = (task) => {
+  waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
+};
 
 describe("mcp oauth callback handler", () => {
   beforeEach(() => {
-    afterCallbacks.length = 0;
+    waitUntilCallbacks.length = 0;
     coerceThreadArtifactsStateMock.mockReset();
     coerceThreadConversationStateMock.mockReset();
     buildConversationContextMock.mockReset();
@@ -233,7 +226,8 @@ describe("mcp oauth callback handler", () => {
   it("returns HTML 400 when the state parameter is missing", async () => {
     const response = await GET(
       makeRequest("https://example.com/api/oauth/callback/mcp/demo?code=abc"),
-      makeContext("demo"),
+      "demo",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(400);
@@ -246,7 +240,8 @@ describe("mcp oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/mcp/demo?state=state-123&error=%3Cscript%3Ealert(1)%3C%2Fscript%3E",
       ),
-      makeContext("demo"),
+      "demo",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(400);
@@ -264,7 +259,8 @@ describe("mcp oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
       ),
-      makeContext("demo"),
+      "demo",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(500);
@@ -280,7 +276,8 @@ describe("mcp oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
       ),
-      makeContext("demo"),
+      "demo",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(200);
@@ -290,9 +287,9 @@ describe("mcp oauth callback handler", () => {
       "state-123",
       "auth-code",
     );
-    expect(afterCallbacks).toHaveLength(1);
+    expect(waitUntilCallbacks).toHaveLength(1);
 
-    await afterCallbacks[0]!();
+    await waitUntilCallbacks[0]!();
 
     expect(postMessageMock).toHaveBeenNthCalledWith(1, {
       channel: "C123",
@@ -394,11 +391,12 @@ describe("mcp oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
       ),
-      makeContext("demo"),
+      "demo",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(200);
-    await afterCallbacks[0]!();
+    await waitUntilCallbacks[0]!();
 
     expect(postMessageMock).toHaveBeenCalledTimes(1);
     expect(uploadFilesToThreadMock).toHaveBeenCalledWith({
@@ -438,11 +436,12 @@ describe("mcp oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
       ),
-      makeContext("demo"),
+      "demo",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(200);
-    await afterCallbacks[0]!();
+    await waitUntilCallbacks[0]!();
 
     expect(postMessageMock).toHaveBeenCalledTimes(1);
     expect(uploadFilesToThreadMock).toHaveBeenCalledWith({
@@ -466,11 +465,12 @@ describe("mcp oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
       ),
-      makeContext("demo"),
+      "demo",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(200);
-    await afterCallbacks[0]!();
+    await waitUntilCallbacks[0]!();
 
     expect(markTurnFailedMock).toHaveBeenCalledTimes(1);
     expect(persistThreadStateByIdMock).toHaveBeenCalledWith(
@@ -496,11 +496,12 @@ describe("mcp oauth callback handler", () => {
       makeRequest(
         "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
       ),
-      makeContext("demo"),
+      "demo",
+      testWaitUntil,
     );
 
     expect(response.status).toBe(200);
-    await afterCallbacks[0]!();
+    await waitUntilCallbacks[0]!();
 
     expect(logWarnMock).toHaveBeenCalledWith(
       "mcp_oauth_callback_resume_reparked_for_auth",

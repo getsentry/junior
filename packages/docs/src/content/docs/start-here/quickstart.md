@@ -29,11 +29,8 @@ pnpm install
 
 `junior init` already creates the core runtime wiring for you:
 
-- `app/api/[...path]/route.js`
-- `app/api/queue/callback/route.js`
-- `app/layout.js`
-- `next.config.mjs`
-- `instrumentation.js`
+- `api/index.ts`
+- `vercel.json`
 - `app/data/SOUL.md` and `app/data/ABOUT.md`
 - `app/skills/` and `app/plugins/`
 - `.env.example`
@@ -82,47 +79,52 @@ If you want to use npm-distributed plugins, install them explicitly:
 pnpm add @sentry/junior-github @sentry/junior-notion
 ```
 
-Then register them in `next.config.mjs`:
+Then register them in `api/index.ts`:
 
-```js title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
+```ts title="api/index.ts"
+import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
 
-export default withJunior({
-  pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
-});
+import { createApp } from "@sentry/junior";
+import { handle } from "hono/vercel";
+
+export default handle(
+  createApp({
+    pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
+  }),
+);
 ```
 
 See [Plugins](/extend/) for the local-vs-package model.
 
 ## What `junior init` created
 
-If you need to wire Junior into an existing Next.js app, this is what `junior init` creates.
+If you need to wire Junior into an existing app, this is what `junior init` creates.
 
-### Catch-all route
+### API entry point
 
-```js title="app/api/[...path]/route.js"
-export { GET, POST } from "@sentry/junior/handler";
-export const runtime = "nodejs";
+```ts title="api/index.ts"
+import { initSentry } from "@sentry/junior/instrumentation";
+initSentry();
+
+import { createApp } from "@sentry/junior";
+import { handle } from "hono/vercel";
+
+export default handle(createApp());
 ```
 
-### Next.js config
+### Vercel config
 
-```js title="next.config.mjs"
-import { withJunior } from "@sentry/junior/config";
-
-export default withJunior();
-```
-
-### Instrumentation
-
-```js title="instrumentation.js"
-export { register, onRequestError } from "@sentry/junior/instrumentation";
-```
-
-### Root layout
-
-```js title="app/layout.js"
-export { default } from "@sentry/junior/app/layout";
+```json title="vercel.json"
+{
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 800,
+      "includeFiles": "app/**"
+    }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+}
 ```
 
 ## Deploy to Vercel
@@ -138,18 +140,17 @@ pnpm dlx vercel@latest link
 
 ### Add queue trigger
 
+Add the queue trigger to your `vercel.json`:
+
 ```json title="vercel.json"
 {
   "functions": {
-    "app/api/queue/callback/route.js": {
-      "experimentalTriggers": [
-        {
-          "type": "queue/v2beta",
-          "topic": "junior-thread-message"
-        }
-      ]
+    "api/index.ts": {
+      "maxDuration": 800,
+      "includeFiles": "app/**"
     }
-  }
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
 }
 ```
 
@@ -160,12 +161,10 @@ Set the Vercel build command to run snapshot warmup after app build.
 ```json title="package.json"
 {
   "scripts": {
-    "build": "next build && junior snapshot create"
+    "build": "junior snapshot create"
   }
 }
 ```
-
-If you prefer `postbuild`, ensure Vercel runs `pnpm build` as the build command.
 
 ### Configure production environment
 
@@ -207,9 +206,9 @@ https://<your-domain>/api/webhooks/slack
 ## Common failures
 
 - `401` or signature failures: verify `SLACK_SIGNING_SECRET`.
-- No thread processing: confirm both catch-all and queue callback routes exist.
+- No thread processing: confirm the API handler and queue trigger are configured.
 - No bot post: verify bot token scopes and Slack app installation.
-- Slack timeouts in production: check `vercel.json` queue trigger and callback route path.
+- Slack timeouts in production: check `vercel.json` queue trigger and function config.
 - OAuth callback issues for plugins: set `JUNIOR_BASE_URL` to production URL.
 - Snapshot warmup build failures: verify `REDIS_URL` is available to builds and OIDC is enabled for `VERCEL_OIDC_TOKEN`.
 

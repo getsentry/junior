@@ -24,7 +24,7 @@ Active
 
 ## Purpose
 
-Define how Junior handles OAuth-based user authentication for third-party providers. Junior is a Next.js web service with public HTTPS endpoints, so it uses the **Authorization Code Grant** (RFC 6749 §4.1) — the standard flow for server-side web applications.
+Define how Junior handles OAuth-based user authentication for third-party providers. Junior is a Hono web service with public HTTPS endpoints, so it uses the **Authorization Code Grant** (RFC 6749 §4.1) — the standard flow for server-side web applications.
 
 ## Architecture
 
@@ -41,7 +41,7 @@ Define how Junior handles OAuth-based user authentication for third-party provid
 
 ### Why authorization code grant
 
-Junior runs as a Next.js service on Vercel with public HTTPS routes. Authorization code grant is the correct choice because:
+Junior runs as a Hono service on Vercel with public HTTPS routes. Authorization code grant is the correct choice because:
 
 - Standard click-to-authorize UX (user clicks link, approves, gets redirected back).
 - No polling — callback handler completes the flow in a single request.
@@ -385,7 +385,7 @@ Under the hood: `jr-rpc delete-token sentry` deletes the stored provider credent
 
 **Callback message does not trigger a new agent turn.** The confirmation is posted using the bot token, so `message.author.isMe` is true. The `onSubscribedMessage` handler already returns early for self-messages (bot.ts line 1406). No infinite loop.
 
-**Auto-resume via `after()`.** When `pendingMessage` is stored in the OAuth state, the callback uses Next.js `after()` to trigger `generateAssistantReply()` in the background after the HTTP response is sent. The reply is posted to the thread via `chat.postMessage`. Channel configuration values are snapshotted at `issue-credential` time and passed as a read-only `ChannelConfigurationService` so `jr-rpc config get` works in the resumed context. If the resumed turn fails, a fallback message asks the user to retry.
+**Auto-resume via `waitUntil`.** When `pendingMessage` is stored in the OAuth state, the callback uses `waitUntil` to trigger `generateAssistantReply()` in the background after the HTTP response is sent. The reply is posted to the thread via `chat.postMessage`. Channel configuration values are snapshotted at `issue-credential` time and passed as a read-only `ChannelConfigurationService` so `jr-rpc config get` works in the resumed context. If the resumed turn fails, a fallback message asks the user to retry.
 
 **Harness-driven auto-start.** The agent never passes pending message context. When `issue-credential` fails with `CredentialUnavailableError` for an OAuth-capable provider, the harness automatically starts the OAuth flow with the original user message (from `JrRpcDeps.userMessage`) and channel configuration stored in the OAuth state. The agent only needs to interpret the `credential_unavailable` + `oauth_started` result and inform the user.
 
