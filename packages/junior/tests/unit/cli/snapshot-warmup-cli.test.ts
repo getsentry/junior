@@ -22,6 +22,10 @@ vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
   resolveRuntimeDependencySnapshot: resolveRuntimeDependencySnapshotMock,
 }));
 
+vi.mock("@/vercel", () => ({
+  writeVercelJson: vi.fn().mockReturnValue("/mock/vercel.json"),
+}));
+
 import { runSnapshotCreate } from "@/cli/snapshot-warmup";
 
 describe("snapshot create cli", () => {
