@@ -1,3 +1,5 @@
+import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+
 type ConversationRole = "assistant" | "system" | "user";
 
 export interface ConversationAuthor {
@@ -67,22 +69,6 @@ export interface ThreadConversationState {
   schemaVersion: 1;
   stats: ConversationStats;
   vision: ConversationVisionState;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
-}
-
-function toOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : undefined;
-}
-
-function toOptionalNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
 }
 
 function coerceRole(value: unknown): ConversationRole {

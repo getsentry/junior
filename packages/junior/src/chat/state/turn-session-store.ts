@@ -1,3 +1,4 @@
+import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "./adapter";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
@@ -30,10 +31,6 @@ function agentTurnSessionKey(
   sessionId: string,
 ): string {
   return `${AGENT_TURN_SESSION_PREFIX}:${conversationId}:${sessionId}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function parseAgentTurnSessionCheckpoint(

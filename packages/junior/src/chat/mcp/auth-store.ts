@@ -4,6 +4,7 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
+import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_auth_session";
@@ -57,10 +58,6 @@ function sessionIndexKey(userId: string, provider: string): string {
 
 function serverSessionKey(userId: string, provider: string): string {
   return `${MCP_SERVER_SESSION_PREFIX}:${userId}:${provider}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function parseSessionIndex(value: unknown): string[] {

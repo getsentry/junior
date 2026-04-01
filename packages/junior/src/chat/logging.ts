@@ -1087,10 +1087,9 @@ export function captureExceptionInScope(
   }
 }
 
-/** Coerce an unknown value to a trimmed string, or undefined. */
-export function toOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
-}
+// Re-exported for backward compatibility; canonical definition lives in coerce.ts.
+import { toOptionalString } from "@/chat/coerce";
+export { toOptionalString } from "@/chat/coerce";
 
 /** Return the trace ID from the active Sentry span, if any. */
 export function getActiveTraceId(): string | undefined {

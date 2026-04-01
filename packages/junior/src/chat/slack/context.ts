@@ -1,6 +1,4 @@
-function toOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
+import { toOptionalString } from "@/chat/coerce";
 
 /** Extract channelId and threadTs from a `slack:<channel>:<ts>` thread identifier. */
 export function parseSlackThreadId(
