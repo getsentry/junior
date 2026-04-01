@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { juniorVercelConfig } from "@/vercel";
+import { DEFAULT_INCLUDE_FILES, juniorVercelConfig } from "@/vercel";
 
 describe("juniorVercelConfig", () => {
   it("returns config with framework hono and default options", () => {
@@ -12,6 +12,7 @@ describe("juniorVercelConfig", () => {
       "server.ts"
     ];
     expect(fn.maxDuration).toBe(800);
+    expect(fn.includeFiles).toBe(DEFAULT_INCLUDE_FILES);
   });
 
   it("respects custom entrypoint and maxDuration", () => {

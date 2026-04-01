@@ -24,6 +24,7 @@ function writeVercelJson(targetDir: string): void {
     functions: {
       "server.ts": {
         maxDuration: 800,
+        includeFiles: "{./app/**,./node_modules/@sentry/junior*/**}",
       },
     },
   };
