@@ -10,6 +10,6 @@
     "src/app.ts",
     "src/handlers/**/*.ts",
     "src/instrumentation.ts",
-    "src/nitro.ts"
+    "src/vercel.ts"
   ]
 }

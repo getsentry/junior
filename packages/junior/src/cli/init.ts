@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
+import { juniorVercelConfig } from "@/vercel";
 
 function writeServerEntry(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "server.ts"),
-    `import { initSentry } from "@sentry/junior/instrumentation";
+    `import "hono";
+import { initSentry } from "@sentry/junior/instrumentation";
 initSentry();
 
 import { createApp } from "@sentry/junior";
@@ -16,30 +18,11 @@ export default app;
   );
 }
 
-function writeNitroConfig(targetDir: string): void {
+function writeVercelJson(targetDir: string): void {
+  const config = juniorVercelConfig();
   fs.writeFileSync(
-    path.join(targetDir, "nitro.config.ts"),
-    `import { juniorNitroConfig } from "@sentry/junior/nitro";
-import { defineConfig } from "nitro";
-
-export default defineConfig(juniorNitroConfig());
-`,
-  );
-}
-
-function writeViteConfig(targetDir: string): void {
-  fs.writeFileSync(
-    path.join(targetDir, "vite.config.ts"),
-    `import { defineConfig } from "vite";
-import { nitro } from "nitro/vite";
-
-export default defineConfig({
-  server: {
-    allowedHosts: true,
-  },
-  plugins: [nitro()],
-});
-`,
+    path.join(targetDir, "vercel.json"),
+    `${JSON.stringify(config, null, 2)}\n`,
   );
 }
 
@@ -72,8 +55,7 @@ export async function runInit(
     private: true,
     type: "module",
     scripts: {
-      dev: "vite dev",
-      build: "junior snapshot create && vite build",
+      build: "junior snapshot create",
     },
     dependencies: {
       "@sentry/junior": "latest",
@@ -81,9 +63,8 @@ export async function runInit(
       hono: "^4.12.0",
     },
     devDependencies: {
-      nitro: "3.0.260311-beta",
       typescript: "^5.9.0",
-      vite: "^8.0.0",
+      vercel: "^50.37.0",
     },
   };
   fs.writeFileSync(
@@ -114,8 +95,6 @@ export async function runInit(
     path.join(target, ".gitignore"),
     `node_modules/
 .vercel/
-.output/
-.nitro/
 .env
 .env.local
 `,
@@ -133,11 +112,10 @@ SENTRY_DSN=
   );
 
   writeServerEntry(target);
-  writeNitroConfig(target);
-  writeViteConfig(target);
+  writeVercelJson(target);
 
   log(`Created ${name} at ${target}`);
   log("");
-  log(`  cd ${targetDir} && pnpm install && pnpm dev`);
+  log(`  cd ${targetDir} && pnpm install && vercel dev`);
   log("");
 }

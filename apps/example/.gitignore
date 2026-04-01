@@ -1,7 +1,5 @@
 node_modules/
 .vercel/
-.output/
-.nitro/
 .env
 .env.local
 tsconfig.tsbuildinfo

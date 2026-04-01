@@ -67,7 +67,14 @@ if (tunnelToken) {
   ]);
 }
 
-const child = spawnChild("pnpm", ["--filter", "@sentry/junior-example", "dev"]);
+const child = spawnChild("pnpm", [
+  "--filter",
+  "@sentry/junior-example",
+  "exec",
+  "vercel",
+  "dev",
+  "--yes",
+]);
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {

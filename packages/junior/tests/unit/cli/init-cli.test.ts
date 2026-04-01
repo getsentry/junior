@@ -26,21 +26,30 @@ describe("init cli", () => {
 
     expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "server.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(false);
     expect(fs.existsSync(path.join(target, "app", "SOUL.md"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "ABOUT.md"))).toBe(true);
 
-    const nitroConfig = fs.readFileSync(
-      path.join(target, "nitro.config.ts"),
-      "utf8",
+    const vercelConfig = JSON.parse(
+      fs.readFileSync(path.join(target, "vercel.json"), "utf8"),
     );
-    expect(nitroConfig).toContain(
-      'import { juniorNitroConfig } from "@sentry/junior/nitro";',
+    expect(vercelConfig.framework).toBe("hono");
+    expect(vercelConfig.buildCommand).toBe("pnpm build");
+    expect(vercelConfig.functions["server.ts"].maxDuration).toBe(800);
+    expect(vercelConfig.functions["server.ts"].includeFiles).toBe(
+      "{./app/**,./node_modules/@sentry/junior*/**}",
     );
-    expect(nitroConfig).toContain(
-      "export default defineConfig(juniorNitroConfig());",
+
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(target, "package.json"), "utf8"),
     );
+    expect(pkg.devDependencies.vercel).toBeDefined();
+    expect(pkg.devDependencies.nitro).toBeUndefined();
+    expect(pkg.devDependencies.vite).toBeUndefined();
+    expect(pkg.scripts.dev).toBeUndefined();
+    expect(pkg.scripts.build).toBe("junior snapshot create");
   });
 
   it("refuses to initialize a non-empty directory", async () => {

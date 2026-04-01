@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -8,12 +8,7 @@ const originalEnv = { ...process.env };
 const originalCwd = process.cwd();
 const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const exampleRoot = path.join(repoRoot, "apps/example");
-const outputRoot = path.join(
-  exampleRoot,
-  ".vercel/output/functions/__server.func",
-);
-const outputEntry = path.join(outputRoot, "index.mjs");
-const buildOutputRoot = path.join(exampleRoot, ".vercel/output");
+const exampleEntry = path.join(exampleRoot, "server.ts");
 
 function getExamplePluginPackages(): string[] {
   const pkg = JSON.parse(
@@ -27,12 +22,7 @@ function getExamplePluginPackages(): string[] {
   );
 }
 
-function buildExampleApp(): void {
-  rmSync(path.join(exampleRoot, ".vercel/output"), {
-    recursive: true,
-    force: true,
-  });
-
+function buildJuniorPackage(): void {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     JUNIOR_SKIP_SNAPSHOT: "1",
@@ -47,16 +37,10 @@ function buildExampleApp(): void {
     env,
     stdio: "pipe",
   });
-
-  execFileSync("pnpm", ["--filter", "@sentry/junior-example", "build"], {
-    cwd: repoRoot,
-    env,
-    stdio: "pipe",
-  });
 }
 
-async function importBuiltApp() {
-  const href = `${pathToFileURL(outputEntry).href}?t=${Date.now()}`;
+async function importExampleApp() {
+  const href = `${pathToFileURL(exampleEntry).href}?t=${Date.now()}`;
   return (await import(href)).default as {
     fetch: (request: Request) => Promise<Response>;
   };
@@ -64,7 +48,7 @@ async function importBuiltApp() {
 
 describe.sequential("example build discovery integration", () => {
   beforeAll(() => {
-    buildExampleApp();
+    buildJuniorPackage();
   }, 60_000);
 
   afterEach(() => {
@@ -74,12 +58,9 @@ describe.sequential("example build discovery integration", () => {
   });
 
   it("serves built health and recognizes the sentry oauth callback route", async () => {
-    expect(existsSync(path.join(buildOutputRoot, "config.json"))).toBe(true);
-    expect(existsSync(path.join(outputRoot, ".vc-config.json"))).toBe(true);
+    process.chdir(exampleRoot);
 
-    process.chdir(outputRoot);
-
-    const app = await importBuiltApp();
+    const app = await importExampleApp();
 
     const health = await app.fetch(new Request("http://localhost/api/health"));
     expect(health.status).toBe(200);
@@ -95,13 +76,13 @@ describe.sequential("example build discovery integration", () => {
     expect(await oauth.text()).toContain("missing required parameters");
   }, 15_000);
 
-  it("reports discovery state from the built output", async () => {
+  it("reports discovery state from the example app", async () => {
     const packageNames = getExamplePluginPackages();
-    process.chdir(outputRoot);
+    process.chdir(exampleRoot);
     process.env.JUNIOR_ENABLE_DIAGNOSTICS = "1";
     process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(packageNames);
 
-    const app = await importBuiltApp();
+    const app = await importExampleApp();
     const response = await app.fetch(
       new Request("http://localhost/api/__junior/discovery"),
     );
@@ -122,7 +103,7 @@ describe.sequential("example build discovery integration", () => {
     expect(body.aboutText).toBe(
       "Junior helps your team make progress directly in Slack.",
     );
-    expect(body.homeDir).toBe(path.join(outputRoot, "app"));
+    expect(body.homeDir).toBe(path.join(exampleRoot, "app"));
     expect(body.skills.map((skill) => skill.name)).toEqual(
       expect.arrayContaining(["example-local", "example-bundle-help"]),
     );
@@ -141,7 +122,7 @@ describe.sequential("example build discovery integration", () => {
     expect(body.packagedContent.manifestRoots).toEqual(
       expect.arrayContaining(
         packageNames.map((packageName) =>
-          path.join(outputRoot, "node_modules", ...packageName.split("/")),
+          path.join(exampleRoot, "node_modules", ...packageName.split("/")),
         ),
       ),
     );
@@ -149,7 +130,7 @@ describe.sequential("example build discovery integration", () => {
       expect.arrayContaining(
         packageNames.map((packageName) =>
           path.join(
-            outputRoot,
+            exampleRoot,
             "node_modules",
             ...packageName.split("/"),
             "skills",
