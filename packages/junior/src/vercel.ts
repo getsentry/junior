@@ -18,6 +18,7 @@ export function juniorVercelConfig(options: JuniorVercelConfigOptions = {}) {
 
   const config: Record<string, unknown> = {
     framework: "hono",
+    installCommand: "pnpm install --node-linker=hoisted",
     functions: {
       [entrypoint]: {
         maxDuration,
