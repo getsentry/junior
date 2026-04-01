@@ -13,11 +13,18 @@ export interface CapabilityProviderDefinition {
   target?: CapabilityProviderTargetDefinition;
 }
 
-function getCapabilityCatalog(): {
-  providers: CapabilityProviderDefinition[];
-  capabilityToProvider: Map<string, CapabilityProviderDefinition>;
-  configKeys: Set<string>;
-} {
+let cachedCatalog:
+  | {
+      providers: CapabilityProviderDefinition[];
+      capabilityToProvider: Map<string, CapabilityProviderDefinition>;
+      configKeys: Set<string>;
+    }
+  | undefined;
+
+/** Build (and cache) the capability catalog from registered plugins. */
+function getCapabilityCatalog() {
+  if (cachedCatalog) return cachedCatalog;
+
   const providers = getPluginCapabilityProviders();
   const capabilityToProvider = new Map<string, CapabilityProviderDefinition>();
   const configKeys = new Set<string>();
@@ -36,11 +43,8 @@ function getCapabilityCatalog(): {
     }
   }
 
-  return {
-    providers,
-    capabilityToProvider,
-    configKeys,
-  };
+  cachedCatalog = { providers, capabilityToProvider, configKeys };
+  return cachedCatalog;
 }
 
 export function getCapabilityProvider(
