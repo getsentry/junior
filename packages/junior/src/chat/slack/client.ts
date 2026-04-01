@@ -90,7 +90,11 @@ function serializeSlackErrorData(data: unknown): string | undefined {
   }
 }
 
-function getHeaderString(headers: unknown, name: string): string | undefined {
+/** Extract a header value by case-insensitive name from a raw headers object. */
+export function getHeaderString(
+  headers: unknown,
+  name: string,
+): string | undefined {
   if (!headers || typeof headers !== "object") {
     return undefined;
   }

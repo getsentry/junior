@@ -1,6 +1,7 @@
 import type { Message, Thread } from "chat";
 import { botConfig } from "@/chat/config";
-import { toOptionalString } from "@/chat/logging";
+import { toOptionalString } from "@/chat/coerce";
+import { getHeaderString } from "@/chat/slack/client";
 import {
   parseSlackThreadId,
   resolveSlackChannelIdFromMessage,
@@ -107,32 +108,6 @@ export function getSlackApiErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-function getSlackHeaderString(
-  headers: unknown,
-  name: string,
-): string | undefined {
-  if (!headers || typeof headers !== "object") {
-    return undefined;
-  }
-
-  const normalizedName = name.toLowerCase();
-  const record = headers as Record<string, unknown>;
-  for (const [key, value] of Object.entries(record)) {
-    if (key.toLowerCase() !== normalizedName) {
-      continue;
-    }
-    if (typeof value === "string") {
-      return value;
-    }
-    if (Array.isArray(value)) {
-      const first = value.find((entry) => typeof entry === "string");
-      return typeof first === "string" ? first : undefined;
-    }
-  }
-
-  return undefined;
-}
-
 export function getSlackErrorObservabilityAttributes(
   error: unknown,
 ): Record<string, string | number> {
@@ -157,7 +132,7 @@ export function getSlackErrorObservabilityAttributes(
   ) {
     attributes["app.slack.api_error"] = candidate.data.error;
   }
-  const requestId = getSlackHeaderString(candidate.headers, "x-slack-req-id");
+  const requestId = getHeaderString(candidate.headers, "x-slack-req-id");
   if (requestId) {
     attributes["app.slack.request_id"] = requestId;
   }

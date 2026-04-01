@@ -9,6 +9,7 @@ export interface ToolDefinition<TInputSchema extends TSchema = TSchema> {
   ) => Promise<unknown> | unknown;
 }
 
+/** Infer execute parameter types from the inputSchema via generic binding. */
 export function tool<TInputSchema extends TSchema>(
   definition: ToolDefinition<TInputSchema>,
 ): ToolDefinition<TInputSchema> {

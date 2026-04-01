@@ -4,6 +4,11 @@ import { logInfo, logWarn } from "@/chat/logging";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { getSlackClient, isDmChannel } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
+import {
+  isToolResultError,
+  normalizeToolNameFromResult,
+  parseJsonCandidate,
+} from "@/chat/respond-helpers";
 
 type PrivateDeliveryResult = "in_context" | "fallback_dm" | false;
 
@@ -221,40 +226,6 @@ export async function startOAuthFlow(
 // ---------------------------------------------------------------------------
 // Tool result OAuth detection
 // ---------------------------------------------------------------------------
-
-function parseJsonCandidate(text: string): unknown {
-  const trimmed = text.trim();
-  if (!trimmed) return undefined;
-
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    if (!fenced) return undefined;
-    try {
-      return JSON.parse(fenced[1]) as unknown;
-    } catch {
-      return undefined;
-    }
-  }
-}
-
-function normalizeToolNameFromResult(result: unknown): string | undefined {
-  if (!result || typeof result !== "object") return undefined;
-  const record = result as { toolName?: unknown; name?: unknown };
-  if (typeof record.toolName === "string" && record.toolName.length > 0) {
-    return record.toolName;
-  }
-  if (typeof record.name === "string" && record.name.length > 0) {
-    return record.name;
-  }
-  return undefined;
-}
-
-function isToolResultError(result: unknown): boolean {
-  if (!result || typeof result !== "object") return false;
-  return Boolean((result as { isError?: unknown }).isError);
-}
 
 function extractOAuthStartedPayload(
   value: unknown,

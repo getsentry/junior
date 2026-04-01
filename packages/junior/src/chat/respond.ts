@@ -1,5 +1,4 @@
 import { Agent } from "@mariozechner/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -13,7 +12,6 @@ import {
   logInfo,
   logWarn,
   setSpanAttributes,
-  setSpanStatus,
   setTags,
   withSpan,
   type LogContext,
@@ -66,6 +64,25 @@ import { extractOAuthStartedMessageFromToolResults } from "@/chat/oauth-flow";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
 import { enforceAttachmentClaimTruth } from "@/chat/services/attachment-claims";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
+import {
+  buildExecutionFailureMessage,
+  buildUserTurnText,
+  collectRelevantConfigurationKeys,
+  encodeNonImageAttachmentForPrompt,
+  extractAssistantText,
+  getSessionIdentifiers,
+  hasCompletedAssistantTurn,
+  isAssistantMessage,
+  isExecutionEscapeResponse,
+  isRawToolPayloadResponse,
+  isToolResultError,
+  isToolResultMessage,
+  normalizeToolNameFromResult,
+  summarizeMessageText,
+  toObservablePromptPart,
+  trimTrailingAssistantMessages,
+  upsertActiveSkill,
+} from "@/chat/respond-helpers";
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
@@ -133,21 +150,7 @@ export interface AgentTurnDiagnostics {
   usedPrimaryText: boolean;
 }
 
-const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
 let startupDiscoveryLogged = false;
-
-function getSessionIdentifiers(context: ReplyRequestContext): {
-  conversationId?: string;
-  sessionId?: string;
-} {
-  return {
-    conversationId:
-      context.correlation?.conversationId ??
-      context.correlation?.threadId ??
-      context.correlation?.runId,
-    sessionId: context.correlation?.turnId,
-  };
-}
 
 type ResumablePiAgent = Agent & {
   continue?: () => Promise<unknown>;
@@ -182,269 +185,6 @@ async function runAgentContinuation(agent: Agent): Promise<unknown> {
     throw new Error("Agent continuation is unavailable in this runtime");
   }
   return await resumable.continue();
-}
-
-function trimTrailingAssistantMessages(messages: unknown[]): unknown[] {
-  let end = messages.length;
-  while (end > 0 && getPiMessageRole(messages[end - 1]) === "assistant") {
-    end -= 1;
-  }
-  return end === messages.length ? [...messages] : messages.slice(0, end);
-}
-
-function isExecutionDeferralResponse(text: string): boolean {
-  return /\b(want me to proceed|do you want me to proceed|shall i proceed|can i proceed|should i proceed|let me do that now|give me a moment|tag me again|fresh invocation)\b/i.test(
-    text,
-  );
-}
-
-function isToolAccessDisclaimerResponse(text: string): boolean {
-  return /\b(i (don't|do not) have access to (active )?tool|tool results came back empty|prior results .* empty|cannot access .*tool|need to (run|load) .*tool .* first)\b/i.test(
-    text,
-  );
-}
-
-function isExecutionEscapeResponse(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  return (
-    isExecutionDeferralResponse(trimmed) ||
-    isToolAccessDisclaimerResponse(trimmed)
-  );
-}
-
-function parseJsonCandidate(text: string): unknown {
-  const trimmed = text.trim();
-  if (!trimmed) return undefined;
-
-  try {
-    return JSON.parse(trimmed) as unknown;
-  } catch {
-    const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    if (!fenced) return undefined;
-    try {
-      return JSON.parse(fenced[1]) as unknown;
-    } catch {
-      return undefined;
-    }
-  }
-}
-
-function isToolPayloadShape(payload: unknown): boolean {
-  if (!payload || typeof payload !== "object") return false;
-  const record = payload as Record<string, unknown>;
-
-  const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
-  if (type.startsWith("tool-")) return true;
-  if (
-    type === "tool_use" ||
-    type === "tool_call" ||
-    type === "tool_result" ||
-    type === "tool_error"
-  )
-    return true;
-
-  const hasToolName =
-    typeof record.toolName === "string" || typeof record.name === "string";
-  const hasToolInput =
-    Object.prototype.hasOwnProperty.call(record, "input") ||
-    Object.prototype.hasOwnProperty.call(record, "args");
-  if (hasToolName && hasToolInput) return true;
-
-  return false;
-}
-
-function isRawToolPayloadResponse(text: string): boolean {
-  const parsed = parseJsonCandidate(text);
-  if (Array.isArray(parsed)) {
-    return parsed.some((entry) => isToolPayloadShape(entry));
-  }
-  if (isToolPayloadShape(parsed)) {
-    return true;
-  }
-
-  const compact = text.replace(/\s+/g, " ");
-  return /"type"\s*:\s*"tool[-_](use|call|result|error)"/i.test(compact);
-}
-
-function toObservablePromptPart(
-  part:
-    | { type: "text"; text: string }
-    | { type: "image"; data: string; mimeType: string },
-): Record<string, unknown> {
-  if (part.type === "text") {
-    return {
-      type: "text",
-      text: part.text,
-    };
-  }
-
-  return {
-    type: "image",
-    mimeType: part.mimeType,
-    data: `[omitted:${part.data.length}]`,
-  };
-}
-
-function summarizeMessageText(text: string): string {
-  const normalized = text.trim().replace(/\s+/g, " ");
-  if (!normalized) {
-    return "[empty]";
-  }
-  return normalized.length > 1_200
-    ? `${normalized.slice(0, 1_200)}...`
-    : normalized;
-}
-
-function buildUserTurnText(
-  userInput: string,
-  conversationContext?: string,
-): string {
-  const trimmedContext = conversationContext?.trim();
-  if (!trimmedContext) {
-    return userInput;
-  }
-
-  return [
-    "<current-message>",
-    userInput,
-    "</current-message>",
-    "",
-    "<thread-conversation-context>",
-    "Use this context for continuity across prior thread turns.",
-    trimmedContext,
-    "</thread-conversation-context>",
-  ].join("\n");
-}
-
-function encodeNonImageAttachmentForPrompt(attachment: {
-  data: Buffer;
-  mediaType: string;
-  filename?: string;
-}): string {
-  const base64 = attachment.data.toString("base64");
-  const wasTruncated = base64.length > MAX_INLINE_ATTACHMENT_BASE64_CHARS;
-  const encodedPayload = wasTruncated
-    ? `${base64.slice(0, MAX_INLINE_ATTACHMENT_BASE64_CHARS)}...`
-    : base64;
-
-  return [
-    "<attachment>",
-    `filename: ${attachment.filename ?? "unnamed"}`,
-    `media_type: ${attachment.mediaType}`,
-    "encoding: base64",
-    `truncated: ${wasTruncated ? "true" : "false"}`,
-    "<data_base64>",
-    encodedPayload,
-    "</data_base64>",
-    "</attachment>",
-  ].join("\n");
-}
-
-function buildExecutionFailureMessage(toolErrorCount: number): string {
-  if (toolErrorCount > 0) {
-    return "I couldn’t complete this because one or more required tools failed in this turn. I’ve logged the failure details.";
-  }
-
-  return "I couldn’t complete this request in this turn due to an execution failure. I’ve logged the details for debugging.";
-}
-
-function isToolResultMessage(value: unknown): value is ToolResultMessage<any> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { role?: unknown }).role === "toolResult"
-  );
-}
-
-function normalizeToolNameFromResult(result: unknown): string | undefined {
-  if (!result || typeof result !== "object") return undefined;
-  const record = result as { toolName?: unknown; name?: unknown };
-  if (typeof record.toolName === "string" && record.toolName.length > 0) {
-    return record.toolName;
-  }
-  if (typeof record.name === "string" && record.name.length > 0) {
-    return record.name;
-  }
-  return undefined;
-}
-
-function isToolResultError(result: unknown): boolean {
-  if (!result || typeof result !== "object") return false;
-  return Boolean((result as { isError?: unknown }).isError);
-}
-
-function isAssistantMessage(value: unknown): value is AssistantMessage {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { role?: unknown }).role === "assistant"
-  );
-}
-
-function getPiMessageRole(value: unknown): string | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const role = (value as { role?: unknown }).role;
-  return typeof role === "string" ? role : undefined;
-}
-
-function extractAssistantText(message: AssistantMessage): string {
-  const content =
-    (message as { content?: Array<{ type?: unknown; text?: unknown }> })
-      .content ?? [];
-  return content
-    .filter(
-      (part): part is { type: "text"; text: string } =>
-        part.type === "text" && typeof part.text === "string",
-    )
-    .map((part) => part.text)
-    .join("\n");
-}
-
-function hasCompletedAssistantTurn(messages: unknown[]): boolean {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!isAssistantMessage(message)) {
-      continue;
-    }
-    const stopReason = (message as { stopReason?: unknown }).stopReason;
-    return typeof stopReason === "string" && stopReason !== "error";
-  }
-  return false;
-}
-
-function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
-  const existing = activeSkills.find((skill) => skill.name === next.name);
-  if (existing) {
-    existing.body = next.body;
-    existing.description = next.description;
-    existing.skillPath = next.skillPath;
-    existing.allowedTools = next.allowedTools;
-    existing.requiresCapabilities = next.requiresCapabilities;
-    existing.usesConfig = next.usesConfig;
-    existing.pluginProvider = next.pluginProvider;
-    return;
-  }
-
-  activeSkills.push(next);
-}
-
-function collectRelevantConfigurationKeys(
-  activeSkills: Array<{ usesConfig?: string[] }>,
-  explicitSkill?: { usesConfig?: string[] } | null,
-): string[] {
-  const keys = new Set<string>();
-  for (const skill of [
-    ...activeSkills,
-    ...(explicitSkill ? [explicitSkill] : []),
-  ]) {
-    for (const key of skill.usesConfig ?? []) {
-      keys.add(key);
-    }
-  }
-  return [...keys].sort((a, b) => a.localeCompare(b));
 }
 
 export async function generateAssistantReply(

@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { toOptionalString } from "@/chat/coerce";
 import * as Sentry from "@/chat/sentry";
 
 type Primitive = string | number | boolean;
@@ -1085,11 +1086,6 @@ export function captureExceptionInScope(
   if (typeof sentryCaptureException === "function") {
     sentryCaptureException(normalizedError);
   }
-}
-
-/** Coerce an unknown value to a trimmed string, or undefined. */
-export function toOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 /** Return the trace ID from the active Sentry span, if any. */
