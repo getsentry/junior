@@ -6,7 +6,8 @@ import type {
   ConversationMessage,
   ThreadConversationState,
 } from "@/chat/state/conversation";
-import { logWarn, setSpanAttributes, toOptionalString } from "@/chat/logging";
+import { toOptionalString } from "@/chat/coerce";
+import { logWarn, setSpanAttributes } from "@/chat/logging";
 
 const CONTEXT_COMPACTION_TRIGGER_TOKENS = 9000;
 const CONTEXT_COMPACTION_TARGET_TOKENS = 7000;

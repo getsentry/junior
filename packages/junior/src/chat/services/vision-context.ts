@@ -2,7 +2,8 @@ import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
 import { completeText } from "@/chat/pi/client";
 import type { ThreadConversationState } from "@/chat/state/conversation";
-import { logInfo, logWarn, toOptionalString } from "@/chat/logging";
+import { toOptionalString } from "@/chat/coerce";
+import { logInfo, logWarn } from "@/chat/logging";
 import { listThreadReplies } from "@/chat/slack/channel";
 import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import {

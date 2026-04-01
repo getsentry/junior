@@ -1087,9 +1087,7 @@ export function captureExceptionInScope(
   }
 }
 
-// Re-exported for backward compatibility; canonical definition lives in coerce.ts.
 import { toOptionalString } from "@/chat/coerce";
-export { toOptionalString } from "@/chat/coerce";
 
 /** Return the trace ID from the active Sentry span, if any. */
 export function getActiveTraceId(): string | undefined {

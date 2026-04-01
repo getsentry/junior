@@ -1,6 +1,6 @@
 import type { Message, Thread } from "chat";
 import { botConfig } from "@/chat/config";
-import { toOptionalString } from "@/chat/logging";
+import { toOptionalString } from "@/chat/coerce";
 import { getHeaderString } from "@/chat/slack/client";
 import {
   parseSlackThreadId,

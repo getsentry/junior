@@ -4,7 +4,8 @@ import type {
   ConversationMessage,
   ThreadConversationState,
 } from "@/chat/state/conversation";
-import { setSpanAttributes, toOptionalString } from "@/chat/logging";
+import { toOptionalString } from "@/chat/coerce";
+import { setSpanAttributes } from "@/chat/logging";
 import { getThreadTs } from "@/chat/runtime/thread-context";
 import {
   coerceThreadArtifactsState,
