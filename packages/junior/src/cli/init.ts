@@ -5,7 +5,8 @@ import { juniorVercelConfig } from "@/vercel";
 function writeServerEntry(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "server.ts"),
-    `import "hono";
+    `// Static import so Vercel's NFT traces hono (used internally by @sentry/junior).
+import "hono";
 import { initSentry } from "@sentry/junior/instrumentation";
 initSentry();
 

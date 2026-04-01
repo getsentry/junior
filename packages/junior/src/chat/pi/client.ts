@@ -5,6 +5,9 @@ import {
   type Message,
   type Model,
 } from "@mariozechner/pi-ai";
+// Static import so Vercel's NFT traces the provider files that pi-ai loads
+// via opaque dynamic import() calls at runtime.
+import "@mariozechner/pi-ai/anthropic";
 import type { ZodTypeAny, z } from "zod";
 import {
   extractGenAiUsageAttributes,
