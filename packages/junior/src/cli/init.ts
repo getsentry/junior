@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { juniorVercelConfig } from "@/vercel";
 
 function writeServerEntry(targetDir: string): void {
   fs.writeFileSync(
@@ -18,16 +19,7 @@ export default app;
 }
 
 function writeVercelJson(targetDir: string): void {
-  const config = {
-    framework: "hono",
-    buildCommand: "pnpm build",
-    functions: {
-      "server.ts": {
-        maxDuration: 800,
-        includeFiles: "{./app/**,./node_modules/@sentry/junior*/**}",
-      },
-    },
-  };
+  const config = juniorVercelConfig();
   fs.writeFileSync(
     path.join(targetDir, "vercel.json"),
     `${JSON.stringify(config, null, 2)}\n`,
