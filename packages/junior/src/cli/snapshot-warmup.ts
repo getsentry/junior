@@ -8,7 +8,6 @@ import {
   type RuntimeDependencySnapshotProgressPhase,
 } from "@/chat/sandbox/runtime-dependency-snapshots";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { writeVercelJson } from "@/vercel";
 
 const DEFAULT_RUNTIME = "node22";
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -114,9 +113,6 @@ export async function runSnapshotCreate(
 
   const runtime = DEFAULT_RUNTIME;
   const timeoutMs = DEFAULT_TIMEOUT_MS;
-
-  const vercelJsonPath = writeVercelJson();
-  log(`Wrote ${vercelJsonPath}`);
 
   try {
     logSnapshotProfile(log);

@@ -4,7 +4,7 @@
   "functions": {
     "server.ts": {
       "maxDuration": 800,
-      "includeFiles": "./app/**/*"
+      "includeFiles": "{./app/**,./node_modules/@sentry/junior*/**}"
     }
   }
 }
