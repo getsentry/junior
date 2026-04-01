@@ -1,5 +1,6 @@
 {
   "framework": "hono",
+  "installCommand": "pnpm install --node-linker=hoisted",
   "buildCommand": "pnpm build",
   "functions": {
     "server.ts": {
