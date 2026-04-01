@@ -1,6 +1,7 @@
 /** Default glob for bundling app content and plugin packages into the Vercel function. */
+/** Default glob for bundling app content and plugin package assets into the Vercel function. */
 export const DEFAULT_INCLUDE_FILES =
-  "{./app/**,./node_modules/@sentry/junior*/**}";
+  "{./app/**,./node_modules/@sentry/junior*/plugin.yaml,./node_modules/@sentry/junior*/skills/**,./node_modules/@sentry/junior*/plugins/**}";
 
 export interface JuniorVercelConfigOptions {
   entrypoint?: string;
@@ -18,7 +19,6 @@ export function juniorVercelConfig(options: JuniorVercelConfigOptions = {}) {
 
   const config: Record<string, unknown> = {
     framework: "hono",
-    installCommand: "pnpm install --node-linker=hoisted",
     functions: {
       [entrypoint]: {
         maxDuration,

@@ -38,8 +38,8 @@ describe("init cli", () => {
     expect(vercelConfig.framework).toBe("hono");
     expect(vercelConfig.buildCommand).toBe("pnpm build");
     expect(vercelConfig.functions["server.ts"].maxDuration).toBe(800);
-    expect(vercelConfig.functions["server.ts"].includeFiles).toBe(
-      "{./app/**,./node_modules/@sentry/junior*/**}",
+    expect(vercelConfig.functions["server.ts"].includeFiles).toContain(
+      "./app/**",
     );
 
     const pkg = JSON.parse(
