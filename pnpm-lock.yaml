@@ -50,15 +50,12 @@ importers:
       "@types/node":
         specifier: ^25.5.0
         version: 25.5.0
-      nitro:
-        specifier: 3.0.260311-beta
-        version: 3.0.260311-beta(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@vercel/blob@2.3.0)(@vercel/functions@3.4.3(@aws-sdk/credential-provider-web-identity@3.972.27))(chokidar@5.0.0)(jiti@2.6.1)(lru-cache@11.2.7)(rollup@4.60.1)(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
-      vite:
-        specifier: ^8.0.3
-        version: 8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)
+      vercel:
+        specifier: ^50.37.3
+        version: 50.37.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(rollup@4.60.1)(typescript@5.9.3)
 
   packages/docs:
     dependencies:
@@ -170,7 +167,7 @@ importers:
         version: 50.37.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(rollup@4.60.1)(typescript@5.9.3)
       vitest:
         specifier: ^4.1.2
-        version: 4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+        version: 4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/junior-agent-browser: {}
 
@@ -196,10 +193,10 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.2
-        version: 4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+        version: 4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
       vitest-evals:
         specifier: ^0.7.0
-        version: 0.7.0(ai@6.0.141(zod@4.3.6))(tinyrainbow@3.1.0)(vitest@4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)))(zod@4.3.6)
+        version: 0.7.0(ai@6.0.141(zod@4.3.6))(tinyrainbow@3.1.0)(vitest@4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)))(zod@4.3.6)
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -5180,17 +5177,6 @@ packages:
         integrity: sha512-ojKiDvcmByhwa8YYqbQI/hg7MEU0NC03+pSdEq4ZUnZR9xXpwk7E43SMNGkn+JxJGPFtNvQ48+vV2p+P1ml5PA==,
       }
 
-  crossws@0.4.4:
-    resolution:
-      {
-        integrity: sha512-w6c4OdpRNnudVmcgr7brb/+/HmYjMQvYToO/oTrprTwxRUiom3LYWU1PMWuD006okbUWpII1Ea9/+kwpUfmyRg==,
-      }
-    peerDependencies:
-      srvx: ">=0.7.1"
-    peerDependenciesMeta:
-      srvx:
-        optional: true
-
   css-select@5.2.2:
     resolution:
       {
@@ -5526,21 +5512,6 @@ packages:
       }
     engines: { node: ">=0.12" }
 
-  env-runner@0.1.7:
-    resolution:
-      {
-        integrity: sha512-i7h96jxETJYhXy5grgHNJ9xNzCzWIn9Ck/VkkYgOlE4gOqknsLX3CmlVb5LmwNex8sOoLFVZLz+TIw/+b5rktA==,
-      }
-    hasBin: true
-    peerDependencies:
-      "@netlify/runtime": ^4
-      miniflare: ^4.20260317.3
-    peerDependenciesMeta:
-      "@netlify/runtime":
-        optional: true
-      miniflare:
-        optional: true
-
   environment@1.1.0:
     resolution:
       {
@@ -5827,12 +5798,6 @@ packages:
     resolution:
       {
         integrity: sha512-2wZjC8OQ3TaVEMcBtYY4Va3lo6J+Ai9jf3d4dbhURMJcU4Pbqe6EcHe424MIZI0VHUA1bR6xdpoHYi3yxokWqA==,
-      }
-
-  exsolve@1.0.8:
-    resolution:
-      {
-        integrity: sha512-LmDxfWXwcTArk8fUEnOfSZpHOJ6zOMUJKOtFLFqJLoKJetuQG874Uc7/Kki7zFLzYybmZhp1M7+98pfMqeX8yA==,
       }
 
   extend-shallow@2.0.1:
@@ -6212,19 +6177,6 @@ packages:
         integrity: sha512-YzJeWSkDZxAhvmp8dexjRK5hxziRO7I9m0N53WhvYL5NiWfkUkzssVzY9jvGu0HBoLFW6+duYmNSn6MaZBCCtg==,
       }
 
-  h3@2.0.1-rc.20:
-    resolution:
-      {
-        integrity: sha512-28ljodXuUp0fZovdiSRq4G9OgrxCztrJe5VdYzXAB7ueRvI7pIUqLU14Xi3XqdYJ/khXjfpUOOD2EQa6CmBgsg==,
-      }
-    engines: { node: ">=20.11.1" }
-    hasBin: true
-    peerDependencies:
-      crossws: ^0.4.1
-    peerDependenciesMeta:
-      crossws:
-        optional: true
-
   has-symbols@1.1.0:
     resolution:
       {
@@ -6386,12 +6338,6 @@ packages:
       }
     engines: { node: ">=16.9.0" }
 
-  hookable@6.1.0:
-    resolution:
-      {
-        integrity: sha512-ZoKZSJgu8voGK2geJS+6YtYjvIzu9AOM/KZXsBxr83uhLL++e9pEv/dlgwgy3dvHg06kTz6JOh1hk3C8Ceiymw==,
-      }
-
   html-escaper@3.0.3:
     resolution:
       {
@@ -6443,12 +6389,6 @@ packages:
         integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==,
       }
     engines: { node: ">= 14" }
-
-  httpxy@0.5.0:
-    resolution:
-      {
-        integrity: sha512-qwX7QX/rK2visT10/b7bSeZWQOMlSm3svTD0pZpU+vJjNUP0YHtNv4c3z+MO+MSnGuRFWJFdCZiV+7F7dXIOzg==,
-      }
 
   human-signals@1.1.1:
     resolution:
@@ -7684,43 +7624,6 @@ packages:
       }
     engines: { node: ">= 0.4.0" }
 
-  nf3@0.3.14:
-    resolution:
-      {
-        integrity: sha512-MjG9u/IlvSq5txxY0oug1sjrGZ2l37IuhExI1iPuwV4S3RcyRNGoy6xLwznH3ATK6PUAM4fbQVb4Rzy1L1nlzw==,
-      }
-
-  nitro@3.0.260311-beta:
-    resolution:
-      {
-        integrity: sha512-0o0fJ9LUh4WKUqJNX012jyieUOtMCnadkNDWr0mHzdraoHpJP/1CGNefjRyZyMXSpoJfwoWdNEZu2iGf35TUvQ==,
-      }
-    engines: { node: ^20.19.0 || >=22.12.0 }
-    hasBin: true
-    peerDependencies:
-      dotenv: "*"
-      giget: "*"
-      jiti: ^2.6.1
-      rollup: ^4.59.0
-      vite: ^7 || ^8 || >=8.0.0-0
-      xml2js: ^0.6.2
-      zephyr-agent: ^0.1.15
-    peerDependenciesMeta:
-      dotenv:
-        optional: true
-      giget:
-        optional: true
-      jiti:
-        optional: true
-      rollup:
-        optional: true
-      vite:
-        optional: true
-      xml2js:
-        optional: true
-      zephyr-agent:
-        optional: true
-
   nlcst-to-string@4.0.0:
     resolution:
       {
@@ -7880,22 +7783,10 @@ packages:
         integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==,
       }
 
-  ocache@0.1.4:
-    resolution:
-      {
-        integrity: sha512-e7geNdWjxSnvsSgvLuPvgKgu7ubM10ZmTPOgpr7mz2BXYtvjMKTiLhjFi/gWU8chkuP6hNkZBsa9LzOusyaqkQ==,
-      }
-
   ofetch@1.5.1:
     resolution:
       {
         integrity: sha512-2W4oUZlVaqAPAil6FUg/difl6YhqhUR7x2eZY4bQCko22UXg3hptq9KLQdqFClV+Wu85UX7hNtdGTngi/1BxcA==,
-      }
-
-  ofetch@2.0.0-alpha.3:
-    resolution:
-      {
-        integrity: sha512-zpYTCs2byOuft65vI3z43Dd6iSdFbOZZLb9/d21aCpx2rGastVU9dOCv0lu4ykc1Ur1anAYjDi3SUvR0vq50JA==,
       }
 
   ohash@2.0.11:
@@ -8799,12 +8690,6 @@ packages:
     engines: { node: ">=18.0.0", npm: ">=8.0.0" }
     hasBin: true
 
-  rou3@0.8.1:
-    resolution:
-      {
-        integrity: sha512-ePa+XGk00/3HuCqrEnK3LxJW7I0SdNg6EFzKUJG73hMAdDcOUC/i/aSz7LSDwLrGr33kal/rqOGydzwl6U7zBA==,
-      }
-
   router@2.2.0:
     resolution:
       {
@@ -9106,14 +8991,6 @@ packages:
       {
         integrity: sha512-gcj8zBWU5cFsi9WUP+4bFNXAyF1iRpA3LLyS/DP5xlrNzGmPIizUeBggKa8DbDwdqaKwUcTEnChtd2grWo/x/A==,
       }
-
-  srvx@0.11.13:
-    resolution:
-      {
-        integrity: sha512-oknN6qduuMPafxKtHucUeG32Q963pjriA5g3/Bl05cwEsUe5VVbIU4qR9LrALHbipSCyBe+VmfDGGydqazDRkw==,
-      }
-    engines: { node: ">=20.16.0" }
-    hasBin: true
 
   srvx@0.8.9:
     resolution:
@@ -9727,12 +9604,6 @@ packages:
       }
     engines: { node: ">=20.18.1" }
 
-  unenv@2.0.0-rc.24:
-    resolution:
-      {
-        integrity: sha512-i7qRCmY42zmCwnYlh9H2SvLEypEFGye5iRmEMKjcGi7zk9UquigRjFtTLz0TYqr0ZGLZhaMHl/foy1bZR+Cwlw==,
-      }
-
   unified@11.0.5:
     resolution:
       {
@@ -9880,83 +9751,6 @@ packages:
       idb-keyval:
         optional: true
       ioredis:
-        optional: true
-      uploadthing:
-        optional: true
-
-  unstorage@2.0.0-alpha.7:
-    resolution:
-      {
-        integrity: sha512-ELPztchk2zgFJnakyodVY3vJWGW9jy//keJ32IOJVGUMyaPydwcA1FtVvWqT0TNRch9H+cMNEGllfVFfScImog==,
-      }
-    peerDependencies:
-      "@azure/app-configuration": ^1.11.0
-      "@azure/cosmos": ^4.9.1
-      "@azure/data-tables": ^13.3.2
-      "@azure/identity": ^4.13.0
-      "@azure/keyvault-secrets": ^4.10.0
-      "@azure/storage-blob": ^12.31.0
-      "@capacitor/preferences": ^6 || ^7 || ^8
-      "@deno/kv": ">=0.13.0"
-      "@netlify/blobs": ^6.5.0 || ^7.0.0 || ^8.1.0 || ^9.0.0 || ^10.0.0
-      "@planetscale/database": ^1.19.0
-      "@upstash/redis": ^1.36.2
-      "@vercel/blob": ">=0.27.3"
-      "@vercel/functions": ^2.2.12 || ^3.0.0
-      "@vercel/kv": ^1.0.1
-      aws4fetch: ^1.0.20
-      chokidar: ^4 || ^5
-      db0: ">=0.3.4"
-      idb-keyval: ^6.2.2
-      ioredis: ^5.9.3
-      lru-cache: ^11.2.6
-      mongodb: ^6 || ^7
-      ofetch: "*"
-      uploadthing: ^7.7.4
-    peerDependenciesMeta:
-      "@azure/app-configuration":
-        optional: true
-      "@azure/cosmos":
-        optional: true
-      "@azure/data-tables":
-        optional: true
-      "@azure/identity":
-        optional: true
-      "@azure/keyvault-secrets":
-        optional: true
-      "@azure/storage-blob":
-        optional: true
-      "@capacitor/preferences":
-        optional: true
-      "@deno/kv":
-        optional: true
-      "@netlify/blobs":
-        optional: true
-      "@planetscale/database":
-        optional: true
-      "@upstash/redis":
-        optional: true
-      "@vercel/blob":
-        optional: true
-      "@vercel/functions":
-        optional: true
-      "@vercel/kv":
-        optional: true
-      aws4fetch:
-        optional: true
-      chokidar:
-        optional: true
-      db0:
-        optional: true
-      idb-keyval:
-        optional: true
-      ioredis:
-        optional: true
-      lru-cache:
-        optional: true
-      mongodb:
-        optional: true
-      ofetch:
         optional: true
       uploadthing:
         optional: true
@@ -13377,7 +13171,7 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  "@vitest/mocker@4.1.2(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))":
+  "@vitest/mocker@4.1.2(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))":
     dependencies:
       "@vitest/spy": 4.1.2
       estree-walker: 3.0.3
@@ -13969,10 +13763,6 @@ snapshots:
     dependencies:
       uncrypto: 0.1.3
 
-  crossws@0.4.4(srvx@0.11.13):
-    optionalDependencies:
-      srvx: 0.11.13
-
   css-select@5.2.2:
     dependencies:
       boolbase: 1.0.0
@@ -14005,7 +13795,8 @@ snapshots:
 
   data-uri-to-buffer@6.0.2: {}
 
-  db0@0.3.4: {}
+  db0@0.3.4:
+    optional: true
 
   debug@4.3.4:
     dependencies:
@@ -14129,13 +13920,6 @@ snapshots:
   entities@4.5.0: {}
 
   entities@6.0.1: {}
-
-  env-runner@0.1.7:
-    dependencies:
-      crossws: 0.4.4(srvx@0.11.13)
-      exsolve: 1.0.8
-      httpxy: 0.5.0
-      srvx: 0.11.13
 
   environment@1.1.0: {}
 
@@ -14413,8 +14197,6 @@ snapshots:
       "@expressive-code/plugin-shiki": 0.41.7
       "@expressive-code/plugin-text-markers": 0.41.7
 
-  exsolve@1.0.8: {}
-
   extend-shallow@2.0.1:
     dependencies:
       is-extendable: 0.1.1
@@ -14663,13 +14445,6 @@ snapshots:
       ufo: 1.6.3
       uncrypto: 0.1.3
 
-  h3@2.0.1-rc.20(crossws@0.4.4(srvx@0.11.13)):
-    dependencies:
-      rou3: 0.8.1
-      srvx: 0.11.13
-    optionalDependencies:
-      crossws: 0.4.4(srvx@0.11.13)
-
   has-symbols@1.1.0: {}
 
   has-tostringtag@1.0.2:
@@ -14875,8 +14650,6 @@ snapshots:
 
   hono@4.12.9: {}
 
-  hookable@6.1.0: {}
-
   html-escaper@3.0.3: {}
 
   html-void-elements@3.0.0: {}
@@ -14914,8 +14687,6 @@ snapshots:
       debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
-
-  httpxy@0.5.0: {}
 
   human-signals@1.1.1: {}
 
@@ -15829,61 +15600,6 @@ snapshots:
 
   netmask@2.0.2: {}
 
-  nf3@0.3.14: {}
-
-  nitro@3.0.260311-beta(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@vercel/blob@2.3.0)(@vercel/functions@3.4.3(@aws-sdk/credential-provider-web-identity@3.972.27))(chokidar@5.0.0)(jiti@2.6.1)(lru-cache@11.2.7)(rollup@4.60.1)(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)):
-    dependencies:
-      consola: 3.4.2
-      crossws: 0.4.4(srvx@0.11.13)
-      db0: 0.3.4
-      env-runner: 0.1.7
-      h3: 2.0.1-rc.20(crossws@0.4.4(srvx@0.11.13))
-      hookable: 6.1.0
-      nf3: 0.3.14
-      ocache: 0.1.4
-      ofetch: 2.0.0-alpha.3
-      ohash: 2.0.11
-      rolldown: 1.0.0-rc.12(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)
-      srvx: 0.11.13
-      unenv: 2.0.0-rc.24
-      unstorage: 2.0.0-alpha.7(@vercel/blob@2.3.0)(@vercel/functions@3.4.3(@aws-sdk/credential-provider-web-identity@3.972.27))(chokidar@5.0.0)(db0@0.3.4)(lru-cache@11.2.7)(ofetch@2.0.0-alpha.3)
-    optionalDependencies:
-      jiti: 2.6.1
-      rollup: 4.60.1
-      vite: 8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)
-    transitivePeerDependencies:
-      - "@azure/app-configuration"
-      - "@azure/cosmos"
-      - "@azure/data-tables"
-      - "@azure/identity"
-      - "@azure/keyvault-secrets"
-      - "@azure/storage-blob"
-      - "@capacitor/preferences"
-      - "@deno/kv"
-      - "@electric-sql/pglite"
-      - "@emnapi/core"
-      - "@emnapi/runtime"
-      - "@libsql/client"
-      - "@netlify/blobs"
-      - "@netlify/runtime"
-      - "@planetscale/database"
-      - "@upstash/redis"
-      - "@vercel/blob"
-      - "@vercel/functions"
-      - "@vercel/kv"
-      - aws4fetch
-      - better-sqlite3
-      - chokidar
-      - drizzle-orm
-      - idb-keyval
-      - ioredis
-      - lru-cache
-      - miniflare
-      - mongodb
-      - mysql2
-      - sqlite3
-      - uploadthing
-
   nlcst-to-string@4.0.0:
     dependencies:
       "@types/nlcst": 2.0.3
@@ -15957,17 +15673,11 @@ snapshots:
 
   obug@2.1.1: {}
 
-  ocache@0.1.4:
-    dependencies:
-      ohash: 2.0.11
-
   ofetch@1.5.1:
     dependencies:
       destr: 2.0.5
       node-fetch-native: 1.6.7
       ufo: 1.6.3
-
-  ofetch@2.0.0-alpha.3: {}
 
   ohash@2.0.11: {}
 
@@ -16650,8 +16360,6 @@ snapshots:
       "@rollup/rollup-win32-x64-msvc": 4.60.1
       fsevents: 2.3.3
 
-  rou3@0.8.1: {}
-
   router@2.2.0:
     dependencies:
       debug: 4.4.3
@@ -16869,8 +16577,6 @@ snapshots:
   sprintf-js@1.1.3: {}
 
   sql.js@1.14.1: {}
-
-  srvx@0.11.13: {}
 
   srvx@0.8.9:
     dependencies:
@@ -17234,10 +16940,6 @@ snapshots:
 
   undici@7.24.6: {}
 
-  unenv@2.0.0-rc.24:
-    dependencies:
-      pathe: 2.0.3
-
   unified@11.0.5:
     dependencies:
       "@types/unist": 3.0.3
@@ -17318,15 +17020,6 @@ snapshots:
       "@vercel/blob": 2.3.0
       "@vercel/functions": 3.4.3(@aws-sdk/credential-provider-web-identity@3.972.27)
       db0: 0.3.4
-
-  unstorage@2.0.0-alpha.7(@vercel/blob@2.3.0)(@vercel/functions@3.4.3(@aws-sdk/credential-provider-web-identity@3.972.27))(chokidar@5.0.0)(db0@0.3.4)(lru-cache@11.2.7)(ofetch@2.0.0-alpha.3):
-    optionalDependencies:
-      "@vercel/blob": 2.3.0
-      "@vercel/functions": 3.4.3(@aws-sdk/credential-provider-web-identity@3.972.27)
-      chokidar: 5.0.0
-      db0: 0.3.4
-      lru-cache: 11.2.7
-      ofetch: 2.0.0-alpha.3
 
   until-async@3.0.2: {}
 
@@ -17432,18 +17125,18 @@ snapshots:
     optionalDependencies:
       vite: 6.4.1(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)
 
-  vitest-evals@0.7.0(ai@6.0.141(zod@4.3.6))(tinyrainbow@3.1.0)(vitest@4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)))(zod@4.3.6):
+  vitest-evals@0.7.0(ai@6.0.141(zod@4.3.6))(tinyrainbow@3.1.0)(vitest@4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)))(zod@4.3.6):
     dependencies:
       tinyrainbow: 3.1.0
-      vitest: 4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
     optionalDependencies:
       ai: 6.0.141(zod@4.3.6)
       zod: 4.3.6
 
-  vitest@4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)):
+  vitest@4.1.2(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.5.0)(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)):
     dependencies:
       "@vitest/expect": 4.1.2
-      "@vitest/mocker": 4.1.2(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
+      "@vitest/mocker": 4.1.2(msw@2.12.14(@types/node@25.5.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
       "@vitest/pretty-format": 4.1.2
       "@vitest/runner": 4.1.2
       "@vitest/snapshot": 4.1.2

@@ -23,14 +23,7 @@ const app = await createApp();
 export default app;
 ```
 
-`nitro.config.ts`:
-
-```ts
-import { juniorNitroConfig } from "@sentry/junior/nitro";
-import { defineConfig } from "nitro";
-
-export default defineConfig(juniorNitroConfig());
-```
+Run `junior init my-bot` to scaffold a complete project including `vercel.json` for Vercel deployment.
 
 Installed `@sentry/junior-*` plugin packages are discovered automatically. Use `createApp({ pluginPackages: [...] })` only when you need to restrict discovery to a specific allowlist.
 

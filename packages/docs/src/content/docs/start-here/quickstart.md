@@ -29,7 +29,7 @@ pnpm install
 `junior init` already creates the core runtime wiring for you:
 
 - `server.ts`
-- `nitro.config.ts` and `vite.config.ts`
+- `vercel.json`
 - `app/SOUL.md` and `app/ABOUT.md`
 - `app/skills/` and `app/plugins/`
 - `.env.example`
@@ -57,7 +57,7 @@ See [Config & Environment](/reference/config-and-env/) for the full reference.
 ## Run locally
 
 ```bash
-pnpm dev
+vercel dev
 ```
 
 ## Verify locally
@@ -112,16 +112,9 @@ const app = await createApp();
 export default app;
 ```
 
-### Nitro config
+### Vercel config
 
-```ts title="nitro.config.ts"
-import { juniorNitroConfig } from "@sentry/junior/nitro";
-import { defineConfig } from "nitro";
-
-export default defineConfig(juniorNitroConfig());
-```
-
-The `juniorNitroConfig()` helper sets the Vercel preset, configures `maxDuration`, and copies `app/**/*` plus installed plugin package content into the build output.
+`junior init` generates a `vercel.json` that sets the Hono framework, configures `maxDuration`, and includes `app/**/*` in the deployed function bundle. Running `junior snapshot create` (the build step) regenerates `vercel.json` with dynamically discovered plugin content included.
 
 ## Deploy to Vercel
 
@@ -136,12 +129,12 @@ pnpm dlx vercel@latest link
 
 ### Configure build command
 
-The scaffold includes a build script that runs Nitro build with snapshot warmup:
+The scaffold includes a build script that runs snapshot warmup:
 
 ```json title="package.json"
 {
   "scripts": {
-    "build": "junior snapshot create && vite build"
+    "build": "junior snapshot create"
   }
 }
 ```
@@ -188,7 +181,7 @@ https://<your-domain>/api/webhooks/slack
 - `401` or signature failures: verify `SLACK_SIGNING_SECRET`.
 - No thread processing: confirm the API handler and queue trigger are configured.
 - No bot post: verify bot token scopes and Slack app installation.
-- Slack timeouts in production: check Nitro config `maxDuration` and function deployment.
+- Slack timeouts in production: check Vercel config `maxDuration` and function deployment.
 - OAuth callback issues for plugins: set `JUNIOR_BASE_URL` to production URL.
 - Snapshot warmup build failures: verify `REDIS_URL` is available to builds and OIDC is enabled for `VERCEL_OIDC_TOKEN`.
 

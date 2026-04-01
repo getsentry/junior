@@ -3,8 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "junior snapshot create && vite build",
+    "build": "junior snapshot create",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -18,8 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "nitro": "3.0.260311-beta",
     "typescript": "^5.9.3",
-    "vite": "^8.0.3"
+    "vercel": "^50.37.3"
   }
 }

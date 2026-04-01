@@ -22,7 +22,7 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
       waitUntil(promise);
     };
   } catch {
-    // Outside Vercel (e.g. local dev via Nitro/node-server), fire-and-forget.
+    // Outside Vercel (e.g. local dev via node-server), fire-and-forget.
     return (task) => {
       const promise = typeof task === "function" ? task() : task;
       promise.catch(console.error);

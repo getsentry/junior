@@ -25,10 +25,9 @@ The command requires exactly one argument: the target directory.
 
 The scaffold includes:
 
-- `package.json` with `hono`, `@sentry/node`, `@sentry/junior`, and `nitro`
+- `package.json` with `hono`, `@sentry/node`, `@sentry/junior`, and `vercel`
 - `server.ts`
-- `nitro.config.ts`
-- `vite.config.ts`
+- `vercel.json`
 - `app/SOUL.md`
 - `app/ABOUT.md`
 - `app/skills/`
@@ -45,7 +44,7 @@ After a successful run, the CLI prints the created path and the next command to 
 ```text
 Created my-bot at /path/to/my-bot
 
-  cd my-bot && pnpm install && pnpm dev
+  cd my-bot && pnpm install && vercel dev
 ```
 
 ## Constraints
@@ -68,7 +67,7 @@ After scaffolding:
 
 1. Run `cd my-bot && pnpm install`.
 2. Fill in the required values from `.env.example`.
-3. Run `pnpm dev`.
+3. Run `vercel dev`.
 4. Check `http://localhost:3000/api/health`.
 
 For the complete setup flow, continue with [Quickstart](/start-here/quickstart/).
