@@ -62,43 +62,26 @@ export function isKnownConfigKey(key: string): boolean {
 }
 
 export function listCapabilityProviders(): CapabilityProviderDefinition[] {
-  return getCapabilityCatalog().providers.map((provider) => ({
-    ...provider,
-    capabilities: [...provider.capabilities],
-    configKeys: [...provider.configKeys],
-  }));
+  return getCapabilityCatalog().providers;
 }
 
-let startupCatalogSignature: string | null = null;
+let catalogLogged = false;
 
+/** Log the capability catalog contents once at startup. */
 export function logCapabilityCatalogLoadedOnce(): void {
-  const providers = listCapabilityProviders();
-  const signature = JSON.stringify(
-    providers.map((provider) => ({
-      provider: provider.provider,
-      capabilities: provider.capabilities,
-      configKeys: provider.configKeys,
-      target: provider.target,
-    })),
-  );
-  if (startupCatalogSignature === signature) {
-    return;
-  }
-  startupCatalogSignature = signature;
+  if (catalogLogged) return;
+  catalogLogged = true;
 
-  const capabilityNames = providers
-    .flatMap((provider) => provider.capabilities)
-    .sort();
+  const { providers } = getCapabilityCatalog();
+  const capabilityNames = providers.flatMap((p) => p.capabilities).sort();
   const configKeys = [
-    ...new Set(providers.flatMap((provider) => provider.configKeys)),
+    ...new Set(providers.flatMap((p) => p.configKeys)),
   ].sort();
   logInfo(
     "capability_catalog_loaded",
     {},
     {
-      "app.capability.providers": providers.map(
-        (provider) => provider.provider,
-      ),
+      "app.capability.providers": providers.map((p) => p.provider),
       "app.capability.count": capabilityNames.length,
       "app.capability.names": capabilityNames,
       "app.config.key_count": configKeys.length,
