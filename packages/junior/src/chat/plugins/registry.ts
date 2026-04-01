@@ -278,6 +278,11 @@ function ensurePluginsLoaded(): LoadedPluginState {
 
 // --- Sync exports ---
 
+/** Return the current plugin catalog signature used for cache invalidation. */
+export function getPluginCatalogSignature(): string {
+  return ensurePluginsLoaded().signature;
+}
+
 export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
   const state = ensurePluginsLoaded();
   return state.pluginDefinitions.map((plugin) => ({

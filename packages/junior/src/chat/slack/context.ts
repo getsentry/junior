@@ -1,10 +1,15 @@
 import { toOptionalString } from "@/chat/coerce";
 
+function toTrimmedSlackString(value: unknown): string | undefined {
+  const normalized = toOptionalString(value);
+  return normalized?.trim() || undefined;
+}
+
 /** Extract channelId and threadTs from a `slack:<channel>:<ts>` thread identifier. */
 export function parseSlackThreadId(
   threadId: string | undefined,
 ): { channelId: string; threadTs: string } | undefined {
-  const normalizedThreadId = toOptionalString(threadId);
+  const normalizedThreadId = toTrimmedSlackString(threadId);
   if (!normalizedThreadId) {
     return undefined;
   }
@@ -14,8 +19,8 @@ export function parseSlackThreadId(
     return undefined;
   }
 
-  const channelId = toOptionalString(parts[1]);
-  const threadTs = toOptionalString(parts[2]);
+  const channelId = toTrimmedSlackString(parts[1]);
+  const threadTs = toTrimmedSlackString(parts[2]);
   if (!channelId || !threadTs) {
     return undefined;
   }
@@ -34,7 +39,7 @@ export function resolveSlackChannelIdFromThreadId(
 export function resolveSlackChannelIdFromMessage(
   message: unknown,
 ): string | undefined {
-  const messageChannelId = toOptionalString(
+  const messageChannelId = toTrimmedSlackString(
     (message as { channelId?: unknown }).channelId,
   );
   if (messageChannelId) {
@@ -43,13 +48,15 @@ export function resolveSlackChannelIdFromMessage(
 
   const raw = (message as { raw?: unknown }).raw;
   if (raw && typeof raw === "object") {
-    const rawChannel = toOptionalString((raw as { channel?: unknown }).channel);
+    const rawChannel = toTrimmedSlackString(
+      (raw as { channel?: unknown }).channel,
+    );
     if (rawChannel) {
       return rawChannel;
     }
   }
 
-  const threadId = toOptionalString(
+  const threadId = toTrimmedSlackString(
     (message as { threadId?: unknown }).threadId,
   );
   return resolveSlackChannelIdFromThreadId(threadId);

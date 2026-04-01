@@ -47,6 +47,19 @@ describe("slack context", () => {
     );
   });
 
+  it("trims whitespace from extracted channel ids", () => {
+    expect(
+      resolveSlackChannelIdFromMessage({
+        channelId: " C123 ",
+      }),
+    ).toBe("C123");
+    expect(
+      resolveSlackChannelIdFromMessage({
+        raw: { channel: " C456 " },
+      }),
+    ).toBe("C456");
+  });
+
   it("returns undefined for malformed thread ids", () => {
     expect(
       resolveSlackChannelIdFromThreadId("slack::1700000000.900"),
@@ -61,6 +74,17 @@ describe("slack context", () => {
 describe("parseSlackThreadId", () => {
   it("parses valid slack thread id into channelId and threadTs", () => {
     expect(parseSlackThreadId("slack:C123:1700000000.100")).toEqual({
+      channelId: "C123",
+      threadTs: "1700000000.100",
+    });
+  });
+
+  it("trims whitespace around slack thread ids before decoding", () => {
+    expect(parseSlackThreadId(" slack:C123:1700000000.100 ")).toEqual({
+      channelId: "C123",
+      threadTs: "1700000000.100",
+    });
+    expect(parseSlackThreadId("slack: C123 : 1700000000.100 ")).toEqual({
       channelId: "C123",
       threadTs: "1700000000.100",
     });

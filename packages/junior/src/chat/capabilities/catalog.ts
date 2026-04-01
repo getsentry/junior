@@ -1,5 +1,8 @@
 import { logInfo } from "@/chat/logging";
-import { getPluginCapabilityProviders } from "@/chat/plugins/registry";
+import {
+  getPluginCapabilityProviders,
+  getPluginCatalogSignature,
+} from "@/chat/plugins/registry";
 
 export interface CapabilityProviderTargetDefinition {
   type: "repo";
@@ -15,15 +18,28 @@ export interface CapabilityProviderDefinition {
 
 let cachedCatalog:
   | {
+      signature: string;
       providers: CapabilityProviderDefinition[];
       capabilityToProvider: Map<string, CapabilityProviderDefinition>;
       configKeys: Set<string>;
     }
   | undefined;
 
+function cloneProviderDefinition(
+  provider: CapabilityProviderDefinition,
+): CapabilityProviderDefinition {
+  return {
+    ...provider,
+    capabilities: [...provider.capabilities],
+    configKeys: [...provider.configKeys],
+    ...(provider.target ? { target: { ...provider.target } } : {}),
+  };
+}
+
 /** Build (and cache) the capability catalog from registered plugins. */
 function getCapabilityCatalog() {
-  if (cachedCatalog) return cachedCatalog;
+  const signature = getPluginCatalogSignature();
+  if (cachedCatalog?.signature === signature) return cachedCatalog;
 
   const providers = getPluginCapabilityProviders();
   const capabilityToProvider = new Map<string, CapabilityProviderDefinition>();
@@ -43,14 +59,15 @@ function getCapabilityCatalog() {
     }
   }
 
-  cachedCatalog = { providers, capabilityToProvider, configKeys };
+  cachedCatalog = { signature, providers, capabilityToProvider, configKeys };
   return cachedCatalog;
 }
 
 export function getCapabilityProvider(
   capability: string,
 ): CapabilityProviderDefinition | undefined {
-  return getCapabilityCatalog().capabilityToProvider.get(capability);
+  const provider = getCapabilityCatalog().capabilityToProvider.get(capability);
+  return provider ? cloneProviderDefinition(provider) : undefined;
 }
 
 export function isKnownCapability(capability: string): boolean {
@@ -62,7 +79,7 @@ export function isKnownConfigKey(key: string): boolean {
 }
 
 export function listCapabilityProviders(): CapabilityProviderDefinition[] {
-  return getCapabilityCatalog().providers;
+  return getCapabilityCatalog().providers.map(cloneProviderDefinition);
 }
 
 let catalogLogged = false;
