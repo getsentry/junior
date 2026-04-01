@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { toOptionalString } from "@/chat/coerce";
 import * as Sentry from "@/chat/sentry";
 
 type Primitive = string | number | boolean;
@@ -1086,8 +1087,6 @@ export function captureExceptionInScope(
     sentryCaptureException(normalizedError);
   }
 }
-
-import { toOptionalString } from "@/chat/coerce";
 
 /** Return the trace ID from the active Sentry span, if any. */
 export function getActiveTraceId(): string | undefined {
