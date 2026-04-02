@@ -17,6 +17,13 @@ describe("non-interactive shell commands", () => {
     expect(script).toContain("export GH_PROMPT_DISABLED='1'");
     expect(script).toContain("export GIT_TERMINAL_PROMPT='0'");
     expect(script).toContain("export DEBIAN_FRONTEND='noninteractive'");
+    expect(script).toContain("export GIT_ASKPASS='/bin/true'");
+    expect(script).toContain("export GIT_CONFIG_NOSYSTEM='1'");
+    expect(script).toContain("export GIT_CONFIG_COUNT='2'");
+    expect(script).toContain("export GIT_CONFIG_KEY_0='credential.helper'");
+    expect(script).toContain("export GIT_CONFIG_VALUE_0=''");
+    expect(script).toContain("export GIT_CONFIG_KEY_1='http.emptyAuth'");
+    expect(script).toContain("export GIT_CONFIG_VALUE_1='true'");
     expect(script).toContain("export CUSTOM_TOKEN='secret-value'");
     expect(script).toContain("exec </dev/null");
     expect(script).toContain("echo ok");

@@ -32,6 +32,15 @@ const NON_INTERACTIVE_ENV: Readonly<Record<string, string>> = {
   GIT_TERMINAL_PROMPT: "0",
   GCM_INTERACTIVE: "never",
   DEBIAN_FRONTEND: "noninteractive",
+  // Git credential isolation: prevent git from sending its own auth so the
+  // sandbox network proxy's header transforms are the sole credential source.
+  GIT_ASKPASS: "/bin/true",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_CONFIG_COUNT: "2",
+  GIT_CONFIG_KEY_0: "credential.helper",
+  GIT_CONFIG_VALUE_0: "",
+  GIT_CONFIG_KEY_1: "http.emptyAuth",
+  GIT_CONFIG_VALUE_1: "true",
 };
 
 function shellQuote(value: string): string {

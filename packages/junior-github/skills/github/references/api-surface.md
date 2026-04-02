@@ -10,7 +10,7 @@ Issue credentials with `jr-rpc issue-credential <capability>` before executing c
 
 | Capability                   | Commands                                                                |
 | ---------------------------- | ----------------------------------------------------------------------- |
-| `github.contents.read`       | `gh repo clone`, `git fetch`                                            |
+| `github.contents.read`       | `git clone`, `git fetch`                                                |
 | `github.contents.write`      | `git push`, `gh api` (create/update file contents)                      |
 | `github.issues.read`         | `gh issue view`, `gh api /repos/.../comments`                           |
 | `github.issues.write`        | `gh issue create`, `gh issue edit`, `gh issue close`, `gh issue reopen` |
@@ -23,7 +23,7 @@ Issue credentials with `jr-rpc issue-credential <capability>` before executing c
 
 | Operation                          | Command                                                                                                       |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Clone repository (default shallow) | `gh repo clone owner/repo [DIRECTORY] -- --depth=1`                                                           |
+| Clone repository (default shallow) | `git clone --depth=1 https://github.com/owner/repo.git [DIRECTORY]`                                           |
 | Deepen shallow clone               | `git -C DIRECTORY fetch --depth=N origin`                                                                     |
 | Convert shallow clone to full      | `git -C DIRECTORY fetch --unshallow`                                                                          |
 | Create issue                       | `gh issue create --repo owner/repo --title "..." --body-file PATH`                                            |
