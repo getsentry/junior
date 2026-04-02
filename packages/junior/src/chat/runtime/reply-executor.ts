@@ -78,6 +78,7 @@ function getExecutionFailureReason(reply: {
     assistantMessageCount: number;
     errorMessage?: string;
     toolErrorCount: number;
+    usedPrimaryText: boolean;
   };
 }): string {
   const errorMessage = reply.diagnostics.errorMessage?.trim();
@@ -88,7 +89,9 @@ function getExecutionFailureReason(reply: {
     return `${reply.diagnostics.toolErrorCount} tool result error(s)`;
   }
   if (reply.diagnostics.assistantMessageCount > 0) {
-    return "assistant returned no text";
+    return reply.diagnostics.usedPrimaryText
+      ? "assistant produced invalid final text"
+      : "assistant returned no text";
   }
   return "empty assistant turn";
 }
@@ -455,7 +458,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await streamedReplyPromise;
               if (
                 reply.diagnostics.outcome !== "success" &&
-                reply.text.trim().length > 0
+                reply.text.trim().length > 0 &&
+                !reply.diagnostics.usedPrimaryText
               ) {
                 await postThreadReply(
                   buildSlackOutputMessage(reply.text),
