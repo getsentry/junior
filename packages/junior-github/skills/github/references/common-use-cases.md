@@ -8,14 +8,14 @@ Issue credentials first, then default to a shallow clone:
 
 ```bash
 jr-rpc issue-credential github.contents.read --repo owner/repo
-git clone --depth=1 https://github.com/owner/repo.git
+gh repo clone owner/repo -- --depth=1
 ```
 
 Clone into a specific directory:
 
 ```bash
 jr-rpc issue-credential github.contents.read --repo owner/repo
-git clone --depth=1 https://github.com/owner/repo.git worktree/repo
+gh repo clone owner/repo worktree/repo -- --depth=1
 ```
 
 ## 2) Deepen a shallow clone only when needed

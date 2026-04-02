@@ -43,7 +43,7 @@ Load references conditionally based on the operation:
 - Issue a `contents.read` credential scoped to the target repository before cloning:
   - `jr-rpc issue-credential github.contents.read --repo owner/repo`
 - Default to a shallow clone.
-- Use `git clone` directly (not `gh repo clone`) to avoid credential-helper interference with the proxy auth. See [references/api-surface.md](references/api-surface.md) or [references/common-use-cases.md](references/common-use-cases.md) for exact command forms.
+- Use exact command forms from [references/api-surface.md](references/api-surface.md) or [references/common-use-cases.md](references/common-use-cases.md).
 - Deepen incrementally only when the task needs repository history.
 - After cloning, check for `AGENTS.md` in the repo root (and `.github/AGENTS.md`) before making edits. Treat discovered instructions as hard constraints.
 - Report the local directory and whether the clone is shallow or full.
