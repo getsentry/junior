@@ -23,17 +23,17 @@ Install the plugin package alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-notion
 ```
 
-## Runtime discovery
+## Runtime setup
 
-Installed `@sentry/junior-*` plugin packages are discovered automatically, so the default app entrypoint stays:
+List the plugin in `createApp({ pluginPackages: [...] })`:
 
 ```ts title="api/index.ts"
-const app = await createApp();
+const app = await createApp({
+  pluginPackages: ["@sentry/junior-notion"],
+});
 
 export default handle(app);
 ```
-
-Use `createApp({ pluginPackages: [...] })` only when you want an explicit allowlist.
 
 ## Auth model
 

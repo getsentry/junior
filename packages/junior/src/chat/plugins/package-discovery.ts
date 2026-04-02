@@ -1,12 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import {
-  discoverNodeModulesDirs,
-  isDirectory,
-  isFile,
-  listTopLevelPackages,
-} from "@/chat/discovery";
+import { discoverNodeModulesDirs, isDirectory, isFile } from "@/chat/discovery";
 
 interface InstalledJuniorContentPackage {
   name: string;
@@ -178,19 +173,6 @@ function readPluginPackageFlags(dir: string): {
   };
 }
 
-function discoverWorkspacePluginPackageDirs(
-  cwd: string,
-  packageNames: string[] | null,
-): string[] {
-  if (packageNames !== null) {
-    return [];
-  }
-
-  return listWorkspacePackageDirs(cwd).filter(
-    (candidate) => readPluginPackageFlags(candidate) !== null,
-  );
-}
-
 function readWorkspacePackageName(dir: string): string | null {
   try {
     const raw = readFileSync(path.join(dir, "package.json"), "utf8");
@@ -286,54 +268,11 @@ function discoverInstalledJuniorContentPackages(
     nodeModulesDirs ?? discoverNodeModulesDirs(resolvedCwd);
   const configuredPackageNames =
     packageNames ?? readNextRuntimeConfiguredPackageNames();
-  const declaredPackages = discoverDeclaredPackages(
+  return discoverDeclaredPackages(
     resolvedCwd,
     configuredPackageNames ?? [],
     candidateNodeModulesDirs,
   );
-  const useFallbackScan = configuredPackageNames === null;
-  const discovered: InstalledJuniorContentPackage[] = [...declaredPackages];
-  const seenPackageNames = new Set<string>();
-  const seenPackageDirs = new Set<string>();
-  for (const pkg of declaredPackages) {
-    seenPackageNames.add(pkg.name);
-    seenPackageDirs.add(pkg.dir);
-  }
-
-  if (!useFallbackScan) {
-    return discovered;
-  }
-
-  for (const nodeModulesDir of candidateNodeModulesDirs) {
-    for (const pkg of listTopLevelPackages(nodeModulesDir)) {
-      const resolvedDir = path.resolve(pkg.dir);
-      if (seenPackageNames.has(pkg.name) || seenPackageDirs.has(resolvedDir)) {
-        continue;
-      }
-      seenPackageNames.add(pkg.name);
-      seenPackageDirs.add(resolvedDir);
-
-      const hasRootPluginManifest = isFile(
-        path.join(resolvedDir, "plugin.yaml"),
-      );
-      const hasPluginsDir = isDirectory(path.join(resolvedDir, "plugins"));
-      const hasSkillsDir = isDirectory(path.join(resolvedDir, "skills"));
-      if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
-        continue;
-      }
-
-      discovered.push({
-        name: pkg.name,
-        dir: resolvedDir,
-        nodeModulesDir: path.resolve(nodeModulesDir),
-        hasRootPluginManifest,
-        hasPluginsDir,
-        hasSkillsDir,
-      });
-    }
-  }
-
-  return discovered;
 }
 
 export interface DiscoverInstalledPluginPackageContentOptions {
@@ -351,10 +290,6 @@ export function discoverInstalledPluginPackageContent(
   const discoveredPackages = discoverInstalledJuniorContentPackages(
     resolvedCwd,
     options?.nodeModulesDirs,
-    configuredPackageNames,
-  );
-  const workspacePluginDirs = discoverWorkspacePluginPackageDirs(
-    resolvedCwd,
     configuredPackageNames,
   );
   const manifestRoots: string[] = [];
@@ -382,28 +317,6 @@ export function discoverInstalledPluginPackageContent(
     }
     if (pkg.hasSkillsDir) {
       skillRoots.push(path.join(pkg.dir, "skills"));
-      if (tracingBasePath) {
-        tracingIncludes.push(`${tracingBasePath}/skills/**/*`);
-      }
-    }
-  }
-
-  for (const pluginDir of workspacePluginDirs) {
-    const tracingBasePath = pathForTracingInclude(resolvedCwd, pluginDir);
-    if (isFile(path.join(pluginDir, "plugin.yaml"))) {
-      manifestRoots.push(pluginDir);
-      if (tracingBasePath) {
-        tracingIncludes.push(`${tracingBasePath}/plugin.yaml`);
-      }
-    }
-    if (isDirectory(path.join(pluginDir, "plugins"))) {
-      manifestRoots.push(path.join(pluginDir, "plugins"));
-      if (tracingBasePath) {
-        tracingIncludes.push(`${tracingBasePath}/plugins/**/*`);
-      }
-    }
-    if (isDirectory(path.join(pluginDir, "skills"))) {
-      skillRoots.push(path.join(pluginDir, "skills"));
       if (tracingBasePath) {
         tracingIncludes.push(`${tracingBasePath}/skills/**/*`);
       }

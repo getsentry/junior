@@ -10,7 +10,7 @@ related:
   - /extend/sentry-plugin/
 ---
 
-Junior plugins are just manifests plus skills. Keep the runtime wiring stable, then add behavior by putting plugins in the right place. Installed package plugins are discovered automatically by default.
+Junior plugins are just manifests plus skills. Keep the runtime wiring stable, then add behavior by putting plugins in the right place.
 
 ## Where plugins live
 
@@ -50,7 +50,7 @@ For reuse across apps or teams, package plugin manifests + skills as npm package
 pnpm add @sentry/junior @sentry/junior-github @sentry/junior-notion @sentry/junior-sentry
 ```
 
-Junior will discover installed `@sentry/junior-*` packages automatically, so the default entrypoint stays minimal:
+List the plugin packages explicitly in `createApp`:
 
 ```ts title="api/index.ts"
 import { initSentry } from "@sentry/junior/instrumentation";
@@ -59,14 +59,18 @@ initSentry();
 import { createApp } from "@sentry/junior";
 import { handle } from "hono/vercel";
 
-const app = await createApp();
+const app = await createApp({
+  pluginPackages: [
+    "@sentry/junior-github",
+    "@sentry/junior-notion",
+    "@sentry/junior-sentry",
+  ],
+});
 
 export default handle(app);
 ```
 
-Use `createApp({ pluginPackages: [...] })` only when you want an explicit allowlist instead of the default discovery behavior.
-
-If you publish your own package, include `plugin.yaml` and `skills` in package `files` so runtime discovery works.
+If you publish your own package, include `plugin.yaml` and `skills` in package `files`.
 
 ## Local skills vs plugin skills
 
@@ -179,8 +183,6 @@ pnpm add @acme/junior-example
 ```
 
 The default Vercel config (`juniorVercelConfig()`) automatically includes `app/**/*` and installed `@sentry/junior-*` plugin package content in the deployed function bundle. No extra configuration is needed for standard plugin packages.
-
-Use `createApp({ pluginPackages: [...] })` only if you need to restrict discovery to a specific package allowlist.
 
 ## Validate extensions
 
