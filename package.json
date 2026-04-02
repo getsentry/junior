@@ -15,7 +15,7 @@
     "docs:build": "pnpm --filter @sentry/junior-docs build",
     "docs:check": "pnpm --filter @sentry/junior-docs check",
     "release:check": "node scripts/check-release-config.mjs",
-    "start": "pnpm --filter @sentry/junior-example exec vercel dev --yes",
+    "start": "pnpm --filter @sentry/junior-example dev",
     "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior test",
     "test:watch": "pnpm --filter @sentry/junior test:watch",
     "evals": "pnpm --filter @sentry/junior-evals evals",

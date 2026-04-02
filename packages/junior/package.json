@@ -13,6 +13,7 @@
   "exports": {
     ".": "./dist/app.js",
     "./instrumentation": "./dist/instrumentation.js",
+    "./nitro": "./dist/nitro.js",
     "./vercel": "./dist/vercel.js"
   },
   "files": [

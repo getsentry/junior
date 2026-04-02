@@ -1,5 +1,3 @@
-// Static import so Vercel's NFT traces hono (used internally by @sentry/junior).
-import "hono";
 import { initSentry } from "@sentry/junior/instrumentation";
 initSentry();
 

@@ -29,6 +29,7 @@ pnpm install
 `junior init` already creates the core runtime wiring for you:
 
 - `server.ts`
+- `nitro.config.ts` and `vite.config.ts`
 - `vercel.json`
 - `app/SOUL.md` and `app/ABOUT.md`
 - `app/skills/` and `app/plugins/`
@@ -57,7 +58,7 @@ See [Config & Environment](/reference/config-and-env/) for the full reference.
 ## Run locally
 
 ```bash
-vercel dev
+pnpm dev
 ```
 
 ## Verify locally
@@ -114,7 +115,7 @@ export default app;
 
 ### Vercel config
 
-`junior init` generates a `vercel.json` that sets the Hono framework, configures `maxDuration`, and includes `app/**/*` in the deployed function bundle. Running `junior snapshot create` (the build step) regenerates `vercel.json` with dynamically discovered plugin content included.
+`junior init` generates a `nitro.config.ts` that uses Nitro's Vercel preset to build and deploy the app. Nitro's `compiled` hook automatically discovers and copies `app/**/*` plus installed plugin content into the Vercel function bundle at build time.
 
 ## Deploy to Vercel
 
@@ -134,7 +135,8 @@ The scaffold includes a build script that runs snapshot warmup:
 ```json title="package.json"
 {
   "scripts": {
-    "build": "junior snapshot create"
+    "dev": "vite dev",
+    "build": "junior snapshot create && vite build"
   }
 }
 ```

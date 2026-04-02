@@ -67,14 +67,12 @@ if (tunnelToken) {
   ]);
 }
 
-const child = spawnChild("pnpm", [
-  "--filter",
-  "@sentry/junior-example",
-  "exec",
-  "vercel",
-  "dev",
-  "--yes",
-]);
+const exampleDir = path.join(workspaceRoot, "apps", "example");
+const child = spawnChild(
+  path.join(exampleDir, "node_modules", ".bin", "vite"),
+  ["dev"],
+  { cwd: exampleDir },
+);
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {

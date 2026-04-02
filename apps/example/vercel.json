@@ -1,9 +1,3 @@
 {
-  "buildCommand": "pnpm --filter @sentry/junior-example deploy .deploy && rm -rf node_modules && mv .deploy/node_modules . && rm -rf .deploy && pnpm run build",
-  "functions": {
-    "server.ts": {
-      "maxDuration": 800,
-      "includeFiles": "{./app/**,./node_modules/@sentry/junior*/plugin.yaml,./node_modules/@sentry/junior*/skills/**,./node_modules/@sentry/junior*/plugins/**}"
-    }
-  }
+  "buildCommand": "pnpm build"
 }
