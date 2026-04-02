@@ -58,6 +58,7 @@
     "@sentry/node": "^10.46.0",
     "@types/node": "^25.5.0",
     "msw": "^2.12.14",
+    "nitro": "3.0.260311-beta",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vercel": "^50.37.3",
