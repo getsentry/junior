@@ -27,29 +27,25 @@ describe("init cli", () => {
     expect(fs.existsSync(path.join(target, "package.json"))).toBe(true);
     expect(fs.existsSync(path.join(target, "server.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "vercel.json"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(false);
-    expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "SOUL.md"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "ABOUT.md"))).toBe(true);
 
     const vercelConfig = JSON.parse(
       fs.readFileSync(path.join(target, "vercel.json"), "utf8"),
     );
-    expect(vercelConfig.framework).toBe("hono");
     expect(vercelConfig.buildCommand).toBe("pnpm build");
-    expect(vercelConfig.functions["server.ts"].maxDuration).toBe(800);
-    expect(vercelConfig.functions["server.ts"].includeFiles).toContain(
-      "./app/**",
-    );
+    expect(vercelConfig.functions).toBeUndefined();
 
     const pkg = JSON.parse(
       fs.readFileSync(path.join(target, "package.json"), "utf8"),
     );
-    expect(pkg.devDependencies.vercel).toBeDefined();
-    expect(pkg.devDependencies.nitro).toBeUndefined();
-    expect(pkg.devDependencies.vite).toBeUndefined();
-    expect(pkg.scripts.dev).toBeUndefined();
-    expect(pkg.scripts.build).toBe("junior snapshot create");
+    expect(pkg.devDependencies.nitro).toBeDefined();
+    expect(pkg.devDependencies.vite).toBeDefined();
+    expect(pkg.devDependencies.vercel).toBeUndefined();
+    expect(pkg.scripts.dev).toBe("vite dev");
+    expect(pkg.scripts.build).toBe("junior snapshot create && vite build");
   });
 
   it("refuses to initialize a non-empty directory", async () => {
