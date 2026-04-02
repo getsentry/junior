@@ -1,4 +1,4 @@
-import fs, { readdirSync, statSync } from "node:fs";
+import fs, { statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -150,50 +150,6 @@ export function discoverProjectRoots(
   ).map((nodeModulesDir) => path.dirname(nodeModulesDir));
 
   return uniqueResolvedPathsInOrder([cwd, ...roots]);
-}
-
-/** List top-level packages in a node_modules directory, including scoped packages. */
-export function listTopLevelPackages(
-  nodeModulesDir: string,
-): Array<{ name: string; dir: string }> {
-  const entries = readdirSync(nodeModulesDir, { withFileTypes: true })
-    .filter(
-      (entry) =>
-        !entry.name.startsWith(".") &&
-        entry.name !== ".bin" &&
-        entry.name !== ".pnpm",
-    )
-    .sort((left, right) => left.name.localeCompare(right.name));
-
-  const packages: Array<{ name: string; dir: string }> = [];
-  for (const entry of entries) {
-    const entryPath = path.join(nodeModulesDir, entry.name);
-    if (entry.name.startsWith("@")) {
-      if (!isDirectory(entryPath)) {
-        continue;
-      }
-
-      const scopedEntries = readdirSync(entryPath, {
-        withFileTypes: true,
-      }).sort((left, right) => left.name.localeCompare(right.name));
-      for (const scopedEntry of scopedEntries) {
-        const packageName = `${entry.name}/${scopedEntry.name}`;
-        const packagePath = path.join(entryPath, scopedEntry.name);
-        if (!isDirectory(packagePath)) {
-          continue;
-        }
-        packages.push({ name: packageName, dir: packagePath });
-      }
-      continue;
-    }
-
-    if (!isDirectory(entryPath)) {
-      continue;
-    }
-    packages.push({ name: entry.name, dir: entryPath });
-  }
-
-  return packages;
 }
 
 // ---------------------------------------------------------------------------
