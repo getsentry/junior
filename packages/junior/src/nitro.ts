@@ -13,9 +13,13 @@ function copyAppAndPluginContent(cwd: string, serverRoot: string): void {
   const packagedContent = discoverInstalledPluginPackageContent(cwd);
   for (const root of packagedContent.manifestRoots) {
     if (existsSync(path.join(root, "plugin.yaml"))) {
+      const relative = path.relative(cwd, root);
+      if (!relative || path.isAbsolute(relative) || relative.startsWith("..")) {
+        continue;
+      }
       copyIfExists(
         path.join(root, "plugin.yaml"),
-        path.join(serverRoot, path.relative(cwd, root), "plugin.yaml"),
+        path.join(serverRoot, relative, "plugin.yaml"),
       );
       continue;
     }
