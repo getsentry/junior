@@ -94,6 +94,7 @@ export async function runInit(
       hono: "^4.12.0",
     },
     devDependencies: {
+      jiti: "^2.6.1",
       nitro: "3.0.260311-beta",
       typescript: "^5.9.0",
       vite: "^8.0.3",
