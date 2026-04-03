@@ -46,17 +46,6 @@ function pathForTracingInclude(cwd: string, targetPath: string): string | null {
   return normalized.startsWith(".") ? normalized : `./${normalized}`;
 }
 
-function parseRuntimeConfiguredPackageNames(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  const parsed = value.filter(
-    (entry): entry is string =>
-      typeof entry === "string" && entry.trim().length > 0,
-  );
-  return uniqueStringsInOrder(parsed.map((entry) => entry.trim()));
-}
-
 let configuredPluginPackages: string[] | undefined;
 
 /** Set the runtime plugin package allowlist. Called by `createApp()`. */
@@ -68,15 +57,7 @@ function readNextRuntimeConfiguredPackageNames(): string[] | null {
   if (configuredPluginPackages !== undefined) {
     return configuredPluginPackages;
   }
-  const raw = process.env.JUNIOR_PLUGIN_PACKAGES;
-  if (raw === undefined) {
-    return null;
-  }
-  try {
-    return parseRuntimeConfiguredPackageNames(JSON.parse(raw)) ?? [];
-  } catch {
-    return [];
-  }
+  return null;
 }
 
 function findWorkspaceRoot(cwd: string): string | null {
