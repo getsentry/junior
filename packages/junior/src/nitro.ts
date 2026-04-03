@@ -1,10 +1,42 @@
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-discovery";
+import type { Nitro } from "nitro/types";
 
+/** @deprecated */
 export interface JuniorNitroConfigOptions {
   cwd?: string;
   maxDuration?: number;
+}
+
+export interface JuniorNitroOptions {
+  cwd?: string;
+  maxDuration?: number;
+}
+
+export function juniorNitro(options: JuniorNitroOptions): {
+  nitro: { setup(nitro: unknown): void };
+} {
+  return {
+    nitro: {
+      setup(nitro: Nitro) {
+        const cwd = path.resolve(
+          options.cwd ?? nitro.options.rootDir ?? process.cwd(),
+        );
+
+        // setup vercel maxDuration
+        nitro.options.vercel ??= {};
+        nitro.options.vercel.functions ??= {};
+        nitro.options.vercel.functions.maxDuration ??=
+          options.maxDuration ?? 800;
+
+        // Copy app and plugin content on compiled hook
+        nitro.hooks.hook("compiled", () => {
+          copyAppAndPluginContent(cwd, nitro.options.output.serverDir);
+        });
+      },
+    },
+  };
 }
 
 function copyAppAndPluginContent(cwd: string, serverRoot: string): void {
@@ -54,7 +86,7 @@ function copyRootIntoServerOutput(
   copyIfExists(root, path.join(serverRoot, relative));
 }
 
-/** Return the default Nitro config used by scaffolded Junior apps. */
+/** @deprecated */
 export function juniorNitroConfig(options: JuniorNitroConfigOptions = {}) {
   const cwd = path.resolve(options.cwd ?? process.cwd());
 

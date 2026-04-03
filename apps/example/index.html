@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Junior</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "SF Mono", "Cascadia Code", "Fira Code", Menlo, monospace;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 2rem;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    h1 { color: #58a6ff; font-size: 1.1rem; margin-bottom: 0.25rem; }
+    .subtitle { color: #8b949e; font-size: 0.85rem; margin-bottom: 1.5rem; }
+    .section {
+      max-width: 720px;
+      margin-bottom: 1.25rem;
+    }
+    .section-title {
+      color: #8b949e;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.5rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid #21262d;
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.35rem;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-ok { background: #2dd4bf; }
+    .dot-err { background: #f87171; }
+    .label { color: #8b949e; }
+    .value { color: #e6edf3; }
+    .detail-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.25rem;
+      font-size: 0.85rem;
+    }
+    .detail-key { color: #8b949e; min-width: 7rem; }
+    .detail-val { color: #c9d1d9; }
+    .skill-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .skill-tag {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.8rem;
+      color: #c9d1d9;
+    }
+    .skill-provider {
+      color: #8b949e;
+      font-size: 0.7rem;
+      margin-left: 0.15rem;
+    }
+    .provider-list, .package-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .provider-tag {
+      background: #1b2332;
+      border: 1px solid #1f3a5f;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.8rem;
+      color: #58a6ff;
+    }
+    .package-tag {
+      background: #1a1e2a;
+      border: 1px solid #2d3548;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.78rem;
+      color: #a5b4cf;
+    }
+    .endpoint-list { list-style: none; }
+    .endpoint-list li {
+      margin-bottom: 0.2rem;
+      font-size: 0.85rem;
+    }
+    .method {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      margin-right: 0.4rem;
+      min-width: 2.5rem;
+      text-align: center;
+    }
+    .method-get { background: #1b3a2d; color: #2dd4bf; }
+    .method-post { background: #3b2e1a; color: #f0b952; }
+    .endpoint-link {
+      color: #c9d1d9;
+      text-decoration: none;
+    }
+    .endpoint-link:hover {
+      color: #58a6ff;
+      text-decoration: underline;
+    }
+    .error-msg {
+      color: #f87171;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>&gt; junior</h1>
+
+  <script server>
+    let health, discovery;
+
+    try {
+      const res = await serverFetch("/api/health");
+      health = { ok: res.ok, data: await res.json() };
+    } catch (e) {
+      health = { ok: false, error: e.message };
+    }
+
+    try {
+      const res = await serverFetch("/api/__junior/discovery");
+      if (res.ok) {
+        discovery = { ok: true, data: await res.json() };
+      } else {
+        discovery = { ok: false, error: `${res.status} ${res.statusText}` };
+      }
+    } catch (e) {
+      discovery = { ok: false, error: e.message };
+    }
+
+    const d = discovery?.ok ? discovery.data : null;
+  </script>
+
+  <? if (d?.aboutText) { ?>
+    <div class="subtitle"><?=htmlspecialchars(d.aboutText)?></div>
+  <? } ?>
+
+  <div class="section">
+    <div class="section-title">Status</div>
+    <div class="status-row">
+      <span class="<?= 'dot ' + (health.ok ? 'dot-ok' : 'dot-err') ?>"></span>
+      <span class="value"><? if (health.ok) { ?>Healthy<? } else { ?>Unreachable<? } ?></span>
+      <? if (health.ok) { ?>
+        <span class="label">&middot; <?=htmlspecialchars(new Date(health.data.timestamp).toLocaleTimeString())?></span>
+      <? } ?>
+    </div>
+    <? if (d) { ?>
+      <div class="detail-row"><span class="detail-key">service</span><span class="detail-val"><?=htmlspecialchars(health.data?.service || "junior")?></span></div>
+      <div class="detail-row"><span class="detail-key">cwd</span><span class="detail-val"><?=htmlspecialchars(d.cwd)?></span></div>
+      <div class="detail-row"><span class="detail-key">home</span><span class="detail-val"><?=htmlspecialchars(d.homeDir)?></span></div>
+    <? } ?>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Endpoints</div>
+    <ul class="endpoint-list">
+      <script server>
+        const endpoints = [
+          { method: "GET", path: "/api/health" },
+          { method: "GET", path: "/api/__junior/discovery" },
+          { method: "GET", path: "/api/oauth/callback/mcp/:provider" },
+          { method: "GET", path: "/api/oauth/callback/:provider" },
+          { method: "POST", path: "/api/webhooks/:platform" },
+        ];
+      </script>
+      <? for (const ep of endpoints) { ?>
+        <li>
+          <span class="<?= 'method ' + (ep.method === 'GET' ? 'method-get' : 'method-post') ?>"><?=htmlspecialchars(ep.method)?></span>
+          <? if (ep.path.includes(":")) { ?>
+            <span><?=htmlspecialchars(ep.path)?></span>
+          <? } else { ?>
+            <a class="endpoint-link" href="<?=htmlspecialchars(ep.path)?>" target="_blank"><?=htmlspecialchars(ep.path)?></a>
+          <? } ?>
+        </li>
+      <? } ?>
+    </ul>
+  </div>
+
+  <? if (d) { ?>
+    <? if (d.providers?.length) { ?>
+      <div class="section">
+        <div class="section-title">Plugins <span class="label">(<?=d.providers.length?>)</span></div>
+        <div class="provider-list">
+          <? for (const p of d.providers) { ?>
+            <span class="provider-tag"><?=htmlspecialchars(p)?></span>
+          <? } ?>
+        </div>
+        <? if (d.packagedContent?.packageNames?.length) { ?>
+          <div style="margin-top:0.5rem">
+            <div class="package-list">
+              <? for (const pkg of d.packagedContent.packageNames) { ?>
+                <span class="package-tag"><?=htmlspecialchars(pkg)?></span>
+              <? } ?>
+            </div>
+          </div>
+        <? } ?>
+      </div>
+    <? } ?>
+
+    <? if (d.skills?.length) { ?>
+      <div class="section">
+        <div class="section-title">Skills <span class="label">(<?=d.skills.length?>)</span></div>
+        <div class="skill-grid">
+          <? for (const s of d.skills) { ?>
+            <span class="skill-tag"><?=htmlspecialchars(s.name)?>
+              <? if (s.pluginProvider) { ?>
+                <span class="skill-provider"> <?=htmlspecialchars(s.pluginProvider)?></span>
+              <? } ?>
+            </span>
+          <? } ?>
+        </div>
+      </div>
+    <? } ?>
+  <? } else if (discovery && !discovery.ok) { ?>
+    <div class="section">
+      <div class="section-title">Discovery</div>
+      <span class="error-msg">unavailable &middot; <?=htmlspecialchars(discovery.error)?></span>
+    </div>
+  <? } ?>
+
+</body>
+</html>

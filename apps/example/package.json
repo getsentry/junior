@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "junior snapshot create && vite build",
+    "dev": "JUNIOR_ENABLE_DIAGNOSTICS=1 nitro dev",
+    "build": "junior snapshot create && nitro build",
+    "preview": "JUNIOR_ENABLE_DIAGNOSTICS=1 nitro preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -19,7 +20,6 @@
   "devDependencies": {
     "@types/node": "^25.5.0",
     "nitro": "3.0.260311-beta",
-    "typescript": "^5.9.3",
-    "vite": "^8.0.3"
+    "typescript": "^5.9.3"
   }
 }
