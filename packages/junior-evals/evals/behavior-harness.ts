@@ -869,7 +869,7 @@ function buildRuntimeServices(
               toolResultCount: replyResult.tool_result_count ?? 0,
               usedPrimaryText:
                 replyResult.used_primary_text ??
-                Boolean(replyResult.stream_text ?? replyResult.text),
+                Boolean(replyResult.stream_text),
             },
           };
         }
