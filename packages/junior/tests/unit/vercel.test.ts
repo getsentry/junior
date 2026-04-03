@@ -5,6 +5,7 @@ describe("juniorVercelConfig", () => {
   it("returns config with default buildCommand", () => {
     const config = juniorVercelConfig();
 
+    expect(config.framework).toBe("nitro");
     expect(config.buildCommand).toBe("pnpm build");
   });
 
