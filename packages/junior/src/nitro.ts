@@ -7,11 +7,13 @@ import type { Nitro } from "nitro/types";
 export interface JuniorNitroConfigOptions {
   cwd?: string;
   maxDuration?: number;
+  pluginPackages?: string[];
 }
 
 export interface JuniorNitroOptions {
   cwd?: string;
   maxDuration?: number;
+  pluginPackages?: string[];
 }
 
 export function juniorNitro(options: JuniorNitroOptions): {
@@ -32,17 +34,27 @@ export function juniorNitro(options: JuniorNitroOptions): {
 
         // Copy app and plugin content on compiled hook
         nitro.hooks.hook("compiled", () => {
-          copyAppAndPluginContent(cwd, nitro.options.output.serverDir);
+          copyAppAndPluginContent(
+            cwd,
+            nitro.options.output.serverDir,
+            options.pluginPackages,
+          );
         });
       },
     },
   };
 }
 
-function copyAppAndPluginContent(cwd: string, serverRoot: string): void {
+function copyAppAndPluginContent(
+  cwd: string,
+  serverRoot: string,
+  pluginPackages?: string[],
+): void {
   copyIfExists(path.join(cwd, "app"), path.join(serverRoot, "app"));
 
-  const packagedContent = discoverInstalledPluginPackageContent(cwd);
+  const packagedContent = discoverInstalledPluginPackageContent(cwd, {
+    packageNames: pluginPackages,
+  });
   for (const root of packagedContent.manifestRoots) {
     if (existsSync(path.join(root, "plugin.yaml"))) {
       const relative = path.relative(cwd, root);
@@ -104,7 +116,11 @@ export function juniorNitroConfig(options: JuniorNitroConfigOptions = {}) {
           options: { output: { serverDir: string } };
         }) {
           nitro.hooks.hook("compiled", () => {
-            copyAppAndPluginContent(cwd, nitro.options.output.serverDir);
+            copyAppAndPluginContent(
+              cwd,
+              nitro.options.output.serverDir,
+              options.pluginPackages,
+            );
           });
         },
       },

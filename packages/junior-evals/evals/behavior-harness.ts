@@ -17,6 +17,7 @@ import {
   deleteMcpStoredOAuthCredentials,
   getLatestMcpAuthSessionForUserProvider,
 } from "@/chat/mcp/auth-store";
+import { setPluginPackages } from "@/chat/plugins/package-discovery";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -219,7 +220,6 @@ const HARNESS_ENV_KEYS = [
   "EVAL_TEST_CREDENTIAL_TOKEN",
   "JUNIOR_BASE_URL",
   "JUNIOR_EXTRA_PLUGIN_ROOTS",
-  "JUNIOR_PLUGIN_PACKAGES",
   "JUNIOR_STATE_ADAPTER",
   "SLACK_BOT_TOKEN",
 ] as const;
@@ -733,9 +733,7 @@ async function setupHarnessEnvironment(
   process.env.JUNIOR_BASE_URL = "https://junior.example.com";
   process.env.JUNIOR_STATE_ADAPTER = "memory";
   process.env.JUNIOR_EXTRA_PLUGIN_ROOTS = JSON.stringify(configuredPluginDirs);
-  process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
-    scenario.overrides?.plugin_packages ?? [],
-  );
+  setPluginPackages(scenario.overrides?.plugin_packages ?? []);
 
   const stateAdapter = getStateAdapter();
   await stateAdapter.connect();
