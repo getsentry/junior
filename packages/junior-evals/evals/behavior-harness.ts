@@ -102,6 +102,19 @@ interface SubscribedDecisionFixture {
   should_reply: boolean;
 }
 
+interface EvalReplyResultFixture {
+  assistant_message_count?: number;
+  error_message?: string;
+  outcome?: "success" | "execution_failure" | "provider_error";
+  stop_reason?: string;
+  stream_text?: string;
+  text: string;
+  tool_calls?: string[];
+  tool_error_count?: number;
+  tool_result_count?: number;
+  used_primary_text?: boolean;
+}
+
 export interface EvalOverrides {
   auto_complete_mcp_oauth?: string[];
   auto_complete_oauth?: string[];
@@ -110,6 +123,7 @@ export interface EvalOverrides {
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
+  reply_results?: EvalReplyResultFixture[];
   reply_texts?: string[];
   skill_dirs?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
@@ -780,6 +794,7 @@ function buildRuntimeServices(
   env: HarnessEnvironment,
   threadRecordsById: Map<string, EvalThreadRecord>,
 ): JuniorRuntimeServiceOverrides {
+  const replyResults = scenario.overrides?.reply_results ?? [];
   const replyTexts = scenario.overrides?.reply_texts ?? [];
   const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
   const replyTimeoutMs = Number.parseInt(
@@ -824,6 +839,37 @@ function buildRuntimeServices(
         const mockImageGeneration = scenario.overrides?.mock_image_generation;
         if (scenario.overrides?.fail_reply_call === replyCallCount) {
           throw new Error(`forced reply failure on call ${replyCallCount}`);
+        }
+        const replyResult = replyResults[replyCallCount - 1];
+        if (replyResult) {
+          if (replyResult.stream_text) {
+            await context?.onTextDelta?.(replyResult.stream_text);
+          }
+          replyState.successfulCount += 1;
+          return {
+            text: replyResult.text,
+            deliveryMode: "thread",
+            deliveryPlan: {
+              mode: "thread",
+              postThreadText: true,
+              attachFiles: "none",
+            },
+            diagnostics: {
+              assistantMessageCount: replyResult.assistant_message_count ?? 1,
+              ...(replyResult.error_message
+                ? { errorMessage: replyResult.error_message }
+                : {}),
+              modelId: "eval-reply-result",
+              outcome: replyResult.outcome ?? "success",
+              ...(replyResult.stop_reason
+                ? { stopReason: replyResult.stop_reason }
+                : {}),
+              toolCalls: replyResult.tool_calls ?? [],
+              toolErrorCount: replyResult.tool_error_count ?? 0,
+              toolResultCount: replyResult.tool_result_count ?? 0,
+              usedPrimaryText: replyResult.used_primary_text ?? true,
+            },
+          };
         }
         const replyText = replyTexts[replyState.successfulCount];
         if (typeof replyText === "string") {

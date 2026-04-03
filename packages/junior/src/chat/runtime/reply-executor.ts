@@ -64,7 +64,6 @@ import {
 type SlackReplyPostStage =
   | "streaming_initial_post"
   | "thread_reply"
-  | "thread_reply_after_stream_failure"
   | "thread_reply_files_followup";
 
 export interface ReplyExecutorServices {
@@ -453,15 +452,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               }
             } else {
               await streamedReplyPromise;
-              if (
-                reply.diagnostics.outcome !== "success" &&
-                reply.text.trim().length > 0
-              ) {
-                await postThreadReply(
-                  buildSlackOutputMessage(reply.text),
-                  "thread_reply_after_stream_failure",
-                );
-              }
             }
           }
 

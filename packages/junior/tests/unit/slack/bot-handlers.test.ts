@@ -536,14 +536,14 @@ describe("bot handlers (integration)", () => {
     expect(lastMessage?.meta?.skippedReason).toBeUndefined();
   });
 
-  it("posts terminal failure text after streamed partial output", async () => {
+  it("does not post synthetic failure reply when primary text was streamed", async () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             await context?.onTextDelta?.("Partial output...");
             return {
-              text: "Error: Agent turn timed out after 720000ms",
+              text: "Partial output...",
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "test-model",
@@ -573,13 +573,8 @@ describe("bot handlers (integration)", () => {
       }),
     );
 
-    expect(thread.posts).toHaveLength(2);
+    expect(thread.posts).toHaveLength(1);
     expect(thread.posts[0]).toBe("Partial output...");
-    expect(thread.posts[1]).toEqual(
-      expect.objectContaining({
-        markdown: expect.stringContaining("Agent turn timed out"),
-      }),
-    );
   });
 
   it("emits assistant status updates in shared channel threads", async () => {
