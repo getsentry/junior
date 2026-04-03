@@ -57,6 +57,9 @@ describe.sequential("example build discovery integration", () => {
 
   it("serves built health and recognizes the sentry oauth callback route", async () => {
     process.chdir(exampleRoot);
+    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
+      getExamplePluginPackages(),
+    );
 
     const app = await importExampleApp();
 
@@ -77,6 +80,7 @@ describe.sequential("example build discovery integration", () => {
   it("reports discovery state from the example app", async () => {
     const packageNames = getExamplePluginPackages();
     process.chdir(exampleRoot);
+    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(packageNames);
 
     const app = await importExampleApp();
     const response = await app.fetch(

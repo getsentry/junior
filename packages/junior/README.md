@@ -25,7 +25,7 @@ export default app;
 
 Run `junior init my-bot` to scaffold a complete project including `vercel.json` for Vercel deployment.
 
-Use `createApp({ pluginPackages: [...] })` to declare which plugin packages to load at runtime.
+Use `juniorNitro({ pluginPackages: [...] })` in `nitro.config.ts` to declare which plugin packages to bundle and load at runtime.
 
 ## Full docs
 

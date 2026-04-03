@@ -21,14 +21,12 @@ pnpm add @sentry/junior @sentry/junior-example
 
 ## Runtime setup
 
-List the plugin in `createApp({ pluginPackages: [...] })`:
+List the plugin in `juniorNitro({ pluginPackages: [...] })`:
 
-```ts title="api/index.ts"
-const app = await createApp({
+```ts title="nitro.config.ts"
+juniorNitro({
   pluginPackages: ["@sentry/junior-example"],
 });
-
-export default handle(app);
 ```
 
 ## Configure environment variables

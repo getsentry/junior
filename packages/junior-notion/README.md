@@ -8,17 +8,12 @@ Install it alongside `@sentry/junior`:
 pnpm add @sentry/junior @sentry/junior-notion
 ```
 
-Then register the plugin package in `createApp(...)`:
+Then register the plugin package in `juniorNitro(...)`:
 
-```ts
-import { createApp } from "@sentry/junior";
-import { handle } from "hono/vercel";
-
-const app = await createApp({
+```ts title="nitro.config.ts"
+juniorNitro({
   pluginPackages: ["@sentry/junior-notion"],
 });
-
-export default handle(app);
 ```
 
 This package does not use `NOTION_TOKEN` or a shared workspace integration. Each user connects their own Notion account the first time Junior calls a Notion MCP tool. Junior sends the OAuth link privately and resumes the thread automatically after the user authorizes.

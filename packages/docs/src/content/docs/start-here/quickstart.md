@@ -79,19 +79,23 @@ If you want to use npm-distributed plugins, install them explicitly:
 pnpm add @sentry/junior-github @sentry/junior-notion
 ```
 
-List the plugin packages explicitly in `createApp`:
+List the plugin packages in `juniorNitro` so they are bundled and available at runtime:
 
-```ts title="server.ts"
-import { initSentry } from "@sentry/junior/instrumentation";
-initSentry();
+```ts title="nitro.config.ts"
+import { defineConfig } from "nitro";
+import { juniorNitro } from "@sentry/junior/nitro";
 
-import { createApp } from "@sentry/junior";
-
-const app = await createApp({
-  pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
+export default defineConfig({
+  preset: "vercel",
+  modules: [
+    juniorNitro({
+      pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
+    }),
+  ],
+  routes: {
+    "/api/**": { handler: "./server.ts" },
+  },
 });
-
-export default app;
 ```
 
 See [Plugins](/extend/) for the local-vs-package model.

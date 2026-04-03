@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { logException } from "@/chat/logging";
 import { setPluginPackages } from "@/chat/plugins/package-discovery";
@@ -30,9 +33,34 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
   }
 }
 
+/** Resolve plugin packages from build-time config (env var or JSON file). */
+function resolveBuildPluginPackages(): string[] | undefined {
+  const envValue = process.env.JUNIOR_PLUGIN_PACKAGES;
+  if (envValue) {
+    try {
+      return JSON.parse(envValue);
+    } catch {
+      // ignore malformed env
+    }
+  }
+  try {
+    let dir = path.dirname(fileURLToPath(import.meta.url));
+    for (let i = 0; i < 5; i++) {
+      const configPath = path.join(dir, "__junior_config.json");
+      if (existsSync(configPath)) {
+        return JSON.parse(readFileSync(configPath, "utf-8")).pluginPackages;
+      }
+      dir = path.dirname(dir);
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
 /** Create a Hono app with all Junior routes mounted under `/api`. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
-  setPluginPackages(options?.pluginPackages);
+  setPluginPackages(options?.pluginPackages ?? resolveBuildPluginPackages());
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
 
