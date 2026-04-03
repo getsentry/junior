@@ -44,9 +44,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   app.get("/health", () => healthGET());
-  if (process.env.JUNIOR_ENABLE_DIAGNOSTICS === "1") {
-    app.get("/__junior/discovery", () => diagnosticsGET());
-  }
+
+  // Public route — returns plugin/skill names, cwd, and ABOUT.md text.
+  // No credentials or PII. Understand what this discloses before deploying.
+  app.get("/__junior/discovery", () => diagnosticsGET());
 
   // MCP callback must be registered before the generic OAuth callback
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.
