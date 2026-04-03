@@ -64,7 +64,6 @@ import {
 type SlackReplyPostStage =
   | "streaming_initial_post"
   | "thread_reply"
-  | "thread_reply_after_stream_failure"
   | "thread_reply_files_followup";
 
 export interface ReplyExecutorServices {
@@ -234,7 +233,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const textStream = createTextStreamBridge();
         let streamedReplyPromise: Promise<SentMessage> | undefined;
         let pendingStreamText = "";
-        let hasStreamedText = false;
         let beforeFirstResponsePostCalled = false;
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
@@ -330,7 +328,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               if (explicitChannelPostIntent) {
                 return;
               }
-              hasStreamedText = true;
               if (streamedReplyPromise) {
                 textStream.push(deltaText);
                 return;
@@ -455,12 +452,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               }
             } else {
               await streamedReplyPromise;
-              if (reply.text.trim().length > 0 && !hasStreamedText) {
-                await postThreadReply(
-                  buildSlackOutputMessage(reply.text),
-                  "thread_reply_after_stream_failure",
-                );
-              }
             }
           }
 
