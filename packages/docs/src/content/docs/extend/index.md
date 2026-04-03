@@ -50,24 +50,27 @@ For reuse across apps or teams, package plugin manifests + skills as npm package
 pnpm add @sentry/junior @sentry/junior-github @sentry/junior-notion @sentry/junior-sentry
 ```
 
-List the plugin packages explicitly in `createApp`:
+List the plugin packages in `juniorNitro` so they are bundled at build time and available at runtime:
 
-```ts title="api/index.ts"
-import { initSentry } from "@sentry/junior/instrumentation";
-initSentry();
+```ts title="nitro.config.ts"
+import { defineConfig } from "nitro";
+import { juniorNitro } from "@sentry/junior/nitro";
 
-import { createApp } from "@sentry/junior";
-import { handle } from "hono/vercel";
-
-const app = await createApp({
-  pluginPackages: [
-    "@sentry/junior-github",
-    "@sentry/junior-notion",
-    "@sentry/junior-sentry",
+export default defineConfig({
+  preset: "vercel",
+  modules: [
+    juniorNitro({
+      pluginPackages: [
+        "@sentry/junior-github",
+        "@sentry/junior-notion",
+        "@sentry/junior-sentry",
+      ],
+    }),
   ],
+  routes: {
+    "/api/**": { handler: "./server.ts" },
+  },
 });
-
-export default handle(app);
 ```
 
 If you publish your own package, include `plugin.yaml` and `skills` in package `files`.
@@ -182,7 +185,7 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-The `juniorNitro({ pluginPackages: [...] })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. Pass the same package list to both `createApp` and `juniorNitro`.
+The `juniorNitro({ pluginPackages: [...] })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. The plugin list is automatically available at runtime via `createApp()` — no need to declare it twice.
 
 ## Validate extensions
 
