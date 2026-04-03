@@ -758,6 +758,7 @@ async function teardownHarnessEnvironment(
   env: HarnessEnvironment,
 ): Promise<void> {
   resetSkillDiscoveryCache();
+  setPluginPackages(undefined);
   await cleanupHarnessThreadState(env.stateAdapter, scenario.events);
   await cleanupMcpAuthState(
     env.authRequesterUsers,
