@@ -31,7 +31,7 @@ describe("Conversational Evals: Lifecycle and Resilience", () => {
       },
       events: [mention("Quick budget update?")],
       criteria:
-        "The assistant posts exactly one thread reply. That reply contains the budget update text. No additional fallback error reply appears, and assistant_posts does not contain execution-failure or logged-for-debugging text.",
+        "assistant_posts contains exactly one entry whose text includes the budget update. No entry in assistant_posts mentions execution failure or logged for debugging.",
     },
   );
 });
