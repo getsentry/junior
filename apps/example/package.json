@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "JUNIOR_ENABLE_DIAGNOSTICS=1 nitro dev",
-    "build": "JUNIOR_ENABLE_DIAGNOSTICS=1 junior snapshot create && JUNIOR_ENABLE_DIAGNOSTICS=1 nitro build",
-    "preview": "JUNIOR_ENABLE_DIAGNOSTICS=1 nitro preview",
+    "dev": "nitro dev",
+    "build": "junior snapshot create && nitro build",
+    "preview": "nitro preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -27,7 +27,6 @@ function buildJuniorPackage(): void {
     ...process.env,
     JUNIOR_SKIP_SNAPSHOT: "1",
   };
-  delete env.JUNIOR_ENABLE_DIAGNOSTICS;
   delete env.JUNIOR_EXTRA_PLUGIN_ROOTS;
   delete env.SKILL_DIRS;
 
@@ -78,7 +77,6 @@ describe.sequential("example build discovery integration", () => {
   it("reports discovery state from the example app", async () => {
     const packageNames = getExamplePluginPackages();
     process.chdir(exampleRoot);
-    process.env.JUNIOR_ENABLE_DIAGNOSTICS = "1";
 
     const app = await importExampleApp();
     const response = await app.fetch(
