@@ -21,11 +21,8 @@ describe("Conversational Evals: Lifecycle and Resilience", () => {
         reply_results: [
           {
             stream_text: "Budget is still on track for Friday.",
-            text: "I couldn't complete this request in this turn due to an execution failure. I've logged the details for debugging.",
-            outcome: "execution_failure",
-            used_primary_text: true,
-            assistant_message_count: 2,
-            stop_reason: "stop",
+            text: "Budget is still on track for Friday.",
+            outcome: "provider_error",
           },
         ],
       },

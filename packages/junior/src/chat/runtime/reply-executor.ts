@@ -78,7 +78,6 @@ function getExecutionFailureReason(reply: {
     assistantMessageCount: number;
     errorMessage?: string;
     toolErrorCount: number;
-    usedPrimaryText: boolean;
   };
 }): string {
   const errorMessage = reply.diagnostics.errorMessage?.trim();
@@ -89,9 +88,7 @@ function getExecutionFailureReason(reply: {
     return `${reply.diagnostics.toolErrorCount} tool result error(s)`;
   }
   if (reply.diagnostics.assistantMessageCount > 0) {
-    return reply.diagnostics.usedPrimaryText
-      ? "assistant produced invalid final text"
-      : "assistant returned no text";
+    return "assistant returned no text";
   }
   return "empty assistant turn";
 }
@@ -237,6 +234,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const textStream = createTextStreamBridge();
         let streamedReplyPromise: Promise<SentMessage> | undefined;
         let pendingStreamText = "";
+        let hasStreamedText = false;
         let beforeFirstResponsePostCalled = false;
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
@@ -332,6 +330,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               if (explicitChannelPostIntent) {
                 return;
               }
+              hasStreamedText = true;
               if (streamedReplyPromise) {
                 textStream.push(deltaText);
                 return;
@@ -456,11 +455,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               }
             } else {
               await streamedReplyPromise;
-              if (
-                reply.diagnostics.outcome !== "success" &&
-                reply.text.trim().length > 0 &&
-                !reply.diagnostics.usedPrimaryText
-              ) {
+              if (reply.text.trim().length > 0 && !hasStreamedText) {
                 await postThreadReply(
                   buildSlackOutputMessage(reply.text),
                   "thread_reply_after_stream_failure",
