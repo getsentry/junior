@@ -182,7 +182,7 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-The default Vercel config (`juniorVercelConfig()`) automatically includes `app/**/*` and installed `@sentry/junior-*` plugin package content in the deployed function bundle. No extra configuration is needed for standard plugin packages.
+The `juniorNitro({ pluginPackages: [...] })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. Pass the same package list to both `createApp` and `juniorNitro`.
 
 ## Validate extensions
 

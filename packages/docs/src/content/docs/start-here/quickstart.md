@@ -115,7 +115,7 @@ export default app;
 
 ### Vercel config
 
-`junior init` generates a `nitro.config.ts` that uses Nitro's Vercel preset to build and deploy the app. Nitro's `compiled` hook automatically discovers and copies `app/**/*` plus installed plugin content into the Vercel function bundle at build time.
+`junior init` generates a `nitro.config.ts` that uses Nitro's Vercel preset to build and deploy the app. The `juniorNitro()` module copies `app/**/*` and any declared `pluginPackages` content into the Vercel function bundle at build time.
 
 ## Deploy to Vercel
 
