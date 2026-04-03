@@ -3,21 +3,20 @@ import { discoverSkills } from "@/chat/skills";
 import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
-import type { Skill } from "@/chat/skills";
+import type { Skill, SkillMetadata } from "@/chat/skills";
+
+const testSkill: SkillMetadata = {
+  name: "test-skill",
+  description: "A test skill with metadata",
+  skillPath: "/fake/skills/test-skill",
+  allowedTools: ["bash"],
+  requiresCapabilities: ["test.api"],
+};
 
 describe("load_skill tool", () => {
   it("loads a skill from sandbox and returns instructions", async () => {
-    const availableSkills = await discoverSkills();
-    const firstSkill = availableSkills.find(
-      (skill) =>
-        skill.pluginProvider ||
-        skill.allowedTools ||
-        skill.requiresCapabilities ||
-        skill.usesConfig,
-    );
-    if (!firstSkill) {
-      throw new Error("expected at least one skill with metadata");
-    }
+    const availableSkills = [testSkill];
+    const firstSkill = testSkill;
 
     const sandbox = {
       readFileToBuffer: async ({ path }: { path: string }) =>

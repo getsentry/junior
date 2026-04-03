@@ -43,7 +43,9 @@ describe("cwd-shifted discovery regression", () => {
 
     expect(resolveHomeDir(nestedRuntimeCwd)).toBe(appDir);
 
-    const discovered = discoverInstalledPluginPackageContent(nestedRuntimeCwd);
+    const discovered = discoverInstalledPluginPackageContent(nestedRuntimeCwd, {
+      packageNames: ["@acme/junior-plugin-demo"],
+    });
     expect(discovered.manifestRoots).toContain(pluginRoot);
     expect(discovered.skillRoots).toContain(path.join(pluginRoot, "skills"));
   });

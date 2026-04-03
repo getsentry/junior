@@ -29,7 +29,6 @@ function buildJuniorPackage(): void {
   };
   delete env.JUNIOR_ENABLE_DIAGNOSTICS;
   delete env.JUNIOR_EXTRA_PLUGIN_ROOTS;
-  delete env.JUNIOR_PLUGIN_PACKAGES;
   delete env.SKILL_DIRS;
 
   execFileSync("pnpm", ["--filter", "@sentry/junior", "build"], {
@@ -80,7 +79,6 @@ describe.sequential("example build discovery integration", () => {
     const packageNames = getExamplePluginPackages();
     process.chdir(exampleRoot);
     process.env.JUNIOR_ENABLE_DIAGNOSTICS = "1";
-    process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(packageNames);
 
     const app = await importExampleApp();
     const response = await app.fetch(

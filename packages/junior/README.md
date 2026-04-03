@@ -25,7 +25,7 @@ export default app;
 
 Run `junior init my-bot` to scaffold a complete project including `vercel.json` for Vercel deployment.
 
-Installed `@sentry/junior-*` plugin packages are discovered automatically. Use `createApp({ pluginPackages: [...] })` only when you need to restrict discovery to a specific allowlist.
+Use `createApp({ pluginPackages: [...] })` to declare which plugin packages to load at runtime.
 
 ## Full docs
 

@@ -18,30 +18,26 @@ async function writePluginPackage(
   return packageRoot;
 }
 
-async function writeWorkspacePlugin(
-  workspaceRoot: string,
-  packageDirName: string,
-  packageName?: string,
-): Promise<string> {
-  const packageRoot = path.join(workspaceRoot, "packages", packageDirName);
-  await fs.mkdir(path.join(packageRoot, "skills", "demo"), { recursive: true });
-  await fs.writeFile(
-    path.join(packageRoot, "plugin.yaml"),
-    "name: demo\ndescription: demo\n",
-    "utf8",
-  );
-  if (packageName) {
+describe("plugin package discovery", () => {
+  it("does not discover plugin content from node_modules without explicit packageNames", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-package-discovery-"),
+    );
+    const nodeModulesRoot = path.join(tempRoot, "node_modules");
+    await writePluginPackage(nodeModulesRoot, "@acme/junior-plugin-demo");
     await fs.writeFile(
-      path.join(packageRoot, "package.json"),
-      JSON.stringify({ name: packageName, private: true }),
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({ name: "temp", private: true }),
       "utf8",
     );
-  }
-  return packageRoot;
-}
 
-describe("plugin package discovery", () => {
-  it("discovers plugin content from node_modules even when package.json has no dependencies", async () => {
+    const discovered = discoverInstalledPluginPackageContent(tempRoot);
+    expect(discovered.packageNames).toEqual([]);
+    expect(discovered.manifestRoots).toEqual([]);
+    expect(discovered.skillRoots).toEqual([]);
+  });
+
+  it("discovers plugin content from node_modules with explicit packageNames", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-package-discovery-"),
     );
@@ -56,7 +52,9 @@ describe("plugin package discovery", () => {
       "utf8",
     );
 
-    const discovered = discoverInstalledPluginPackageContent(tempRoot);
+    const discovered = discoverInstalledPluginPackageContent(tempRoot, {
+      packageNames: ["@acme/junior-plugin-demo"],
+    });
     expect(discovered.packageNames).toContain("@acme/junior-plugin-demo");
     expect(discovered.manifestRoots).toContain(packageRoot);
     expect(discovered.skillRoots).toContain(path.join(packageRoot, "skills"));
@@ -87,6 +85,7 @@ describe("plugin package discovery", () => {
 
     const discovered = discoverInstalledPluginPackageContent(tempRoot, {
       nodeModulesDirs: [nearNodeModulesRoot, farNodeModulesRoot],
+      packageNames: ["@acme/junior-plugin-demo"],
     });
 
     expect(discovered.packageNames).toContain("@acme/junior-plugin-demo");
@@ -145,77 +144,6 @@ describe("plugin package discovery", () => {
     );
     expect(discovered.tracingIncludes).toContain(
       "./node_modules/@acme/junior-plugin-link/skills/**/*",
-    );
-  });
-
-  it("discovers sibling workspace plugin packages from pnpm-workspace members", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-package-discovery-"),
-    );
-    const appRoot = path.join(tempRoot, "packages", "junior");
-    const pluginRoot = await writeWorkspacePlugin(
-      tempRoot,
-      "junior-plugin-demo",
-    );
-
-    await fs.mkdir(appRoot, { recursive: true });
-    await fs.writeFile(
-      path.join(tempRoot, "pnpm-workspace.yaml"),
-      'packages:\n  - "packages/*"\n',
-      "utf8",
-    );
-    await fs.writeFile(
-      path.join(appRoot, "package.json"),
-      JSON.stringify({ name: "@sentry/junior", private: true }),
-      "utf8",
-    );
-
-    const discovered = discoverInstalledPluginPackageContent(appRoot);
-    expect(discovered.manifestRoots).toContain(pluginRoot);
-    expect(discovered.skillRoots).toContain(path.join(pluginRoot, "skills"));
-    expect(discovered.tracingIncludes).toContain(
-      "../junior-plugin-demo/plugin.yaml",
-    );
-    expect(discovered.tracingIncludes).toContain(
-      "../junior-plugin-demo/skills/**/*",
-    );
-  });
-
-  it("resolves explicit packageNames through sibling workspace packages", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-package-discovery-"),
-    );
-    const appRoot = path.join(tempRoot, "packages", "junior");
-    const pluginRoot = await writeWorkspacePlugin(
-      tempRoot,
-      "junior-github",
-      "@sentry/junior-github",
-    );
-
-    await fs.mkdir(appRoot, { recursive: true });
-    await fs.writeFile(
-      path.join(tempRoot, "pnpm-workspace.yaml"),
-      'packages:\n  - "packages/*"\n',
-      "utf8",
-    );
-    await fs.writeFile(
-      path.join(appRoot, "package.json"),
-      JSON.stringify({ name: "@sentry/junior", private: true }),
-      "utf8",
-    );
-
-    const discovered = discoverInstalledPluginPackageContent(appRoot, {
-      packageNames: ["@sentry/junior-github"],
-    });
-
-    expect(discovered.packageNames).toContain("@sentry/junior-github");
-    expect(discovered.manifestRoots).toContain(pluginRoot);
-    expect(discovered.skillRoots).toContain(path.join(pluginRoot, "skills"));
-    expect(discovered.tracingIncludes).toContain(
-      "../junior-github/plugin.yaml",
-    );
-    expect(discovered.tracingIncludes).toContain(
-      "../junior-github/skills/**/*",
     );
   });
 

@@ -79,7 +79,7 @@ If you want to use npm-distributed plugins, install them explicitly:
 pnpm add @sentry/junior-github @sentry/junior-notion
 ```
 
-Junior discovers installed `@sentry/junior-*` plugin packages automatically, so the entrypoint stays minimal:
+List the plugin packages explicitly in `createApp`:
 
 ```ts title="server.ts"
 import { initSentry } from "@sentry/junior/instrumentation";
@@ -87,12 +87,12 @@ initSentry();
 
 import { createApp } from "@sentry/junior";
 
-const app = await createApp();
+const app = await createApp({
+  pluginPackages: ["@sentry/junior-github", "@sentry/junior-notion"],
+});
 
 export default app;
 ```
-
-Keep the default auto-discovery path unless you need `createApp({ pluginPackages: [...] })` to restrict runtime loading to a specific list.
 
 See [Plugins](/extend/) for the local-vs-package model.
 
@@ -115,7 +115,7 @@ export default app;
 
 ### Vercel config
 
-`junior init` generates a `nitro.config.ts` that uses Nitro's Vercel preset to build and deploy the app. Nitro's `compiled` hook automatically discovers and copies `app/**/*` plus installed plugin content into the Vercel function bundle at build time.
+`junior init` generates a `nitro.config.ts` that uses Nitro's Vercel preset to build and deploy the app. The `juniorNitro()` module copies `app/**/*` and any declared `pluginPackages` content into the Vercel function bundle at build time.
 
 ## Deploy to Vercel
 

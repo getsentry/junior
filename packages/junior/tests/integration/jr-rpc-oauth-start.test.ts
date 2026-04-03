@@ -41,11 +41,13 @@ describe("jr-rpc oauth-start integration", () => {
     process.env = {
       ...ORIGINAL_ENV,
       JUNIOR_STATE_ADAPTER: "memory",
-      JUNIOR_PLUGIN_PACKAGES: JSON.stringify(["@sentry/junior-sentry"]),
       JUNIOR_BASE_URL: "https://junior.example.com",
       SENTRY_CLIENT_ID: "sentry-client-id",
     };
     vi.resetModules();
+    const { setPluginPackages } =
+      await import("@/chat/plugins/package-discovery");
+    setPluginPackages(["@sentry/junior-sentry"]);
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });

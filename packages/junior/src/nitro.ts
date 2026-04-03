@@ -3,18 +3,14 @@ import path from "node:path";
 import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-discovery";
 import type { Nitro } from "nitro/types";
 
-/** @deprecated */
-export interface JuniorNitroConfigOptions {
-  cwd?: string;
-  maxDuration?: number;
-}
-
 export interface JuniorNitroOptions {
   cwd?: string;
   maxDuration?: number;
+  pluginPackages?: string[];
 }
 
-export function juniorNitro(options: JuniorNitroOptions): {
+/** Nitro module that copies app and plugin content into the Vercel build output. */
+export function juniorNitro(options: JuniorNitroOptions = {}): {
   nitro: { setup(nitro: unknown): void };
 } {
   return {
@@ -24,25 +20,33 @@ export function juniorNitro(options: JuniorNitroOptions): {
           options.cwd ?? nitro.options.rootDir ?? process.cwd(),
         );
 
-        // setup vercel maxDuration
         nitro.options.vercel ??= {};
         nitro.options.vercel.functions ??= {};
         nitro.options.vercel.functions.maxDuration ??=
           options.maxDuration ?? 800;
 
-        // Copy app and plugin content on compiled hook
         nitro.hooks.hook("compiled", () => {
-          copyAppAndPluginContent(cwd, nitro.options.output.serverDir);
+          copyAppAndPluginContent(
+            cwd,
+            nitro.options.output.serverDir,
+            options.pluginPackages,
+          );
         });
       },
     },
   };
 }
 
-function copyAppAndPluginContent(cwd: string, serverRoot: string): void {
+function copyAppAndPluginContent(
+  cwd: string,
+  serverRoot: string,
+  pluginPackages?: string[],
+): void {
   copyIfExists(path.join(cwd, "app"), path.join(serverRoot, "app"));
 
-  const packagedContent = discoverInstalledPluginPackageContent(cwd);
+  const packagedContent = discoverInstalledPluginPackageContent(cwd, {
+    packageNames: pluginPackages,
+  });
   for (const root of packagedContent.manifestRoots) {
     if (existsSync(path.join(root, "plugin.yaml"))) {
       const relative = path.relative(cwd, root);
@@ -84,30 +88,4 @@ function copyRootIntoServerOutput(
   }
 
   copyIfExists(root, path.join(serverRoot, relative));
-}
-
-/** @deprecated */
-export function juniorNitroConfig(options: JuniorNitroConfigOptions = {}) {
-  const cwd = path.resolve(options.cwd ?? process.cwd());
-
-  return {
-    preset: "vercel" as const,
-    vercel: {
-      functions: {
-        maxDuration: options.maxDuration ?? 800,
-      },
-    },
-    modules: [
-      {
-        setup(nitro: {
-          hooks: { hook(name: "compiled", callback: () => void): void };
-          options: { output: { serverDir: string } };
-        }) {
-          nitro.hooks.hook("compiled", () => {
-            copyAppAndPluginContent(cwd, nitro.options.output.serverDir);
-          });
-        },
-      },
-    ],
-  };
 }

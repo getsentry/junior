@@ -19,10 +19,16 @@ export default app;
 function writeNitroConfig(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "nitro.config.ts"),
-    `import { juniorNitroConfig } from "@sentry/junior/nitro";
-import { defineConfig } from "nitro";
+    `import { defineConfig } from "nitro";
+import { juniorNitro } from "@sentry/junior/nitro";
 
-export default defineConfig(juniorNitroConfig());
+export default defineConfig({
+  preset: "vercel",
+  modules: [juniorNitro()],
+  routes: {
+    "/api/**": { handler: "./server.ts" },
+  },
+});
 `,
   );
 }
