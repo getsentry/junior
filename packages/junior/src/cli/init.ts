@@ -52,7 +52,7 @@ export default defineConfig({
 function writeVercelJson(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "vercel.json"),
-    `${JSON.stringify({ buildCommand: "pnpm build" }, null, 2)}\n`,
+    `${JSON.stringify({ framework: "nitro", buildCommand: "pnpm build" }, null, 2)}\n`,
   );
 }
 
