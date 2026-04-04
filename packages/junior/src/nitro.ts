@@ -1,10 +1,4 @@
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-discovery";
@@ -39,21 +33,15 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         nitro.options.vercel.functions.maxDuration ??=
           options.maxDuration ?? 800;
 
-        // Make plugin packages available to createApp() in dev mode
-        // (in production, the compiled hook writes __junior_config.json).
-        process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(
-          options.pluginPackages ?? [],
-        );
+        // Virtual module so createApp() can read the plugin list at runtime.
+        nitro.options.virtual["#junior/config"] =
+          `export const pluginPackages = ${JSON.stringify(options.pluginPackages ?? [])};`;
 
         nitro.hooks.hook("compiled", () => {
           copyAppAndPluginContent(
             cwd,
             nitro.options.output.serverDir,
             options.pluginPackages,
-          );
-          writeFileSync(
-            path.join(nitro.options.output.serverDir, "__junior_config.json"),
-            JSON.stringify({ pluginPackages: options.pluginPackages ?? [] }),
           );
           copyIncludedFiles(
             nitro.options.output.serverDir,
