@@ -11,6 +11,7 @@ export default defineConfig({
         "@sentry/junior-notion",
         "@sentry/junior-sentry",
       ],
+      includeFiles: ["node_modules/@mariozechner/pi-ai/dist/providers/*.js"],
     }),
   ],
   routes: {
