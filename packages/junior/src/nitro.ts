@@ -56,7 +56,6 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             JSON.stringify({ pluginPackages: options.pluginPackages ?? [] }),
           );
           copyIncludedFiles(
-            cwd,
             nitro.options.output.serverDir,
             options.includeFiles,
           );
@@ -97,23 +96,17 @@ function copyAppAndPluginContent(
   }
 }
 
-/**
- * Resolve a package subpath pattern like `@scope/pkg/dist/dir/*.js`
- * and copy matching files into the server output under `node_modules/`.
- */
 /** Resolve a package to its root directory using import.meta.resolve. */
 function resolvePackageDir(pkgName: string): string | undefined {
   try {
-    // Resolve an exported subpath to locate the package on disk.
     const resolved = import.meta.resolve(pkgName);
     const entry = resolved.startsWith("file://")
       ? fileURLToPath(resolved)
       : resolved;
-    // Walk up to the directory whose name matches the package's last segment.
-    const lastSeg = pkgName.split("/").pop()!;
+    // Walk up from the resolved entry to find the package root (contains package.json).
     let dir = path.dirname(entry);
     while (dir !== path.dirname(dir)) {
-      if (path.basename(dir) === lastSeg) return dir;
+      if (existsSync(path.join(dir, "package.json"))) return dir;
       dir = path.dirname(dir);
     }
   } catch {
@@ -122,11 +115,7 @@ function resolvePackageDir(pkgName: string): string | undefined {
   return undefined;
 }
 
-function copyIncludedFiles(
-  _cwd: string,
-  serverRoot: string,
-  patterns?: string[],
-): void {
+function copyIncludedFiles(serverRoot: string, patterns?: string[]): void {
   if (!patterns?.length) return;
   for (const pattern of patterns) {
     const normalized = pattern.replace(/^node_modules\//, "");
