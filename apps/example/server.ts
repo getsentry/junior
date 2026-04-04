@@ -3,13 +3,6 @@ import { initSentry } from "@sentry/junior/instrumentation";
 
 initSentry();
 
-const app = await createApp({
-  pluginPackages: [
-    "@sentry/junior-agent-browser",
-    "@sentry/junior-github",
-    "@sentry/junior-notion",
-    "@sentry/junior-sentry",
-  ],
-});
+const app = await createApp();
 
 export default app;

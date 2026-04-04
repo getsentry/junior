@@ -11,6 +11,7 @@
     "src/handlers/**/*.ts",
     "src/instrumentation.ts",
     "src/nitro.ts",
-    "src/vercel.ts"
+    "src/vercel.ts",
+    "src/virtual-modules.d.ts"
   ]
 }

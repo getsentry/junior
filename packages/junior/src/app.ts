@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { logException } from "@/chat/logging";
 import { setPluginPackages } from "@/chat/plugins/package-discovery";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
+import { GET as diagnosticsDashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
@@ -30,9 +31,29 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
   }
 }
 
+/** Resolve plugin packages from the virtual module injected by juniorNitro(). */
+async function resolveBuildPluginPackages(): Promise<string[] | undefined> {
+  try {
+    const mod: { pluginPackages?: string[] } = await import("#junior/config");
+    return mod.pluginPackages;
+  } catch {
+    // Virtual module unavailable (not running in Nitro context).
+    // Fall back to env var for dev mode and tests.
+    const env = process.env.JUNIOR_PLUGIN_PACKAGES;
+    if (env) {
+      try {
+        return JSON.parse(env);
+      } catch {}
+    }
+    return undefined;
+  }
+}
+
 /** Create a Hono app with all Junior routes mounted under `/api`. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
-  setPluginPackages(options?.pluginPackages);
+  setPluginPackages(
+    options?.pluginPackages ?? (await resolveBuildPluginPackages()),
+  );
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
 
@@ -48,6 +69,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   // Public route — returns plugin/skill names, cwd, and ABOUT.md text.
   // No credentials or PII. Understand what this discloses before deploying.
   app.get("/__junior/discovery", () => diagnosticsGET());
+  app.get("/__junior/dashboard", () => diagnosticsDashboardGET());
 
   // MCP callback must be registered before the generic OAuth callback
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.
