@@ -1,13 +1,6 @@
+import { escapeXml as esc } from "@/chat/xml";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
 import { GET as healthGET } from "@/handlers/health";
-
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 /** Serve an HTML diagnostics dashboard showing health, plugins, and skills. */
 export async function GET(): Promise<Response> {

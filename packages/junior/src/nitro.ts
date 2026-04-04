@@ -135,7 +135,9 @@ function copyIncludedFiles(serverRoot: string, patterns?: string[]): void {
 
     const entries = readdirSync(sourceDir);
     const re = fileGlob.includes("*")
-      ? new RegExp(`^${fileGlob.replace(/\./g, "\\.").replace(/\*/g, ".*")}$`)
+      ? new RegExp(
+          `^${fileGlob.replace(/[\\^$+?.()|[\]{}]/g, "\\$&").replace(/\*/g, ".*")}$`,
+        )
       : null;
 
     for (const entry of entries) {
