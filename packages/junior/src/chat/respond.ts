@@ -8,6 +8,7 @@ import {
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import { getMcpAuthSession, patchMcpAuthSession } from "@/chat/mcp/auth-store";
 import {
+  getActiveTraceId,
   logException,
   logInfo,
   logWarn,
@@ -343,6 +344,10 @@ export async function generateAssistantReply(
     const userTurnText = buildUserTurnText(
       userInput,
       context.conversationContext,
+      {
+        sessionContext: { conversationId: sessionConversationId },
+        turnContext: { traceId: getActiveTraceId() },
+      },
     );
 
     timeoutResumeMessages = [];

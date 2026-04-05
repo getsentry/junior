@@ -142,26 +142,58 @@ export function summarizeMessageText(text: string): string {
     : normalized;
 }
 
-/** Wrap user input with conversation context XML tags. */
+/** Wrap user input with conversation context and observability metadata XML tags. */
 export function buildUserTurnText(
   userInput: string,
   conversationContext?: string,
+  metadata?: {
+    sessionContext?: { conversationId?: string };
+    turnContext?: { traceId?: string };
+  },
 ): string {
   const trimmedContext = conversationContext?.trim();
-  if (!trimmedContext) {
+  const hasSessionContext = Boolean(metadata?.sessionContext?.conversationId);
+  const hasTurnContext = Boolean(metadata?.turnContext?.traceId);
+
+  if (!trimmedContext && !hasSessionContext && !hasTurnContext) {
     return userInput;
   }
 
-  return [
+  const sections: string[] = [
     "<current-message>",
     userInput,
     "</current-message>",
-    "",
-    "<thread-conversation-context>",
-    "Use this context for continuity across prior thread turns.",
-    trimmedContext,
-    "</thread-conversation-context>",
-  ].join("\n");
+  ];
+
+  if (trimmedContext) {
+    sections.push(
+      "",
+      "<thread-conversation-context>",
+      "Use this context for continuity across prior thread turns.",
+      trimmedContext,
+      "</thread-conversation-context>",
+    );
+  }
+
+  if (metadata?.sessionContext?.conversationId) {
+    sections.push(
+      "",
+      "<session-context>",
+      `- gen_ai.conversation.id: ${metadata.sessionContext.conversationId}`,
+      "</session-context>",
+    );
+  }
+
+  if (metadata?.turnContext?.traceId) {
+    sections.push(
+      "",
+      "<turn-context>",
+      `- trace_id: ${metadata.turnContext.traceId}`,
+      "</turn-context>",
+    );
+  }
+
+  return sections.join("\n");
 }
 
 /** Encode a non-image attachment as base64 XML for the prompt. */
