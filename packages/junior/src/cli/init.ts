@@ -26,7 +26,7 @@ export default defineConfig({
   preset: "vercel",
   modules: [juniorNitro()],
   routes: {
-    "/api/**": { handler: "./server.ts" },
+    "/**": { handler: "./server.ts" },
   },
 });
 `,
