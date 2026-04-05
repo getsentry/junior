@@ -63,7 +63,7 @@ describe.sequential("example build discovery integration", () => {
 
     const app = await importExampleApp();
 
-    const health = await app.fetch(new Request("http://localhost/api/health"));
+    const health = await app.fetch(new Request("http://localhost/health"));
     expect(health.status).toBe(200);
     expect(await health.json()).toMatchObject({
       status: "ok",
@@ -83,9 +83,7 @@ describe.sequential("example build discovery integration", () => {
     process.env.JUNIOR_PLUGIN_PACKAGES = JSON.stringify(packageNames);
 
     const app = await importExampleApp();
-    const response = await app.fetch(
-      new Request("http://localhost/api/__junior/discovery"),
-    );
+    const response = await app.fetch(new Request("http://localhost/api/info"));
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as {

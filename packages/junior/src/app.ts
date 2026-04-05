@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { logException } from "@/chat/logging";
 import { setPluginPackages } from "@/chat/plugins/package-discovery";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
-import { GET as diagnosticsDashboardGET } from "@/handlers/diagnostics-dashboard";
+import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
@@ -49,7 +49,7 @@ async function resolveBuildPluginPackages(): Promise<string[] | undefined> {
   }
 }
 
-/** Create a Hono app with all Junior routes mounted under `/api`. */
+/** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   setPluginPackages(
     options?.pluginPackages ?? (await resolveBuildPluginPackages()),
@@ -57,31 +57,31 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
 
-  const app = new Hono().basePath("/api");
+  const app = new Hono();
 
   app.onError((err, c) => {
     logException(err, "unhandled_route_error");
     return c.text("Internal Server Error", 500);
   });
 
+  app.get("/", () => dashboardGET());
   app.get("/health", () => healthGET());
 
   // Public route — returns plugin/skill names, cwd, and ABOUT.md text.
   // No credentials or PII. Understand what this discloses before deploying.
-  app.get("/__junior/discovery", () => diagnosticsGET());
-  app.get("/__junior/dashboard", () => diagnosticsDashboardGET());
+  app.get("/api/info", () => diagnosticsGET());
 
   // MCP callback must be registered before the generic OAuth callback
   // because Hono matches routes top-down and `:provider` would swallow `mcp/`.
-  app.get("/oauth/callback/mcp/:provider", (c) => {
+  app.get("/api/oauth/callback/mcp/:provider", (c) => {
     return mcpOauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil);
   });
 
-  app.get("/oauth/callback/:provider", (c) => {
+  app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil);
   });
 
-  app.post("/webhooks/:platform", (c) => {
+  app.post("/api/webhooks/:platform", (c) => {
     return webhooksPOST(c.req.raw, c.req.param("platform"), waitUntil);
   });
 
