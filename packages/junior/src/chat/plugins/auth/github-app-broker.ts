@@ -260,6 +260,21 @@ export function createGitHubAppBroker(
       : apiDomains;
   }
 
+  /**
+   * Build the correct Authorization header for a domain.
+   *
+   * GitHub's REST API (api.github.com) accepts Bearer tokens, but its git
+   * smart-HTTP transport (github.com) only accepts HTTP Basic auth with
+   * `x-access-token` as the username. This matches how `actions/checkout`
+   * and the `gh` credential helper authenticate git operations.
+   */
+  function authorizationFor(domain: string, token: string): string {
+    if (domain === GIT_DOMAIN) {
+      return `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+    }
+    return `Bearer ${token}`;
+  }
+
   const supportedCapabilities = new Set(manifest.capabilities);
 
   return {
@@ -302,7 +317,7 @@ export function createGitHubAppBroker(
             domain,
             headers: {
               ...(apiHeaders ?? {}),
-              Authorization: `Bearer ${cached.token}`,
+              Authorization: authorizationFor(domain, cached.token),
             },
           })),
           expiresAt: new Date(cached.expiresAt).toISOString(),
@@ -356,7 +371,7 @@ export function createGitHubAppBroker(
           domain,
           headers: {
             ...(apiHeaders ?? {}),
-            Authorization: `Bearer ${accessTokenResponse.token}`,
+            Authorization: authorizationFor(domain, accessTokenResponse.token),
           },
         })),
         expiresAt: new Date(expiresAtMs).toISOString(),
