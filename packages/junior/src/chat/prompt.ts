@@ -496,6 +496,7 @@ export function buildSystemPrompt(params: {
         "- `loadSkill` returns `available_tools` when the loaded skill exposes MCP tools. Use those exact tool_name values instead of guessing.",
         "- `searchTools` searches active MCP tools exposed by currently loaded skills when you need to rediscover or filter them.",
         "- `useTool` executes a canonical MCP tool name from `loadSkill.available_tools`, `<loaded_tools>`, or `searchTools`.",
+        "- When the user asks for their conversation ID, trace ID, or a reference for Sentry lookup, use the IDs from `<session-context>` and `<turn-context>` in the user turn.",
       ].join("\n"),
     ),
     renderTag(
