@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-agent-browser",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "private": false,
   "publishConfig": {
     "access": "public"
