@@ -1,5 +1,4 @@
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
-import { validateToolArguments } from "@mariozechner/pi-ai";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
@@ -9,6 +8,14 @@ import {
   type PluginMcpListedTool,
   type PluginMcpToolCallResult,
 } from "./client";
+
+/** Thrown when an MCP tool returns an error result — an expected outcome, not a crash. */
+export class McpToolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "McpToolError";
+  }
+}
 
 function normalizeMcpToolName(provider: string, toolName: string): string {
   return `mcp__${provider}__${toolName}`;
@@ -161,7 +168,7 @@ type ActiveMcpSkillScope = Pick<SkillMetadata, "pluginProvider">;
 
 type ActiveMcpSkill = Pick<SkillMetadata, "name" | "pluginProvider">;
 
-interface ManagedMcpTool extends ManagedMcpToolDescriptor {
+export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
   rawName: string;
   title?: string;
   execute: (args: Record<string, unknown>) => Promise<ManagedMcpToolResult>;
@@ -307,7 +314,7 @@ export class McpToolManager {
       throw new Error(`Unknown active MCP tool: ${canonicalToolName}`);
     }
 
-    return await tool.execute(this.validateExecutionArgs(tool, args));
+    return await tool.execute(args);
   }
 
   private filterListedTools(
@@ -369,7 +376,7 @@ export class McpToolManager {
         try {
           const result = await client.callTool(tool.name, resolvedArgs);
           if ("isError" in result && result.isError) {
-            throw new Error(extractMcpErrorMessage(result));
+            throw new McpToolError(extractMcpErrorMessage(result));
           }
 
           return {
@@ -432,7 +439,8 @@ export class McpToolManager {
     return true;
   }
 
-  private getResolvedActiveTools(
+  /** Return all active ManagedMcpTool objects for the given skill scope. */
+  getResolvedActiveTools(
     skills: ActiveMcpSkillScope[],
     options: { provider?: string } = {},
   ): ManagedMcpTool[] {
@@ -483,19 +491,6 @@ export class McpToolManager {
       parameters: tool.parameters,
       provider: tool.provider,
     };
-  }
-
-  private validateExecutionArgs(
-    tool: ManagedMcpTool,
-    args: Record<string, unknown>,
-  ): Record<string, unknown> {
-    return validateToolArguments(
-      tool as never,
-      {
-        name: tool.name,
-        arguments: args,
-      } as never,
-    ) as Record<string, unknown>;
   }
 
   private scoreToolMatch(

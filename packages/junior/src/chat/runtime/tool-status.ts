@@ -6,24 +6,6 @@ import {
   extractStatusUrlDomain,
 } from "@/chat/runtime/status-format";
 
-function formatCanonicalToolStatusName(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  const mcpMatch = /^mcp__([^_]+)__(.+)$/.exec(trimmed);
-  if (mcpMatch) {
-    return compactStatusText(`${mcpMatch[1]}/${mcpMatch[2]}`, 40);
-  }
-
-  return compactStatusText(trimmed, 40);
-}
-
 /** Return a human-readable status label for a tool call (no input context). */
 export function formatToolStatus(toolName: string): string {
   const known: Record<string, string> = {
@@ -44,7 +26,6 @@ export function formatToolStatus(toolName: string): string {
     slackListUpdateItem: "Updating tracking list",
     imageGenerate: "Generating image",
     searchTools: "Searching active tools",
-    useTool: "Running active tool",
   };
 
   if (known[toolName]) {
@@ -73,9 +54,6 @@ export function formatToolStatusWithInput(
     ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
     : undefined;
   const provider = obj ? compactStatusText(obj.provider, 20) : undefined;
-  const activeToolName = obj
-    ? formatCanonicalToolStatusName(obj.tool_name ?? obj.toolName)
-    : undefined;
 
   if (command && toolName === "bash") {
     return `Running ${command}`;
@@ -100,9 +78,6 @@ export function formatToolStatusWithInput(
   }
   if (query && toolName === "searchTools") {
     return `Searching tools for "${query}"`;
-  }
-  if (activeToolName && toolName === "useTool") {
-    return `Running ${activeToolName}`;
   }
   if (domain && toolName === "webFetch") {
     return `Fetching page from ${domain}`;

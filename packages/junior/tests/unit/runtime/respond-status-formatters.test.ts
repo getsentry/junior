@@ -37,10 +37,5 @@ describe("tool status formatters", () => {
         provider: "notion",
       }),
     ).toBe('Searching notion tools for "holiday schedule"');
-    expect(
-      formatToolStatusWithInput("useTool", {
-        tool_name: "mcp__notion__notion-search",
-      }),
-    ).toBe("Running notion/notion-search");
   });
 });

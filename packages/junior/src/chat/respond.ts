@@ -41,7 +41,7 @@ import {
   getPluginMcpProviders,
   getPluginProviders,
 } from "@/chat/plugins/registry";
-import { McpToolManager } from "@/chat/mcp/tool-manager";
+import { McpToolManager, type ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { createTools } from "@/chat/tools";
 import type { ToolDefinition } from "@/chat/tools/definition";
@@ -60,6 +60,7 @@ import {
   upsertAgentTurnSessionCheckpoint,
 } from "@/chat/state/turn-session-store";
 import { formatToolStatusWithInput } from "@/chat/runtime/tool-status";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { extractOAuthStartedMessageFromToolResults } from "@/chat/oauth-flow";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
@@ -186,6 +187,21 @@ async function runAgentContinuation(agent: Agent): Promise<unknown> {
     throw new Error("Agent continuation is unavailable in this runtime");
   }
   return await resumable.continue();
+}
+
+/** Convert active MCP tools into ToolDefinition entries for first-class registration. */
+function mcpToolsToDefinitions(
+  mcpTools: ManagedMcpTool[],
+): Record<string, ToolDefinition<any>> {
+  const defs: Record<string, ToolDefinition<any>> = {};
+  for (const tool of mcpTools) {
+    defs[tool.name] = {
+      description: tool.description,
+      inputSchema: tool.parameters as any,
+      execute: async (args: Record<string, unknown>) => tool.execute(args),
+    };
+  }
+  return defs;
 }
 
 export async function generateAssistantReply(
@@ -496,13 +512,16 @@ export async function generateAssistantReply(
             return undefined;
           }
 
+          // Register newly activated MCP tools as first-class AgentTools so the
+          // model sees their schemas directly in the API tools array.
+          syncMcpAgentTools();
+
           return {
             available_tools: turnMcpToolManager
               .getActiveToolCatalog(activeSkills, {
                 provider: effective.pluginProvider,
               })
               .map(toExposedToolSummary),
-            tool_search_available: true,
           };
         },
       },
@@ -580,6 +599,11 @@ export async function generateAssistantReply(
       },
     ]);
 
+    const agentToolHooks = {
+      onToolCall: (toolName: string) => {
+        toolCalls.push(toolName);
+      },
+    };
     const baseAgentTools = createAgentTools(
       tools as Record<string, ToolDefinition<any>>,
       skillSandbox,
@@ -587,19 +611,39 @@ export async function generateAssistantReply(
       context.onStatus,
       sandboxExecutor,
       capabilityRuntime,
-      {
-        onToolCall: (toolName) => {
-          toolCalls.push(toolName);
-        },
-      },
+      agentToolHooks,
     );
+
+    // Mutable tools array shared with the agent. Pi-agent-core does not clone
+    // this reference, so in-place mutations are visible to the running loop.
+    const agentTools: AgentTool[] = [...baseAgentTools];
+
+    /** Rebuild MCP portion of the mutable tools array from current active state. */
+    const syncMcpAgentTools = () => {
+      const mcpTools = turnMcpToolManager.getResolvedActiveTools(activeSkills);
+      const mcpDefs = mcpToolsToDefinitions(mcpTools);
+      const mcpAgentTools = createAgentTools(
+        mcpDefs,
+        skillSandbox,
+        spanContext,
+        context.onStatus,
+        sandboxExecutor,
+        capabilityRuntime,
+        agentToolHooks,
+      );
+      agentTools.length = 0;
+      agentTools.push(...baseAgentTools, ...mcpAgentTools);
+    };
+
+    // Register any MCP tools already active from pre-loaded skills.
+    syncMcpAgentTools();
 
     agent = new Agent({
       getApiKey: () => getPiGatewayApiKeyOverride(),
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),
-        tools: baseAgentTools,
+        tools: agentTools,
       },
     });
     let hasEmittedText = false;

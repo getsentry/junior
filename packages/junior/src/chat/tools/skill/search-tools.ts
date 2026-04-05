@@ -13,7 +13,7 @@ export function createSearchToolsTool(
 ) {
   return tool({
     description:
-      "Search active MCP tools exposed by the currently loaded skills. Use when you need to rediscover or filter tools beyond what `loadSkill` or `<loaded_tools>` already disclosed.",
+      "Search active MCP tools exposed by the currently loaded skills. Use when you need to rediscover or filter active tools.",
     inputSchema: Type.Object(
       {
         query: Type.String({

@@ -17,13 +17,9 @@ export type LoadSkillResult = {
   location?: string;
   instructions?: string;
   available_tools?: ExposedToolSummary[];
-  tool_search_available?: boolean;
 };
 
-export type LoadSkillMetadata = Pick<
-  LoadSkillResult,
-  "available_tools" | "tool_search_available"
->;
+export type LoadSkillMetadata = Pick<LoadSkillResult, "available_tools">;
 
 function toLoadedSkill(
   result: LoadSkillResult,

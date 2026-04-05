@@ -17,6 +17,7 @@ import { formatToolStatusWithInput } from "@/chat/runtime/tool-status";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
+import { McpToolError } from "@/chat/mcp/tool-manager";
 import { SlackActionError } from "@/chat/slack/client";
 import type { ToolDefinition } from "@/chat/tools/definition";
 
@@ -305,22 +306,26 @@ export function createAgentTools(
                 "Agent tool call failed",
               );
             }
-            logException(
-              error,
-              "agent_tool_call_failed",
-              {},
-              {
-                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": toolName,
-                ...(normalizedToolCallId
-                  ? { "gen_ai.tool.call.id": normalizedToolCallId }
-                  : {}),
-                "app.ai.tool_duration_ms": durationMs,
-                ...getToolErrorAttributes(error),
-              },
-              "Agent tool call failed",
-            );
+            // MCP tool errors are expected outcomes (server rejected input,
+            // tool returned isError) — log as warning, not Sentry exception.
+            if (!(error instanceof McpToolError)) {
+              logException(
+                error,
+                "agent_tool_call_failed",
+                {},
+                {
+                  "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+                  "gen_ai.operation.name": "execute_tool",
+                  "gen_ai.tool.name": toolName,
+                  ...(normalizedToolCallId
+                    ? { "gen_ai.tool.call.id": normalizedToolCallId }
+                    : {}),
+                  "app.ai.tool_duration_ms": durationMs,
+                  ...getToolErrorAttributes(error),
+                },
+                "Agent tool call failed",
+              );
+            }
             throw error;
           }
         },
