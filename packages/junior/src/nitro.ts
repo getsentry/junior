@@ -33,6 +33,19 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         nitro.options.vercel.functions.maxDuration ??=
           options.maxDuration ?? 800;
 
+        // pi-ai registers API providers via a top-level side-effect in
+        // register-builtins.js. Nitro's default moduleSideEffects whitelist
+        // only includes unenv polyfills, so rolldown tree-shakes the
+        // registration call and the apiProviderRegistry Map stays empty at
+        // runtime. Override rolldown's treeshake config so that pi-ai
+        // side effects survive bundling.
+        nitro.options.rolldownConfig = {
+          ...nitro.options.rolldownConfig,
+          treeshake: {
+            moduleSideEffects: true,
+          },
+        };
+
         // Virtual module so createApp() can read the plugin list at runtime.
         nitro.options.virtual["#junior/config"] =
           `export const pluginPackages = ${JSON.stringify(options.pluginPackages ?? [])};`;
