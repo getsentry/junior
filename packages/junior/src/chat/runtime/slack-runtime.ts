@@ -1,5 +1,6 @@
 import type { Message, Thread } from "chat";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
+import { extractTextPreservingLinks } from "@/chat/message-text";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import type { ErrorReference } from "@/chat/logging";
 import { getSlackErrorObservabilityAttributes } from "@/chat/runtime/thread-context";
@@ -347,7 +348,7 @@ export function createSlackTurnRuntime<
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
         const runId = deps.getRunId(thread, message);
-        const rawUserText = message.text;
+        const rawUserText = extractTextPreservingLinks(message.formatted);
         const userText = deps.stripLeadingBotMention(rawUserText, {
           stripLeadingSlackMentionToken: Boolean(message.isMention),
         });

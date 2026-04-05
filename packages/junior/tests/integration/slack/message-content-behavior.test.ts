@@ -103,7 +103,49 @@ describe("Slack behavior: message content", () => {
     await slackRuntime.handleNewMention(thread, message);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.prompt).toContain("message <@U_ONCALL> after deploy");
+    expect(calls[0]?.prompt).toContain("message @U_ONCALL after deploy");
+  });
+
+  it("preserves hyperlink URLs from Slack mrkdwn in user content", async () => {
+    const calls: CapturedCall[] = [];
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (prompt) => {
+            calls.push({ prompt });
+            return {
+              text: "Done.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005004.000" });
+    const message = createTestMessage({
+      id: "m-content-links",
+      text: "<@U_APP> check <https://github.com/foo/bar/pull/1|this PR> please",
+      isMention: true,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+    });
+
+    await slackRuntime.handleNewMention(thread, message);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.prompt).toContain(
+      "[this PR](https://github.com/foo/bar/pull/1)",
+    );
   });
 
   it("does not invoke the agent for self-authored mention messages", async () => {
