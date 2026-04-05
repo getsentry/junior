@@ -122,8 +122,8 @@ export async function GET(): Promise<Response> {
 
   // Endpoints section
   const endpoints = [
-    { method: "GET", path: "/api/health" },
-    { method: "GET", path: "/api/__junior/discovery" },
+    { method: "GET", path: "/health" },
+    { method: "GET", path: "/api/info" },
     { method: "GET", path: "/api/oauth/callback/mcp/:provider" },
     { method: "GET", path: "/api/oauth/callback/:provider" },
     { method: "POST", path: "/api/webhooks/:platform" },

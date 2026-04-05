@@ -14,6 +14,6 @@ export default defineConfig({
     }),
   ],
   routes: {
-    "/api/**": { handler: "./server.ts" },
+    "/**": { handler: "./server.ts" },
   },
 });
