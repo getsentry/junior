@@ -13,7 +13,12 @@ export function extractTextPreservingLinks(ast: FormattedContent): string {
 }
 
 function visitNode(node: AstNode): string {
-  if (node.type === "text") return node.value ?? "";
+  if (
+    node.type === "text" ||
+    node.type === "inlineCode" ||
+    node.type === "code"
+  )
+    return node.value ?? "";
   if (node.type === "link") {
     const childText = visitChildren(node);
     return childText === node.url ? node.url : `[${childText}](${node.url})`;
