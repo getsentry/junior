@@ -273,7 +273,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleSubscribedMessage(thread, message);
 
       expect(deps.stripLeadingBotMention).toHaveBeenCalledWith(
-        "<@U123> stripped text",
+        "@U123 stripped text",
         { stripLeadingSlackMentionToken: true },
       );
       expect(deps.prepareTurnState).toHaveBeenCalledWith(
