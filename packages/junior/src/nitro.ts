@@ -42,6 +42,10 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         nitro.options.rolldownConfig = {
           ...nitro.options.rolldownConfig,
           treeshake: {
+            ...(nitro.options.rolldownConfig?.treeshake as Record<
+              string,
+              unknown
+            >),
             moduleSideEffects: true,
           },
         };
