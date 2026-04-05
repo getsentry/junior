@@ -195,6 +195,30 @@ describe("github app credential broker", () => {
     expect(domains).toContain("github.com");
   });
 
+  it("uses Basic auth for github.com and Bearer for api.github.com", async () => {
+    setupValidEnv();
+    mockGitHubTokenEndpoint("repo-token");
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const lease = await broker.issue({
+      capability: "github.contents.read",
+      target: { owner: "getsentry", repo: "sentry" },
+      reason: "test:auth-scheme",
+    });
+
+    const apiTransform = lease.headerTransforms!.find(
+      (t) => t.domain === "api.github.com",
+    );
+    const gitTransform = lease.headerTransforms!.find(
+      (t) => t.domain === "github.com",
+    );
+
+    expect(apiTransform!.headers.Authorization).toBe("Bearer repo-token");
+    expect(gitTransform!.headers.Authorization).toBe(
+      `Basic ${Buffer.from("x-access-token:repo-token").toString("base64")}`,
+    );
+  });
+
   it("uses placeholder in env for contents.read", async () => {
     setupValidEnv();
     mockGitHubTokenEndpoint("repo-token");
