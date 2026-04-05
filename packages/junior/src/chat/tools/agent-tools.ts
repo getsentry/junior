@@ -1,5 +1,6 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
+import { Kind } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { serializeGenAiAttribute } from "@/chat/logging";
 import {
@@ -114,7 +115,13 @@ export function createAgentTools(
         "gen_ai.execute_tool",
         spanContext,
         async () => {
-          if (!Value.Check(toolDef.inputSchema, params)) {
+          // Only validate with TypeBox for schemas that have TypeBox symbols.
+          // MCP tool schemas are raw JSON Schema and bypass client-side
+          // validation — the API and MCP server enforce their own schemas.
+          if (
+            Kind in toolDef.inputSchema &&
+            !Value.Check(toolDef.inputSchema, params)
+          ) {
             const details = [...Value.Errors(toolDef.inputSchema, params)]
               .slice(0, 3)
               .map((entry) => `${entry.path || "/"}: ${entry.message}`)
