@@ -12,6 +12,15 @@ export function extractTextPreservingLinks(ast: FormattedContent): string {
   return visitNode(ast as AstNode).trim();
 }
 
+const BLOCK_TYPES = new Set([
+  "root",
+  "paragraph",
+  "list",
+  "listItem",
+  "blockquote",
+  "heading",
+]);
+
 function visitNode(node: AstNode): string {
   if (
     node.type === "text" ||
@@ -20,15 +29,11 @@ function visitNode(node: AstNode): string {
   )
     return node.value ?? "";
   if (node.type === "link") {
-    const childText = visitChildren(node);
-    return childText === node.url ? node.url : `[${childText}](${node.url})`;
+    const childText = (node.children ?? []).map(visitNode).join("");
+    return childText === node.url
+      ? node.url
+      : `[${childText}](${node.url ?? ""})`;
   }
-  if (node.type === "root") {
-    return (node.children ?? []).map(visitNode).join("\n");
-  }
-  return visitChildren(node);
-}
-
-function visitChildren(node: AstNode): string {
-  return (node.children ?? []).map(visitNode).join("");
+  const separator = BLOCK_TYPES.has(node.type) ? "\n" : "";
+  return (node.children ?? []).map(visitNode).join(separator);
 }

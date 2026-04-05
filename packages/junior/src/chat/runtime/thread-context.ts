@@ -21,10 +21,7 @@ export function stripLeadingBotMention(
 
   let next = text;
   if (options.stripLeadingSlackMentionToken) {
-    next = next
-      .replace(/^\s*<@[^>]+>[\s,:-]*/, "")
-      .replace(/^\s*@[A-Z][A-Z0-9_]+\b[\s,:-]*/i, "")
-      .trim();
+    next = next.replace(/^\s*@[A-Z][A-Z0-9_]+\b[\s,:-]*/i, "").trim();
   }
 
   const mentionByNameRe = new RegExp(
