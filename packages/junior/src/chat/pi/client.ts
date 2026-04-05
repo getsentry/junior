@@ -2,12 +2,24 @@ import {
   completeSimple,
   getEnvApiKey,
   getModels,
+  registerApiProvider,
   type Message,
   type Model,
 } from "@mariozechner/pi-ai";
-// Static import so Vercel's NFT traces the provider files that pi-ai loads
-// via opaque dynamic import() calls at runtime.
-import "@mariozechner/pi-ai/anthropic";
+import {
+  streamAnthropic,
+  streamSimpleAnthropic,
+} from "@mariozechner/pi-ai/anthropic";
+
+// Directly register the anthropic provider at import time. pi-ai's built-in
+// registration relies on opaque dynamic import() calls that break under
+// Nitro's rolldown bundler (the lazy import paths resolve relative to the
+// bundled chunk, not the original module).
+registerApiProvider({
+  api: "anthropic-messages",
+  stream: streamAnthropic,
+  streamSimple: streamSimpleAnthropic,
+});
 import type { ZodTypeAny, z } from "zod";
 import {
   extractGenAiUsageAttributes,
