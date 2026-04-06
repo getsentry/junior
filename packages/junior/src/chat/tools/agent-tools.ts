@@ -1,7 +1,5 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
-import { Kind } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import { serializeGenAiAttribute } from "@/chat/logging";
 import {
   logException,
@@ -115,56 +113,9 @@ export function createAgentTools(
         "gen_ai.execute_tool",
         spanContext,
         async () => {
-          // Only validate with TypeBox for schemas that have TypeBox symbols.
-          // MCP tool schemas are raw JSON Schema and bypass client-side
-          // validation — the API and MCP server enforce their own schemas.
-          if (
-            Kind in toolDef.inputSchema &&
-            !Value.Check(toolDef.inputSchema, params)
-          ) {
-            const details = [...Value.Errors(toolDef.inputSchema, params)]
-              .slice(0, 3)
-              .map((entry) => `${entry.path || "/"}: ${entry.message}`)
-              .join("; ");
-            const validationMessage =
-              details.length > 0 ? details : "Invalid tool input";
-            const durationMs = Date.now() - toolStartedAt;
-            setSpanAttributes({
-              "app.ai.tool_duration_ms": durationMs,
-              "error.type": "tool_input_validation_error",
-            });
-            setSpanStatus("error");
-            logWarn(
-              "agent_tool_call_invalid_input",
-              {},
-              {
-                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": toolName,
-                ...(normalizedToolCallId
-                  ? { "gen_ai.tool.call.id": normalizedToolCallId }
-                  : {}),
-                "app.ai.tool_duration_ms": durationMs,
-              },
-              "Agent tool call input validation failed",
-            );
-            logException(
-              new Error(validationMessage),
-              "agent_tool_call_invalid_input_exception",
-              {},
-              {
-                "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-                "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": toolName,
-                ...(normalizedToolCallId
-                  ? { "gen_ai.tool.call.id": normalizedToolCallId }
-                  : {}),
-                "app.ai.tool_duration_ms": durationMs,
-              },
-              "Agent tool call input validation failed with exception",
-            );
-            throw new Error(validationMessage);
-          }
+          // pi-agent-core validates tool args with AJV (via
+          // validateToolArguments) before calling execute(), so no
+          // client-side validation is needed here.
           const parsed = params as Record<string, unknown>;
 
           try {
