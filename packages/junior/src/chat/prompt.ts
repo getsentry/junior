@@ -467,6 +467,8 @@ export function buildSystemPrompt(params: {
         "- If a loaded skill or `loadSkill` result declares `requires_capabilities`, run `jr-rpc issue-credential <capability> [--repo <owner/repo>]` as a bash command before authenticated bash/API work for that skill.",
         "- Use the minimum declared capability needed for the current operation.",
         "- If `jr-rpc issue-credential` returns `oauth_started`, relay its `message` to the user and stop. The runtime will resume after authorization.",
+        "- For explicit connect, reconnect, or disconnect-plus-reconnect requests, use `jr-rpc oauth-start <provider>` and/or `jr-rpc delete-token <provider>` rather than forcing `jr-rpc issue-credential`.",
+        "- After a successful explicit `jr-rpc oauth-start`, tell the user the private link was sent and stop. Do not immediately issue provider capabilities in the same turn just to verify the connection.",
         "- GitHub capabilities need repository context, which can come from `--repo` or a configured `github.repo` default.",
         "- To persist or read conversation defaults (for example `github.repo`), run `jr-rpc config get|set|unset|list ...` as a bash command.",
         "- Capabilities are provider-qualified (for example `github.issues.write`).",

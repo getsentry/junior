@@ -270,6 +270,13 @@ export async function generateAssistantReply(
       requesterId: context.requester?.userId,
       resolveConfiguration: async (key) => configurationValues[key],
     });
+    const oauthFlowState = new Map<
+      string,
+      {
+        deliverySent: boolean;
+        mode: "explicit" | "resume";
+      }
+    >();
     const sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       sandboxDependencyProfileHash:
@@ -286,6 +293,7 @@ export async function generateAssistantReply(
           threadTs: context.correlation?.threadTs,
           userMessage: userInput,
           userTokenStore: createUserTokenStore(),
+          oauthFlowState,
           onConfigurationValueChanged: (key, value) => {
             if (value === undefined) {
               delete configurationValues[key];

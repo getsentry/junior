@@ -316,6 +316,69 @@ describe("jr-rpc custom command", () => {
     );
   });
 
+  it("reuses an explicit oauth-start already initiated in the same turn", async () => {
+    startOAuthFlowMock.mockResolvedValue({
+      ok: true,
+      delivery: "in_context",
+    });
+
+    const runtime = new SkillCapabilityRuntime({
+      broker: {
+        issue: async () => {
+          throw new CredentialUnavailableError(
+            "github",
+            "No github credentials available.",
+          );
+        },
+      },
+      invocationArgs: "--repo getsentry/junior",
+      requesterId: "U123",
+    });
+    const oauthFlowState = new Map<
+      string,
+      {
+        deliverySent: boolean;
+        mode: "explicit" | "resume";
+      }
+    >();
+
+    const explicitStart = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc oauth-start github",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        oauthFlowState,
+      },
+    );
+
+    const handledStart = expectHandled(explicitStart);
+    expect(handledStart.result.exit_code).toBe(0);
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+
+    const issueCredential = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential github.issues.write",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        userMessage: "Reconnect my github account",
+        oauthFlowState,
+      },
+    );
+
+    const handledIssue = expectHandled(issueCredential);
+    expect(handledIssue.result.exit_code).toBe(0);
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(handledIssue.result.stdout)).toMatchObject({
+      credential_unavailable: true,
+      oauth_started: true,
+      private_delivery_sent: true,
+      message:
+        "I've already sent you a private authorization link to connect your Github account. Finish that flow, then return to Slack.",
+    });
+  });
+
   it("returns structured runtime errors when repo context is missing", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc issue-credential github.issues.write",

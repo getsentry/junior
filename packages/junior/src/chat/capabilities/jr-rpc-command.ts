@@ -23,6 +23,13 @@ type JrRpcDeps = {
   threadTs?: string;
   userMessage?: string;
   userTokenStore?: UserTokenStore;
+  oauthFlowState?: Map<
+    string,
+    {
+      deliverySent: boolean;
+      mode: "explicit" | "resume";
+    }
+  >;
   onConfigurationValueChanged?: (
     key: string,
     value: unknown | undefined,
@@ -45,6 +52,45 @@ function commandResult(input: {
     stderr: input.stderr ?? "",
     exitCode: input.exitCode,
   };
+}
+
+function getStartedOAuthFlow(
+  deps: JrRpcDeps,
+  provider: string,
+):
+  | {
+      deliverySent: boolean;
+      mode: "explicit" | "resume";
+    }
+  | undefined {
+  return deps.oauthFlowState?.get(provider);
+}
+
+function rememberStartedOAuthFlow(
+  deps: JrRpcDeps,
+  provider: string,
+  flow: {
+    deliverySent: boolean;
+    mode: "explicit" | "resume";
+  },
+): void {
+  deps.oauthFlowState?.set(provider, flow);
+}
+
+function buildOAuthInFlightMessage(input: {
+  providerLabel: string;
+  deliverySent: boolean;
+  mode: "explicit" | "resume";
+}): string {
+  if (!input.deliverySent) {
+    return `I still need to connect your ${input.providerLabel} account, but I wasn't able to send you a private authorization link. Please send me a direct message and try again.`;
+  }
+
+  if (input.mode === "explicit") {
+    return `I've already sent you a private authorization link to connect your ${input.providerLabel} account. Finish that flow, then return to Slack.`;
+  }
+
+  return `I already sent you a private authorization link to connect your ${input.providerLabel} account. Finish that flow and I'll continue once you're authorized.`;
 }
 
 function requireChannelConfiguration(
@@ -135,6 +181,25 @@ async function handleIssueCredentialCommand(
       getPluginOAuthConfig(error.provider) &&
       deps.requesterId
     ) {
+      const inFlight = getStartedOAuthFlow(deps, error.provider);
+      if (inFlight) {
+        const providerLabel = formatProviderLabel(error.provider);
+        return commandResult({
+          stdout: {
+            credential_unavailable: true,
+            oauth_started: true,
+            provider: error.provider,
+            private_delivery_sent: inFlight.deliverySent,
+            message: buildOAuthInFlightMessage({
+              providerLabel,
+              deliverySent: inFlight.deliverySent,
+              mode: inFlight.mode,
+            }),
+          },
+          exitCode: 0,
+        });
+      }
+
       const oauthResult = await startOAuthFlow(error.provider, {
         requesterId: deps.requesterId,
         channelId: deps.channelId,
@@ -145,6 +210,10 @@ async function handleIssueCredentialCommand(
       });
       if (oauthResult.ok) {
         const providerLabel = formatProviderLabel(error.provider);
+        rememberStartedOAuthFlow(deps, error.provider, {
+          deliverySent: !!oauthResult.delivery,
+          mode: "resume",
+        });
         return commandResult({
           stdout: {
             credential_unavailable: true,
@@ -420,6 +489,23 @@ async function handleOAuthStartCommand(
     });
   }
 
+  const inFlight = getStartedOAuthFlow(deps, provider);
+  if (inFlight) {
+    const providerLabel = formatProviderLabel(provider);
+    return commandResult({
+      stdout: {
+        ok: true,
+        private_delivery_sent: inFlight.deliverySent,
+        message: buildOAuthInFlightMessage({
+          providerLabel,
+          deliverySent: inFlight.deliverySent,
+          mode: inFlight.mode,
+        }),
+      },
+      exitCode: 0,
+    });
+  }
+
   // Explicit oauth-start must not store pendingMessage — the auth request
   // itself is the intent, and auto-resuming an explicit reconnect request would loop.
   const result = await startOAuthFlow(provider, {
@@ -431,6 +517,11 @@ async function handleOAuthStartCommand(
   if (!result.ok) {
     return commandResult({ stderr: `${result.error}\n`, exitCode: 1 });
   }
+
+  rememberStartedOAuthFlow(deps, provider, {
+    deliverySent: !!result.delivery,
+    mode: "explicit",
+  });
 
   if (!result.delivery) {
     return commandResult({
