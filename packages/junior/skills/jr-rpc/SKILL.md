@@ -25,9 +25,12 @@ Run before any authenticated API call:
 `jr-rpc oauth-start <provider>` — start an OAuth authorization code flow.
 
 - The authorization link is delivered privately (visible only to the requesting user).
+- For explicit connect or reconnect requests, use `oauth-start` instead of `issue-credential`.
+- For disconnect + reconnect requests, run `jr-rpc delete-token <provider>` first, then `jr-rpc oauth-start <provider>`.
 - Returns `{ ok: true, private_delivery_sent: true }` on success.
 - If `private_delivery_sent` is false, tell the user to send a direct message and try again.
 - If the user is already connected, returns `{ ok: true, already_connected: true, message }`.
+- After `oauth-start`, tell the user the private link was sent and stop. Do not issue provider capabilities in the same turn just to verify the connection.
 - **Never** post or relay authorization URLs — they are security-sensitive.
 
 ## Token management

@@ -26,6 +26,14 @@ type OAuthCallbackHarnessModule =
 let stateAdapterModule: StateAdapterModule;
 let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
 
+function extractSlackLink(text: string): URL {
+  const match = text.match(/^<([^|>]+)\|/);
+  if (!match?.[1]) {
+    throw new Error(`Expected Slack link markup, got: ${text}`);
+  }
+  return new URL(match[1]);
+}
+
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
     generateAssistantReplyMock.mockReset();
@@ -161,6 +169,104 @@ describe("oauth callback slack integration", () => {
           }),
         }),
       ]),
+    );
+  });
+
+  it("does not resume an explicit reconnect flow from thread history", async () => {
+    const { maybeExecuteJrRpcCustomCommand } =
+      await import("@/chat/capabilities/jr-rpc-command");
+    const { SkillCapabilityRuntime } =
+      await import("@/chat/capabilities/runtime");
+
+    const runtime = new SkillCapabilityRuntime({
+      broker: {
+        issue: async () => {
+          throw new Error(
+            "credential issuance should not run in explicit reconnect flow",
+          );
+        },
+      },
+      requesterId: "U123",
+    });
+
+    const oauthStart = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc oauth-start eval-oauth",
+      {
+        capabilityRuntime: runtime,
+        activeSkill: null,
+        requesterId: "U123",
+        channelId: "C123",
+        threadTs: "1700000000.001",
+      },
+    );
+
+    expect(oauthStart.handled).toBe(true);
+    if (!oauthStart.handled) {
+      throw new Error("expected jr-rpc oauth-start to be handled");
+    }
+    expect(oauthStart.result.exit_code).toBe(0);
+
+    const ephemeralCalls = getCapturedSlackApiCalls("chat.postEphemeral");
+    expect(ephemeralCalls).toHaveLength(1);
+    const authorizeUrl = extractSlackLink(
+      String(ephemeralCalls[0]?.params.text),
+    );
+    const state = authorizeUrl.searchParams.get("state");
+    expect(state).toBeTruthy();
+
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("thread-state:slack:C123:1700000000.001", {
+        conversation: {
+          messages: [
+            {
+              id: "user-1",
+              role: "user",
+              text: "deauth me from eval-oauth, and then reauth me so we can test",
+              createdAtMs: 1,
+              author: {
+                userId: "U123",
+                userName: "dcramer",
+              },
+            },
+            {
+              id: "assistant-1",
+              role: "assistant",
+              text: "deauthed and reauth flow started - check your DMs for the authorization link.",
+              createdAtMs: 2,
+              author: {
+                userName: "junior",
+                isBot: true,
+              },
+            },
+          ],
+        },
+      });
+
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      provider: "eval-oauth",
+      state: state ?? "",
+      code: "eval-oauth-code",
+    });
+
+    expect(response.status).toBe(200);
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    const postedMessages = getCapturedSlackApiCalls("chat.postMessage");
+    expect(postedMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          params: expect.objectContaining({
+            channel: "C123",
+            thread_ts: "1700000000.001",
+            text: "Your Eval-oauth account is now connected. You can start using Eval-oauth commands.",
+          }),
+        }),
+      ]),
+    );
+    expect(
+      postedMessages.map((call) => String(call.params.text ?? "")),
+    ).not.toContain(
+      "Your Eval-oauth account is now connected. Processing your request...",
     );
   });
 });
