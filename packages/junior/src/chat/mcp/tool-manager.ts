@@ -304,19 +304,6 @@ export class McpToolManager {
       .map((entry) => this.toToolDescriptor(entry.tool));
   }
 
-  async executeTool(
-    skills: ActiveMcpSkillScope[],
-    canonicalToolName: string,
-    args: Record<string, unknown>,
-  ): Promise<ManagedMcpToolResult> {
-    const tool = this.resolveActiveTool(skills, canonicalToolName);
-    if (!tool) {
-      throw new Error(`Unknown active MCP tool: ${canonicalToolName}`);
-    }
-
-    return await tool.execute(args);
-  }
-
   private filterListedTools(
     plugin: PluginDefinition,
     tools: PluginMcpListedTool[],
@@ -473,15 +460,6 @@ export class McpToolManager {
       return [];
     }
     return providerTools;
-  }
-
-  private resolveActiveTool(
-    skills: ActiveMcpSkillScope[],
-    canonicalToolName: string,
-  ): ManagedMcpTool | undefined {
-    return this.getResolvedActiveTools(skills).find(
-      (tool) => tool.name === canonicalToolName,
-    );
   }
 
   private toToolDescriptor(tool: ManagedMcpTool): ManagedMcpToolDescriptor {
