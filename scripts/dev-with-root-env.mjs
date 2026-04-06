@@ -8,6 +8,9 @@ const workspaceRoot = path.resolve(
   "..",
 );
 const nodeEnv = process.env.NODE_ENV ?? "development";
+const devPort = process.env.PORT?.trim() || "3000";
+
+process.env.PORT = devPort;
 
 const envCandidates = [
   `.env.${nodeEnv}.local`,
@@ -54,7 +57,7 @@ function terminateChildren(signal = "SIGTERM") {
 
 const tunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
 const tunnelUrl =
-  process.env.CLOUDFLARE_TUNNEL_URL?.trim() || "http://localhost:3000";
+  process.env.CLOUDFLARE_TUNNEL_URL?.trim() || `http://localhost:${devPort}`;
 
 if (tunnelToken) {
   spawnChild("cloudflared", [
@@ -68,11 +71,7 @@ if (tunnelToken) {
 }
 
 const exampleDir = path.join(workspaceRoot, "apps", "example");
-const child = spawnChild(
-  path.join(exampleDir, "node_modules", ".bin", "vite"),
-  ["dev"],
-  { cwd: exampleDir },
-);
+const child = spawnChild("pnpm", ["dev"], { cwd: exampleDir });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {

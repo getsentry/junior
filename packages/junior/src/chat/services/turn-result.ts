@@ -186,7 +186,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
   }
 
   const resolvedDiagnostics: AgentTurnDiagnostics = {
-    outcome: escapedOrRawPayload ? "execution_failure" : outcome,
+    outcome: resolvedOutcome,
     modelId: botConfig.modelId,
     assistantMessageCount: assistantMessages.length,
     toolCalls,

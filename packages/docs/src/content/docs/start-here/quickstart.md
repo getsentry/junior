@@ -61,6 +61,8 @@ See [Config & Environment](/reference/config-and-env/) for the full reference.
 pnpm dev
 ```
 
+This starts the local app on `http://localhost:3000` by default.
+
 ## Verify locally
 
 Check the health route first, then verify a real Slack thread.

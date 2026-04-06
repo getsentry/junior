@@ -38,6 +38,8 @@ If your team account requires an explicit Vercel scope, add `--scope <team-slug>
 pnpm dev
 ```
 
+This starts the example app on `http://localhost:3000` by default.
+
 ## Common checks
 
 ```bash
