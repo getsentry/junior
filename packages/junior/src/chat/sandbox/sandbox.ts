@@ -1119,6 +1119,16 @@ export function createSandboxExecutor(options?: {
           pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,
         });
         let commandError: unknown;
+        let result:
+          | {
+              stdout: string;
+              stderr: string;
+              exitCode: number;
+              stdoutTruncated: boolean;
+              stderrTruncated: boolean;
+            }
+          | undefined;
+        let restoreError: unknown;
         try {
           const commandResult = await activeSandbox.runCommand({
             cmd: "bash",
@@ -1137,7 +1147,7 @@ export function createSandboxExecutor(options?: {
           const stderrRaw = await commandResult.stderr();
           const stdout = truncateOutput(stdoutRaw, boundedOutputLength);
           const stderr = truncateOutput(stderrRaw, boundedOutputLength);
-          return {
+          result = {
             stdout: stdout.value,
             stderr: stderr.value,
             exitCode: commandResult.exitCode,
@@ -1151,14 +1161,16 @@ export function createSandboxExecutor(options?: {
           if (headerTransforms && headerTransforms.length > 0) {
             try {
               await activeSandbox.updateNetworkPolicy(restoreNetworkPolicy);
-            } catch (restoreError) {
-              await invalidateSandboxInstance(activeSandbox, restoreError);
-              if (!commandError) {
-                throw restoreError;
-              }
+            } catch (error) {
+              restoreError = error;
+              await invalidateSandboxInstance(activeSandbox, error);
             }
           }
         }
+        if (restoreError && !commandError) {
+          throw restoreError;
+        }
+        return result!;
       },
       readFile: async (input) =>
         (await executeReadFile(input, {

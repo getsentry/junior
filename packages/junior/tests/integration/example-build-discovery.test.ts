@@ -35,6 +35,14 @@ function buildJuniorPackage(): void {
     env,
     stdio: "pipe",
   });
+
+  // Re-sync pnpm store so the example app's node_modules/@sentry/junior
+  // points to the freshly built dist, not a stale hardlink.
+  execFileSync("pnpm", ["install"], {
+    cwd: repoRoot,
+    env,
+    stdio: "pipe",
+  });
 }
 
 async function importExampleApp() {

@@ -150,7 +150,7 @@ function buildFailureMessage(reference: ErrorReference | null): string {
 }
 
 export interface SlackTurnRuntime<
-  TPreparedState,
+  _TPreparedState,
   TAssistantEvent extends AssistantLifecycleEvent = AssistantLifecycleEvent,
 > {
   handleAssistantContextChanged: (event: TAssistantEvent) => Promise<void>;

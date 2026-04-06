@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-03-06
+- Last Edited: 2026-04-06
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-03-04: Updated logging/observability file references to repo-root paths under `packages/junior/`.
 - 2026-03-04: Normalized section shape with explicit `Status`, `Purpose`, and `Scope`.
 - 2026-03-06: Added snapshot lifecycle span requirements and aligned sandbox snapshot attributes.
+- 2026-04-06: Added official GenAI finish-reasons, system-instructions, and tool-description tracing attributes.
 
 ## Status
 
@@ -67,8 +68,11 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - `messaging.message.conversation_id` / `app.workflow.run_id` / `enduser.id` when available.
 - `messaging.destination.name` for channel context when available.
 - `gen_ai.request.model` for model-level tracing.
+- `gen_ai.response.finish_reasons` when available from provider responses.
+- `gen_ai.system_instructions` when provided separately from chat history and safely captured.
 - `gen_ai.input.messages` / `gen_ai.output.messages` when safely captured.
 - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` when available from provider responses.
+- `gen_ai.tool.description` when available on tool execution spans.
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` on tool execution spans when captured.
 - Keep existing context keys aligned with `packages/junior/src/chat/logging.ts`.
 

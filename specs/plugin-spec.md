@@ -15,6 +15,7 @@
 - 2026-03-13: Implemented HTTP MCP manifests, same-plugin progressive tool activation, and dedicated MCP OAuth callbacks.
 - 2026-03-18: Added provider-scoped MCP tool allowlists for read-only plugin surfaces.
 - 2026-03-18: Replaced per-MCP-tool Pi registration with stable `searchTools`/`useTool` dispatch and plugin-level MCP allowlists.
+- 2026-04-05: Added INV-1 spec invariant: plugin discovery is explicit only.
 
 ## Status
 
@@ -416,3 +417,13 @@ oauth:
 - **Plugin sandboxing.** Broker logic runs on the host with full trust.
 - **Plugin versioning.** Plugins are part of the monorepo.
 - **Custom per-plugin broker modules beyond supported types.** The `oauth-bearer` and `github-app` credential types cover current providers. More types can be added as needed.
+
+## Spec invariants
+
+### INV-1: Plugin discovery is explicit, never automatic
+
+`pluginPackages` must be explicitly declared in the app configuration. The runtime must never scan `node_modules`, `package.json` dependencies, or the filesystem to auto-discover plugins.
+
+**Rationale:** Auto-discovery caused non-deterministic load order, transitive dependency pollution in build output, and dev/prod behavior drift during the 2026-03 stabilization cycle (see commits `b6e780f`, `76a6b52`).
+
+**Enforcement:** `discoverInstalledPluginPackageContent()` returns empty results when no `packageNames` are provided. This is guarded by the test in `packages/junior/tests/unit/config/package-discovery.test.ts`.

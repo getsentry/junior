@@ -33,6 +33,11 @@ function createState(
 function createContext(userText: string): ToolRuntimeContext {
   return {
     userText,
+    channelCapabilities: {
+      canCreateCanvas: false,
+      canPostToChannel: false,
+      canAddReactions: false,
+    },
     sandbox: {} as never,
   };
 }

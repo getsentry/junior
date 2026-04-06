@@ -342,9 +342,9 @@ async function handleConfigCommand(
         exitCode: 2,
       });
     }
-    const entries = await configuration.list({
-      ...(prefixResult.prefix ? { prefix: prefixResult.prefix } : {}),
-    });
+    const entries = prefixResult.prefix
+      ? await configuration.list({ prefix: prefixResult.prefix })
+      : await configuration.list({});
     return commandResult({
       stdout: {
         ok: true,

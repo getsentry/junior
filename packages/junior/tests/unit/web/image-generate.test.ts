@@ -23,6 +23,13 @@ import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 
 const mockCompleteText = vi.mocked(completeText);
 
+function getRequestBody(fetchMock: ReturnType<typeof vi.fn>) {
+  const request = fetchMock.mock.calls[0];
+  expect(request).toBeDefined();
+  expect(request[1]).toBeDefined();
+  return JSON.parse((request[1] as RequestInit).body as string);
+}
+
 function createJsonResponse(payload: unknown) {
   return {
     ok: true,
@@ -89,12 +96,9 @@ describe("createImageGenerateTool", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0];
-    expect(request?.[0]).toBe(
-      "https://ai-gateway.vercel.sh/v1/chat/completions",
-    );
-    expect(
-      JSON.parse((request?.[1] as RequestInit).body as string),
-    ).toMatchObject({
+    expect(request).toBeDefined();
+    expect(request[0]).toBe("https://ai-gateway.vercel.sh/v1/chat/completions");
+    expect(getRequestBody(fetchMock)).toMatchObject({
       model: "google/gemini-3-pro-image",
       messages: [{ role: "user", content: "enriched prompt" }],
       modalities: ["image"],
@@ -129,10 +133,7 @@ describe("createImageGenerateTool", () => {
     }
     const result = await tool.execute({ prompt: "a cat" }, {} as any);
 
-    const request = fetchMock.mock.calls[0];
-    expect(
-      JSON.parse((request?.[1] as RequestInit).body as string),
-    ).toMatchObject({
+    expect(getRequestBody(fetchMock)).toMatchObject({
       model: "openai/dall-e-3",
     });
     expect(result).toMatchObject({
@@ -184,8 +185,7 @@ describe("createImageGenerateTool", () => {
     } as any);
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
-    const request = fetchMock.mock.calls[0];
-    const body = JSON.parse((request?.[1] as RequestInit).body as string);
+    const body = getRequestBody(fetchMock);
     expect(body.messages[0].content).toBe(
       "a dark, high-contrast dog with glowing eyes",
     );
@@ -208,9 +208,7 @@ describe("createImageGenerateTool", () => {
     } as any);
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
-    const body = JSON.parse(
-      (fetchMock.mock.calls[0]?.[1] as RequestInit).body as string,
-    );
+    const body = getRequestBody(fetchMock);
     expect(body.messages[0].content).toBe("draw a dog");
     expect(result).toMatchObject({
       prompt: "draw a dog",
@@ -231,8 +229,7 @@ describe("createImageGenerateTool", () => {
     } as any);
     const result = await tool.execute!({ prompt: "draw a dog" }, {} as any);
 
-    const request = fetchMock.mock.calls[0];
-    const body = JSON.parse((request?.[1] as RequestInit).body as string);
+    const body = getRequestBody(fetchMock);
     expect(body.messages[0].content).toBe("draw a dog");
     expect(result).toMatchObject({
       prompt: "draw a dog",

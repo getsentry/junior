@@ -146,14 +146,19 @@ export async function completeText(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }) {
-  const startedAt = Date.now();
   const model = resolveGatewayModel(params.modelId);
   const apiKey = getPiGatewayApiKeyOverride();
   const requestMessagesAttribute = serializeGenAiAttribute(params.messages);
+  const systemInstructionsAttribute = params.system
+    ? serializeGenAiAttribute([{ type: "text", content: params.system }])
+    : undefined;
   const startAttributes = {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
+    ...(systemInstructionsAttribute
+      ? { "gen_ai.system_instructions": systemInstructionsAttribute }
+      : {}),
     ...(requestMessagesAttribute
       ? { "gen_ai.input.messages": requestMessagesAttribute }
       : {}),
@@ -190,8 +195,9 @@ export async function completeText(params: {
       ? { "gen_ai.output.messages": outputMessagesAttribute }
       : {}),
     ...usageAttributes,
-    "app.ai.duration_ms": Date.now() - startedAt,
-    "app.ai.stop_reason": message.stopReason ?? "unknown",
+    ...(message.stopReason
+      ? { "gen_ai.response.finish_reasons": [message.stopReason] }
+      : {}),
   };
   setSpanAttributes(endAttributes);
   if (message.stopReason === "error") {

@@ -3,13 +3,13 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-03-05
+- Last Edited: 2026-04-06
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-05: Linked to canonical session resumability contract for multi-slice timeout recovery.
-
+- 2026-04-06: Switched stop-reason observability to `gen_ai.response.finish_reasons`.
 
 ## Status
 
@@ -85,7 +85,7 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
   - `app.ai.tool_results`
   - `app.ai.tool_error_results`
   - `app.ai.used_primary_text`
-  - `app.ai.stop_reason` (when available)
+  - `gen_ai.response.finish_reasons` (when available)
   - `error.message` (when available)
 - Do not emit empty placeholders for absent optional attributes.
 

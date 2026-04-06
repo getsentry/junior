@@ -154,9 +154,9 @@ export function createChannelConfigurationService(
           .map((entry) => entry.trim())
           .filter((entry) => entry.length > 0)
       : undefined;
-    const entries = await list({
-      ...(options.prefix ? { prefix: options.prefix } : {}),
-    });
+    const entries = options.prefix
+      ? await list({ prefix: options.prefix })
+      : await list({});
 
     const filtered = keys
       ? entries.filter((entry) => keys.includes(entry.key))

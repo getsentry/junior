@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["dist/**"],
+  "rules": {
+    "unicorn/no-useless-fallback-in-spread": "off",
+    "vitest/hoisted-apis-on-top": "off",
+    "vitest/require-mock-type-parameters": "off"
+  }
+}

@@ -3,13 +3,14 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-03-04
+- Last Edited: 2026-04-06
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated code and test file references to repo-root paths under `packages/junior/`.
 - 2026-03-18: Added console rendering policy for compact dev logs and clarified that tool success lifecycle uses spans instead of duplicate start/complete info logs.
+- 2026-04-06: Aligned GenAI semantic keys with official finish-reasons, system-instructions, and tool-description attributes.
 
 ## Status
 
@@ -198,9 +199,12 @@ Rules:
 - `gen_ai.request.model`
 - `gen_ai.provider.name` (provider/gateway)
 - `gen_ai.operation.name` (e.g. `chat`, `invoke_agent`, `execute_tool`)
+- `gen_ai.response.finish_reasons` (when available)
+- `gen_ai.system_instructions` (when captured and provided separately)
 - `gen_ai.input.messages` (serialized request messages when captured)
 - `gen_ai.output.messages` (serialized model output messages when captured)
 - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` (when available)
+- `gen_ai.tool.description` (for tool-call spans when available)
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` (for tool-call spans when captured)
 
 ### Error
@@ -215,7 +219,6 @@ Only when no semantic key exists:
 
 - `app.workflow.run_id`
 - `app.skill.name`
-- `gen_ai.agent.name`
 - `app.retry.attempt`
 
 ## Attribute Rules

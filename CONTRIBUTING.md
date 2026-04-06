@@ -104,6 +104,10 @@ See `packages/junior/evals/README.md` and `specs/testing/evals-spec.md` for auth
 
 Install `cloudflared` first (`brew install cloudflared` on macOS).
 
+`pnpm dev` serves the example app on `http://localhost:3000` by default. The
+bundled Cloudflare tunnel helper targets the same port unless
+`CLOUDFLARE_TUNNEL_URL` overrides it.
+
 Quick tunnel with a random hostname:
 
 ```bash

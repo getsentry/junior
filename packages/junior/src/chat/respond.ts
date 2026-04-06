@@ -5,8 +5,6 @@ import {
   extractGenAiUsageAttributes,
   serializeGenAiAttribute,
 } from "@/chat/logging";
-import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
-import { getMcpAuthSession, patchMcpAuthSession } from "@/chat/mcp/auth-store";
 import {
   getActiveTraceId,
   logException,
@@ -17,19 +15,13 @@ import {
   withSpan,
   type LogContext,
 } from "@/chat/logging";
-import { deliverPrivateMessage, formatProviderLabel } from "@/chat/oauth-flow";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
   createSkillCapabilityRuntime,
   createUserTokenStore,
 } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
-import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import {
-  buildReplyDeliveryPlan,
-  type ReplyDeliveryPlan,
-} from "@/chat/services/reply-delivery-plan";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   discoverSkills,
@@ -44,6 +36,7 @@ import {
 import { McpToolManager, type ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { createTools } from "@/chat/tools";
+import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
@@ -55,36 +48,39 @@ import {
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
 import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import {
-  getAgentTurnSessionCheckpoint,
-  upsertAgentTurnSessionCheckpoint,
-} from "@/chat/state/turn-session-store";
 import { formatToolStatusWithInput } from "@/chat/runtime/tool-status";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createAgentTools } from "@/chat/tools/agent-tools";
-import { extractOAuthStartedMessageFromToolResults } from "@/chat/oauth-flow";
-import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
-import { enforceAttachmentClaimTruth } from "@/chat/services/attachment-claims";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
+import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
 import {
-  buildExecutionFailureMessage,
   buildUserTurnText,
   collectRelevantConfigurationKeys,
   encodeNonImageAttachmentForPrompt,
-  extractAssistantText,
   getSessionIdentifiers,
   hasCompletedAssistantTurn,
   isAssistantMessage,
-  isExecutionEscapeResponse,
-  isRawToolPayloadResponse,
-  isToolResultError,
-  isToolResultMessage,
-  normalizeToolNameFromResult,
   summarizeMessageText,
   toObservablePromptPart,
-  trimTrailingAssistantMessages,
   upsertActiveSkill,
 } from "@/chat/respond-helpers";
+import {
+  buildTurnResult,
+  type AssistantReply,
+  type AgentTurnDiagnostics,
+} from "@/chat/services/turn-result";
+import {
+  loadTurnCheckpoint,
+  persistCompletedCheckpoint,
+  persistAuthPauseCheckpoint,
+} from "@/chat/services/turn-checkpoint";
+import {
+  createMcpAuthOrchestration,
+  McpAuthorizationPauseError,
+} from "@/chat/services/mcp-auth-orchestration";
+
+// Re-export types for backward compatibility with existing consumers.
+export type { AssistantReply, AgentTurnDiagnostics };
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
@@ -128,30 +124,6 @@ export interface ReplyRequestContext {
   onTextDelta?: (deltaText: string) => void | Promise<void>;
 }
 
-export interface AssistantReply {
-  text: string;
-  files?: FileUpload[];
-  artifactStatePatch?: Partial<ThreadArtifactsState>;
-  deliveryPlan?: ReplyDeliveryPlan;
-  deliveryMode?: "thread" | "channel_only";
-  sandboxId?: string;
-  sandboxDependencyProfileHash?: string;
-  diagnostics: AgentTurnDiagnostics;
-}
-
-export interface AgentTurnDiagnostics {
-  assistantMessageCount: number;
-  errorMessage?: string;
-  providerError?: unknown;
-  modelId: string;
-  outcome: "success" | "execution_failure" | "provider_error";
-  stopReason?: string;
-  toolCalls: string[];
-  toolErrorCount: number;
-  toolResultCount: number;
-  usedPrimaryText: boolean;
-}
-
 let startupDiscoveryLogged = false;
 
 type ResumablePiAgent = Agent & {
@@ -159,14 +131,22 @@ type ResumablePiAgent = Agent & {
   replaceMessages?: (messages: unknown[]) => Promise<void> | void;
 };
 
-class McpAuthorizationPauseError extends Error {
-  readonly provider: string;
-
-  constructor(provider: string) {
-    super(`MCP authorization started for ${provider}`);
-    this.name = "McpAuthorizationPauseError";
-    this.provider = provider;
+/** Convert active MCP tools into ToolDefinition entries for first-class registration. */
+function mcpToolsToDefinitions(
+  mcpTools: ManagedMcpTool[],
+): Record<string, ToolDefinition<any>> {
+  const defs: Record<string, ToolDefinition<any>> = {};
+  for (const tool of mcpTools) {
+    defs[tool.name] = {
+      description: tool.description,
+      // Raw JSON Schema from MCP servers — not a TypeBox TSchema, but
+      // pi-agent-core validates with AJV and the Anthropic provider reads
+      // .properties/.required, so raw JSON Schema works at runtime.
+      inputSchema: tool.parameters as any,
+      execute: async (args: Record<string, unknown>) => tool.execute(args),
+    };
   }
+  return defs;
 }
 
 async function maybeReplaceAgentMessages(
@@ -189,24 +169,7 @@ async function runAgentContinuation(agent: Agent): Promise<unknown> {
   return await resumable.continue();
 }
 
-/** Convert active MCP tools into ToolDefinition entries for first-class registration. */
-function mcpToolsToDefinitions(
-  mcpTools: ManagedMcpTool[],
-): Record<string, ToolDefinition<any>> {
-  const defs: Record<string, ToolDefinition<any>> = {};
-  for (const tool of mcpTools) {
-    defs[tool.name] = {
-      description: tool.description,
-      // Raw JSON Schema from MCP servers — not a TypeBox TSchema, but
-      // pi-agent-core validates with AJV and the Anthropic provider reads
-      // .properties/.required, so raw JSON Schema works at runtime.
-      inputSchema: tool.parameters as any,
-      execute: async (args: Record<string, unknown>) => tool.execute(args),
-    };
-  }
-  return defs;
-}
-
+/** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {},
@@ -220,7 +183,6 @@ export async function generateAssistantReply(
     context.sandbox?.sandboxDependencyProfileHash;
   let loadedSkillNamesForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
-  let pendingMcpAuthorizationPause: McpAuthorizationPauseError | undefined;
 
   try {
     const shouldTrace = shouldEmitDevAgentTrace();
@@ -239,6 +201,7 @@ export async function generateAssistantReply(
       modelId: botConfig.modelId,
     };
 
+    // ── Skill discovery ──────────────────────────────────────────────
     const availableSkills = await discoverSkills({
       additionalRoots: context.skillDirs,
     });
@@ -287,25 +250,21 @@ export async function generateAssistantReply(
       : null;
     const activeSkills: Skill[] = [];
     const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
+
+    // ── Turn checkpoint ──────────────────────────────────────────────
     const { conversationId: sessionConversationId, sessionId } =
       getSessionIdentifiers(context);
-    const canUseTurnSession = Boolean(sessionConversationId && sessionId);
+    const checkpointState = await loadTurnCheckpoint({
+      conversationId: sessionConversationId,
+      sessionId,
+    });
+    const { resumedFromCheckpoint, currentSliceId, existingCheckpoint } =
+      checkpointState;
     timeoutResumeConversationId = sessionConversationId;
     timeoutResumeSessionId = sessionId;
-    const existingTurnCheckpoint =
-      canUseTurnSession && sessionConversationId && sessionId
-        ? await getAgentTurnSessionCheckpoint(sessionConversationId, sessionId)
-        : undefined;
-    const hasAwaitingResumeCheckpoint = Boolean(
-      existingTurnCheckpoint &&
-      existingTurnCheckpoint.state === "awaiting_resume" &&
-      existingTurnCheckpoint.piMessages.length > 0,
-    );
-    const resumedFromCheckpoint = hasAwaitingResumeCheckpoint;
-    const currentSliceId = hasAwaitingResumeCheckpoint
-      ? existingTurnCheckpoint!.sliceId
-      : 1;
     timeoutResumeSliceId = currentSliceId;
+
+    // ── Sandbox ──────────────────────────────────────────────────────
     const capabilityRuntime = createSkillCapabilityRuntime({
       invocationArgs: skillInvocation?.args,
       requesterId: context.requester?.userId,
@@ -346,13 +305,13 @@ export async function generateAssistantReply(
     sandboxExecutor.configureSkills(availableSkills);
     const sandbox = await sandboxExecutor.createSandbox();
 
-    for (const skillName of existingTurnCheckpoint?.loadedSkillNames ?? []) {
+    // ── Preload skills from checkpoint ───────────────────────────────
+    for (const skillName of existingCheckpoint?.loadedSkillNames ?? []) {
       const preloaded = await skillSandbox.loadSkill(skillName);
       if (preloaded) {
         upsertActiveSkill(activeSkills, preloaded);
       }
     }
-
     if (invokedSkill) {
       const preloaded = await skillSandbox.loadSkill(invokedSkill.name);
       if (preloaded) {
@@ -369,97 +328,35 @@ export async function generateAssistantReply(
       },
     );
 
+    // ── Mutable turn state ───────────────────────────────────────────
     timeoutResumeMessages = [];
-    pendingMcpAuthorizationPause = undefined;
     const generatedFiles: FileUpload[] = [];
     const replyFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
-    const mcpAuthSessionIdsByProvider = new Map<string, string>();
     let agent: Agent | undefined;
 
+    // ── MCP auth orchestration ───────────────────────────────────────
+    const mcpAuth = createMcpAuthOrchestration(
+      {
+        conversationId: sessionConversationId,
+        sessionId,
+        requesterId: context.requester?.userId,
+        channelId: context.correlation?.channelId,
+        threadTs: context.correlation?.threadTs,
+        toolChannelId: context.toolChannelId,
+        userMessage: userInput,
+        getConfiguration: () => configurationValues,
+        getArtifactState: () => context.artifactState,
+        getMergedArtifactState: () =>
+          mergeArtifactsState(context.artifactState ?? {}, artifactStatePatch),
+      },
+      () => agent?.abort(),
+    );
+
     mcpToolManager = new McpToolManager(getPluginMcpProviders(), {
-      authProviderFactory: async (plugin) => {
-        if (
-          !sessionConversationId ||
-          !sessionId ||
-          !context.requester?.userId
-        ) {
-          return undefined;
-        }
-
-        const provider = await createMcpOAuthClientProvider({
-          provider: plugin.manifest.name,
-          conversationId: sessionConversationId,
-          sessionId,
-          userId: context.requester.userId,
-          userMessage: userInput,
-          ...(context.correlation?.channelId
-            ? { channelId: context.correlation.channelId }
-            : {}),
-          ...(context.correlation?.threadTs
-            ? { threadTs: context.correlation.threadTs }
-            : {}),
-          ...(context.toolChannelId
-            ? { toolChannelId: context.toolChannelId }
-            : {}),
-          configuration: configurationValues,
-          artifactState: context.artifactState,
-        });
-        mcpAuthSessionIdsByProvider.set(
-          plugin.manifest.name,
-          provider.authSessionId,
-        );
-        return provider;
-      },
-      onAuthorizationRequired: async (provider) => {
-        if (pendingMcpAuthorizationPause) {
-          return true;
-        }
-
-        const authSessionId = mcpAuthSessionIdsByProvider.get(provider);
-        if (!authSessionId || !context.requester?.userId) {
-          throw new Error(
-            `Missing MCP auth session context for plugin "${provider}"`,
-          );
-        }
-
-        const latestArtifactState = mergeArtifactsState(
-          context.artifactState ?? {},
-          artifactStatePatch,
-        );
-        await patchMcpAuthSession(authSessionId, {
-          configuration: { ...configurationValues },
-          artifactState: latestArtifactState,
-          toolChannelId:
-            context.toolChannelId ??
-            latestArtifactState.assistantContextChannelId ??
-            context.correlation?.channelId,
-        });
-
-        const authSession = await getMcpAuthSession(authSessionId);
-        if (!authSession?.authorizationUrl) {
-          throw new Error(
-            `Missing MCP authorization URL for plugin "${provider}"`,
-          );
-        }
-
-        const delivery = await deliverPrivateMessage({
-          channelId: authSession.channelId,
-          threadTs: authSession.threadTs,
-          userId: authSession.userId,
-          text: `<${authSession.authorizationUrl}|Click here to link your ${formatProviderLabel(provider)} MCP access>. Once you've authorized, this thread will continue automatically.`,
-        });
-        if (!delivery) {
-          throw new Error(
-            `Unable to deliver MCP authorization link for plugin "${provider}"`,
-          );
-        }
-
-        pendingMcpAuthorizationPause = new McpAuthorizationPauseError(provider);
-        agent?.abort();
-        return true;
-      },
+      authProviderFactory: mcpAuth.authProviderFactory,
+      onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
     });
     const turnMcpToolManager = mcpToolManager;
     const syncResumeState = () => {
@@ -478,6 +375,7 @@ export async function generateAssistantReply(
       modelId: botConfig.modelId,
     });
 
+    // ── Tool creation ────────────────────────────────────────────────
     const tools = createTools(
       availableSkills,
       {
@@ -505,20 +403,15 @@ export async function generateAssistantReply(
           syncResumeState();
           await turnMcpToolManager.activateForSkill(effective);
           syncResumeState();
-          if (pendingMcpAuthorizationPause) {
-            // Pi turns thrown tool errors into toolResult isError frames. Once
-            // auth pause has been requested, stop here and let the aborted turn
-            // park cleanly instead of surfacing a fake loadSkill failure.
+          if (mcpAuth.getPendingPause()) {
+            // Auth pause requested — suppress loadSkill failure and let the
+            // aborted turn park cleanly.
             return undefined;
           }
           if (!effective.pluginProvider) {
             return undefined;
           }
-
-          // Register newly activated MCP tools as first-class AgentTools so the
-          // model sees their schemas directly in the API tools array.
           syncMcpAgentTools();
-
           return {
             available_tools: turnMcpToolManager
               .getActiveToolCatalog(activeSkills, {
@@ -530,6 +423,9 @@ export async function generateAssistantReply(
       },
       {
         channelId: context.toolChannelId ?? context.correlation?.channelId,
+        channelCapabilities: resolveChannelCapabilities(
+          context.toolChannelId ?? context.correlation?.channelId,
+        ),
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
         userText: userInput,
@@ -545,13 +441,14 @@ export async function generateAssistantReply(
     for (const skill of activeSkills) {
       await turnMcpToolManager.activateForSkill(skill);
       syncResumeState();
-      if (pendingMcpAuthorizationPause) {
-        timeoutResumeMessages = existingTurnCheckpoint?.piMessages ?? [];
-        throw pendingMcpAuthorizationPause;
+      if (mcpAuth.getPendingPause()) {
+        timeoutResumeMessages = existingCheckpoint?.piMessages ?? [];
+        throw mcpAuth.getPendingPause()!;
       }
     }
     syncResumeState();
 
+    // ── System prompt ────────────────────────────────────────────────
     const activeToolSummaries = turnMcpToolManager
       .getActiveToolCatalog(activeSkills)
       .map(toExposedToolSummary);
@@ -602,6 +499,7 @@ export async function generateAssistantReply(
       },
     ]);
 
+    // ── Agent tools ──────────────────────────────────────────────────
     const agentToolHooks = {
       onToolCall: (toolName: string) => {
         toolCalls.push(toolName);
@@ -621,7 +519,6 @@ export async function generateAssistantReply(
     // this reference, so in-place mutations are visible to the running loop.
     const agentTools: AgentTool[] = [...baseAgentTools];
 
-    /** Rebuild MCP portion of the mutable tools array from current active state. */
     const syncMcpAgentTools = () => {
       const mcpTools = turnMcpToolManager.getResolvedActiveTools(activeSkills);
       const mcpDefs = mcpToolsToDefinitions(mcpTools);
@@ -638,9 +535,9 @@ export async function generateAssistantReply(
       agentTools.push(...baseAgentTools, ...mcpAgentTools);
     };
 
-    // Register any MCP tools already active from pre-loaded skills.
     syncMcpAgentTools();
 
+    // ── Agent execution ──────────────────────────────────────────────
     agent = new Agent({
       getApiKey: () => getPiGatewayApiKeyOverride(),
       initialState: {
@@ -653,27 +550,16 @@ export async function generateAssistantReply(
     let needsSeparator = false;
 
     const unsubscribe = agent.subscribe((event) => {
-      // Track message boundaries so text from consecutive assistant messages
-      // is separated by "\n\n", matching final Slack formatting.
       if (event.type === "message_start") {
         if (hasEmittedText) {
           needsSeparator = true;
         }
         return;
       }
-
-      if (event.type !== "message_update") {
-        return;
-      }
-
-      if (event.assistantMessageEvent.type !== "text_delta") {
-        return;
-      }
-
+      if (event.type !== "message_update") return;
+      if (event.assistantMessageEvent.type !== "text_delta") return;
       const deltaText = event.assistantMessageEvent.delta;
-      if (!deltaText) {
-        return;
-      }
+      if (!deltaText) return;
 
       const text = needsSeparator ? "\n\n" + deltaText : deltaText;
       needsSeparator = false;
@@ -700,7 +586,7 @@ export async function generateAssistantReply(
       if (resumedFromCheckpoint) {
         const didReplace = await maybeReplaceAgentMessages(
           agent,
-          existingTurnCheckpoint!.piMessages,
+          existingCheckpoint!.piMessages,
         );
         if (!didReplace) {
           throw new Error(
@@ -753,19 +639,14 @@ export async function generateAssistantReply(
                 },
                 "Agent turn timed out and was aborted",
               );
-              // The timeout branch wins the race via timeoutPromise, so the
-              // agent loop may still be settling its final message state. Wait
-              // for promptPromise before snapshotting messages for resume.
+              // Wait for promptPromise to settle before snapshotting messages
+              // — the agent loop may still be mutating state.
               await promptPromise.catch(() => {});
               timeoutResumeMessages = [...(agent.state.messages as unknown[])];
             }
-            if (pendingMcpAuthorizationPause) {
-              // For non-timeout failures, pi-agent-core only settles
-              // promptPromise after it has finished mutating agent.state.
-              // By the time we get here, the prompt already settled, so the
-              // current message snapshot is final for auth-pause checkpointing.
+            if (mcpAuth.getPendingPause()) {
               timeoutResumeMessages = [...(agent.state.messages as unknown[])];
-              throw pendingMcpAuthorizationPause;
+              throw mcpAuth.getPendingPause()!;
             }
             throw error;
           } finally {
@@ -778,12 +659,9 @@ export async function generateAssistantReply(
             beforeMessageCount,
           ) as unknown[];
           completedAssistantTurn = hasCompletedAssistantTurn(newMessages);
-          if (pendingMcpAuthorizationPause && !completedAssistantTurn) {
+          if (mcpAuth.getPendingPause() && !completedAssistantTurn) {
             timeoutResumeMessages = [...(agent.state.messages as unknown[])];
-            throw pendingMcpAuthorizationPause;
-          }
-          if (pendingMcpAuthorizationPause && completedAssistantTurn) {
-            pendingMcpAuthorizationPause = undefined;
+            throw mcpAuth.getPendingPause()!;
           }
           const outputMessages = newMessages.filter(isAssistantMessage);
           const outputMessagesAttribute =
@@ -813,222 +691,64 @@ export async function generateAssistantReply(
       unsubscribe();
     }
 
-    if (pendingMcpAuthorizationPause && !completedAssistantTurn) {
-      throw pendingMcpAuthorizationPause;
+    if (mcpAuth.getPendingPause() && !completedAssistantTurn) {
+      throw mcpAuth.getPendingPause()!;
     }
 
-    if (canUseTurnSession && sessionConversationId && sessionId) {
-      await upsertAgentTurnSessionCheckpoint({
+    // ── Persist completed checkpoint ─────────────────────────────────
+    if (
+      checkpointState.canUseTurnSession &&
+      sessionConversationId &&
+      sessionId
+    ) {
+      await persistCompletedCheckpoint({
         conversationId: sessionConversationId,
         sessionId,
         sliceId: currentSliceId,
-        state: "completed",
-        piMessages: agent.state.messages as unknown[],
+        allMessages: agent.state.messages as unknown[],
         loadedSkillNames: activeSkills.map((skill) => skill.name),
       });
     }
 
-    const toolResults = newMessages.filter(isToolResultMessage);
-
-    const assistantMessages = newMessages.filter(isAssistantMessage);
-
-    const primaryText = assistantMessages
-      .map((message) => extractAssistantText(message))
-      .join("\n\n")
-      .trim();
-    const oauthStartedMessage =
-      extractOAuthStartedMessageFromToolResults(toolResults);
-
-    const toolErrorCount = toolResults.filter(
-      (result) => result.isError,
-    ).length;
-    const explicitChannelPostIntent = isExplicitChannelPostIntent(userInput);
-    const successfulToolNames = new Set(
-      toolResults
-        .filter((result) => !isToolResultError(result))
-        .map((result) => normalizeToolNameFromResult(result))
-        .filter((value): value is string => Boolean(value)),
-    );
-    const channelPostPerformed = successfulToolNames.has(
-      "slackChannelPostMessage",
-    );
-    const deliveryPlan = buildReplyDeliveryPlan({
-      explicitChannelPostIntent,
-      channelPostPerformed,
-      hasFiles: replyFiles.length > 0,
-      streamingThreadReply: Boolean(context.onTextDelta),
-    });
-    const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
-
-    if (!primaryText && !oauthStartedMessage) {
-      logWarn(
-        "ai_model_response_empty",
-        {
-          slackThreadId: context.correlation?.threadId,
-          slackUserId: context.correlation?.requesterId,
-          slackChannelId: context.correlation?.channelId,
-          runId: context.correlation?.runId,
-          assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId,
-        },
-        {
-          "app.ai.tool_results": toolResults.length,
-          "app.ai.tool_error_results": toolErrorCount,
-          "app.ai.generated_files": generatedFiles.length,
-        },
-        "Model returned empty text response",
-      );
-    }
-
-    const lastAssistant = assistantMessages.at(-1) as
-      | { stopReason?: unknown; errorMessage?: unknown }
-      | undefined;
-    const stopReason =
-      typeof lastAssistant?.stopReason === "string"
-        ? lastAssistant.stopReason
-        : undefined;
-    const errorMessage =
-      typeof lastAssistant?.errorMessage === "string"
-        ? lastAssistant.errorMessage
-        : undefined;
-    const usedPrimaryText = Boolean(primaryText);
-    const outcome: AgentTurnDiagnostics["outcome"] =
-      primaryText || oauthStartedMessage
-        ? stopReason === "error"
-          ? "provider_error"
-          : "success"
-        : "execution_failure";
-    const fallbackText =
-      oauthStartedMessage ?? buildExecutionFailureMessage(toolErrorCount);
-    const responseText = primaryText || fallbackText;
-    const escapedOrRawPayload =
-      Boolean(primaryText) &&
-      (isExecutionEscapeResponse(primaryText) ||
-        isRawToolPayloadResponse(primaryText));
-    const resolvedText = escapedOrRawPayload
-      ? fallbackText
-      : enforceAttachmentClaimTruth(responseText, replyFiles.length > 0);
-    const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
-      ? oauthStartedMessage
-        ? outcome
-        : "execution_failure"
-      : outcome;
-    if (shouldTrace) {
-      logInfo(
-        "agent_message_out",
-        spanContext,
-        {
-          "app.message.kind": "assistant_outbound",
-          "app.message.length": resolvedText.length,
-          "app.message.output": summarizeMessageText(resolvedText),
-          "app.ai.outcome": resolvedOutcome,
-          "app.ai.assistant_messages": assistantMessages.length,
-          ...(stopReason ? { "app.ai.stop_reason": stopReason } : {}),
-        },
-        "Agent message sent",
-      );
-    }
-    if (escapedOrRawPayload) {
-      return {
-        text: resolvedText,
-        files: replyFiles.length > 0 ? replyFiles : undefined,
-        artifactStatePatch:
-          Object.keys(artifactStatePatch).length > 0
-            ? artifactStatePatch
-            : undefined,
-        deliveryPlan,
-        deliveryMode,
-        sandboxId: sandboxExecutor.getSandboxId(),
-        sandboxDependencyProfileHash:
-          sandboxExecutor.getDependencyProfileHash(),
-        diagnostics: {
-          outcome: "execution_failure",
-          modelId: botConfig.modelId,
-          assistantMessageCount: assistantMessages.length,
-          toolCalls,
-          toolResultCount: toolResults.length,
-          toolErrorCount,
-          usedPrimaryText,
-          stopReason,
-          errorMessage,
-          providerError: undefined,
-        },
-      };
-    }
-
-    return {
-      text: resolvedText,
-      files: replyFiles.length > 0 ? replyFiles : undefined,
-      artifactStatePatch:
-        Object.keys(artifactStatePatch).length > 0
-          ? artifactStatePatch
-          : undefined,
-      deliveryPlan,
-      deliveryMode,
+    // ── Build turn result ────────────────────────────────────────────
+    return buildTurnResult({
+      newMessages,
+      userInput,
+      replyFiles,
+      artifactStatePatch,
+      toolCalls,
       sandboxId: sandboxExecutor.getSandboxId(),
       sandboxDependencyProfileHash: sandboxExecutor.getDependencyProfileHash(),
-      diagnostics: {
-        outcome,
-        modelId: botConfig.modelId,
-        assistantMessageCount: assistantMessages.length,
-        toolCalls,
-        toolResultCount: toolResults.length,
-        toolErrorCount,
-        usedPrimaryText,
-        stopReason,
-        errorMessage,
-        providerError: undefined,
-      },
-    };
+      generatedFileCount: generatedFiles.length,
+      hasTextDeltaCallback: Boolean(context.onTextDelta),
+      shouldTrace,
+      spanContext,
+      correlation: context.correlation,
+      assistantUserName: context.assistant?.userName,
+    });
   } catch (error) {
+    // ── MCP auth pause → checkpoint and retry ────────────────────────
     if (
       error instanceof McpAuthorizationPauseError &&
       timeoutResumeConversationId &&
       timeoutResumeSessionId
     ) {
-      const nextSliceId = timeoutResumeSliceId + 1;
-      try {
-        const latestCheckpoint = await getAgentTurnSessionCheckpoint(
-          timeoutResumeConversationId,
-          timeoutResumeSessionId,
-        );
-        const piMessages = trimTrailingAssistantMessages(
-          timeoutResumeMessages.length > 0
-            ? timeoutResumeMessages
-            : (latestCheckpoint?.piMessages ?? []),
-        );
-        await upsertAgentTurnSessionCheckpoint({
-          conversationId: timeoutResumeConversationId,
-          sessionId: timeoutResumeSessionId,
-          sliceId: nextSliceId,
-          state: "awaiting_resume",
-          piMessages,
-          loadedSkillNames: loadedSkillNamesForResume,
-          resumeReason: "auth",
-          resumedFromSliceId: timeoutResumeSliceId,
-          errorMessage: error.message,
-        });
-      } catch (checkpointError) {
-        logException(
-          checkpointError,
-          "agent_turn_auth_resume_checkpoint_failed",
-          {
-            slackThreadId: context.correlation?.threadId,
-            slackUserId: context.correlation?.requesterId,
-            slackChannelId: context.correlation?.channelId,
-            runId: context.correlation?.runId,
-            assistantUserName: context.assistant?.userName,
-            modelId: botConfig.modelId,
-          },
-          {
-            "app.ai.resume_conversation_id": timeoutResumeConversationId,
-            "app.ai.resume_session_id": timeoutResumeSessionId,
-            "app.ai.resume_from_slice_id": timeoutResumeSliceId,
-            "app.ai.resume_next_slice_id": nextSliceId,
-          },
-          "Failed to persist auth checkpoint before retry",
-        );
-      }
+      const nextSliceId = await persistAuthPauseCheckpoint({
+        conversationId: timeoutResumeConversationId,
+        sessionId: timeoutResumeSessionId,
+        currentSliceId: timeoutResumeSliceId,
+        messages: timeoutResumeMessages,
+        loadedSkillNames: loadedSkillNamesForResume,
+        errorMessage: error.message,
+        logContext: {
+          threadId: context.correlation?.threadId,
+          requesterId: context.correlation?.requesterId,
+          channelId: context.correlation?.channelId,
+          runId: context.correlation?.runId,
+          assistantUserName: context.assistant?.userName,
+          modelId: botConfig.modelId,
+        },
+      });
       throw new RetryableTurnError(
         "mcp_auth_resume",
         `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,
