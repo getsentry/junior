@@ -6,6 +6,7 @@ prerequisites:
   - /start-here/quickstart/
 related:
   - /extend/github-plugin/
+  - /extend/linear-plugin/
   - /extend/notion-plugin/
   - /extend/sentry-plugin/
 ---
@@ -47,7 +48,7 @@ my-junior-plugin/
 For reuse across apps or teams, package plugin manifests + skills as npm packages and install them next to `@sentry/junior`.
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-github @sentry/junior-notion @sentry/junior-sentry
+pnpm add @sentry/junior @sentry/junior-github @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
 ```
 
 List the plugin packages in `juniorNitro` so they are bundled at build time and available at runtime:
@@ -62,6 +63,7 @@ export default defineConfig({
     juniorNitro({
       pluginPackages: [
         "@sentry/junior-github",
+        "@sentry/junior-linear",
         "@sentry/junior-notion",
         "@sentry/junior-sentry",
       ],

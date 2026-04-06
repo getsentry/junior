@@ -62,6 +62,7 @@ This repo uses Craft for manual lockstep npm releases of:
 - `@sentry/junior`
 - `@sentry/junior-agent-browser`
 - `@sentry/junior-github`
+- `@sentry/junior-linear`
 - `@sentry/junior-notion`
 - `@sentry/junior-sentry`
 

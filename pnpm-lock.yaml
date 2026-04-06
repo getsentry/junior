@@ -35,6 +35,9 @@ importers:
       "@sentry/junior-github":
         specifier: workspace:*
         version: link:../../packages/junior-github
+      "@sentry/junior-linear":
+        specifier: workspace:*
+        version: link:../../packages/junior-linear
       "@sentry/junior-notion":
         specifier: workspace:*
         version: link:../../packages/junior-notion
@@ -215,6 +218,8 @@ importers:
         version: 4.3.6
 
   packages/junior-github: {}
+
+  packages/junior-linear: {}
 
   packages/junior-notion: {}
 

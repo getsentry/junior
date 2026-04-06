@@ -12,6 +12,9 @@ targets:
     id: "@sentry/junior-github"
     includeNames: /^sentry-junior-github-\d.*\.tgz$/
   - name: npm
+    id: "@sentry/junior-linear"
+    includeNames: /^sentry-junior-linear-\d.*\.tgz$/
+  - name: npm
     id: "@sentry/junior-notion"
     includeNames: /^sentry-junior-notion-\d.*\.tgz$/
   - name: npm
