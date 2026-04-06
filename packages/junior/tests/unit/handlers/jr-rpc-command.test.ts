@@ -111,6 +111,16 @@ function makeRuntime(
   });
 }
 
+function expectHandled(
+  result: Awaited<ReturnType<typeof maybeExecuteJrRpcCustomCommand>>,
+) {
+  expect(result.handled).toBe(true);
+  if (!result.handled) {
+    throw new Error("Expected jr-rpc command to be handled");
+  }
+  return result;
+}
+
 describe("jr-rpc custom command", () => {
   beforeEach(() => {
     startOAuthFlowMock.mockReset();
@@ -139,11 +149,9 @@ describe("jr-rpc custom command", () => {
       },
     );
 
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(0);
-      expect(result.result.stdout).toContain("token_deleted provider=notion");
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(0);
+    expect(handled.result.stdout).toContain("token_deleted provider=notion");
     expect(unlinkProviderMock).toHaveBeenCalledWith(
       "U123",
       "notion",
@@ -167,11 +175,9 @@ describe("jr-rpc custom command", () => {
         activeSkill,
       },
     );
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(0);
-      expect(result.result.stdout).toContain("credential_enabled");
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(0);
+    expect(handled.result.stdout).toContain("credential_enabled");
   });
 
   it("handles valid issue-credential command with --repo", async () => {
@@ -203,11 +209,9 @@ describe("jr-rpc custom command", () => {
         activeSkill,
       },
     );
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(0);
-      expect(result.result.stdout).toContain("credential_enabled");
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(0);
+    expect(handled.result.stdout).toContain("credential_enabled");
   });
 
   it("returns usage error for missing capability", async () => {
@@ -218,11 +222,9 @@ describe("jr-rpc custom command", () => {
         activeSkill,
       },
     );
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(2);
-      expect(result.result.stderr).toContain("requires a capability argument");
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(2);
+    expect(handled.result.stderr).toContain("requires a capability argument");
   });
 
   it("returns usage error for unsupported jr-rpc subcommands", async () => {
@@ -233,11 +235,9 @@ describe("jr-rpc custom command", () => {
         activeSkill,
       },
     );
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(2);
-      expect(result.result.stderr).toContain("Unsupported jr-rpc command");
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(2);
+    expect(handled.result.stderr).toContain("Unsupported jr-rpc command");
   });
 
   it("returns usage error for invalid --repo format", async () => {
@@ -248,13 +248,11 @@ describe("jr-rpc custom command", () => {
         activeSkill,
       },
     );
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(2);
-      expect(result.result.stderr).toContain(
-        "--repo must be in owner/repo format",
-      );
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(2);
+    expect(handled.result.stderr).toContain(
+      "--repo must be in owner/repo format",
+    );
   });
 
   it("returns structured runtime errors for credential issuance failures", async () => {
@@ -265,11 +263,9 @@ describe("jr-rpc custom command", () => {
         activeSkill,
       },
     );
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(1);
-      expect(result.result.stderr).toContain("credential broker unavailable");
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(1);
+    expect(handled.result.stderr).toContain("credential broker unavailable");
   });
 
   it("treats oauth initiation as a successful issue-credential outcome", async () => {
@@ -301,18 +297,16 @@ describe("jr-rpc custom command", () => {
       },
     );
 
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(0);
-      const payload = JSON.parse(result.result.stdout) as {
-        oauth_started: boolean;
-        private_delivery_sent: boolean;
-      };
-      expect(payload).toMatchObject({
-        oauth_started: true,
-        private_delivery_sent: true,
-      });
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(0);
+    const payload = JSON.parse(handled.result.stdout) as {
+      oauth_started: boolean;
+      private_delivery_sent: boolean;
+    };
+    expect(payload).toMatchObject({
+      oauth_started: true,
+      private_delivery_sent: true,
+    });
     expect(startOAuthFlowMock).toHaveBeenCalledWith(
       "github",
       expect.objectContaining({
@@ -330,11 +324,9 @@ describe("jr-rpc custom command", () => {
         activeSkill,
       },
     );
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(1);
-      expect(result.result.stderr).toContain("requires repository context");
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(1);
+    expect(handled.result.stderr).toContain("requires repository context");
   });
 
   it("handles config set/get/list/unset commands with inferred channel configuration context", async () => {
@@ -348,20 +340,18 @@ describe("jr-rpc custom command", () => {
         requesterId: "U123",
       },
     );
-    expect(resultSet.handled).toBe(true);
-    if (resultSet.handled) {
-      expect(resultSet.result.exit_code).toBe(0);
-      const payload = JSON.parse(resultSet.result.stdout) as {
-        ok: boolean;
-        key: string;
-        value: string;
-      };
-      expect(payload).toMatchObject({
-        ok: true,
-        key: "github.repo",
-        value: "getsentry/junior",
-      });
-    }
+    const handledSet = expectHandled(resultSet);
+    expect(handledSet.result.exit_code).toBe(0);
+    const setPayload = JSON.parse(handledSet.result.stdout) as {
+      ok: boolean;
+      key: string;
+      value: string;
+    };
+    expect(setPayload).toMatchObject({
+      ok: true,
+      key: "github.repo",
+      value: "getsentry/junior",
+    });
 
     const resultGet = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config get github.repo",
@@ -371,20 +361,18 @@ describe("jr-rpc custom command", () => {
         channelConfiguration: configuration,
       },
     );
-    expect(resultGet.handled).toBe(true);
-    if (resultGet.handled) {
-      expect(resultGet.result.exit_code).toBe(0);
-      const payload = JSON.parse(resultGet.result.stdout) as {
-        ok: boolean;
-        key: string;
-        value: string;
-      };
-      expect(payload).toMatchObject({
-        ok: true,
-        key: "github.repo",
-        value: "getsentry/junior",
-      });
-    }
+    const handledGet = expectHandled(resultGet);
+    expect(handledGet.result.exit_code).toBe(0);
+    const getPayload = JSON.parse(handledGet.result.stdout) as {
+      ok: boolean;
+      key: string;
+      value: string;
+    };
+    expect(getPayload).toMatchObject({
+      ok: true,
+      key: "github.repo",
+      value: "getsentry/junior",
+    });
 
     const resultList = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config list --prefix github.",
@@ -394,20 +382,18 @@ describe("jr-rpc custom command", () => {
         channelConfiguration: configuration,
       },
     );
-    expect(resultList.handled).toBe(true);
-    if (resultList.handled) {
-      expect(resultList.result.exit_code).toBe(0);
-      const payload = JSON.parse(resultList.result.stdout) as {
-        ok: boolean;
-        entries: Array<{ key: string; value: string }>;
-      };
-      expect(payload.ok).toBe(true);
-      expect(payload.entries).toHaveLength(1);
-      expect(payload.entries[0]).toMatchObject({
-        key: "github.repo",
-        value: "getsentry/junior",
-      });
-    }
+    const handledList = expectHandled(resultList);
+    expect(handledList.result.exit_code).toBe(0);
+    const listPayload = JSON.parse(handledList.result.stdout) as {
+      ok: boolean;
+      entries: Array<{ key: string; value: string }>;
+    };
+    expect(listPayload.ok).toBe(true);
+    expect(listPayload.entries).toHaveLength(1);
+    expect(listPayload.entries[0]).toMatchObject({
+      key: "github.repo",
+      value: "getsentry/junior",
+    });
 
     const resultUnset = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc config unset github.repo",
@@ -417,18 +403,16 @@ describe("jr-rpc custom command", () => {
         channelConfiguration: configuration,
       },
     );
-    expect(resultUnset.handled).toBe(true);
-    if (resultUnset.handled) {
-      expect(resultUnset.result.exit_code).toBe(0);
-      const payload = JSON.parse(resultUnset.result.stdout) as {
-        ok: boolean;
-        deleted: boolean;
-      };
-      expect(payload).toMatchObject({
-        ok: true,
-        deleted: true,
-      });
-    }
+    const handledUnset = expectHandled(resultUnset);
+    expect(handledUnset.result.exit_code).toBe(0);
+    const unsetPayload = JSON.parse(handledUnset.result.stdout) as {
+      ok: boolean;
+      deleted: boolean;
+    };
+    expect(unsetPayload).toMatchObject({
+      ok: true,
+      deleted: true,
+    });
   });
 
   it("returns runtime error for config commands without inferred channel context", async () => {
@@ -439,13 +423,11 @@ describe("jr-rpc custom command", () => {
         activeSkill,
       },
     );
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(1);
-      expect(result.result.stderr).toContain(
-        "require active conversation context",
-      );
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(1);
+    expect(handled.result.stderr).toContain(
+      "require active conversation context",
+    );
   });
 
   it("parses json values for config set --json", async () => {
@@ -458,12 +440,10 @@ describe("jr-rpc custom command", () => {
         channelConfiguration: configuration,
       },
     );
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(0);
-      const payload = JSON.parse(result.result.stdout) as { value: number };
-      expect(payload.value).toEqual(123);
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(0);
+    const payload = JSON.parse(handled.result.stdout) as { value: number };
+    expect(payload.value).toEqual(123);
   });
 
   it("returns an error when a provider has no oauth flow", async () => {
@@ -476,12 +456,10 @@ describe("jr-rpc custom command", () => {
       },
     );
 
-    expect(result.handled).toBe(true);
-    if (result.handled) {
-      expect(result.result.exit_code).toBe(1);
-      expect(result.result.stderr).toContain(
-        'Provider "notion" does not support OAuth authorization',
-      );
-    }
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(1);
+    expect(handled.result.stderr).toContain(
+      'Provider "notion" does not support OAuth authorization',
+    );
   });
 });

@@ -57,11 +57,11 @@ export function createAgentTools(
               const resultDetails = { ok: true };
               const toolResultAttribute =
                 serializeGenAiAttribute(resultDetails);
-              setSpanAttributes({
-                ...(toolResultAttribute
-                  ? { "gen_ai.tool.call.result": toolResultAttribute }
-                  : {}),
-              });
+              if (toolResultAttribute) {
+                setSpanAttributes({
+                  "gen_ai.tool.call.result": toolResultAttribute,
+                });
+              }
               return {
                 content: [{ type: "text", text: "ok" }],
                 details: resultDetails,
@@ -104,11 +104,11 @@ export function createAgentTools(
             const toolResultAttribute = serializeGenAiAttribute(
               normalized.details,
             );
-            setSpanAttributes({
-              ...(toolResultAttribute
-                ? { "gen_ai.tool.call.result": toolResultAttribute }
-                : {}),
-            });
+            if (toolResultAttribute) {
+              setSpanAttributes({
+                "gen_ai.tool.call.result": toolResultAttribute,
+              });
+            }
             return normalized;
           } catch (error) {
             handleToolExecutionError(

@@ -1,6 +1,5 @@
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { logException } from "@/chat/logging";
 import { generateAssistantReply, type AssistantReply } from "@/chat/respond";
 import { getSlackClient } from "@/chat/slack/client";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";

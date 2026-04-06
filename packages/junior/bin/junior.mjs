@@ -9,8 +9,6 @@ const { positionals } = parseArgs({
   strict: false,
 });
 
-const command = positionals[0];
-
 async function loadCliFunction(moduleName, exportName, unavailableMessage) {
   const currentFile = fileURLToPath(import.meta.url);
   const modulePath = path.join(

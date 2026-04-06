@@ -168,7 +168,7 @@ describe("github app credential broker", () => {
     mockGitHubTokenEndpoint();
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
+    await broker.issue({
       capability: "github.contents.read",
       target: { owner: "getsentry", repo: "sentry" },
       reason: "test:contents-read",
@@ -276,7 +276,7 @@ describe("github app credential broker", () => {
     mockGitHubTokenEndpoint();
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
+    await broker.issue({
       capability: "github.pull-requests.write",
       reason: "test:pr-write",
     });

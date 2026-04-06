@@ -500,7 +500,7 @@ export function buildSystemPrompt(params: {
       "output-contract",
       [
         "Always produce output that follows this contract:",
-        `<output format=\"slack-mrkdwn\" max_inline_chars=\"${slackOutputPolicy.maxInlineChars}\" max_inline_lines=\"${slackOutputPolicy.maxInlineLines}\">`,
+        `<output format="slack-mrkdwn" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`,
         "- Use plain Slack-safe markdown (headings, bullets, short code blocks).",
         "- Keep normal responses brief and scannable.",
         "- If depth is needed, start with a concise summary and then provide fuller detail.",

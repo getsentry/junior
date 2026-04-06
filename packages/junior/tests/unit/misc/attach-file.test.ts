@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { FileUpload } from "chat";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createAttachFileTool } from "@/chat/tools/sandbox/attach-file";

@@ -8,6 +8,8 @@
     "cli": "node scripts/cli-with-root-env.mjs",
     "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
     "prepare": "simple-git-hooks",
+    "lint": "pnpm --filter @sentry/junior lint",
+    "lint:fix": "pnpm --filter @sentry/junior lint:fix",
     "lint-staged": "lint-staged",
     "build": "pnpm --filter @sentry/junior build",
     "build:example": "pnpm --filter @sentry/junior-example build",
@@ -26,6 +28,7 @@
     "pre-commit": "pnpm lint-staged"
   },
   "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs}": "pnpm --filter @sentry/junior exec oxlint --config .oxlintrc.json --quiet --import-plugin --node-plugin --vitest-plugin --fix",
     "*.{js,jsx,ts,tsx,mjs,cjs,json,md,mdx,yml,yaml}": "pnpm exec prettier --write --ignore-unknown"
   },
   "pnpm": {

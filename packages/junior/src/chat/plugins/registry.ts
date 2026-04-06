@@ -2,7 +2,6 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import type { CapabilityProviderDefinition } from "@/chat/capabilities/catalog";
 import type { CredentialBroker } from "@/chat/credentials/broker";
-import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { pluginRoots } from "@/chat/discovery";
 import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
 import { createGitHubAppBroker } from "./auth/github-app-broker";
@@ -10,8 +9,6 @@ import { parsePluginManifest } from "./manifest";
 import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
 import { discoverInstalledPluginPackageContent } from "./package-discovery";
 import type {
-  GitHubAppCredentials,
-  OAuthBearerCredentials,
   PluginBrokerDeps,
   PluginDefinition,
   OAuthProviderConfig,

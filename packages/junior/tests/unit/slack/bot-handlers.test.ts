@@ -188,12 +188,8 @@ describe("bot handlers (integration)", () => {
         conversation?: { messages?: Array<{ meta?: { replied?: boolean } }> };
       }
     ).conversation;
-    if (conversation?.messages) {
-      const lastMsg = conversation.messages[conversation.messages.length - 1];
-      if (lastMsg?.meta) {
-        expect(lastMsg.meta.replied).toBe(false);
-      }
-    }
+    const lastMsg = conversation?.messages?.[conversation.messages.length - 1];
+    expect(lastMsg?.meta?.replied).toBe(false);
   });
 
   it("handleAssistantThreadStarted: sets title and suggested prompts via adapter", async () => {
