@@ -2,7 +2,6 @@ import {
   logException,
   logWarn,
   setSpanAttributes,
-  setSpanStatus,
   type LogContext,
 } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
@@ -32,17 +31,12 @@ export function handleToolExecutionError(
   error: unknown,
   toolName: string,
   toolCallId: string | undefined,
-  toolStartedAt: number,
   shouldTrace: boolean,
   traceContext: LogContext,
 ): never {
-  const durationMs = Date.now() - toolStartedAt;
   setSpanAttributes({
-    "app.ai.tool_duration_ms": durationMs,
-    "app.ai.tool_outcome": "error",
     "error.type": error instanceof Error ? error.name : "tool_execution_error",
   });
-  setSpanStatus("error");
 
   if (shouldTrace) {
     logWarn(
@@ -53,8 +47,6 @@ export function handleToolExecutionError(
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
-        "app.ai.tool_duration_ms": durationMs,
-        "app.ai.tool_outcome": "error",
         "error.type":
           error instanceof Error ? error.name : "tool_execution_error",
         "error.message": error instanceof Error ? error.message : String(error),
@@ -74,7 +66,6 @@ export function handleToolExecutionError(
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
-        "app.ai.tool_duration_ms": durationMs,
         ...getToolErrorAttributes(error),
       },
       "Agent tool call failed",

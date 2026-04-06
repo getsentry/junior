@@ -362,7 +362,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
             "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
             ...(reply.diagnostics.stopReason
-              ? { "app.ai.stop_reason": reply.diagnostics.stopReason }
+              ? {
+                  "gen_ai.response.finish_reasons": [
+                    reply.diagnostics.stopReason,
+                  ],
+                }
               : {}),
             ...(reply.diagnostics.errorMessage
               ? { "error.message": reply.diagnostics.errorMessage }

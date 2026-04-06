@@ -73,7 +73,7 @@ const LEGACY_KEY_MAP: Record<string, string> = {
   steps: "app.ai.steps",
   toolCalls: "app.ai.tool_calls",
   toolResults: "app.ai.tool_results",
-  finishReason: "app.ai.finish_reason",
+  finishReason: "gen_ai.response.finish_reasons",
   sources: "app.ai.sources",
   generatedFiles: "app.ai.generated_files",
   resultFiles: "app.ai.result_files",
@@ -380,7 +380,13 @@ function mergeAttributes(
     if (!map) continue;
     for (const [rawKey, rawValue] of Object.entries(map)) {
       const key = normalizeAttributeKey(rawKey);
-      const value = sanitizeValue(rawValue);
+      const value = sanitizeValue(
+        key === "gen_ai.response.finish_reasons" &&
+          typeof rawValue === "string" &&
+          rawValue.trim()
+          ? [rawValue]
+          : rawValue,
+      );
       if (value !== undefined) {
         merged[key] = value;
       }

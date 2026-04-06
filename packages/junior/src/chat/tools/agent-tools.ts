@@ -1,11 +1,6 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { serializeGenAiAttribute } from "@/chat/logging";
-import {
-  setSpanAttributes,
-  setSpanStatus,
-  withSpan,
-  type LogContext,
-} from "@/chat/logging";
+import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { formatToolStatusWithInput } from "@/chat/runtime/tool-status";
@@ -43,7 +38,6 @@ export function createAgentTools(
           : undefined;
       const toolArgumentsAttribute = serializeGenAiAttribute(params);
       hooks?.onToolCall?.(toolName);
-      const toolStartedAt = Date.now();
       const traceToolContext = {
         ...spanContext,
         conversationId: spanContext.conversationId,
@@ -61,17 +55,13 @@ export function createAgentTools(
           try {
             if (typeof toolDef.execute !== "function") {
               const resultDetails = { ok: true };
-              const durationMs = Date.now() - toolStartedAt;
               const toolResultAttribute =
                 serializeGenAiAttribute(resultDetails);
               setSpanAttributes({
-                "app.ai.tool_duration_ms": durationMs,
-                "app.ai.tool_outcome": "success",
                 ...(toolResultAttribute
                   ? { "gen_ai.tool.call.result": toolResultAttribute }
                   : {}),
               });
-              setSpanStatus("ok");
               return {
                 content: [{ type: "text", text: "ok" }],
                 details: resultDetails,
@@ -111,25 +101,20 @@ export function createAgentTools(
                 });
 
             const normalized = normalizeToolResult(result, isSandbox);
-            const durationMs = Date.now() - toolStartedAt;
             const toolResultAttribute = serializeGenAiAttribute(
               normalized.details,
             );
             setSpanAttributes({
-              "app.ai.tool_duration_ms": durationMs,
-              "app.ai.tool_outcome": "success",
               ...(toolResultAttribute
                 ? { "gen_ai.tool.call.result": toolResultAttribute }
                 : {}),
             });
-            setSpanStatus("ok");
             return normalized;
           } catch (error) {
             handleToolExecutionError(
               error,
               toolName,
               normalizedToolCallId,
-              toolStartedAt,
               shouldTrace,
               traceToolContext,
             );
@@ -139,6 +124,7 @@ export function createAgentTools(
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "execute_tool",
           "gen_ai.tool.name": toolName,
+          "gen_ai.tool.description": toolDef.description,
           ...(normalizedToolCallId
             ? { "gen_ai.tool.call.id": normalizedToolCallId }
             : {}),

@@ -177,7 +177,9 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
         "app.message.output": summarizeMessageText(resolvedText),
         "app.ai.outcome": resolvedOutcome,
         "app.ai.assistant_messages": assistantMessages.length,
-        ...(stopReason ? { "app.ai.stop_reason": stopReason } : {}),
+        ...(stopReason
+          ? { "gen_ai.response.finish_reasons": [stopReason] }
+          : {}),
       },
       "Agent message sent",
     );
