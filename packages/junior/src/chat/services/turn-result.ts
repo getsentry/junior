@@ -54,6 +54,7 @@ export interface TurnResultInput {
   toolCalls: string[];
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
+  generatedFileCount: number;
   hasTextDeltaCallback: boolean;
   shouldTrace: boolean;
   spanContext: LogContext;
@@ -126,7 +127,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
       {
         "app.ai.tool_results": toolResults.length,
         "app.ai.tool_error_results": toolErrorCount,
-        "app.ai.generated_files": 0,
+        "app.ai.generated_files": input.generatedFileCount,
       },
       "Model returned empty text response",
     );
