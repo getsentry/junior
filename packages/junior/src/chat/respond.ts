@@ -169,6 +169,7 @@ async function runAgentContinuation(agent: Agent): Promise<unknown> {
   return await resumable.continue();
 }
 
+/** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {},
