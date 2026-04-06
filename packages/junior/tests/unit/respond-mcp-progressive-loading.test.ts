@@ -276,10 +276,19 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
   shouldEmitDevAgentTrace: () => false,
 }));
 
-vi.mock("@/chat/config", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/config")>()),
-  getRuntimeMetadata: () => ({ version: "test" }),
-}));
+vi.mock("@/chat/config", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/chat/config")>();
+  const memoryConfig = original.readChatConfig({
+    ...process.env,
+    JUNIOR_STATE_ADAPTER: "memory",
+  });
+  return {
+    ...original,
+    botConfig: memoryConfig.bot,
+    getChatConfig: () => memoryConfig,
+    getRuntimeMetadata: () => ({ version: "test" }),
+  };
+});
 
 vi.mock("@/chat/capabilities/factory", () => ({
   createSkillCapabilityRuntime: () => ({
