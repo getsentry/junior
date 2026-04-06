@@ -5,6 +5,7 @@ Use these patterns to shape concrete Linear requests.
 ## 1. Create a bug from a Slack incident thread
 
 - Summarize the broken behavior, impact, and expected behavior.
+- Resolve the right team before creating because Linear issues cannot be created without one.
 - Preserve relevant Sentry, GitHub, replay, trace, or dashboard links from the thread.
 - Use a durable title that describes the engineering problem rather than the Slack conversation.
 
@@ -12,6 +13,7 @@ Use these patterns to shape concrete Linear requests.
 
 - Convert the thread into a scoped task when the work is cleanup, hardening, docs, or instrumentation rather than a production bug.
 - Keep the body focused on the desired outcome and concrete next step.
+- Set project, cycle, or assignee only when the destination is already clear from the thread.
 
 ## 3. Search for an existing issue before opening a new one
 
@@ -27,6 +29,7 @@ Use these patterns to shape concrete Linear requests.
 ## 5. Move work through the workflow
 
 - Resolve the current issue first.
+- Read the team's actual workflow states first if the requested move uses category language like `started`, `done`, or `canceled` rather than an exact state name.
 - Update state only after confirming the target issue and intended transition.
 - Mention the reason for the transition when it is not obvious from the issue history.
 
@@ -34,6 +37,7 @@ Use these patterns to shape concrete Linear requests.
 
 - Resolve the issue and confirm the target assignee when names are ambiguous.
 - Keep the mutation small. Do not rewrite unrelated fields.
+- Preserve the current project, labels, and workflow state unless the user asked to change them too.
 
 ## 7. Tighten an existing issue description
 
@@ -45,3 +49,15 @@ Use these patterns to shape concrete Linear requests.
 
 - Mention that the work originated from a Slack discussion only when that context helps future readers.
 - Strip usernames, channel references, slash commands, and conversational filler unless the user explicitly wants them preserved.
+
+## 9. Set priority, labels, or estimate from thread context
+
+- Use only Linear's standard priority levels: `low`, `medium`, `high`, `urgent`.
+- Reuse existing labels when the thread makes the intended label clear; do not invent lookalike labels casually.
+- Set an estimate only when the value is explicit or already established in the team context, since estimate scales are team-configured.
+
+## 10. Mark work as a duplicate
+
+- Search for the canonical destination issue first.
+- If the MCP tool supports duplicate relationships directly, use that instead of only posting a comment.
+- If the workflow exposes a dedicated duplicate status, prefer it; otherwise expect duplicate handling to land in the team's canceled category.
