@@ -1,0 +1,6 @@
+name: linear
+description: Linear issue tracking via hosted MCP server
+
+mcp:
+  transport: http
+  url: https://mcp.linear.app/mcp

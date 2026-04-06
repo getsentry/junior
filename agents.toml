@@ -1,8 +1,5 @@
 version = 1
-# Managed skills are gitignored; collaborators must run 'dotagents install'.
-gitignore = true
 # Skills always fetch the latest version; lockfile tracks names only.
-pin = false
 agents = ["claude", "codex", "cursor"]
 
 [trust]

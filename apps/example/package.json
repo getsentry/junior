@@ -12,6 +12,7 @@
     "@sentry/junior": "workspace:*",
     "@sentry/junior-agent-browser": "workspace:*",
     "@sentry/junior-github": "workspace:*",
+    "@sentry/junior-linear": "workspace:*",
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/node": "^10.46.0",

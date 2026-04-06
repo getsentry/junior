@@ -7,7 +7,7 @@ It demonstrates:
 - one local skill (`/example-local`)
 - one plugin-bundled skill (`/example-bundle-help`)
 - one bundle-only plugin (`app/plugins/example-bundle/plugin.yaml`) with no credential broker config
-- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-github`, `@sentry/junior-notion`, `@sentry/junior-sentry`)
+- installed plugin packages (`@sentry/junior-agent-browser`, `@sentry/junior-github`, `@sentry/junior-linear`, `@sentry/junior-notion`, `@sentry/junior-sentry`)
 
 ## Run
 
