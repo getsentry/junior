@@ -32,6 +32,11 @@ export function formatToolStatus(toolName: string): string {
     return known[toolName];
   }
 
+  const mcpMatch = /^mcp__([^_]+)__(.+)$/.exec(toolName);
+  if (mcpMatch) {
+    return `Running ${mcpMatch[1]}/${mcpMatch[2]}`;
+  }
+
   const readable = toolName.replaceAll("_", " ").trim();
   return readable.length > 0 ? `Running ${readable}` : "Running tool";
 }

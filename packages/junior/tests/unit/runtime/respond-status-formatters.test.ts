@@ -27,6 +27,13 @@ describe("tool status formatters", () => {
     ).toBe("Updating file app.ts");
   });
 
+  it("formats MCP tool names as provider/tool", () => {
+    expect(formatToolStatus("mcp__notion__notion-search")).toBe(
+      "Running notion/notion-search",
+    );
+    expect(formatToolStatus("mcp__demo__ping")).toBe("Running demo/ping");
+  });
+
   it("keeps MCP dispatcher statuses functional", () => {
     expect(
       formatToolStatusWithInput("searchTools", { query: "holiday schedule" }),
