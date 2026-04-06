@@ -42,6 +42,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:check
       - run: pnpm test
+      - run: pnpm --filter @sentry/junior-example build
       - run: pnpm docs:check
 
       - name: Pack release artifacts

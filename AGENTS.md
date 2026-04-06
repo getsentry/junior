@@ -53,6 +53,14 @@ Co-Authored-By: (agent model name) <email>
 - Prefer domain language over mechanism language.
 - Every exported function must have a brief JSDoc comment explaining its intent (the _why_, not the _what_).
 
+## Investigation-First Development
+
+- Before implementing anything that depends on an external system (Vercel, Slack, bundler, framework), read the relevant documentation or source code first. State the constraint being relied on before writing code.
+- Before removing an architectural layer, prove the replacement handles all known edge cases in a working proof-of-concept. Do not remove the incumbent until the replacement is verified end-to-end.
+- When changing a function signature, error contract, or shared pattern, grep for all consumers and verify each one still works. Do not assume fixing one call site is sufficient.
+- If a fix attempt fails, stop. Re-read the error, trace the full system from input to output, and identify the root cause before trying another fix. Do not commit progressive patches that address symptoms layer-by-layer.
+- When implementing message handling or Slack interactions, explicitly verify both DM and channel paths, and both first-delivery and retry paths.
+
 ## Architecture Discipline
 
 - `packages/junior/src/chat/app/*` is composition-root only: wire concrete services there, not in runtime/service modules.
