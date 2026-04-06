@@ -24,9 +24,10 @@
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "build": "tsup",
-    "test": "pnpm run test:slack-boundary && vitest run",
+    "test": "pnpm run test:slack-boundary && pnpm run test:arch-boundary && vitest run",
     "test:watch": "vitest",
     "test:slack-boundary": "node scripts/check-slack-test-boundary.mjs",
+    "test:arch-boundary": "node scripts/check-chat-architecture-boundary.mjs",
     "typecheck": "tsc --noEmit",
     "skills:check": "node scripts/check-skills.mjs"
   },

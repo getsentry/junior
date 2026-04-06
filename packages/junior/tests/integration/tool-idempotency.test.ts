@@ -87,7 +87,15 @@ describe("tool idempotency", () => {
     });
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
-      { channelId: "C123", sandbox: noopSandbox },
+      {
+        channelId: "C123",
+        channelCapabilities: {
+          canCreateCanvas: true,
+          canPostToChannel: true,
+          canAddReactions: true,
+        },
+        sandbox: noopSandbox,
+      },
       state,
     );
 
@@ -134,7 +142,15 @@ describe("tool idempotency", () => {
 
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
-      { channelId: "D123", sandbox: noopSandbox },
+      {
+        channelId: "D123",
+        channelCapabilities: {
+          canCreateCanvas: true,
+          canPostToChannel: false,
+          canAddReactions: true,
+        },
+        sandbox: noopSandbox,
+      },
       state,
     );
 
@@ -155,7 +171,17 @@ describe("tool idempotency", () => {
 
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createToolState();
-    const tool = createSlackCanvasCreateTool({ sandbox: noopSandbox }, state);
+    const tool = createSlackCanvasCreateTool(
+      {
+        channelCapabilities: {
+          canCreateCanvas: false,
+          canPostToChannel: false,
+          canAddReactions: false,
+        },
+        sandbox: noopSandbox,
+      },
+      state,
+    );
 
     await expect(
       executeTool(tool, {
@@ -220,7 +246,15 @@ describe("tool idempotency", () => {
     });
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
-      { channelId: "C123", sandbox: noopSandbox },
+      {
+        channelId: "C123",
+        channelCapabilities: {
+          canCreateCanvas: true,
+          canPostToChannel: true,
+          canAddReactions: true,
+        },
+        sandbox: noopSandbox,
+      },
       state,
     );
 

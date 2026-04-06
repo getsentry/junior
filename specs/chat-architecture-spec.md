@@ -67,6 +67,8 @@ Define the normative architecture contract for `packages/junior/src/chat` so new
 - `state/` must not depend on `runtime/` or service modules.
 - `ingress/` may route into queue/runtime entrypoints, but must not own business logic that belongs in `runtime/` or `services/`.
 
+**Verification:** `pnpm run test:arch-boundary` enforces these rules via static import analysis.
+
 ### Service Interface Rules
 
 - Do not use mutable runtime service globals or singleton mutation APIs for behavior seams.
