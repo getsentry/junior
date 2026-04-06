@@ -294,7 +294,7 @@ export function extractAssistantText(message: AssistantMessage): string {
     .join("\n");
 }
 
-/** True when messages end with a completed (non-error) assistant turn. */
+/** True when messages end with a completed, text-bearing assistant turn. */
 export function hasCompletedAssistantTurn(messages: unknown[]): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -302,7 +302,11 @@ export function hasCompletedAssistantTurn(messages: unknown[]): boolean {
       continue;
     }
     const stopReason = (message as { stopReason?: unknown }).stopReason;
-    return typeof stopReason === "string" && stopReason !== "error";
+    return (
+      typeof stopReason === "string" &&
+      stopReason !== "error" &&
+      extractAssistantText(message).trim().length > 0
+    );
   }
   return false;
 }
