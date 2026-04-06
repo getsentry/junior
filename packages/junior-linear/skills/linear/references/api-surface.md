@@ -39,6 +39,7 @@ The current public docs describe support for finding, creating, and updating obj
 
 - Translate Slack-thread wording into stable product or engineering language.
 - Preserve material links already present in the conversation, such as Sentry, GitHub, docs, repro, or dashboard URLs.
+- If the active MCP tool exposes structured link attachments, prefer those over burying important URLs only inside the prose body.
 - Keep provenance concise. Mention Slack origin only when it helps future readers understand why the issue exists.
 - Treat team, status, labels, estimate, cycle, and project as structured properties, not prose-only body content, when the MCP tool exposes them and the values are actually known.
 - Prefer partial updates over full rewrites.
