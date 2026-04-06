@@ -35,6 +35,34 @@ The current public docs describe support for finding, creating, and updating obj
 | Move state or assign | Read the current issue and team workflow first when state, workflow, or assignee ambiguity could cause the wrong mutation. |
 | Check for duplicates | Search for an existing matching issue before opening a new one when the request appears related to ongoing work. |
 
+## Config helpers
+
+Use these commands only when the user explicitly asks to inspect or store Linear defaults for the current conversation/channel.
+
+Resolve team default:
+
+```bash
+jr-rpc config get linear.team
+```
+
+Set team default:
+
+```bash
+jr-rpc config set linear.team Platform
+```
+
+Resolve project default:
+
+```bash
+jr-rpc config get linear.project
+```
+
+Set project default:
+
+```bash
+jr-rpc config set linear.project "Cross-team reliability"
+```
+
 ## Content expectations
 
 - Translate Slack-thread wording into stable product or engineering language.

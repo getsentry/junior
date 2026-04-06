@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getCapabilityProvider } from "@/chat/capabilities/catalog";
+import {
+  getCapabilityProvider,
+  isKnownConfigKey,
+} from "@/chat/capabilities/catalog";
 import {
   discoverSkills,
   parseSkillInvocation,
@@ -240,6 +243,59 @@ describe("skills", () => {
         provider: "demo",
         capabilities: ["demo.read"],
       });
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("discovers plugin skills that use config-only plugin defaults", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-skill-config-only-"),
+    );
+    const pluginRoot = path.join(tempRoot, "demo");
+
+    try {
+      await fs.mkdir(path.join(pluginRoot, "skills", "demo-defaults"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(pluginRoot, "plugin.yaml"),
+        [
+          "name: demo",
+          "description: Demo plugin",
+          "config-keys:",
+          "  - team",
+          "  - project",
+        ].join("\n"),
+        "utf8",
+      );
+      await fs.writeFile(
+        path.join(pluginRoot, "skills", "demo-defaults", "SKILL.md"),
+        [
+          "---",
+          "name: demo-defaults",
+          "description: Demo defaults skill",
+          "uses-config: demo.team demo.project",
+          "---",
+          "",
+          "# Body",
+        ].join("\n"),
+        "utf8",
+      );
+
+      process.env.JUNIOR_EXTRA_PLUGIN_ROOTS = JSON.stringify([pluginRoot]);
+      resetSkillDiscoveryCache();
+
+      const skills = await discoverSkills();
+      expect(
+        skills.find((skill) => skill.name === "demo-defaults"),
+      ).toMatchObject({
+        name: "demo-defaults",
+        pluginProvider: "demo",
+        usesConfig: ["demo.team", "demo.project"],
+      });
+      expect(isKnownConfigKey("demo.team")).toBe(true);
+      expect(isKnownConfigKey("demo.project")).toBe(true);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

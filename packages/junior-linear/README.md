@@ -20,4 +20,13 @@ This package does not require a shared `LINEAR_API_KEY` or a custom OAuth app fo
 
 The package is designed for ticket-centric work: finding issues, creating issues, updating fields, adding comments, and moving work through the normal Linear workflow without leaving Slack.
 
+Optional: set channel defaults when a Slack thread usually routes work to the same Linear destination:
+
+```bash
+jr-rpc config set linear.team Platform
+jr-rpc config set linear.project "Cross-team reliability"
+```
+
+These defaults are only fallbacks. If the user names a different team or project in the request, Junior should follow the explicit request instead.
+
 Full setup guide: https://junior.sentry.dev/extend/linear-plugin/

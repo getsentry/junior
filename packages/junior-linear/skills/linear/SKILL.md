@@ -1,6 +1,7 @@
 ---
 name: linear
 description: Manage Linear issues through Linear's hosted MCP server. Use when users ask to create a Linear ticket, update a Linear issue, add a Linear comment, move work between states, assign work, or look up Linear issue, team, or project details from Slack context.
+uses-config: linear.team linear.project
 ---
 
 # Linear Operations
@@ -23,9 +24,12 @@ Load references conditionally based on the request:
 
 - Determine whether the request is read-only inspection, issue creation, comment, field update, assignment, or state transition.
 - Prefer explicit issue identifiers, issue URLs, project names, team names, or assignees when the user provides them.
+- When the user did not specify a destination, treat `linear.team` and `linear.project` conversation config as optional defaults. Explicit user input always wins over config.
+- Only set or change `linear.team` and `linear.project` when the user explicitly asks to store a default for this conversation or channel.
 - For issue creation, resolve the target team before drafting because every Linear issue belongs to a single team.
+- If `linear.project` is configured, use it as the default project only when the request does not name a different project and the project fits the current task.
 - If the request refers to an existing Linear item indirectly, inspect the current thread context for the previously mentioned issue key or URL before asking the user to restate it.
-- Ask one concise follow-up only when a write is blocked by real ambiguity, such as multiple plausible teams, no clear target issue, or no valid team for a new issue.
+- Ask one concise follow-up only when a write is blocked after considering both explicit user input and any configured defaults, such as multiple plausible teams, no clear target issue, or no valid team for a new issue.
 
 2. Use the active Linear MCP tools:
 
