@@ -404,6 +404,8 @@ export async function generateAssistantReply(
           await turnMcpToolManager.activateForSkill(effective);
           syncResumeState();
           if (mcpAuth.getPendingPause()) {
+            // Auth pause requested — suppress loadSkill failure and let the
+            // aborted turn park cleanly.
             return undefined;
           }
           if (!effective.pluginProvider) {
@@ -513,6 +515,8 @@ export async function generateAssistantReply(
       agentToolHooks,
     );
 
+    // Mutable tools array shared with the agent. Pi-agent-core does not clone
+    // this reference, so in-place mutations are visible to the running loop.
     const agentTools: AgentTool[] = [...baseAgentTools];
 
     const syncMcpAgentTools = () => {
@@ -635,6 +639,8 @@ export async function generateAssistantReply(
                 },
                 "Agent turn timed out and was aborted",
               );
+              // Wait for promptPromise to settle before snapshotting messages
+              // — the agent loop may still be mutating state.
               await promptPromise.catch(() => {});
               timeoutResumeMessages = [...(agent.state.messages as unknown[])];
             }
@@ -732,7 +738,6 @@ export async function generateAssistantReply(
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         messages: timeoutResumeMessages,
-        fallbackMessages: [],
         loadedSkillNames: loadedSkillNamesForResume,
         errorMessage: error.message,
         logContext: {

@@ -69,7 +69,6 @@ export async function persistAuthPauseCheckpoint(args: {
   sessionId: string;
   currentSliceId: number;
   messages: unknown[];
-  fallbackMessages: unknown[];
   loadedSkillNames: string[];
   errorMessage: string;
   logContext: {
