@@ -19,7 +19,6 @@ import {
   createSlackListUpdateItemTool,
 } from "@/chat/tools/slack/list-tools";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
-import { createUseToolTool } from "@/chat/tools/skill/use-tool";
 import type {
   ToolHooks,
   ToolRuntimeContext,
@@ -161,11 +160,6 @@ export function createTools(
     tools.searchTools = wrapToolExecution(
       "searchTools",
       createSearchToolsTool(context.mcpToolManager, context.getActiveSkills),
-      hooks,
-    );
-    tools.useTool = wrapToolExecution(
-      "useTool",
-      createUseToolTool(context.mcpToolManager, context.getActiveSkills),
       hooks,
     );
   }

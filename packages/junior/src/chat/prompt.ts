@@ -195,26 +195,6 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
   return lines.join("\n");
 }
 
-function formatLoadedToolsForPrompt(tools: ExposedToolSummary[]): string {
-  if (tools.length === 0) {
-    return "<loaded_tools>\n</loaded_tools>";
-  }
-
-  const lines = ["<loaded_tools>"];
-  for (const tool of tools) {
-    lines.push(
-      `  <tool name="${escapeXml(tool.tool_name)}" provider="${escapeXml(tool.provider)}">`,
-    );
-    lines.push(`    <description>${escapeXml(tool.description)}</description>`);
-    lines.push(
-      `    <arguments_summary>${escapeXml(tool.input_schema_summary)}</arguments_summary>`,
-    );
-    lines.push("  </tool>");
-  }
-  lines.push("</loaded_tools>");
-  return lines.join("\n");
-}
-
 function formatProviderCatalogForPrompt(): string {
   const providers = listCapabilityProviders();
   if (providers.length === 0) {
@@ -258,7 +238,7 @@ function baseSystemPrompt(): string {
     "- Never claim you cannot access tools in this turn. If prior results are empty, run tools now.",
     "- If critical input is missing and cannot be discovered with tools, ask one direct clarifying question.",
     "- Always gather evidence from available sources (tools or skills) before answering factual questions.",
-    "- When a loaded skill exposes MCP capabilities, prefer the exact tool_name values disclosed by `loadSkill` or `<loaded_tools>`, then execute them with `useTool`.",
+    "- When a loaded skill exposes MCP capabilities, those tools are registered as callable tools. Call them directly by name.",
     "- Use `searchTools` only when you need to rediscover or filter active MCP tools.",
     "- Never guess. If you cannot verify with available sources, say it is unverified.",
     "- Never claim a lookup succeeded unless a tool result supports it.",
@@ -328,10 +308,11 @@ export function buildSystemPrompt(params: {
     "Loaded skills for this turn:",
     formatLoadedSkillsForPrompt(activeSkills),
   ].join("\n");
-  const activeToolsSection = [
-    "Loaded host-managed tools for this turn. Use the exact tool_name values from here or from `loadSkill.available_tools`, and use `searchTools` only when you need to rediscover or filter them:",
-    formatLoadedToolsForPrompt(activeTools ?? []),
-  ].join("\n");
+  const activeToolNames = (activeTools ?? []).map((tool) => tool.tool_name);
+  const activeToolsSection =
+    activeToolNames.length > 0
+      ? `Active MCP tools registered for this turn: ${activeToolNames.join(", ")}. Call them directly by name.`
+      : "";
 
   const configurationKeys = Object.keys(configuration ?? {}).sort((a, b) =>
     a.localeCompare(b),
@@ -493,9 +474,8 @@ export function buildSystemPrompt(params: {
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
         "- Prefer `webSearch` before `webFetch` when the user gave no URL.",
         "- Never call side-effecting tools when the user only asked for analysis or options.",
-        "- `loadSkill` returns `available_tools` when the loaded skill exposes MCP tools. Use those exact tool_name values instead of guessing.",
+        "- `loadSkill` activates MCP tools when the loaded skill exposes them. After loading, call them directly by name (for example `mcp__provider__tool_name`).",
         "- `searchTools` searches active MCP tools exposed by currently loaded skills when you need to rediscover or filter them.",
-        "- `useTool` executes a canonical MCP tool name from `loadSkill.available_tools`, `<loaded_tools>`, or `searchTools`.",
         "- When the user asks for their conversation ID, trace ID, or a reference for Sentry lookup, use the IDs from `<session-context>` and `<turn-context>` in the user turn.",
       ].join("\n"),
     ),
@@ -511,7 +491,7 @@ export function buildSystemPrompt(params: {
         "- Never apply skill-specific behavior unless the skill is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",
         "- After `loadSkill`, use `skill_dir` as the root for any referenced files you read via `bash`.",
-        "- If a loaded skill exposes MCP tools, prefer the exact tool_name values returned by `loadSkill`, then use `useTool` to execute them.",
+        "- If a loaded skill exposes MCP tools, they are registered as callable tools after `loadSkill` returns. Call them directly by name.",
         "- Use `searchTools` only when you need to rediscover or filter the currently exposed MCP tools.",
         "- If no skill is a clear fit, continue with normal tool usage.",
       ].join("\n"),
@@ -532,7 +512,7 @@ export function buildSystemPrompt(params: {
     ),
     availableSkillsSection,
     activeSkillsSection,
-    activeToolsSection,
+    ...(activeToolsSection ? [activeToolsSection] : []),
     renderTag(
       "invocation-context",
       invocation

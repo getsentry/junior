@@ -11,7 +11,6 @@ const {
   listToolsMock,
   loadSkillAvailableToolNames,
   loadSkillExecutionErrorCount,
-  loadSkillToolSearchFlags,
   loadSkillsByNameMock,
   promptCallCount,
 } = vi.hoisted(() => ({
@@ -25,7 +24,6 @@ const {
   listToolsMock: vi.fn(),
   loadSkillAvailableToolNames: [] as string[][],
   loadSkillExecutionErrorCount: { value: 0 },
-  loadSkillToolSearchFlags: [] as boolean[],
   loadSkillsByNameMock: vi.fn(),
   promptCallCount: { value: 0 },
 }));
@@ -57,9 +55,13 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         messages: [],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
-        tools: [...input.initialState.tools],
+        // Keep the same array reference so in-place mutations from
+        // syncMcpAgentTools() are visible (matches pi-agent-core behavior).
+        tools: input.initialState.tools,
       };
-      agentInitialToolNames.push(this.state.tools.map((tool) => tool.name));
+      agentInitialToolNames.push(
+        input.initialState.tools.map((tool) => tool.name),
+      );
     }
 
     subscribe() {
@@ -85,20 +87,13 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       const loadSkillTool = this.state.tools.find(
         (tool) => tool.name === "loadSkill",
       );
-      const useToolTool = this.state.tools.find(
-        (tool) => tool.name === "useTool",
-      );
       if (!loadSkillTool) {
         throw new Error("loadSkill tool missing");
-      }
-      if (!useToolTool) {
-        throw new Error("useTool tool missing");
       }
 
       let loadSkillResult: {
         details?: {
           available_tools?: Array<{ tool_name: string }>;
-          tool_search_available?: boolean;
         };
       };
       try {
@@ -107,7 +102,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         })) as {
           details?: {
             available_tools?: Array<{ tool_name: string }>;
-            tool_search_available?: boolean;
           };
         };
       } catch (error) {
@@ -122,9 +116,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       loadSkillAvailableToolNames.push(
         availableTools.map((tool) => tool.tool_name),
       );
-      loadSkillToolSearchFlags.push(
-        loadSkillResult.details?.tool_search_available === true,
-      );
       if (this.aborted) {
         this.state.messages.push({
           role: "assistant",
@@ -133,17 +124,19 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         return {};
       }
 
-      const pingTool = availableTools.find(
-        (tool) => tool.tool_name === "mcp__demo__ping",
+      // After loadSkill, MCP tools are registered as first-class tools
+      // on the shared tools array via syncMcpAgentTools().
+      const mcpPingTool = this.state.tools.find(
+        (tool) => tool.name === "mcp__demo__ping",
       );
-      if (!pingTool) {
-        throw new Error("loadSkill did not disclose demo ping tool");
+      if (!mcpPingTool) {
+        throw new Error(
+          "mcp__demo__ping not registered after loadSkill. Tools: " +
+            this.state.tools.map((t) => t.name).join(", "),
+        );
       }
 
-      await useToolTool.execute("tool-call-2", {
-        tool_name: pingTool.tool_name,
-        arguments: { query: "hello" },
-      });
+      await mcpPingTool.execute("tool-call-2", { query: "hello" });
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "resumed reply" }],
@@ -160,16 +153,13 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       if (lastMessage?.role === "assistant") {
         throw new Error("Cannot continue from message role: assistant");
       }
-      const useToolTool = this.state.tools.find(
-        (tool) => tool.name === "useTool",
+      const mcpPingTool = this.state.tools.find(
+        (tool) => tool.name === "mcp__demo__ping",
       );
-      if (!useToolTool) {
-        throw new Error("useTool tool missing");
+      if (!mcpPingTool) {
+        throw new Error("mcp__demo__ping tool missing on continue");
       }
-      await useToolTool.execute("tool-call-continue", {
-        tool_name: "mcp__demo__ping",
-        arguments: { query: "hello" },
-      });
+      await mcpPingTool.execute("tool-call-continue", { query: "hello" });
       if (this.aborted && continueStopsOnAbort.value) {
         return {};
       }
@@ -439,7 +429,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
     listToolsMock.mockReset();
     loadSkillAvailableToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
-    loadSkillToolSearchFlags.length = 0;
     loadSkillsByNameMock.mockReset();
     promptCallCount.value = 0;
 
@@ -536,7 +525,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
     expect(agentInitialToolNames[0]).toContain("loadSkill");
     expect(agentInitialToolNames[0]).toContain("searchTools");
-    expect(agentInitialToolNames[0]).toContain("useTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
 
     const pausedCheckpoint = await getAgentTurnSessionCheckpoint(
@@ -564,10 +552,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(agentInitialToolNames[1]).toContain("loadSkill");
     expect(agentInitialToolNames[1]).toContain("searchTools");
-    expect(agentInitialToolNames[1]).toContain("useTool");
-    expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
+    // On resume, pre-loaded skills activate MCP tools at init time.
+    expect(agentInitialToolNames[1]).toContain("mcp__demo__ping");
     expect(loadSkillAvailableToolNames).toEqual([[]]);
-    expect(loadSkillToolSearchFlags).toEqual([false]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),
@@ -625,10 +612,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(continueCallCount.value).toBe(0);
     expect(agentInitialToolNames[0]).toContain("loadSkill");
     expect(agentInitialToolNames[0]).toContain("searchTools");
-    expect(agentInitialToolNames[0]).toContain("useTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
     expect(loadSkillAvailableToolNames).toEqual([["mcp__demo__ping"]]);
-    expect(loadSkillToolSearchFlags).toEqual([true]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),

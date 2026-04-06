@@ -132,9 +132,9 @@ describe("McpToolManager", () => {
     expect(tools[0]?.name).toBe("mcp__demo__ping");
     expect(tools[0]?.description).toBe("[demo] Ping the remote MCP server");
 
-    const result = await manager.executeTool(activeSkills, "mcp__demo__ping", {
-      query: "hello",
-    });
+    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    expect(resolvedTools).toHaveLength(1);
+    const result = await resolvedTools[0]!.execute({ query: "hello" });
 
     expect(callToolMock).toHaveBeenCalledWith(plugin, "ping", {
       query: "hello",
@@ -170,9 +170,10 @@ describe("McpToolManager", () => {
       new McpAuthorizationRequiredError("demo", "Auth required"),
     );
 
-    await expect(
-      manager.executeTool(activeSkills, "mcp__demo__ping", {}),
-    ).rejects.toBeInstanceOf(McpAuthorizationRequiredError);
+    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    await expect(resolvedTools[0]!.execute({})).rejects.toBeInstanceOf(
+      McpAuthorizationRequiredError,
+    );
     expect(onAuthorizationRequiredMock).toHaveBeenCalledTimes(1);
     expect(onAuthorizationRequiredMock).toHaveBeenCalledWith(
       "demo",
@@ -195,9 +196,8 @@ describe("McpToolManager", () => {
       new McpAuthorizationRequiredError("demo", "Auth required"),
     );
 
-    await expect(
-      manager.executeTool(activeSkills, "mcp__demo__ping", {}),
-    ).resolves.toEqual({
+    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    await expect(resolvedTools[0]!.execute({})).resolves.toEqual({
       content: [{ type: "text", text: "Authorization pending." }],
       details: {
         provider: "demo",
@@ -390,9 +390,10 @@ describe("McpToolManager", () => {
     expect(
       manager.searchTools(activeSkills, "fetch").map((tool) => tool.name),
     ).toEqual(["mcp__notion__notion-fetch"]);
-    await expect(
-      manager.executeTool(activeSkills, "mcp__notion__notion-create-pages", {}),
-    ).resolves.toMatchObject({
+    const createPagesTool = manager
+      .getResolvedActiveTools(activeSkills)
+      .find((t) => t.name === "mcp__notion__notion-create-pages");
+    await expect(createPagesTool!.execute({})).resolves.toMatchObject({
       details: {
         provider: "notion",
         tool: "notion-create-pages",
