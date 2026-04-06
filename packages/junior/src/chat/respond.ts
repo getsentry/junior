@@ -197,6 +197,9 @@ function mcpToolsToDefinitions(
   for (const tool of mcpTools) {
     defs[tool.name] = {
       description: tool.description,
+      // Raw JSON Schema from MCP servers — not a TypeBox TSchema, but
+      // pi-agent-core validates with AJV and the Anthropic provider reads
+      // .properties/.required, so raw JSON Schema works at runtime.
       inputSchema: tool.parameters as any,
       execute: async (args: Record<string, unknown>) => tool.execute(args),
     };
