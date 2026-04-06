@@ -6,6 +6,7 @@ Use these patterns to shape concrete Linear requests.
 
 - Summarize the broken behavior, impact, and expected behavior.
 - Resolve the right team before creating because Linear issues cannot be created without one.
+- If the thread does not name a destination, use `linear.team` and `linear.project` channel defaults before asking a follow-up.
 - Preserve relevant Sentry, GitHub, replay, trace, or dashboard links from the thread.
 - Use a durable title that describes the engineering problem rather than the Slack conversation.
 
@@ -61,3 +62,9 @@ Use these patterns to shape concrete Linear requests.
 - Search for the canonical destination issue first.
 - If the MCP tool supports duplicate relationships directly, use that instead of only posting a comment.
 - If the workflow exposes a dedicated duplicate status, prefer it; otherwise expect duplicate handling to land in the team's canceled category.
+
+## 11. When a user asks to set channel defaults for a Linear-heavy Slack thread
+
+- Use `jr-rpc config set linear.team <team name or key>` when the user explicitly asks to store a team default and the channel consistently routes new work to the same team.
+- Use `jr-rpc config set linear.project <project name>` when the user explicitly asks to store a project default and the channel mostly tracks one project.
+- Treat both defaults as optional. Explicit user input wins whenever a request names a different team or project.

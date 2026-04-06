@@ -38,6 +38,19 @@ juniorNitro({
 - Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
 - The packaged plugin is optimized for interactive user-driven work in Slack rather than unattended background automation.
 
+## Optional channel defaults
+
+If a Slack channel usually files work into the same Linear team or project, store that as a conversation-scoped default:
+
+```bash
+jr-rpc config set linear.team Platform
+jr-rpc config set linear.project "Cross-team reliability"
+```
+
+Use `linear.team` when a channel consistently maps to one owning team. Use `linear.project` only when a channel is genuinely centered on one project.
+
+These defaults are optional fallbacks. If a user names a different team or project in a request, Junior should follow the explicit request instead of the stored default.
+
 ## What users can do
 
 - Look up Linear issues, teams, projects, and related workflow state.
