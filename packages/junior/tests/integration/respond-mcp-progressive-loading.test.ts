@@ -4,6 +4,7 @@ const {
   agentInitialToolNames,
   callToolMock,
   clientOptions,
+  completeEmptyAssistantOnAbort,
   continueCallCount,
   continueStopsOnAbort,
   deliverPrivateMessageMock,
@@ -17,6 +18,7 @@ const {
   agentInitialToolNames: [] as string[][],
   callToolMock: vi.fn(),
   clientOptions: [] as Array<Record<string, unknown>>,
+  completeEmptyAssistantOnAbort: { value: false },
   continueCallCount: { value: 0 },
   continueStopsOnAbort: { value: false },
   deliverPrivateMessageMock: vi.fn(),
@@ -119,7 +121,17 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       if (this.aborted) {
         this.state.messages.push({
           role: "assistant",
-          content: [{ type: "text", text: "loading demo skill" }],
+          content: [
+            {
+              type: "text",
+              text: completeEmptyAssistantOnAbort.value
+                ? ""
+                : "loading demo skill",
+            },
+          ],
+          ...(completeEmptyAssistantOnAbort.value
+            ? { stopReason: "stop" }
+            : {}),
         });
         return {};
       }
@@ -431,6 +443,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     agentInitialToolNames.length = 0;
     callToolMock.mockReset();
     clientOptions.length = 0;
+    completeEmptyAssistantOnAbort.value = false;
     continueCallCount.value = 0;
     continueStopsOnAbort.value = false;
     deliverPrivateMessageMock.mockReset();
@@ -788,6 +801,36 @@ describe("generateAssistantReply progressive MCP loading", () => {
       piMessages: expectedResumeMessages,
       loadedSkillNames: ["demo-skill"],
       resumeReason: "auth",
+    });
+  });
+
+  it("still parks for auth when abort leaves an empty completed assistant frame", async () => {
+    completeEmptyAssistantOnAbort.value = true;
+
+    const firstError = await generateAssistantReply("help me", {
+      assistant: { userName: "junior" },
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-6",
+        turnId: "turn-6",
+        channelId: "C123",
+        threadTs: "1712345.0006",
+      },
+    }).catch((error) => error);
+
+    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
+
+    const pausedCheckpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-6",
+      "turn-6",
+    );
+    expect(pausedCheckpoint).toMatchObject({
+      state: "awaiting_resume",
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "auth",
+    });
+    expect(pausedCheckpoint?.piMessages.at(-1)).toMatchObject({
+      role: "user",
     });
   });
 });
