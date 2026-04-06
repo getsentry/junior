@@ -34,7 +34,6 @@ export interface McpAuthOrchestration {
   ) => Promise<OAuthClientProvider | undefined>;
   onAuthorizationRequired: (provider: string) => Promise<boolean>;
   getPendingPause: () => McpAuthorizationPauseError | undefined;
-  getAuthSessionIdsByProvider: () => Map<string, string>;
 }
 
 /** Create MCP authorization orchestration for a single turn. */
@@ -118,6 +117,5 @@ export function createMcpAuthOrchestration(
     authProviderFactory,
     onAuthorizationRequired,
     getPendingPause: () => pendingPause,
-    getAuthSessionIdsByProvider: () => authSessionIdsByProvider,
   };
 }

@@ -1164,9 +1164,6 @@ export function createSandboxExecutor(options?: {
             } catch (error) {
               restoreError = error;
               await invalidateSandboxInstance(activeSandbox, error);
-              if (!commandError) {
-                restoreError = error;
-              }
             }
           }
         }

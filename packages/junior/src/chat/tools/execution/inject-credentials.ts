@@ -5,7 +5,6 @@ import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 export interface CredentialInjection {
   headerTransforms?: Array<{ domain: string; [key: string]: unknown }>;
   env?: Record<string, string>;
-  shouldLog: boolean;
 }
 
 /** Resolve credential injection for a tool call (only applies to bash). */
@@ -16,7 +15,7 @@ export function resolveCredentialInjection(
   sandbox: SkillSandbox,
 ): CredentialInjection {
   if (toolName !== "bash" || !capabilityRuntime) {
-    return { shouldLog: false };
+    return {};
   }
 
   const headerTransforms = capabilityRuntime.getTurnHeaderTransforms();
@@ -42,5 +41,5 @@ export function resolveCredentialInjection(
     );
   }
 
-  return { headerTransforms, env, shouldLog };
+  return { headerTransforms, env };
 }
