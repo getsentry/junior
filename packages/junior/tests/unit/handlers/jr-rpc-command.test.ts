@@ -373,6 +373,67 @@ describe("jr-rpc custom command", () => {
     });
   });
 
+  it("reuses explicit oauth-start delivery=false and does not start a new flow", async () => {
+    startOAuthFlowMock.mockResolvedValue({
+      ok: true,
+      delivery: false,
+    });
+
+    const runtime = new SkillCapabilityRuntime({
+      broker: {
+        issue: async () => {
+          throw new CredentialUnavailableError(
+            "github",
+            "No github credentials available.",
+          );
+        },
+      },
+      invocationArgs: "--repo getsentry/junior",
+      requesterId: "U123",
+    });
+    const startedExplicitOAuthProviders = new Map<string, boolean>();
+
+    const explicitStart = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc oauth-start github",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        startedExplicitOAuthProviders,
+      },
+    );
+
+    const handledStart = expectHandled(explicitStart);
+    expect(handledStart.result.exit_code).toBe(0);
+    expect(JSON.parse(handledStart.result.stdout)).toMatchObject({
+      private_delivery_sent: false,
+    });
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+
+    const issueCredential = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential github.issues.write",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        userMessage: "Reconnect my github account",
+        startedExplicitOAuthProviders,
+      },
+    );
+
+    const handledIssue = expectHandled(issueCredential);
+    expect(handledIssue.result.exit_code).toBe(0);
+    // No second OAuth flow started — the delivery failure was recorded and reused.
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(handledIssue.result.stdout)).toMatchObject({
+      credential_unavailable: true,
+      oauth_started: true,
+      private_delivery_sent: false,
+      message:
+        "I still need to connect your Github account, but I wasn't able to send you a private authorization link. Please send me a direct message and try again.",
+    });
+  });
+
   it("returns structured runtime errors when repo context is missing", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc issue-credential github.issues.write",

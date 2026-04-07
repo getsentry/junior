@@ -136,6 +136,11 @@ async function handleIssueCredentialCommand(
       getPluginOAuthConfig(error.provider) &&
       deps.requesterId
     ) {
+      // If oauth-start was already run explicitly in this turn, reuse its
+      // delivery outcome instead of starting a second flow. explicitStart is
+      // the boolean recorded by handleOAuthStartCommand: true = link delivered,
+      // false = delivery failed. Either way, don't start a new flow — that
+      // would store a pendingMessage and cause an unwanted auto-resume.
       const explicitStart = deps.startedExplicitOAuthProviders?.get(
         error.provider,
       );
@@ -146,6 +151,7 @@ async function handleIssueCredentialCommand(
             credential_unavailable: true,
             oauth_started: true,
             provider: error.provider,
+            // Reflects the delivery status from the prior oauth-start, not a new delivery.
             private_delivery_sent: explicitStart,
             message: explicitStart
               ? `I've already sent you a private authorization link to connect your ${providerLabel} account. Finish that flow, then return to Slack.`
