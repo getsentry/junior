@@ -183,7 +183,7 @@ describe("oauth callback slack integration", () => {
       },
       requesterId: "U123",
     });
-    const startedExplicitOAuthProviders = new Map<string, boolean>();
+    const providerAuthActions = new Map();
 
     const oauthStart = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc oauth-start eval-oauth",
@@ -193,7 +193,7 @@ describe("oauth callback slack integration", () => {
         requesterId: "U123",
         channelId: "C123",
         threadTs: "1700000000.001",
-        startedExplicitOAuthProviders,
+        providerAuthActions,
       },
     );
 
@@ -224,7 +224,7 @@ describe("oauth callback slack integration", () => {
         threadTs: "1700000000.001",
         userMessage:
           "deauth me from eval-oauth, and then reauth me so we can test",
-        startedExplicitOAuthProviders,
+        providerAuthActions,
       },
     );
 

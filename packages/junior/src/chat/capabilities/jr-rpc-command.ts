@@ -14,6 +14,15 @@ import {
 } from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
 
+/**
+ * Records which auth management actions the model has taken for a provider
+ * in the current turn, so issue-credential can infer reconnect intent and
+ * avoid storing a pendingMessage that would trigger an auto-resume loop.
+ */
+export type ProviderAuthAction =
+  | { kind: "oauth_started"; delivered: boolean }
+  | { kind: "token_deleted" };
+
 type JrRpcDeps = {
   capabilityRuntime: SkillCapabilityRuntime;
   activeSkill: Skill | null;
@@ -23,7 +32,7 @@ type JrRpcDeps = {
   threadTs?: string;
   userMessage?: string;
   userTokenStore?: UserTokenStore;
-  startedExplicitOAuthProviders?: Map<string, boolean>;
+  providerAuthActions?: Map<string, ProviderAuthAction>;
   onConfigurationValueChanged?: (
     key: string,
     value: unknown | undefined,
@@ -136,24 +145,22 @@ async function handleIssueCredentialCommand(
       getPluginOAuthConfig(error.provider) &&
       deps.requesterId
     ) {
-      // If oauth-start was already run explicitly in this turn, reuse its
-      // delivery outcome instead of starting a second flow. explicitStart is
-      // the boolean recorded by handleOAuthStartCommand: true = link delivered,
-      // false = delivery failed. Either way, don't start a new flow — that
-      // would store a pendingMessage and cause an unwanted auto-resume.
-      const explicitStart = deps.startedExplicitOAuthProviders?.get(
-        error.provider,
-      );
-      if (explicitStart !== undefined) {
+      const authAction = deps.providerAuthActions?.get(error.provider);
+
+      if (authAction?.kind === "oauth_started") {
+        // An explicit oauth-start already ran in this turn — reuse its result
+        // rather than starting a second flow. A second flow would store
+        // pendingMessage and cause the callback to auto-resume, which is wrong
+        // for explicit connect/reconnect turns.
+        // delivered reflects the delivery status from the prior oauth-start call.
         const providerLabel = formatProviderLabel(error.provider);
         return commandResult({
           stdout: {
             credential_unavailable: true,
             oauth_started: true,
             provider: error.provider,
-            // Reflects the delivery status from the prior oauth-start, not a new delivery.
-            private_delivery_sent: explicitStart,
-            message: explicitStart
+            private_delivery_sent: authAction.delivered,
+            message: authAction.delivered
               ? `I've already sent you a private authorization link to connect your ${providerLabel} account. Finish that flow, then return to Slack.`
               : `I still need to connect your ${providerLabel} account, but I wasn't able to send you a private authorization link. Please send me a direct message and try again.`,
           },
@@ -161,6 +168,47 @@ async function handleIssueCredentialCommand(
         });
       }
 
+      if (authAction?.kind === "token_deleted") {
+        // delete-token was called for this provider earlier in the turn. This
+        // is a reconnect flow — start OAuth but WITHOUT userMessage so the
+        // callback posts a simple "connected" confirmation and does not
+        // auto-resume. Auto-resuming a reconnect message would loop: the model
+        // would delete the token again and restart the OAuth flow indefinitely.
+        const reconnectResult = await startOAuthFlow(error.provider, {
+          requesterId: deps.requesterId,
+          channelId: deps.channelId,
+          threadTs: deps.threadTs,
+          activeSkillName: deps.activeSkill?.name ?? undefined,
+          // Intentionally no userMessage — reconnect flows must not auto-resume.
+        });
+        if (!reconnectResult.ok) {
+          return commandResult({
+            stderr: `${reconnectResult.error}\n`,
+            exitCode: 1,
+          });
+        }
+        const delivered = !!reconnectResult.delivery;
+        deps.providerAuthActions?.set(error.provider, {
+          kind: "oauth_started",
+          delivered,
+        });
+        const providerLabel = formatProviderLabel(error.provider);
+        return commandResult({
+          stdout: {
+            credential_unavailable: true,
+            oauth_started: true,
+            provider: error.provider,
+            private_delivery_sent: delivered,
+            message: delivered
+              ? `I need to connect your ${providerLabel} account first. I've sent you a private authorization link.`
+              : `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try your command again.`,
+          },
+          exitCode: 0,
+        });
+      }
+
+      // Normal implicit path: start OAuth with userMessage so the callback
+      // can auto-resume the original task after the user authorizes.
       const oauthResult = await startOAuthFlow(error.provider, {
         requesterId: deps.requesterId,
         channelId: deps.channelId,
@@ -458,7 +506,10 @@ async function handleOAuthStartCommand(
     return commandResult({ stderr: `${result.error}\n`, exitCode: 1 });
   }
 
-  deps.startedExplicitOAuthProviders?.set(provider, !!result.delivery);
+  deps.providerAuthActions?.set(provider, {
+    kind: "oauth_started",
+    delivered: !!result.delivery,
+  });
 
   if (!result.delivery) {
     return commandResult({
@@ -512,6 +563,10 @@ async function handleDeleteTokenCommand(
   }
 
   await unlinkProvider(deps.requesterId, provider, deps.userTokenStore);
+
+  // Record the deletion so a subsequent issue-credential for this provider
+  // in the same turn knows this is a reconnect flow and suppresses pendingMessage.
+  deps.providerAuthActions?.set(provider, { kind: "token_deleted" });
 
   logInfo(
     "jr_rpc_delete_token",
