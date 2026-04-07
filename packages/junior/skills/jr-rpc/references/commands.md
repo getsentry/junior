@@ -14,7 +14,13 @@ Enable a capability credential for the current turn.
 When `issue-credential` fails because no credentials are available for an OAuth-capable provider, the harness automatically starts the OAuth flow and returns:
 
 ```json
-{ "credential_unavailable": true, "oauth_started": true, "provider": "sentry", "private_delivery_sent": true, "message": "I need to connect your Sentry account first. I've sent you a private authorization link." }
+{
+  "credential_unavailable": true,
+  "oauth_started": true,
+  "provider": "sentry",
+  "private_delivery_sent": true,
+  "message": "I need to connect your Sentry account first. I've sent you a private authorization link."
+}
 ```
 
 Relay the `message` field to the user and stop the turn. The callback handler automatically resumes the original request after authorization completes.
@@ -25,7 +31,9 @@ If `private_delivery_sent` is false, the `message` field instructs the user to s
 
 `jr-rpc oauth-start <provider>`
 
-Initiate an OAuth authorization code flow for the given provider. The command sends the authorization link as a private Slack message (visible only to the requesting user).
+Initiate an OAuth authorization code flow for the given provider without auto-resume. The command sends the authorization link as a private Slack message (visible only to the requesting user).
+
+Use this when the user explicitly asks to connect a provider and there is no pending task to resume after authorization.
 
 Responses:
 

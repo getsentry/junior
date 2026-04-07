@@ -22,7 +22,7 @@ Run before any authenticated API call:
 
 ## OAuth authorization
 
-`jr-rpc oauth-start <provider>` — start an OAuth authorization code flow.
+`jr-rpc oauth-start <provider>` — explicitly start an OAuth authorization code flow without auto-resume.
 
 - The authorization link is delivered privately (visible only to the requesting user).
 - Returns `{ ok: true, private_delivery_sent: true }` on success.

@@ -316,6 +316,217 @@ describe("jr-rpc custom command", () => {
     );
   });
 
+  it("reuses an explicit oauth-start already initiated in the same turn", async () => {
+    startOAuthFlowMock.mockResolvedValue({
+      ok: true,
+      delivery: "in_context",
+    });
+
+    const runtime = new SkillCapabilityRuntime({
+      broker: {
+        issue: async () => {
+          throw new CredentialUnavailableError(
+            "github",
+            "No github credentials available.",
+          );
+        },
+      },
+      invocationArgs: "--repo getsentry/junior",
+      requesterId: "U123",
+    });
+    const providerAuthActions = new Map();
+
+    const explicitStart = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc oauth-start github",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        providerAuthActions,
+      },
+    );
+
+    const handledStart = expectHandled(explicitStart);
+    expect(handledStart.result.exit_code).toBe(0);
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+
+    const issueCredential = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential github.issues.write",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        userMessage: "Reconnect my github account",
+        providerAuthActions,
+      },
+    );
+
+    const handledIssue = expectHandled(issueCredential);
+    expect(handledIssue.result.exit_code).toBe(0);
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(handledIssue.result.stdout)).toMatchObject({
+      credential_unavailable: true,
+      oauth_started: true,
+      private_delivery_sent: true,
+      message:
+        "I've already sent you a private authorization link to connect your Github account. Finish that flow, then return to Slack.",
+    });
+  });
+
+  it("reuses explicit oauth-start delivery=false and does not start a new flow", async () => {
+    startOAuthFlowMock.mockResolvedValue({
+      ok: true,
+      delivery: false,
+    });
+
+    const runtime = new SkillCapabilityRuntime({
+      broker: {
+        issue: async () => {
+          throw new CredentialUnavailableError(
+            "github",
+            "No github credentials available.",
+          );
+        },
+      },
+      invocationArgs: "--repo getsentry/junior",
+      requesterId: "U123",
+    });
+    const providerAuthActions = new Map();
+
+    const explicitStart = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc oauth-start github",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        providerAuthActions,
+      },
+    );
+
+    const handledStart = expectHandled(explicitStart);
+    expect(handledStart.result.exit_code).toBe(0);
+    expect(JSON.parse(handledStart.result.stdout)).toMatchObject({
+      private_delivery_sent: false,
+    });
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+
+    const issueCredential = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential github.issues.write",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        userMessage: "Reconnect my github account",
+        providerAuthActions,
+      },
+    );
+
+    const handledIssue = expectHandled(issueCredential);
+    expect(handledIssue.result.exit_code).toBe(0);
+    // No second OAuth flow started — the delivery failure was recorded and reused.
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(handledIssue.result.stdout)).toMatchObject({
+      credential_unavailable: true,
+      oauth_started: true,
+      private_delivery_sent: false,
+      message:
+        "I still need to connect your Github account, but I wasn't able to send you a private authorization link. Please send me a direct message and try again.",
+    });
+  });
+
+  it("suppresses pendingMessage when delete-token precedes issue-credential (reconnect loop prevention)", async () => {
+    startOAuthFlowMock.mockResolvedValue({
+      ok: true,
+      delivery: "in_context",
+    });
+
+    const runtime = new SkillCapabilityRuntime({
+      broker: {
+        issue: async () => {
+          throw new CredentialUnavailableError(
+            "github",
+            "No github credentials available.",
+          );
+        },
+      },
+      invocationArgs: "--repo getsentry/junior",
+      requesterId: "U123",
+    });
+    const userTokenStore = {
+      get: vi.fn(async () => undefined),
+      set: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    };
+    const providerAuthActions = new Map();
+
+    // Step 1: model deletes the existing token (reconnect intent)
+    const deleteResult = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc delete-token github",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        userTokenStore,
+        providerAuthActions,
+      },
+    );
+    const handledDelete = expectHandled(deleteResult);
+    expect(handledDelete.result.exit_code).toBe(0);
+
+    // Step 2: model calls issue-credential — system should start OAuth WITHOUT
+    // userMessage so the callback posts a simple "connected" confirmation
+    // and does NOT auto-resume (which would cause the model to delete the
+    // token again on the next turn, looping forever).
+    const issueResult = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential github.issues.write",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        userMessage: "Reconnect my github account",
+        providerAuthActions,
+      },
+    );
+
+    const handledIssue = expectHandled(issueResult);
+    expect(handledIssue.result.exit_code).toBe(0);
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+    // OAuth started WITHOUT userMessage — no pendingMessage stored
+    expect(startOAuthFlowMock).toHaveBeenCalledWith(
+      "github",
+      expect.not.objectContaining({ userMessage: expect.anything() }),
+    );
+    expect(JSON.parse(handledIssue.result.stdout)).toMatchObject({
+      credential_unavailable: true,
+      oauth_started: true,
+      private_delivery_sent: true,
+    });
+
+    // Step 3: a second issue-credential in the same turn reuses the recorded
+    // oauth_started state — no third OAuth call
+    const issueResult2 = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential github.issues.write",
+      {
+        capabilityRuntime: runtime,
+        activeSkill,
+        requesterId: "U123",
+        userMessage: "Reconnect my github account",
+        providerAuthActions,
+      },
+    );
+
+    const handledIssue2 = expectHandled(issueResult2);
+    expect(handledIssue2.result.exit_code).toBe(0);
+    expect(startOAuthFlowMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(handledIssue2.result.stdout)).toMatchObject({
+      credential_unavailable: true,
+      oauth_started: true,
+      private_delivery_sent: true,
+      message:
+        "I've already sent you a private authorization link to connect your Github account. Finish that flow, then return to Slack.",
+    });
+  });
+
   it("returns structured runtime errors when repo context is missing", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc issue-credential github.issues.write",
