@@ -161,11 +161,12 @@ export function createProgressReporter(args: {
       if (!active) {
         return;
       }
+      const nextStatus =
+        typeof status === "string"
+          ? normalizeAssistantStatusText(status)
+          : status;
       const presentation = buildAssistantStatusPresentation({
-        status:
-          typeof status === "string"
-            ? normalizeAssistantStatusText(status)
-            : status,
+        status: nextStatus,
         currentVisible: currentVisibleStatus,
         random,
       });
@@ -175,10 +176,6 @@ export function createProgressReporter(args: {
       if (presentation.key === currentKey || presentation.key === pendingKey) {
         return;
       }
-      const nextStatus =
-        typeof status === "string"
-          ? normalizeAssistantStatusText(status)
-          : status;
 
       const elapsed = now() - lastStatusAt;
       const waitMs = Math.max(
