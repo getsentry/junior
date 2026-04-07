@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
 import { createProgressReporter } from "@/chat/runtime/progress-reporter";
 
 interface FakeTimer {
@@ -60,11 +61,11 @@ function createFakeScheduler() {
   };
 }
 
-const firstPlayfulStatus = "Poking around...";
-const secondPlayfulStatus = "Digging in...";
-const secondSearchingStatus = "Digging in: Searching";
-const secondReadingStatus = "Digging in: Reading source files";
-const secondReviewingStatus = "Digging in: Reviewing results";
+const firstPlayfulStatus = "Thinking task";
+const secondPlayfulStatus = "Reasoning task";
+const secondSearchingStatus = "Searching sources";
+const secondReadingStatus = "Reading source files";
+const secondReviewingStatus = "Reviewing results";
 
 describe("createProgressReporter", () => {
   it("posts an initial playful status on start", async () => {
@@ -166,8 +167,8 @@ describe("createProgressReporter", () => {
     await reporter.start();
     await Promise.resolve();
 
-    await reporter.setStatus("Searching");
-    await reporter.setStatus("Searching");
+    await reporter.setStatus(makeAssistantStatus("searching"));
+    await reporter.setStatus(makeAssistantStatus("searching"));
     scheduler.advance(1200);
     await Promise.resolve();
 
@@ -194,7 +195,7 @@ describe("createProgressReporter", () => {
     await reporter.start();
     await Promise.resolve();
 
-    await reporter.setStatus("Reading source files");
+    await reporter.setStatus(makeAssistantStatus("reading", "source files"));
     scheduler.advance(1000);
     await Promise.resolve();
     expect(statuses).toEqual([firstPlayfulStatus]);
@@ -224,8 +225,8 @@ describe("createProgressReporter", () => {
     await reporter.start();
     await Promise.resolve();
 
-    await reporter.setStatus("Searching docs");
-    await reporter.setStatus("Reviewing results");
+    await reporter.setStatus(makeAssistantStatus("searching", "docs"));
+    await reporter.setStatus(makeAssistantStatus("reviewing"));
 
     scheduler.advance(1200);
     await Promise.resolve();
@@ -290,7 +291,7 @@ describe("createProgressReporter", () => {
     await reporter.start();
     await Promise.resolve();
 
-    await reporter.setStatus("Reviewing results");
+    await reporter.setStatus(makeAssistantStatus("reviewing"));
     scheduler.advance(1200);
     await Promise.resolve();
 

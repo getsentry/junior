@@ -3,119 +3,65 @@ import { logWarn } from "@/chat/logging";
 import { getSlackClient } from "@/chat/slack/client";
 import { truncateStatusText } from "@/chat/runtime/status-format";
 
-const PLAYFUL_STATUS_PREFIXES = [
-  "Poking around",
-  "Digging in",
-  "Stirring the pot",
-  "Shaking the tree",
-  "Following the breadcrumbs",
-  "Untangling things",
-  "Wrestling the gremlins",
-  "Doing wizard stuff",
-  "Chasing threads",
-  "Turning over rocks",
-  "Kicking the tires",
-  "Reading the tea leaves",
-  "Connecting the dots",
-  "Sniffing around",
-  "Rummaging through it",
-  "Peeling it apart",
-  "Tracing the wires",
-  "Walking the maze",
-  "Looking under the hood",
-  "Tinkering with it",
-  "Threading the needle",
-  "Hunting it down",
-  "Cross-checking things",
-  "Patching things up",
-  "Tightening the bolts",
-  "Greasing the gears",
-  "Surveying the scene",
-  "Taking it apart",
-  "Putting it back together",
-  "Pressure-testing it",
-  "Following the trail",
-  "Working the angles",
-  "Checking the corners",
-  "Reading the room",
-  "Making sense of it",
-  "Sorting the pile",
-  "Clearing the brush",
-  "Walking the graph",
-  "Tracking it down",
-  "Prodding at it",
-  "Stress-testing the edges",
-  "Testing the waters",
-  "Counting the moving parts",
-  "Turning the crank",
-  "Checking the seams",
-  "Unspooling the thread",
-  "Picking the lock",
-  "Inspecting the joints",
-  "Dusting for clues",
-  "Following the map",
-  "Juggling the pieces",
-  "Reading between the lines",
-  "Shuffling the deck",
-  "Working the backlog",
-  "Tugging on the thread",
-  "Peeking behind the curtain",
-  "Scanning the horizon",
-  "Sweeping the floor",
-  "Sifting the evidence",
-  "Tracing the path",
-  "Walking the branches",
-  "Checking the pulse",
-  "Turning the pages",
-  "Dialing it in",
-  "Straightening the stack",
-  "Checking the gears",
-  "Tuning the engine",
-  "Chipping away",
-  "Working the problem",
-  "Leaning into it",
-  "Finding the edges",
-  "Following the signal",
-  "Sweating the details",
-  "Pulling the thread",
-  "Filling the gaps",
-  "Connecting the wires",
-  "Testing a hunch",
-  "Rounding up the pieces",
-  "Walking through it",
-  "Reading the signs",
-  "Tracing the outline",
-  "Scrubbing through it",
-  "Picking through it",
-  "Untying knots",
-  "Lining things up",
-  "Balancing the pieces",
-  "Working through the wrinkles",
-  "Sharpening the edges",
-  "Tidying the trail",
-  "Following the current",
-  "Digging up details",
-  "Checking the bearings",
-  "Looking for cracks",
-  "Pressing on it",
-  "Measuring twice",
-  "Scanning for splinters",
-  "Walking the perimeter",
-  "Turning up clues",
-  "Brushing off the dust",
-  "Finding the clean line",
-  "Checking the fit",
-  "Sketching the shape",
-  "Triangulating it",
-  "Shaking loose details",
-  "Sorting signal from noise",
-  "Pinning it down",
-  "Reading the grain",
-  "Following the scent",
-  "Checking my footing",
-  "Untangling the stack",
-  "Making the pieces click",
-] as const;
+const STATUS_PATTERNS = {
+  thinking: {
+    defaultContext: "task",
+    variants: ["Thinking", "Reasoning", "Considering", "Working through"],
+  },
+  searching: {
+    defaultContext: "sources",
+    variants: ["Searching", "Scanning", "Probing", "Trawling"],
+  },
+  reading: {
+    defaultContext: "task",
+    variants: ["Reading", "Inspecting", "Parsing", "Skimming"],
+  },
+  reviewing: {
+    defaultContext: "results",
+    variants: ["Reviewing", "Checking", "Inspecting", "Auditing"],
+  },
+  loading: {
+    defaultContext: "task",
+    variants: ["Loading", "Priming", "Booting", "Spinning up"],
+  },
+  updating: {
+    defaultContext: "state",
+    variants: ["Updating", "Patching", "Refreshing", "Adjusting"],
+  },
+  fetching: {
+    defaultContext: "sources",
+    variants: ["Fetching", "Pulling", "Retrieving", "Loading"],
+  },
+  creating: {
+    defaultContext: "draft",
+    variants: ["Creating", "Building", "Assembling", "Generating"],
+  },
+  listing: {
+    defaultContext: "items",
+    variants: ["Listing", "Gathering", "Collecting", "Enumerating"],
+  },
+  posting: {
+    defaultContext: "reply",
+    variants: ["Posting", "Sending", "Delivering", "Dispatching"],
+  },
+  adding: {
+    defaultContext: "details",
+    variants: ["Adding", "Applying", "Attaching", "Dropping in"],
+  },
+  running: {
+    defaultContext: "tasks",
+    variants: ["Running", "Executing", "Launching", "Processing"],
+  },
+} as const;
+
+export type AssistantStatusKind = keyof typeof STATUS_PATTERNS;
+
+export interface AssistantStatusSpec {
+  kind: AssistantStatusKind;
+  context?: string;
+}
+
+export type AssistantStatusInput = string | AssistantStatusSpec;
 
 /**
  * Slack assistant status transport contract.
@@ -138,65 +84,73 @@ export interface AssistantStatusTransport {
 /**
  * Rendered Slack assistant status payload.
  *
- * `hint` is the semantic phase emitted by the runtime, such as
- * "Reading file respond.ts". `visible` is the playful Slack-facing string we
- * actually show, while `suggestions` preserves the visible text and semantic
- * hint for transports that support `loading_messages`.
+ * Statuses are either explicit specs (`kind + context`) or pre-rendered
+ * strings. Specs use one consistent `Verb target` pattern and may rotate
+ * verbs within the same kind when refreshed.
  */
 export interface AssistantStatusPresentation {
+  key: string;
   hint: string;
   visible: string;
   suggestions?: string[];
 }
 
-/**
- * Normalize semantic status hints before they are rendered for Slack.
- *
- * Callers may pass strings with trailing ellipses or incidental whitespace.
- * Slack's assistant status hard-limits visible text to 50 characters, so hints
- * are trimmed, de-ellipsized, and truncated up front.
- */
-export function normalizeAssistantStatusHint(text: string): string {
+/** Build a typed assistant status from a stable kind and optional context. */
+export function makeAssistantStatus(
+  kind: AssistantStatusKind,
+  context?: string,
+): AssistantStatusSpec {
+  return { kind, ...(context ? { context } : {}) };
+}
+
+/** Normalize an arbitrary string status before handing it to Slack. */
+export function normalizeAssistantStatusText(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) {
     return "";
   }
-
   return truncateStatusText(trimmed.replace(/(?:\.\s*)+$/, "").trim());
 }
 
 /**
- * Convert a semantic status hint into the Slack-facing assistant status.
+ * Render a Slack assistant status from either a typed spec or a raw string.
  *
- * The runtime continues to emit semantic hints for tool and sandbox phases.
- * This renderer adds a playful prefix while preserving the hint inside the
- * final visible string, then prepares `loading_messages` suggestions so the
- * transport can expose both the playful copy and the underlying phase detail.
+ * Typed specs follow a consistent `Verb target` shape and rotate only within
+ * their declared kind. Raw strings are treated as already-rendered statuses.
  */
 export function buildAssistantStatusPresentation(args: {
-  hint: string;
+  status: AssistantStatusInput;
   currentVisible?: string;
   random?: () => number;
 }): AssistantStatusPresentation {
-  const hint = normalizeAssistantStatusHint(args.hint);
+  if (typeof args.status === "string") {
+    const visible = normalizeAssistantStatusText(args.status);
+    return {
+      key: `text:${visible}`,
+      hint: visible,
+      visible,
+      suggestions: visible ? [visible] : undefined,
+    };
+  }
+
   const random = args.random ?? Math.random;
-  const prefix = pickNextPrefix(args.currentVisible, random);
-  const visible = hint
-    ? truncateStatusText(`${prefix}: ${hint}`)
-    : truncateStatusText(`${prefix}...`);
-  const suggestions = Array.from(
-    new Set(
-      [visible, hint].filter(
-        (value): value is string =>
-          typeof value === "string" && value.length > 0,
-      ),
-    ),
-  );
+  const pattern = STATUS_PATTERNS[args.status.kind];
+  const context =
+    normalizeAssistantStatusText(args.status.context ?? "") ||
+    pattern.defaultContext;
+  const currentVerb = extractLeadingVerb(args.currentVisible);
+  const verbs = pattern.variants.filter((variant) => variant !== currentVerb);
+  const pool = verbs.length > 0 ? verbs : [...pattern.variants];
+  const index = Math.floor(random() * pool.length);
+  const verb = pool[index] ?? pattern.variants[0];
+  const visible = truncateStatusText(`${verb} ${context}`);
+  const hint = truncateStatusText(`${pattern.variants[0]} ${context}`);
 
   return {
+    key: `${args.status.kind}:${context}`,
     hint,
     visible,
-    suggestions: suggestions.length > 0 ? suggestions : undefined,
+    suggestions: Array.from(new Set([visible, hint])),
   };
 }
 
@@ -244,30 +198,12 @@ export function createSlackWebApiAssistantStatusTransport(args?: {
   };
 }
 
-function pickNextPrefix(
-  currentVisible: string | undefined,
-  random: () => number,
-): string {
-  const currentPrefix = extractPrefix(currentVisible);
-  const options = PLAYFUL_STATUS_PREFIXES.filter(
-    (prefix) => prefix !== currentPrefix,
-  );
-  const pool = options.length > 0 ? options : [...PLAYFUL_STATUS_PREFIXES];
-  const index = Math.floor(random() * pool.length);
-  return pool[index] ?? PLAYFUL_STATUS_PREFIXES[0];
-}
-
-function extractPrefix(value: string | undefined): string | undefined {
+function extractLeadingVerb(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
   }
-
-  const delimiterIndex = value.indexOf(":");
-  if (delimiterIndex >= 0) {
-    return value.slice(0, delimiterIndex).trim();
-  }
-
-  return value.replace(/(?:\.\s*)+$/, "").trim() || undefined;
+  const match = /^([A-Za-z]+)\b/.exec(value.trim());
+  return match?.[1]?.trim() || undefined;
 }
 
 function logAssistantStatusFailure(status: string, error: unknown): void {

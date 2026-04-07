@@ -1,44 +1,74 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAssistantStatusPresentation,
-  normalizeAssistantStatusHint,
+  makeAssistantStatus,
+  normalizeAssistantStatusText,
 } from "@/chat/runtime/assistant-status";
 
 describe("assistant status presentation", () => {
-  it("normalizes semantic hints before rendering", () => {
-    expect(normalizeAssistantStatusHint("  Reading file respond.ts...  ")).toBe(
-      "Reading file respond.ts",
+  it("normalizes raw string statuses before rendering", () => {
+    expect(normalizeAssistantStatusText("  Reading respond.ts...  ")).toBe(
+      "Reading respond.ts",
     );
   });
 
-  it("renders a playful visible status while preserving the semantic hint", () => {
+  it("renders a typed reading status with a compact target", () => {
     expect(
       buildAssistantStatusPresentation({
-        hint: "Reading file respond.ts...",
-        currentVisible: "Poking around...",
+        status: makeAssistantStatus("reading", "respond.ts"),
+        currentVisible: "Skimming respond.ts",
         random: () => 0,
       }),
     ).toEqual({
-      hint: "Reading file respond.ts",
-      visible: "Digging in: Reading file respond.ts",
-      suggestions: [
-        "Digging in: Reading file respond.ts",
-        "Reading file respond.ts",
-      ],
+      key: "reading:respond.ts",
+      hint: "Reading respond.ts",
+      visible: "Reading respond.ts",
+      suggestions: ["Reading respond.ts"],
     });
   });
 
-  it("renders a standalone playful status when no semantic hint is available", () => {
+  it("renders a standalone typed status when no context is available", () => {
     expect(
       buildAssistantStatusPresentation({
-        hint: "",
+        status: makeAssistantStatus("thinking"),
         currentVisible: "",
         random: () => 0,
       }),
     ).toEqual({
-      hint: "",
-      visible: "Poking around...",
-      suggestions: ["Poking around..."],
+      key: "thinking:task",
+      hint: "Thinking task",
+      visible: "Thinking task",
+      suggestions: ["Thinking task"],
+    });
+  });
+
+  it("rotates within a status kind when the current visible verb is already used", () => {
+    expect(
+      buildAssistantStatusPresentation({
+        status: makeAssistantStatus("searching", "sources"),
+        currentVisible: "Searching sources",
+        random: () => 0,
+      }),
+    ).toEqual({
+      key: "searching:sources",
+      hint: "Searching sources",
+      visible: "Scanning sources",
+      suggestions: ["Scanning sources", "Searching sources"],
+    });
+  });
+
+  it("passes raw string statuses through as already-rendered text", () => {
+    expect(
+      buildAssistantStatusPresentation({
+        status: "Reading respond.ts",
+        currentVisible: "",
+        random: () => 0,
+      }),
+    ).toEqual({
+      key: "text:Reading respond.ts",
+      hint: "Reading respond.ts",
+      visible: "Reading respond.ts",
+      suggestions: ["Reading respond.ts"],
     });
   });
 });

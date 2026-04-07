@@ -74,7 +74,7 @@ describe("resumeAuthorizedRequest", () => {
       channel_id: "C-test",
       thread_ts: "1700000000.0001",
       status: expect.any(String),
-      loading_messages: [expect.any(String)],
+      loading_messages: expect.arrayContaining([expect.any(String)]),
     });
     expect(
       (setStatusMock.mock.calls[0]?.[0] as { status?: string }).status,

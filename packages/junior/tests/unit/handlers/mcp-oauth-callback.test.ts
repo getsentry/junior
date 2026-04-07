@@ -301,7 +301,7 @@ describe("mcp oauth callback handler", () => {
         channel_id: "C123",
         thread_ts: "1712345.0001",
         status: expect.any(String),
-        loading_messages: [expect.any(String)],
+        loading_messages: expect.arrayContaining([expect.any(String)]),
       }),
     );
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(

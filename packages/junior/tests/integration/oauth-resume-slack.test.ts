@@ -26,7 +26,7 @@ describe("oauth resume slack integration", () => {
           channel_id: "C123",
           thread_ts: "1700000000.001",
           status: expect.any(String),
-          loading_messages: [expect.any(String)],
+          loading_messages: expect.arrayContaining([expect.any(String)]),
         }),
       }),
       expect.objectContaining({

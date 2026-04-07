@@ -3,7 +3,8 @@ import { serializeGenAiAttribute } from "@/chat/logging";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { formatToolStatusWithInput } from "@/chat/runtime/tool-status";
+import type { AssistantStatusInput } from "@/chat/runtime/assistant-status";
+import { buildToolStatus } from "@/chat/runtime/tool-status";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -18,7 +19,7 @@ export function createAgentTools(
   tools: Record<string, ToolDefinition<any>>,
   sandbox: SkillSandbox,
   spanContext: LogContext,
-  onStatus?: (status: string) => void | Promise<void>,
+  onStatus?: (status: AssistantStatusInput) => void | Promise<void>,
   sandboxExecutor?: SandboxExecutor,
   capabilityRuntime?: SkillCapabilityRuntime,
   hooks?: {
@@ -44,7 +45,7 @@ export function createAgentTools(
         turnId: spanContext.turnId,
         agentId: spanContext.agentId,
       };
-      await onStatus?.(`${formatToolStatusWithInput(toolName, params)}...`);
+      await onStatus?.(buildToolStatus(toolName, params));
       return withSpan(
         `execute_tool ${toolName}`,
         "gen_ai.execute_tool",

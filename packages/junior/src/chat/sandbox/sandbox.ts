@@ -26,6 +26,8 @@ import {
   resolveRuntimeDependencySnapshot,
   type RuntimeDependencySnapshotProgressPhase,
 } from "@/chat/sandbox/runtime-dependency-snapshots";
+import type { AssistantStatusInput } from "@/chat/runtime/assistant-status";
+import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 
@@ -678,7 +680,7 @@ export function createSandboxExecutor(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
-  onStatus?: (status: string) => void | Promise<void>;
+  onStatus?: (status: AssistantStatusInput) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,
   ) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
@@ -710,11 +712,11 @@ export function createSandboxExecutor(options?: {
           projectId?: string;
         }
       | undefined,
-    onStatus?: (status: string) => Promise<void>,
+    onStatus?: (status: AssistantStatusInput) => Promise<void>,
   ): Promise<Sandbox> => {
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       try {
-        await onStatus?.("Booting up...");
+        await onStatus?.(makeAssistantStatus("loading", "sandbox"));
         return await Sandbox.create({
           timeout: timeoutMs,
           source: {

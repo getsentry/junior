@@ -1,6 +1,8 @@
 import {
   buildAssistantStatusPresentation,
-  normalizeAssistantStatusHint,
+  makeAssistantStatus,
+  normalizeAssistantStatusText,
+  type AssistantStatusInput,
   type AssistantStatusTransport,
 } from "@/chat/runtime/assistant-status";
 
@@ -13,7 +15,7 @@ type TimerHandle = ReturnType<typeof setTimeout>;
 export interface ProgressReporter {
   start: () => Promise<void>;
   stop: () => Promise<void>;
-  setStatus: (text: string) => Promise<void>;
+  setStatus: (status: AssistantStatusInput) => Promise<void>;
 }
 
 /**
@@ -43,10 +45,12 @@ export function createProgressReporter(args: {
   const random = args.random ?? Math.random;
 
   let active = false;
-  let currentHint = "";
+  let currentKey = "";
+  let currentStatus: AssistantStatusInput = makeAssistantStatus("thinking");
   let currentVisibleStatus = "";
   let lastStatusAt = 0;
-  let pendingHint: string | null = null;
+  let pendingStatus: AssistantStatusInput | null = null;
+  let pendingKey = "";
   let pendingTimer: TimerHandle | null = null;
   let rotationTimer: TimerHandle | null = null;
   let inflightStatusUpdate: Promise<void> = Promise.resolve();
@@ -66,7 +70,7 @@ export function createProgressReporter(args: {
       if (!active || !currentVisibleStatus) {
         return;
       }
-      void postRenderedStatus(currentHint);
+      void postRenderedStatus(currentStatus);
     }, STATUS_ROTATION_INTERVAL_MS);
   };
 
@@ -95,12 +99,16 @@ export function createProgressReporter(args: {
     await request;
   };
 
-  const postRenderedStatus = async (hint: string): Promise<void> => {
+  const postRenderedStatus = async (
+    status: AssistantStatusInput,
+  ): Promise<void> => {
     const presentation = buildAssistantStatusPresentation({
-      hint,
+      status,
       currentVisible: currentVisibleStatus,
       random,
     });
+    currentStatus = status;
+    currentKey = presentation.key;
     await postStatus(presentation.visible, presentation.suggestions);
   };
 
@@ -109,19 +117,24 @@ export function createProgressReporter(args: {
       clearTimer(pendingTimer);
       pendingTimer = null;
     }
-    pendingHint = null;
+    pendingStatus = null;
+    pendingKey = "";
   };
 
   const flushPending = async () => {
-    if (!active || !pendingHint) {
+    if (!active || !pendingStatus) {
       clearPending();
       return;
     }
 
-    const next = pendingHint;
+    const next = pendingStatus;
     clearPending();
-    if (next !== currentHint) {
-      currentHint = next;
+    const nextPresentation = buildAssistantStatusPresentation({
+      status: next,
+      currentVisible: currentVisibleStatus,
+      random,
+    });
+    if (nextPresentation.key !== currentKey) {
       await postRenderedStatus(next);
     }
   };
@@ -130,8 +143,9 @@ export function createProgressReporter(args: {
     async start() {
       active = true;
       clearPending();
-      currentHint = "";
-      void postRenderedStatus("");
+      currentStatus = makeAssistantStatus("thinking");
+      currentKey = "";
+      void postRenderedStatus(currentStatus);
     },
     async stop() {
       active = false;
@@ -140,19 +154,31 @@ export function createProgressReporter(args: {
         clearTimer(rotationTimer);
         rotationTimer = null;
       }
-      currentHint = "";
+      currentKey = "";
       await postStatus("");
     },
-    async setStatus(text: string) {
-      const normalized = normalizeAssistantStatusHint(text);
-      if (
-        !active ||
-        !normalized ||
-        normalized === currentHint ||
-        normalized === pendingHint
-      ) {
+    async setStatus(status: AssistantStatusInput) {
+      if (!active) {
         return;
       }
+      const presentation = buildAssistantStatusPresentation({
+        status:
+          typeof status === "string"
+            ? normalizeAssistantStatusText(status)
+            : status,
+        currentVisible: currentVisibleStatus,
+        random,
+      });
+      if (!presentation.visible) {
+        return;
+      }
+      if (presentation.key === currentKey || presentation.key === pendingKey) {
+        return;
+      }
+      const nextStatus =
+        typeof status === "string"
+          ? normalizeAssistantStatusText(status)
+          : status;
 
       const elapsed = now() - lastStatusAt;
       const waitMs = Math.max(
@@ -163,12 +189,12 @@ export function createProgressReporter(args: {
 
       if (waitMs <= 0) {
         clearPending();
-        currentHint = normalized;
-        void postRenderedStatus(normalized);
+        void postRenderedStatus(nextStatus);
         return;
       }
 
-      pendingHint = normalized;
+      pendingStatus = nextStatus;
+      pendingKey = presentation.key;
       if (pendingTimer) {
         return;
       }

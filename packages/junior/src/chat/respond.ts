@@ -48,6 +48,7 @@ import {
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
 import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
+import type { AssistantStatusInput } from "@/chat/runtime/assistant-status";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
@@ -119,7 +120,7 @@ export interface ReplyRequestContext {
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
   };
-  onStatus?: (status: string) => void | Promise<void>;
+  onStatus?: (status: AssistantStatusInput) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
 }
 
