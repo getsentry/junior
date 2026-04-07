@@ -1,6 +1,5 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -170,6 +169,8 @@ describe("oauth callback slack integration", () => {
       await import("@/chat/capabilities/jr-rpc-command");
     const { SkillCapabilityRuntime } =
       await import("@/chat/capabilities/runtime");
+    const { CredentialUnavailableError } =
+      await import("@/chat/credentials/broker");
 
     const runtime = new SkillCapabilityRuntime({
       broker: {
