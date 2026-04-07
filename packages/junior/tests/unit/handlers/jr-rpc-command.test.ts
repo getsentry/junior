@@ -334,13 +334,7 @@ describe("jr-rpc custom command", () => {
       invocationArgs: "--repo getsentry/junior",
       requesterId: "U123",
     });
-    const oauthFlowState = new Map<
-      string,
-      {
-        deliverySent: boolean;
-        mode: "explicit" | "resume";
-      }
-    >();
+    const startedExplicitOAuthProviders = new Map<string, boolean>();
 
     const explicitStart = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc oauth-start github",
@@ -348,7 +342,7 @@ describe("jr-rpc custom command", () => {
         capabilityRuntime: runtime,
         activeSkill,
         requesterId: "U123",
-        oauthFlowState,
+        startedExplicitOAuthProviders,
       },
     );
 
@@ -363,7 +357,7 @@ describe("jr-rpc custom command", () => {
         activeSkill,
         requesterId: "U123",
         userMessage: "Reconnect my github account",
-        oauthFlowState,
+        startedExplicitOAuthProviders,
       },
     );
 

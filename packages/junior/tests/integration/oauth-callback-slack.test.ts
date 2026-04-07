@@ -1,5 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
@@ -25,14 +26,6 @@ type OAuthCallbackHarnessModule =
 
 let stateAdapterModule: StateAdapterModule;
 let oauthCallbackHarnessModule: OAuthCallbackHarnessModule;
-
-function extractSlackLink(text: string): URL {
-  const match = text.match(/^<([^|>]+)\|/);
-  if (!match?.[1]) {
-    throw new Error(`Expected Slack link markup, got: ${text}`);
-  }
-  return new URL(match[1]);
-}
 
 describe("oauth callback slack integration", () => {
   beforeEach(async () => {
@@ -181,13 +174,15 @@ describe("oauth callback slack integration", () => {
     const runtime = new SkillCapabilityRuntime({
       broker: {
         issue: async () => {
-          throw new Error(
-            "credential issuance should not run in explicit reconnect flow",
+          throw new CredentialUnavailableError(
+            "eval-oauth",
+            "No eval-oauth credentials available.",
           );
         },
       },
       requesterId: "U123",
     });
+    const startedExplicitOAuthProviders = new Map<string, boolean>();
 
     const oauthStart = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc oauth-start eval-oauth",
@@ -197,6 +192,7 @@ describe("oauth callback slack integration", () => {
         requesterId: "U123",
         channelId: "C123",
         threadTs: "1700000000.001",
+        startedExplicitOAuthProviders,
       },
     );
 
@@ -208,11 +204,44 @@ describe("oauth callback slack integration", () => {
 
     const ephemeralCalls = getCapturedSlackApiCalls("chat.postEphemeral");
     expect(ephemeralCalls).toHaveLength(1);
-    const authorizeUrl = extractSlackLink(
-      String(ephemeralCalls[0]?.params.text),
-    );
+    const match = String(ephemeralCalls[0]?.params.text).match(/^<([^|>]+)\|/);
+    if (!match?.[1]) {
+      throw new Error(
+        `Expected Slack link markup, got: ${String(ephemeralCalls[0]?.params.text)}`,
+      );
+    }
+    const authorizeUrl = new URL(match[1]);
     const state = authorizeUrl.searchParams.get("state");
     expect(state).toBeTruthy();
+    const issueCredential = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential eval-oauth.read",
+      {
+        capabilityRuntime: runtime,
+        activeSkill: null,
+        requesterId: "U123",
+        channelId: "C123",
+        threadTs: "1700000000.001",
+        userMessage:
+          "deauth me from eval-oauth, and then reauth me so we can test",
+        startedExplicitOAuthProviders,
+      },
+    );
+
+    expect(issueCredential.handled).toBe(true);
+    if (!issueCredential.handled) {
+      throw new Error("expected jr-rpc issue-credential to be handled");
+    }
+    expect(issueCredential.result.exit_code).toBe(0);
+    expect(JSON.parse(issueCredential.result.stdout)).toMatchObject({
+      oauth_started: true,
+      private_delivery_sent: true,
+    });
+    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toHaveLength(1);
+
+    const stored = await stateAdapterModule.getStateAdapter().get<{
+      pendingMessage?: string;
+    }>(`oauth-state:${state}`);
+    expect(stored?.pendingMessage).toBeUndefined();
 
     await stateAdapterModule
       .getStateAdapter()
