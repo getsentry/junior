@@ -46,7 +46,7 @@ export function buildToolStatus(
     return makeAssistantStatus("searching", `"${query}"`);
   }
   if (query && provider && toolName === "searchTools") {
-    return makeAssistantStatus("searching", `"${query}"`);
+    return makeAssistantStatus("searching", `${provider} "${query}"`);
   }
   if (query && toolName === "searchTools") {
     return makeAssistantStatus("searching", `"${query}"`);

@@ -855,11 +855,21 @@ export function createSandboxExecutor(options?: {
           const runtime = SANDBOX_RUNTIME;
           let statusCount = 0;
           const sentStatuses = new Set<string>();
-          const emitSandboxStatus = async (status: string): Promise<void> => {
-            if (!emitStatus || statusCount >= 4 || sentStatuses.has(status)) {
+          const emitSandboxStatus = async (
+            status: AssistantStatusInput,
+          ): Promise<void> => {
+            const statusKey =
+              typeof status === "string"
+                ? status
+                : `${status.kind}:${status.context ?? ""}`;
+            if (
+              !emitStatus ||
+              statusCount >= 4 ||
+              sentStatuses.has(statusKey)
+            ) {
               return;
             }
-            sentStatuses.add(status);
+            sentStatuses.add(statusKey);
             statusCount += 1;
             await emitStatus(status);
           };
@@ -925,7 +935,9 @@ export function createSandboxExecutor(options?: {
                 });
 
                 if (!snapshot.snapshotId) {
-                  await emitSandboxStatus("Booting up...");
+                  await emitSandboxStatus(
+                    makeAssistantStatus("loading", "sandbox"),
+                  );
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     runtime,

@@ -45,6 +45,6 @@ describe("tool status formatters", () => {
         query: "holiday schedule",
         provider: "notion",
       }),
-    ).toEqual(makeAssistantStatus("searching", '"holiday schedule"'));
+    ).toEqual(makeAssistantStatus("searching", 'notion "holiday schedule"'));
   });
 });
