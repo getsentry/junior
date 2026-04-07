@@ -31,9 +31,9 @@ If `private_delivery_sent` is false, the `message` field instructs the user to s
 
 `jr-rpc oauth-start <provider>`
 
-Initiate an OAuth authorization code flow for the given provider. The command sends the authorization link as a private Slack message (visible only to the requesting user).
+Initiate an OAuth authorization code flow for the given provider without auto-resume. The command sends the authorization link as a private Slack message (visible only to the requesting user).
 
-Use this for explicit connect/reconnect requests. For disconnect + reconnect, run `jr-rpc delete-token <provider>` first, then `jr-rpc oauth-start <provider>`, tell the user the private link was sent, and stop the turn.
+Use this when the user explicitly asks to connect a provider and there is no pending task to resume after authorization.
 
 Responses:
 
