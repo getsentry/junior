@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
 
 const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
@@ -722,7 +723,7 @@ describe("createSandboxExecutor", () => {
   it("emits sandbox phase status updates before booting", async () => {
     const sandbox = makeSandbox("sbx_status");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    const statuses: string[] = [];
+    const statuses: ReturnType<typeof makeAssistantStatus>[] = [];
     resolveRuntimeDependencySnapshotMock.mockImplementationOnce(
       async (params: { onProgress?: (phase: string) => Promise<void> }) => {
         await params.onProgress?.("resolve_start");
@@ -750,10 +751,10 @@ describe("createSandboxExecutor", () => {
     await executor.createSandbox();
 
     expect(statuses).toEqual([
-      "Preparing sandbox runtime...",
-      "Checking sandbox snapshot cache...",
-      "Waiting for sandbox snapshot build...",
-      "Building sandbox snapshot...",
+      makeAssistantStatus("loading", "sandbox runtime"),
+      makeAssistantStatus("loading", "sandbox snapshot cache"),
+      makeAssistantStatus("loading", "sandbox snapshot build"),
+      makeAssistantStatus("creating", "sandbox snapshot"),
     ]);
   });
 });

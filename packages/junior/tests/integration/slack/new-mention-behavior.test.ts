@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
 import { FakeSlackAdapter } from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
@@ -81,7 +82,7 @@ describe("Slack behavior: new mention", () => {
       services: {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
-            await context?.onStatus?.("Running bash...");
+            await context?.onStatus?.(makeAssistantStatus("running", "bash"));
             return {
               text: "Done.",
               diagnostics: {
@@ -128,7 +129,9 @@ describe("Slack behavior: new mention", () => {
       services: {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
-            await context?.onStatus?.("Adding reaction...");
+            await context?.onStatus?.(
+              makeAssistantStatus("adding", "reaction"),
+            );
             return {
               text: "Done!",
               deliveryMode: "thread",

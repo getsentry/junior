@@ -16,7 +16,6 @@ describe("assistant status presentation", () => {
     expect(
       buildAssistantStatusPresentation({
         status: makeAssistantStatus("reading", "respond.ts"),
-        currentVisible: "Skimming respond.ts",
         random: () => 0,
       }),
     ).toEqual({
@@ -31,7 +30,6 @@ describe("assistant status presentation", () => {
     expect(
       buildAssistantStatusPresentation({
         status: makeAssistantStatus("thinking"),
-        currentVisible: "",
         random: () => 0,
       }),
     ).toEqual({
@@ -42,30 +40,28 @@ describe("assistant status presentation", () => {
     });
   });
 
-  it("rotates within a status kind when the current visible verb is already used", () => {
+  it("renders variants from the declared status kind", () => {
     expect(
       buildAssistantStatusPresentation({
         status: makeAssistantStatus("searching", "sources"),
-        currentVisible: "Searching sources",
-        random: () => 0,
+        random: () => 0.5,
       }),
     ).toEqual({
       key: "searching:sources",
       hint: "Searching sources",
-      visible: "Scanning sources",
-      suggestions: ["Scanning sources", "Searching sources"],
+      visible: "Probing sources",
+      suggestions: ["Probing sources", "Searching sources"],
     });
   });
 
-  it("passes raw string statuses through as already-rendered text", () => {
+  it("normalizes typed status context before rendering", () => {
     expect(
       buildAssistantStatusPresentation({
-        status: "Reading respond.ts",
-        currentVisible: "",
+        status: makeAssistantStatus("reading", "  respond.ts...  "),
         random: () => 0,
       }),
     ).toEqual({
-      key: "text:Reading respond.ts",
+      key: "reading:respond.ts",
       hint: "Reading respond.ts",
       visible: "Reading respond.ts",
       suggestions: ["Reading respond.ts"],

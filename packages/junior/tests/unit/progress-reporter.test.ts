@@ -300,7 +300,7 @@ describe("createProgressReporter", () => {
     expect(statuses).toEqual([firstPlayfulStatus, secondReviewingStatus, ""]);
   });
 
-  it("rotates to a fresh playful status during long-running work", async () => {
+  it("refreshes the current status during long-running work", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
     const reporter = createProgressReporter({
@@ -323,6 +323,6 @@ describe("createProgressReporter", () => {
     scheduler.advance(30_000);
     await Promise.resolve();
 
-    expect(statuses).toEqual([firstPlayfulStatus, secondPlayfulStatus]);
+    expect(statuses).toEqual([firstPlayfulStatus, firstPlayfulStatus]);
   });
 });

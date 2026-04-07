@@ -61,8 +61,6 @@ export interface AssistantStatusSpec {
   context?: string;
 }
 
-export type AssistantStatusInput = string | AssistantStatusSpec;
-
 /**
  * Slack assistant status transport contract.
  *
@@ -84,9 +82,8 @@ export interface AssistantStatusTransport {
 /**
  * Rendered Slack assistant status payload.
  *
- * Statuses are either explicit specs (`kind + context`) or pre-rendered
- * strings. Specs use one consistent `Verb target` pattern and may rotate
- * verbs within the same kind when refreshed.
+ * Statuses are explicit specs (`kind + context`). Specs use one consistent
+ * `Verb target` pattern and may rotate verbs within the same kind.
  */
 export interface AssistantStatusPresentation {
   key: string;
@@ -103,7 +100,7 @@ export function makeAssistantStatus(
   return { kind, ...(context ? { context } : {}) };
 }
 
-/** Normalize an arbitrary string status before handing it to Slack. */
+/** Normalize a typed assistant status context before handing it to Slack. */
 export function normalizeAssistantStatusText(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -113,36 +110,22 @@ export function normalizeAssistantStatusText(text: string): string {
 }
 
 /**
- * Render a Slack assistant status from either a typed spec or a raw string.
+ * Render a Slack assistant status from a typed spec.
  *
  * Typed specs follow a consistent `Verb target` shape and rotate only within
- * their declared kind. Raw strings are treated as already-rendered statuses.
+ * their declared kind.
  */
 export function buildAssistantStatusPresentation(args: {
-  status: AssistantStatusInput;
-  currentVisible?: string;
+  status: AssistantStatusSpec;
   random?: () => number;
 }): AssistantStatusPresentation {
-  if (typeof args.status === "string") {
-    const visible = normalizeAssistantStatusText(args.status);
-    return {
-      key: `text:${visible}`,
-      hint: visible,
-      visible,
-      suggestions: visible ? [visible] : undefined,
-    };
-  }
-
   const random = args.random ?? Math.random;
   const pattern = STATUS_PATTERNS[args.status.kind];
   const context =
     normalizeAssistantStatusText(args.status.context ?? "") ||
     pattern.defaultContext;
-  const currentVerb = extractLeadingVerb(args.currentVisible);
-  const verbs = pattern.variants.filter((variant) => variant !== currentVerb);
-  const pool = verbs.length > 0 ? verbs : [...pattern.variants];
-  const index = Math.floor(random() * pool.length);
-  const verb = pool[index] ?? pattern.variants[0];
+  const index = Math.floor(random() * pattern.variants.length);
+  const verb = pattern.variants[index] ?? pattern.variants[0];
   const visible = truncateStatusText(`${verb} ${context}`);
   const hint = truncateStatusText(`${pattern.variants[0]} ${context}`);
 
@@ -196,14 +179,6 @@ export function createSlackWebApiAssistantStatusTransport(args?: {
       }
     },
   };
-}
-
-function extractLeadingVerb(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const match = /^([A-Za-z]+)\b/.exec(value.trim());
-  return match?.[1]?.trim() || undefined;
 }
 
 function logAssistantStatusFailure(status: string, error: unknown): void {

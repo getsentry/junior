@@ -1,8 +1,7 @@
 import {
   buildAssistantStatusPresentation,
   makeAssistantStatus,
-  normalizeAssistantStatusText,
-  type AssistantStatusInput,
+  type AssistantStatusSpec,
   type AssistantStatusTransport,
 } from "@/chat/runtime/assistant-status";
 
@@ -15,7 +14,7 @@ type TimerHandle = ReturnType<typeof setTimeout>;
 export interface ProgressReporter {
   start: () => Promise<void>;
   stop: () => Promise<void>;
-  setStatus: (status: AssistantStatusInput) => Promise<void>;
+  setStatus: (status: AssistantStatusSpec) => Promise<void>;
 }
 
 /**
@@ -46,10 +45,10 @@ export function createProgressReporter(args: {
 
   let active = false;
   let currentKey = "";
-  let currentStatus: AssistantStatusInput = makeAssistantStatus("thinking");
+  let currentStatus: AssistantStatusSpec = makeAssistantStatus("thinking");
   let currentVisibleStatus = "";
   let lastStatusAt = 0;
-  let pendingStatus: AssistantStatusInput | null = null;
+  let pendingStatus: AssistantStatusSpec | null = null;
   let pendingKey = "";
   let pendingTimer: TimerHandle | null = null;
   let rotationTimer: TimerHandle | null = null;
@@ -100,11 +99,10 @@ export function createProgressReporter(args: {
   };
 
   const postRenderedStatus = async (
-    status: AssistantStatusInput,
+    status: AssistantStatusSpec,
   ): Promise<void> => {
     const presentation = buildAssistantStatusPresentation({
       status,
-      currentVisible: currentVisibleStatus,
       random,
     });
     currentStatus = status;
@@ -131,7 +129,6 @@ export function createProgressReporter(args: {
     clearPending();
     const nextPresentation = buildAssistantStatusPresentation({
       status: next,
-      currentVisible: currentVisibleStatus,
       random,
     });
     if (nextPresentation.key !== currentKey) {
@@ -157,17 +154,12 @@ export function createProgressReporter(args: {
       currentKey = "";
       await postStatus("");
     },
-    async setStatus(status: AssistantStatusInput) {
+    async setStatus(status: AssistantStatusSpec) {
       if (!active) {
         return;
       }
-      const nextStatus =
-        typeof status === "string"
-          ? normalizeAssistantStatusText(status)
-          : status;
       const presentation = buildAssistantStatusPresentation({
-        status: nextStatus,
-        currentVisible: currentVisibleStatus,
+        status,
         random,
       });
       if (!presentation.visible) {
@@ -186,11 +178,11 @@ export function createProgressReporter(args: {
 
       if (waitMs <= 0) {
         clearPending();
-        void postRenderedStatus(nextStatus);
+        void postRenderedStatus(status);
         return;
       }
 
-      pendingStatus = nextStatus;
+      pendingStatus = status;
       pendingKey = presentation.key;
       if (pendingTimer) {
         return;
