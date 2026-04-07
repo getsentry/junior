@@ -296,11 +296,14 @@ describe("mcp oauth callback handler", () => {
       thread_ts: "1712345.0001",
       text: "Your demo MCP access is now connected. Continuing the original request...",
     });
-    expect(setStatusMock).toHaveBeenCalledWith({
-      channel_id: "C123",
-      thread_ts: "1712345.0001",
-      status: "Thinking...",
-    });
+    expect(setStatusMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel_id: "C123",
+        thread_ts: "1712345.0001",
+        status: expect.any(String),
+        loading_messages: [expect.any(String)],
+      }),
+    );
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
       "/demo incidents",
       expect.objectContaining({

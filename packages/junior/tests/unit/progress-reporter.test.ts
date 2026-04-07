@@ -60,25 +60,34 @@ function createFakeScheduler() {
   };
 }
 
+const firstPlayfulStatus = "Poking around...";
+const secondPlayfulStatus = "Digging in...";
+const secondSearchingStatus = "Digging in: Searching";
+const secondReadingStatus = "Digging in: Reading source files";
+const secondReviewingStatus = "Digging in: Reviewing results";
+
 describe("createProgressReporter", () => {
-  it("posts initial Thinking status on start", async () => {
+  it("posts an initial playful status on start", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
     const reporter = createProgressReporter({
       channelId: "C1",
       threadTs: "123.45",
-      setAssistantStatus: async (_channelId, _threadTs, text) => {
-        statuses.push(text);
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          statuses.push(text);
+        },
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
+      random: () => 0,
     });
 
     await reporter.start();
     await Promise.resolve();
 
-    expect(statuses).toEqual(["Thinking..."]);
+    expect(statuses).toEqual([firstPlayfulStatus]);
   });
 
   it("clears the assistant status when stopped", async () => {
@@ -87,12 +96,15 @@ describe("createProgressReporter", () => {
     const reporter = createProgressReporter({
       channelId: "C1",
       threadTs: "123.45",
-      setAssistantStatus: async (_channelId, _threadTs, text) => {
-        statuses.push(text);
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          statuses.push(text);
+        },
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
+      random: () => 0,
     });
 
     await reporter.start();
@@ -100,7 +112,7 @@ describe("createProgressReporter", () => {
 
     await reporter.stop();
 
-    expect(statuses).toEqual(["Thinking...", ""]);
+    expect(statuses).toEqual([firstPlayfulStatus, ""]);
   });
 
   it("omits loading suggestions when clearing the assistant status", async () => {
@@ -109,12 +121,15 @@ describe("createProgressReporter", () => {
     const reporter = createProgressReporter({
       channelId: "C1",
       threadTs: "123.45",
-      setAssistantStatus: async (_channelId, _threadTs, text, suggestions) => {
-        calls.push({ text, suggestions });
+      transport: {
+        setStatus: async (_channelId, _threadTs, text, suggestions) => {
+          calls.push({ text, suggestions });
+        },
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
+      random: () => 0,
     });
 
     await reporter.start();
@@ -123,7 +138,10 @@ describe("createProgressReporter", () => {
     await reporter.stop();
 
     expect(calls).toEqual([
-      { text: "Thinking...", suggestions: ["Thinking..."] },
+      {
+        text: firstPlayfulStatus,
+        suggestions: [firstPlayfulStatus],
+      },
       { text: "", suggestions: undefined },
     ]);
   });
@@ -134,12 +152,15 @@ describe("createProgressReporter", () => {
     const reporter = createProgressReporter({
       channelId: "C1",
       threadTs: "123.45",
-      setAssistantStatus: async (_channelId, _threadTs, text) => {
-        statuses.push(text);
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          statuses.push(text);
+        },
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
+      random: () => 0,
     });
 
     await reporter.start();
@@ -150,7 +171,7 @@ describe("createProgressReporter", () => {
     scheduler.advance(1200);
     await Promise.resolve();
 
-    expect(statuses).toEqual(["Thinking...", "Searching"]);
+    expect(statuses).toEqual([firstPlayfulStatus, secondSearchingStatus]);
   });
 
   it("enforces minimum visible duration before replacement", async () => {
@@ -159,12 +180,15 @@ describe("createProgressReporter", () => {
     const reporter = createProgressReporter({
       channelId: "C1",
       threadTs: "123.45",
-      setAssistantStatus: async (_channelId, _threadTs, text) => {
-        statuses.push(text);
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          statuses.push(text);
+        },
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
+      random: () => 0,
     });
 
     await reporter.start();
@@ -173,11 +197,11 @@ describe("createProgressReporter", () => {
     await reporter.setStatus("Reading source files");
     scheduler.advance(1000);
     await Promise.resolve();
-    expect(statuses).toEqual(["Thinking..."]);
+    expect(statuses).toEqual([firstPlayfulStatus]);
 
     scheduler.advance(200);
     await Promise.resolve();
-    expect(statuses).toEqual(["Thinking...", "Reading source files"]);
+    expect(statuses).toEqual([firstPlayfulStatus, secondReadingStatus]);
   });
 
   it("keeps the latest status when multiple updates arrive before flush", async () => {
@@ -186,12 +210,15 @@ describe("createProgressReporter", () => {
     const reporter = createProgressReporter({
       channelId: "C1",
       threadTs: "123.45",
-      setAssistantStatus: async (_channelId, _threadTs, text) => {
-        statuses.push(text);
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          statuses.push(text);
+        },
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
+      random: () => 0,
     });
 
     await reporter.start();
@@ -203,7 +230,7 @@ describe("createProgressReporter", () => {
     scheduler.advance(1200);
     await Promise.resolve();
 
-    expect(statuses).toEqual(["Thinking...", "Reviewing results"]);
+    expect(statuses).toEqual([firstPlayfulStatus, secondReviewingStatus]);
   });
 
   it("serializes status updates so a slow request cannot reorder with the clear", async () => {
@@ -213,31 +240,34 @@ describe("createProgressReporter", () => {
     const reporter = createProgressReporter({
       channelId: "C1",
       threadTs: "123.45",
-      setAssistantStatus: async (_channelId, _threadTs, text) => {
-        if (text === "Thinking...") {
-          await new Promise<void>((resolve) => {
-            resolveThinking = resolve;
-          });
-        }
-        statuses.push(text);
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          if (text === firstPlayfulStatus) {
+            await new Promise<void>((resolve) => {
+              resolveThinking = resolve;
+            });
+          }
+          statuses.push(text);
+        },
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
+      random: () => 0,
     });
 
     await reporter.start();
-    // "Thinking..." is now in flight but blocked
+    // Initial playful status is now in flight but blocked
 
     const stopPromise = reporter.stop();
-    // stop() should wait for the inflight "Thinking..." before sending ""
+    // stop() should wait for the inflight status before sending ""
 
-    // Unblock the slow "Thinking..." call
+    // Unblock the slow initial status call
     resolveThinking!();
     await stopPromise;
 
     // The clear must always be the last status sent to Slack
-    expect(statuses).toEqual(["Thinking...", ""]);
+    expect(statuses).toEqual([firstPlayfulStatus, ""]);
   });
 
   it("clears after the latest visible status when stopping", async () => {
@@ -246,12 +276,15 @@ describe("createProgressReporter", () => {
     const reporter = createProgressReporter({
       channelId: "C1",
       threadTs: "123.45",
-      setAssistantStatus: async (_channelId, _threadTs, text) => {
-        statuses.push(text);
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          statuses.push(text);
+        },
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
+      random: () => 0,
     });
 
     await reporter.start();
@@ -263,6 +296,32 @@ describe("createProgressReporter", () => {
 
     await reporter.stop();
 
-    expect(statuses).toEqual(["Thinking...", "Reviewing results", ""]);
+    expect(statuses).toEqual([firstPlayfulStatus, secondReviewingStatus, ""]);
+  });
+
+  it("rotates to a fresh playful status during long-running work", async () => {
+    const scheduler = createFakeScheduler();
+    const statuses: string[] = [];
+    const reporter = createProgressReporter({
+      channelId: "C1",
+      threadTs: "123.45",
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          statuses.push(text);
+        },
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    await reporter.start();
+    await Promise.resolve();
+
+    scheduler.advance(30_000);
+    await Promise.resolve();
+
+    expect(statuses).toEqual([firstPlayfulStatus, secondPlayfulStatus]);
   });
 });

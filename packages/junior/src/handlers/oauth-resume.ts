@@ -1,9 +1,10 @@
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { generateAssistantReply, type AssistantReply } from "@/chat/respond";
+import { createSlackWebApiAssistantStatusTransport } from "@/chat/runtime/assistant-status";
+import { createProgressReporter } from "@/chat/runtime/progress-reporter";
 import { getSlackClient } from "@/chat/slack/client";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
-import { truncateStatusText } from "@/chat/runtime/status-format";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
@@ -34,83 +35,6 @@ export async function postSlackMessage(
   } catch {
     // Best effort.
   }
-}
-
-async function setAssistantStatus(
-  channelId: string,
-  threadTs: string,
-  status: string,
-): Promise<void> {
-  try {
-    await getSlackClient().assistant.threads.setStatus({
-      channel_id: channelId,
-      thread_ts: threadTs,
-      status,
-    });
-  } catch {
-    // Best effort.
-  }
-}
-
-const STATUS_DEBOUNCE_MS = 1000;
-
-function createDebouncedStatusPoster(channelId: string, threadTs: string) {
-  let lastPostAt = 0;
-  let currentStatus = "";
-  let pendingStatus: string | null = null;
-  let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-  let stopped = false;
-
-  const flush = async () => {
-    if (stopped || !pendingStatus) return;
-    const status = pendingStatus;
-    pendingStatus = null;
-    pendingTimer = null;
-    lastPostAt = Date.now();
-    currentStatus = status;
-    await setAssistantStatus(channelId, threadTs, status);
-  };
-
-  const post = async (status: string) => {
-    if (stopped) return;
-    const truncated = truncateStatusText(status);
-    if (!truncated || truncated === currentStatus) return;
-
-    const now = Date.now();
-    const elapsed = now - lastPostAt;
-    if (elapsed >= STATUS_DEBOUNCE_MS) {
-      if (pendingTimer) {
-        clearTimeout(pendingTimer);
-        pendingTimer = null;
-      }
-      pendingStatus = null;
-      lastPostAt = now;
-      currentStatus = truncated;
-      await setAssistantStatus(channelId, threadTs, truncated);
-      return;
-    }
-
-    pendingStatus = truncated;
-    if (!pendingTimer) {
-      pendingTimer = setTimeout(
-        () => {
-          void flush();
-        },
-        Math.max(1, STATUS_DEBOUNCE_MS - elapsed),
-      );
-    }
-  };
-
-  post.stop = () => {
-    stopped = true;
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      pendingTimer = null;
-    }
-    pendingStatus = null;
-  };
-
-  return post;
 }
 
 export function createReadOnlyConfigService(
@@ -170,9 +94,13 @@ export async function resumeAuthorizedRequest(args: {
   onAuthPause?: (error: unknown) => Promise<void>;
   replyTimeoutMs?: number;
 }) {
-  const postStatus = createDebouncedStatusPoster(args.channelId, args.threadTs);
+  const progress = createProgressReporter({
+    channelId: args.channelId,
+    threadTs: args.threadTs,
+    transport: createSlackWebApiAssistantStatusTransport(),
+  });
   await postSlackMessage(args.channelId, args.threadTs, args.connectedText);
-  await setAssistantStatus(args.channelId, args.threadTs, "Thinking...");
+  await progress.start();
 
   try {
     const generateReply = args.generateReply ?? generateAssistantReply;
@@ -193,7 +121,7 @@ export async function resumeAuthorizedRequest(args: {
       channelConfiguration: args.configuration
         ? createReadOnlyConfigService(args.configuration)
         : undefined,
-      onStatus: postStatus,
+      onStatus: (status) => progress.setStatus(status),
     });
     const replyTimeoutMs = resolveReplyTimeoutMs(args.replyTimeoutMs);
     const reply =
@@ -214,8 +142,7 @@ export async function resumeAuthorizedRequest(args: {
           ])
         : await replyPromise;
 
-    postStatus.stop();
-    await setAssistantStatus(args.channelId, args.threadTs, "");
+    await progress.stop();
     if (args.onReply) {
       await args.onReply(reply);
     } else if (reply.text) {
@@ -223,8 +150,7 @@ export async function resumeAuthorizedRequest(args: {
     }
     await args.onSuccess?.(reply);
   } catch (error) {
-    postStatus.stop();
-    await setAssistantStatus(args.channelId, args.threadTs, "");
+    await progress.stop();
 
     if (isRetryableTurnError(error, "mcp_auth_resume") && args.onAuthPause) {
       await args.onAuthPause(error);

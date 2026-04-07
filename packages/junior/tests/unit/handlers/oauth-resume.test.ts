@@ -69,12 +69,17 @@ describe("resumeAuthorizedRequest", () => {
       thread_ts: "1700000000.0001",
       text: "resume failed",
     });
-    expect(setStatusMock).toHaveBeenNthCalledWith(1, {
+    expect(setStatusMock).toHaveBeenCalledTimes(2);
+    expect(setStatusMock.mock.calls[0]?.[0]).toMatchObject({
       channel_id: "C-test",
       thread_ts: "1700000000.0001",
-      status: "Thinking...",
+      status: expect.any(String),
+      loading_messages: [expect.any(String)],
     });
-    expect(setStatusMock).toHaveBeenNthCalledWith(2, {
+    expect(
+      (setStatusMock.mock.calls[0]?.[0] as { status?: string }).status,
+    ).not.toBe("");
+    expect(setStatusMock.mock.calls[1]?.[0]).toMatchObject({
       channel_id: "C-test",
       thread_ts: "1700000000.0001",
       status: "",

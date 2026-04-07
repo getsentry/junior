@@ -259,7 +259,8 @@ describe("mcp oauth callback slack integration", () => {
           params: expect.objectContaining({
             channel_id: "C123",
             thread_ts: "1700000000.001",
-            status: "Thinking...",
+            status: expect.any(String),
+            loading_messages: [expect.any(String)],
           }),
         }),
         expect.objectContaining({
@@ -295,8 +296,7 @@ describe("mcp oauth callback slack integration", () => {
           params: expect.objectContaining({
             channel: "C123",
             thread_ts: "1700000000.001",
-            text:
-              "I couldn't complete this request in this turn due to an execution failure. I've logged the details for debugging.",
+            text: "I couldn't complete this request in this turn due to an execution failure. I've logged the details for debugging.",
           }),
         }),
       ]),
