@@ -93,6 +93,7 @@ vi.mock("@/chat/config", () => ({
 vi.mock("@/chat/logging", () => ({
   logException: vi.fn(),
   logInfo: vi.fn(),
+  logWarn: vi.fn(),
 }));
 
 import { GET } from "@/handlers/oauth-callback";

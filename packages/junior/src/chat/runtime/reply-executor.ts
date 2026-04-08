@@ -17,6 +17,7 @@ import {
 } from "@/chat/slack/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/runtime/progress-reporter";
+import { createSlackAdapterAssistantStatusTransport } from "@/chat/runtime/assistant-status";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
@@ -225,10 +226,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const progress = createProgressReporter({
           channelId,
           threadTs,
-          setAssistantStatus: (channel, thread, text, suggestions) =>
-            deps
-              .getSlackAdapter()
-              .setAssistantStatus(channel, thread, text, suggestions),
+          transport: createSlackAdapterAssistantStatusTransport({
+            getSlackAdapter: deps.getSlackAdapter,
+          }),
         });
         const textStream = createTextStreamBridge();
         let streamedReplyPromise: Promise<SentMessage> | undefined;

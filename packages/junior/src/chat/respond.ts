@@ -48,7 +48,7 @@ import {
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
 import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { formatToolStatusWithInput } from "@/chat/runtime/tool-status";
+import type { AssistantStatusSpec } from "@/chat/runtime/assistant-status";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
@@ -120,7 +120,7 @@ export interface ReplyRequestContext {
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
   };
-  onStatus?: (status: string) => void | Promise<void>;
+  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
 }
 
@@ -394,11 +394,6 @@ export async function generateAssistantReply(
         },
         onArtifactStatePatch: (patch) => {
           Object.assign(artifactStatePatch, patch);
-        },
-        onToolCallStart: async (toolName, input) => {
-          await context.onStatus?.(
-            `${formatToolStatusWithInput(toolName, input)}...`,
-          );
         },
         toolOverrides: context.toolOverrides,
         onSkillLoaded: async (loadedSkill) => {

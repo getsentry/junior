@@ -26,6 +26,8 @@ import {
   resolveRuntimeDependencySnapshot,
   type RuntimeDependencySnapshotProgressPhase,
 } from "@/chat/sandbox/runtime-dependency-snapshots";
+import type { AssistantStatusSpec } from "@/chat/runtime/assistant-status";
+import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 
@@ -678,7 +680,7 @@ export function createSandboxExecutor(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
-  onStatus?: (status: string) => void | Promise<void>;
+  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,
   ) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
@@ -710,11 +712,11 @@ export function createSandboxExecutor(options?: {
           projectId?: string;
         }
       | undefined,
-    onStatus?: (status: string) => Promise<void>,
+    onStatus?: (status: AssistantStatusSpec) => Promise<void>,
   ): Promise<Sandbox> => {
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       try {
-        await onStatus?.("Booting up...");
+        await onStatus?.(makeAssistantStatus("loading", "sandbox"));
         return await Sandbox.create({
           timeout: timeoutMs,
           source: {
@@ -853,11 +855,18 @@ export function createSandboxExecutor(options?: {
           const runtime = SANDBOX_RUNTIME;
           let statusCount = 0;
           const sentStatuses = new Set<string>();
-          const emitSandboxStatus = async (status: string): Promise<void> => {
-            if (!emitStatus || statusCount >= 4 || sentStatuses.has(status)) {
+          const emitSandboxStatus = async (
+            status: AssistantStatusSpec,
+          ): Promise<void> => {
+            const statusKey = `${status.kind}:${status.context ?? ""}`;
+            if (
+              !emitStatus ||
+              statusCount >= 4 ||
+              sentStatuses.has(statusKey)
+            ) {
               return;
             }
-            sentStatuses.add(status);
+            sentStatuses.add(statusKey);
             statusCount += 1;
             await emitStatus(status);
           };
@@ -865,19 +874,27 @@ export function createSandboxExecutor(options?: {
             phase: RuntimeDependencySnapshotProgressPhase,
           ): Promise<void> => {
             if (phase === "resolve_start") {
-              await emitSandboxStatus("Checking sandbox snapshot cache...");
+              await emitSandboxStatus(
+                makeAssistantStatus("loading", "sandbox snapshot cache"),
+              );
               return;
             }
             if (phase === "waiting_for_lock") {
-              await emitSandboxStatus("Waiting for sandbox snapshot build...");
+              await emitSandboxStatus(
+                makeAssistantStatus("loading", "sandbox snapshot build"),
+              );
               return;
             }
             if (phase === "building_snapshot") {
-              await emitSandboxStatus("Building sandbox snapshot...");
+              await emitSandboxStatus(
+                makeAssistantStatus("creating", "sandbox snapshot"),
+              );
               return;
             }
             if (phase === "cache_hit") {
-              await emitSandboxStatus("Using cached sandbox snapshot...");
+              await emitSandboxStatus(
+                makeAssistantStatus("loading", "sandbox snapshot"),
+              );
             }
           };
 
@@ -892,7 +909,9 @@ export function createSandboxExecutor(options?: {
                 "app.sandbox.runtime": runtime,
               },
               async () => {
-                await emitSandboxStatus("Preparing sandbox runtime...");
+                await emitSandboxStatus(
+                  makeAssistantStatus("loading", "sandbox runtime"),
+                );
                 const snapshot = await resolveRuntimeDependencySnapshot({
                   runtime,
                   timeoutMs,
@@ -923,7 +942,9 @@ export function createSandboxExecutor(options?: {
                 });
 
                 if (!snapshot.snapshotId) {
-                  await emitSandboxStatus("Booting up...");
+                  await emitSandboxStatus(
+                    makeAssistantStatus("loading", "sandbox"),
+                  );
                   return await Sandbox.create({
                     timeout: timeoutMs,
                     runtime,

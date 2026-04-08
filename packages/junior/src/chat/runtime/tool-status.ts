@@ -1,3 +1,5 @@
+import type { AssistantStatusSpec } from "@/chat/runtime/assistant-status";
+import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
 import {
   compactStatusCommand,
   compactStatusFilename,
@@ -6,46 +8,11 @@ import {
   extractStatusUrlDomain,
 } from "@/chat/runtime/status-format";
 
-/** Return a human-readable status label for a tool call (no input context). */
-export function formatToolStatus(toolName: string): string {
-  const known: Record<string, string> = {
-    loadSkill: "Loading skill instructions",
-    systemTime: "Reading current system time",
-    bash: "Working in the shell",
-    readFile: "Reading a file",
-    writeFile: "Updating a file",
-    webSearch: "Searching public sources",
-    webFetch: "Reading source pages",
-    slackChannelPostMessage: "Posting message to channel",
-    slackMessageAddReaction: "Adding emoji reaction",
-    slackChannelListMessages: "Listing channel messages",
-    slackCanvasCreate: "Creating detailed brief",
-    slackCanvasUpdate: "Updating detailed brief",
-    slackListCreate: "Creating tracking list",
-    slackListAddItems: "Updating tracking list",
-    slackListUpdateItem: "Updating tracking list",
-    imageGenerate: "Generating image",
-    searchTools: "Searching active tools",
-  };
-
-  if (known[toolName]) {
-    return known[toolName];
-  }
-
-  const mcpMatch = /^mcp__([^_]+)__(.+)$/.exec(toolName);
-  if (mcpMatch) {
-    return `Running ${mcpMatch[1]}/${mcpMatch[2]}`;
-  }
-
-  const readable = toolName.replaceAll("_", " ").trim();
-  return readable.length > 0 ? `Running ${readable}` : "Running tool";
-}
-
-/** Return a human-readable status label for a tool call, enriched with input details. */
-export function formatToolStatusWithInput(
+/** Build a typed assistant status for a tool call. */
+export function buildToolStatus(
   toolName: string,
   input: unknown,
-): string {
+): AssistantStatusSpec {
   const obj =
     input && typeof input === "object"
       ? (input as Record<string, unknown>)
@@ -61,31 +28,65 @@ export function formatToolStatusWithInput(
   const provider = obj ? compactStatusText(obj.provider, 20) : undefined;
 
   if (command && toolName === "bash") {
-    return `Running ${command}`;
+    return makeAssistantStatus("running", command);
   }
   if (filename && toolName === "readFile") {
-    return `Reading file ${filename}`;
+    return makeAssistantStatus("reading", filename);
   }
   if (filename && toolName === "writeFile") {
-    return `Updating file ${filename}`;
+    return makeAssistantStatus("updating", filename);
   }
   if (path && toolName === "writeFile") {
-    return `Updating file ${path}`;
+    return makeAssistantStatus("updating", path);
   }
   if (skillName && toolName === "loadSkill") {
-    return `Loading skill ${skillName}`;
+    return makeAssistantStatus("loading", skillName);
   }
   if (query && toolName === "webSearch") {
-    return `Searching web for "${query}"`;
+    return makeAssistantStatus("searching", `"${query}"`);
   }
   if (query && provider && toolName === "searchTools") {
-    return `Searching ${provider} tools for "${query}"`;
+    return makeAssistantStatus("searching", `${provider} "${query}"`);
   }
   if (query && toolName === "searchTools") {
-    return `Searching tools for "${query}"`;
+    return makeAssistantStatus("searching", `"${query}"`);
   }
   if (domain && toolName === "webFetch") {
-    return `Fetching page from ${domain}`;
+    return makeAssistantStatus("fetching", domain);
   }
-  return formatToolStatus(toolName);
+
+  const known: Partial<Record<string, AssistantStatusSpec>> = {
+    loadSkill: makeAssistantStatus("loading", "skill instructions"),
+    systemTime: makeAssistantStatus("reading", "system time"),
+    bash: makeAssistantStatus("running", "shell"),
+    readFile: makeAssistantStatus("reading", "file"),
+    writeFile: makeAssistantStatus("updating", "file"),
+    webSearch: makeAssistantStatus("searching", "sources"),
+    webFetch: makeAssistantStatus("fetching", "pages"),
+    slackChannelPostMessage: makeAssistantStatus("posting", "channel"),
+    slackMessageAddReaction: makeAssistantStatus("adding", "reaction"),
+    slackChannelListMessages: makeAssistantStatus("listing", "messages"),
+    slackCanvasCreate: makeAssistantStatus("creating", "brief"),
+    slackCanvasUpdate: makeAssistantStatus("updating", "brief"),
+    slackListCreate: makeAssistantStatus("creating", "tracking list"),
+    slackListAddItems: makeAssistantStatus("updating", "tracking list"),
+    slackListUpdateItem: makeAssistantStatus("updating", "tracking list"),
+    imageGenerate: makeAssistantStatus("creating", "image"),
+    searchTools: makeAssistantStatus(
+      "searching",
+      provider ? `${provider} tools` : "tools",
+    ),
+  };
+
+  if (known[toolName]) {
+    return known[toolName] as AssistantStatusSpec;
+  }
+
+  const mcpMatch = /^mcp__([^_]+)__(.+)$/.exec(toolName);
+  if (mcpMatch) {
+    return makeAssistantStatus("running", `${mcpMatch[1]}/${mcpMatch[2]}`);
+  }
+
+  const readable = toolName.replaceAll("_", " ").trim();
+  return makeAssistantStatus("running", readable || "tool");
 }

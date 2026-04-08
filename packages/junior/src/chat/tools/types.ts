@@ -15,7 +15,6 @@ export interface ToolHooks {
   onGeneratedArtifactFiles?: (files: FileUpload[]) => void;
   onGeneratedFiles?: (files: FileUpload[]) => void;
   onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
-  onToolCallStart?: (toolName: string, input?: unknown) => void | Promise<void>;
   onSkillLoaded?: (
     skill: Skill,
   ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;

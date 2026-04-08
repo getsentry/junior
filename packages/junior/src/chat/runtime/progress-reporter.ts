@@ -1,30 +1,39 @@
-import { logWarn } from "@/chat/logging";
-import { truncateStatusText } from "@/chat/runtime/status-format";
+import {
+  buildAssistantStatusPresentation,
+  makeAssistantStatus,
+  type AssistantStatusSpec,
+  type AssistantStatusTransport,
+} from "@/chat/runtime/assistant-status";
 
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
 const STATUS_MIN_VISIBLE_MS = 1200;
+const STATUS_ROTATION_INTERVAL_MS = 30_000;
 
 type TimerHandle = ReturnType<typeof setTimeout>;
 
 export interface ProgressReporter {
   start: () => Promise<void>;
   stop: () => Promise<void>;
-  setStatus: (text: string) => Promise<void>;
+  setStatus: (status: AssistantStatusSpec) => Promise<void>;
 }
 
-/** Create a debounced status reporter that drives the Slack "typing" indicator during a turn. */
+/**
+ * Create a debounced assistant-status reporter for long-running Slack turns.
+ *
+ * The runtime emits semantic hints such as tool or sandbox phases. This
+ * reporter owns the Slack-specific lifecycle on top of those hints:
+ * start with a non-empty status, debounce rapid phase changes, refresh the
+ * status before Slack's `assistant.threads.setStatus` timeout window makes it
+ * disappear, and clear the status explicitly with `""` when the turn stops.
+ */
 export function createProgressReporter(args: {
   channelId?: string;
   threadTs?: string;
-  setAssistantStatus: (
-    channelId: string,
-    threadTs: string,
-    text: string,
-    suggestions?: string[],
-  ) => Promise<void>;
+  transport: AssistantStatusTransport;
   now?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => TimerHandle;
   clearTimer?: (timer: TimerHandle) => void;
+  random?: () => number;
 }): ProgressReporter {
   const now = args.now ?? (() => Date.now());
   const setTimer =
@@ -32,47 +41,73 @@ export function createProgressReporter(args: {
     ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
   const clearTimer =
     args.clearTimer ?? ((timer: TimerHandle) => clearTimeout(timer));
+  const random = args.random ?? Math.random;
 
   let active = false;
-  let currentStatus = "";
+  let currentKey = "";
+  let currentStatus: AssistantStatusSpec = makeAssistantStatus("thinking");
+  let currentVisibleStatus = "";
   let lastStatusAt = 0;
-  let pendingStatus: string | null = null;
+  let pendingStatus: AssistantStatusSpec | null = null;
+  let pendingKey = "";
   let pendingTimer: TimerHandle | null = null;
+  let rotationTimer: TimerHandle | null = null;
   let inflightStatusUpdate: Promise<void> = Promise.resolve();
 
-  const postStatus = async (text: string): Promise<void> => {
+  const scheduleRotation = () => {
+    if (rotationTimer) {
+      clearTimer(rotationTimer);
+      rotationTimer = null;
+    }
+
+    if (!active || !currentVisibleStatus) {
+      return;
+    }
+
+    rotationTimer = setTimer(() => {
+      rotationTimer = null;
+      if (!active || !currentVisibleStatus) {
+        return;
+      }
+      void postRenderedStatus(currentStatus);
+    }, STATUS_ROTATION_INTERVAL_MS);
+  };
+
+  const postStatus = async (
+    text: string,
+    suggestions?: string[],
+  ): Promise<void> => {
     const channelId = args.channelId;
     const threadTs = args.threadTs;
     if (!channelId || !threadTs) {
       return;
     }
-    if (!text && !currentStatus) {
+    if (!text && !currentVisibleStatus) {
       return;
     }
 
-    currentStatus = text;
+    currentVisibleStatus = text;
     lastStatusAt = now();
-    const suggestions = text ? [text] : undefined;
+    scheduleRotation();
     const previous = inflightStatusUpdate;
     const request = (async () => {
       await previous;
-      try {
-        await args.setAssistantStatus(channelId, threadTs, text, suggestions);
-      } catch (error) {
-        logWarn(
-          "assistant_status_update_failed",
-          {},
-          {
-            "app.slack.status_text": text || "(clear)",
-            "error.message":
-              error instanceof Error ? error.message : String(error),
-          },
-          "Failed to update assistant status",
-        );
-      }
+      await args.transport.setStatus(channelId, threadTs, text, suggestions);
     })();
     inflightStatusUpdate = request;
     await request;
+  };
+
+  const postRenderedStatus = async (
+    status: AssistantStatusSpec,
+  ): Promise<void> => {
+    const presentation = buildAssistantStatusPresentation({
+      status,
+      random,
+    });
+    currentStatus = status;
+    currentKey = presentation.key;
+    await postStatus(presentation.visible, presentation.suggestions);
   };
 
   const clearPending = () => {
@@ -81,6 +116,7 @@ export function createProgressReporter(args: {
       pendingTimer = null;
     }
     pendingStatus = null;
+    pendingKey = "";
   };
 
   const flushPending = async () => {
@@ -91,8 +127,12 @@ export function createProgressReporter(args: {
 
     const next = pendingStatus;
     clearPending();
-    if (next !== currentStatus) {
-      await postStatus(next);
+    const nextPresentation = buildAssistantStatusPresentation({
+      status: next,
+      random,
+    });
+    if (nextPresentation.key !== currentKey) {
+      await postRenderedStatus(next);
     }
   };
 
@@ -100,21 +140,32 @@ export function createProgressReporter(args: {
     async start() {
       active = true;
       clearPending();
-      void postStatus("Thinking...");
+      currentStatus = makeAssistantStatus("thinking");
+      currentKey = "";
+      void postRenderedStatus(currentStatus);
     },
     async stop() {
       active = false;
       clearPending();
+      if (rotationTimer) {
+        clearTimer(rotationTimer);
+        rotationTimer = null;
+      }
+      currentKey = "";
       await postStatus("");
     },
-    async setStatus(text: string) {
-      const truncated = truncateStatusText(text);
-      if (
-        !active ||
-        !truncated ||
-        truncated === currentStatus ||
-        truncated === pendingStatus
-      ) {
+    async setStatus(status: AssistantStatusSpec) {
+      if (!active) {
+        return;
+      }
+      const presentation = buildAssistantStatusPresentation({
+        status,
+        random,
+      });
+      if (!presentation.visible) {
+        return;
+      }
+      if (presentation.key === currentKey || presentation.key === pendingKey) {
         return;
       }
 
@@ -127,11 +178,12 @@ export function createProgressReporter(args: {
 
       if (waitMs <= 0) {
         clearPending();
-        void postStatus(truncated);
+        void postRenderedStatus(status);
         return;
       }
 
-      pendingStatus = truncated;
+      pendingStatus = status;
+      pendingKey = presentation.key;
       if (pendingTimer) {
         return;
       }

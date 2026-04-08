@@ -72,29 +72,6 @@ function createToolState(
 
 export type { ToolHooks, ToolRuntimeContext };
 
-function wrapToolExecution<T>(
-  toolName: string,
-  toolDef: T,
-  hooks: ToolHooks,
-): T {
-  const maybeExecutable = toolDef as T & {
-    execute?: (...args: any[]) => Promise<unknown> | unknown;
-  };
-
-  if (!maybeExecutable.execute) {
-    return toolDef;
-  }
-
-  const originalExecute = maybeExecutable.execute.bind(toolDef);
-  maybeExecutable.execute = async (...args: any[]) => {
-    const input = args[0];
-    await hooks.onToolCallStart?.(toolName, input);
-    return originalExecute(...args);
-  };
-
-  return toolDef;
-}
-
 export function createTools(
   availableSkills: SkillMetadata[],
   hooks: ToolHooks = {},
@@ -102,92 +79,53 @@ export function createTools(
 ) {
   const state = createToolState(hooks, context);
   const tools: Record<string, unknown> = {
-    loadSkill: wrapToolExecution(
-      "loadSkill",
-      createLoadSkillTool(context.sandbox, availableSkills, {
-        onSkillLoaded: hooks.onSkillLoaded,
-      }),
+    loadSkill: createLoadSkillTool(context.sandbox, availableSkills, {
+      onSkillLoaded: hooks.onSkillLoaded,
+    }),
+    systemTime: createSystemTimeTool(),
+    bash: createBashTool(),
+    attachFile: createAttachFileTool(context.sandbox, hooks),
+    readFile: createReadFileTool(),
+    writeFile: createWriteFileTool(),
+    webSearch: createWebSearchTool(),
+    webFetch: createWebFetchTool(hooks),
+    imageGenerate: createImageGenerateTool(
       hooks,
+      hooks.toolOverrides?.imageGenerate,
     ),
-    systemTime: wrapToolExecution("systemTime", createSystemTimeTool(), hooks),
-    bash: wrapToolExecution("bash", createBashTool(), hooks),
-    attachFile: wrapToolExecution(
-      "attachFile",
-      createAttachFileTool(context.sandbox, hooks),
-      hooks,
-    ),
-    readFile: wrapToolExecution("readFile", createReadFileTool(), hooks),
-    writeFile: wrapToolExecution("writeFile", createWriteFileTool(), hooks),
-    webSearch: wrapToolExecution("webSearch", createWebSearchTool(), hooks),
-    webFetch: wrapToolExecution("webFetch", createWebFetchTool(hooks), hooks),
-    imageGenerate: wrapToolExecution(
-      "imageGenerate",
-      createImageGenerateTool(hooks, hooks.toolOverrides?.imageGenerate),
-      hooks,
-    ),
-    slackCanvasUpdate: wrapToolExecution(
-      "slackCanvasUpdate",
-      createSlackCanvasUpdateTool(state, context),
-      hooks,
-    ),
-    slackListCreate: wrapToolExecution(
-      "slackListCreate",
-      createSlackListCreateTool(state),
-      hooks,
-    ),
-    slackListAddItems: wrapToolExecution(
-      "slackListAddItems",
-      createSlackListAddItemsTool(state),
-      hooks,
-    ),
-    slackListGetItems: wrapToolExecution(
-      "slackListGetItems",
-      createSlackListGetItemsTool(state),
-      hooks,
-    ),
-    slackListUpdateItem: wrapToolExecution(
-      "slackListUpdateItem",
-      createSlackListUpdateItemTool(state),
-      hooks,
-    ),
+    slackCanvasUpdate: createSlackCanvasUpdateTool(state, context),
+    slackListCreate: createSlackListCreateTool(state),
+    slackListAddItems: createSlackListAddItemsTool(state),
+    slackListGetItems: createSlackListGetItemsTool(state),
+    slackListUpdateItem: createSlackListUpdateItemTool(state),
   };
 
   if (context.mcpToolManager && context.getActiveSkills) {
-    tools.searchTools = wrapToolExecution(
-      "searchTools",
-      createSearchToolsTool(context.mcpToolManager, context.getActiveSkills),
-      hooks,
+    tools.searchTools = createSearchToolsTool(
+      context.mcpToolManager,
+      context.getActiveSkills,
     );
   }
 
   const { channelCapabilities } = context;
 
   if (channelCapabilities.canCreateCanvas) {
-    tools.slackCanvasCreate = wrapToolExecution(
-      "slackCanvasCreate",
-      createSlackCanvasCreateTool(context, state),
-      hooks,
-    );
+    tools.slackCanvasCreate = createSlackCanvasCreateTool(context, state);
   }
 
   if (channelCapabilities.canPostToChannel) {
-    tools.slackChannelPostMessage = wrapToolExecution(
-      "slackChannelPostMessage",
-      createSlackChannelPostMessageTool(context, state),
-      hooks,
+    tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
+      context,
+      state,
     );
-    tools.slackChannelListMessages = wrapToolExecution(
-      "slackChannelListMessages",
-      createSlackChannelListMessagesTool(context),
-      hooks,
-    );
+    tools.slackChannelListMessages =
+      createSlackChannelListMessagesTool(context);
   }
 
   if (channelCapabilities.canAddReactions) {
-    tools.slackMessageAddReaction = wrapToolExecution(
-      "slackMessageAddReaction",
-      createSlackMessageAddReactionTool(context, state),
-      hooks,
+    tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
+      context,
+      state,
     );
   }
 
