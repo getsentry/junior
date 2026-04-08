@@ -11,7 +11,7 @@ related:
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 24
 - pnpm
 - Vercel CLI
 - Slack app credentials
