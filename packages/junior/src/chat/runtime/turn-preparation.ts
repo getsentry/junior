@@ -19,6 +19,7 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { hydrateConversationVisionContext } from "@/chat/services/vision-context";
+import { isVisionEnabled } from "@/chat/services/vision-context";
 import { getChannelConfigurationService } from "@/chat/runtime/thread-state";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 
@@ -102,7 +103,8 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       meta: {
         explicitMention: args.explicitMention,
         slackTs: args.message.id,
-        imagesHydrated: !messageHasPotentialImageAttachment,
+        imagesHydrated:
+          !messageHasPotentialImageAttachment || !isVisionEnabled(),
       },
     };
 
@@ -112,8 +114,8 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     );
 
     if (
-      messageHasPotentialImageAttachment ||
-      !conversation.vision.backfillCompletedAtMs
+      !conversation.vision.backfillCompletedAtMs ||
+      (isVisionEnabled() && messageHasPotentialImageAttachment)
     ) {
       await deps.hydrateConversationVisionContext(conversation, {
         threadId: args.context.threadId,

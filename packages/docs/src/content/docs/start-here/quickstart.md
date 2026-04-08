@@ -52,6 +52,7 @@ Recommended:
 - `JUNIOR_BOT_NAME`
 - `AI_MODEL`
 - `AI_FAST_MODEL`
+- `AI_VISION_MODEL`
 
 See [Config & Environment](/reference/config-and-env/) for the full reference.
 
@@ -169,6 +170,7 @@ Recommended:
 - `JUNIOR_BOT_NAME`
 - `AI_MODEL`
 - `AI_FAST_MODEL`
+- `AI_VISION_MODEL`
 
 Optional:
 

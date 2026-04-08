@@ -1,10 +1,25 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Message } from "chat";
-import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
+
+const ORIGINAL_ENV = { ...process.env };
+
+async function createRuntime(
+  args: Parameters<
+    typeof import("../../fixtures/chat-runtime").createTestChatRuntime
+  >[0],
+) {
+  process.env = {
+    ...ORIGINAL_ENV,
+    AI_VISION_MODEL: "openai/gpt-5.4",
+  };
+  vi.resetModules();
+  const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
+  return createTestChatRuntime(args);
+}
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -22,13 +37,25 @@ function toPostedText(value: unknown): string {
 }
 
 describe("Slack behavior: attachment handling", () => {
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    vi.resetModules();
+  });
+
   it("rehydrates attachment data and forwards it to the agent context", async () => {
     const attachmentFetch = vi.fn(async () => Buffer.from("image-bytes"));
+    const completeTextMock = vi.fn(async () => ({
+      text: "The chart trend is upward.",
+      message: {} as never,
+    }));
     const capturedAttachmentCounts: number[] = [];
     const capturedAttachmentMediaTypes: string[] = [];
 
-    const { slackRuntime } = createTestChatRuntime({
+    const { slackRuntime } = await createRuntime({
       services: {
+        visionContext: {
+          completeText: completeTextMock,
+        },
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             const attachments = context?.userAttachments ?? [];
@@ -75,6 +102,7 @@ describe("Slack behavior: attachment handling", () => {
     await slackRuntime.handleNewMention(thread, message);
 
     expect(attachmentFetch).toHaveBeenCalledTimes(1);
+    expect(completeTextMock).toHaveBeenCalledTimes(1);
     expect(capturedAttachmentCounts).toEqual([1]);
     expect(capturedAttachmentMediaTypes).toEqual(["image/png"]);
     expect(thread.posts).toHaveLength(1);

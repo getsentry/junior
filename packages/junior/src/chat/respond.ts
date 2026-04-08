@@ -112,6 +112,7 @@ export interface ReplyRequestContext {
     data: Buffer;
     mediaType: string;
     filename?: string;
+    promptText?: string;
   }>;
   sandbox?: {
     sandboxId?: string;
@@ -474,7 +475,12 @@ export async function generateAssistantReply(
     > = [{ type: "text", text: userTurnText }];
 
     for (const attachment of context.userAttachments ?? []) {
-      if (attachment.mediaType.startsWith("image/")) {
+      if (attachment.promptText) {
+        userContentParts.push({
+          type: "text",
+          text: attachment.promptText,
+        });
+      } else if (attachment.mediaType.startsWith("image/")) {
         userContentParts.push({
           type: "image",
           data: attachment.data.toString("base64"),

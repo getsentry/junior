@@ -4,9 +4,24 @@ import {
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
-import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 
 const listThreadRepliesMock = vi.fn();
+const ORIGINAL_ENV = { ...process.env };
+
+async function createRuntime(
+  args: Parameters<
+    typeof import("../../fixtures/chat-runtime").createTestChatRuntime
+  >[0],
+  env: NodeJS.ProcessEnv = {},
+) {
+  process.env = {
+    ...ORIGINAL_ENV,
+    ...env,
+  };
+  vi.resetModules();
+  const { createTestChatRuntime } = await import("../../fixtures/chat-runtime");
+  return createTestChatRuntime(args);
+}
 
 function makeSuccessReply(text = "ok") {
   return {
@@ -29,6 +44,8 @@ describe("bot image hydration", () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    process.env = { ...ORIGINAL_ENV };
+    vi.resetModules();
   });
 
   it("hydrates thread image backfill once across agent instances with shared state", async () => {
@@ -39,16 +56,21 @@ describe("bot image hydration", () => {
       },
     ]);
 
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        visionContext: {
-          listThreadReplies: listThreadRepliesMock,
-        },
-        replyExecutor: {
-          generateAssistantReply: async () => makeSuccessReply(),
+    const { slackRuntime } = await createRuntime(
+      {
+        services: {
+          visionContext: {
+            listThreadReplies: listThreadRepliesMock,
+          },
+          replyExecutor: {
+            generateAssistantReply: async () => makeSuccessReply(),
+          },
         },
       },
-    });
+      {
+        AI_VISION_MODEL: "openai/gpt-5.4",
+      },
+    );
     const firstThread = createTestThread({
       id: "slack:C_IMAGE:1700000000.000",
       state: {
@@ -131,6 +153,80 @@ describe("bot image hydration", () => {
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
   });
 
+  it("marks vision backfill complete without fetching thread images when AI_VISION_MODEL is unset", async () => {
+    const { slackRuntime } = await createRuntime({
+      services: {
+        visionContext: {
+          listThreadReplies: listThreadRepliesMock,
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => makeSuccessReply(),
+        },
+      },
+    });
+    const thread = createTestThread({
+      id: "slack:C_IMAGE:1700000001.000",
+      state: {
+        conversation: {
+          schemaVersion: 1,
+          messages: [],
+          compactions: [],
+          backfill: {
+            completedAtMs: 1700000000000,
+            source: "recent_messages",
+          },
+          processing: {},
+          stats: {
+            estimatedContextTokens: 0,
+            totalMessageCount: 0,
+            compactedMessageCount: 0,
+            updatedAtMs: 1700000000000,
+          },
+          vision: {
+            byFileId: {},
+          },
+        },
+      },
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "1700000001.200",
+        text: "what's in this screenshot?",
+        threadId: "slack:C_IMAGE:1700000001.000",
+        isMention: true,
+        author: {
+          userId: "U-user",
+          userName: "user",
+          fullName: "User Example",
+          isBot: false,
+          isMe: false,
+        },
+        attachments: [
+          {
+            type: "image",
+            mimeType: "image/png",
+            name: "screen.png",
+            data: Buffer.from("fake-image"),
+          },
+        ],
+      }),
+    );
+
+    expect(listThreadRepliesMock).not.toHaveBeenCalled();
+    const persistedState = thread.getState() as {
+      conversation: {
+        vision: {
+          backfillCompletedAtMs?: number;
+        };
+      };
+    };
+    expect(persistedState.conversation.vision.backfillCompletedAtMs).toBeTypeOf(
+      "number",
+    );
+  });
+
   it("includes generated files in thread.post via SDK file upload", async () => {
     const generatedFile = {
       data: Buffer.from("fake-png"),
@@ -138,7 +234,7 @@ describe("bot image hydration", () => {
       mimeType: "image/png",
     };
 
-    const { slackRuntime } = createTestChatRuntime({
+    const { slackRuntime } = await createRuntime({
       services: {
         visionContext: {
           listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
@@ -192,7 +288,7 @@ describe("bot image hydration", () => {
   });
 
   it("posts files separately when streamed reply is already in progress", async () => {
-    const { slackRuntime } = createTestChatRuntime({
+    const { slackRuntime } = await createRuntime({
       services: {
         visionContext: {
           listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),

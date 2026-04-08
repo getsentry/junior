@@ -10,6 +10,7 @@ const FUNCTION_TIMEOUT_BUFFER_SECONDS = 20;
 export interface BotConfig {
   fastModelId: string;
   modelId: string;
+  visionModelId?: string;
   turnTimeoutMs: number;
   userName: string;
 }
@@ -69,6 +70,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
     modelId: env.AI_MODEL ?? "anthropic/claude-sonnet-4.6",
     fastModelId:
       env.AI_FAST_MODEL ?? env.AI_MODEL ?? "anthropic/claude-haiku-4.5",
+    visionModelId: toOptionalTrimmed(env.AI_VISION_MODEL),
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,

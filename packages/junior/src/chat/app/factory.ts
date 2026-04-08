@@ -53,6 +53,7 @@ export function createSlackRuntime(
   const replyToThread = createReplyToThread({
     getSlackAdapter: options.getSlackAdapter,
     prepareTurnState,
+    resolveUserAttachments: services.visionContext.resolveUserAttachments,
     services: services.replyExecutor,
   });
 
