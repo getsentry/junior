@@ -13,7 +13,7 @@ import {
 } from "@/chat/services/conversation-memory";
 
 export interface UserInputAttachment {
-  data: Buffer;
+  data?: Buffer;
   mediaType: string;
   filename?: string;
   promptText?: string;
@@ -55,6 +55,13 @@ export interface VisionContextService {
 /** Report whether a dedicated vision model is configured for image analysis. */
 export function isVisionEnabled(): boolean {
   return Boolean(botConfig.visionModelId);
+}
+
+class ImageAttachmentProcessingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImageAttachmentProcessingError";
+  }
 }
 
 function buildImageAttachmentPromptText(args: {
@@ -116,6 +123,37 @@ async function summarizeImageWithVision(args: {
   return summary || undefined;
 }
 
+function getCachedImageSummaries(args: {
+  conversation?: ThreadConversationState;
+  messageTs?: string;
+}): string[] {
+  if (!args.conversation || !args.messageTs) {
+    return [];
+  }
+
+  const conversationMessage = args.conversation.messages.find(
+    (message) => getConversationMessageSlackTs(message) === args.messageTs,
+  );
+  if (!conversationMessage) {
+    return [];
+  }
+
+  return (conversationMessage.meta?.imageFileIds ?? [])
+    .map((fileId) =>
+      args.conversation?.vision.byFileId[fileId]?.summary?.trim(),
+    )
+    .filter((summary): summary is string => Boolean(summary));
+}
+
+function createImageAttachmentProcessingError(attachment: {
+  filename?: string;
+}): ImageAttachmentProcessingError {
+  const label = attachment.filename ? `"${attachment.filename}"` : "this image";
+  return new ImageAttachmentProcessingError(
+    `Image attachment ${label} could not be analyzed`,
+  );
+}
+
 /** Resolve user attachments into prompt-ready inputs, summarizing images via the vision model when enabled. */
 export async function resolveUserAttachments(
   attachments: Attachment[] | undefined,
@@ -124,6 +162,8 @@ export async function resolveUserAttachments(
     requesterId?: string;
     channelId?: string;
     runId?: string;
+    conversation?: ThreadConversationState;
+    messageTs?: string;
   },
 ): Promise<UserInputAttachment[]> {
   return await resolveUserAttachmentsWithDeps(attachments, context, {
@@ -138,6 +178,8 @@ async function resolveUserAttachmentsWithDeps(
     requesterId?: string;
     channelId?: string;
     runId?: string;
+    conversation?: ThreadConversationState;
+    messageTs?: string;
   },
   deps: Pick<VisionContextDeps, "completeText">,
 ): Promise<UserInputAttachment[]> {
@@ -146,6 +188,11 @@ async function resolveUserAttachmentsWithDeps(
   }
 
   const results: UserInputAttachment[] = [];
+  const cachedImageSummaries = getCachedImageSummaries({
+    conversation: context.conversation,
+    messageTs: context.messageTs,
+  });
+  let nextCachedImageSummaryIndex = 0;
   for (const attachment of attachments) {
     if (results.length >= MAX_USER_ATTACHMENTS) break;
     if (attachment.type !== "image" && attachment.type !== "file") continue;
@@ -158,8 +205,75 @@ async function resolveUserAttachmentsWithDeps(
     }
 
     try {
-      let data: Buffer | null = null;
+      const resolvedAttachment: UserInputAttachment = {
+        mediaType,
+        filename: attachment.name,
+      };
+      if (isImageAttachment) {
+        const cachedSummary =
+          cachedImageSummaries[nextCachedImageSummaryIndex] ?? undefined;
+        if (cachedSummary) {
+          nextCachedImageSummaryIndex += 1;
+          resolvedAttachment.promptText = buildImageAttachmentPromptText({
+            filename: attachment.name,
+            mediaType,
+            summary: cachedSummary,
+          });
+          results.push(resolvedAttachment);
+          continue;
+        }
 
+        let imageData: Buffer | null = null;
+        if (attachment.fetchData) {
+          imageData = await attachment.fetchData();
+        } else if (attachment.data instanceof Buffer) {
+          imageData = attachment.data;
+        }
+        if (!imageData) {
+          throw createImageAttachmentProcessingError({
+            filename: attachment.name,
+          });
+        }
+        if (imageData.byteLength > MAX_USER_ATTACHMENT_BYTES) {
+          throw createImageAttachmentProcessingError({
+            filename: attachment.name,
+          });
+        }
+
+        const summary = await summarizeImageWithVision({
+          completeText: deps.completeText,
+          imageData,
+          mimeType: mediaType,
+          maxTokens: 220,
+          prompt: [
+            "Extract concise, factual context from this user-provided image.",
+            "Focus on visible text, UI state, charts, diagrams, errors, names, and other concrete details useful for answering the user's current request.",
+            "Do not speculate.",
+            "Return plain text only.",
+          ].join(" "),
+          metadata: {
+            threadId: context.threadId ?? "",
+            channelId: context.channelId ?? "",
+            requesterId: context.requesterId ?? "",
+            runId: context.runId ?? "",
+            filename: attachment.name ?? "",
+          },
+        });
+        if (!summary) {
+          throw createImageAttachmentProcessingError({
+            filename: attachment.name,
+          });
+        }
+        resolvedAttachment.promptText = buildImageAttachmentPromptText({
+          filename: attachment.name,
+          mediaType,
+          summary,
+        });
+        results.push(resolvedAttachment);
+        continue;
+      }
+
+      let data: Buffer | null = null;
       if (attachment.fetchData) {
         data = await attachment.fetchData();
       } else if (attachment.data instanceof Buffer) {
@@ -187,43 +301,37 @@ async function resolveUserAttachmentsWithDeps(
         continue;
       }
 
-      const resolvedAttachment: UserInputAttachment = {
-        data,
-        mediaType,
-        filename: attachment.name,
-      };
-      if (isImageAttachment) {
-        const summary = await summarizeImageWithVision({
-          completeText: deps.completeText,
-          imageData: data,
-          mimeType: mediaType,
-          maxTokens: 220,
-          prompt: [
-            "Extract concise, factual context from this user-provided image.",
-            "Focus on visible text, UI state, charts, diagrams, errors, names, and other concrete details useful for answering the user's current request.",
-            "Do not speculate.",
-            "Return plain text only.",
-          ].join(" "),
-          metadata: {
-            threadId: context.threadId ?? "",
-            channelId: context.channelId ?? "",
-            requesterId: context.requesterId ?? "",
-            runId: context.runId ?? "",
-            filename: attachment.name ?? "",
-          },
-        });
-        if (!summary) {
-          continue;
-        }
-        resolvedAttachment.promptText = buildImageAttachmentPromptText({
-          filename: attachment.name,
-          mediaType,
-          summary,
-        });
-      }
-
+      resolvedAttachment.data = data;
       results.push(resolvedAttachment);
     } catch (error) {
+      if (isImageAttachment) {
+        const attachmentError =
+          error instanceof ImageAttachmentProcessingError
+            ? error
+            : createImageAttachmentProcessingError({
+                filename: attachment.name,
+              });
+        logWarn(
+          "image_attachment_processing_failed",
+          {
+            slackThreadId: context.threadId,
+            slackUserId: context.requesterId,
+            slackChannelId: context.channelId,
+            runId: context.runId,
+            assistantUserName: botConfig.userName,
+            modelId: botConfig.visionModelId ?? botConfig.modelId,
+          },
+          {
+            "error.message":
+              error instanceof Error ? error.message : String(error),
+            "file.mime_type": mediaType,
+            ...(attachment.name ? { "file.name": attachment.name } : {}),
+          },
+          "Image attachment processing failed",
+        );
+        throw attachmentError;
+      }
+
       logWarn(
         "attachment_resolution_failed",
         {
@@ -324,9 +432,6 @@ async function hydrateConversationVisionContextWithDeps(
   deps: VisionContextDeps,
 ): Promise<void> {
   if (!isVisionEnabled()) {
-    if (!conversation.vision.backfillCompletedAtMs) {
-      conversation.vision.backfillCompletedAtMs = Date.now();
-    }
     return;
   }
 

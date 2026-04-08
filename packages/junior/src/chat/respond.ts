@@ -109,7 +109,7 @@ export interface ReplyRequestContext {
   configuration?: Record<string, unknown>;
   channelConfiguration?: ChannelConfigurationService;
   userAttachments?: Array<{
-    data: Buffer;
+    data?: Buffer;
     mediaType: string;
     filename?: string;
     promptText?: string;
@@ -481,15 +481,26 @@ export async function generateAssistantReply(
           text: attachment.promptText,
         });
       } else if (attachment.mediaType.startsWith("image/")) {
+        if (!attachment.data) {
+          throw new Error("Image attachment is missing image data");
+        }
         userContentParts.push({
           type: "image",
           data: attachment.data.toString("base64"),
           mimeType: attachment.mediaType,
         });
       } else {
+        if (!attachment.data) {
+          throw new Error("Attachment is missing attachment data");
+        }
+        const promptAttachment = {
+          data: attachment.data,
+          mediaType: attachment.mediaType,
+          filename: attachment.filename,
+        };
         userContentParts.push({
           type: "text",
-          text: encodeNonImageAttachmentForPrompt(attachment),
+          text: encodeNonImageAttachmentForPrompt(promptAttachment),
         });
       }
     }

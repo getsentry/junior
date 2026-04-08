@@ -95,10 +95,12 @@ interface ReplyExecutorDeps {
       requesterId?: string;
       channelId?: string;
       runId?: string;
+      conversation?: PreparedTurnState["conversation"];
+      messageTs?: string;
     },
   ) => Promise<
     Array<{
-      data: Buffer;
+      data?: Buffer;
       mediaType: string;
       filename?: string;
       promptText?: string;
@@ -229,6 +231,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             requesterId: message.author.userId,
             channelId,
             runId,
+            conversation: preparedState.conversation,
+            messageTs: message.id,
           },
         );
 

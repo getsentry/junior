@@ -103,8 +103,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       meta: {
         explicitMention: args.explicitMention,
         slackTs: args.message.id,
-        imagesHydrated:
-          !messageHasPotentialImageAttachment || !isVisionEnabled(),
+        imagesHydrated: !messageHasPotentialImageAttachment,
       },
     };
 
@@ -114,8 +113,9 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     );
 
     if (
-      !conversation.vision.backfillCompletedAtMs ||
-      (isVisionEnabled() && messageHasPotentialImageAttachment)
+      isVisionEnabled() &&
+      (!conversation.vision.backfillCompletedAtMs ||
+        messageHasPotentialImageAttachment)
     ) {
       await deps.hydrateConversationVisionContext(conversation, {
         threadId: args.context.threadId,

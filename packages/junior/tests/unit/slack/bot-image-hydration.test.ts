@@ -217,14 +217,284 @@ describe("bot image hydration", () => {
     expect(listThreadRepliesMock).not.toHaveBeenCalled();
     const persistedState = thread.getState() as {
       conversation: {
+        messages: Array<{
+          meta?: {
+            imagesHydrated?: boolean;
+          };
+        }>;
         vision: {
           backfillCompletedAtMs?: number;
         };
       };
     };
+    expect(
+      persistedState.conversation.vision.backfillCompletedAtMs,
+    ).toBeUndefined();
+    expect(
+      persistedState.conversation.messages.at(-1)?.meta?.imagesHydrated,
+    ).not.toBe(true);
+  });
+
+  it("backfills older image messages after vision is enabled later", async () => {
+    const firstRuntime = await createRuntime({
+      services: {
+        visionContext: {
+          listThreadReplies: listThreadRepliesMock,
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => makeSuccessReply(),
+        },
+      },
+    });
+    const firstThread = createTestThread({
+      id: "slack:C_IMAGE:1700000002.000",
+      state: {
+        conversation: {
+          schemaVersion: 1,
+          messages: [],
+          compactions: [],
+          backfill: {
+            completedAtMs: 1700000000000,
+            source: "recent_messages",
+          },
+          processing: {},
+          stats: {
+            estimatedContextTokens: 0,
+            totalMessageCount: 0,
+            compactedMessageCount: 0,
+            updatedAtMs: 1700000000000,
+          },
+          vision: {
+            byFileId: {},
+          },
+        },
+      },
+    });
+
+    await firstRuntime.slackRuntime.handleNewMention(
+      firstThread,
+      createTestMessage({
+        id: "1700000002.100",
+        text: "what is in this screenshot?",
+        threadId: "slack:C_IMAGE:1700000002.000",
+        isMention: true,
+        author: {
+          userId: "U-user",
+          userName: "user",
+          fullName: "User Example",
+          isBot: false,
+          isMe: false,
+        },
+        attachments: [
+          {
+            type: "image",
+            mimeType: "image/png",
+            name: "screen.png",
+            data: Buffer.from("fake-image"),
+          },
+        ],
+      }),
+    );
+
+    listThreadRepliesMock.mockResolvedValue([
+      {
+        ts: "1700000002.100",
+        files: [
+          {
+            id: "F_OLD",
+            mimetype: "image/png",
+            url_private_download: "https://files.slack.com/private/old.png",
+          },
+        ],
+      },
+    ]);
+    const downloadPrivateSlackFileMock = vi.fn(async () =>
+      Buffer.from("downloaded-image"),
+    );
+    const completeTextMock = vi.fn(async () => ({
+      text: "Recovered screenshot context",
+      message: {} as never,
+    }));
+
+    const secondRuntime = await createRuntime(
+      {
+        services: {
+          visionContext: {
+            listThreadReplies: listThreadRepliesMock,
+            downloadPrivateSlackFile: downloadPrivateSlackFileMock,
+            completeText: completeTextMock,
+          },
+          replyExecutor: {
+            generateAssistantReply: async () => makeSuccessReply(),
+          },
+        },
+      },
+      {
+        AI_VISION_MODEL: "openai/gpt-5.4",
+      },
+    );
+    const secondThread = createTestThread({
+      id: "slack:C_IMAGE:1700000002.000",
+      state: firstThread.getState(),
+    });
+
+    await secondRuntime.slackRuntime.handleNewMention(
+      secondThread,
+      createTestMessage({
+        id: "1700000002.200",
+        text: "follow up without new uploads",
+        threadId: "slack:C_IMAGE:1700000002.000",
+        isMention: true,
+        author: {
+          userId: "U-user",
+          userName: "user",
+          fullName: "User Example",
+          isBot: false,
+          isMe: false,
+        },
+      }),
+    );
+
+    expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
+    expect(downloadPrivateSlackFileMock).toHaveBeenCalledTimes(1);
+    expect(completeTextMock).toHaveBeenCalledTimes(1);
+    const persistedState = secondThread.getState() as {
+      conversation: {
+        messages: Array<{
+          id: string;
+          meta?: {
+            imagesHydrated?: boolean;
+            imageFileIds?: string[];
+          };
+        }>;
+        vision: {
+          backfillCompletedAtMs?: number;
+          byFileId: Record<string, { summary: string }>;
+        };
+      };
+    };
+    expect(
+      persistedState.conversation.messages.find(
+        (message) => message.id === "1700000002.100",
+      )?.meta,
+    ).toEqual(
+      expect.objectContaining({
+        imagesHydrated: true,
+        imageFileIds: ["F_OLD"],
+      }),
+    );
+    expect(persistedState.conversation.vision.byFileId.F_OLD?.summary).toBe(
+      "Recovered screenshot context",
+    );
     expect(persistedState.conversation.vision.backfillCompletedAtMs).toBeTypeOf(
       "number",
     );
+  });
+
+  it("reuses the thread image summary instead of re-analyzing the same upload", async () => {
+    listThreadRepliesMock.mockResolvedValue([
+      {
+        ts: "1700000003.100",
+        files: [
+          {
+            id: "F_CUR",
+            mimetype: "image/png",
+            url_private_download: "https://files.slack.com/private/current.png",
+          },
+        ],
+      },
+    ]);
+    const downloadPrivateSlackFileMock = vi.fn(async () =>
+      Buffer.from("downloaded-image"),
+    );
+    const completeTextMock = vi.fn(async () => ({
+      text: "Current screenshot summary",
+      message: {} as never,
+    }));
+    const attachmentFetch = vi.fn(async () => Buffer.from("attachment-image"));
+    const generateAssistantReply = vi.fn(
+      async (_text: string, context: any) => {
+        expect(context?.userAttachments).toEqual([
+          expect.objectContaining({
+            mediaType: "image/png",
+            filename: "screen.png",
+            promptText: expect.stringContaining("Current screenshot summary"),
+          }),
+        ]);
+        return makeSuccessReply();
+      },
+    );
+
+    const { slackRuntime } = await createRuntime(
+      {
+        services: {
+          visionContext: {
+            listThreadReplies: listThreadRepliesMock,
+            downloadPrivateSlackFile: downloadPrivateSlackFileMock,
+            completeText: completeTextMock,
+          },
+          replyExecutor: {
+            generateAssistantReply,
+          },
+        },
+      },
+      {
+        AI_VISION_MODEL: "openai/gpt-5.4",
+      },
+    );
+
+    await slackRuntime.handleNewMention(
+      createTestThread({
+        id: "slack:C_IMAGE:1700000003.000",
+        state: {
+          conversation: {
+            schemaVersion: 1,
+            messages: [],
+            compactions: [],
+            backfill: {
+              completedAtMs: 1700000000000,
+              source: "recent_messages",
+            },
+            processing: {},
+            stats: {
+              estimatedContextTokens: 0,
+              totalMessageCount: 0,
+              compactedMessageCount: 0,
+              updatedAtMs: 1700000000000,
+            },
+            vision: {
+              byFileId: {},
+            },
+          },
+        },
+      }),
+      createTestMessage({
+        id: "1700000003.100",
+        text: "explain this screenshot",
+        threadId: "slack:C_IMAGE:1700000003.000",
+        isMention: true,
+        author: {
+          userId: "U-user",
+          userName: "user",
+          fullName: "User Example",
+          isBot: false,
+          isMe: false,
+        },
+        attachments: [
+          {
+            type: "image",
+            mimeType: "image/png",
+            name: "screen.png",
+            fetchData: attachmentFetch,
+          },
+        ],
+      }),
+    );
+
+    expect(downloadPrivateSlackFileMock).toHaveBeenCalledTimes(1);
+    expect(completeTextMock).toHaveBeenCalledTimes(1);
+    expect(attachmentFetch).not.toHaveBeenCalled();
+    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
   });
 
   it("includes generated files in thread.post via SDK file upload", async () => {
