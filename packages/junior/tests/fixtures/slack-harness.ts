@@ -134,6 +134,7 @@ export function createTestThread(args: {
   let stateData: Record<string, unknown> = { ...(args.state ?? {}) };
   const posts: unknown[] = [];
   const postKinds: Array<"stream" | "value"> = [];
+  const postIds: symbol[] = [];
   let subscribeCalls = 0;
   let subscribed = false;
 
@@ -215,28 +216,35 @@ export function createTestThread(args: {
     },
     async post(message: unknown): Promise<SentMessage> {
       let entry: unknown;
+      let kind: "stream" | "value";
       if (
         message &&
         typeof message === "object" &&
         Symbol.asyncIterator in (message as Record<PropertyKey, unknown>)
       ) {
-        postKinds.push("stream");
+        kind = "stream";
         let text = "";
         for await (const chunk of message as AsyncIterable<string>) {
           text += chunk;
         }
         entry = text;
       } else {
-        postKinds.push("value");
+        kind = "value";
         entry = message;
       }
+      const postId = Symbol("post");
       posts.push(entry);
+      postKinds.push(kind);
+      postIds.push(postId);
       const sent = {
         id: `sent-${posts.length}`,
         text: String(entry),
         async delete() {
-          const idx = posts.indexOf(entry);
-          if (idx !== -1) posts.splice(idx, 1);
+          const idx = postIds.indexOf(postId);
+          if (idx === -1) return;
+          posts.splice(idx, 1);
+          postKinds.splice(idx, 1);
+          postIds.splice(idx, 1);
         },
       } as unknown as SentMessage;
       return sent;
