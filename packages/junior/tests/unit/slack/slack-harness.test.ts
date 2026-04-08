@@ -15,4 +15,20 @@ describe("slack harness fixture", () => {
     expect(thread.channelId).toBe("C_TEST");
     expect(thread.channel.id).toBe("C_TEST");
   });
+
+  it("keeps posts and postKinds aligned when deleting a duplicate post", async () => {
+    const thread = createTestThread({ id: "slack:C_TEST:1700000000.000" });
+
+    await thread.post(
+      (async function* () {
+        yield "same";
+      })(),
+    );
+    const sent = await thread.post("same");
+
+    await sent.delete();
+
+    expect(thread.posts).toEqual(["same"]);
+    expect(thread.postKinds).toEqual(["stream"]);
+  });
 });

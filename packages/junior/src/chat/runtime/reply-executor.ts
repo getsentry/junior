@@ -11,19 +11,13 @@ import {
   setTags,
   withSpan,
 } from "@/chat/logging";
-import {
-  buildSlackOutputMessage,
-  ensureBlockSpacing,
-} from "@/chat/slack/output";
+import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/runtime/progress-reporter";
 import { createSlackAdapterAssistantStatusTransport } from "@/chat/runtime/assistant-status";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import {
-  createTextStreamBridge,
-  createNormalizingStream,
-} from "@/chat/runtime/streaming";
+import { createTextStreamBridge } from "@/chat/runtime/streaming";
 import {
   getChannelId,
   getMessageTs,
@@ -245,10 +239,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (!streamedReplyPromise) {
             const streamingReply = (async () => {
               return await postThreadReply(
-                createNormalizingStream(
-                  textStream.iterable,
-                  ensureBlockSpacing,
-                ),
+                textStream.iterable,
                 "streaming_initial_post",
               );
             })();
