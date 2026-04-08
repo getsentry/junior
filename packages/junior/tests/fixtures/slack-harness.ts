@@ -113,6 +113,7 @@ export class FakeSlackAdapter {
 
 export interface TestThread extends Thread {
   posts: unknown[];
+  postKinds: Array<"stream" | "value">;
   runId?: string;
   subscribeCalls: number;
   subscribed: boolean;
@@ -132,6 +133,7 @@ export function createTestThread(args: {
   const channelId = args.channelId ?? parseChannelFromThreadId(id) ?? id;
   let stateData: Record<string, unknown> = { ...(args.state ?? {}) };
   const posts: unknown[] = [];
+  const postKinds: Array<"stream" | "value"> = [];
   let subscribeCalls = 0;
   let subscribed = false;
 
@@ -218,12 +220,14 @@ export function createTestThread(args: {
         typeof message === "object" &&
         Symbol.asyncIterator in (message as Record<PropertyKey, unknown>)
       ) {
+        postKinds.push("stream");
         let text = "";
         for await (const chunk of message as AsyncIterable<string>) {
           text += chunk;
         }
         entry = text;
       } else {
+        postKinds.push("value");
         entry = message;
       }
       posts.push(entry);
@@ -272,6 +276,9 @@ export function createTestThread(args: {
     },
     get posts() {
       return posts;
+    },
+    get postKinds() {
+      return postKinds;
     },
     get subscribeCalls() {
       return subscribeCalls;

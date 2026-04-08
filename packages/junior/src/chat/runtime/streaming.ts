@@ -14,7 +14,7 @@ export function createTextStreamBridge() {
           wakeConsumer = resolve;
         });
       }
-    }
+    },
   };
 
   return {
@@ -36,43 +36,6 @@ export function createTextStreamBridge() {
       const wake = wakeConsumer;
       wakeConsumer = null;
       wake?.();
-    }
-  };
-}
-
-export function createNormalizingStream(
-  inner: AsyncIterable<string>,
-  normalize: (text: string) => string
-): AsyncIterable<string> {
-  return {
-    async *[Symbol.asyncIterator]() {
-      let accumulated = "";
-      let emitted = 0;
-      for await (const chunk of inner) {
-        accumulated += chunk;
-        const lastNewline = accumulated.lastIndexOf("\n");
-
-        if (lastNewline === -1) {
-          const delta = accumulated.slice(emitted);
-          if (delta) {
-            yield delta;
-            emitted = accumulated.length;
-          }
-          continue;
-        }
-
-        const stable = accumulated.slice(0, lastNewline + 1);
-        const normalized = normalize(stable);
-        const delta = normalized.slice(emitted);
-        emitted = normalized.length;
-        if (delta) yield delta;
-      }
-
-      if (accumulated) {
-        const normalized = normalize(accumulated);
-        const delta = normalized.slice(emitted);
-        if (delta) yield delta;
-      }
-    }
+    },
   };
 }
