@@ -1,10 +1,11 @@
-import type {
-  Adapter,
-  Author,
-  Channel,
-  Message,
-  SentMessage,
-  Thread,
+import {
+  type Adapter,
+  type Author,
+  type Channel,
+  type Message,
+  type SentMessage,
+  type Thread,
+  parseMarkdown,
 } from "chat";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -13,6 +14,16 @@ function parseChannelFromThreadId(threadId: string): string | undefined {
   const parts = threadId.split(":");
   if (parts.length === 3 && parts[0] === "slack" && parts[1]) return parts[1];
   return undefined;
+}
+
+/** Convert Slack mrkdwn syntax to standard markdown for AST parsing. */
+function slackTextToMarkdown(text: string): string {
+  return text
+    .replace(/<@([A-Z0-9_]+)\|([^<>]+)>/g, "@$2")
+    .replace(/<@([A-Z0-9_]+)>/g, "@$1")
+    .replace(/<#[A-Z0-9_]+\|([^<>]+)>/g, "#$1")
+    .replace(/<(https?:\/\/[^|<>]+)\|([^<>]+)>/g, "[$2]($1)")
+    .replace(/<(https?:\/\/[^<>]+)>/g, "$1");
 }
 
 // ── Test Author ──────────────────────────────────────────────────────
@@ -52,7 +63,7 @@ export function createTestMessage(args: {
     isMention: args.isMention,
     attachments: args.attachments ?? [],
     metadata: { dateSent: new Date(), edited: false },
-    formatted: { type: "root", children: [] },
+    formatted: parseMarkdown(slackTextToMarkdown(args.text ?? "hello")),
     raw: args.raw ?? {
       ...(inferredChannel ? { channel: inferredChannel } : {}),
       ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : {}),

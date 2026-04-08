@@ -1,4 +1,5 @@
 import type { Message, SentMessage, Thread } from "chat";
+import { extractTextPreservingLinks } from "@/chat/message-text";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
@@ -138,10 +139,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         modelId: botConfig.modelId,
       },
       async () => {
-        const userText = stripLeadingBotMention(message.text, {
-          stripLeadingSlackMentionToken:
-            options.explicitMention || Boolean(message.isMention),
-        });
+        const userText = stripLeadingBotMention(
+          extractTextPreservingLinks(message.formatted),
+          {
+            stripLeadingSlackMentionToken:
+              options.explicitMention || Boolean(message.isMention),
+          },
+        );
         const explicitChannelPostIntent = isExplicitChannelPostIntent(userText);
 
         const preparedState =

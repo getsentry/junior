@@ -1,4 +1,5 @@
 import type { Message, Thread } from "chat";
+import { extractTextPreservingLinks } from "@/chat/message-text";
 import { botConfig } from "@/chat/config";
 import { completeText } from "@/chat/pi/client";
 import type {
@@ -390,7 +391,9 @@ export const generateThreadTitle =
 function createConversationMessageFromSdkMessage(
   entry: Message,
 ): ConversationMessage | null {
-  const rawText = normalizeConversationText(entry.text);
+  const rawText = normalizeConversationText(
+    extractTextPreservingLinks(entry.formatted),
+  );
   if (!rawText) {
     return null;
   }
