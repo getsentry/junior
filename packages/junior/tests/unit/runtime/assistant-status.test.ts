@@ -33,10 +33,10 @@ describe("assistant status presentation", () => {
         random: () => 0,
       }),
     ).toEqual({
-      key: "thinking:task",
-      hint: "Thinking task",
-      visible: "Thinking task",
-      suggestions: ["Thinking task"],
+      key: "thinking:…",
+      hint: "Thinking …",
+      visible: "Thinking …",
+      suggestions: ["Thinking …"],
     });
   });
 

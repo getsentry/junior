@@ -61,7 +61,7 @@ function createFakeScheduler() {
   };
 }
 
-const firstPlayfulStatus = "Thinking task";
+const firstPlayfulStatus = "Thinking …";
 const secondSearchingStatus = "Searching sources";
 const secondReadingStatus = "Reading source files";
 const secondReviewingStatus = "Reviewing results";

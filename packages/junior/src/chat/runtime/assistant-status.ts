@@ -5,7 +5,7 @@ import { truncateStatusText } from "@/chat/runtime/status-format";
 
 const STATUS_PATTERNS = {
   thinking: {
-    defaultContext: "task",
+    defaultContext: "…",
     variants: ["Thinking", "Reasoning", "Considering", "Working through"],
   },
   searching: {
