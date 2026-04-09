@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
-import { sandboxSkillDir } from "@/chat/sandbox/paths";
+import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
@@ -624,6 +624,35 @@ describe("createSandboxExecutor", () => {
     expect(sandbox.extendTimeout).toHaveBeenNthCalledWith(2, 5000);
   });
 
+  it("does not re-sync skills when reusing a cached sandbox", async () => {
+    const sandbox = makeSandbox("sbx_cached_once");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo first",
+      },
+    });
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo second",
+      },
+    });
+
+    expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
+  });
+
   it("recreates cached sandboxes before reusing cached tool executors", async () => {
     const stoppedSandboxError = createApiError(
       410,
@@ -632,11 +661,12 @@ describe("createSandboxExecutor", () => {
       "Sandbox has stopped execution and is no longer available",
     );
     const firstSandbox = makeSandbox("sbx_cached_first");
-    firstSandbox.writeFiles
-      .mockImplementationOnce(async () => {})
-      .mockImplementationOnce(async () => {
+    let stopCachedSandbox = false;
+    firstSandbox.mkDir.mockImplementation(async (directory: string) => {
+      if (stopCachedSandbox && directory === SANDBOX_WORKSPACE_ROOT) {
         throw stoppedSandboxError;
-      });
+      }
+    });
     firstSandbox.runCommand
       .mockResolvedValueOnce({
         exitCode: 0,
@@ -671,6 +701,7 @@ describe("createSandboxExecutor", () => {
         command: "echo first",
       },
     });
+    stopCachedSandbox = true;
 
     const response = await executor.execute({
       toolName: "bash",
@@ -684,7 +715,7 @@ describe("createSandboxExecutor", () => {
       stdout: "second\n",
       exit_code: 0,
     });
-    expect(firstSandbox.writeFiles).toHaveBeenCalledTimes(2);
+    expect(firstSandbox.writeFiles).toHaveBeenCalledTimes(1);
     expect(firstSandbox.runCommand).toHaveBeenCalledTimes(1);
     expect(secondSandbox.runCommand).toHaveBeenCalledTimes(1);
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);

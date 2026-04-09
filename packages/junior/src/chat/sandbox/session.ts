@@ -13,6 +13,7 @@ import {
 } from "@/chat/runtime/assistant-status";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
+  isAlreadyExistsError,
   isSandboxUnavailableError,
   isSnapshottingError,
   wrapSandboxSetupError,
@@ -282,6 +283,29 @@ export function createSandboxSessionManager(options?: {
     });
   };
 
+  const ensureSandboxReachable = async (
+    targetSandbox: Sandbox,
+    source: "memory" | "id_hint",
+  ): Promise<void> => {
+    await withSandboxSpan(
+      "sandbox.reuse_probe",
+      "sandbox.acquire.probe",
+      {
+        "app.sandbox.reused": true,
+        "app.sandbox.source": source,
+      },
+      async () => {
+        try {
+          await targetSandbox.mkDir(SANDBOX_WORKSPACE_ROOT);
+        } catch (error) {
+          if (!isAlreadyExistsError(error)) {
+            throw error;
+          }
+        }
+      },
+    );
+  };
+
   const invalidateSandboxInstance = async (
     targetSandbox: Sandbox,
     reason: unknown,
@@ -509,17 +533,7 @@ export function createSandboxSessionManager(options?: {
     }
 
     try {
-      await withSandboxSpan(
-        "sandbox.reuse_cached",
-        "sandbox.acquire.cached",
-        {
-          "app.sandbox.reused": true,
-          "app.sandbox.source": "memory",
-        },
-        async () => {
-          await syncSkills(cachedSandbox);
-        },
-      );
+      await ensureSandboxReachable(cachedSandbox, "memory");
       return cachedSandbox;
     } catch (error) {
       if (isSandboxUnavailableError(error)) {
