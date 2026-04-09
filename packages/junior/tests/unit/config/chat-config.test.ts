@@ -30,6 +30,23 @@ describe("chat config", () => {
     expect(botConfig.fastModelId).toBe("anthropic/custom-fast-model");
   });
 
+  it("leaves visionModelId unset when AI_VISION_MODEL is absent", async () => {
+    process.env.AI_MODEL = "anthropic/custom-model";
+    delete process.env.AI_VISION_MODEL;
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.visionModelId).toBeUndefined();
+  });
+
+  it("uses AI_VISION_MODEL without falling back to AI_MODEL", async () => {
+    process.env.AI_MODEL = "anthropic/custom-model";
+    process.env.AI_VISION_MODEL = "openai/gpt-5.4";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.modelId).toBe("anthropic/custom-model");
+    expect(botConfig.visionModelId).toBe("openai/gpt-5.4");
+  });
+
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {
     delete process.env.AGENT_TURN_TIMEOUT_MS;
     const { botConfig } = await loadConfig();

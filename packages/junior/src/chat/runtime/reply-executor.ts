@@ -42,7 +42,6 @@ import {
   generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
-import { resolveUserAttachments } from "@/chat/services/vision-context";
 import { isDmChannel } from "@/chat/slack/client";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
@@ -89,6 +88,24 @@ function getExecutionFailureReason(reply: {
 
 interface ReplyExecutorDeps {
   getSlackAdapter: () => SlackAdapter;
+  resolveUserAttachments: (
+    attachments: Message["attachments"] | undefined,
+    context: {
+      threadId?: string;
+      requesterId?: string;
+      channelId?: string;
+      runId?: string;
+      conversation?: PreparedTurnState["conversation"];
+      messageTs?: string;
+    },
+  ) => Promise<
+    Array<{
+      data?: Buffer;
+      mediaType: string;
+      filename?: string;
+      promptText?: string;
+    }>
+  >;
   prepareTurnState: (args: {
     explicitMention: boolean;
     message: Message;
@@ -207,13 +224,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         if (resolvedUserName) {
           setTags({ slackUserName: resolvedUserName });
         }
-        const userAttachments = await resolveUserAttachments(
+        const userAttachments = await deps.resolveUserAttachments(
           message.attachments,
           {
             threadId,
             requesterId: message.author.userId,
             channelId,
             runId,
+            conversation: preparedState.conversation,
+            messageTs: message.id,
           },
         );
 
