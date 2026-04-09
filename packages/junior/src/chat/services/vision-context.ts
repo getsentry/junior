@@ -127,6 +127,10 @@ async function summarizeImageWithVision(args: {
   return summary || undefined;
 }
 
+function truncateVisionSummary(summary: string): string {
+  return summary.slice(0, MAX_VISION_SUMMARY_CHARS);
+}
+
 function getCachedImageSummaries(args: {
   conversation?: ThreadConversationState;
   messageTs?: string;
@@ -244,7 +248,7 @@ async function resolveUserAttachmentsWithDeps(
         resolvedAttachment.promptText = buildImageAttachmentPromptText({
           filename: attachment.name,
           mediaType,
-          summary,
+          summary: truncateVisionSummary(summary),
         });
         results.push(resolvedAttachment);
         continue;
@@ -374,7 +378,7 @@ async function summarizeConversationImage(
     if (!summary) {
       return undefined;
     }
-    return summary.slice(0, MAX_VISION_SUMMARY_CHARS);
+    return truncateVisionSummary(summary);
   } catch (error) {
     logWarn(
       "conversation_image_vision_failed",
