@@ -1,16 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { agentMode, createSandboxCallCount } = vi.hoisted(() => ({
+const {
+  agentMode,
+  createSandboxCallCount,
+  activeSandboxVersion,
+  attachFileReadVersions,
+} = vi.hoisted(() => ({
   agentMode: {
     value: "plain" as
       | "plain"
       | "loadSkill"
       | "attachFile"
       | "attachFileThenError"
+      | "attachFileBashRecoverAttachFile"
       | "bashThenError",
   },
   createSandboxCallCount: {
     value: 0,
+  },
+  activeSandboxVersion: {
+    value: 1,
+  },
+  attachFileReadVersions: {
+    value: [] as number[],
   },
 }));
 
@@ -100,6 +112,31 @@ vi.mock("@mariozechner/pi-agent-core", () => {
           path: "report.txt",
         });
         throw new Error("agent exploded");
+      }
+
+      if (agentMode.value === "attachFileBashRecoverAttachFile") {
+        const attachFileTool = this.state.tools.find(
+          (tool) => tool.name === "attachFile",
+        );
+        const bashTool = this.state.tools.find((tool) => tool.name === "bash");
+        if (!attachFileTool || !bashTool) {
+          throw new Error("sandbox-backed tools missing");
+        }
+        await attachFileTool.execute("tool-call-attach-file-1", {
+          path: "report.txt",
+        });
+        await bashTool.execute("tool-call-bash", {
+          command: "pwd",
+        });
+        await attachFileTool.execute("tool-call-attach-file-2", {
+          path: "report.txt",
+        });
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "Attached report twice." }],
+          stopReason: "stop",
+        });
+        return {};
       }
 
       if (agentMode.value === "bashThenError") {
@@ -224,9 +261,11 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
     configureSkills: () => undefined,
     createSandbox: async () => {
       createSandboxCallCount.value += 1;
+      const sandboxVersion = activeSandboxVersion.value;
       return {
-        readFileToBuffer: async () =>
-          Buffer.from(
+        readFileToBuffer: async () => {
+          attachFileReadVersions.value.push(sandboxVersion);
+          return Buffer.from(
             [
               "---",
               "name: demo-skill",
@@ -236,7 +275,8 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
               "Skill instructions",
             ].join("\n"),
             "utf8",
-          ),
+          );
+        },
         runCommand: async () => ({
           exitCode: 0,
           stdout: async () => "text/plain\n",
@@ -245,9 +285,35 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       };
     },
     canExecute: (toolName: string) =>
-      agentMode.value === "bashThenError" && toolName === "bash",
+      (agentMode.value === "bashThenError" ||
+        agentMode.value === "attachFileBashRecoverAttachFile") &&
+      toolName === "bash",
     execute: async ({ toolName }: { toolName: string; input: unknown }) => {
-      if (agentMode.value !== "bashThenError" || toolName !== "bash") {
+      if (toolName !== "bash") {
+        throw new Error(
+          "sandbox executor should not handle tools in this test",
+        );
+      }
+
+      if (agentMode.value === "attachFileBashRecoverAttachFile") {
+        activeSandboxVersion.value += 1;
+        return {
+          result: {
+            ok: true,
+            command: "pwd",
+            cwd: "/workspace",
+            exit_code: 0,
+            signal: null,
+            timed_out: false,
+            stdout: "/workspace\n",
+            stderr: "",
+            stdout_truncated: false,
+            stderr_truncated: false,
+          },
+        };
+      }
+
+      if (agentMode.value !== "bashThenError") {
         throw new Error(
           "sandbox executor should not handle tools in this test",
         );
@@ -270,7 +336,11 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       };
     },
     getSandboxId: () =>
-      createSandboxCallCount.value > 0 ? "sandbox-test" : undefined,
+      createSandboxCallCount.value > 0
+        ? activeSandboxVersion.value === 1
+          ? "sandbox-test"
+          : `sandbox-test-${activeSandboxVersion.value}`
+        : undefined,
     getDependencyProfileHash: () => "hash-test",
     dispose: async () => undefined,
   }),
@@ -282,6 +352,8 @@ describe("generateAssistantReply lazy sandbox boot", () => {
   beforeEach(() => {
     agentMode.value = "plain";
     createSandboxCallCount.value = 0;
+    activeSandboxVersion.value = 1;
+    attachFileReadVersions.value = [];
   });
 
   it("does not create a sandbox for turns that never touch sandbox-backed tools", async () => {
@@ -334,5 +406,21 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(createSandboxCallCount.value).toBe(1);
     expect(reply.sandboxId).toBe("sandbox-test");
     expect(reply.sandboxDependencyProfileHash).toBe("hash-test");
+  });
+
+  it("refreshes the cached workspace after sandbox replacement", async () => {
+    agentMode.value = "attachFileBashRecoverAttachFile";
+
+    const reply = await generateAssistantReply("attach the report twice");
+
+    expect(reply.text).toBe("Attached report twice.");
+    expect(createSandboxCallCount.value).toBe(2);
+    expect(attachFileReadVersions.value).toEqual([1, 2]);
+    expect(reply.sandboxId).toBe("sandbox-test-2");
+    expect(reply.diagnostics.toolCalls).toEqual([
+      "attachFile",
+      "bash",
+      "attachFile",
+    ]);
   });
 });

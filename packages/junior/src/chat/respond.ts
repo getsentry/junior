@@ -325,12 +325,26 @@ export async function generateAssistantReply(
     const currentSandboxExecutor = sandboxExecutor;
     sandboxExecutor.configureSkills(availableSkills);
     let sandboxPromise: Promise<SandboxWorkspace> | undefined;
+    let sandboxPromiseId: string | undefined;
+    const clearSandboxPromise = (): void => {
+      sandboxPromise = undefined;
+      sandboxPromiseId = undefined;
+    };
     const getSandbox = (reason: {
       trigger: string;
       path?: string;
       cmd?: string;
       cwd?: string;
     }): Promise<SandboxWorkspace> => {
+      const currentSandboxId = currentSandboxExecutor.getSandboxId();
+      if (
+        sandboxPromise &&
+        sandboxPromiseId &&
+        currentSandboxId !== sandboxPromiseId
+      ) {
+        clearSandboxPromise();
+      }
+
       if (!sandboxPromise) {
         logInfo(
           "sandbox_boot_requested",
@@ -345,8 +359,12 @@ export async function generateAssistantReply(
         );
         sandboxPromise = currentSandboxExecutor
           .createSandbox()
+          .then((sandbox) => {
+            sandboxPromiseId = currentSandboxExecutor.getSandboxId();
+            return sandbox;
+          })
           .catch((error) => {
-            sandboxPromise = undefined;
+            clearSandboxPromise();
             throw error;
           });
       }
