@@ -176,6 +176,8 @@ if (args[0] === "api") {
     outputJson({ items: [] });
     process.exit(0);
   }
+  outputJson({});
+  process.exit(0);
 }
 
 if (args[0] === "issue") {
