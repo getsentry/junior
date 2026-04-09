@@ -56,7 +56,7 @@ function toLoadedSkill(
   };
 }
 
-export async function loadSkillFromHost(
+async function loadSkillFromHost(
   availableSkills: SkillMetadata[],
   skillName: string,
 ): Promise<LoadSkillResult> {
