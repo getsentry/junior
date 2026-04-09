@@ -45,7 +45,11 @@ import {
   getPiGatewayApiKeyOverride,
   resolveGatewayModel,
 } from "@/chat/pi/client";
-import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
+import {
+  createSandboxExecutor,
+  type SandboxExecutor,
+} from "@/chat/sandbox/sandbox";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/runtime/assistant-status";
@@ -184,6 +188,19 @@ export async function generateAssistantReply(
     context.sandbox?.sandboxDependencyProfileHash;
   let loadedSkillNamesForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
+  let sandboxExecutor: SandboxExecutor | undefined;
+
+  const getSandboxMetadata = () =>
+    sandboxExecutor
+      ? {
+          sandboxId: sandboxExecutor.getSandboxId(),
+          sandboxDependencyProfileHash:
+            sandboxExecutor.getDependencyProfileHash(),
+        }
+      : {
+          sandboxId: lastKnownSandboxId,
+          sandboxDependencyProfileHash: lastKnownSandboxDependencyProfileHash,
+        };
 
   try {
     const shouldTrace = shouldEmitDevAgentTrace();
@@ -275,7 +292,7 @@ export async function generateAssistantReply(
       string,
       import("@/chat/capabilities/jr-rpc-command").ProviderAuthAction
     >();
-    const sandboxExecutor = createSandboxExecutor({
+    sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
@@ -305,11 +322,71 @@ export async function generateAssistantReply(
           : { handled: false };
       },
     });
-    lastKnownSandboxId = sandboxExecutor.getSandboxId();
-    lastKnownSandboxDependencyProfileHash =
-      sandboxExecutor.getDependencyProfileHash();
+    const currentSandboxExecutor = sandboxExecutor;
     sandboxExecutor.configureSkills(availableSkills);
-    const sandbox = await sandboxExecutor.createSandbox();
+    let sandboxPromise: Promise<SandboxWorkspace> | undefined;
+    let sandboxPromiseId: string | undefined;
+    const clearSandboxPromise = (): void => {
+      sandboxPromise = undefined;
+      sandboxPromiseId = undefined;
+    };
+    const getSandbox = (reason: {
+      trigger: string;
+      path?: string;
+      cmd?: string;
+      cwd?: string;
+    }): Promise<SandboxWorkspace> => {
+      const currentSandboxId = currentSandboxExecutor.getSandboxId();
+      if (
+        sandboxPromise &&
+        sandboxPromiseId &&
+        currentSandboxId !== sandboxPromiseId
+      ) {
+        clearSandboxPromise();
+      }
+
+      if (!sandboxPromise) {
+        logInfo(
+          "sandbox_boot_requested",
+          spanContext,
+          {
+            "app.sandbox.boot.trigger": reason.trigger,
+            ...(reason.path ? { "file.path": reason.path } : {}),
+            ...(reason.cmd ? { "process.executable.name": reason.cmd } : {}),
+            ...(reason.cwd ? { "file.directory": reason.cwd } : {}),
+          },
+          "Lazy sandbox boot requested",
+        );
+        sandboxPromise = currentSandboxExecutor
+          .createSandbox()
+          .then((sandbox) => {
+            sandboxPromiseId = sandbox.sandboxId;
+            return sandbox;
+          })
+          .catch((error) => {
+            clearSandboxPromise();
+            throw error;
+          });
+      }
+      return sandboxPromise;
+    };
+    const sandbox: SandboxWorkspace = {
+      readFileToBuffer: async (input) =>
+        (
+          await getSandbox({
+            trigger: "workspace.readFileToBuffer",
+            path: input.path,
+          })
+        ).readFileToBuffer(input),
+      runCommand: async (input) =>
+        (
+          await getSandbox({
+            trigger: "workspace.runCommand",
+            cmd: input.cmd,
+            cwd: input.cwd,
+          })
+        ).runCommand(input),
+    };
 
     // ── Preload skills from checkpoint ───────────────────────────────
     for (const skillName of existingCheckpoint?.loadedSkillNames ?? []) {
@@ -734,8 +811,9 @@ export async function generateAssistantReply(
       replyFiles,
       artifactStatePatch,
       toolCalls,
-      sandboxId: sandboxExecutor.getSandboxId(),
-      sandboxDependencyProfileHash: sandboxExecutor.getDependencyProfileHash(),
+      sandboxId: currentSandboxExecutor.getSandboxId(),
+      sandboxDependencyProfileHash:
+        currentSandboxExecutor.getDependencyProfileHash(),
       generatedFileCount: generatedFiles.length,
       hasTextDeltaCallback: Boolean(context.onTextDelta),
       shouldTrace,
@@ -794,8 +872,7 @@ export async function generateAssistantReply(
     const message = error instanceof Error ? error.message : String(error);
     return {
       text: `Error: ${message}`,
-      sandboxId: lastKnownSandboxId,
-      sandboxDependencyProfileHash: lastKnownSandboxDependencyProfileHash,
+      ...getSandboxMetadata(),
       diagnostics: {
         outcome: "provider_error",
         modelId: botConfig.modelId,

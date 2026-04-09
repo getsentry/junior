@@ -1,36 +1,40 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { discoverSkills } from "@/chat/skills";
 import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
-import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
 import type { Skill, SkillMetadata } from "@/chat/skills";
 
-const testSkill: SkillMetadata = {
-  name: "test-skill",
-  description: "A test skill with metadata",
-  skillPath: "/fake/skills/test-skill",
-  allowedTools: ["bash"],
-  requiresCapabilities: ["test.api"],
-};
-
 describe("load_skill tool", () => {
-  it("loads a skill from sandbox and returns instructions", async () => {
-    const availableSkills = [testSkill];
-    const firstSkill = testSkill;
+  it("loads a skill from host storage and returns instructions", async () => {
+    const skillRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-load-skill-"),
+    );
+    await fs.writeFile(
+      path.join(skillRoot, "SKILL.md"),
+      [
+        "---",
+        "name: test-skill",
+        "description: A test skill with metadata",
+        "---",
+        "",
+        "Instruction body",
+      ].join("\n"),
+      "utf8",
+    );
 
-    const sandbox = {
-      readFileToBuffer: async ({ path }: { path: string }) =>
-        path === sandboxSkillFile(firstSkill.name)
-          ? Buffer.from("---\nname: test\n---\nInstruction body", "utf8")
-          : null,
-      runCommand: async () => ({
-        exitCode: 0,
-        stdout: async () => "",
-        stderr: async () => "",
-      }),
-    } satisfies SandboxWorkspace;
+    const firstSkill: SkillMetadata = {
+      name: "test-skill",
+      description: "A test skill with metadata",
+      skillPath: skillRoot,
+      allowedTools: ["bash"],
+      requiresCapabilities: ["test.api"],
+    };
+    const availableSkills = [firstSkill];
     const loaded: Skill[] = [];
-    const tool = createLoadSkillTool(sandbox, availableSkills, {
+    const tool = createLoadSkillTool(availableSkills, {
       onSkillLoaded: (skill) => {
         loaded.push(skill);
       },
@@ -57,7 +61,7 @@ describe("load_skill tool", () => {
     expect(loaded).toHaveLength(1);
     expect(loaded[0]).toMatchObject({
       name: firstSkill.name,
-      skillPath: sandboxSkillDir(firstSkill.name),
+      skillPath: firstSkill.skillPath,
       body: "Instruction body",
     });
     expect(loaded[0]).toMatchObject({
@@ -76,15 +80,7 @@ describe("load_skill tool", () => {
 
   it("returns unknown-skill when the name does not exist", async () => {
     const availableSkills = await discoverSkills();
-    const sandbox = {
-      readFileToBuffer: async () => null,
-      runCommand: async () => ({
-        exitCode: 0,
-        stdout: async () => "",
-        stderr: async () => "",
-      }),
-    } satisfies SandboxWorkspace;
-    const tool = createLoadSkillTool(sandbox, availableSkills);
+    const tool = createLoadSkillTool(availableSkills);
     if (typeof tool.execute !== "function") {
       throw new Error("load_skill execute function missing");
     }

@@ -43,6 +43,7 @@ Co-Authored-By: (agent model name) <email>
 - Prefer evals for end-to-end behavior when model behavior matters.
 - Prefer integration tests over unit tests when real runtime wiring is needed but the LLM is not.
 - Use unit tests only for small local invariants and regression edges.
+- Logs, spans, status telemetry, and other monitoring output are not behavior contracts. Do not add assertions for them, and do not mock logging/monitoring modules unless the test is explicitly about instrumentation.
 
 ## Engineering Principles
 

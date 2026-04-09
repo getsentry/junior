@@ -1,9 +1,11 @@
 import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
-import { sandboxSkillDir } from "@/chat/sandbox/paths";
-import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import { stripFrontmatter } from "@/chat/skills";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import { sandboxSkillDir, sandboxSkillFile } from "@/chat/sandbox/paths";
+import {
+  loadSkillsByName,
+  type Skill,
+  type SkillMetadata,
+} from "@/chat/skills";
 import type { ExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 
 export type LoadSkillResult = {
@@ -41,7 +43,7 @@ function toLoadedSkill(
   return {
     name: result.skill_name,
     description: result.description,
-    skillPath: result.skill_dir,
+    skillPath: metadata?.skillPath ?? result.skill_dir,
     ...(metadata?.pluginProvider
       ? { pluginProvider: metadata.pluginProvider }
       : {}),
@@ -54,8 +56,7 @@ function toLoadedSkill(
   };
 }
 
-export async function loadSkillFromSandbox(
-  sandbox: SandboxWorkspace,
+async function loadSkillFromHost(
   availableSkills: SkillMetadata[],
   skillName: string,
 ): Promise<LoadSkillResult> {
@@ -72,10 +73,10 @@ export async function loadSkillFromSandbox(
   }
 
   const skillDir = sandboxSkillDir(skill.name);
-  const skillFilePath = `${skillDir}/SKILL.md`;
-  const file = await sandbox.readFileToBuffer({ path: skillFilePath });
-  if (!file) {
-    throw new Error(`failed to read ${skillFilePath}`);
+  const skillFilePath = sandboxSkillFile(skill.name);
+  const [loaded] = await loadSkillsByName([skill.name], availableSkills);
+  if (!loaded) {
+    throw new Error(`failed to load ${skill.name}`);
   }
 
   return {
@@ -87,12 +88,11 @@ export async function loadSkillFromSandbox(
       : {}),
     skill_dir: skillDir,
     location: skillFilePath,
-    instructions: stripFrontmatter(file.toString("utf8")),
+    instructions: loaded.body,
   };
 }
 
 export function createLoadSkillTool(
-  sandbox: SandboxWorkspace,
   availableSkills: SkillMetadata[],
   options?: {
     onSkillLoaded?: (
@@ -110,11 +110,7 @@ export function createLoadSkillTool(
       }),
     }),
     execute: async ({ skill_name }) => {
-      const result = await loadSkillFromSandbox(
-        sandbox,
-        availableSkills,
-        skill_name,
-      );
+      const result = await loadSkillFromHost(availableSkills, skill_name);
       const loadedSkill = toLoadedSkill(result, availableSkills);
       if (loadedSkill) {
         const metadata = await options?.onSkillLoaded?.(loadedSkill);

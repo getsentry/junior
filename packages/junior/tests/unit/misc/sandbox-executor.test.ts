@@ -1,17 +1,15 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
+import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
   sandboxCreateMock: vi.fn(),
 }));
-const { setSpanAttributesMock, setSpanStatusMock, logWarnMock } = vi.hoisted(
-  () => ({
-    setSpanAttributesMock: vi.fn(),
-    setSpanStatusMock: vi.fn(),
-    logWarnMock: vi.fn(),
-  }),
-);
 
 vi.mock("@vercel/sandbox", () => ({
   Sandbox: {
@@ -22,18 +20,6 @@ vi.mock("@vercel/sandbox", () => ({
 
 vi.mock("bash-tool", () => ({
   createBashTool: vi.fn(),
-}));
-
-vi.mock("@/chat/logging", () => ({
-  withSpan: async (
-    _name: string,
-    _op: string,
-    _context: unknown,
-    callback: () => Promise<unknown>,
-  ) => callback(),
-  setSpanAttributes: setSpanAttributesMock,
-  setSpanStatus: setSpanStatusMock,
-  logWarn: logWarnMock,
 }));
 
 const {
@@ -74,6 +60,7 @@ interface MockSandbox {
   sandboxId: string;
   mkDir: ReturnType<typeof vi.fn>;
   writeFiles: ReturnType<typeof vi.fn>;
+  readFileToBuffer: ReturnType<typeof vi.fn>;
   runCommand: ReturnType<typeof vi.fn>;
   updateNetworkPolicy: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
@@ -100,6 +87,7 @@ function makeSandbox(
         throw options.writeFilesError;
       }
     }),
+    readFileToBuffer: vi.fn(async () => Buffer.from("")),
     runCommand: vi.fn(async () => ({
       exitCode: 0,
       stdout: async () => "",
@@ -137,12 +125,41 @@ function createApiError(
   });
 }
 
+async function expectWorkspaceToDelegate(
+  workspace: SandboxWorkspace,
+  sandbox: MockSandbox,
+): Promise<void> {
+  expect(workspace.sandboxId).toBe(sandbox.sandboxId);
+  const fileBuffer = Buffer.from("workspace file");
+  const commandResult = {
+    exitCode: 0,
+    stdout: async () => "stdout",
+    stderr: async () => "stderr",
+  };
+
+  sandbox.readFileToBuffer.mockResolvedValueOnce(fileBuffer);
+  await expect(
+    workspace.readFileToBuffer({ path: "/tmp/workspace.txt" }),
+  ).resolves.toBe(fileBuffer);
+  expect(sandbox.readFileToBuffer).toHaveBeenCalledWith({
+    path: "/tmp/workspace.txt",
+  });
+
+  sandbox.runCommand.mockResolvedValueOnce(commandResult);
+  await expect(
+    workspace.runCommand({ cmd: "pwd", args: ["-P"], cwd: "/tmp" }),
+  ).resolves.toBe(commandResult);
+  expect(sandbox.runCommand).toHaveBeenCalledWith({
+    cmd: "pwd",
+    args: ["-P"],
+    cwd: "/tmp",
+  });
+}
+
 describe("createSandboxExecutor", () => {
   beforeEach(() => {
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
-    setSpanAttributesMock.mockReset();
-    setSpanStatusMock.mockReset();
     vi.mocked(createBashTool).mockReset();
     resolveRuntimeDependencySnapshotMock.mockReset();
     resolveRuntimeDependencySnapshotMock.mockResolvedValue({
@@ -158,6 +175,7 @@ describe("createSandboxExecutor", () => {
     delete process.env.VERCEL_TEAM_ID;
     delete process.env.VERCEL_PROJECT_ID;
     delete process.env.VERCEL_OIDC_TOKEN;
+    delete process.env.VERCEL_SANDBOX_KEEPALIVE_MS;
     delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   });
 
@@ -180,12 +198,11 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(freshSandbox);
+    await expectWorkspaceToDelegate(sandbox, freshSandbox);
     expect(sandboxGetMock).toHaveBeenCalledWith({ sandboxId: "sbx_stopped" });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(stoppedSandbox.mkDir).toHaveBeenCalled();
     expect(freshSandbox.mkDir).toHaveBeenCalled();
-    expect(freshSandbox.runCommand).not.toHaveBeenCalled();
     expect(executor.getSandboxId()).toBe("sbx_fresh");
   });
 
@@ -240,7 +257,7 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(freshSandbox);
+    await expectWorkspaceToDelegate(sandbox, freshSandbox);
     expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
@@ -550,6 +567,276 @@ describe("createSandboxExecutor", () => {
     });
   });
 
+  it("syncs sandbox files once when the first tool call also initializes tool executors", async () => {
+    const sandbox = makeSandbox("sbx_single_sync");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo ok",
+      },
+    });
+
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createBashTool)).toHaveBeenCalledTimes(1);
+  });
+
+  it("extends sandbox keepalive for each tool execution", async () => {
+    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    const sandbox = makeSandbox("sbx_keepalive");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo first",
+      },
+    });
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo second",
+      },
+    });
+
+    expect(sandbox.extendTimeout).toHaveBeenCalledTimes(2);
+    expect(sandbox.extendTimeout).toHaveBeenNthCalledWith(1, 5000);
+    expect(sandbox.extendTimeout).toHaveBeenNthCalledWith(2, 5000);
+  });
+
+  it("does not re-sync skills when reusing a cached sandbox", async () => {
+    const sandbox = makeSandbox("sbx_cached_once");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo first",
+      },
+    });
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo second",
+      },
+    });
+
+    expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("recreates cached sandboxes before reusing cached tool executors", async () => {
+    const stoppedSandboxError = createApiError(
+      410,
+      "Gone",
+      "sandbox_stopped",
+      "Sandbox has stopped execution and is no longer available",
+    );
+    const firstSandbox = makeSandbox("sbx_cached_first");
+    let stopCachedSandbox = false;
+    firstSandbox.mkDir.mockImplementation(async (directory: string) => {
+      if (stopCachedSandbox && directory === SANDBOX_WORKSPACE_ROOT) {
+        throw stoppedSandboxError;
+      }
+    });
+    firstSandbox.runCommand
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: async () => "first\n",
+        stderr: async () => "",
+      })
+      .mockRejectedValueOnce(new Error("expired sandbox should not be reused"));
+
+    const secondSandbox = makeSandbox("sbx_cached_second");
+    secondSandbox.runCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: async () => "second\n",
+      stderr: async () => "",
+    });
+
+    sandboxCreateMock
+      .mockResolvedValueOnce(firstSandbox)
+      .mockResolvedValueOnce(secondSandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo first",
+      },
+    });
+    stopCachedSandbox = true;
+
+    const response = await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo second",
+      },
+    });
+
+    expect(response.result).toMatchObject({
+      ok: true,
+      stdout: "second\n",
+      exit_code: 0,
+    });
+    expect(firstSandbox.writeFiles).toHaveBeenCalledTimes(1);
+    expect(firstSandbox.runCommand).toHaveBeenCalledTimes(1);
+    expect(secondSandbox.runCommand).toHaveBeenCalledTimes(1);
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads virtual skill files without booting a sandbox before sandbox state exists", async () => {
+    const skillRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-skill-read-"),
+    );
+    await fs.mkdir(path.join(skillRoot, "references"));
+    await fs.writeFile(
+      path.join(skillRoot, "references", "note.md"),
+      "Reference note",
+      "utf8",
+    );
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([
+      {
+        name: "demo-skill",
+        description: "Demo skill",
+        skillPath: skillRoot,
+      },
+    ]);
+
+    const response = await executor.execute({
+      toolName: "readFile",
+      input: {
+        path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      },
+    });
+
+    expect(response.result).toEqual({
+      content: "Reference note",
+      path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      success: true,
+    });
+    expect(sandboxGetMock).not.toHaveBeenCalled();
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("falls through to sandbox when a virtual skill file is missing on the host", async () => {
+    const skillRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-skill-read-missing-"),
+    );
+    const sandbox = makeSandbox("sbx_missing_virtual_skill_file");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "from sandbox" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([
+      {
+        name: "demo-skill",
+        description: "Demo skill",
+        skillPath: skillRoot,
+      },
+    ]);
+
+    const response = await executor.execute({
+      toolName: "readFile",
+      input: {
+        path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
+      },
+    });
+
+    expect(response.result).toEqual({
+      content: "from sandbox",
+      path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
+      success: true,
+    });
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads virtual skill files from sandbox when a sandbox id hint exists", async () => {
+    const skillRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-skill-read-hinted-"),
+    );
+    await fs.mkdir(path.join(skillRoot, "references"));
+    await fs.writeFile(
+      path.join(skillRoot, "references", "note.md"),
+      "Host note",
+      "utf8",
+    );
+    const sandbox = makeSandbox("sbx_existing");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "Sandbox note" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_existing" });
+    executor.configureSkills([
+      {
+        name: "demo-skill",
+        description: "Demo skill",
+        skillPath: skillRoot,
+      },
+    ]);
+
+    const response = await executor.execute({
+      toolName: "readFile",
+      input: {
+        path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      },
+    });
+
+    expect(response.result).toEqual({
+      content: "Sandbox note",
+      path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      success: true,
+    });
+    expect(sandboxGetMock).toHaveBeenCalledWith({ sandboxId: "sbx_existing" });
+  });
+
   it("installs the eval gh shim when test credentials are enabled", async () => {
     process.env.EVAL_ENABLE_TEST_CREDENTIALS = "1";
     const sandbox = makeSandbox("sbx_eval_gh");
@@ -598,7 +885,7 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(snapshotSandbox);
+    await expectWorkspaceToDelegate(sandbox, snapshotSandbox);
     expect(sandboxCreateMock).toHaveBeenCalledWith({
       timeout: 1000 * 60 * 30,
       source: {
@@ -606,12 +893,6 @@ describe("createSandboxExecutor", () => {
         snapshotId: "snap_123",
       },
     });
-    expect(setSpanAttributesMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "app.sandbox.snapshot.cache_hit": true,
-        "app.sandbox.snapshot.resolve_outcome": "cache_hit",
-      }),
-    );
   });
 
   it("rebuilds snapshot when cached snapshot is missing", async () => {
@@ -645,7 +926,7 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(rebuiltSandbox);
+    await expectWorkspaceToDelegate(sandbox, rebuiltSandbox);
     expect(resolveRuntimeDependencySnapshotMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
@@ -688,7 +969,7 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(snapshotSandbox);
+    await expectWorkspaceToDelegate(sandbox, snapshotSandbox);
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
     expect(sandboxCreateMock).toHaveBeenNthCalledWith(1, {
       timeout: 1000 * 60 * 30,

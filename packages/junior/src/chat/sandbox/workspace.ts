@@ -5,6 +5,7 @@ export interface SandboxCommandResult {
 }
 
 export interface SandboxWorkspace {
+  readonly sandboxId?: string;
   readFileToBuffer(input: { path: string }): Promise<Buffer | null | undefined>;
   runCommand(input: {
     args?: string[];
