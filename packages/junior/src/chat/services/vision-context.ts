@@ -43,13 +43,17 @@ export interface VisionContextService {
   ) => Promise<void>;
   resolveUserAttachments: (
     attachments: Attachment[] | undefined,
-    context: {
-      threadId?: string;
-      requesterId?: string;
-      channelId?: string;
-      runId?: string;
-    },
+    context: ResolveUserAttachmentsContext,
   ) => Promise<UserInputAttachment[]>;
+}
+
+interface ResolveUserAttachmentsContext {
+  threadId?: string;
+  requesterId?: string;
+  channelId?: string;
+  runId?: string;
+  conversation?: ThreadConversationState;
+  messageTs?: string;
 }
 
 /** Report whether a dedicated vision model is configured for image analysis. */
@@ -126,7 +130,7 @@ async function summarizeImageWithVision(args: {
 function getCachedImageSummaries(args: {
   conversation?: ThreadConversationState;
   messageTs?: string;
-}): string[] {
+}): Array<string | undefined> {
   if (!args.conversation || !args.messageTs) {
     return [];
   }
@@ -138,11 +142,9 @@ function getCachedImageSummaries(args: {
     return [];
   }
 
-  return (conversationMessage.meta?.imageFileIds ?? [])
-    .map((fileId) =>
-      args.conversation?.vision.byFileId[fileId]?.summary?.trim(),
-    )
-    .filter((summary): summary is string => Boolean(summary));
+  return (conversationMessage.meta?.imageFileIds ?? []).map((fileId) =>
+    args.conversation?.vision.byFileId[fileId]?.summary?.trim(),
+  );
 }
 
 function createImageAttachmentProcessingError(attachment: {
@@ -154,33 +156,9 @@ function createImageAttachmentProcessingError(attachment: {
   );
 }
 
-/** Resolve user attachments into prompt-ready inputs, summarizing images via the vision model when enabled. */
-export async function resolveUserAttachments(
-  attachments: Attachment[] | undefined,
-  context: {
-    threadId?: string;
-    requesterId?: string;
-    channelId?: string;
-    runId?: string;
-    conversation?: ThreadConversationState;
-    messageTs?: string;
-  },
-): Promise<UserInputAttachment[]> {
-  return await resolveUserAttachmentsWithDeps(attachments, context, {
-    completeText,
-  });
-}
-
 async function resolveUserAttachmentsWithDeps(
   attachments: Attachment[] | undefined,
-  context: {
-    threadId?: string;
-    requesterId?: string;
-    channelId?: string;
-    runId?: string;
-    conversation?: ThreadConversationState;
-    messageTs?: string;
-  },
+  context: ResolveUserAttachmentsContext,
   deps: Pick<VisionContextDeps, "completeText">,
 ): Promise<UserInputAttachment[]> {
   if (!attachments || attachments.length === 0) {
@@ -210,10 +188,9 @@ async function resolveUserAttachmentsWithDeps(
         filename: attachment.name,
       };
       if (isImageAttachment) {
-        const cachedSummary =
-          cachedImageSummaries[nextCachedImageSummaryIndex] ?? undefined;
+        const cachedSummary = cachedImageSummaries[nextCachedImageSummaryIndex];
+        nextCachedImageSummaryIndex += 1;
         if (cachedSummary) {
-          nextCachedImageSummaryIndex += 1;
           resolvedAttachment.promptText = buildImageAttachmentPromptText({
             filename: attachment.name,
             mediaType,

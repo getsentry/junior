@@ -153,7 +153,7 @@ describe("bot image hydration", () => {
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
   });
 
-  it("marks vision backfill complete without fetching thread images when AI_VISION_MODEL is unset", async () => {
+  it("does not hydrate thread images when AI_VISION_MODEL is unset", async () => {
     const { slackRuntime } = await createRuntime({
       services: {
         visionContext: {
@@ -494,6 +494,146 @@ describe("bot image hydration", () => {
     expect(downloadPrivateSlackFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
     expect(attachmentFetch).not.toHaveBeenCalled();
+    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps cached image summaries aligned with attachment positions", async () => {
+    listThreadRepliesMock.mockResolvedValue([
+      {
+        ts: "1700000004.100",
+        files: [
+          {
+            id: "F_MISSING",
+            mimetype: "image/png",
+            url_private_download: "https://files.slack.com/private/missing.png",
+          },
+          {
+            id: "F_CACHED",
+            mimetype: "image/png",
+            url_private_download: "https://files.slack.com/private/cached.png",
+          },
+        ],
+      },
+    ]);
+    const downloadPrivateSlackFileMock = vi.fn(async () =>
+      Buffer.from("downloaded-image"),
+    );
+    let completeTextCallCount = 0;
+    const completeTextMock = vi.fn(async () => {
+      completeTextCallCount += 1;
+      if (completeTextCallCount === 1) {
+        return {
+          text: "",
+          message: {} as never,
+        };
+      }
+      if (completeTextCallCount === 2) {
+        return {
+          text: "Second cached summary",
+          message: {} as never,
+        };
+      }
+      return {
+        text: "First attachment summary",
+        message: {} as never,
+      };
+    });
+    const firstAttachmentFetch = vi.fn(async () => Buffer.from("first-image"));
+    const secondAttachmentFetch = vi.fn(async () =>
+      Buffer.from("second-image"),
+    );
+    const generateAssistantReply = vi.fn(
+      async (_text: string, context: any) => {
+        expect(context?.userAttachments).toEqual([
+          expect.objectContaining({
+            filename: "first.png",
+            promptText: expect.stringContaining("First attachment summary"),
+          }),
+          expect.objectContaining({
+            filename: "second.png",
+            promptText: expect.stringContaining("Second cached summary"),
+          }),
+        ]);
+        return makeSuccessReply();
+      },
+    );
+
+    const { slackRuntime } = await createRuntime(
+      {
+        services: {
+          visionContext: {
+            listThreadReplies: listThreadRepliesMock,
+            downloadPrivateSlackFile: downloadPrivateSlackFileMock,
+            completeText: completeTextMock,
+          },
+          replyExecutor: {
+            generateAssistantReply,
+          },
+        },
+      },
+      {
+        AI_VISION_MODEL: "openai/gpt-5.4",
+      },
+    );
+
+    await slackRuntime.handleNewMention(
+      createTestThread({
+        id: "slack:C_IMAGE:1700000004.000",
+        state: {
+          conversation: {
+            schemaVersion: 1,
+            messages: [],
+            compactions: [],
+            backfill: {
+              completedAtMs: 1700000000000,
+              source: "recent_messages",
+            },
+            processing: {},
+            stats: {
+              estimatedContextTokens: 0,
+              totalMessageCount: 0,
+              compactedMessageCount: 0,
+              updatedAtMs: 1700000000000,
+            },
+            vision: {
+              byFileId: {},
+            },
+          },
+        },
+      }),
+      createTestMessage({
+        id: "1700000004.100",
+        text: "compare these screenshots",
+        threadId: "slack:C_IMAGE:1700000004.000",
+        isMention: true,
+        author: {
+          userId: "U-user",
+          userName: "user",
+          fullName: "User Example",
+          isBot: false,
+          isMe: false,
+        },
+        attachments: [
+          {
+            type: "image",
+            mimeType: "image/png",
+            name: "first.png",
+            fetchData: firstAttachmentFetch,
+          },
+          {
+            type: "image",
+            mimeType: "image/png",
+            name: "second.png",
+            fetchData: secondAttachmentFetch,
+          },
+        ],
+      }),
+    );
+
+    expect(downloadPrivateSlackFileMock).toHaveBeenCalledTimes(2);
+    expect(completeTextMock).toHaveBeenCalledTimes(3);
+    expect(firstAttachmentFetch).toHaveBeenCalledTimes(1);
+    expect(secondAttachmentFetch).not.toHaveBeenCalled();
     expect(generateAssistantReply).toHaveBeenCalledTimes(1);
   });
 
