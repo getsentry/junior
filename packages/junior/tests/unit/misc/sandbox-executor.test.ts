@@ -162,6 +162,7 @@ describe("createSandboxExecutor", () => {
     delete process.env.VERCEL_TEAM_ID;
     delete process.env.VERCEL_PROJECT_ID;
     delete process.env.VERCEL_OIDC_TOKEN;
+    delete process.env.VERCEL_SANDBOX_KEEPALIVE_MS;
     delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
   });
 
@@ -577,6 +578,104 @@ describe("createSandboxExecutor", () => {
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
     expect(vi.mocked(createBashTool)).toHaveBeenCalledTimes(1);
+  });
+
+  it("extends sandbox keepalive for each tool execution", async () => {
+    process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
+    const sandbox = makeSandbox("sbx_keepalive");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo first",
+      },
+    });
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo second",
+      },
+    });
+
+    expect(sandbox.extendTimeout).toHaveBeenCalledTimes(2);
+    expect(sandbox.extendTimeout).toHaveBeenNthCalledWith(1, 5000);
+    expect(sandbox.extendTimeout).toHaveBeenNthCalledWith(2, 5000);
+  });
+
+  it("recreates cached sandboxes before reusing cached tool executors", async () => {
+    const stoppedSandboxError = createApiError(
+      410,
+      "Gone",
+      "sandbox_stopped",
+      "Sandbox has stopped execution and is no longer available",
+    );
+    const firstSandbox = makeSandbox("sbx_cached_first");
+    firstSandbox.writeFiles
+      .mockImplementationOnce(async () => {})
+      .mockImplementationOnce(async () => {
+        throw stoppedSandboxError;
+      });
+    firstSandbox.runCommand
+      .mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: async () => "first\n",
+        stderr: async () => "",
+      })
+      .mockRejectedValueOnce(new Error("expired sandbox should not be reused"));
+
+    const secondSandbox = makeSandbox("sbx_cached_second");
+    secondSandbox.runCommand.mockResolvedValueOnce({
+      exitCode: 0,
+      stdout: async () => "second\n",
+      stderr: async () => "",
+    });
+
+    sandboxCreateMock
+      .mockResolvedValueOnce(firstSandbox)
+      .mockResolvedValueOnce(secondSandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo first",
+      },
+    });
+
+    const response = await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo second",
+      },
+    });
+
+    expect(response.result).toMatchObject({
+      ok: true,
+      stdout: "second\n",
+      exit_code: 0,
+    });
+    expect(firstSandbox.writeFiles).toHaveBeenCalledTimes(2);
+    expect(firstSandbox.runCommand).toHaveBeenCalledTimes(1);
+    expect(secondSandbox.runCommand).toHaveBeenCalledTimes(1);
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
   });
 
   it("reads virtual skill files without booting a sandbox before sandbox state exists", async () => {

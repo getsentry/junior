@@ -709,12 +709,14 @@ export function createSandboxSessionManager(options?: {
     return activeSandbox;
   };
 
-  const loadToolExecutors = async (): Promise<SandboxToolExecutors> => {
+  const loadToolExecutors = async (
+    activeSandbox: Sandbox,
+  ): Promise<SandboxToolExecutors> => {
     if (toolExecutors) {
       return toolExecutors;
     }
 
-    toolExecutors = await buildToolExecutors(await ensureReadySandbox());
+    toolExecutors = await buildToolExecutors(activeSandbox);
     return toolExecutors;
   };
 
@@ -732,7 +734,7 @@ export function createSandboxSessionManager(options?: {
       return await acquireSandbox();
     },
     async ensureToolExecutors() {
-      return await loadToolExecutors();
+      return await loadToolExecutors(await ensureReadySandbox());
     },
     async dispose() {
       const activeSandbox = sandbox;
