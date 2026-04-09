@@ -79,7 +79,7 @@ export function createTools(
 ) {
   const state = createToolState(hooks, context);
   const tools: Record<string, unknown> = {
-    loadSkill: createLoadSkillTool(context.sandbox, availableSkills, {
+    loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
     }),
     systemTime: createSystemTimeTool(),

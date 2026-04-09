@@ -46,6 +46,7 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/runtime/assistant-status";
@@ -309,7 +310,29 @@ export async function generateAssistantReply(
     lastKnownSandboxDependencyProfileHash =
       sandboxExecutor.getDependencyProfileHash();
     sandboxExecutor.configureSkills(availableSkills);
-    const sandbox = await sandboxExecutor.createSandbox();
+    let sandboxPromise: Promise<SandboxWorkspace> | undefined;
+    const getSandbox = (): Promise<SandboxWorkspace> => {
+      if (!sandboxPromise) {
+        sandboxPromise = sandboxExecutor
+          .createSandbox()
+          .then((workspace) => {
+            lastKnownSandboxId = sandboxExecutor.getSandboxId();
+            lastKnownSandboxDependencyProfileHash =
+              sandboxExecutor.getDependencyProfileHash();
+            return workspace;
+          })
+          .catch((error) => {
+            sandboxPromise = undefined;
+            throw error;
+          });
+      }
+      return sandboxPromise;
+    };
+    const sandbox: SandboxWorkspace = {
+      readFileToBuffer: async (input) =>
+        (await getSandbox()).readFileToBuffer(input),
+      runCommand: async (input) => (await getSandbox()).runCommand(input),
+    };
 
     // ── Preload skills from checkpoint ───────────────────────────────
     for (const skillName of existingCheckpoint?.loadedSkillNames ?? []) {

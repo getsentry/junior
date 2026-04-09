@@ -1,5 +1,9 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
+import { sandboxSkillDir } from "@/chat/sandbox/paths";
 
 const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
@@ -548,6 +552,122 @@ describe("createSandboxExecutor", () => {
       ok: true,
       exit_code: 0,
     });
+  });
+
+  it("reads virtual skill files without booting a sandbox before sandbox state exists", async () => {
+    const skillRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-skill-read-"),
+    );
+    await fs.mkdir(path.join(skillRoot, "references"));
+    await fs.writeFile(
+      path.join(skillRoot, "references", "note.md"),
+      "Reference note",
+      "utf8",
+    );
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([
+      {
+        name: "demo-skill",
+        description: "Demo skill",
+        skillPath: skillRoot,
+      },
+    ]);
+
+    const response = await executor.execute({
+      toolName: "readFile",
+      input: {
+        path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      },
+    });
+
+    expect(response.result).toEqual({
+      content: "Reference note",
+      path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      success: true,
+    });
+    expect(sandboxGetMock).not.toHaveBeenCalled();
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("falls through to sandbox when a virtual skill file is missing on the host", async () => {
+    const skillRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-skill-read-missing-"),
+    );
+    const sandbox = makeSandbox("sbx_missing_virtual_skill_file");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "from sandbox" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([
+      {
+        name: "demo-skill",
+        description: "Demo skill",
+        skillPath: skillRoot,
+      },
+    ]);
+
+    const response = await executor.execute({
+      toolName: "readFile",
+      input: {
+        path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
+      },
+    });
+
+    expect(response.result).toEqual({
+      content: "from sandbox",
+      path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
+      success: true,
+    });
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads virtual skill files from sandbox when a sandbox id hint exists", async () => {
+    const skillRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-skill-read-hinted-"),
+    );
+    await fs.mkdir(path.join(skillRoot, "references"));
+    await fs.writeFile(
+      path.join(skillRoot, "references", "note.md"),
+      "Host note",
+      "utf8",
+    );
+    const sandbox = makeSandbox("sbx_existing");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "Sandbox note" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({ sandboxId: "sbx_existing" });
+    executor.configureSkills([
+      {
+        name: "demo-skill",
+        description: "Demo skill",
+        skillPath: skillRoot,
+      },
+    ]);
+
+    const response = await executor.execute({
+      toolName: "readFile",
+      input: {
+        path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      },
+    });
+
+    expect(response.result).toEqual({
+      content: "Sandbox note",
+      path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      success: true,
+    });
+    expect(sandboxGetMock).toHaveBeenCalledWith({ sandboxId: "sbx_existing" });
   });
 
   it("installs the eval gh shim when test credentials are enabled", async () => {

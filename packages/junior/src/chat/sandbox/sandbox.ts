@@ -174,6 +174,48 @@ function toPosixRelative(base: string, absolute: string): string {
   return path.relative(base, absolute).split(path.sep).join("/");
 }
 
+function resolveHostSkillPath(
+  availableSkills: SkillMetadata[],
+  sandboxPath: string,
+): string | null {
+  const normalizedPath = path.posix.normalize(sandboxPath.trim());
+
+  for (const skill of availableSkills) {
+    const virtualRoot = sandboxSkillDir(skill.name);
+    if (
+      normalizedPath !== virtualRoot &&
+      !normalizedPath.startsWith(`${virtualRoot}/`)
+    ) {
+      continue;
+    }
+
+    const relativePath = path.posix.relative(virtualRoot, normalizedPath);
+    if (!relativePath || relativePath.startsWith("../")) {
+      return null;
+    }
+
+    const hostRoot = path.resolve(skill.skillPath);
+    const hostPath = path.resolve(hostRoot, ...relativePath.split("/"));
+    if (
+      hostPath !== hostRoot &&
+      !hostPath.startsWith(`${hostRoot}${path.sep}`)
+    ) {
+      return null;
+    }
+
+    return hostPath;
+  }
+
+  return null;
+}
+
+function isHostFileMissingError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  return (error as { code?: unknown }).code === "ENOENT";
+}
+
 async function listFilesRecursive(root: string): Promise<string[]> {
   const queue: string[] = [root];
   const files: string[] = [];
@@ -1229,29 +1271,32 @@ export function createSandboxExecutor(options?: {
       }
     }
 
-    const activeSandbox = await acquireSandbox();
-    const keepAliveMs = Number.parseInt(
-      process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
-      10,
-    );
-    if (Number.isFinite(keepAliveMs) && keepAliveMs > 0) {
-      try {
-        await withSandboxSpan(
-          "sandbox.keepalive.extend",
-          "sandbox.keepalive",
-          {
-            "app.sandbox.keepalive_ms": keepAliveMs,
-          },
-          async () => {
-            await activeSandbox.extendTimeout(keepAliveMs);
-          },
-        );
-      } catch {
-        // Best effort keepalive.
+    const ensureSandboxReady = async (): Promise<void> => {
+      const activeSandbox = await acquireSandbox();
+      const keepAliveMs = Number.parseInt(
+        process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
+        10,
+      );
+      if (Number.isFinite(keepAliveMs) && keepAliveMs > 0) {
+        try {
+          await withSandboxSpan(
+            "sandbox.keepalive.extend",
+            "sandbox.keepalive",
+            {
+              "app.sandbox.keepalive_ms": keepAliveMs,
+            },
+            async () => {
+              await activeSandbox.extendTimeout(keepAliveMs);
+            },
+          );
+        } catch {
+          // Best effort keepalive.
+        }
       }
-    }
+    };
 
     if (params.toolName === "bash") {
+      await ensureSandboxReady();
       const command = bashCommand as string;
       const headerTransformsInput = rawInput.headerTransforms;
       const headerTransforms = Array.isArray(headerTransformsInput)
@@ -1353,6 +1398,34 @@ export function createSandboxExecutor(options?: {
         throw new Error("path is required");
       }
 
+      if (!sandbox && !sandboxIdHint) {
+        const hostSkillPath = resolveHostSkillPath(availableSkills, filePath);
+        if (hostSkillPath) {
+          try {
+            const content = await fs.readFile(hostSkillPath, "utf8");
+            setSpanAttributes({
+              "app.sandbox.path.length": filePath.length,
+              "app.sandbox.read.bytes": Buffer.byteLength(content, "utf8"),
+              "app.sandbox.read.chars": content.length,
+              "app.skill.virtual_read": true,
+            });
+            setSpanStatus("ok");
+            return {
+              result: {
+                content,
+                path: filePath,
+                success: true,
+              } as T,
+            };
+          } catch (error) {
+            if (!isHostFileMissingError(error)) {
+              throw error;
+            }
+          }
+        }
+      }
+
+      await ensureSandboxReady();
       const executeReadFile = (await getToolExecutors()).readFile;
       const result = await withSandboxSpan(
         "sandbox.readFile",
@@ -1380,6 +1453,7 @@ export function createSandboxExecutor(options?: {
     }
 
     if (params.toolName === "writeFile") {
+      await ensureSandboxReady();
       const filePath = String(rawInput.path ?? "").trim();
       if (!filePath) {
         throw new Error("path is required");
