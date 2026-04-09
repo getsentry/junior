@@ -45,7 +45,10 @@ import {
   getPiGatewayApiKeyOverride,
   resolveGatewayModel,
 } from "@/chat/pi/client";
-import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
+import {
+  createSandboxExecutor,
+  type SandboxExecutor,
+} from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
@@ -185,6 +188,19 @@ export async function generateAssistantReply(
     context.sandbox?.sandboxDependencyProfileHash;
   let loadedSkillNamesForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
+  let sandboxExecutor: SandboxExecutor | undefined;
+
+  const getSandboxMetadata = () =>
+    sandboxExecutor
+      ? {
+          sandboxId: sandboxExecutor.getSandboxId(),
+          sandboxDependencyProfileHash:
+            sandboxExecutor.getDependencyProfileHash(),
+        }
+      : {
+          sandboxId: lastKnownSandboxId,
+          sandboxDependencyProfileHash: lastKnownSandboxDependencyProfileHash,
+        };
 
   try {
     const shouldTrace = shouldEmitDevAgentTrace();
@@ -276,7 +292,7 @@ export async function generateAssistantReply(
       string,
       import("@/chat/capabilities/jr-rpc-command").ProviderAuthAction
     >();
-    const sandboxExecutor = createSandboxExecutor({
+    sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
@@ -306,9 +322,7 @@ export async function generateAssistantReply(
           : { handled: false };
       },
     });
-    lastKnownSandboxId = sandboxExecutor.getSandboxId();
-    lastKnownSandboxDependencyProfileHash =
-      sandboxExecutor.getDependencyProfileHash();
+    const currentSandboxExecutor = sandboxExecutor;
     sandboxExecutor.configureSkills(availableSkills);
     let sandboxPromise: Promise<SandboxWorkspace> | undefined;
     const getSandbox = (reason: {
@@ -329,14 +343,8 @@ export async function generateAssistantReply(
           },
           "Lazy sandbox boot requested",
         );
-        sandboxPromise = sandboxExecutor
+        sandboxPromise = currentSandboxExecutor
           .createSandbox()
-          .then((workspace) => {
-            lastKnownSandboxId = sandboxExecutor.getSandboxId();
-            lastKnownSandboxDependencyProfileHash =
-              sandboxExecutor.getDependencyProfileHash();
-            return workspace;
-          })
           .catch((error) => {
             sandboxPromise = undefined;
             throw error;
@@ -785,8 +793,9 @@ export async function generateAssistantReply(
       replyFiles,
       artifactStatePatch,
       toolCalls,
-      sandboxId: sandboxExecutor.getSandboxId(),
-      sandboxDependencyProfileHash: sandboxExecutor.getDependencyProfileHash(),
+      sandboxId: currentSandboxExecutor.getSandboxId(),
+      sandboxDependencyProfileHash:
+        currentSandboxExecutor.getDependencyProfileHash(),
       generatedFileCount: generatedFiles.length,
       hasTextDeltaCallback: Boolean(context.onTextDelta),
       shouldTrace,
@@ -845,8 +854,7 @@ export async function generateAssistantReply(
     const message = error instanceof Error ? error.message : String(error);
     return {
       text: `Error: ${message}`,
-      sandboxId: lastKnownSandboxId,
-      sandboxDependencyProfileHash: lastKnownSandboxDependencyProfileHash,
+      ...getSandboxMetadata(),
       diagnostics: {
         outcome: "provider_error",
         modelId: botConfig.modelId,

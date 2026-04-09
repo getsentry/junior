@@ -6,7 +6,8 @@ const { agentMode, createSandboxCallCount } = vi.hoisted(() => ({
       | "plain"
       | "loadSkill"
       | "attachFile"
-      | "attachFileThenError",
+      | "attachFileThenError"
+      | "bashThenError",
   },
   createSandboxCallCount: {
     value: 0,
@@ -101,6 +102,17 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         throw new Error("agent exploded");
       }
 
+      if (agentMode.value === "bashThenError") {
+        const bashTool = this.state.tools.find((tool) => tool.name === "bash");
+        if (!bashTool) {
+          throw new Error("bash tool missing");
+        }
+        await bashTool.execute("tool-call-bash", {
+          command: "pwd",
+        });
+        throw new Error("agent exploded");
+      }
+
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "Plain reply." }],
@@ -137,7 +149,10 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 }));
 
 vi.mock("@/chat/capabilities/factory", () => ({
-  createSkillCapabilityRuntime: () => ({}),
+  createSkillCapabilityRuntime: () => ({
+    getTurnHeaderTransforms: () => [],
+    getTurnEnv: () => ({}),
+  }),
   createUserTokenStore: () => ({
     get: async () => undefined,
     set: async () => undefined,
@@ -229,9 +244,30 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         }),
       };
     },
-    canExecute: () => false,
-    execute: async () => {
-      throw new Error("sandbox executor should not handle tools in this test");
+    canExecute: (toolName: string) =>
+      agentMode.value === "bashThenError" && toolName === "bash",
+    execute: async ({ toolName }: { toolName: string; input: unknown }) => {
+      if (agentMode.value !== "bashThenError" || toolName !== "bash") {
+        throw new Error(
+          "sandbox executor should not handle tools in this test",
+        );
+      }
+
+      createSandboxCallCount.value += 1;
+      return {
+        result: {
+          ok: true,
+          command: "pwd",
+          cwd: "/workspace",
+          exit_code: 0,
+          signal: null,
+          timed_out: false,
+          stdout: "/workspace\n",
+          stderr: "",
+          stdout_truncated: false,
+          stderr_truncated: false,
+        },
+      };
     },
     getSandboxId: () =>
       createSandboxCallCount.value > 0 ? "sandbox-test" : undefined,
@@ -282,6 +318,17 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     agentMode.value = "attachFileThenError";
 
     const reply = await generateAssistantReply("attach the report");
+
+    expect(reply.text).toContain("Error: agent exploded");
+    expect(createSandboxCallCount.value).toBe(1);
+    expect(reply.sandboxId).toBe("sandbox-test");
+    expect(reply.sandboxDependencyProfileHash).toBe("hash-test");
+  });
+
+  it("retains sandbox reuse metadata after executor-backed boot on error turns", async () => {
+    agentMode.value = "bashThenError";
+
+    const reply = await generateAssistantReply("run pwd");
 
     expect(reply.text).toContain("Error: agent exploded");
     expect(createSandboxCallCount.value).toBe(1);
