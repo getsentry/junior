@@ -18,6 +18,7 @@ describe("Conversational Evals: GitHub Skill Workflows", () => {
     overrides: {
       enable_test_credentials: true,
       plugin_packages: ["@sentry/junior-github"],
+      reply_timeout_ms: 75000,
       test_credential_token: "eval-github-token",
       skill_dirs: ["../junior/skills"],
     },
