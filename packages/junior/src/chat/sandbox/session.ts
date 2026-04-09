@@ -1,6 +1,7 @@
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
 import {
+  logInfo,
   logWarn,
   setSpanAttributes,
   withSpan,
@@ -227,6 +228,34 @@ export function createSandboxSessionManager(options?: {
     callback: () => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
+  const emitSandboxStatus = async (
+    source: string,
+    statusEmitter:
+      | StatusEmitter
+      | ((status: AssistantStatusSpec) => Promise<void>),
+    status: AssistantStatusSpec,
+  ): Promise<void> => {
+    logInfo(
+      "sandbox_status_emitted",
+      traceContext,
+      {
+        "app.sandbox.status.source": source,
+        "app.sandbox.status.kind": status.kind,
+        ...(status.context
+          ? { "app.sandbox.status.context": status.context }
+          : {}),
+      },
+      "Sandbox status emitted",
+    );
+
+    if (typeof statusEmitter === "function") {
+      await statusEmitter(status);
+      return;
+    }
+
+    await statusEmitter.emit(status);
+  };
+
   const clearSession = (): void => {
     sandbox = null;
     sandboxIdHint = undefined;
@@ -298,7 +327,13 @@ export function createSandboxSessionManager(options?: {
   ): Promise<Sandbox> => {
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       try {
-        await emitStatus?.(makeAssistantStatus("loading", "sandbox"));
+        if (emitStatus) {
+          await emitSandboxStatus(
+            "snapshot_boot",
+            emitStatus,
+            makeAssistantStatus("loading", "sandbox"),
+          );
+        }
         return await Sandbox.create({
           timeout: timeoutMs,
           source: {
@@ -349,7 +384,11 @@ export function createSandboxSessionManager(options?: {
     const { runtime, snapshot, sandboxCredentials, status } = params;
 
     if (!snapshot.snapshotId) {
-      await status.emit(makeAssistantStatus("loading", "sandbox"));
+      await emitSandboxStatus(
+        "fresh_runtime_boot",
+        status,
+        makeAssistantStatus("loading", "sandbox"),
+      );
       return await Sandbox.create({
         timeout: timeoutMs,
         runtime,
@@ -406,7 +445,11 @@ export function createSandboxSessionManager(options?: {
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          await status.emit(makeAssistantStatus("loading", "sandbox runtime"));
+          await emitSandboxStatus(
+            "runtime_dependency_resolve",
+            status,
+            makeAssistantStatus("loading", "sandbox runtime"),
+          );
           const snapshot = await resolveRuntimeDependencySnapshot({
             runtime,
             timeoutMs,
