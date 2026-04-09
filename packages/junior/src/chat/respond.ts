@@ -311,8 +311,24 @@ export async function generateAssistantReply(
       sandboxExecutor.getDependencyProfileHash();
     sandboxExecutor.configureSkills(availableSkills);
     let sandboxPromise: Promise<SandboxWorkspace> | undefined;
-    const getSandbox = (): Promise<SandboxWorkspace> => {
+    const getSandbox = (reason: {
+      trigger: string;
+      path?: string;
+      cmd?: string;
+      cwd?: string;
+    }): Promise<SandboxWorkspace> => {
       if (!sandboxPromise) {
+        logInfo(
+          "sandbox_boot_requested",
+          spanContext,
+          {
+            "app.sandbox.boot.trigger": reason.trigger,
+            ...(reason.path ? { "file.path": reason.path } : {}),
+            ...(reason.cmd ? { "process.executable.name": reason.cmd } : {}),
+            ...(reason.cwd ? { "file.directory": reason.cwd } : {}),
+          },
+          "Lazy sandbox boot requested",
+        );
         sandboxPromise = sandboxExecutor
           .createSandbox()
           .then((workspace) => {
@@ -330,8 +346,20 @@ export async function generateAssistantReply(
     };
     const sandbox: SandboxWorkspace = {
       readFileToBuffer: async (input) =>
-        (await getSandbox()).readFileToBuffer(input),
-      runCommand: async (input) => (await getSandbox()).runCommand(input),
+        (
+          await getSandbox({
+            trigger: "workspace.readFileToBuffer",
+            path: input.path,
+          })
+        ).readFileToBuffer(input),
+      runCommand: async (input) =>
+        (
+          await getSandbox({
+            trigger: "workspace.runCommand",
+            cmd: input.cmd,
+            cwd: input.cwd,
+          })
+        ).runCommand(input),
     };
 
     // ── Preload skills from checkpoint ───────────────────────────────

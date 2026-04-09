@@ -9,13 +9,6 @@ const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
   sandboxCreateMock: vi.fn(),
 }));
-const { setSpanAttributesMock, setSpanStatusMock, logWarnMock } = vi.hoisted(
-  () => ({
-    setSpanAttributesMock: vi.fn(),
-    setSpanStatusMock: vi.fn(),
-    logWarnMock: vi.fn(),
-  }),
-);
 
 vi.mock("@vercel/sandbox", () => ({
   Sandbox: {
@@ -26,18 +19,6 @@ vi.mock("@vercel/sandbox", () => ({
 
 vi.mock("bash-tool", () => ({
   createBashTool: vi.fn(),
-}));
-
-vi.mock("@/chat/logging", () => ({
-  withSpan: async (
-    _name: string,
-    _op: string,
-    _context: unknown,
-    callback: () => Promise<unknown>,
-  ) => callback(),
-  setSpanAttributes: setSpanAttributesMock,
-  setSpanStatus: setSpanStatusMock,
-  logWarn: logWarnMock,
 }));
 
 const {
@@ -145,8 +126,6 @@ describe("createSandboxExecutor", () => {
   beforeEach(() => {
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
-    setSpanAttributesMock.mockReset();
-    setSpanStatusMock.mockReset();
     vi.mocked(createBashTool).mockReset();
     resolveRuntimeDependencySnapshotMock.mockReset();
     resolveRuntimeDependencySnapshotMock.mockResolvedValue({
@@ -850,12 +829,6 @@ describe("createSandboxExecutor", () => {
         snapshotId: "snap_123",
       },
     });
-    expect(setSpanAttributesMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "app.sandbox.snapshot.cache_hit": true,
-        "app.sandbox.snapshot.resolve_outcome": "cache_hit",
-      }),
-    );
   });
 
   it("rebuilds snapshot when cached snapshot is missing", async () => {

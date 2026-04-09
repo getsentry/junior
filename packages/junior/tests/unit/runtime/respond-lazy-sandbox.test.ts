@@ -113,24 +113,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
   return { Agent: MockAgent };
 });
 
-vi.mock("@/chat/logging", () => ({
-  extractGenAiUsageAttributes: () => ({}),
-  getActiveTraceId: () => undefined,
-  logException: vi.fn(),
-  logInfo: vi.fn(),
-  logWarn: vi.fn(),
-  serializeGenAiAttribute: () => undefined,
-  setSpanAttributes: vi.fn(),
-  setSpanStatus: vi.fn(),
-  setTags: vi.fn(),
-  withSpan: async (
-    _name: string,
-    _op: string,
-    _context: unknown,
-    callback: () => Promise<unknown>,
-  ) => await callback(),
-}));
-
 vi.mock("@/chat/config", () => ({
   botConfig: {
     modelId: "test-model",

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import {
+  logInfo,
   setSpanAttributes,
   setSpanStatus,
   withSpan,
@@ -125,12 +126,34 @@ export function createSandboxExecutor(options?: {
     callback: () => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
 
+  const logSandboxBootRequest = (
+    trigger: string,
+    details: Record<string, string | number> = {},
+  ): void => {
+    if (sessionManager.getSandboxId()) {
+      return;
+    }
+
+    logInfo(
+      "sandbox_boot_requested",
+      traceContext,
+      {
+        "app.sandbox.boot.trigger": trigger,
+        ...details,
+      },
+      "Sandbox boot requested",
+    );
+  };
+
   const executeBashTool = async <T>(
     rawInput: Record<string, unknown>,
     command: string,
   ): Promise<SandboxExecutionEnvelope<T>> => {
     const headerTransforms = parseHeaderTransforms(rawInput.headerTransforms);
     const env = parseEnv(rawInput.env);
+    logSandboxBootRequest("tool.bash", {
+      "app.sandbox.command_length": command.length,
+    });
     const executeBash = (await sessionManager.ensureToolExecutors()).bash;
     const result = await withSandboxSpan(
       "bash",
@@ -223,6 +246,9 @@ export function createSandboxExecutor(options?: {
       }
     }
 
+    logSandboxBootRequest("tool.readFile", {
+      "file.path": filePath,
+    });
     const executeReadFile = (await sessionManager.ensureToolExecutors())
       .readFile;
     const result = await withSandboxSpan(
@@ -259,6 +285,9 @@ export function createSandboxExecutor(options?: {
     }
 
     const content = String(rawInput.content ?? "");
+    logSandboxBootRequest("tool.writeFile", {
+      "file.path": filePath,
+    });
     const executeWriteFile = (await sessionManager.ensureToolExecutors())
       .writeFile;
     await withSandboxSpan(
