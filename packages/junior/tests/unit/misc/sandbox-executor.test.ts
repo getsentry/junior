@@ -4,6 +4,7 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
 import { sandboxSkillDir } from "@/chat/sandbox/paths";
+import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
 const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
@@ -59,6 +60,7 @@ interface MockSandbox {
   sandboxId: string;
   mkDir: ReturnType<typeof vi.fn>;
   writeFiles: ReturnType<typeof vi.fn>;
+  readFileToBuffer: ReturnType<typeof vi.fn>;
   runCommand: ReturnType<typeof vi.fn>;
   updateNetworkPolicy: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
@@ -85,6 +87,7 @@ function makeSandbox(
         throw options.writeFilesError;
       }
     }),
+    readFileToBuffer: vi.fn(async () => Buffer.from("")),
     runCommand: vi.fn(async () => ({
       exitCode: 0,
       stdout: async () => "",
@@ -119,6 +122,36 @@ function createApiError(
       },
     },
     sandboxId: "sbx_test",
+  });
+}
+
+async function expectWorkspaceToDelegate(
+  workspace: SandboxWorkspace,
+  sandbox: MockSandbox,
+): Promise<void> {
+  const fileBuffer = Buffer.from("workspace file");
+  const commandResult = {
+    exitCode: 0,
+    stdout: async () => "stdout",
+    stderr: async () => "stderr",
+  };
+
+  sandbox.readFileToBuffer.mockResolvedValueOnce(fileBuffer);
+  await expect(
+    workspace.readFileToBuffer({ path: "/tmp/workspace.txt" }),
+  ).resolves.toBe(fileBuffer);
+  expect(sandbox.readFileToBuffer).toHaveBeenCalledWith({
+    path: "/tmp/workspace.txt",
+  });
+
+  sandbox.runCommand.mockResolvedValueOnce(commandResult);
+  await expect(
+    workspace.runCommand({ cmd: "pwd", args: ["-P"], cwd: "/tmp" }),
+  ).resolves.toBe(commandResult);
+  expect(sandbox.runCommand).toHaveBeenCalledWith({
+    cmd: "pwd",
+    args: ["-P"],
+    cwd: "/tmp",
   });
 }
 
@@ -164,12 +197,11 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(freshSandbox);
+    await expectWorkspaceToDelegate(sandbox, freshSandbox);
     expect(sandboxGetMock).toHaveBeenCalledWith({ sandboxId: "sbx_stopped" });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(stoppedSandbox.mkDir).toHaveBeenCalled();
     expect(freshSandbox.mkDir).toHaveBeenCalled();
-    expect(freshSandbox.runCommand).not.toHaveBeenCalled();
     expect(executor.getSandboxId()).toBe("sbx_fresh");
   });
 
@@ -224,7 +256,7 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(freshSandbox);
+    await expectWorkspaceToDelegate(sandbox, freshSandbox);
     expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
@@ -821,7 +853,7 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(snapshotSandbox);
+    await expectWorkspaceToDelegate(sandbox, snapshotSandbox);
     expect(sandboxCreateMock).toHaveBeenCalledWith({
       timeout: 1000 * 60 * 30,
       source: {
@@ -862,7 +894,7 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(rebuiltSandbox);
+    await expectWorkspaceToDelegate(sandbox, rebuiltSandbox);
     expect(resolveRuntimeDependencySnapshotMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
@@ -905,7 +937,7 @@ describe("createSandboxExecutor", () => {
 
     const sandbox = await executor.createSandbox();
 
-    expect(sandbox).toBe(snapshotSandbox);
+    await expectWorkspaceToDelegate(sandbox, snapshotSandbox);
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
     expect(sandboxCreateMock).toHaveBeenNthCalledWith(1, {
       timeout: 1000 * 60 * 30,

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import type { Sandbox } from "@vercel/sandbox";
 import {
   logInfo,
   setSpanAttributes,
@@ -96,6 +97,17 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
       .filter(([, value]) => typeof value === "string")
       .map(([key, value]) => [key, value as string]),
   );
+}
+
+function createSandboxWorkspace(sandbox: Sandbox): SandboxWorkspace {
+  return {
+    readFileToBuffer(input) {
+      return sandbox.readFileToBuffer(input);
+    },
+    runCommand(input) {
+      return sandbox.runCommand(input);
+    },
+  };
 }
 
 /** Create one sandbox-backed tool executor facade for the current turn. */
@@ -364,7 +376,7 @@ export function createSandboxExecutor(options?: {
       return SANDBOX_TOOL_NAMES.has(toolName);
     },
     async createSandbox() {
-      return await sessionManager.createSandbox();
+      return createSandboxWorkspace(await sessionManager.createSandbox());
     },
     execute,
     async dispose() {
