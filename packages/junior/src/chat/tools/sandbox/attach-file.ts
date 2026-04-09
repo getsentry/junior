@@ -92,7 +92,7 @@ export function createAttachFileTool(
 ) {
   return tool({
     description:
-      "Attach a file to the Slack reply. Use this for files that exist in the sandbox, such as screenshots, PDFs, or logs, or for generated image `attachment_path` values returned earlier in the turn.",
+      "Attach a file to the Slack reply. Use this only when the user should actually receive a file that exists in the sandbox, such as a screenshot, PDF, log, or generated image `attachment_path`. Do not call it for ordinary conversation turns.",
     inputSchema: Type.Object(
       {
         path: Type.String({

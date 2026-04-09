@@ -4,7 +4,7 @@ import { tool } from "@/chat/tools/definition";
 export function createReadFileTool() {
   return tool({
     description:
-      "Read a file from the sandbox workspace. Use when you need exact file contents to verify facts or make edits safely. Do not use for broad discovery when search tools are better.",
+      "Read a file from the sandbox workspace. Use when you need exact file contents to verify facts or make edits safely. Do not use for greetings, simple acknowledgements, or questions answerable from the conversation alone. Do not use for broad discovery when search tools are better.",
     inputSchema: Type.Object(
       {
         path: Type.String({
