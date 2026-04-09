@@ -1139,12 +1139,14 @@ export function createSandboxExecutor(options?: {
     );
   };
 
-  const getToolExecutors = async (): Promise<ToolExecutors> => {
+  const getToolExecutors = async (
+    activeSandbox?: Sandbox,
+  ): Promise<ToolExecutors> => {
     if (toolExecutors) {
       return toolExecutors;
     }
 
-    const activeSandbox = await acquireSandbox();
+    const sandboxInstance = activeSandbox ?? (await acquireSandbox());
     const toolkit = await withSandboxSpan(
       "sandbox.bash_tool.init",
       "sandbox.tool.init",
@@ -1154,7 +1156,7 @@ export function createSandboxExecutor(options?: {
       },
       async () =>
         createBashTool({
-          sandbox: activeSandbox,
+          sandbox: sandboxInstance,
           destination: SANDBOX_WORKSPACE_ROOT,
         }),
     );
@@ -1167,14 +1169,15 @@ export function createSandboxExecutor(options?: {
 
     toolExecutors = {
       bash: async (input) => {
-        const restoreNetworkPolicy = activeSandbox.networkPolicy ?? "allow-all";
+        const restoreNetworkPolicy =
+          sandboxInstance.networkPolicy ?? "allow-all";
         const headerTransforms = input.headerTransforms;
         if (headerTransforms && headerTransforms.length > 0) {
           const policy = mergeNetworkPolicyWithHeaderTransforms(
             restoreNetworkPolicy,
             headerTransforms,
           );
-          await activeSandbox.updateNetworkPolicy(policy);
+          await sandboxInstance.updateNetworkPolicy(policy);
         }
 
         const script = buildNonInteractiveShellScript(input.command, {
@@ -1193,7 +1196,7 @@ export function createSandboxExecutor(options?: {
           | undefined;
         let restoreError: unknown;
         try {
-          const commandResult = await activeSandbox.runCommand({
+          const commandResult = await sandboxInstance.runCommand({
             cmd: "bash",
             args: ["-c", script],
             cwd: SANDBOX_WORKSPACE_ROOT,
@@ -1223,10 +1226,10 @@ export function createSandboxExecutor(options?: {
         } finally {
           if (headerTransforms && headerTransforms.length > 0) {
             try {
-              await activeSandbox.updateNetworkPolicy(restoreNetworkPolicy);
+              await sandboxInstance.updateNetworkPolicy(restoreNetworkPolicy);
             } catch (error) {
               restoreError = error;
-              await invalidateSandboxInstance(activeSandbox, error);
+              await invalidateSandboxInstance(sandboxInstance, error);
             }
           }
         }
@@ -1271,7 +1274,7 @@ export function createSandboxExecutor(options?: {
       }
     }
 
-    const ensureSandboxReady = async (): Promise<void> => {
+    const ensureSandboxReady = async (): Promise<Sandbox> => {
       const activeSandbox = await acquireSandbox();
       const keepAliveMs = Number.parseInt(
         process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
@@ -1293,10 +1296,11 @@ export function createSandboxExecutor(options?: {
           // Best effort keepalive.
         }
       }
+      return activeSandbox;
     };
 
     if (params.toolName === "bash") {
-      await ensureSandboxReady();
+      const activeSandbox = await ensureSandboxReady();
       const command = bashCommand as string;
       const headerTransformsInput = rawInput.headerTransforms;
       const headerTransforms = Array.isArray(headerTransformsInput)
@@ -1335,7 +1339,7 @@ export function createSandboxExecutor(options?: {
             )
           : undefined;
 
-      const executeBash = (await getToolExecutors()).bash;
+      const executeBash = (await getToolExecutors(activeSandbox)).bash;
       const result = await withSandboxSpan(
         "bash",
         "process.exec",
@@ -1425,8 +1429,8 @@ export function createSandboxExecutor(options?: {
         }
       }
 
-      await ensureSandboxReady();
-      const executeReadFile = (await getToolExecutors()).readFile;
+      const activeSandbox = await ensureSandboxReady();
+      const executeReadFile = (await getToolExecutors(activeSandbox)).readFile;
       const result = await withSandboxSpan(
         "sandbox.readFile",
         "sandbox.fs.read",
@@ -1453,14 +1457,15 @@ export function createSandboxExecutor(options?: {
     }
 
     if (params.toolName === "writeFile") {
-      await ensureSandboxReady();
+      const activeSandbox = await ensureSandboxReady();
       const filePath = String(rawInput.path ?? "").trim();
       if (!filePath) {
         throw new Error("path is required");
       }
 
       const content = String(rawInput.content ?? "");
-      const executeWriteFile = (await getToolExecutors()).writeFile;
+      const executeWriteFile = (await getToolExecutors(activeSandbox))
+        .writeFile;
       await withSandboxSpan(
         "sandbox.writeFile",
         "sandbox.fs.write",

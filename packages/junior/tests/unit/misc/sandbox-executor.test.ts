@@ -554,6 +554,31 @@ describe("createSandboxExecutor", () => {
     });
   });
 
+  it("syncs sandbox files once when the first tool call also initializes tool executors", async () => {
+    const sandbox = makeSandbox("sbx_single_sync");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo ok",
+      },
+    });
+
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createBashTool)).toHaveBeenCalledTimes(1);
+  });
+
   it("reads virtual skill files without booting a sandbox before sandbox state exists", async () => {
     const skillRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-skill-read-"),
