@@ -5,6 +5,7 @@ const {
   createSandboxCallCount,
   activeSandboxVersion,
   attachFileReadVersions,
+  pendingWorkspaceRelease,
 } = vi.hoisted(() => ({
   agentMode: {
     value: "plain" as
@@ -13,6 +14,7 @@ const {
       | "attachFile"
       | "attachFileThenError"
       | "attachFileBashRecoverAttachFile"
+      | "attachFileBashRaceAttachFile"
       | "bashThenError",
   },
   createSandboxCallCount: {
@@ -23,6 +25,9 @@ const {
   },
   attachFileReadVersions: {
     value: [] as number[],
+  },
+  pendingWorkspaceRelease: {
+    value: undefined as (() => void) | undefined,
   },
 }));
 
@@ -134,6 +139,32 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         this.state.messages.push({
           role: "assistant",
           content: [{ type: "text", text: "Attached report twice." }],
+          stopReason: "stop",
+        });
+        return {};
+      }
+
+      if (agentMode.value === "attachFileBashRaceAttachFile") {
+        const attachFileTool = this.state.tools.find(
+          (tool) => tool.name === "attachFile",
+        );
+        const bashTool = this.state.tools.find((tool) => tool.name === "bash");
+        if (!attachFileTool || !bashTool) {
+          throw new Error("sandbox-backed tools missing");
+        }
+        const firstAttach = attachFileTool.execute("tool-call-attach-file-1", {
+          path: "report.txt",
+        });
+        await bashTool.execute("tool-call-bash", {
+          command: "pwd",
+        });
+        await firstAttach;
+        await attachFileTool.execute("tool-call-attach-file-2", {
+          path: "report.txt",
+        });
+        this.state.messages.push({
+          role: "assistant",
+          content: [{ type: "text", text: "Attached report after race." }],
           stopReason: "stop",
         });
         return {};
@@ -262,7 +293,20 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
     createSandbox: async () => {
       createSandboxCallCount.value += 1;
       const sandboxVersion = activeSandboxVersion.value;
+      if (
+        agentMode.value === "attachFileBashRaceAttachFile" &&
+        createSandboxCallCount.value === 1
+      ) {
+        await new Promise<void>((resolve) => {
+          pendingWorkspaceRelease.value = resolve;
+        });
+        pendingWorkspaceRelease.value = undefined;
+      }
       return {
+        sandboxId:
+          sandboxVersion === 1
+            ? "sandbox-test"
+            : `sandbox-test-${sandboxVersion}`,
         readFileToBuffer: async () => {
           attachFileReadVersions.value.push(sandboxVersion);
           return Buffer.from(
@@ -286,7 +330,8 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
     },
     canExecute: (toolName: string) =>
       (agentMode.value === "bashThenError" ||
-        agentMode.value === "attachFileBashRecoverAttachFile") &&
+        agentMode.value === "attachFileBashRecoverAttachFile" ||
+        agentMode.value === "attachFileBashRaceAttachFile") &&
       toolName === "bash",
     execute: async ({ toolName }: { toolName: string; input: unknown }) => {
       if (toolName !== "bash") {
@@ -297,6 +342,25 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
       if (agentMode.value === "attachFileBashRecoverAttachFile") {
         activeSandboxVersion.value += 1;
+        return {
+          result: {
+            ok: true,
+            command: "pwd",
+            cwd: "/workspace",
+            exit_code: 0,
+            signal: null,
+            timed_out: false,
+            stdout: "/workspace\n",
+            stderr: "",
+            stdout_truncated: false,
+            stderr_truncated: false,
+          },
+        };
+      }
+
+      if (agentMode.value === "attachFileBashRaceAttachFile") {
+        activeSandboxVersion.value += 1;
+        pendingWorkspaceRelease.value?.();
         return {
           result: {
             ok: true,
@@ -354,6 +418,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     createSandboxCallCount.value = 0;
     activeSandboxVersion.value = 1;
     attachFileReadVersions.value = [];
+    pendingWorkspaceRelease.value = undefined;
   });
 
   it("does not create a sandbox for turns that never touch sandbox-backed tools", async () => {
@@ -414,6 +479,24 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     const reply = await generateAssistantReply("attach the report twice");
 
     expect(reply.text).toBe("Attached report twice.");
+    expect(createSandboxCallCount.value).toBe(2);
+    expect(attachFileReadVersions.value).toEqual([1, 2]);
+    expect(reply.sandboxId).toBe("sandbox-test-2");
+    expect(reply.diagnostics.toolCalls).toEqual([
+      "attachFile",
+      "bash",
+      "attachFile",
+    ]);
+  });
+
+  it("refreshes the cached workspace when sandbox replacement races with lazy boot", async () => {
+    agentMode.value = "attachFileBashRaceAttachFile";
+
+    const reply = await generateAssistantReply(
+      "attach the report after a race",
+    );
+
+    expect(reply.text).toBe("Attached report after race.");
     expect(createSandboxCallCount.value).toBe(2);
     expect(attachFileReadVersions.value).toEqual([1, 2]);
     expect(reply.sandboxId).toBe("sandbox-test-2");

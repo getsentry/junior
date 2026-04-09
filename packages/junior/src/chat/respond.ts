@@ -360,7 +360,7 @@ export async function generateAssistantReply(
         sandboxPromise = currentSandboxExecutor
           .createSandbox()
           .then((sandbox) => {
-            sandboxPromiseId = currentSandboxExecutor.getSandboxId();
+            sandboxPromiseId = sandbox.sandboxId;
             return sandbox;
           })
           .catch((error) => {

@@ -129,6 +129,7 @@ async function expectWorkspaceToDelegate(
   workspace: SandboxWorkspace,
   sandbox: MockSandbox,
 ): Promise<void> {
+  expect(workspace.sandboxId).toBe(sandbox.sandboxId);
   const fileBuffer = Buffer.from("workspace file");
   const commandResult = {
     exitCode: 0,

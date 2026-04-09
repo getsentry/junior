@@ -101,6 +101,7 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
 
 function createSandboxWorkspace(sandbox: Sandbox): SandboxWorkspace {
   return {
+    sandboxId: sandbox.sandboxId,
     readFileToBuffer(input) {
       return sandbox.readFileToBuffer(input);
     },
