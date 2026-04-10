@@ -48,6 +48,14 @@ Create an OAuth application in Sentry and set its redirect URL to:
 
 Then copy the client ID and client secret into your deployment environment as `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET`.
 
+Junior requests these Sentry OAuth scopes:
+
+- `event:read`
+- `event:write`
+- `org:read`
+- `project:read`
+- `team:read`
+
 ## Verify
 
 Run the auth flow and then make a real Sentry request:

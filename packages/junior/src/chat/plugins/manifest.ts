@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 import type {
+  CardFieldSchema,
+  CardRenderField,
+  CardRenderTemplate,
   GitHubAppCredentials,
+  PluginCardDeclaration,
   PluginMcpConfig,
   OAuthBearerCredentials,
   PluginCredentials,
@@ -287,6 +291,11 @@ const manifestSourceSchema = z
     target: z
       .record(z.string(), z.unknown(), {
         error: "must be an object",
+      })
+      .optional(),
+    cards: z
+      .array(z.unknown(), {
+        error: "must be an array",
       })
       .optional(),
   })
@@ -576,6 +585,232 @@ function normalizeMcp(
   } satisfies PluginMcpConfig;
 }
 
+const CARD_NAME_RE = /^[a-z][a-z0-9-]*$/;
+const CARD_FIELD_TYPES = new Set(["string", "integer", "boolean"]);
+const CARD_STATUS_STYLES = new Set(["success", "warning", "danger", "default"]);
+
+const cardEntrySourceSchema = z
+  .object({
+    name: nonEmptyTrimmedString,
+    description: nonEmptyTrimmedString,
+    "entity-key": nonEmptyTrimmedString,
+    schema: z.record(z.string(), z.unknown(), {
+      error: "must be an object",
+    }),
+    render: z.record(z.string(), z.unknown(), {
+      error: "must be an object",
+    }),
+  })
+  .passthrough();
+
+function normalizeCardSchema(
+  raw: Record<string, unknown>,
+  pluginName: string,
+  cardName: string,
+): Record<string, CardFieldSchema> {
+  const result: Record<string, CardFieldSchema> = {};
+  const prefix = `Plugin ${pluginName} cards.${cardName}.schema`;
+
+  for (const [fieldName, fieldDef] of Object.entries(raw)) {
+    if (!fieldDef || typeof fieldDef !== "object" || Array.isArray(fieldDef)) {
+      throw new Error(`${prefix}.${fieldName} must be an object`);
+    }
+
+    const def = fieldDef as Record<string, unknown>;
+    const type = typeof def.type === "string" ? def.type.trim() : "";
+    if (!CARD_FIELD_TYPES.has(type)) {
+      throw new Error(
+        `${prefix}.${fieldName}.type must be "string", "integer", or "boolean"`,
+      );
+    }
+
+    const schema: CardFieldSchema = {
+      type: type as "string" | "integer" | "boolean",
+    };
+
+    if (def.required === true) {
+      schema.required = true;
+    }
+    if (typeof def.description === "string" && def.description.trim()) {
+      schema.description = def.description.trim();
+    }
+    if (Array.isArray(def.enum)) {
+      if (type !== "string") {
+        throw new Error(
+          `${prefix}.${fieldName}.enum is only valid for string fields`,
+        );
+      }
+      const enumValues = def.enum.map((v) => {
+        if (typeof v !== "string" || !v.trim()) {
+          throw new Error(
+            `${prefix}.${fieldName}.enum entries must be non-empty strings`,
+          );
+        }
+        return v.trim();
+      });
+      if (enumValues.length === 0) {
+        throw new Error(`${prefix}.${fieldName}.enum must not be empty`);
+      }
+      schema.enum = enumValues;
+    }
+
+    result[fieldName] = schema;
+  }
+
+  const hasRequired = Object.values(result).some((f) => f.required);
+  if (!hasRequired) {
+    throw new Error(`${prefix} must have at least one required field`);
+  }
+
+  return result;
+}
+
+function normalizeCardRender(
+  raw: Record<string, unknown>,
+  pluginName: string,
+  cardName: string,
+): CardRenderTemplate {
+  const prefix = `Plugin ${pluginName} cards.${cardName}.render`;
+
+  const title = typeof raw.title === "string" ? raw.title.trim() : "";
+  if (!title) {
+    throw new Error(`${prefix}.title must be a non-empty string`);
+  }
+
+  const titleUrl =
+    typeof raw["title-url"] === "string" ? raw["title-url"].trim() : undefined;
+  const body = typeof raw.body === "string" ? raw.body.trim() : undefined;
+  const linkLabel =
+    typeof raw["link-label"] === "string"
+      ? raw["link-label"].trim()
+      : undefined;
+
+  const fallbackText =
+    typeof raw["fallback-text"] === "string" ? raw["fallback-text"].trim() : "";
+  if (!fallbackText) {
+    throw new Error(`${prefix}.fallback-text must be a non-empty string`);
+  }
+
+  const render: CardRenderTemplate = { title, fallbackText };
+  if (titleUrl) {
+    render.titleUrl = titleUrl;
+  }
+  if (body) {
+    render.body = body;
+  }
+  if (linkLabel) {
+    render.linkLabel = linkLabel;
+  }
+
+  if (
+    raw.status &&
+    typeof raw.status === "object" &&
+    !Array.isArray(raw.status)
+  ) {
+    const statusRaw = raw.status as Record<string, unknown>;
+    const statusText =
+      typeof statusRaw.text === "string" ? statusRaw.text.trim() : "";
+    if (!statusText) {
+      throw new Error(`${prefix}.status.text must be a non-empty string`);
+    }
+    render.status = { text: statusText };
+
+    if (
+      statusRaw["style-map"] &&
+      typeof statusRaw["style-map"] === "object" &&
+      !Array.isArray(statusRaw["style-map"])
+    ) {
+      const styleMap: Record<
+        string,
+        "success" | "warning" | "danger" | "default"
+      > = {};
+      for (const [key, value] of Object.entries(
+        statusRaw["style-map"] as Record<string, unknown>,
+      )) {
+        if (typeof value !== "string" || !CARD_STATUS_STYLES.has(value)) {
+          throw new Error(
+            `${prefix}.status.style-map.${key} must be "success", "warning", "danger", or "default"`,
+          );
+        }
+        styleMap[key] = value as "success" | "warning" | "danger" | "default";
+      }
+      render.status.styleMap = styleMap;
+    }
+  }
+
+  if (Array.isArray(raw.fields)) {
+    const fields: CardRenderField[] = [];
+    for (const fieldRaw of raw.fields) {
+      if (
+        !fieldRaw ||
+        typeof fieldRaw !== "object" ||
+        Array.isArray(fieldRaw)
+      ) {
+        throw new Error(`${prefix}.fields entries must be objects`);
+      }
+      const f = fieldRaw as Record<string, unknown>;
+      const label = typeof f.label === "string" ? f.label.trim() : "";
+      const value = typeof f.value === "string" ? f.value.trim() : "";
+      if (!label || !value) {
+        throw new Error(
+          `${prefix}.fields entries must have non-empty label and value`,
+        );
+      }
+      const field: CardRenderField = { label, value };
+      if (typeof f.fallback === "string" && f.fallback.trim()) {
+        field.fallback = f.fallback.trim();
+      }
+      fields.push(field);
+    }
+    if (fields.length > 0) {
+      render.fields = fields;
+    }
+  }
+
+  return render;
+}
+
+function normalizeCards(
+  entries: unknown[],
+  pluginName: string,
+): PluginCardDeclaration[] | undefined {
+  const parsed: PluginCardDeclaration[] = [];
+  const seenNames = new Set<string>();
+
+  for (const entry of entries) {
+    const result = cardEntrySourceSchema.safeParse(entry);
+    if (!result.success) {
+      throw new Error(issueMessage(result.error, `Plugin ${pluginName} cards`));
+    }
+
+    const data = result.data;
+    if (!CARD_NAME_RE.test(data.name)) {
+      throw new Error(
+        `Invalid card name "${data.name}" in plugin ${pluginName}`,
+      );
+    }
+    if (seenNames.has(data.name)) {
+      throw new Error(
+        `Duplicate card name "${data.name}" in plugin ${pluginName}`,
+      );
+    }
+    seenNames.add(data.name);
+
+    const schema = normalizeCardSchema(data.schema, pluginName, data.name);
+    const render = normalizeCardRender(data.render, pluginName, data.name);
+
+    parsed.push({
+      name: data.name,
+      description: data.description,
+      entityKey: data["entity-key"],
+      schema,
+      render,
+    });
+  }
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 export function parsePluginManifest(raw: string, dir: string): PluginManifest {
   let parsedYaml: unknown;
   try {
@@ -636,6 +871,11 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
         `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} mcp must be an object`,
       );
     }
+    if (path === "cards") {
+      throw new Error(
+        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} cards must be an array`,
+      );
+    }
     if (path === "oauth") {
       throw new Error(
         `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} oauth must be an object`,
@@ -676,6 +916,7 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
     ? normalizeRuntimePostinstall(data["runtime-postinstall"], data.name)
     : undefined;
   const mcp = data.mcp ? normalizeMcp(data.mcp, data.name) : undefined;
+  const cards = data.cards ? normalizeCards(data.cards, data.name) : undefined;
 
   const manifest: PluginManifest = {
     name: data.name,
@@ -686,6 +927,7 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
     ...(runtimeDependencies ? { runtimeDependencies } : {}),
     ...(runtimePostinstall ? { runtimePostinstall } : {}),
     ...(mcp ? { mcp } : {}),
+    ...(cards ? { cards } : {}),
   };
 
   if (data.oauth) {

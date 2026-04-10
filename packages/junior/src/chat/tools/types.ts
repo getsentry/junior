@@ -1,10 +1,33 @@
-import type { FileUpload } from "chat";
+import type { CardElement, FileUpload } from "chat";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { ChannelCapabilities } from "@/chat/tools/channel-capabilities";
+
+export interface SlackRenderedMessage {
+  text?: string;
+  blocks?: Record<string, unknown>[];
+  attachments: Record<string, unknown>[];
+}
+
+interface BaseRenderedCard {
+  entityKey: string;
+  pluginName: string;
+  fallbackText: string;
+  dedupeTextLines?: string[];
+}
+
+export type RenderedCard =
+  | (BaseRenderedCard & {
+      cardElement: CardElement;
+      slackMessage?: never;
+    })
+  | (BaseRenderedCard & {
+      cardElement?: never;
+      slackMessage: SlackRenderedMessage;
+    });
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
@@ -15,6 +38,7 @@ export interface ToolHooks {
   onGeneratedArtifactFiles?: (files: FileUpload[]) => void;
   onGeneratedFiles?: (files: FileUpload[]) => void;
   onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
+  onCardRendered?: (card: RenderedCard) => void;
   onSkillLoaded?: (
     skill: Skill,
   ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;

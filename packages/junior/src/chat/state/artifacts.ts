@@ -12,6 +12,14 @@ export interface CanvasArtifactSummary {
   createdAt?: string;
 }
 
+export interface CardMessageEntry {
+  entityKey: string;
+  messageId: string;
+  channelMessageTs?: string;
+  pluginName: string;
+  postedAt: string;
+}
+
 export interface ThreadArtifactsState {
   assistantContextChannelId?: string;
   lastCanvasId?: string;
@@ -20,6 +28,7 @@ export interface ThreadArtifactsState {
   lastListId?: string;
   lastListUrl?: string;
   listColumnMap?: ListColumnMap;
+  cardMessages?: CardMessageEntry[];
   updatedAt?: string;
 }
 
@@ -45,6 +54,7 @@ export function coerceThreadArtifactsState(
         assigneeColumnId?: unknown;
         dueDateColumnId?: unknown;
       };
+      cardMessages?: unknown;
       updatedAt?: unknown;
     };
   };
@@ -79,6 +89,43 @@ export function coerceThreadArtifactsState(
             ? candidate.createdAt
             : undefined,
       });
+    }
+  }
+
+  const cardMessages: CardMessageEntry[] = [];
+  if (Array.isArray(artifacts.cardMessages)) {
+    for (const entry of artifacts.cardMessages) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const candidate = entry as {
+        entityKey?: unknown;
+        messageId?: unknown;
+        channelMessageTs?: unknown;
+        pluginName?: unknown;
+        postedAt?: unknown;
+      };
+      if (
+        typeof candidate.entityKey === "string" &&
+        candidate.entityKey.trim().length > 0 &&
+        typeof candidate.messageId === "string" &&
+        candidate.messageId.trim().length > 0 &&
+        typeof candidate.pluginName === "string" &&
+        candidate.pluginName.trim().length > 0 &&
+        typeof candidate.postedAt === "string"
+      ) {
+        cardMessages.push({
+          entityKey: candidate.entityKey,
+          messageId: candidate.messageId,
+          channelMessageTs:
+            typeof candidate.channelMessageTs === "string" &&
+            candidate.channelMessageTs.trim().length > 0
+              ? candidate.channelMessageTs
+              : undefined,
+          pluginName: candidate.pluginName,
+          postedAt: candidate.postedAt,
+        });
+      }
     }
   }
 
@@ -122,6 +169,7 @@ export function coerceThreadArtifactsState(
           ? listColumnMap.dueDateColumnId
           : undefined,
     },
+    cardMessages: cardMessages.length > 0 ? cardMessages : undefined,
     updatedAt:
       typeof artifacts.updatedAt === "string" ? artifacts.updatedAt : undefined,
   };

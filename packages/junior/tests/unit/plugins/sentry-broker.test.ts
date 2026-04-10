@@ -28,7 +28,7 @@ const SENTRY_MANIFEST: PluginManifest = {
     clientSecretEnv: "SENTRY_CLIENT_SECRET",
     authorizeEndpoint: "https://sentry.io/oauth/authorize/",
     tokenEndpoint: "https://sentry.io/oauth/token/",
-    scope: "event:read org:read project:read",
+    scope: "event:read event:write org:read project:read team:read",
   },
 };
 

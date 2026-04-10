@@ -51,6 +51,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/agent-execution-spec.md`
 - `specs/harness-tool-context-spec.md`
 - `specs/plugin-spec.md`
+- `specs/plugin-cards-spec.md`
 - `specs/sandbox-snapshots-spec.md`
 - `specs/providers/catalog-spec.md`
 - `specs/logging/index.md`

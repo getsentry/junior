@@ -43,6 +43,17 @@ export function chatPostMessageOk(
   });
 }
 
+export function chatUpdateOk(input: { ts?: string; channel?: string } = {}): {
+  ok: true;
+  ts: string;
+  channel: string;
+} {
+  return slackOk({
+    ts: input.ts ?? TEST_MESSAGE_TS,
+    channel: input.channel ?? TEST_CHANNEL_ID,
+  });
+}
+
 export function chatPostEphemeralOk(input: { messageTs?: string } = {}): {
   ok: true;
   message_ts: string;

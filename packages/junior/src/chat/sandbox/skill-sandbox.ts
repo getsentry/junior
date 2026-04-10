@@ -9,6 +9,7 @@ import {
 const MAX_SKILL_FILE_BYTES = 256 * 1024;
 const DEFAULT_MAX_SKILL_FILE_CHARS = 20_000;
 const DEFAULT_MAX_SKILL_LIST_ENTRIES = 200;
+const CORE_TOOL_NAMES = new Set(["renderCard"]);
 
 function normalizePathForOutput(value: string): string {
   return value.split(path.sep).join("/");
@@ -133,6 +134,12 @@ export class SkillSandbox {
 
     const resolved = new Set<string>();
     const availableSet = new Set(toolNames);
+
+    for (const toolName of CORE_TOOL_NAMES) {
+      if (availableSet.has(toolName)) {
+        resolved.add(toolName);
+      }
+    }
 
     for (const token of activeSkill.allowedTools) {
       const requestedTool = token.trim();

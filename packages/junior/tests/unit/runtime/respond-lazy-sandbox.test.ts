@@ -235,6 +235,7 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginMcpProviders: () => [],
   getPluginProviders: () => [],
+  getPluginCardDeclarations: () => [],
 }));
 
 vi.mock("@/chat/oauth-flow", () => ({

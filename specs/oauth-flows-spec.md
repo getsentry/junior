@@ -212,7 +212,7 @@ Providers are configured via plugin manifests (`plugin.yaml`) and exposed throug
 - `clientSecretEnv`: `SENTRY_CLIENT_SECRET`
 - Authorize: `https://sentry.io/oauth/authorize/`
 - Token: `https://sentry.io/oauth/token/`
-- Scope: `event:read org:read project:read`
+- Scope: `event:read event:write org:read project:read team:read`
 - Callback: `/api/oauth/callback/sentry`
 
 ### MCP-backed plugins

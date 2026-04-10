@@ -134,12 +134,61 @@ export function createTestThread(args: {
   let stateData: Record<string, unknown> = { ...(args.state ?? {}) };
   const posts: unknown[] = [];
   const postKinds: Array<"stream" | "value"> = [];
-  const postIds: symbol[] = [];
+  const postIds: string[] = [];
   let subscribeCalls = 0;
   let subscribed = false;
 
   const stubAdapter = {} as Adapter;
   const channelRef = args.channelStateRef ?? { value: {} };
+
+  const resolvePost = async (
+    message: unknown,
+  ): Promise<{ entry: unknown; kind: "stream" | "value" }> => {
+    if (
+      message &&
+      typeof message === "object" &&
+      Symbol.asyncIterator in (message as Record<PropertyKey, unknown>)
+    ) {
+      let text = "";
+      for await (const chunk of message as AsyncIterable<string>) {
+        text += chunk;
+      }
+      return { entry: text, kind: "stream" };
+    }
+
+    return { entry: message, kind: "value" };
+  };
+
+  const createSentMessage = (messageId: string): SentMessage => {
+    const sent = {
+      id: messageId,
+      get text() {
+        const index = postIds.indexOf(messageId);
+        return index === -1 ? "" : String(posts[index]);
+      },
+      async edit(message: unknown) {
+        const index = postIds.indexOf(messageId);
+        if (index === -1) {
+          throw new Error(`Unknown sent message id: ${messageId}`);
+        }
+        const { entry, kind } = await resolvePost(message);
+        posts[index] = entry;
+        postKinds[index] = kind;
+        return createSentMessage(messageId);
+      },
+      async delete() {
+        const index = postIds.indexOf(messageId);
+        if (index === -1) return;
+        posts.splice(index, 1);
+        postKinds.splice(index, 1);
+        postIds.splice(index, 1);
+      },
+      async addReaction() {},
+      async removeReaction() {},
+    } as unknown as SentMessage;
+
+    return sent;
+  };
 
   const channel: Channel = {
     adapter: stubAdapter,
@@ -215,39 +264,12 @@ export function createTestThread(args: {
       return Promise.resolve(stateData);
     },
     async post(message: unknown): Promise<SentMessage> {
-      let entry: unknown;
-      let kind: "stream" | "value";
-      if (
-        message &&
-        typeof message === "object" &&
-        Symbol.asyncIterator in (message as Record<PropertyKey, unknown>)
-      ) {
-        kind = "stream";
-        let text = "";
-        for await (const chunk of message as AsyncIterable<string>) {
-          text += chunk;
-        }
-        entry = text;
-      } else {
-        kind = "value";
-        entry = message;
-      }
-      const postId = Symbol("post");
+      const { entry, kind } = await resolvePost(message);
+      const postId = `sent-${postIds.length + 1}`;
       posts.push(entry);
       postKinds.push(kind);
       postIds.push(postId);
-      const sent = {
-        id: `sent-${posts.length}`,
-        text: String(entry),
-        async delete() {
-          const idx = postIds.indexOf(postId);
-          if (idx === -1) return;
-          posts.splice(idx, 1);
-          postKinds.splice(idx, 1);
-          postIds.splice(idx, 1);
-        },
-      } as unknown as SentMessage;
-      return sent;
+      return createSentMessage(postId);
     },
     postEphemeral: (async () => null) as unknown as Thread["postEphemeral"],
     schedule: (async () => ({
@@ -280,7 +302,7 @@ export function createTestThread(args: {
       stateData = { ...stateData, ...(next as Record<string, unknown>) };
     },
     createSentMessageFromMessage(message: Message): SentMessage {
-      return message as unknown as SentMessage;
+      return createSentMessage(message.id);
     },
     get posts() {
       return posts;

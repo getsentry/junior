@@ -10,6 +10,7 @@ import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
 import { discoverInstalledPluginPackageContent } from "./package-discovery";
 import type {
   PluginBrokerDeps,
+  PluginCardDeclaration,
   PluginDefinition,
   OAuthProviderConfig,
   PluginRuntimeDependency,
@@ -426,6 +427,37 @@ export function isPluginCapability(capability: string): boolean {
 
 export function isPluginConfigKey(key: string): boolean {
   return ensurePluginsLoaded().pluginConfigKeys.has(key);
+}
+
+// --- Card declarations ---
+
+/** Return all card declarations across all plugins. */
+export function getPluginCardDeclarations(): Array<{
+  pluginName: string;
+  card: PluginCardDeclaration;
+}> {
+  const state = ensurePluginsLoaded();
+  const result: Array<{ pluginName: string; card: PluginCardDeclaration }> = [];
+  for (const plugin of state.pluginDefinitions) {
+    for (const card of plugin.manifest.cards ?? []) {
+      result.push({ pluginName: plugin.manifest.name, card });
+    }
+  }
+  return result;
+}
+
+/** Look up a card declaration by qualified type (e.g. "github.issue"). */
+export function getCardDeclaration(
+  cardType: string,
+): { pluginName: string; card: PluginCardDeclaration } | undefined {
+  const dotIndex = cardType.indexOf(".");
+  if (dotIndex === -1) return undefined;
+
+  const pluginName = cardType.slice(0, dotIndex);
+  const cardName = cardType.slice(dotIndex + 1);
+  const plugin = ensurePluginsLoaded().pluginsByName.get(pluginName);
+  const card = plugin?.manifest.cards?.find((c) => c.name === cardName);
+  return card ? { pluginName, card } : undefined;
 }
 
 // --- Broker creation ---

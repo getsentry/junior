@@ -120,4 +120,33 @@ describe("skill sandbox", () => {
 
     expect(filtered).toEqual(["bash", "web_search"]);
   });
+
+  it("always keeps renderCard available as a core runtime tool", () => {
+    const sandbox = new SkillSandbox(
+      [
+        {
+          name: "demo",
+          description: "Demo",
+          skillPath: "/tmp/demo",
+        },
+      ],
+      [
+        {
+          name: "demo",
+          description: "Demo",
+          skillPath: "/tmp/demo",
+          allowedTools: ["bash"],
+          body: "demo body",
+        },
+      ],
+    );
+
+    const filtered = sandbox.filterToolNames([
+      "renderCard",
+      "bash",
+      "webSearch",
+    ]);
+
+    expect(filtered).toEqual(["renderCard", "bash"]);
+  });
 });

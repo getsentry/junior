@@ -36,6 +36,7 @@ import {
 import { McpToolManager, type ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { createTools } from "@/chat/tools";
+import type { RenderedCard } from "@/chat/tools/types";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
@@ -416,6 +417,7 @@ export async function generateAssistantReply(
     const generatedFiles: FileUpload[] = [];
     const replyFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
+    const renderedCards: RenderedCard[] = [];
     const toolCalls: string[] = [];
     let agent: Agent | undefined;
 
@@ -472,6 +474,9 @@ export async function generateAssistantReply(
         },
         onArtifactStatePatch: (patch) => {
           Object.assign(artifactStatePatch, patch);
+        },
+        onCardRendered: (card) => {
+          renderedCards.push(card);
         },
         toolOverrides: context.toolOverrides,
         onSkillLoaded: async (loadedSkill) => {
@@ -752,7 +757,8 @@ export async function generateAssistantReply(
           newMessages = agent.state.messages.slice(
             beforeMessageCount,
           ) as unknown[];
-          completedAssistantTurn = hasCompletedAssistantTurn(newMessages);
+          completedAssistantTurn =
+            renderedCards.length > 0 || hasCompletedAssistantTurn(newMessages);
           if (mcpAuth.getPendingPause() && !completedAssistantTurn) {
             timeoutResumeMessages = [...(agent.state.messages as unknown[])];
             throw mcpAuth.getPendingPause()!;
@@ -810,6 +816,7 @@ export async function generateAssistantReply(
       userInput,
       replyFiles,
       artifactStatePatch,
+      renderedCards,
       toolCalls,
       sandboxId: currentSandboxExecutor.getSandboxId(),
       sandboxDependencyProfileHash:

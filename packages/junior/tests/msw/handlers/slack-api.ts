@@ -7,6 +7,7 @@ import {
   chatGetPermalinkOk,
   chatPostEphemeralOk,
   chatPostMessageOk,
+  chatUpdateOk,
   conversationsCanvasesCreateOk,
   conversationsHistoryPage,
   conversationsRepliesPage,
@@ -27,6 +28,7 @@ const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
 export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.threads.setStatus",
   "chat.postMessage",
+  "chat.update",
   "chat.postEphemeral",
   "chat.getPermalink",
   "views.publish",
@@ -175,6 +177,8 @@ function defaultSlackApiResponse(
       return { body: slackOk() };
     case "chat.postMessage":
       return { body: chatPostMessageOk() };
+    case "chat.update":
+      return { body: chatUpdateOk() };
     case "chat.postEphemeral":
       return { body: chatPostEphemeralOk() };
     case "chat.getPermalink":

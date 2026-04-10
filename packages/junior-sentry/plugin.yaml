@@ -22,7 +22,75 @@ oauth:
   client-secret-env: SENTRY_CLIENT_SECRET
   authorize-endpoint: https://sentry.io/oauth/authorize/
   token-endpoint: https://sentry.io/oauth/token/
-  scope: "event:read org:read project:read"
+  scope: "event:read event:write org:read project:read team:read"
+
+cards:
+  - name: issue
+    description: Display a Sentry issue with status, project, and recent volume
+    entity-key: "issue:{{shortId}}"
+
+    schema:
+      shortId:
+        type: string
+        required: true
+        description: Short Sentry issue identifier such as PROJECT-123
+      title:
+        type: string
+        required: true
+        description: Issue title
+      permalink:
+        type: string
+        required: true
+        description: Full URL to the issue in Sentry
+      status:
+        type: string
+        required: true
+        description: Current Sentry issue status
+      project:
+        type: string
+        description: Project slug
+      level:
+        type: string
+        description: Severity level
+      count:
+        type: string
+        description: Event count
+      userCount:
+        type: integer
+        description: Affected user count
+      lastSeen:
+        type: string
+        description: Last seen timestamp or relative time
+      assignee:
+        type: string
+        description: Current assignee
+
+    render:
+      title: "{{shortId}}"
+      title-url: "{{permalink}}"
+      body: "{{title}}"
+      link-label: View in Sentry
+      status:
+        text: "{{status}}"
+        style-map:
+          unresolved: danger
+          resolved: success
+          ignored: default
+      fields:
+        - label: Project
+          value: "{{project}}"
+        - label: Level
+          value: "{{level}}"
+        - label: Events
+          value: "{{count}}"
+        - label: Users
+          value: "{{userCount}}"
+        - label: Last seen
+          value: "{{lastSeen}}"
+        - label: Assignee
+          value: "{{assignee}}"
+          fallback: Unassigned
+      fallback-text: "{{shortId}}: {{title}} ({{status}})"
 
 runtime-dependencies:
   - type: npm

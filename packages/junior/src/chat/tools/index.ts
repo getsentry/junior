@@ -26,6 +26,7 @@ import type {
 } from "@/chat/tools/types";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
+import { createRenderCardTool } from "@/chat/tools/render-card";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 
@@ -99,6 +100,11 @@ export function createTools(
     slackListGetItems: createSlackListGetItemsTool(state),
     slackListUpdateItem: createSlackListUpdateItemTool(state),
   };
+
+  const renderCardTool = createRenderCardTool(hooks, context);
+  if (renderCardTool) {
+    tools.renderCard = renderCardTool;
+  }
 
   if (context.mcpToolManager && context.getActiveSkills) {
     tools.searchTools = createSearchToolsTool(

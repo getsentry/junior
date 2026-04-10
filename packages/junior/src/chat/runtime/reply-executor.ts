@@ -1,4 +1,5 @@
 import type { Message, SentMessage, Thread } from "chat";
+import type { KnownBlock, MessageAttachment } from "@slack/web-api";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
@@ -42,8 +43,16 @@ import {
   generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
-import { isDmChannel } from "@/chat/slack/client";
-import { type ThreadArtifactsState } from "@/chat/state/artifacts";
+import {
+  getSlackClient,
+  isDmChannel,
+  normalizeSlackConversationId,
+  withSlackRetries,
+} from "@/chat/slack/client";
+import {
+  type CardMessageEntry,
+  type ThreadArtifactsState,
+} from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
@@ -54,6 +63,7 @@ import {
   isRedundantReactionAckText,
   isPotentialRedundantReactionAckText,
 } from "@/chat/services/reply-delivery-plan";
+import type { RenderedCard } from "@/chat/tools/types";
 
 type SlackReplyPostStage =
   | "streaming_initial_post"
@@ -84,6 +94,280 @@ function getExecutionFailureReason(reply: {
     return "assistant returned no text";
   }
   return "empty assistant turn";
+}
+
+function createPersistedCardSentMessage(
+  thread: Thread,
+  entry: CardMessageEntry,
+): SentMessage {
+  const syntheticMessage: Message = {
+    id: entry.messageId,
+    threadId: thread.id,
+    text: "",
+    formatted: { type: "root", children: [] },
+    raw: null,
+    links: [],
+    author: {
+      userId: "self",
+      userName: botConfig.userName,
+      fullName: botConfig.userName,
+      isBot: true,
+      isMe: true,
+    },
+    metadata: {
+      dateSent: new Date(entry.postedAt),
+      edited: false,
+    },
+    attachments: [],
+    toJSON() {
+      return {} as ReturnType<Message["toJSON"]>;
+    },
+  };
+
+  return thread.createSentMessageFromMessage(syntheticMessage);
+}
+
+function replaceCardMessageEntry(
+  entries: CardMessageEntry[],
+  current: CardMessageEntry,
+  next: CardMessageEntry,
+): void {
+  const index = entries.findIndex(
+    (entry) => entry.messageId === current.messageId,
+  );
+  if (index === -1) {
+    entries.push(next);
+    return;
+  }
+  entries[index] = next;
+}
+
+function isSlackNativeRenderedCard(
+  renderedCard: RenderedCard,
+): renderedCard is Extract<RenderedCard, { slackMessage: unknown }> {
+  return "slackMessage" in renderedCard;
+}
+
+function requireCardChannelId(channelId: string | undefined): string {
+  if (!channelId) {
+    throw new Error("Slack native card delivery requires channel context");
+  }
+  return channelId;
+}
+
+function requireCardThreadTs(threadTs: string | undefined): string {
+  if (!threadTs) {
+    throw new Error("Slack native card delivery requires thread context");
+  }
+  return threadTs;
+}
+
+function toPersistedCardMessageFields(
+  result: SentMessage | { messageId: string; channelMessageTs: string },
+): Pick<CardMessageEntry, "messageId" | "channelMessageTs"> {
+  if ("messageId" in result) {
+    return {
+      messageId: result.messageId,
+      channelMessageTs: result.channelMessageTs,
+    };
+  }
+
+  return {
+    messageId: result.id,
+  };
+}
+
+function buildSlackNativeMessagePayload(input: {
+  renderedCard: Extract<RenderedCard, { slackMessage: unknown }>;
+}): {
+  text?: string;
+  blocks?: KnownBlock[];
+  attachments: MessageAttachment[];
+} {
+  return {
+    ...(input.renderedCard.slackMessage.text
+      ? { text: input.renderedCard.slackMessage.text }
+      : {}),
+    ...(input.renderedCard.slackMessage.blocks
+      ? {
+          blocks: input.renderedCard.slackMessage
+            .blocks as unknown as KnownBlock[],
+        }
+      : {}),
+    attachments: input.renderedCard.slackMessage
+      .attachments as unknown as MessageAttachment[],
+  };
+}
+
+async function postSlackNativeCard(args: {
+  channelId: string;
+  renderedCard: Extract<RenderedCard, { slackMessage: unknown }>;
+  threadTs: string;
+}): Promise<{ messageId: string; channelMessageTs: string }> {
+  const normalizedChannelId = normalizeSlackConversationId(args.channelId);
+  if (!normalizedChannelId) {
+    throw new Error("Slack native card posting requires a valid channel ID");
+  }
+
+  const response = await withSlackRetries(
+    () =>
+      getSlackClient().chat.postMessage({
+        channel: normalizedChannelId,
+        thread_ts: args.threadTs,
+        ...buildSlackNativeMessagePayload({
+          renderedCard: args.renderedCard,
+        }),
+      }),
+    3,
+    { action: "chat.postMessage" },
+  );
+
+  if (!response.ts) {
+    throw new Error("Slack native card post completed without a message ts");
+  }
+
+  return {
+    messageId: `slack:${response.ts}`,
+    channelMessageTs: response.ts,
+  };
+}
+
+async function updateSlackNativeCard(args: {
+  channelId: string;
+  existing: CardMessageEntry;
+  renderedCard: Extract<RenderedCard, { slackMessage: unknown }>;
+}): Promise<{ messageId: string; channelMessageTs: string }> {
+  const normalizedChannelId = normalizeSlackConversationId(args.channelId);
+  if (!normalizedChannelId) {
+    throw new Error("Slack native card update requires a valid channel ID");
+  }
+  if (!args.existing.channelMessageTs) {
+    throw new Error("Slack native card update requires a persisted message ts");
+  }
+  const existingMessageTs = args.existing.channelMessageTs;
+
+  const response = await withSlackRetries(
+    () =>
+      getSlackClient().chat.update({
+        channel: normalizedChannelId,
+        ts: existingMessageTs,
+        ...buildSlackNativeMessagePayload({
+          renderedCard: args.renderedCard,
+        }),
+      }),
+    3,
+    { action: "chat.update" },
+  );
+
+  const nextTs = response.ts ?? existingMessageTs;
+  if (!nextTs) {
+    throw new Error("Slack native card update completed without a message ts");
+  }
+  return {
+    messageId: `slack:${nextTs}`,
+    channelMessageTs: nextTs,
+  };
+}
+
+async function deliverRenderedCards(args: {
+  artifacts: ThreadArtifactsState;
+  beforeFirstResponsePost: () => Promise<void>;
+  channelId?: string;
+  hasPostedTextReply: boolean;
+  renderedCards: NonNullable<
+    Awaited<
+      ReturnType<ReplyExecutorServices["generateAssistantReply"]>
+    >["renderedCards"]
+  >;
+  thread: Thread;
+  threadTs?: string;
+  turnTraceContext: Record<string, unknown>;
+}): Promise<Partial<ThreadArtifactsState> | undefined> {
+  if (args.renderedCards.length === 0) {
+    return undefined;
+  }
+
+  const persistedCardMessages = args.artifacts.cardMessages ?? [];
+  const nextCardMessages = [...persistedCardMessages];
+  const existingByEntityKey = new Map(
+    persistedCardMessages.map((entry) => [entry.entityKey, entry]),
+  );
+  const updatedEntityKeys = new Set<string>();
+
+  for (const renderedCard of args.renderedCards) {
+    const existing = existingByEntityKey.get(renderedCard.entityKey);
+    const isSlackNativeCard = isSlackNativeRenderedCard(renderedCard);
+
+    if (existing && !updatedEntityKeys.has(renderedCard.entityKey)) {
+      await args.beforeFirstResponsePost();
+      try {
+        const updated = isSlackNativeCard
+          ? await updateSlackNativeCard({
+              channelId: requireCardChannelId(args.channelId),
+              existing,
+              renderedCard,
+            })
+          : await createPersistedCardSentMessage(args.thread, existing).edit(
+              renderedCard.cardElement,
+            );
+        const nextEntry: CardMessageEntry = {
+          ...existing,
+          ...toPersistedCardMessageFields(updated),
+          postedAt: new Date().toISOString(),
+        };
+        replaceCardMessageEntry(nextCardMessages, existing, nextEntry);
+        updatedEntityKeys.add(renderedCard.entityKey);
+        continue;
+      } catch (error) {
+        logWarn(
+          "card_message_edit_failed",
+          args.turnTraceContext,
+          {
+            "app.card.entity_key": renderedCard.entityKey,
+            "app.card.plugin": renderedCard.pluginName,
+            "error.message":
+              error instanceof Error ? error.message : String(error),
+          },
+          "Failed to update card in place; posting a new card instead",
+        );
+      }
+    }
+
+    await args.beforeFirstResponsePost();
+    try {
+      const posted = isSlackNativeCard
+        ? await postSlackNativeCard({
+            channelId: requireCardChannelId(args.channelId),
+            renderedCard,
+            threadTs: requireCardThreadTs(args.threadTs),
+          })
+        : await args.thread.post(renderedCard.cardElement);
+      nextCardMessages.push({
+        entityKey: renderedCard.entityKey,
+        ...toPersistedCardMessageFields(posted),
+        pluginName: renderedCard.pluginName,
+        postedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (!args.hasPostedTextReply) {
+        throw error;
+      }
+      logException(
+        error,
+        "card_message_post_failed",
+        args.turnTraceContext,
+        {
+          "app.card.entity_key": renderedCard.entityKey,
+          "app.card.plugin": renderedCard.pluginName,
+        },
+        "Failed to post rendered card after sending the text reply",
+      );
+    }
+  }
+
+  return {
+    cardMessages: nextCardMessages,
+  };
 }
 
 interface ReplyExecutorDeps {
@@ -423,7 +707,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           upsertConversationMessage(preparedState.conversation, {
             id: generateConversationId("assistant"),
             role: "assistant",
-            text: normalizeConversationText(reply.text) || "[empty response]",
+            text:
+              normalizeConversationText(reply.text) ||
+              reply.renderedCards
+                ?.map((card) => card.fallbackText.trim())
+                .filter((text) => text.length > 0)
+                .join("\n\n") ||
+              "[empty response]",
             createdAtMs: Date.now(),
             author: {
               userName: botConfig.userName,
@@ -467,6 +757,25 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             } else {
               await streamedReplyPromise;
             }
+          }
+
+          const cardArtifactPatch = reply.renderedCards
+            ? await deliverRenderedCards({
+                artifacts: mergeArtifactsState(
+                  preparedState.artifacts,
+                  artifactStatePatch,
+                ),
+                beforeFirstResponsePost,
+                channelId,
+                hasPostedTextReply: shouldPostThreadReply,
+                renderedCards: reply.renderedCards,
+                thread,
+                threadTs,
+                turnTraceContext,
+              })
+            : undefined;
+          if (cardArtifactPatch) {
+            Object.assign(artifactStatePatch, cardArtifactPatch);
           }
 
           const shouldPersistArtifacts =

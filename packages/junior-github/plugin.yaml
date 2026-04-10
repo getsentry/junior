@@ -28,6 +28,59 @@ target:
   type: repo
   config-key: repo
 
+cards:
+  - name: issue
+    description: Display a GitHub issue with status, assignee, and labels
+    entity-key: "issue:{{number}}"
+
+    schema:
+      number:
+        type: integer
+        required: true
+        description: Issue number
+      title:
+        type: string
+        required: true
+        description: Issue title
+      url:
+        type: string
+        required: true
+        description: Full URL to the issue
+      state:
+        type: string
+        required: true
+        enum: [open, closed]
+        description: Current issue state
+      assignee:
+        type: string
+        description: Username of the assignee
+      labels:
+        type: string
+        description: Comma-separated label names
+      repo:
+        type: string
+        description: Repository full name (owner/repo)
+
+    render:
+      title: "{{title}}"
+      title-url: "{{url}}"
+      status:
+        text: "{{state}}"
+        style-map:
+          open: success
+          closed: default
+      fields:
+        - label: Status
+          value: "{{state}}"
+        - label: Assignee
+          value: "{{assignee}}"
+          fallback: Unassigned
+        - label: Labels
+          value: "{{labels}}"
+        - label: Repo
+          value: "{{repo}}"
+      fallback-text: "#{{number}}: {{title}} ({{state}})"
+
 runtime-dependencies:
   - type: system
     package: gh
