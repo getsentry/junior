@@ -29,5 +29,6 @@ Copy `.env.example` and set:
 
 ## Wiring
 
-- `nitro.config.ts` declares `pluginPackages` in `juniorNitro()` — this both copies plugin content at build time and makes the list available to `createApp()` at runtime via a virtual module
-- `server.ts` creates the Hono app via `createApp()` — plugin packages are resolved automatically from the build config
+- `plugin-packages.ts` is the single source of truth for installed plugin packages in this app
+- `nitro.config.ts` passes that list to `juniorNitro()` so plugin content is copied into the build output
+- `server.ts` passes the same list to `createApp()` so local dev does not depend on Nitro's virtual config path for plugin discovery
