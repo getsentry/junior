@@ -49,7 +49,7 @@ vi.mock("@/chat/plugins/registry", () => ({
         clientSecretEnv: "SENTRY_CLIENT_SECRET",
         authorizeEndpoint: "https://sentry.io/oauth/authorize/",
         tokenEndpoint: "https://sentry.io/oauth/token/",
-        scope: "event:read event:write org:read project:read team:read",
+        scope: "event:read org:read project:read team:read",
         callbackPath: "/api/oauth/callback/sentry",
       };
     }
@@ -283,10 +283,12 @@ describe("oauth callback handler", () => {
     const stored = mockTokenStore.get("U456:sentry") as {
       accessToken: string;
       refreshToken: string;
+      scope?: string;
     };
     expect(stored).toBeDefined();
     expect(stored.accessToken).toBe("new-access-token");
     expect(stored.refreshToken).toBe("new-refresh-token");
+    expect(stored.scope).toBe("event:read org:read project:read team:read");
   });
 
   it("uses basic auth and json body for token exchange without expires_in", async () => {
@@ -345,6 +347,44 @@ describe("oauth callback handler", () => {
       refreshToken: "example-refresh-token",
     });
     expect(stored.expiresAt).toBeUndefined();
+  });
+
+  it("rejects callback grants whose explicit scope is missing required access", async () => {
+    const stateKey = "oauth-state:missing-scope";
+    mockStateStore.set(stateKey, {
+      userId: "U456",
+      provider: "sentry",
+      channelId: "C123",
+      threadTs: "123.456",
+    });
+
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env.JUNIOR_BASE_URL = "https://example.com";
+
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "new-access-token",
+        refresh_token: "new-refresh-token",
+        expires_in: 7200,
+        scope: "event:read org:read project:read",
+      }),
+    })) as unknown as typeof fetch;
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/sentry?code=valid-code&state=missing-scope",
+      ),
+      "sentry",
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).toContain("did not grant the access Junior requires");
+    expect(mockTokenStore.get("U456:sentry")).toBeUndefined();
+    expect(waitUntilCallbacks).toHaveLength(0);
   });
 
   it("returns styled HTML 500 when token exchange fails", async () => {

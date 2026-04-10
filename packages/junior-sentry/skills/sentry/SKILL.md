@@ -26,9 +26,9 @@ Use this skill for Sentry investigation workflows in the harness.
 - Read [references/cli-commands.md](references/cli-commands.md) for command shapes and flags.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
 - If a Sentry API call returns `401`, or clearly says the token is invalid, expired, revoked, or unauthorized, run `jr-rpc delete-token sentry` to clear the stale token, then retry after re-enabling the declared capability.
-- If a Sentry API call returns `403`, `missing scope`, `missing scopes`, `insufficient scope`, `permission denied`, or otherwise indicates missing org/project access, stop and tell the user the current Sentry connection could not access the requested Sentry data.
+- If a Sentry API call explicitly says `missing scope`, `missing scopes`, or `insufficient scope`, run `jr-rpc delete-token sentry` to clear the outdated grant, then retry after re-enabling the declared capability.
+- If a Sentry API call returns a generic `403`, `permission denied`, or otherwise indicates missing org/project access without naming missing scopes, stop and tell the user the current Sentry connection could not access the requested Sentry data.
 - Only mention a specific missing scope when the CLI or API error explicitly names that scope. Do not guess scope names from a generic `403`.
-- Do not call `jr-rpc delete-token sentry`, do not retry, and do not start OAuth again for scope/permission failures. Reauth with the same app scopes will not fix that class of error.
 
 3. Generate deep links:
 

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { WebClient, KnownBlock, SectionBlock } from "@slack/web-api";
+import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { homeDir } from "@/chat/discovery";
 import { getMcpStoredOAuthCredentials } from "@/chat/mcp/auth-store";
 import { getPluginProviders } from "@/chat/plugins/registry";
@@ -64,7 +65,11 @@ async function hasConnectedAccount(
   userTokenStore: UserTokenStore,
 ): Promise<boolean> {
   if (plugin.manifest.credentials?.type === "oauth-bearer") {
-    return Boolean(await userTokenStore.get(userId, plugin.manifest.name));
+    const stored = await userTokenStore.get(userId, plugin.manifest.name);
+    return Boolean(
+      stored &&
+      hasRequiredOAuthScope(stored.scope, plugin.manifest.oauth?.scope),
+    );
   }
 
   if (plugin.manifest.mcp) {

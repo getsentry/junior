@@ -1,4 +1,5 @@
 import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   formatProviderLabel,
@@ -225,12 +226,23 @@ export async function GET(
   const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
   let parsedTokenResponse;
   try {
-    parsedTokenResponse = parseOAuthTokenResponse(tokenData);
+    parsedTokenResponse = parseOAuthTokenResponse(
+      tokenData,
+      providerConfig.scope,
+    );
   } catch {
     return htmlErrorResponse(
       "Connection failed",
       "The provider returned an incomplete token response. Please try again.",
       500,
+    );
+  }
+
+  if (!hasRequiredOAuthScope(parsedTokenResponse.scope, providerConfig.scope)) {
+    return htmlErrorResponse(
+      "Connection failed",
+      `The ${providerLabel} authorization did not grant the access Junior requires. Return to Slack and ask Junior to connect your ${providerLabel} account again.`,
+      400,
     );
   }
 

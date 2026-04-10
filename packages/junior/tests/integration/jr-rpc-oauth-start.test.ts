@@ -121,6 +121,7 @@ describe("jr-rpc oauth-start integration", () => {
     );
     expect(authorizeUrl.searchParams.get("response_type")).toBe("code");
     expect(authorizeUrl.searchParams.get("scope")).toContain("event:read");
+    expect(authorizeUrl.searchParams.get("scope")).not.toContain("event:write");
 
     const state = authorizeUrl.searchParams.get("state");
     expect(state).toBeTruthy();

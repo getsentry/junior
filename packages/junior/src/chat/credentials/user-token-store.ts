@@ -2,6 +2,7 @@ export interface StoredTokens {
   accessToken: string;
   refreshToken: string;
   expiresAt?: number;
+  scope?: string;
 }
 
 export interface UserTokenStore {

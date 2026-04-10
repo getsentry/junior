@@ -32,4 +32,4 @@ Lists organizations accessible with current token.
 - `--project PROJECT`: Project slug.
 - `--log-level`: `debug`, `info`, `warn`, `error`.
 
-Only use commands listed in this reference during normal skill execution. If a command reports missing scopes or permission errors, treat that as an access problem rather than a retryable auth refresh problem.
+Only use commands listed in this reference during normal skill execution. If a command reports explicit missing scopes, reconnect the Sentry account to refresh the grant. Treat generic permission or org/project access errors as access problems rather than retryable auth refresh problems.

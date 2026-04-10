@@ -4,6 +4,7 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
 import {
@@ -18,10 +19,12 @@ const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 async function refreshAccessToken(
   refreshToken: string,
   oauth: NonNullable<PluginManifest["oauth"]>,
+  fallbackScope?: string,
 ): Promise<{
   accessToken: string;
   refreshToken: string;
   expiresAt?: number;
+  scope?: string;
 }> {
   const clientId = process.env[oauth.clientIdEnv]?.trim();
   const clientSecret = process.env[oauth.clientSecretEnv]?.trim();
@@ -52,7 +55,7 @@ async function refreshAccessToken(
   }
 
   const data = (await response.json()) as Record<string, unknown>;
-  return parseOAuthTokenResponse(data);
+  return parseOAuthTokenResponse(data, fallbackScope);
 }
 
 function getLeaseExpiry(expiresAt?: number): number {
@@ -123,6 +126,13 @@ export function createOAuthBearerBroker(
           provider,
         );
         if (stored) {
+          if (!hasRequiredOAuthScope(stored.scope, oauth.scope)) {
+            throw new CredentialUnavailableError(
+              provider,
+              `Your ${provider} connection needs to be reauthorized.`,
+            );
+          }
+
           const now = Date.now();
           if (
             stored.expiresAt !== undefined &&
@@ -132,7 +142,14 @@ export function createOAuthBearerBroker(
               const refreshed = await refreshAccessToken(
                 stored.refreshToken,
                 oauth,
+                stored.scope ?? oauth.scope,
               );
+              if (!hasRequiredOAuthScope(refreshed.scope, oauth.scope)) {
+                throw new CredentialUnavailableError(
+                  provider,
+                  `Your ${provider} connection needs to be reauthorized.`,
+                );
+              }
               await deps.userTokenStore.set(
                 input.requesterId,
                 provider,
@@ -144,7 +161,10 @@ export function createOAuthBearerBroker(
                 getLeaseExpiry(refreshed.expiresAt),
                 input.reason,
               );
-            } catch {
+            } catch (error) {
+              if (error instanceof CredentialUnavailableError) {
+                throw error;
+              }
               if (stored.expiresAt > Date.now()) {
                 return buildLease(
                   stored.accessToken,

@@ -12,6 +12,7 @@ import type {
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
+const SENTRY_SCOPE = "event:read org:read project:read team:read";
 
 const SENTRY_MANIFEST: PluginManifest = {
   name: "sentry",
@@ -28,7 +29,7 @@ const SENTRY_MANIFEST: PluginManifest = {
     clientSecretEnv: "SENTRY_CLIENT_SECRET",
     authorizeEndpoint: "https://sentry.io/oauth/authorize/",
     tokenEndpoint: "https://sentry.io/oauth/token/",
-    scope: "event:read event:write org:read project:read team:read",
+    scope: SENTRY_SCOPE,
   },
 };
 
@@ -89,6 +90,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         accessToken: "user-access-token",
         refreshToken: "user-refresh-token",
         expiresAt: Date.now() + 60 * 60 * 1000,
+        scope: SENTRY_SCOPE,
       },
     });
 
@@ -177,6 +179,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         accessToken: "old-access-token",
         refreshToken: "old-refresh-token",
         expiresAt: Date.now() + 2 * 60 * 1000, // 2 min from now, within 5 min buffer
+        scope: SENTRY_SCOPE,
       },
     });
 
@@ -215,6 +218,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     const stored = await tokenStore.get("U123", "sentry");
     expect(stored?.accessToken).toBe("new-access-token");
     expect(stored?.refreshToken).toBe("new-refresh-token");
+    expect(stored?.scope).toBe(SENTRY_SCOPE);
   });
 
   it("uses current token when refresh fails and token is still valid", async () => {
@@ -226,6 +230,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         accessToken: "still-valid-token",
         refreshToken: "bad-refresh-token",
         expiresAt: Date.now() + 2 * 60 * 1000,
+        scope: SENTRY_SCOPE,
       },
     });
 
@@ -257,6 +262,47 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     ]);
   });
 
+  it("rejects refreshed tokens whose scope no longer satisfies the provider requirement", async () => {
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+
+    const tokenStore = createMockTokenStore({
+      "U123:sentry": {
+        accessToken: "still-valid-token",
+        refreshToken: "refresh-token",
+        expiresAt: Date.now() + 2 * 60 * 1000,
+        scope: SENTRY_SCOPE,
+      },
+    });
+
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "new-access-token",
+        refresh_token: "new-refresh-token",
+        expires_in: 3600,
+        scope: "event:read org:read project:read",
+      }),
+    })) as unknown as typeof fetch;
+
+    const broker = createBroker(tokenStore);
+
+    await expect(
+      broker.issue({
+        capability: "sentry.api",
+        reason: "test:refresh-scope-downgrade",
+        requesterId: "U123",
+      }),
+    ).rejects.toThrow(CredentialUnavailableError);
+
+    const stored = await tokenStore.get("U123", "sentry");
+    expect(stored).toMatchObject({
+      accessToken: "still-valid-token",
+      refreshToken: "refresh-token",
+      scope: SENTRY_SCOPE,
+    });
+  });
+
   it("throws CredentialUnavailableError when refresh fails and token is expired", async () => {
     process.env.SENTRY_CLIENT_ID = "client-id";
     process.env.SENTRY_CLIENT_SECRET = "client-secret";
@@ -266,6 +312,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         accessToken: "expired-token",
         refreshToken: "bad-refresh-token",
         expiresAt: Date.now() - 1000, // already expired
+        scope: SENTRY_SCOPE,
       },
     });
 
@@ -291,6 +338,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         accessToken: "expired-token",
         refreshToken: "refresh-token",
         expiresAt: Date.now() - 1000,
+        scope: SENTRY_SCOPE,
       },
     });
 
@@ -316,6 +364,47 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         capability: "sentry.api",
         reason: "test:requester-no-token",
         requesterId: "U999",
+      }),
+    ).rejects.toThrow(CredentialUnavailableError);
+  });
+
+  it("throws CredentialUnavailableError when stored scope is missing required access", async () => {
+    const tokenStore = createMockTokenStore({
+      "U123:sentry": {
+        accessToken: "user-access-token",
+        refreshToken: "user-refresh-token",
+        expiresAt: Date.now() + 60 * 60 * 1000,
+        scope: "event:read org:read",
+      },
+    });
+
+    const broker = createBroker(tokenStore);
+
+    await expect(
+      broker.issue({
+        capability: "sentry.api",
+        reason: "test:scope-mismatch",
+        requesterId: "U123",
+      }),
+    ).rejects.toThrow(CredentialUnavailableError);
+  });
+
+  it("throws CredentialUnavailableError for legacy tokens without stored scope metadata", async () => {
+    const tokenStore = createMockTokenStore({
+      "U123:sentry": {
+        accessToken: "legacy-access-token",
+        refreshToken: "legacy-refresh-token",
+        expiresAt: Date.now() + 60 * 60 * 1000,
+      },
+    });
+
+    const broker = createBroker(tokenStore);
+
+    await expect(
+      broker.issue({
+        capability: "sentry.api",
+        reason: "test:legacy-scope",
+        requesterId: "U123",
       }),
     ).rejects.toThrow(CredentialUnavailableError);
   });
