@@ -64,6 +64,6 @@ describe("Conversational Evals: Routing and Continuity", () => {
       }),
     ],
     criteria:
-      "The assistant does not reply before the mention is added. After the edited message adds the mention, it posts exactly one reply that addresses the deploy/help request and does not include sandbox setup failure text.",
+      "user_events shows exactly two inbound events in order for the same messageId: first a plain_message with isMention false, then an edited_message with isMention true. assistant_posts contains exactly one reply, and that reply addresses the deploy/help request without including sandbox setup failure text.",
   });
 });

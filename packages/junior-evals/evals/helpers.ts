@@ -53,10 +53,36 @@ const assistantPostSchema = z.object({
   text: z.string().describe("Visible text the assistant posted in the thread"),
 });
 
+const userEventSchema = z.object({
+  type: z
+    .enum([
+      "plain_message",
+      "edited_message",
+      "new_mention",
+      "subscribed_message",
+    ])
+    .describe("Inbound user-side event type replayed by the harness"),
+  threadId: z
+    .string()
+    .describe("Slack runtime thread id for the inbound user event"),
+  messageId: z.string().describe("Slack message id for the inbound user event"),
+  text: z
+    .string()
+    .describe("Visible text on the inbound user event after any edit"),
+  isMention: z
+    .boolean()
+    .describe("Whether the inbound user event explicitly mentions Junior"),
+});
+
 const evalOutputSchema = z.object({
   assistant_posts: z
     .array(assistantPostSchema)
     .describe("Assistant posts sent to the thread, including attached files"),
+  user_events: z
+    .array(userEventSchema)
+    .describe(
+      "Inbound user-side thread events replayed by the harness in chronological order",
+    ),
   channel_posts: z
     .array(
       z.object({
@@ -111,6 +137,7 @@ function hasAssistantStatusPending(result: EvalResult): boolean {
 function serializeEvalResult(result: EvalResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
+    user_events: result.userEvents,
     channel_posts: result.channelPosts,
     reactions: result.reactions,
     slack_metadata: {

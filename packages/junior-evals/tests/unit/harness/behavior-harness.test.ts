@@ -181,6 +181,22 @@ describe("behavior harness", () => {
     expect(handleSubscribedMessageMock).not.toHaveBeenCalled();
     expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
     expect(result.posts).toEqual([{ text: "observed", files: [] }]);
+    expect(result.userEvents).toEqual([
+      {
+        type: "plain_message",
+        threadId: "slack:C_EDIT:1700000000.0004",
+        messageId: "m-edit-1",
+        text: "can you take a look at this deploy?",
+        isMention: false,
+      },
+      {
+        type: "edited_message",
+        threadId: "slack:C_EDIT:1700000000.0004",
+        messageId: "m-edit-1",
+        text: "<@U_APP> can you take a look at this deploy?",
+        isMention: true,
+      },
+    ]);
   });
 
   it("preserves attached file metadata on assistant thread posts", async () => {

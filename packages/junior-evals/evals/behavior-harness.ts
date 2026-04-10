@@ -167,6 +167,7 @@ export interface EvalResult {
     timestamp: string;
   }>;
   slackAdapter: FakeSlackAdapter;
+  userEvents: EvalUserEvent[];
 }
 
 export interface EvalAttachedFile {
@@ -179,6 +180,18 @@ export interface EvalAttachedFile {
 export interface EvalAssistantPost {
   files: EvalAttachedFile[];
   text: string;
+}
+
+export interface EvalUserEvent {
+  isMention: boolean;
+  messageId: string;
+  text: string;
+  threadId: string;
+  type:
+    | "edited_message"
+    | "new_mention"
+    | "plain_message"
+    | "subscribed_message";
 }
 
 interface EvalSlackThreadReply {
@@ -495,6 +508,24 @@ function toEvalAssistantPost(value: unknown): EvalAssistantPost {
     text: String(value),
     files: [],
   };
+}
+
+function toEvalUserEvents(events: readonly EvalEvent[]): EvalUserEvent[] {
+  return events.flatMap((event) => {
+    if (!("message" in event)) {
+      return [];
+    }
+
+    return [
+      {
+        type: event.type,
+        threadId: buildRuntimeThreadId(event.thread),
+        messageId: event.message.id ?? "",
+        text: event.message.text ?? "",
+        isMention: Boolean(event.message.is_mention),
+      },
+    ];
+  });
 }
 
 function toIncomingMessage(
@@ -1122,6 +1153,7 @@ async function processEvents(args: {
 // ---------------------------------------------------------------------------
 
 function collectResults(
+  scenario: EvalScenario,
   threadRecordsById: Map<string, EvalThreadRecord>,
   slackAdapter: FakeSlackAdapter,
   logRecords: EmittedLogRecord[],
@@ -1139,6 +1171,7 @@ function collectResults(
     reactions,
     posts,
     slackAdapter,
+    userEvents: toEvalUserEvents(scenario.events),
   };
 }
 
@@ -1212,7 +1245,7 @@ export async function runEvalScenario(
     await teardownHarnessEnvironment(scenario, env);
   }
 
-  return collectResults(threadRecordsById, slackAdapter, logRecords);
+  return collectResults(scenario, threadRecordsById, slackAdapter, logRecords);
 }
 
 // Compile-time guards for Thread and Message fakes are in tests/fixtures/slack-harness.ts.
