@@ -172,7 +172,7 @@ function pathExists(targetPath: string): boolean {
 function hasAnyDataMarkers(appDir: string): boolean {
   return (
     pathExists(path.join(appDir, "SOUL.md")) ||
-    pathExists(path.join(appDir, "ABOUT.md"))
+    pathExists(path.join(appDir, "WORLD.md"))
   );
 }
 
@@ -181,7 +181,7 @@ function scoreAppCandidate(appDir: string): number {
   if (pathExists(path.join(appDir, "SOUL.md"))) {
     score += 4;
   }
-  if (pathExists(path.join(appDir, "ABOUT.md"))) {
+  if (pathExists(path.join(appDir, "WORLD.md"))) {
     score += 2;
   }
   if (pathExists(path.join(appDir, "skills"))) {
@@ -282,9 +282,14 @@ export function soulPath(): string {
   return path.join(dataDir(), "SOUL.md");
 }
 
-/** Return the path to the ABOUT.md file. */
-export function aboutPath(): string {
-  return path.join(dataDir(), "ABOUT.md");
+/** Return the path to the WORLD.md file. */
+export function worldPath(): string {
+  return path.join(dataDir(), "WORLD.md");
+}
+
+/** Return the path to the DESCRIPTION.md file. */
+export function descriptionPath(): string {
+  return path.join(dataDir(), "DESCRIPTION.md");
 }
 
 /** Return the skills directory path. */
@@ -318,8 +323,42 @@ export function soulPathCandidates(): string[] {
   return unique(candidates);
 }
 
-/** Return candidate paths where ABOUT.md might be found. */
-export function aboutPathCandidates(): string[] {
-  const candidates = dataRoots().map((root) => path.join(root, "ABOUT.md"));
+/** Return candidate paths where WORLD.md might be found. */
+export function worldPathCandidates(): string[] {
+  const candidates = dataRoots().map((root) => path.join(root, "WORLD.md"));
   return unique(candidates);
+}
+
+/** Return candidate paths where DESCRIPTION.md might be found. */
+export function descriptionPathCandidates(): string[] {
+  const candidates = dataRoots().map((root) =>
+    path.join(root, "DESCRIPTION.md"),
+  );
+  return unique(candidates);
+}
+
+const RESERVED_APP_FILES = new Set([
+  "SOUL.md",
+  "WORLD.md",
+  "DESCRIPTION.md",
+  "ABOUT.md",
+]);
+
+/** List non-reserved .md files in the app root for sandbox reference syncing. */
+export function listReferenceFiles(): string[] {
+  const appDir = homeDir();
+  try {
+    const entries = fs.readdirSync(appDir, { withFileTypes: true });
+    return entries
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          entry.name.endsWith(".md") &&
+          !RESERVED_APP_FILES.has(entry.name),
+      )
+      .map((entry) => path.join(appDir, entry.name))
+      .sort();
+  } catch {
+    return [];
+  }
 }

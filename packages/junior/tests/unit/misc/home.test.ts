@@ -1,13 +1,14 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
-  aboutPath,
-  aboutPathCandidates,
   dataDir,
   dataRoots,
+  descriptionPath,
+  descriptionPathCandidates,
   homeDir,
+  listReferenceFiles,
   pluginRoots,
   pluginsDir,
   resolveHomeDir,
@@ -15,21 +16,33 @@ import {
   skillsDir,
   soulPath,
   soulPathCandidates,
+  worldPath,
+  worldPathCandidates,
 } from "@/chat/discovery";
+
+const originalCwd = process.cwd();
+
+afterEach(() => {
+  process.chdir(originalCwd);
+});
 
 describe("home paths", () => {
   it("uses app as project root", () => {
     expect(homeDir()).toBe(path.resolve(process.cwd(), "app"));
   });
 
-  it("resolves data/SOUL.md from canonical app root", () => {
+  it("resolves data files from canonical app root", () => {
     const appRoot = path.resolve(process.cwd(), "app");
     expect(dataDir()).toBe(appRoot);
     expect(soulPath()).toBe(path.join(appRoot, "SOUL.md"));
-    expect(aboutPath()).toBe(path.join(appRoot, "ABOUT.md"));
+    expect(worldPath()).toBe(path.join(appRoot, "WORLD.md"));
+    expect(descriptionPath()).toBe(path.join(appRoot, "DESCRIPTION.md"));
     expect(dataRoots()).toEqual([appRoot]);
     expect(soulPathCandidates()).toEqual([path.join(appRoot, "SOUL.md")]);
-    expect(aboutPathCandidates()).toEqual([path.join(appRoot, "ABOUT.md")]);
+    expect(worldPathCandidates()).toEqual([path.join(appRoot, "WORLD.md")]);
+    expect(descriptionPathCandidates()).toEqual([
+      path.join(appRoot, "DESCRIPTION.md"),
+    ]);
   });
 
   it("resolves skills and plugins from canonical app root", () => {
@@ -62,9 +75,33 @@ describe("home paths", () => {
     ).toBe(projectApp);
   });
 
-  it("treats ABOUT.md as a valid app data marker", async () => {
+  it("lists non-reserved .md files as reference files", async () => {
     const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-home-about-"),
+      path.join(os.tmpdir(), "junior-home-ref-"),
+    );
+    const appDir = path.join(tempRoot, "app");
+    await fs.mkdir(appDir, { recursive: true });
+    await fs.writeFile(path.join(appDir, "SOUL.md"), "soul", "utf8");
+    await fs.writeFile(path.join(appDir, "WORLD.md"), "world", "utf8");
+    await fs.writeFile(path.join(appDir, "DESCRIPTION.md"), "desc", "utf8");
+    await fs.writeFile(path.join(appDir, "ABOUT.md"), "legacy", "utf8");
+    await fs.writeFile(path.join(appDir, "runbooks.md"), "runbooks", "utf8");
+    await fs.writeFile(path.join(appDir, "api-surface.md"), "api docs", "utf8");
+    // Directories with .md names should be ignored.
+    await fs.mkdir(path.join(appDir, "skills"), { recursive: true });
+
+    process.chdir(tempRoot);
+    const resolvedAppDir = homeDir();
+
+    expect(listReferenceFiles()).toEqual([
+      path.join(resolvedAppDir, "api-surface.md"),
+      path.join(resolvedAppDir, "runbooks.md"),
+    ]);
+  });
+
+  it("treats WORLD.md as a valid app data marker", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-home-world-"),
     );
     const runtimeDistRoot = path.join(tempRoot, "runtime-dist");
     const projectRoot = path.join(tempRoot, "project-root");
@@ -73,7 +110,7 @@ describe("home paths", () => {
 
     await fs.mkdir(runtimeApp, { recursive: true });
     await fs.mkdir(projectApp, { recursive: true });
-    await fs.writeFile(path.join(projectApp, "ABOUT.md"), "about", "utf8");
+    await fs.writeFile(path.join(projectApp, "WORLD.md"), "world", "utf8");
 
     expect(
       resolveHomeDir(tempRoot, {

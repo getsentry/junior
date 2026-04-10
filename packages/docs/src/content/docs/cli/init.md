@@ -31,11 +31,14 @@ The scaffold includes:
 - `vite.config.ts`
 - `vercel.json`
 - `app/SOUL.md`
-- `app/ABOUT.md`
+- `app/WORLD.md`
+- `app/DESCRIPTION.md`
 - `app/skills/`
 - `app/plugins/`
 - `.env.example`
 - `.gitignore`
+
+`SOUL.md` sets Junior's default voice, `WORLD.md` holds operational context, and `DESCRIPTION.md` powers the user-facing app description. Add other `app/*.md` files only when you want optional reference material available to the agent at runtime. `ABOUT.md` is not part of the scaffold and is not supported.
 
 This gives you the minimum app shape needed to run Junior locally and continue with plugin or skill setup.
 

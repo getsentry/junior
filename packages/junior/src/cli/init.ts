@@ -112,8 +112,12 @@ export async function runInit(
     `# ${name}\n\nYou are ${name}, a helpful assistant.\n`,
   );
   fs.writeFileSync(
-    path.join(appDir, "ABOUT.md"),
-    `# About ${name}\n\nDescribe what ${name} helps users do.\n`,
+    path.join(appDir, "WORLD.md"),
+    `# ${name} World\n\nOperational context and domain knowledge for ${name}.\n`,
+  );
+  fs.writeFileSync(
+    path.join(appDir, "DESCRIPTION.md"),
+    `${name} helps your team make progress directly in Slack.\n`,
   );
 
   const skillsDir = path.join(appDir, "skills");

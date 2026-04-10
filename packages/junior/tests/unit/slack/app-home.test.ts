@@ -234,16 +234,19 @@ describe("buildHomeView", () => {
     );
   });
 
-  it("loads ABOUT.md from app root for home intro text", async () => {
+  it("loads DESCRIPTION.md from app root for home intro text", async () => {
     readFileSpy.mockReturnValue("Custom app home intro");
     const store = createMockTokenStore({});
     const view = await buildHomeView("U123", store);
 
     expect(getAllSectionText(view.blocks)).toContain("Custom app home intro");
-    expect(fs.readFileSync).toHaveBeenCalledWith("/mock/app/ABOUT.md", "utf8");
+    expect(fs.readFileSync).toHaveBeenCalledWith(
+      "/mock/app/DESCRIPTION.md",
+      "utf8",
+    );
   });
 
-  it("falls back to default intro text when ABOUT.md is missing", async () => {
+  it("falls back to default intro text when DESCRIPTION.md is missing", async () => {
     readFileSpy.mockImplementation(() => {
       throw new Error("missing");
     });

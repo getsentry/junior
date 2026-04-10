@@ -95,7 +95,7 @@ describe.sequential("example build discovery integration", () => {
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
-      aboutText?: string;
+      descriptionText?: string;
       homeDir: string;
       packagedContent: {
         packageNames: string[];
@@ -106,7 +106,7 @@ describe.sequential("example build discovery integration", () => {
       skills: Array<{ name: string }>;
     };
 
-    expect(body.aboutText).toBe(
+    expect(body.descriptionText).toBe(
       "Junior helps your team make progress directly in Slack.",
     );
     expect(body.homeDir).toBe(path.join(exampleRoot, "app"));

@@ -15,6 +15,7 @@ import {
   withSpan,
   type LogContext,
 } from "@/chat/logging";
+import { listReferenceFiles } from "@/chat/discovery";
 import { buildSystemPrompt } from "@/chat/prompt";
 import {
   createSkillCapabilityRuntime,
@@ -324,6 +325,7 @@ export async function generateAssistantReply(
     });
     const currentSandboxExecutor = sandboxExecutor;
     sandboxExecutor.configureSkills(availableSkills);
+    sandboxExecutor.configureReferenceFiles(listReferenceFiles());
     let sandboxPromise: Promise<SandboxWorkspace> | undefined;
     let sandboxPromiseId: string | undefined;
     const clearSandboxPromise = (): void => {

@@ -17,6 +17,14 @@ function writeFile(targetPath: string, contents: string): void {
   fs.writeFileSync(targetPath, contents, "utf8");
 }
 
+function writeAppFiles(repoRoot: string): void {
+  const appDir = path.join(repoRoot, "app");
+  fs.mkdirSync(appDir, { recursive: true });
+  writeFile(path.join(appDir, "SOUL.md"), "soul");
+  writeFile(path.join(appDir, "WORLD.md"), "world");
+  writeFile(path.join(appDir, "DESCRIPTION.md"), "description");
+}
+
 afterEach(() => {
   for (const root of tempRoots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
@@ -26,6 +34,7 @@ afterEach(() => {
 describe("check cli", () => {
   it("validates local plugins and skills from an explicit repo root", async () => {
     const repoRoot = makeTempDir("junior-validate-");
+    writeAppFiles(repoRoot);
     writeFile(
       path.join(repoRoot, "app", "plugins", "demo", "plugin.yaml"),
       [
@@ -85,6 +94,7 @@ describe("check cli", () => {
 
     expect(lines).toEqual([
       `Checking ${repoRoot}`,
+      "✓ app files",
       "✓ plugin demo",
       "  └─ ✓ skill demo-helper",
       "✓ app skills",
@@ -113,8 +123,26 @@ describe("check cli", () => {
     ]);
   });
 
+  it("skips app file validation for unrelated app directories", async () => {
+    const repoRoot = makeTempDir("junior-validate-empty-app-");
+    fs.mkdirSync(path.join(repoRoot, "app"), { recursive: true });
+
+    const lines: string[] = [];
+    await runCheck(repoRoot, {
+      info: (line) => lines.push(line),
+      warn: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+
+    expect(lines).toEqual([
+      `Checking ${repoRoot}`,
+      "✓ Validation passed (0 plugin manifests, 0 skill directories checked).",
+    ]);
+  });
+
   it("only checks skill directories under app and plugin skill roots", async () => {
     const repoRoot = makeTempDir("junior-validate-duplicate-skill-");
+    writeAppFiles(repoRoot);
     writeFile(
       path.join(repoRoot, "skills", "shared-skill", "SKILL.md"),
       [
@@ -161,6 +189,7 @@ describe("check cli", () => {
 
     expect(lines).toEqual([
       `Checking ${repoRoot}`,
+      "✓ app files",
       "✓ plugin demo",
       "  └─ ✓ skill shared-skill",
       "✓ Validation passed (1 plugin manifest, 1 skill directory checked).",
@@ -169,6 +198,7 @@ describe("check cli", () => {
 
   it("fails when skill uses-config tokens are invalid", async () => {
     const repoRoot = makeTempDir("junior-validate-invalid-uses-config-");
+    writeAppFiles(repoRoot);
     writeFile(
       path.join(repoRoot, "app", "plugins", "demo", "plugin.yaml"),
       ["name: demo", "description: Demo plugin", ""].join("\n"),

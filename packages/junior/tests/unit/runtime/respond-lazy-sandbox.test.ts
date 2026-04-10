@@ -290,6 +290,7 @@ vi.mock("@/chat/skills", () => {
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandboxExecutor: () => ({
     configureSkills: () => undefined,
+    configureReferenceFiles: () => undefined,
     createSandbox: async () => {
       createSandboxCallCount.value += 1;
       const sandboxVersion = activeSandboxVersion.value;

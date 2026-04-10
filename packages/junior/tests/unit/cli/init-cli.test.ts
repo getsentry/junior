@@ -30,7 +30,10 @@ describe("init cli", () => {
     expect(fs.existsSync(path.join(target, "nitro.config.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "vite.config.ts"))).toBe(true);
     expect(fs.existsSync(path.join(target, "app", "SOUL.md"))).toBe(true);
-    expect(fs.existsSync(path.join(target, "app", "ABOUT.md"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "app", "WORLD.md"))).toBe(true);
+    expect(fs.existsSync(path.join(target, "app", "DESCRIPTION.md"))).toBe(
+      true,
+    );
 
     const vercelConfig = JSON.parse(
       fs.readFileSync(path.join(target, "vercel.json"), "utf8"),

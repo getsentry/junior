@@ -71,6 +71,7 @@ interface SandboxToolExecutors {
 
 interface SandboxSessionManager {
   configureSkills(skills: SkillMetadata[]): void;
+  configureReferenceFiles(files: string[]): void;
   getSandboxId(): string | undefined;
   getDependencyProfileHash(): string | undefined;
   createSandbox(): Promise<Sandbox>;
@@ -215,6 +216,7 @@ export function createSandboxSessionManager(options?: {
   let sandbox: Sandbox | null = null;
   let sandboxIdHint = options?.sandboxId;
   let availableSkills: SkillMetadata[] = [];
+  let availableReferenceFiles: string[] = [];
   let toolExecutors: SandboxToolExecutors | undefined;
 
   const timeoutMs = options?.timeoutMs ?? 1000 * 60 * 30;
@@ -278,6 +280,7 @@ export function createSandboxSessionManager(options?: {
     await syncSkillsToSandbox({
       sandbox: targetSandbox,
       skills: availableSkills,
+      referenceFiles: availableReferenceFiles,
       withSpan: withSandboxSpan,
       runtimeBinDir: SANDBOX_RUNTIME_BIN_DIR,
     });
@@ -780,6 +783,9 @@ export function createSandboxSessionManager(options?: {
   return {
     configureSkills(skills: SkillMetadata[]) {
       availableSkills = [...skills];
+    },
+    configureReferenceFiles(files: string[]) {
+      availableReferenceFiles = [...files];
     },
     getSandboxId() {
       return sandbox?.sandboxId ?? sandboxIdHint;
