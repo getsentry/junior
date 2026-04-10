@@ -88,17 +88,14 @@ export async function resolveMentions(
 
   await Promise.all(
     uniqueNames.map(async (name) => {
-      // Check known participants first (free)
+      // Check known participants first (free) — exact match only to avoid
+      // resolving @al to "alex" or similar prefix collisions.
       const normalizedName = name.toLowerCase().replace(/[\s.]/g, "");
       for (const [participantName, userId] of knownParticipants ?? []) {
         const normalizedParticipant = participantName
           .toLowerCase()
           .replace(/[\s.]/g, "");
-        if (
-          normalizedParticipant === normalizedName ||
-          normalizedParticipant.startsWith(normalizedName) ||
-          normalizedName.startsWith(normalizedParticipant)
-        ) {
+        if (normalizedParticipant === normalizedName) {
           resolvedIds.set(name, userId);
           return;
         }

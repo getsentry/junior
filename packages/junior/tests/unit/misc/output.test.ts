@@ -118,11 +118,30 @@ describe("resolveMentions", () => {
 
   it("skips patterns that look like email addresses", async () => {
     const participants = new Map([["user", "U12345"]]);
-    const result = await resolveMentions("send to user@example.com", participants);
+    const result = await resolveMentions(
+      "send to user@example.com",
+      participants,
+    );
     // email addresses should not be touched
     expect(result).toBe("send to user@example.com");
   });
 
+  it("does not resolve @al to a participant named alex (exact match only)", async () => {
+    const participants = new Map([
+      ["alex", "UA99999"],
+      ["al", "UA00001"],
+    ]);
+    // @al should match 'al' exactly, not 'alex'
+    const result = await resolveMentions("ping @al", participants);
+    expect(result).toBe("ping <@UA00001>");
+  });
+
+  it("does not resolve @alexander to a participant named al (no prefix expansion)", async () => {
+    const participants = new Map([["al", "UA00001"]]);
+    // @alexander is not in the map; should fall through to workspace lookup (which returns null in tests)
+    const result = await resolveMentions("ping @alexander", participants);
+    expect(result).toBe("ping @alexander");
+  });
   it("returns text unchanged when no @ patterns present", async () => {
     const result = await resolveMentions("no mentions here", new Map());
     expect(result).toBe("no mentions here");
