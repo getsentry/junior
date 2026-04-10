@@ -337,7 +337,12 @@ export function descriptionPathCandidates(): string[] {
   return unique(candidates);
 }
 
-const RESERVED_APP_FILES = new Set(["SOUL.md", "WORLD.md", "DESCRIPTION.md"]);
+const RESERVED_APP_FILES = new Set([
+  "SOUL.md",
+  "WORLD.md",
+  "DESCRIPTION.md",
+  "ABOUT.md",
+]);
 
 /** List non-reserved .md files in the app root for sandbox reference syncing. */
 export function listReferenceFiles(): string[] {

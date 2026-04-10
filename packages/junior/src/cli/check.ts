@@ -347,6 +347,27 @@ async function validateAppFiles(
   return { errors, warnings };
 }
 
+async function hasJuniorAppMarkers(appDir: string): Promise<boolean> {
+  for (const fileName of [
+    "SOUL.md",
+    "WORLD.md",
+    "DESCRIPTION.md",
+    "ABOUT.md",
+  ]) {
+    if (await pathIsFile(path.join(appDir, fileName))) {
+      return true;
+    }
+  }
+
+  for (const dirName of ["skills", "plugins"]) {
+    if (await pathIsDirectory(path.join(appDir, dirName))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export async function runCheck(
   rootDir: string = process.cwd(),
   io: ValidationIo = DEFAULT_IO,
@@ -419,7 +440,9 @@ export async function runCheck(
     errors: [],
     warnings: [],
   };
-  if (await pathIsDirectory(appDir)) {
+  const shouldValidateAppFiles =
+    (await pathIsDirectory(appDir)) && (await hasJuniorAppMarkers(appDir));
+  if (shouldValidateAppFiles) {
     appFileResult = await validateAppFiles(appDir);
     warnings.push(...appFileResult.warnings);
     errors.push(...appFileResult.errors);
@@ -432,7 +455,7 @@ export async function runCheck(
     )}`,
   );
 
-  if (await pathIsDirectory(appDir)) {
+  if (shouldValidateAppFiles) {
     const appFileStatus = formatStatus(
       appFileResult.errors.length,
       appFileResult.warnings.length,

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   dataDir,
   dataRoots,
@@ -19,6 +19,12 @@ import {
   worldPath,
   worldPathCandidates,
 } from "@/chat/discovery";
+
+const originalCwd = process.cwd();
+
+afterEach(() => {
+  process.chdir(originalCwd);
+});
 
 describe("home paths", () => {
   it("uses app as project root", () => {
@@ -78,26 +84,19 @@ describe("home paths", () => {
     await fs.writeFile(path.join(appDir, "SOUL.md"), "soul", "utf8");
     await fs.writeFile(path.join(appDir, "WORLD.md"), "world", "utf8");
     await fs.writeFile(path.join(appDir, "DESCRIPTION.md"), "desc", "utf8");
+    await fs.writeFile(path.join(appDir, "ABOUT.md"), "legacy", "utf8");
     await fs.writeFile(path.join(appDir, "runbooks.md"), "runbooks", "utf8");
     await fs.writeFile(path.join(appDir, "api-surface.md"), "api docs", "utf8");
     // Directories with .md names should be ignored.
     await fs.mkdir(path.join(appDir, "skills"), { recursive: true });
 
-    // listReferenceFiles reads from homeDir(), which is resolved from cwd.
-    // Use resolveHomeDir with the temp root to verify the logic.
-    const resolved = resolveHomeDir(tempRoot, { projectRoots: [tempRoot] });
-    expect(resolved).toBe(appDir);
+    process.chdir(tempRoot);
+    const resolvedAppDir = homeDir();
 
-    // Verify the function's filtering contract by reading the temp dir directly.
-    const entries = await fs.readdir(appDir, { withFileTypes: true });
-    const RESERVED = new Set(["SOUL.md", "WORLD.md", "DESCRIPTION.md"]);
-    const expected = entries
-      .filter(
-        (e) => e.isFile() && e.name.endsWith(".md") && !RESERVED.has(e.name),
-      )
-      .map((e) => e.name)
-      .sort();
-    expect(expected).toEqual(["api-surface.md", "runbooks.md"]);
+    expect(listReferenceFiles()).toEqual([
+      path.join(resolvedAppDir, "api-surface.md"),
+      path.join(resolvedAppDir, "runbooks.md"),
+    ]);
   });
 
   it("treats WORLD.md as a valid app data marker", async () => {

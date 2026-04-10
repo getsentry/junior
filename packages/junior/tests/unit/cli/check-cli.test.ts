@@ -123,6 +123,23 @@ describe("check cli", () => {
     ]);
   });
 
+  it("skips app file validation for unrelated app directories", async () => {
+    const repoRoot = makeTempDir("junior-validate-empty-app-");
+    fs.mkdirSync(path.join(repoRoot, "app"), { recursive: true });
+
+    const lines: string[] = [];
+    await runCheck(repoRoot, {
+      info: (line) => lines.push(line),
+      warn: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+
+    expect(lines).toEqual([
+      `Checking ${repoRoot}`,
+      "✓ Validation passed (0 plugin manifests, 0 skill directories checked).",
+    ]);
+  });
+
   it("only checks skill directories under app and plugin skill roots", async () => {
     const repoRoot = makeTempDir("junior-validate-duplicate-skill-");
     writeAppFiles(repoRoot);
