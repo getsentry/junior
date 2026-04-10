@@ -35,6 +35,8 @@ pnpm install
 - `app/skills/` and `app/plugins/`
 - `.env.example`
 
+`SOUL.md` defines Junior's voice, `WORLD.md` carries operational context, and `DESCRIPTION.md` is the app description shown on user-facing surfaces. If you need extra context files, add more `app/*.md` documents and Junior will make them available as optional reference docs at runtime. Do not recreate the old `ABOUT.md`; use `WORLD.md` and `DESCRIPTION.md` instead.
+
 For a new app, you usually do not need to hand-create routes or runtime wrapper files.
 
 ## Configure environment

@@ -7,7 +7,7 @@ title: "POST"
 
 > **POST**(`request`, `platform`, `waitUntil`): `Promise`\<`Response`\>
 
-Defined in: [handlers/webhooks.ts:20](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L20)
+Defined in: [handlers/webhooks.ts:19](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L19)
 
 Handles `POST /api/webhooks/:platform`.
 
