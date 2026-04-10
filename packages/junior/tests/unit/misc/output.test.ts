@@ -117,7 +117,12 @@ describe("resolveMentions", () => {
   });
 
   it("skips patterns that look like email addresses", async () => {
-    const participants = new Map([["user", "U12345"]]);
+    // participant map includes both "user" AND "example.com" to confirm that
+    // neither the local-part nor the host portion of an email triggers resolution
+    const participants = new Map([
+      ["user", "U12345"],
+      ["example.com", "U99999"],
+    ]);
     const result = await resolveMentions(
       "send to user@example.com",
       participants,
@@ -145,6 +150,32 @@ describe("resolveMentions", () => {
   it("returns text unchanged when no @ patterns present", async () => {
     const result = await resolveMentions("no mentions here", new Map());
     expect(result).toBe("no mentions here");
+  });
+
+  it("does not resolve @mentions inside inline code spans", async () => {
+    const participants = new Map([["user", "U12345"]]);
+    // @user inside backticks should not be resolved
+    const result = await resolveMentions(
+      "run `@user` to see help",
+      participants,
+    );
+    expect(result).toBe("run `@user` to see help");
+  });
+
+  it("does not resolve @mentions inside fenced code blocks", async () => {
+    const participants = new Map([["user", "U12345"]]);
+    const input = "check this:\n```ts\n// @user\ntest();\n```\ndone";
+    const result = await resolveMentions(input, participants);
+    // @user inside the fenced block must not be resolved
+    expect(result).toBe(input);
+  });
+
+  it("resolves @mentions outside code blocks but not inside", async () => {
+    const participants = new Map([["user", "U12345"]]);
+    const input = "@user please see `@user` in the code";
+    const result = await resolveMentions(input, participants);
+    // @user outside the backtick span is resolved; inside is left alone
+    expect(result).toBe("<@U12345> please see `@user` in the code");
   });
 });
 

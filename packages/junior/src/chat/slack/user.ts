@@ -206,13 +206,33 @@ async function buildNameToUserIdMap(): Promise<Map<string, string>> {
   return map;
 }
 
+let nameToUserIdInflight: Promise<Map<string, string>> | null = null;
+
 async function getNameToUserIdMap(): Promise<Map<string, string>> {
   if (nameToUserIdCache && nameToUserIdCache.expiresAt > Date.now()) {
     return nameToUserIdCache.map;
   }
-  const map = await buildNameToUserIdMap();
-  nameToUserIdCache = { map, expiresAt: Date.now() + NAME_TO_USERID_CACHE_TTL_MS };
-  return map;
+  // Deduplicate concurrent callers — only one fetch in flight at a time.
+  if (nameToUserIdInflight) {
+    return nameToUserIdInflight;
+  }
+  nameToUserIdInflight = buildNameToUserIdMap()
+    .then((map) => {
+      // Only cache if we got a non-empty result (empty likely means partial failure).
+      if (map.size > 0) {
+        nameToUserIdCache = {
+          map,
+          expiresAt: Date.now() + NAME_TO_USERID_CACHE_TTL_MS,
+        };
+      }
+      nameToUserIdInflight = null;
+      return map;
+    })
+    .catch((err) => {
+      nameToUserIdInflight = null;
+      throw err;
+    });
+  return nameToUserIdInflight;
 }
 
 /**

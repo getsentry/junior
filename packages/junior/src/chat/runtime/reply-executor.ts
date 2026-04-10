@@ -123,44 +123,37 @@ interface ReplyExecutorDeps {
 }
 
 /**
- * Build a name→userId map from known thread participants.
- * This lets mention resolution work for people already in the thread
- * at zero API cost.
+ * Build participant data structures from known thread messages.
+ * Returns both:
+ * - `array`: objects with userId/userName/fullName for system prompt injection
+ * - `map`: name→userId mapping for zero-cost mention resolution
+ *
+ * Both are derived in a single pass to avoid duplication.
  */
-function buildKnownParticipantsMap(
-  messages: ConversationMessage[],
-): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const message of messages) {
-    const { userId, userName, fullName } = message.author ?? {};
-    if (!userId) continue;
-    if (userName) map.set(userName, userId);
-    if (fullName) map.set(fullName, userId);
-  }
-  return map;
-}
-
-/**
- * Build an array of participant objects suitable for injection into the system prompt.
- * Each entry carries userId, userName, and fullName so the LLM can construct
- * correct <@USERID> mention syntax for people already in the thread.
- */
-function buildThreadParticipantsArray(
-  messages: ConversationMessage[],
-): Array<{ userId?: string; userName?: string; fullName?: string }> {
+function buildParticipants(messages: ConversationMessage[]): {
+  array: Array<{ userId?: string; userName?: string; fullName?: string }>;
+  map: Map<string, string>;
+} {
   const seen = new Set<string>();
-  const participants: Array<{
+  const array: Array<{
     userId?: string;
     userName?: string;
     fullName?: string;
   }> = [];
+  const map = new Map<string, string>();
+
   for (const message of messages) {
     const { userId, userName, fullName } = message.author ?? {};
-    if (!userId || seen.has(userId)) continue;
-    seen.add(userId);
-    participants.push({ userId, userName, fullName });
+    if (!userId) continue;
+    if (!seen.has(userId)) {
+      seen.add(userId);
+      array.push({ userId, userName, fullName });
+    }
+    if (userName) map.set(userName, userId);
+    if (fullName) map.set(fullName, userId);
   }
-  return participants;
+
+  return { array, map };
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -375,9 +368,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sandboxDependencyProfileHash:
                 preparedState.sandboxDependencyProfileHash,
             },
-            threadParticipants: buildThreadParticipantsArray(
+            threadParticipants: buildParticipants(
               preparedState.conversation.messages,
-            ),
+            ).array,
             onStatus: (status) => progress.setStatus(status),
             onTextDelta: (deltaText) => {
               if (explicitChannelPostIntent) {
@@ -496,9 +489,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
-              const knownParticipants = buildKnownParticipantsMap(
+              const knownParticipants = buildParticipants(
                 preparedState.conversation.messages,
-              );
+              ).map;
               const sent = await postThreadReply(
                 await buildSlackOutputMessage(
                   reply.text,

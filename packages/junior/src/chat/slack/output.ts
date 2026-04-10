@@ -61,9 +61,10 @@ export function ensureBlockSpacing(text: string): string {
  * Resolve `@name` patterns in text to Slack `<@USERID>` entities.
  *
  * The postprocessor:
- * 1. Skips patterns that look like email addresses (already have `@host` context)
- * 2. Skips patterns that are already proper Slack mention entities
- * 3. For each remaining `@name` candidate, attempts a name→ID lookup via the
+ * 1. Skips patterns inside inline code spans (`` `...` ``) or fenced code blocks (``` ``` ```)
+ * 2. Skips patterns that look like email addresses (already have `@host` context)
+ * 3. Skips patterns that are already proper Slack mention entities
+ * 4. For each remaining `@name` candidate, attempts a name→ID lookup via the
  *    Slack `users.list` API (cached). Unresolvable names are left as-is.
  *
  * The known-participant map is consulted first (zero API cost) before falling
@@ -77,7 +78,26 @@ export async function resolveMentions(
   // and not already inside a Slack entity like <@U...>
   const mentionPattern = /(?<![<\w])@([\w][\w.-]*[\w]|[\w])/g;
 
-  const matches = [...text.matchAll(mentionPattern)];
+  // Build a set of character ranges that are inside code spans/blocks so we
+  // can skip mention resolution for those positions.
+  const codeRanges: Array<[number, number]> = [];
+  // Fenced code blocks: ```...``` (greedy across newlines)
+  const fencePattern = /```[\s\S]*?```/g;
+  // Inline code spans: `...` (single backtick, non-greedy, no newlines)
+  const inlineCodePattern = /`[^`\n]*`/g;
+  for (const m of text.matchAll(fencePattern)) {
+    codeRanges.push([m.index!, m.index! + m[0].length]);
+  }
+  for (const m of text.matchAll(inlineCodePattern)) {
+    codeRanges.push([m.index!, m.index! + m[0].length]);
+  }
+
+  const inCode = (pos: number): boolean =>
+    codeRanges.some(([start, end]) => pos >= start && pos < end);
+
+  const matches = [...text.matchAll(mentionPattern)].filter(
+    (m) => !inCode(m.index!),
+  );
   if (matches.length === 0) {
     return text;
   }
@@ -113,10 +133,23 @@ export async function resolveMentions(
     return text;
   }
 
-  return text.replace(mentionPattern, (match, name: string) => {
-    const userId = resolvedIds.get(name);
-    return userId ? `<@${userId}>` : match;
-  });
+  // Replace only mentions that are not inside code ranges
+  let result = "";
+  let lastIndex = 0;
+  for (const m of [...text.matchAll(mentionPattern)]) {
+    const start = m.index!;
+    const end = start + m[0].length;
+    result += text.slice(lastIndex, start);
+    if (inCode(start)) {
+      result += m[0];
+    } else {
+      const userId = resolvedIds.get(m[1]);
+      result += userId ? `<@${userId}>` : m[0];
+    }
+    lastIndex = end;
+  }
+  result += text.slice(lastIndex);
+  return result;
 }
 
 function normalizeForSlack(text: string): string {
