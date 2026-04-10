@@ -68,6 +68,7 @@ Harness override knobs (in `EvalOverrides`):
 - `mock_image_generation`: stub the image-generation HTTP response with a valid image payload while still exercising the real attachment path.
 - `plugin_dirs`: load plugin fixtures from eval-local directories without adding workspace packages.
 - `reply_texts`: override returned reply text per call.
+- `reply_timeout_ms`: raise the per-reply harness timeout for a specific slow scenario without changing the suite-wide default.
 - `subscribed_decisions`: controls the subscribed-message reply gate in the harness. If you use it, do not claim that reply-selection behavior is being validated by the eval itself.
 
 These knobs work by overriding services on the eval-local runtime instance. They must not reintroduce mutable global runtime behavior seams.

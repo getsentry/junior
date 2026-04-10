@@ -291,7 +291,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
   });
 
-  it("routes acknowledgment messages through the classifier", async () => {
+  it("short-circuits acknowledgment messages without calling the classifier", async () => {
     let classifierCalled = false;
     let replyCalled = false;
 
@@ -300,14 +300,9 @@ describe("Slack behavior: subscribed messages", () => {
         subscribedReplyPolicy: {
           completeObject: async () => {
             classifierCalled = true;
-            return {
-              object: {
-                should_reply: false,
-                confidence: 0.95,
-                reason: "acknowledgment, not a request for help",
-              },
-              text: '{"should_reply":false,"confidence":0.95,"reason":"acknowledgment, not a request for help"}',
-            } as never;
+            throw new Error(
+              "classifier should be bypassed for acknowledgments",
+            );
           },
         },
         replyExecutor: {
@@ -341,9 +336,268 @@ describe("Slack behavior: subscribed messages", () => {
 
     await slackRuntime.handleSubscribedMessage(thread, message);
 
+    expect(classifierCalled).toBe(false);
+    expect(replyCalled).toBe(false);
+    expect(thread.posts).toHaveLength(0);
+  });
+
+  it("routes acknowledgment text with attachments through the classifier", async () => {
+    let classifierCalled = false;
+    let replyCalled = false;
+
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            classifierCalled = true;
+            return {
+              object: {
+                should_reply: false,
+                confidence: 0.95,
+                reason: "attachment acknowledgment",
+              },
+              text: '{"should_reply":false,"confidence":0.95,"reason":"attachment acknowledgment"}',
+            } as never;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyCalled = true;
+            return {
+              text: "This should never be posted.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.125" });
+    const message = createTestMessage({
+      id: "m-subscribed-ack-attachment",
+      text: "thanks!",
+      isMention: false,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+      attachments: [
+        {
+          type: "image",
+          url: "https://example.com/chart.png",
+        },
+      ],
+    });
+
+    await slackRuntime.handleSubscribedMessage(thread, message);
+
     expect(classifierCalled).toBe(true);
     expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(0);
+  });
+
+  it("routes attachment-only passive messages through the classifier", async () => {
+    let classifierCalled = false;
+    let replyCalled = false;
+
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            classifierCalled = true;
+            return {
+              object: {
+                should_reply: false,
+                confidence: 0.95,
+                reason: "passive attachment",
+              },
+              text: '{"should_reply":false,"confidence":0.95,"reason":"passive attachment"}',
+            } as never;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyCalled = true;
+            return {
+              text: "This should never be posted.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.250" });
+    const message = createTestMessage({
+      id: "m-subscribed-attachment-only",
+      text: "",
+      isMention: false,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+      attachments: [
+        {
+          type: "image",
+          url: "https://example.com/chart.png",
+        },
+      ],
+    });
+
+    await slackRuntime.handleSubscribedMessage(thread, message);
+
+    expect(classifierCalled).toBe(true);
+    expect(replyCalled).toBe(false);
+    expect(thread.posts).toHaveLength(0);
+  });
+
+  it("short-circuits generic immediate side-conversation questions without calling the classifier", async () => {
+    let classifierCalled = false;
+    let replyCalled = false;
+
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            classifierCalled = true;
+            throw new Error(
+              "classifier should be bypassed for generic immediate side conversation",
+            );
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyCalled = true;
+            return {
+              text: "This should never be posted.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.300" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-generic-side-1",
+        text: "<@U_APP> summarize the deploy",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+    replyCalled = false;
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-generic-side-2",
+        text: "can you check on this?",
+        isMention: false,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+
+    expect(classifierCalled).toBe(false);
+    expect(replyCalled).toBe(false);
+    expect(thread.posts).toHaveLength(1);
+  });
+
+  it("routes generic immediate attachment follow-ups through the classifier", async () => {
+    let classifierCalled = false;
+    let replyCalled = false;
+
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            classifierCalled = true;
+            return {
+              object: {
+                should_reply: false,
+                confidence: 0.95,
+                reason: "attachment follow-up",
+              },
+              text: '{"should_reply":false,"confidence":0.95,"reason":"attachment follow-up"}',
+            } as never;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyCalled = true;
+            return {
+              text: "This should never be posted.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.350" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-generic-side-attachment-1",
+        text: "<@U_APP> summarize the deploy",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+    replyCalled = false;
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-generic-side-attachment-2",
+        text: "can you check on this?",
+        isMention: false,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+        attachments: [
+          {
+            type: "image",
+            url: "https://example.com/screenshot.png",
+          },
+        ],
+      }),
+    );
+
+    expect(classifierCalled).toBe(true);
+    expect(replyCalled).toBe(false);
+    expect(thread.posts).toHaveLength(1);
   });
 
   it("stays silent when a subscribed message is clearly directed at another bot", async () => {
@@ -486,5 +740,78 @@ describe("Slack behavior: subscribed messages", () => {
     expect(replyCalls).toContain("what did you just say about the budget?");
     expect(thread.posts).toHaveLength(2);
     expect(toPostedText(thread.posts[1])).toContain("budget by Friday");
+  });
+
+  it("accepts a lower-confidence follow-up when junior just spoke", async () => {
+    let classifierCalled = false;
+    const replyCalls: string[] = [];
+
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            classifierCalled = true;
+            return {
+              object: {
+                should_reply: true,
+                confidence: 0.65,
+                reason: "brief clarification after assistant reply",
+              },
+              text: '{"should_reply":true,"confidence":0.65,"reason":"brief clarification after assistant reply"}',
+            } as never;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async (prompt) => {
+            replyCalls.push(prompt);
+            return {
+              text:
+                replyCalls.length === 1
+                  ? "The deploy changed billing, auth, and the API gateway."
+                  : "The three services were billing, auth, and the API gateway.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002004.500" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-low-confidence-followup-1",
+        text: "<@U_APP> what changed in the deploy?",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-low-confidence-followup-2",
+        text: "which one?",
+        isMention: false,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+
+    expect(classifierCalled).toBe(true);
+    expect(replyCalls).toContain("which one?");
+    expect(thread.posts).toHaveLength(2);
+    expect(toPostedText(thread.posts[1])).toContain(
+      "billing, auth, and the API gateway",
+    );
   });
 });

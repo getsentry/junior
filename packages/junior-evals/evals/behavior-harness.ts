@@ -124,6 +124,7 @@ export interface EvalOverrides {
   plugin_dirs?: string[];
   plugin_packages?: string[];
   reply_results?: EvalReplyResultFixture[];
+  reply_timeout_ms?: number;
   reply_texts?: string[];
   skill_dirs?: string[];
   subscribed_decisions?: SubscribedDecisionFixture[];
@@ -797,10 +798,11 @@ function buildRuntimeServices(
   const replyResults = scenario.overrides?.reply_results ?? [];
   const replyTexts = scenario.overrides?.reply_texts ?? [];
   const subscribedDecisions = scenario.overrides?.subscribed_decisions ?? [];
-  const replyTimeoutMs = Number.parseInt(
-    process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000",
-    10,
-  );
+  const replyTimeoutMs =
+    scenario.overrides?.reply_timeout_ms &&
+    scenario.overrides.reply_timeout_ms > 0
+      ? scenario.overrides.reply_timeout_ms
+      : Number.parseInt(process.env.EVAL_AGENT_REPLY_TIMEOUT_MS ?? "45000", 10);
   let replyCallCount = 0;
   let decisionIndex = 0;
   const replyState = { successfulCount: 0 };

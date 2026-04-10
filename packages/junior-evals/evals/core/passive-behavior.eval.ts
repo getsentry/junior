@@ -143,6 +143,62 @@ describe("Conversational Evals: Passive Behavior", () => {
       "The assistant posts two replies in order. The second reply provides more detail about the deploy changes because the follow-up explicitly references Junior's last response.",
   });
 
+  const terseFollowUpThread = {
+    id: "thread-passive-terse-follow-up",
+    channel_id: "C-passive-terse-follow-up",
+    thread_ts: "17000000.passive-terse-follow-up",
+  };
+
+  slackEval(
+    "passive: terse clarification right after Junior reply gets a reply",
+    {
+      overrides: {
+        reply_texts: [
+          "The deploy changed billing, auth, and the API gateway.",
+          "The three services were billing, auth, and the API gateway.",
+        ],
+      },
+      events: [
+        mention("What changed in the deploy?", {
+          thread: terseFollowUpThread,
+        }),
+        threadMessage("Which one?", {
+          thread: terseFollowUpThread,
+        }),
+      ],
+      criteria:
+        "The assistant posts two replies in order. The second reply clarifies which services changed because the terse follow-up 'Which one?' came immediately after Junior's answer and is naturally directed at Junior.",
+    },
+  );
+
+  const humansTookFloorThread = {
+    id: "thread-passive-humans-took-floor",
+    channel_id: "C-passive-humans-took-floor",
+    thread_ts: "17000000.passive-humans-took-floor",
+  };
+
+  slackEval(
+    "passive: same-topic question is skipped after humans take the floor",
+    {
+      overrides: {
+        reply_texts: ["The deploy changed billing, auth, and the API gateway."],
+      },
+      events: [
+        mention("What changed in the deploy?", {
+          thread: humansTookFloorThread,
+        }),
+        threadMessage("I think auth should roll back first.", {
+          thread: humansTookFloorThread,
+        }),
+        threadMessage("What about the billing worker timeline?", {
+          thread: humansTookFloorThread,
+        }),
+      ],
+      criteria:
+        "The assistant posts exactly one reply: the initial deploy summary. It does not answer the later same-topic question about the billing worker timeline because humans resumed the thread and the later question does not clearly turn back to Junior.",
+    },
+  );
+
   const optOutThread = {
     id: "thread-opt-out",
     channel_id: "C-opt-out",
