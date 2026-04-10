@@ -1,11 +1,15 @@
 import fs from "node:fs";
 import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import { botConfig } from "@/chat/config";
-import { aboutPathCandidates, soulPathCandidates } from "@/chat/discovery";
+import {
+  listReferenceFiles,
+  soulPathCandidates,
+  worldPathCandidates,
+} from "@/chat/discovery";
 import { logInfo, logWarn } from "@/chat/logging";
 import { slackOutputPolicy } from "@/chat/slack/output";
 import type { RuntimeMetadata } from "@/chat/config";
-import { sandboxSkillDir } from "@/chat/sandbox/paths";
+import { SANDBOX_DATA_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 import type { ExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
@@ -69,8 +73,8 @@ function loadSoul(): string {
   return DEFAULT_SOUL;
 }
 
-function loadAbout(): string | null {
-  return loadOptionalMarkdownFile(aboutPathCandidates(), "ABOUT.md");
+function loadWorld(): string | null {
+  return loadOptionalMarkdownFile(worldPathCandidates(), "WORLD.md");
 }
 
 export const JUNIOR_PERSONALITY = (() => {
@@ -89,17 +93,17 @@ export const JUNIOR_PERSONALITY = (() => {
   }
 })();
 
-export const JUNIOR_ABOUT = (() => {
+export const JUNIOR_WORLD = (() => {
   try {
-    return loadAbout();
+    return loadWorld();
   } catch (error) {
     logWarn(
-      "about_load_failed",
+      "world_load_failed",
       {},
       {
         "error.message": error instanceof Error ? error.message : String(error),
       },
-      "Failed to load ABOUT.md; omitting about prompt context",
+      "Failed to load WORLD.md; omitting world prompt context",
     );
     return null;
   }
@@ -247,6 +251,28 @@ function baseSystemPrompt(): string {
   ].join("\n");
 }
 
+function formatReferenceFilesSection(): string[] {
+  const files = listReferenceFiles();
+  if (files.length === 0) {
+    return [];
+  }
+
+  const fileNames = files.map((filePath) => {
+    const name = filePath.split("/").pop() ?? filePath;
+    return `- ${escapeXml(name)} (${escapeXml(`${SANDBOX_DATA_ROOT}/${name}`)})`;
+  });
+
+  return [
+    renderTag(
+      "reference-files",
+      [
+        "Additional reference documents available in the sandbox. Read them with `readFile` when relevant.",
+        ...fileNames,
+      ].join("\n"),
+    ),
+  ];
+}
+
 export function buildSystemPrompt(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
@@ -360,18 +386,19 @@ export function buildSystemPrompt(params: {
         JUNIOR_PERSONALITY.trim(),
       ].join("\n"),
     ),
-    ...(JUNIOR_ABOUT
+    ...(JUNIOR_WORLD
       ? [
           renderTag(
-            "about",
+            "world",
             [
-              "Use this as the assistant's product/domain description when relevant.",
+              "Use this as the assistant's operational/domain context.",
               "",
-              JUNIOR_ABOUT.trim(),
+              JUNIOR_WORLD.trim(),
             ].join("\n"),
           ),
         ]
       : []),
+    ...formatReferenceFilesSection(),
     renderTag(
       "identity-context",
       [

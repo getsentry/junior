@@ -15,7 +15,7 @@ interface HomeView {
   blocks: KnownBlock[];
 }
 
-const DEFAULT_ABOUT_TEXT =
+const DEFAULT_DESCRIPTION_TEXT =
   "I help your team investigate, summarize, and act on work in Slack.";
 const MAX_HOME_SKILLS = 6;
 const MAX_SECTION_TEXT_CHARS = 3000;
@@ -28,17 +28,17 @@ function clampSectionText(text: string): string {
   return `${text.slice(0, MAX_SECTION_TEXT_CHARS - 1)}…`;
 }
 
-function loadAboutText(): string {
-  const aboutPath = path.join(homeDir(), "ABOUT.md");
+function loadDescriptionText(): string {
+  const descriptionPath = path.join(homeDir(), "DESCRIPTION.md");
   try {
-    const raw = fs.readFileSync(aboutPath, "utf8").trim();
+    const raw = fs.readFileSync(descriptionPath, "utf8").trim();
     if (raw.length > 0) {
       return clampSectionText(raw);
     }
   } catch {
-    // Use fallback when ABOUT.md is absent.
+    // Use fallback when DESCRIPTION.md is absent.
   }
-  return DEFAULT_ABOUT_TEXT;
+  return DEFAULT_DESCRIPTION_TEXT;
 }
 
 async function buildSkillsSummaryText(): Promise<string> {
@@ -88,7 +88,7 @@ export async function buildHomeView(
   userTokenStore: UserTokenStore,
 ): Promise<HomeView> {
   const runtimeMetadata = getRuntimeMetadata();
-  const aboutText = loadAboutText();
+  const descriptionText = loadDescriptionText();
   const skillsSummaryText = await buildSkillsSummaryText();
   const providers = getPluginProviders();
   const connectedSections: SectionBlock[] = [];
@@ -139,7 +139,7 @@ export async function buildHomeView(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: aboutText,
+          text: descriptionText,
         },
       },
       { type: "divider" },

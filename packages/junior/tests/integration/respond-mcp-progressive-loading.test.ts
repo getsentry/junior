@@ -320,6 +320,7 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
 vi.mock("@/chat/sandbox/sandbox", () => ({
   createSandboxExecutor: () => ({
     configureSkills: () => undefined,
+    configureReferenceFiles: () => undefined,
     createSandbox: async () => ({
       readFileToBuffer: async () =>
         Buffer.from(

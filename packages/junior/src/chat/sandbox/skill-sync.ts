@@ -4,6 +4,7 @@ import { Sandbox } from "@vercel/sandbox";
 import { buildEvalGitHubCliStub } from "@/chat/sandbox/eval-gh-stub";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import {
+  SANDBOX_DATA_ROOT,
   SANDBOX_SKILLS_ROOT,
   SANDBOX_WORKSPACE_ROOT,
   sandboxSkillDir,
@@ -48,6 +49,7 @@ async function listFilesRecursive(root: string): Promise<string[]> {
 async function buildSkillSyncFiles(
   availableSkills: SkillMetadata[],
   runtimeBinDir: string,
+  referenceFiles?: string[],
 ): Promise<SkillSyncFile[]> {
   const filesToWrite: SkillSyncFile[] = [];
   const index = {
@@ -82,6 +84,16 @@ async function buildSkillSyncFiles(
     path: `${SANDBOX_SKILLS_ROOT}/index.json`,
     content: Buffer.from(JSON.stringify(index), "utf8"),
   });
+
+  if (referenceFiles && referenceFiles.length > 0) {
+    for (const absoluteFile of referenceFiles) {
+      const fileName = path.basename(absoluteFile);
+      filesToWrite.push({
+        path: `${SANDBOX_DATA_ROOT}/${fileName}`,
+        content: await fs.readFile(absoluteFile),
+      });
+    }
+  }
 
   if (process.env.EVAL_ENABLE_TEST_CREDENTIALS === "1") {
     filesToWrite.push({
@@ -153,6 +165,37 @@ export function resolveHostSkillPath(
   return null;
 }
 
+/** Resolve a virtual sandbox data path back to the host filesystem when no sandbox exists yet. */
+export function resolveHostDataPath(
+  referenceFiles: string[],
+  sandboxPath: string,
+): string | null {
+  const normalizedPath = path.posix.normalize(sandboxPath.trim());
+  if (
+    normalizedPath !== SANDBOX_DATA_ROOT &&
+    !normalizedPath.startsWith(`${SANDBOX_DATA_ROOT}/`)
+  ) {
+    return null;
+  }
+
+  const relativePath = path.posix.relative(SANDBOX_DATA_ROOT, normalizedPath);
+  if (
+    !relativePath ||
+    relativePath.startsWith("../") ||
+    relativePath.includes("/")
+  ) {
+    return null;
+  }
+
+  for (const hostFile of referenceFiles) {
+    if (path.basename(hostFile) === relativePath) {
+      return hostFile;
+    }
+  }
+
+  return null;
+}
+
 /** Detect missing host-backed skill files so reads can fall back to the sandbox copy. */
 export function isHostFileMissingError(error: unknown): boolean {
   return Boolean(
@@ -162,10 +205,11 @@ export function isHostFileMissingError(error: unknown): boolean {
   );
 }
 
-/** Copy the current skill set into a sandbox and mark runtime shims executable. */
+/** Copy the current skill set and reference files into a sandbox and mark runtime shims executable. */
 export async function syncSkillsToSandbox(params: {
   sandbox: Sandbox;
   skills: SkillMetadata[];
+  referenceFiles?: string[];
   withSpan: <T>(
     name: string,
     op: string,
@@ -187,6 +231,7 @@ export async function syncSkillsToSandbox(params: {
       const filesToWrite = await buildSkillSyncFiles(
         params.skills,
         params.runtimeBinDir,
+        params.referenceFiles,
       );
       const bytesWritten = filesToWrite.reduce(
         (total, file) => total + file.content.length,

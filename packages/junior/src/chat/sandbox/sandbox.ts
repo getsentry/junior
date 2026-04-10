@@ -13,6 +13,7 @@ import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import {
   isHostFileMissingError,
+  resolveHostDataPath,
   resolveHostSkillPath,
 } from "@/chat/sandbox/skill-sync";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -44,6 +45,7 @@ export interface BashCustomCommandResult {
 
 export interface SandboxExecutor {
   configureSkills(skills: SkillMetadata[]): void;
+  configureReferenceFiles(files: string[]): void;
   getSandboxId(): string | undefined;
   getDependencyProfileHash(): string | undefined;
   canExecute(toolName: string): boolean;
@@ -123,6 +125,7 @@ export function createSandboxExecutor(options?: {
   ) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
 }): SandboxExecutor {
   let availableSkills: SkillMetadata[] = [];
+  let referenceFiles: string[] = [];
   const traceContext = options?.traceContext ?? {};
   const sessionManager = createSandboxSessionManager({
     sandboxId: options?.sandboxId,
@@ -233,10 +236,12 @@ export function createSandboxExecutor(options?: {
     }
 
     if (!sessionManager.getSandboxId()) {
-      const hostSkillPath = resolveHostSkillPath(availableSkills, filePath);
-      if (hostSkillPath) {
+      const hostPath =
+        resolveHostSkillPath(availableSkills, filePath) ??
+        resolveHostDataPath(referenceFiles, filePath);
+      if (hostPath) {
         try {
-          const content = await fs.readFile(hostSkillPath, "utf8");
+          const content = await fs.readFile(hostPath, "utf8");
           setSpanAttributes({
             "app.sandbox.path.length": filePath.length,
             "app.sandbox.read.bytes": Buffer.byteLength(content, "utf8"),
@@ -366,6 +371,10 @@ export function createSandboxExecutor(options?: {
     configureSkills(skills: SkillMetadata[]) {
       availableSkills = [...skills];
       sessionManager.configureSkills(skills);
+    },
+    configureReferenceFiles(files: string[]) {
+      referenceFiles = [...files];
+      sessionManager.configureReferenceFiles(files);
     },
     getSandboxId() {
       return sessionManager.getSandboxId();

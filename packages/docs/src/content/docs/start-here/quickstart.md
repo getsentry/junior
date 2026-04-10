@@ -31,7 +31,7 @@ pnpm install
 - `server.ts`
 - `nitro.config.ts` and `vite.config.ts`
 - `vercel.json`
-- `app/SOUL.md` and `app/ABOUT.md`
+- `app/SOUL.md`, `app/WORLD.md`, and `app/DESCRIPTION.md`
 - `app/skills/` and `app/plugins/`
 - `.env.example`
 

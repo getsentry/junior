@@ -5,9 +5,12 @@ import { discoverInstalledPluginPackageContent } from "@/chat/plugins/package-di
 import { getPluginProviders } from "@/chat/plugins/registry";
 import { discoverSkills } from "@/chat/skills";
 
-function readAboutText(): string | undefined {
+function readDescriptionText(): string | undefined {
   try {
-    const raw = readFileSync(path.join(homeDir(), "ABOUT.md"), "utf8").trim();
+    const raw = readFileSync(
+      path.join(homeDir(), "DESCRIPTION.md"),
+      "utf8",
+    ).trim();
     return raw || undefined;
   } catch {
     return undefined;
@@ -22,7 +25,7 @@ export async function GET(): Promise<Response> {
   return Response.json({
     cwd: process.cwd(),
     homeDir: homeDir(),
-    aboutText: readAboutText(),
+    descriptionText: readDescriptionText(),
     providers: getPluginProviders().map((plugin) => plugin.manifest.name),
     skills: skills.map((skill) => ({
       name: skill.name,

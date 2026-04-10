@@ -99,8 +99,8 @@ export async function GET(): Promise<Response> {
 <body>
   <h1>&gt; junior</h1>`;
 
-  if (d?.aboutText) {
-    html += `\n  <div class="subtitle">${esc(String(d.aboutText))}</div>`;
+  if (d?.descriptionText) {
+    html += `\n  <div class="subtitle">${esc(String(d.descriptionText))}</div>`;
   }
 
   // Status section

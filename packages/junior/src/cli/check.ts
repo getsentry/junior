@@ -313,6 +313,40 @@ function reportAppSkills(
   }
 }
 
+interface AppFileValidationResult {
+  errors: string[];
+  warnings: string[];
+}
+
+async function validateAppFiles(
+  appDir: string,
+): Promise<AppFileValidationResult> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (await pathIsFile(path.join(appDir, "ABOUT.md"))) {
+    errors.push(
+      `${path.join(appDir, "ABOUT.md")}: ABOUT.md is no longer supported. Rename to WORLD.md (operational context) and DESCRIPTION.md (user-facing description).`,
+    );
+  }
+
+  if (!(await pathIsFile(path.join(appDir, "SOUL.md")))) {
+    warnings.push(`${path.join(appDir, "SOUL.md")}: missing SOUL.md`);
+  }
+
+  if (!(await pathIsFile(path.join(appDir, "WORLD.md")))) {
+    warnings.push(`${path.join(appDir, "WORLD.md")}: missing WORLD.md`);
+  }
+
+  if (!(await pathIsFile(path.join(appDir, "DESCRIPTION.md")))) {
+    warnings.push(
+      `${path.join(appDir, "DESCRIPTION.md")}: missing DESCRIPTION.md`,
+    );
+  }
+
+  return { errors, warnings };
+}
+
 export async function runCheck(
   rootDir: string = process.cwd(),
   io: ValidationIo = DEFAULT_IO,
@@ -380,12 +414,32 @@ export async function runCheck(
     .map((skillDir) => skillResultsByDir.get(skillDir))
     .filter((result): result is SkillValidationResult => Boolean(result));
 
+  const appDir = path.resolve(resolvedRoot, "app");
+  let appFileResult: AppFileValidationResult = {
+    errors: [],
+    warnings: [],
+  };
+  if (await pathIsDirectory(appDir)) {
+    appFileResult = await validateAppFiles(appDir);
+    warnings.push(...appFileResult.warnings);
+    errors.push(...appFileResult.errors);
+  }
+
   io.info(
     `${color("Checking", ANSI.bold, ANSI.cyan)} ${color(
       formatDisplayPath(resolvedRoot, resolvedRoot),
       ANSI.dim,
     )}`,
   );
+
+  if (await pathIsDirectory(appDir)) {
+    const appFileStatus = formatStatus(
+      appFileResult.errors.length,
+      appFileResult.warnings.length,
+    );
+    io.info(formatHeading(appFileStatus, "app files"));
+  }
+
   for (const pluginResult of pluginResults) {
     reportPluginResult(pluginResult, io);
   }

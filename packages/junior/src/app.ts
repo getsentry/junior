@@ -67,7 +67,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   app.get("/", () => dashboardGET());
   app.get("/health", () => healthGET());
 
-  // Public route — returns plugin/skill names, cwd, and ABOUT.md text.
+  // Public route — returns plugin/skill names, cwd, and DESCRIPTION.md text.
   // No credentials or PII. Understand what this discloses before deploying.
   app.get("/api/info", () => diagnosticsGET());
 

@@ -31,7 +31,8 @@ The scaffold includes:
 - `vite.config.ts`
 - `vercel.json`
 - `app/SOUL.md`
-- `app/ABOUT.md`
+- `app/WORLD.md`
+- `app/DESCRIPTION.md`
 - `app/skills/`
 - `app/plugins/`
 - `.env.example`
