@@ -20,6 +20,7 @@ export interface ChatConfig {
   functionMaxDurationSeconds: number;
   slack: {
     botToken?: string;
+    botUserId?: string;
     clientId?: string;
     clientSecret?: string;
     signingSecret?: string;
@@ -89,6 +90,7 @@ export function readChatConfig(
       botToken:
         toOptionalTrimmed(env.SLACK_BOT_TOKEN) ??
         toOptionalTrimmed(env.SLACK_BOT_USER_TOKEN),
+      botUserId: toOptionalTrimmed(env.SLACK_BOT_USER_ID),
       signingSecret: toOptionalTrimmed(env.SLACK_SIGNING_SECRET),
       clientId: toOptionalTrimmed(env.SLACK_CLIENT_ID),
       clientSecret: toOptionalTrimmed(env.SLACK_CLIENT_SECRET),
@@ -116,6 +118,11 @@ export const botConfig: BotConfig = chatConfig.bot;
 
 export function getSlackBotToken(): string | undefined {
   return chatConfig.slack.botToken;
+}
+
+/** Return the Slack bot user ID (from SLACK_BOT_USER_ID env var), if configured. */
+export function getSlackBotUserId(): string | undefined {
+  return chatConfig.slack.botUserId;
 }
 
 export function getSlackSigningSecret(): string | undefined {
