@@ -122,7 +122,6 @@ interface ReplyExecutorDeps {
   services: ReplyExecutorServices;
 }
 
-
 /**
  * Build a name→userId map from known thread participants.
  * This lets mention resolution work for people already in the thread
@@ -139,6 +138,29 @@ function buildKnownParticipantsMap(
     if (fullName) map.set(fullName, userId);
   }
   return map;
+}
+
+/**
+ * Build an array of participant objects suitable for injection into the system prompt.
+ * Each entry carries userId, userName, and fullName so the LLM can construct
+ * correct <@USERID> mention syntax for people already in the thread.
+ */
+function buildThreadParticipantsArray(
+  messages: ConversationMessage[],
+): Array<{ userId?: string; userName?: string; fullName?: string }> {
+  const seen = new Set<string>();
+  const participants: Array<{
+    userId?: string;
+    userName?: string;
+    fullName?: string;
+  }> = [];
+  for (const message of messages) {
+    const { userId, userName, fullName } = message.author ?? {};
+    if (!userId || seen.has(userId)) continue;
+    seen.add(userId);
+    participants.push({ userId, userName, fullName });
+  }
+  return participants;
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -353,7 +375,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sandboxDependencyProfileHash:
                 preparedState.sandboxDependencyProfileHash,
             },
-            threadParticipants: buildKnownParticipantsMap(
+            threadParticipants: buildThreadParticipantsArray(
               preparedState.conversation.messages,
             ),
             onStatus: (status) => progress.setStatus(status),
