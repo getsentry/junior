@@ -104,6 +104,34 @@ describe("decideSubscribedThreadReply", () => {
     expect(completeObject).not.toHaveBeenCalled();
   });
 
+  it("routes acknowledgment text with attachments through the classifier", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        should_reply: false,
+        confidence: 0.95,
+        reason: "attachment acknowledgment",
+      },
+    }));
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        text: "thanks!",
+        rawText: "thanks!",
+        hasAttachments: true,
+      }),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: false,
+      reason: SubscribedReplyReason.SideConversation,
+      reasonDetail: "attachment acknowledgment",
+    });
+    expect(completeObject).toHaveBeenCalled();
+  });
+
   it("sends follow-up questions to the classifier instead of short-circuiting", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
@@ -294,6 +322,36 @@ describe("decideSubscribedThreadReply", () => {
     expect(completeObject).not.toHaveBeenCalled();
   });
 
+  it("routes generic immediate attachment follow-ups through the classifier", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        should_reply: true,
+        confidence: 0.95,
+        reason: "attachment follow-up",
+      },
+    }));
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        text: "can you check on this?",
+        rawText: "can you check on this?",
+        hasAttachments: true,
+        conversationContext:
+          "<thread-transcript>\n[assistant] junior: Please upload a screenshot.\n</thread-transcript>",
+      }),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.Classifier,
+      reasonDetail: "attachment follow-up",
+    });
+    expect(completeObject).toHaveBeenCalled();
+  });
+
   it("skips long 'what about' topic continuation after junior speaks", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
@@ -335,6 +393,37 @@ describe("decideSubscribedThreadReply", () => {
           "[assistant] junior: The deploy changed billing, auth, and the API gateway.",
           "[user] sam: I think we should revert auth first.",
           "[user] alex: I can take that rollback.",
+          "</thread-transcript>",
+        ].join("\n"),
+      }),
+      completeObject: vi.fn(async () => ({
+        object: {
+          should_reply: true,
+          confidence: 0.85,
+          reason: "maybe follow-up",
+        },
+      })),
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: false,
+      reason: SubscribedReplyReason.LowConfidence,
+      reasonDetail: "0.85: maybe follow-up",
+    });
+  });
+
+  it("requires stronger confidence after one human takes the floor", async () => {
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        text: "what about the billing worker timeline?",
+        rawText: "what about the billing worker timeline?",
+        conversationContext: [
+          "<thread-transcript>",
+          "[assistant] junior: The deploy changed billing, auth, and the API gateway.",
+          "[user] sam: I think we should revert auth first.",
           "</thread-transcript>",
         ].join("\n"),
       }),

@@ -304,10 +304,7 @@ function getReplyConfidenceThreshold(signals: RouterSignals): number {
     } else {
       threshold = 0.9;
     }
-  } else if (
-    signals.assistantWasLastSpeaker &&
-    signals.humanMessagesSinceLastAssistant === 1
-  ) {
+  } else if (signals.humanMessagesSinceLastAssistant === 1) {
     threshold = signals.currentMessageHasDirectedFollowUpCue ? 0.8 : 0.9;
   } else if (signals.humanMessagesSinceLastAssistant === undefined) {
     threshold = 0.85;
@@ -406,7 +403,11 @@ export async function decideSubscribedThreadReply(args: {
   if (!text && !args.input.hasAttachments) {
     return { shouldReply: false, reason: SubscribedReplyReason.EmptyMessage };
   }
-  if (!args.input.isExplicitMention && isAcknowledgmentOnly(text)) {
+  if (
+    !args.input.isExplicitMention &&
+    !args.input.hasAttachments &&
+    isAcknowledgmentOnly(text)
+  ) {
     return {
       shouldReply: false,
       reason: SubscribedReplyReason.SideConversation,
@@ -432,6 +433,7 @@ export async function decideSubscribedThreadReply(args: {
   if (
     signals.assistantWasLastSpeaker &&
     signals.humanMessagesSinceLastAssistant === 0 &&
+    !signals.currentMessageHasAttachments &&
     !signals.currentMessageHasDirectedFollowUpCue &&
     !signals.currentMessageIsTerseClarification &&
     isGenericImmediateSideConversation(text)

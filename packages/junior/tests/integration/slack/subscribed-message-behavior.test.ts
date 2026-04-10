@@ -341,6 +341,67 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(0);
   });
 
+  it("routes acknowledgment text with attachments through the classifier", async () => {
+    let classifierCalled = false;
+    let replyCalled = false;
+
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            classifierCalled = true;
+            return {
+              object: {
+                should_reply: false,
+                confidence: 0.95,
+                reason: "attachment acknowledgment",
+              },
+              text: '{"should_reply":false,"confidence":0.95,"reason":"attachment acknowledgment"}',
+            } as never;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyCalled = true;
+            return {
+              text: "This should never be posted.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.125" });
+    const message = createTestMessage({
+      id: "m-subscribed-ack-attachment",
+      text: "thanks!",
+      isMention: false,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+      attachments: [
+        {
+          type: "image",
+          url: "https://example.com/chart.png",
+        },
+      ],
+    });
+
+    await slackRuntime.handleSubscribedMessage(thread, message);
+
+    expect(classifierCalled).toBe(true);
+    expect(replyCalled).toBe(false);
+    expect(thread.posts).toHaveLength(0);
+  });
+
   it("routes attachment-only passive messages through the classifier", async () => {
     let classifierCalled = false;
     let replyCalled = false;
@@ -461,6 +522,80 @@ describe("Slack behavior: subscribed messages", () => {
     );
 
     expect(classifierCalled).toBe(false);
+    expect(replyCalled).toBe(false);
+    expect(thread.posts).toHaveLength(1);
+  });
+
+  it("routes generic immediate attachment follow-ups through the classifier", async () => {
+    let classifierCalled = false;
+    let replyCalled = false;
+
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            classifierCalled = true;
+            return {
+              object: {
+                should_reply: false,
+                confidence: 0.95,
+                reason: "attachment follow-up",
+              },
+              text: '{"should_reply":false,"confidence":0.95,"reason":"attachment follow-up"}',
+            } as never;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyCalled = true;
+            return {
+              text: "This should never be posted.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.350" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-generic-side-attachment-1",
+        text: "<@U_APP> summarize the deploy",
+        isMention: true,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+      }),
+    );
+    replyCalled = false;
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "m-subscribed-generic-side-attachment-2",
+        text: "can you check on this?",
+        isMention: false,
+        threadId: thread.id,
+        author: { userId: "U_TESTER" },
+        attachments: [
+          {
+            type: "image",
+            url: "https://example.com/screenshot.png",
+          },
+        ],
+      }),
+    );
+
+    expect(classifierCalled).toBe(true);
     expect(replyCalled).toBe(false);
     expect(thread.posts).toHaveLength(1);
   });
