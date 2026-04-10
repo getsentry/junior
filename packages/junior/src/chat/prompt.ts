@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import { botConfig } from "@/chat/config";
 import {
@@ -258,7 +259,7 @@ function formatReferenceFilesSection(): string[] {
   }
 
   const fileNames = files.map((filePath) => {
-    const name = filePath.split("/").pop() ?? filePath;
+    const name = path.basename(filePath);
     return `- ${escapeXml(name)} (${escapeXml(`${SANDBOX_DATA_ROOT}/${name}`)})`;
   });
 
