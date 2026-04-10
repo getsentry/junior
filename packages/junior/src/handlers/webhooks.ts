@@ -1,4 +1,5 @@
 import { getProductionBot } from "@/chat/app/production";
+import { dispatchMessageChangedMention } from "@/chat/ingress/message-changed";
 import {
   createRequestContext,
   logException,
@@ -48,7 +49,34 @@ export async function POST(
         requestContext,
         async () => {
           try {
-            const response = await handler(request, {
+            // For Slack webhooks, peek the body to handle message_changed events
+            // before the adapter consumes the request. The adapter calls
+            // request.text() internally, so we read and reconstruct the request
+            // here to allow both paths to see the full body.
+            let forwardRequest = request;
+            if (platform === "slack") {
+              const body = await request.text();
+              // Try to dispatch message_changed edits that add a bot @mention.
+              // This runs synchronously (fire-and-forget via waitUntil internally)
+              // so it does not block the 200 OK response to Slack.
+              try {
+                const payload: unknown = JSON.parse(body);
+                dispatchMessageChangedMention(payload, bot, {
+                  waitUntil: (task: Promise<unknown>) => waitUntil(task),
+                });
+              } catch {
+                // Non-JSON bodies (interactive payloads, slash commands) are not
+                // message_changed events — let the adapter handle them normally.
+              }
+              // Reconstruct the request with the already-consumed body.
+              forwardRequest = new Request(request.url, {
+                method: request.method,
+                headers: request.headers,
+                body,
+              });
+            }
+
+            const response = await handler(forwardRequest, {
               waitUntil: (task: Promise<unknown>) => waitUntil(task),
             } as Parameters<typeof handler>[1]);
             if (response.status >= 400) {
