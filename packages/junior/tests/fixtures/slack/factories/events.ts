@@ -1,3 +1,4 @@
+import type { SlackEvent } from "@chat-adapter/slack";
 import {
   TEST_CHANNEL_ID,
   TEST_THREAD_TS,
@@ -201,6 +202,9 @@ export interface SlackMessageChangedEnvelope {
       ts: string;
       thread_ts?: string;
       bot_id?: string;
+      blocks?: SlackEvent["blocks"];
+      edited?: SlackEvent["edited"] & { user?: string };
+      files?: SlackEvent["files"];
     };
     previous_message?: {
       text?: string;
@@ -267,7 +271,10 @@ export function slackEventsApiEnvelope(
 export function slackMessageChangedEnvelope(
   input: {
     botId?: string;
+    blocks?: SlackEvent["blocks"];
+    editedTs?: string;
     channel?: string;
+    files?: SlackEvent["files"];
     messageTs?: string;
     newText?: string;
     previousText?: string;
@@ -299,6 +306,11 @@ export function slackMessageChangedEnvelope(
         ts: messageTs,
         ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
         ...(input.botId ? { bot_id: input.botId } : {}),
+        ...(input.blocks ? { blocks: input.blocks } : {}),
+        ...(input.editedTs
+          ? { edited: { ts: input.editedTs, user: input.user ?? TEST_USER_ID } }
+          : {}),
+        ...(input.files ? { files: input.files } : {}),
       },
       previous_message: {
         text: input.previousText ?? "can you take a look?",

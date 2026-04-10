@@ -1,20 +1,24 @@
 import type { SlackEvent } from "@chat-adapter/slack";
 
+interface SlackMessageChangedMessage extends Omit<
+  SlackEvent,
+  "channel" | "channel_type" | "team_id"
+> {
+  edited?: SlackEvent["edited"] & {
+    user?: string;
+  };
+  ts: string;
+}
+
 interface SlackMessageChangedEvent {
   channel: string;
   channel_type?: string;
-  message: {
-    bot_id?: string;
-    edited?: { ts: string; user: string };
-    text?: string;
-    thread_ts?: string;
-    ts: string;
-    user?: string;
-  };
+  message: SlackMessageChangedMessage;
   previous_message?: {
     text?: string;
   };
   subtype: "message_changed";
+  ts: string;
   type: "message";
 }
 
@@ -26,6 +30,7 @@ interface SlackEventCallbackPayload {
 
 export interface MessageChangedMentionDispatch {
   event: SlackEvent;
+  messageId: string;
   threadId: string;
 }
 
@@ -38,6 +43,10 @@ function hasNewBotMention(
   return (
     (newText ?? "").includes(mention) && !(previousText ?? "").includes(mention)
   );
+}
+
+function buildEditedMessageId(messageTs: string, editTs: string | undefined) {
+  return editTs ? `${messageTs}:edit:${editTs}` : `${messageTs}:edit`;
 }
 
 /**
@@ -79,18 +88,16 @@ export function buildMessageChangedMentionDispatch(
   }
 
   const threadTs = message.thread_ts ?? message.ts;
+  const editTs = message.edited?.ts ?? changed.ts;
   return {
     event: {
+      ...message,
       type: "message",
-      user: message.user,
-      text: message.text ?? "",
       channel: changed.channel,
       channel_type: changed.channel_type,
-      ts: message.ts,
-      thread_ts: threadTs,
       team_id: envelope.team_id,
-      edited: message.edited,
     },
+    messageId: buildEditedMessageId(message.ts, editTs),
     threadId: `slack:${changed.channel}:${threadTs}`,
   };
 }

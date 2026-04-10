@@ -232,7 +232,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             channelId,
             runId,
             conversation: preparedState.conversation,
-            messageTs: message.id,
+            messageTs,
           },
         );
 

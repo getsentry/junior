@@ -17,6 +17,7 @@ import { createReplyToThread } from "@/chat/runtime/reply-executor";
 import { initializeAssistantThread as initializeAssistantThreadImpl } from "@/chat/runtime/assistant-lifecycle";
 import {
   getChannelId,
+  getMessageTs,
   getRunId,
   getThreadId,
   stripLeadingBotMention,
@@ -86,6 +87,7 @@ export function createSlackRuntime(
       userText,
     }) => {
       const conversation = coerceThreadConversationState(await thread.state);
+      const slackTs = getMessageTs(message) ?? message.id;
       const normalizedUserText =
         normalizeConversationText(userText) || "[non-text message]";
       upsertConversationMessage(conversation, {
@@ -104,7 +106,7 @@ export function createSlackRuntime(
         },
         meta: {
           explicitMention: Boolean(message.isMention),
-          slackTs: message.id,
+          slackTs,
           replied: false,
           skippedReason: decision.reason,
           imagesHydrated: true,

@@ -1,5 +1,5 @@
 import { SlackAdapter, type SlackAdapterConfig } from "@chat-adapter/slack";
-import type { ChatInstance, WebhookOptions } from "chat";
+import type { ChatInstance, Message, WebhookOptions } from "chat";
 import { buildMessageChangedMentionDispatch } from "@/chat/ingress/message-changed";
 
 interface SlackRequestContext {
@@ -58,6 +58,10 @@ function getEventChannel(payload: SlackEventPayload): string | undefined {
     return event.item.channel;
   }
   return undefined;
+}
+
+function assignMessageId(message: Message, id: string): void {
+  (message as unknown as { id: string }).id = id;
 }
 
 class JuniorSlackAdapter extends SlackAdapter {
@@ -147,6 +151,7 @@ class JuniorSlackAdapter extends SlackAdapter {
     );
     if (dispatch && internal.chat) {
       const message = this.parseMessage(dispatch.event);
+      assignMessageId(message, dispatch.messageId);
       message.isMention = true;
       internal.chat.processMessage(this, dispatch.threadId, message, options);
     }
