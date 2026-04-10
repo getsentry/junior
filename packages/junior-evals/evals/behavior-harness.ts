@@ -76,9 +76,19 @@ interface MentionEvent extends EvalBaseEvent {
   type: "new_mention";
 }
 
+interface PlainMessageEvent extends EvalBaseEvent {
+  message: EvalEventMessageFixture;
+  type: "plain_message";
+}
+
 interface SubscribedMessageEvent extends EvalBaseEvent {
   message: EvalEventMessageFixture;
   type: "subscribed_message";
+}
+
+interface EditedMessageEvent extends EvalBaseEvent {
+  message: EvalEventMessageFixture;
+  type: "edited_message";
 }
 
 interface AssistantThreadStartedEvent extends EvalBaseEvent {
@@ -93,7 +103,9 @@ interface AssistantContextChangedEvent extends EvalBaseEvent {
 
 export type EvalEvent =
   | MentionEvent
+  | PlainMessageEvent
   | SubscribedMessageEvent
+  | EditedMessageEvent
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent;
 
@@ -485,7 +497,13 @@ function toEvalAssistantPost(value: unknown): EvalAssistantPost {
   };
 }
 
-function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
+function toIncomingMessage(
+  event:
+    | MentionEvent
+    | PlainMessageEvent
+    | SubscribedMessageEvent
+    | EditedMessageEvent,
+) {
   const runtimeThreadId = buildRuntimeThreadId(event.thread);
   // In Slack payloads, `ts` identifies the specific message while `thread_ts`
   // identifies the thread root. Eval fixtures provide unique `message.id` per
@@ -1022,14 +1040,34 @@ async function processEvents(args: {
     return true;
   };
 
-  const enqueueEvent = (event: MentionEvent | SubscribedMessageEvent): void => {
+  const enqueueEvent = async (
+    event:
+      | MentionEvent
+      | PlainMessageEvent
+      | SubscribedMessageEvent
+      | EditedMessageEvent,
+  ): Promise<void> => {
     const { thread, transcript } = getThreadRecord(event.thread);
     const message = toIncomingMessage(event) as unknown as Message;
+    const previous = transcript.find((entry) => entry.id === message.id);
     upsertThreadTranscriptMessage(transcript, message);
+
+    if (event.type === "plain_message") {
+      return;
+    }
+
+    const isMention =
+      event.type === "edited_message"
+        ? (event.message.is_mention ?? false) && !previous?.isMention
+        : (event.message.is_mention ?? event.type === "new_mention");
+    const isSubscribed =
+      event.type === "edited_message"
+        ? await thread.isSubscribed()
+        : event.type === "subscribed_message";
     const kind = determineThreadMessageKind({
       isDirectMessage: thread.id.startsWith("slack:D"),
-      isMention: event.message.is_mention ?? event.type === "new_mention",
-      isSubscribed: event.type === "subscribed_message",
+      isMention,
+      isSubscribed,
     });
     if (!kind) {
       return;
@@ -1054,8 +1092,13 @@ async function processEvents(args: {
   };
 
   for (const event of scenario.events) {
-    if (event.type === "new_mention" || event.type === "subscribed_message") {
-      enqueueEvent(event);
+    if (
+      event.type === "plain_message" ||
+      event.type === "new_mention" ||
+      event.type === "subscribed_message" ||
+      event.type === "edited_message"
+    ) {
+      await enqueueEvent(event);
     } else {
       await runLifecycleEvent(event);
     }

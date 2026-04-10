@@ -287,9 +287,35 @@ export function mention(text: string, opts?: { thread?: ThreadOverrides }) {
   };
 }
 
+export function plainMessage(
+  text: string,
+  opts?: { thread?: ThreadOverrides; messageId?: string },
+) {
+  const seq = nextId();
+  return {
+    type: "plain_message" as const,
+    thread: {
+      id: `thread-${seq}`,
+      channel_id: `C-${seq}`,
+      thread_ts: `17000000.${seq}`,
+      ...opts?.thread,
+    },
+    message: {
+      id: opts?.messageId ?? `m-${seq}`,
+      text,
+      is_mention: false,
+      author: { ...DEFAULT_AUTHOR },
+    },
+  };
+}
+
 export function threadMessage(
   text: string,
-  opts?: { thread?: ThreadOverrides; is_mention?: boolean },
+  opts?: {
+    thread?: ThreadOverrides;
+    is_mention?: boolean;
+    messageId?: string;
+  },
 ) {
   const seq = nextId();
   return {
@@ -301,7 +327,33 @@ export function threadMessage(
       ...opts?.thread,
     },
     message: {
-      id: `m-${seq}`,
+      id: opts?.messageId ?? `m-${seq}`,
+      text,
+      is_mention: opts?.is_mention ?? false,
+      author: { ...DEFAULT_AUTHOR },
+    },
+  };
+}
+
+export function editedMessage(
+  text: string,
+  opts?: {
+    thread?: ThreadOverrides;
+    is_mention?: boolean;
+    messageId?: string;
+  },
+) {
+  const seq = nextId();
+  return {
+    type: "edited_message" as const,
+    thread: {
+      id: `thread-${seq}`,
+      channel_id: `C-${seq}`,
+      thread_ts: `17000000.${seq}`,
+      ...opts?.thread,
+    },
+    message: {
+      id: opts?.messageId ?? `m-${seq}`,
       text,
       is_mention: opts?.is_mention ?? false,
       author: { ...DEFAULT_AUTHOR },

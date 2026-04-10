@@ -143,6 +143,46 @@ describe("behavior harness", () => {
     ]);
   });
 
+  it("keeps a plain message silent until an edited mention arrives", async () => {
+    const thread = {
+      id: "fixture-edited-thread",
+      channel_id: "C_EDIT",
+      thread_ts: "1700000000.0004",
+    };
+
+    const result = await runEvalScenario({
+      events: [
+        {
+          type: "plain_message",
+          thread,
+          message: {
+            id: "m-edit-1",
+            text: "can you take a look at this deploy?",
+            author: {
+              user_id: "U_EDIT",
+            },
+          },
+        },
+        {
+          type: "edited_message",
+          thread,
+          message: {
+            id: "m-edit-1",
+            text: "<@U_APP> can you take a look at this deploy?",
+            is_mention: true,
+            author: {
+              user_id: "U_EDIT",
+            },
+          },
+        },
+      ],
+    });
+
+    expect(handleSubscribedMessageMock).not.toHaveBeenCalled();
+    expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
+    expect(result.posts).toEqual([{ text: "observed", files: [] }]);
+  });
+
   it("preserves attached file metadata on assistant thread posts", async () => {
     handleNewMentionMock.mockImplementationOnce(
       async (thread: { post: (value: unknown) => Promise<void> }) => {

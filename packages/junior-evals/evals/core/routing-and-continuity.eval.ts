@@ -1,5 +1,11 @@
 import { describe } from "vitest";
-import { mention, slackEval, threadMessage } from "../helpers";
+import {
+  editedMessage,
+  mention,
+  plainMessage,
+  slackEval,
+  threadMessage,
+} from "../helpers";
 
 describe("Conversational Evals: Routing and Continuity", () => {
   slackEval("routing: explicit mention forces reply", {
@@ -37,5 +43,27 @@ describe("Conversational Evals: Routing and Continuity", () => {
     ],
     criteria:
       "The assistant posts two replies in-order. The second reply explicitly references the prior context (budget and/or Friday) and does not include sandbox setup failure text.",
+  });
+
+  const editedMentionThread = {
+    id: "thread-edited-mention",
+    channel_id: "C-edited-mention",
+    thread_ts: "17000000.edited",
+  };
+
+  slackEval("routing: edited message that adds a mention gets a reply", {
+    events: [
+      plainMessage("can you take a look at this deploy?", {
+        thread: editedMentionThread,
+        messageId: "m-edited-mention",
+      }),
+      editedMessage("<@U_APP> can you take a look at this deploy?", {
+        thread: editedMentionThread,
+        messageId: "m-edited-mention",
+        is_mention: true,
+      }),
+    ],
+    criteria:
+      "The assistant does not reply before the mention is added. After the edited message adds the mention, it posts exactly one reply that addresses the deploy/help request and does not include sandbox setup failure text.",
   });
 });
