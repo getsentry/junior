@@ -337,6 +337,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         try {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
+          const { array: threadParticipantsArray, map: knownParticipantsMap } =
+            buildParticipants(preparedState.conversation.messages);
           const reply = await deps.services.generateAssistantReply(userText, {
             assistant: {
               userName: botConfig.userName,
@@ -368,9 +370,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sandboxDependencyProfileHash:
                 preparedState.sandboxDependencyProfileHash,
             },
-            threadParticipants: buildParticipants(
-              preparedState.conversation.messages,
-            ).array,
+            threadParticipants: threadParticipantsArray,
             onStatus: (status) => progress.setStatus(status),
             onTextDelta: (deltaText) => {
               if (explicitChannelPostIntent) {
@@ -489,9 +489,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
-              const knownParticipants = buildParticipants(
-                preparedState.conversation.messages,
-              ).map;
+              const knownParticipants = knownParticipantsMap;
               const sent = await postThreadReply(
                 await buildSlackOutputMessage(
                   reply.text,
