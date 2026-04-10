@@ -3,6 +3,7 @@ import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import { parseRepoTarget } from "@/chat/capabilities/target";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
@@ -470,9 +471,11 @@ async function handleOAuthStartCommand(
   // Check if user already has valid tokens for this provider
   if (deps.requesterId && deps.userTokenStore) {
     const stored = await deps.userTokenStore.get(deps.requesterId, provider);
+    const providerConfig = getPluginOAuthConfig(provider);
     if (
       stored &&
-      (stored.expiresAt === undefined || stored.expiresAt > Date.now())
+      (stored.expiresAt === undefined || stored.expiresAt > Date.now()) &&
+      hasRequiredOAuthScope(stored.scope, providerConfig?.scope)
     ) {
       const providerLabel = formatProviderLabel(provider);
       return commandResult({

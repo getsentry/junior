@@ -48,6 +48,13 @@ Create an OAuth application in Sentry and set its redirect URL to:
 
 Then copy the client ID and client secret into your deployment environment as `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET`.
 
+Junior requests these Sentry OAuth scopes:
+
+- `event:read`
+- `org:read`
+- `project:read`
+- `team:read`
+
 ## Verify
 
 Run the auth flow and then make a real Sentry request:
@@ -62,7 +69,9 @@ Confirm the auth flow completes, the query returns expected data, and re-auth wo
 ## Failure modes
 
 - Callback errors after consent: the OAuth redirect URL does not exactly match `<base-url>/api/oauth/callback/sentry`. Update the OAuth app redirect URL and retry.
-- `401` or `403` after authorization: the user token lacks org access or is stale. Ask Junior to reconnect Sentry with an account that can access the target org.
+- `401` after authorization: the stored token is stale or revoked. Reconnect Sentry and retry.
+- Explicit `missing scope` or `insufficient scope` after authorization: reconnect Sentry to refresh the stored grant, then retry.
+- Generic `403` after authorization: the connected account lacks access to the target org or project. Reconnect with an account that can access the target org, or change the request target.
 - Auth link points at the wrong host: `JUNIOR_BASE_URL` is unset or incorrect. Set it to the canonical public base URL used for callbacks.
 - Query still targets the wrong org or project: Junior does not have enough target context for this request. Include the org and project directly in the Sentry request and retry.
 

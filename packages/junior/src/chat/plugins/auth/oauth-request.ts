@@ -1,3 +1,5 @@
+import { normalizeOAuthScope } from "@/chat/credentials/oauth-scope";
+
 const DEFAULT_TOKEN_CONTENT_TYPE = "application/x-www-form-urlencoded";
 
 type OAuthTokenRequestInput = {
@@ -67,17 +69,32 @@ export function buildOAuthTokenRequest(input: OAuthTokenRequestInput): {
   };
 }
 
-export function parseOAuthTokenResponse(data: Record<string, unknown>): {
+export function parseOAuthTokenResponse(
+  data: Record<string, unknown>,
+  fallbackScope?: string,
+): {
   accessToken: string;
   refreshToken: string;
   expiresAt?: number;
+  scope?: string;
 } {
   const accessToken = requireNonEmptyTokenField(data, "access_token");
   const refreshToken = requireNonEmptyTokenField(data, "refresh_token");
   const expiresIn = data.expires_in;
+  const responseScope = data.scope;
+  let scope: string | undefined;
+
+  if (responseScope !== undefined) {
+    if (typeof responseScope !== "string" || !responseScope.trim()) {
+      throw new Error("OAuth token response returned invalid scope");
+    }
+    scope = normalizeOAuthScope(responseScope);
+  } else {
+    scope = normalizeOAuthScope(fallbackScope);
+  }
 
   if (expiresIn === undefined) {
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken, ...(scope ? { scope } : {}) };
   }
   if (
     typeof expiresIn !== "number" ||
@@ -91,5 +108,6 @@ export function parseOAuthTokenResponse(data: Record<string, unknown>): {
     accessToken,
     refreshToken,
     expiresAt: Date.now() + expiresIn * 1000,
+    ...(scope ? { scope } : {}),
   };
 }

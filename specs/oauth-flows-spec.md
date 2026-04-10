@@ -83,6 +83,7 @@ Provider: Redirects to /api/oauth/callback/<provider>?code=...&state=...
   ├─ Validate provider matches
   ├─ Delete state key (one-time use)
   ├─ POST to token endpoint using provider-configured auth method and headers
+  ├─ If provider returns an explicit scope, verify it still satisfies the plugin's required scope
   ├─ Store tokens via UserTokenStore (Redis key `oauth-token:<userId>:<provider>`)
   ├─ If pendingMessage: after() triggers generateAssistantReply and posts result to thread
   ├─ Else: post confirmation message into Slack thread (best effort, via SLACK_BOT_TOKEN)
@@ -158,9 +159,10 @@ Agent: jr-rpc delete-token sentry
 ### User tokens (persistent)
 
 - Key pattern: `oauth-token:<userId>:<provider>`
-- Value: `{ accessToken, refreshToken, expiresAt? }`
+- Value: `{ accessToken, refreshToken, expiresAt?, scope? }`
 - TTL: `expiresAt - now + 24h` buffer when expiry is known, otherwise 365 days
 - Storage: `StateAdapterTokenStore` wrapping `StateAdapter` (Redis)
+- `scope` stores the normalized granted/requested OAuth scope so scope changes can force reauthorization instead of silently reusing stale grants
 
 ### MCP auth sessions and credentials
 
@@ -212,7 +214,7 @@ Providers are configured via plugin manifests (`plugin.yaml`) and exposed throug
 - `clientSecretEnv`: `SENTRY_CLIENT_SECRET`
 - Authorize: `https://sentry.io/oauth/authorize/`
 - Token: `https://sentry.io/oauth/token/`
-- Scope: `event:read org:read project:read`
+- Scope: `event:read org:read project:read team:read`
 - Callback: `/api/oauth/callback/sentry`
 
 ### MCP-backed plugins

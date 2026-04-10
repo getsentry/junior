@@ -40,6 +40,7 @@ vi.mock("@/chat/plugins/registry", () => ({
           clientSecretEnv: "GITHUB_CLIENT_SECRET",
           authorizeEndpoint: "https://github.example.test/oauth/authorize",
           tokenEndpoint: "https://github.example.test/oauth/token",
+          scope: "read:org repo",
           callbackPath: "/api/oauth/callback/github",
         }
       : undefined,
@@ -671,6 +672,46 @@ describe("jr-rpc custom command", () => {
     expect(handled.result.exit_code).toBe(1);
     expect(handled.result.stderr).toContain(
       'Provider "notion" does not support OAuth authorization',
+    );
+  });
+
+  it("does not treat scope-incompatible stored tokens as already connected", async () => {
+    startOAuthFlowMock.mockResolvedValue({
+      ok: true,
+      delivery: "in_context",
+    });
+    const userTokenStore = {
+      get: vi.fn(async () => ({
+        accessToken: "token",
+        refreshToken: "refresh",
+        expiresAt: Date.now() + 60_000,
+        scope: "repo",
+      })),
+      set: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    };
+
+    const result = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc oauth-start github",
+      {
+        capabilityRuntime: makeRuntime(),
+        activeSkill,
+        requesterId: "U123",
+        userTokenStore,
+      },
+    );
+
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(0);
+    expect(JSON.parse(handled.result.stdout)).toMatchObject({
+      ok: true,
+      private_delivery_sent: true,
+    });
+    expect(startOAuthFlowMock).toHaveBeenCalledWith(
+      "github",
+      expect.objectContaining({
+        requesterId: "U123",
+      }),
     );
   });
 });

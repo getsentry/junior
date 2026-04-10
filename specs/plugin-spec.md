@@ -98,7 +98,7 @@ oauth: # optional — omit for non-OAuth providers
   client-secret-env: SENTRY_CLIENT_SECRET
   authorize-endpoint: https://sentry.io/oauth/authorize/
   token-endpoint: https://sentry.io/oauth/token/
-  scope: "event:read org:read project:read" # optional
+  scope: "event:read org:read project:read team:read" # optional
   authorize-params: # optional extra authorize query params
     audience: workspace
   token-auth-method: basic # optional; default body

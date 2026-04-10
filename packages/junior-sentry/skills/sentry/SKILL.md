@@ -14,7 +14,7 @@ Use this skill for Sentry investigation workflows in the harness.
 
 1. Confirm operation and target:
 
-- Determine operation: `issue list`, `issue explain`, `issue plan`, `replays`, `deep-link`, or general query.
+- Determine operation: `issue list`, `deep-link`, or general query.
 - Resolve org from channel config: `jr-rpc config get sentry.org`
 - Resolve project from channel config: `jr-rpc config get sentry.project` (optional — many queries span multiple projects).
 - If org is missing and needed, ask the user.
@@ -25,7 +25,10 @@ Use this skill for Sentry investigation workflows in the harness.
 - The CLI reads `SENTRY_AUTH_TOKEN` from env after the runtime enables the declared Sentry capability for this turn.
 - Read [references/cli-commands.md](references/cli-commands.md) for command shapes and flags.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
-- If a Sentry API call returns 401 or 403 after credentials were issued, the user's token may lack access for the requested org. Run `jr-rpc delete-token sentry` to clear the stale token, then retry after re-enabling the declared capability. Do not ask the user to run a command manually — the system handles re-authorization automatically.
+- If a Sentry API call returns `401`, or clearly says the token is invalid, expired, revoked, or unauthorized, run `jr-rpc delete-token sentry` to clear the stale token, then retry after re-enabling the declared capability.
+- If a Sentry API call explicitly says `missing scope`, `missing scopes`, or `insufficient scope`, run `jr-rpc delete-token sentry` to clear the outdated grant, then retry after re-enabling the declared capability.
+- If a Sentry API call returns a generic `403`, `permission denied`, or otherwise indicates missing org/project access without naming missing scopes, stop and tell the user the current Sentry connection could not access the requested Sentry data.
+- Only mention a specific missing scope when the CLI or API error explicitly names that scope. Do not guess scope names from a generic `403`.
 
 3. Generate deep links:
 
@@ -40,6 +43,7 @@ Use this skill for Sentry investigation workflows in the harness.
 ## Guardrails
 
 - Read-only operations only (MVP scope).
+- Avoid speculative or experimental Sentry CLI subcommands that are not listed in the bundled references.
 - Do not print credential values.
 - If org is missing and needed, ask the user.
 - Prefer deep links over raw data dumps when linking to Sentry web UI.
