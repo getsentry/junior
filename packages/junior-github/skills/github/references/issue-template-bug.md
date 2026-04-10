@@ -1,29 +1,37 @@
 # Bug Issue Template
 
-Use as a starting structure. Adapt headings to fit the specific bug.
+Use as a starting structure. A few bullets often suffice — use headed sections only when complexity demands them.
 
 ## Summary
-Up to 3 sentences describing the failure and its impact.
 
-## Suggested sections (use what fits, rename freely)
+Up to 3 sentences describing the failure and its impact. Use a short descriptive title (e.g. "OAuth token refresh fails in long-running operations").
 
-- **Root cause** — technical explanation of why the bug occurs, with code snippets if relevant
+## Suggested sections (use only what fits)
+
+- **Root cause** — technical explanation with code snippets if relevant
 - **Reproduction** — numbered steps any developer can follow independently
-- **Expected behavior** — what should happen, with concrete options if multiple fixes exist
-- **Workaround** — current mitigation if one exists, with links to relevant PRs
-- **Versions affected** — specific versions or environments confirmed
+- **Expected behavior** — include only when the thread explicitly states what should happen
+- **Workaround** — current mitigation if one exists
 
-Remove sections that don't apply. Add sections the problem needs.
+For simple bugs, skip sections entirely and use flat bullet lists.
+
+## Attribution
+
+- Mention who reported the issue when clear from the originating conversation.
+- Attach screenshots from the thread as image links when present.
 
 ## Delegated action footer
+
 When creating a new issue on behalf of a user, append a final line:
 
 `Action taken on behalf of <name>.`
 
 ## Constraints
+
 - Title hard max: 60 characters (target 40-60).
 - Summary max 3 sentences.
-- Remove empty sections.
-- Adapt section headings to fit the issue, not the reverse.
+- Remove empty sections. Prefer flat bullets over headed sections for simple bugs.
+- Do not add expected behavior or desired outcome unless the thread explicitly states one.
 - Do not include acceptance criteria unless explicitly requested.
-- Keep the delegated action footer as the last line in the body when applicable to newly created issues.
+- Use terse, specific language — no filler, no restating the title in the body.
+- Keep the delegated action footer as the last line in the body when applicable.

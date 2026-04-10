@@ -6,36 +6,22 @@ Use this file only when issue type is `feature`.
 
 Propose an intentional improvement with clear current-state analysis and practical options.
 
-## Required Research Shape
+## Research Guidance
 
-1. Analyze how the system works today:
-- current behavior
-- known constraints
-- why current behavior is insufficient
+Use these steps to investigate — they inform what goes into the issue, but do not dictate issue structure.
 
-2. Gather prior art:
-- target a couple relevant examples when available
-- include links and what each example proves
-- if none found, explicitly say no strong prior art was found
-
-3. Frame options:
-- at least one viable path, preferably multiple when tradeoffs are meaningful
-- include implementation and operational tradeoffs
+1. Analyze current behavior and why it's insufficient.
+2. Gather prior art when available — include links and what each proves. If none found, omit rather than stating "none found."
+3. Frame options with tradeoffs when the thread discusses alternatives.
 
 ## Context Generalization
 
 When deriving feature content from conversation, generalize to the capability gap.
 
 Before (session-specific):
+
 > @carol mentioned in the standup thread that she has to manually restart the worker every time the config changes
 
 After (generalized):
+
 > Workers do not pick up config changes without a restart, requiring manual intervention
-
-## Completion Bar
-
-A `feature` issue is ready when it has:
-- clear problem framing and objective
-- current-state analysis
-- prior-art section (or explicit none found)
-- concise option tradeoffs

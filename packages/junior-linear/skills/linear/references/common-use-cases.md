@@ -4,7 +4,7 @@ Use these patterns to shape concrete Linear requests.
 
 ## 1. Create a bug from a Slack incident thread
 
-- Summarize the broken behavior, impact, and expected behavior.
+- Summarize the broken behavior and impact. Include expected behavior only if stated in the thread.
 - Resolve the right team before creating because Linear issues cannot be created without one.
 - If the thread does not name a destination, use `linear.team` and `linear.project` channel defaults before asking a follow-up.
 - Preserve relevant Sentry, GitHub, replay, trace, or dashboard links from the thread.
@@ -13,7 +13,7 @@ Use these patterns to shape concrete Linear requests.
 ## 2. Create a follow-up task from a debugging thread
 
 - Convert the thread into a scoped task when the work is cleanup, hardening, docs, or instrumentation rather than a production bug.
-- Keep the body focused on the desired outcome and concrete next step.
+- Keep the body focused on scope and concrete next step. Include desired outcome only if stated in the thread.
 - Set project, cycle, or assignee only when the destination is already clear from the thread.
 
 ## 3. Search for an existing issue before opening a new one
@@ -49,7 +49,8 @@ Use these patterns to shape concrete Linear requests.
 ## 8. Create a ticket with Slack provenance but not Slack noise
 
 - Mention that the work originated from a Slack discussion only when that context helps future readers.
-- Strip usernames, channel references, slash commands, and conversational filler unless the user explicitly wants them preserved.
+- Mention who raised the issue when clear from the thread (e.g. "Reported by Jane from the support team").
+- Strip channel references, slash commands, and conversational filler unless the user explicitly wants them preserved.
 
 ## 9. Set priority, labels, or estimate from thread context
 

@@ -12,11 +12,11 @@ Use this skill for Linear issue workflows in the harness.
 
 Load references conditionally based on the request:
 
-| Need                                             | Read                                                                                   |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| Any Linear operation                             | [references/api-surface.md](references/api-surface.md)                                 |
-| Create, update, comment, assign, or state change | [references/common-use-cases.md](references/common-use-cases.md), [references/issue-writing.md](references/issue-writing.md) |
-| Auth issues, ambiguity, or tool failures         | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Need                                             | Read                                                                                                                                                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Any Linear operation                             | [references/api-surface.md](references/api-surface.md)                                                                                                                                     |
+| Create, update, comment, assign, or state change | [references/common-use-cases.md](references/common-use-cases.md), [references/issue-writing.md](references/issue-writing.md), [references/issue-examples.md](references/issue-examples.md) |
+| Auth issues, ambiguity, or tool failures         | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                     |
 
 ## Workflow
 
@@ -38,10 +38,14 @@ Load references conditionally based on the request:
 - Prefer a short read/search step before mutating when you need to confirm the existing issue, team, project, or workflow state.
 - For create/update operations, classify the work as a `bug`, `feature`, or `task` and shape the title/body accordingly.
 - For issue creation, ground the ticket in the actual engineering problem:
-  - summarize the problem, impact, and expected outcome from the Slack thread
-  - preserve relevant URLs already present in the conversation, such as Sentry, GitHub, docs, or reproduction links
+  - use a short descriptive title for bugs, short imperative title for tasks and features
+  - summarize the problem and impact; include expected outcome only when the thread states one
+  - mention who raised the issue when clear from the thread
+  - attach screenshots from the thread as image links when present
+  - preserve relevant URLs inline (Sentry, GitHub, docs, reproduction links) — do not dump a link list
+  - prefer flat bullet lists over headed sections for simple issues
   - translate Slack-specific phrasing into product or engineering language
-  - remove usernames, channel names, slash commands, and session chatter unless the user explicitly wants them preserved
+  - remove channel names, slash commands, and session chatter unless the user explicitly wants them preserved
 - When setting optional fields, stay literal:
   - use the team's actual workflow states instead of assuming generic names like `Todo` or `In Progress`
   - use only Linear's standard priority levels: `low`, `medium`, `high`, `urgent`
