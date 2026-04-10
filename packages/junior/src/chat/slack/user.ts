@@ -112,3 +112,117 @@ export async function lookupSlackUser(
     return null;
   }
 }
+
+// ── Reverse lookup: name → user ID ───────────────────────────────────────────
+
+interface SlackUserListMember {
+  id: string;
+  name?: string;
+  deleted?: boolean;
+  is_bot?: boolean;
+  profile?: {
+    display_name?: string;
+    real_name?: string;
+  };
+}
+
+interface NameToUserIdCache {
+  map: Map<string, string>;
+  expiresAt: number;
+}
+
+const NAME_TO_USERID_CACHE_TTL_MS = 10 * 60 * 1000;
+let nameToUserIdCache: NameToUserIdCache | null = null;
+
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/[\s.]/g, "");
+}
+
+async function buildNameToUserIdMap(): Promise<Map<string, string>> {
+  const token = getSlackBotToken();
+  if (!token) {
+    return new Map();
+  }
+
+  const map = new Map<string, string>();
+  let cursor: string | undefined;
+
+  try {
+    do {
+      const url = new URL("https://slack.com/api/users.list");
+      url.searchParams.set("limit", "200");
+      if (cursor) {
+        url.searchParams.set("cursor", cursor);
+      }
+
+      const response = await fetch(url.toString(), {
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        break;
+      }
+
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        members?: SlackUserListMember[];
+        response_metadata?: { next_cursor?: string };
+      };
+
+      if (!payload.ok || !payload.members) {
+        break;
+      }
+
+      for (const member of payload.members) {
+        if (member.deleted || member.is_bot) continue;
+
+        const userId = member.id;
+
+        // Index by all name forms so matching is flexible
+        if (member.name) {
+          map.set(normalizeName(member.name), userId);
+        }
+        if (member.profile?.display_name) {
+          map.set(normalizeName(member.profile.display_name), userId);
+        }
+        if (member.profile?.real_name) {
+          map.set(normalizeName(member.profile.real_name), userId);
+        }
+      }
+
+      cursor = payload.response_metadata?.next_cursor || undefined;
+    } while (cursor);
+  } catch (error) {
+    logWarn(
+      "slack_users_list_failed",
+      {},
+      {
+        "error.message": error instanceof Error ? error.message : String(error),
+      },
+      "Failed to fetch Slack users.list for name→ID resolution",
+    );
+  }
+
+  return map;
+}
+
+async function getNameToUserIdMap(): Promise<Map<string, string>> {
+  if (nameToUserIdCache && nameToUserIdCache.expiresAt > Date.now()) {
+    return nameToUserIdCache.map;
+  }
+  const map = await buildNameToUserIdMap();
+  nameToUserIdCache = { map, expiresAt: Date.now() + NAME_TO_USERID_CACHE_TTL_MS };
+  return map;
+}
+
+/**
+ * Resolve a Slack display name / username to a Slack user ID.
+ * Returns null when the name cannot be resolved or the API is unavailable.
+ * Results are backed by a workspace-scoped in-memory cache (10 min TTL).
+ */
+export async function lookupSlackUserIdByName(
+  name: string,
+): Promise<string | null> {
+  const map = await getNameToUserIdMap();
+  return map.get(normalizeName(name)) ?? null;
+}

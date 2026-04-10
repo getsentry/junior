@@ -1,5 +1,6 @@
 import type { FileUpload, PostableMessage } from "chat";
 import { logWarn } from "@/chat/logging";
+import { lookupSlackUserIdByName } from "@/chat/slack/user";
 
 const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
@@ -56,6 +57,71 @@ export function ensureBlockSpacing(text: string): string {
   return result.join("\n");
 }
 
+/**
+ * Resolve `@name` patterns in text to Slack `<@USERID>` entities.
+ *
+ * The postprocessor:
+ * 1. Skips patterns that look like email addresses (already have `@host` context)
+ * 2. Skips patterns that are already proper Slack mention entities
+ * 3. For each remaining `@name` candidate, attempts a name→ID lookup via the
+ *    Slack `users.list` API (cached). Unresolvable names are left as-is.
+ *
+ * The known-participant map is consulted first (zero API cost) before falling
+ * back to the full workspace lookup.
+ */
+export async function resolveMentions(
+  text: string,
+  knownParticipants?: Map<string, string>,
+): Promise<string> {
+  // Pattern: @word or @first.last, not preceded by a word char (avoids emails)
+  // and not already inside a Slack entity like <@U...>
+  const mentionPattern = /(?<![<\w])@([\w][\w.-]*[\w]|[\w])/g;
+
+  const matches = [...text.matchAll(mentionPattern)];
+  if (matches.length === 0) {
+    return text;
+  }
+
+  // Collect unique names to resolve in parallel
+  const uniqueNames = [...new Set(matches.map((m) => m[1]))];
+  const resolvedIds = new Map<string, string>();
+
+  await Promise.all(
+    uniqueNames.map(async (name) => {
+      // Check known participants first (free)
+      const normalizedName = name.toLowerCase().replace(/[\s.]/g, "");
+      for (const [participantName, userId] of knownParticipants ?? []) {
+        const normalizedParticipant = participantName
+          .toLowerCase()
+          .replace(/[\s.]/g, "");
+        if (
+          normalizedParticipant === normalizedName ||
+          normalizedParticipant.startsWith(normalizedName) ||
+          normalizedName.startsWith(normalizedParticipant)
+        ) {
+          resolvedIds.set(name, userId);
+          return;
+        }
+      }
+
+      // Fall back to workspace lookup
+      const userId = await lookupSlackUserIdByName(name);
+      if (userId) {
+        resolvedIds.set(name, userId);
+      }
+    }),
+  );
+
+  if (resolvedIds.size === 0) {
+    return text;
+  }
+
+  return text.replace(mentionPattern, (match, name: string) => {
+    const userId = resolvedIds.get(name);
+    return userId ? `<@${userId}>` : match;
+  });
+}
+
 function normalizeForSlack(text: string): string {
   let normalized = text.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "");
   normalized = ensureBlockSpacing(normalized);
@@ -63,10 +129,11 @@ function normalizeForSlack(text: string): string {
 }
 
 /** Normalize text for Slack and wrap it as a PostableMessage with optional file attachments. */
-export function buildSlackOutputMessage(
+export async function buildSlackOutputMessage(
   text: string,
   files?: FileUpload[],
-): PostableMessage {
+  knownParticipants?: Map<string, string>,
+): Promise<PostableMessage> {
   const normalized = normalizeForSlack(text);
   const fileCount = files?.length ?? 0;
 
@@ -94,8 +161,10 @@ export function buildSlackOutputMessage(
     };
   }
 
+  const resolved = await resolveMentions(normalized, knownParticipants);
+
   return {
-    markdown: normalized,
+    markdown: resolved,
     files,
   };
 }

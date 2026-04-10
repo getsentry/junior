@@ -45,6 +45,7 @@ import {
 import { isDmChannel } from "@/chat/slack/client";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
+import type { ConversationMessage } from "@/chat/state/conversation";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
@@ -119,6 +120,25 @@ interface ReplyExecutorDeps {
     };
   }) => Promise<PreparedTurnState>;
   services: ReplyExecutorServices;
+}
+
+
+/**
+ * Build a name→userId map from known thread participants.
+ * This lets mention resolution work for people already in the thread
+ * at zero API cost.
+ */
+function buildKnownParticipantsMap(
+  messages: ConversationMessage[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const message of messages) {
+    const { userId, userName, fullName } = message.author ?? {};
+    if (!userId) continue;
+    if (userName) map.set(userName, userId);
+    if (fullName) map.set(fullName, userId);
+  }
+  return map;
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -333,6 +353,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sandboxDependencyProfileHash:
                 preparedState.sandboxDependencyProfileHash,
             },
+            threadParticipants: buildKnownParticipantsMap(
+              preparedState.conversation.messages,
+            ),
             onStatus: (status) => progress.setStatus(status),
             onTextDelta: (deltaText) => {
               if (explicitChannelPostIntent) {
@@ -451,10 +474,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
+              const knownParticipants = buildKnownParticipantsMap(
+                preparedState.conversation.messages,
+              );
               const sent = await postThreadReply(
-                buildSlackOutputMessage(
+                await buildSlackOutputMessage(
                   reply.text,
                   resolvedAttachFiles === "inline" ? replyFiles : undefined,
+                  knownParticipants,
                 ),
                 "thread_reply",
               );
@@ -569,7 +596,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             replyFiles
           ) {
             await postThreadReply(
-              buildSlackOutputMessage("", replyFiles),
+              await buildSlackOutputMessage("", replyFiles),
               "thread_reply_files_followup",
             );
           }

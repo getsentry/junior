@@ -265,6 +265,16 @@ export function buildSystemPrompt(params: {
   configuration?: Record<string, unknown>;
   relevantConfigurationKeys?: string[];
   runtimeMetadata?: RuntimeMetadata;
+  /**
+   * Known thread participants: array of { userId, userName, fullName }.
+   * Injected into <identity-context> so the LLM can write correct <@USERID> mentions
+   * for people already in the conversation without a separate API call.
+   */
+  threadParticipants?: Array<{
+    userId?: string;
+    userName?: string;
+    fullName?: string;
+  }>;
 }): string {
   const {
     availableSkills,
@@ -277,6 +287,7 @@ export function buildSystemPrompt(params: {
     configuration,
     relevantConfigurationKeys,
     runtimeMetadata,
+    threadParticipants,
   } = params;
   // Core harness contract:
   // - See specs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
@@ -378,6 +389,23 @@ export function buildSystemPrompt(params: {
         "Use these blocks as authoritative metadata for identity questions.",
         assistantSection,
         requesterSection,
+        ...(threadParticipants && threadParticipants.length > 0
+          ? [
+              renderTag(
+                "thread-participants",
+                [
+                  "Known participants in this thread. Use these user IDs when mentioning people already in the conversation.",
+                  ...threadParticipants.map((p) => {
+                    const parts: string[] = [];
+                    if (p.userId) parts.push(`user_id: ${escapeXml(p.userId)}`);
+                    if (p.userName) parts.push(`user_name: ${escapeXml(p.userName)}`);
+                    if (p.fullName) parts.push(`full_name: ${escapeXml(p.fullName)}`);
+                    return `- ${parts.join(", ")}`;
+                  }),
+                ].join("\n"),
+              ),
+            ]
+          : []),
       ].join("\n"),
     ),
     renderTag(
