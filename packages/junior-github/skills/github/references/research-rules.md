@@ -1,6 +1,7 @@
 # Research and Verification Rules
 
 Use this file for cross-type rules. Then apply the matching type-specific file:
+
 - `bug`: [issue-type-bug.md](issue-type-bug.md)
 - `feature`: [issue-type-feature.md](issue-type-feature.md)
 - `task`: [issue-type-task.md](issue-type-task.md)
@@ -8,6 +9,7 @@ Use this file for cross-type rules. Then apply the matching type-specific file:
 ## Source Priority
 
 1. First-party repository evidence:
+
 - Source code and tests
 - Existing issues and PRs
 - Release notes/changelog
@@ -26,8 +28,9 @@ Use this file for cross-type rules. Then apply the matching type-specific file:
 
 ## Output Expectations
 
-- Clearly distinguish verified facts from unknowns. Weave evidence naturally into the issue structure rather than forcing separate sections.
-- Include source links/paths for each verified fact.
+- Research depth should not translate into verbose issue output. The issue should be terse; research justifies what goes in, not how much.
+- Clearly distinguish verified facts from unknowns. Weave evidence naturally into the issue rather than forcing separate sections.
+- Include source links/paths inline for verified facts.
 - Use exact dates for timeline claims.
 - Avoid absolute language when confidence is low.
-- For `feature` issues, target a couple prior-art examples when available; if not found, explicitly say none were found.
+- For `feature` issues, include prior-art examples when found and relevant; omit the section entirely if none exist.

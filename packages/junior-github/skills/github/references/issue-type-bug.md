@@ -6,46 +6,25 @@ Use this file only when issue type is `bug`.
 
 Produce a high-signal bug issue that drives root-cause discovery, not premature solutioning.
 
-## Required Research Shape
+## Research Guidance
 
-1. Capture concrete evidence:
-- reproducible steps or explicit non-repro statement
-- exact error or symptom
-- impacted surface and scope
+Use these steps to investigate — they inform what goes into the issue, but do not dictate issue structure. The issue should be terse; research justifies what's included.
 
-2. Build a timeline with exact dates when known:
-- first observed
-- known regressions or relevant deploy/release windows
+1. Capture concrete evidence: reproducible steps or explicit non-repro statement, exact error or symptom, impacted surface and scope.
+2. Build a timeline with exact dates when known.
+3. Separate verified facts from unknowns — label each explicitly.
+4. Form root-cause hypotheses linked to evidence, with confidence (`high`, `medium`, `low`).
 
-3. Separate known from unknown:
-- verified facts contain only directly supported claims
-- unknown details stay explicit
-
-4. Form root-cause hypotheses:
-- each hypothesis must link back to evidence
-- include confidence (`high`, `medium`, `low`)
-
-## Fix Guidance
-
-- You may include tentative fix options.
-- Label options as tentative unless root cause is directly evidenced.
-- If root cause is not verified, include next RCA steps before or alongside fix options.
-- Do not present one fix as certain without explicit evidence.
+Include fix suggestions only when the thread discusses fixes. Do not present a fix as certain without explicit evidence.
 
 ## Context Generalization
 
 When deriving bug content from conversation, generalize to the technical problem.
 
 Before (session-specific):
+
 > @alice ran `/github create` in #ops-alerts and saw "token refresh failed" when the OAuth token expired mid-thread
 
 After (generalized):
+
 > OAuth token refresh fails during long-running operations, producing "token refresh failed" errors
-
-## Completion Bar
-
-A `bug` issue is ready when it has:
-- clear symptom and scope
-- evidence-backed facts
-- explicit unknowns
-- root-cause hypotheses with confidence

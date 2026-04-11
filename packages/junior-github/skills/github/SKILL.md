@@ -73,7 +73,12 @@ Load the type-specific template and rules:
 
 Follow [references/research-rules.md](references/research-rules.md) for cross-type research standards.
 
-- Generalize conversation context: replace user names, slash-command invocations, channel references, and session-specific fragments with the underlying technical problem.
+- Use a short descriptive title for bugs, short imperative title for tasks and features.
+- Mention who raised the issue when clear from the thread.
+- Attach screenshots from the thread as image links when present.
+- Prefer flat bullet lists over headed sections for simple issues.
+- Do not add desired outcome or expected behavior unless the thread explicitly states one.
+- Generalize conversation context: replace channel references, slash-command invocations, and session-specific fragments with the underlying technical problem.
 - Use [references/issue-examples.md](references/issue-examples.md) to calibrate structure and depth.
 - Include code snippets, related issues, and related PRs only when they materially improve the issue.
 
