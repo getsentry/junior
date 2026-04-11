@@ -4,7 +4,7 @@ Run this checklist before create/update mutation.
 
 ## External Quality Signals
 
-- Does the issue contain user names, slash commands, or channel references from the originating conversation? If so, generalize.
+- Does the issue contain slash commands, channel references, or user names that are not relevant to the issue itself? If so, generalize.
 - Is the issue concise and still actionable?
 - Are unknowns called out instead of guessed?
 - Are concerns included only when material?

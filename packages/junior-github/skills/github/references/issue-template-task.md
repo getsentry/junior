@@ -16,6 +16,7 @@ For simple tasks, skip sections and use flat bullets for scope and next step.
 ## Attribution
 
 - Mention who raised the task when clear from the originating conversation.
+- Attach screenshots from the thread as image links when present.
 
 ## Delegated action footer
 
