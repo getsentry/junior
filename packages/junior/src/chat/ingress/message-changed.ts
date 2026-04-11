@@ -1,4 +1,4 @@
-import type { Adapter, Message, WebhookOptions } from "chat";
+import { Message, type Adapter, type WebhookOptions } from "chat";
 
 /**
  * Parsed result from a Slack `message_changed` event that contains a newly
@@ -9,6 +9,10 @@ export interface MessageChangedMention {
   threadId: string;
   /** Synthesized Message to pass to `bot.processMessage`. */
   message: Message;
+}
+
+function getEditedMentionMessageId(messageTs: string): string {
+  return `${messageTs}:message_changed_mention`;
 }
 
 interface SlackMessageChangedEvent {
@@ -91,10 +95,8 @@ export function extractMessageChangedMention(
     user: userId,
   };
 
-  // Build a minimal Message that satisfies the Chat SDK contract.
-  // The adapter field is needed by the SDK to resolve the thread.
-  const message = {
-    id: messageTs,
+  const message = new Message({
+    id: getEditedMentionMessageId(messageTs),
     threadId,
     text: newText,
     isMention: true,
@@ -102,7 +104,6 @@ export function extractMessageChangedMention(
     metadata: { dateSent: new Date(Number(messageTs) * 1000), edited: true },
     formatted: { type: "root" as const, children: [] },
     raw,
-    adapter,
     author: {
       userId,
       userName: userId,
@@ -110,10 +111,14 @@ export function extractMessageChangedMention(
       isBot: false,
       isMe: false,
     },
-    toJSON() {
-      return {} as ReturnType<Message["toJSON"]>;
-    },
-  } as unknown as Message;
+  });
+
+  Object.defineProperty(message, "adapter", {
+    configurable: true,
+    enumerable: false,
+    value: adapter,
+    writable: true,
+  });
 
   return { threadId, message };
 }

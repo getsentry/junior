@@ -33,6 +33,7 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { botConfig } from "@/chat/config";
+import { getSlackMessageTs } from "@/chat/slack/message";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
@@ -88,6 +89,7 @@ export function createSlackRuntime(
       const conversation = coerceThreadConversationState(await thread.state);
       const normalizedUserText =
         normalizeConversationText(userText) || "[non-text message]";
+      const slackTs = getSlackMessageTs(message);
       upsertConversationMessage(conversation, {
         id: message.id,
         role: "user",
@@ -104,7 +106,7 @@ export function createSlackRuntime(
         },
         meta: {
           explicitMention: Boolean(message.isMention),
-          slackTs: message.id,
+          slackTs,
           replied: false,
           skippedReason: decision.reason,
           imagesHydrated: true,

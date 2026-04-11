@@ -12,6 +12,82 @@ import {
 } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
 
+interface SlackWebhookAuthAdapter {
+  defaultBotToken?: string;
+  requestContext?: {
+    run<T>(context: unknown, fn: () => T): T;
+  };
+  resolveTokenForTeam?: (teamId: string) => Promise<unknown>;
+  verifySignature: (
+    body: string,
+    timestamp: string | null,
+    signature: string | null,
+  ) => boolean;
+}
+
+function getSlackPayloadTeamId(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") {
+    return undefined;
+  }
+
+  const teamId = (body as Record<string, unknown>).team_id;
+  return typeof teamId === "string" && teamId.length > 0 ? teamId : undefined;
+}
+
+async function handleAuthenticatedSlackMessageChangedMention(args: {
+  body: unknown;
+  bot: ReturnType<typeof getProductionBot>;
+  botUserId: string;
+  rawBody: string;
+  request: Request;
+  waitUntil: WaitUntilFn;
+}): Promise<void> {
+  const slackAdapter = args.bot.getAdapter("slack");
+  const authAdapter = slackAdapter as unknown as SlackWebhookAuthAdapter;
+  const timestamp = args.request.headers.get("x-slack-request-timestamp");
+  const signature = args.request.headers.get("x-slack-signature");
+
+  // Reuse the adapter's own Slack signature verification before dispatching
+  // the synthetic edit event so this side-channel cannot bypass auth.
+  if (!authAdapter.verifySignature(args.rawBody, timestamp, signature)) {
+    return;
+  }
+
+  const webhookOptions = {
+    waitUntil: (task: Promise<unknown>) => args.waitUntil(task),
+  };
+  const dispatch = () =>
+    handleMessageChangedMention(
+      args.body,
+      args.botUserId,
+      slackAdapter,
+      (adapter, threadId, message, opts) =>
+        args.bot.processMessage(adapter, threadId, message, opts),
+      webhookOptions,
+    );
+
+  if (authAdapter.defaultBotToken) {
+    dispatch();
+    return;
+  }
+
+  const teamId = getSlackPayloadTeamId(args.body);
+  if (
+    !teamId ||
+    !authAdapter.resolveTokenForTeam ||
+    !authAdapter.requestContext
+  ) {
+    return;
+  }
+
+  const context = await authAdapter.resolveTokenForTeam(teamId);
+  if (!context) {
+    return;
+  }
+
+  authAdapter.requestContext.run(context, dispatch);
+}
+
 /**
  * Handles `POST /api/webhooks/:platform`.
  *
@@ -22,12 +98,13 @@ import type { WaitUntilFn } from "@/handlers/types";
  * that introduce a new bot @mention, which the Slack adapter silently ignores.
  * The request is then reconstructed so the adapter can consume it normally.
  */
-export async function POST(
+export async function handlePlatformWebhook(
   request: Request,
   platform: string,
   waitUntil: WaitUntilFn,
+  bot = getProductionBot(),
+  botUserId = platform === "slack" ? getSlackBotUserId() : undefined,
 ): Promise<Response> {
-  const bot = getProductionBot();
   const handler = bot.webhooks[platform as keyof typeof bot.webhooks];
   const requestContext = createRequestContext(request, { platform });
   const requestUrl = new URL(request.url);
@@ -52,7 +129,6 @@ export async function POST(
     // so we dispatch them as a synthesized mention before forwarding to the adapter.
     let rebuiltRequest = request;
     if (platform === "slack") {
-      const botUserId = getSlackBotUserId();
       if (botUserId) {
         const rawBody = await request.text();
         let parsedBody: unknown;
@@ -63,18 +139,14 @@ export async function POST(
         }
 
         if (parsedBody) {
-          const slackAdapter = bot.getAdapter("slack");
-          const webhookOptions = {
-            waitUntil: (task: Promise<unknown>) => waitUntil(task),
-          };
-          handleMessageChangedMention(
-            parsedBody,
+          await handleAuthenticatedSlackMessageChangedMention({
+            body: parsedBody,
+            bot,
             botUserId,
-            slackAdapter,
-            (adapter, threadId, message, opts) =>
-              bot.processMessage(adapter, threadId, message, opts),
-            webhookOptions,
-          );
+            rawBody,
+            request,
+            waitUntil,
+          });
         }
 
         // Reconstruct the request so the adapter can read the body.
@@ -143,4 +215,12 @@ export async function POST(
       throw error;
     }
   });
+}
+
+export async function POST(
+  request: Request,
+  platform: string,
+  waitUntil: WaitUntilFn,
+): Promise<Response> {
+  return handlePlatformWebhook(request, platform, waitUntil);
 }
