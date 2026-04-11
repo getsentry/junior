@@ -1,6 +1,9 @@
 import { getProductionBot } from "@/chat/app/production";
 import { getSlackBotUserId } from "@/chat/config";
-import { handleMessageChangedMention } from "@/chat/ingress/message-changed";
+import {
+  handleMessageChangedMention,
+  isMessageChangedEnvelope,
+} from "@/chat/ingress/message-changed";
 import {
   createRequestContext,
   logException,
@@ -23,27 +26,6 @@ interface SlackWebhookAuthAdapter {
     timestamp: string | null,
     signature: string | null,
   ) => boolean;
-}
-
-function isSlackMessageChangedEnvelope(body: unknown): boolean {
-  if (!body || typeof body !== "object") {
-    return false;
-  }
-
-  const value = body as Record<string, unknown>;
-  if (value.type !== "event_callback") {
-    return false;
-  }
-
-  const event = value.event;
-  if (!event || typeof event !== "object") {
-    return false;
-  }
-
-  const eventRecord = event as Record<string, unknown>;
-  return (
-    eventRecord.type === "message" && eventRecord.subtype === "message_changed"
-  );
 }
 
 function getSlackPayloadTeamId(body: unknown): string | undefined {
@@ -159,7 +141,7 @@ export async function handlePlatformWebhook(
           parsedBody = undefined;
         }
 
-        if (parsedBody && isSlackMessageChangedEnvelope(parsedBody)) {
+        if (parsedBody && isMessageChangedEnvelope(parsedBody)) {
           try {
             await handleAuthenticatedSlackMessageChangedMention({
               body: parsedBody,

@@ -33,7 +33,7 @@ interface SlackMessageChangedEvent {
   };
 }
 
-function isMessageChangedEnvelope(
+export function isMessageChangedEnvelope(
   value: unknown,
 ): value is SlackMessageChangedEvent {
   if (!value || typeof value !== "object") return false;
