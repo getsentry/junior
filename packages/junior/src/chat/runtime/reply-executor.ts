@@ -179,7 +179,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             },
           }));
 
-        const messageTs = getSlackMessageTs(message);
+        const slackMessageTs = getSlackMessageTs(message);
         const turnId = buildDeterministicTurnId(message.id);
         startActiveTurn({
           conversation: preparedState.conversation,
@@ -234,7 +234,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             channelId,
             runId,
             conversation: preparedState.conversation,
-            messageTs,
+            messageTs: slackMessageTs,
           },
         );
 
