@@ -16,6 +16,7 @@ import {
 import type { WaitUntilFn } from "@/handlers/types";
 
 interface SlackWebhookAuthAdapter {
+  botUserId?: string;
   defaultBotToken?: string;
   requestContext?: {
     run<T>(context: unknown, fn: () => T): T;
@@ -40,7 +41,6 @@ function getSlackPayloadTeamId(body: unknown): string | undefined {
 async function handleAuthenticatedSlackMessageChangedMention(args: {
   body: unknown;
   bot: ReturnType<typeof getProductionBot>;
-  botUserId: string;
   rawBody: string;
   request: Request;
   waitUntil: WaitUntilFn;
@@ -49,6 +49,7 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   const authAdapter = slackAdapter as unknown as SlackWebhookAuthAdapter;
   const timestamp = args.request.headers.get("x-slack-request-timestamp");
   const signature = args.request.headers.get("x-slack-signature");
+  const configuredBotUserId = getSlackBotUserId();
 
   // Reuse the adapter's own Slack signature verification before dispatching
   // the synthetic edit event so this side-channel cannot bypass auth.
@@ -59,15 +60,21 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   const webhookOptions = {
     waitUntil: (task: Promise<unknown>) => args.waitUntil(task),
   };
-  const dispatch = () =>
-    handleMessageChangedMention(
+  const dispatch = () => {
+    const botUserId = authAdapter.botUserId ?? configuredBotUserId;
+    if (!botUserId) {
+      return false;
+    }
+
+    return handleMessageChangedMention(
       args.body,
-      args.botUserId,
+      botUserId,
       slackAdapter,
       (adapter, threadId, message, opts) =>
         args.bot.processMessage(adapter, threadId, message, opts),
       webhookOptions,
     );
+  };
 
   if (authAdapter.defaultBotToken) {
     dispatch();
@@ -106,7 +113,6 @@ export async function handlePlatformWebhook(
   platform: string,
   waitUntil: WaitUntilFn,
   bot = getProductionBot(),
-  botUserId = platform === "slack" ? getSlackBotUserId() : undefined,
 ): Promise<Response> {
   const handler = bot.webhooks[platform as keyof typeof bot.webhooks];
   const requestContext = createRequestContext(request, { platform });
@@ -132,37 +138,34 @@ export async function handlePlatformWebhook(
     // so we dispatch them as a synthesized mention before forwarding to the adapter.
     let rebuiltRequest = request;
     if (platform === "slack") {
-      if (botUserId) {
-        const rawBody = await request.text();
-        let parsedBody: unknown;
-        try {
-          parsedBody = JSON.parse(rawBody);
-        } catch {
-          parsedBody = undefined;
-        }
-
-        if (parsedBody && isMessageChangedEnvelope(parsedBody)) {
-          try {
-            await handleAuthenticatedSlackMessageChangedMention({
-              body: parsedBody,
-              bot,
-              botUserId,
-              rawBody,
-              request,
-              waitUntil,
-            });
-          } catch (error) {
-            logException(error, "slack_message_changed_side_channel_failed");
-          }
-        }
-
-        // Reconstruct the request so the adapter can read the body.
-        rebuiltRequest = new Request(request.url, {
-          method: request.method,
-          headers: request.headers,
-          body: rawBody,
-        });
+      const rawBody = await request.text();
+      let parsedBody: unknown;
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        parsedBody = undefined;
       }
+
+      if (parsedBody && isMessageChangedEnvelope(parsedBody)) {
+        try {
+          await handleAuthenticatedSlackMessageChangedMention({
+            body: parsedBody,
+            bot,
+            rawBody,
+            request,
+            waitUntil,
+          });
+        } catch (error) {
+          logException(error, "slack_message_changed_side_channel_failed");
+        }
+      }
+
+      // Reconstruct the request so the adapter can read the body.
+      rebuiltRequest = new Request(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: rawBody,
+      });
     }
 
     try {

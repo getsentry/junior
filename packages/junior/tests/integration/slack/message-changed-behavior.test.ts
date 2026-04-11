@@ -95,7 +95,6 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       "slack",
       collectWaitUntil(waitUntilTasks),
       bot,
-      BOT_USER_ID,
     );
     await flushWaitUntil(waitUntilTasks);
 
@@ -145,7 +144,6 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       "slack",
       collectWaitUntil(waitUntilTasks),
       bot,
-      BOT_USER_ID,
     );
     await flushWaitUntil(waitUntilTasks);
 
@@ -213,7 +211,6 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       "slack",
       () => undefined,
       bot,
-      BOT_USER_ID,
     );
 
     expect(response.status).toBe(401);
