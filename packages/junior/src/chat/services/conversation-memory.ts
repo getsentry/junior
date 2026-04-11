@@ -1,6 +1,7 @@
 import type { Message, Thread } from "chat";
 import { botConfig } from "@/chat/config";
 import { completeText } from "@/chat/pi/client";
+import { getSlackMessageTs } from "@/chat/slack/message";
 import type {
   ConversationCompaction,
   ConversationMessage,
@@ -410,7 +411,7 @@ function createConversationMessageFromSdkMessage(
           : undefined,
     },
     meta: {
-      slackTs: entry.id,
+      slackTs: getSlackMessageTs(entry),
     },
   };
 }

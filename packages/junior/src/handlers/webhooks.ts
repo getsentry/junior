@@ -139,14 +139,18 @@ export async function handlePlatformWebhook(
         }
 
         if (parsedBody) {
-          await handleAuthenticatedSlackMessageChangedMention({
-            body: parsedBody,
-            bot,
-            botUserId,
-            rawBody,
-            request,
-            waitUntil,
-          });
+          try {
+            await handleAuthenticatedSlackMessageChangedMention({
+              body: parsedBody,
+              bot,
+              botUserId,
+              rawBody,
+              request,
+              waitUntil,
+            });
+          } catch (error) {
+            logException(error, "slack_message_changed_side_channel_failed");
+          }
         }
 
         // Reconstruct the request so the adapter can read the body.

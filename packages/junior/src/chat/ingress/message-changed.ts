@@ -57,7 +57,7 @@ function isMessageChangedEnvelope(
  *
  * Slack encodes @mentions as `<@UXXXXXXXX>` in message text.
  */
-export function textMentionsBot(text: string, botUserId: string): boolean {
+function textMentionsBot(text: string, botUserId: string): boolean {
   return text.includes(`<@${botUserId}>`);
 }
 

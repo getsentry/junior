@@ -7,7 +7,11 @@ import type { Message } from "chat";
 export function getSlackMessageTs(
   message: Pick<Message, "id" | "raw">,
 ): string {
-  if (message.raw && typeof message.raw === "object") {
+  if (
+    message.id.endsWith(":message_changed_mention") &&
+    message.raw &&
+    typeof message.raw === "object"
+  ) {
     const ts = (message.raw as Record<string, unknown>).ts;
     if (typeof ts === "string" && ts.length > 0) {
       return ts;
