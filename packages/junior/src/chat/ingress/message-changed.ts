@@ -1,4 +1,4 @@
-import { Message, type Adapter, type WebhookOptions } from "chat";
+import { Message, type Adapter } from "chat";
 
 /**
  * Parsed result from a Slack `message_changed` event that contains a newly
@@ -121,32 +121,4 @@ export function extractMessageChangedMention(
   });
 
   return { threadId, message };
-}
-
-/**
- * Attempt to handle a Slack `message_changed` event that introduces a new bot
- * @mention. Calls `processMessage` on the bot when the event qualifies.
- *
- * This is a side-channel ingress path that runs before the normal Slack adapter
- * webhook handling, which silently drops `message_changed` subtypes.
- *
- * @returns `true` when the event was handled and `processMessage` was called.
- */
-export function handleMessageChangedMention(
-  body: unknown,
-  botUserId: string,
-  adapter: Adapter,
-  processMessage: (
-    adapter: Adapter,
-    threadId: string,
-    message: Message,
-    options?: WebhookOptions,
-  ) => void,
-  options?: WebhookOptions,
-): boolean {
-  const result = extractMessageChangedMention(body, botUserId, adapter);
-  if (!result) return false;
-
-  processMessage(adapter, result.threadId, result.message, options);
-  return true;
 }

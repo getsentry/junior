@@ -1,7 +1,6 @@
 import { getProductionBot } from "@/chat/app/production";
-import { getSlackBotUserId } from "@/chat/config";
 import {
-  handleMessageChangedMention,
+  extractMessageChangedMention,
   isMessageChangedEnvelope,
 } from "@/chat/ingress/message-changed";
 import {
@@ -49,7 +48,6 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   const authAdapter = slackAdapter as unknown as SlackWebhookAuthAdapter;
   const timestamp = args.request.headers.get("x-slack-request-timestamp");
   const signature = args.request.headers.get("x-slack-signature");
-  const configuredBotUserId = getSlackBotUserId();
 
   // Reuse the adapter's own Slack signature verification before dispatching
   // the synthetic edit event so this side-channel cannot bypass auth.
@@ -61,19 +59,27 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
     waitUntil: (task: Promise<unknown>) => args.waitUntil(task),
   };
   const dispatch = () => {
-    const botUserId = authAdapter.botUserId ?? configuredBotUserId;
+    const botUserId = authAdapter.botUserId;
     if (!botUserId) {
       return false;
     }
 
-    return handleMessageChangedMention(
+    const result = extractMessageChangedMention(
       args.body,
       botUserId,
       slackAdapter,
-      (adapter, threadId, message, opts) =>
-        args.bot.processMessage(adapter, threadId, message, opts),
+    );
+    if (!result) {
+      return false;
+    }
+
+    args.bot.processMessage(
+      slackAdapter,
+      result.threadId,
+      result.message,
       webhookOptions,
     );
+    return true;
   };
 
   if (authAdapter.defaultBotToken) {
