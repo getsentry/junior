@@ -7,6 +7,7 @@ import type {
 import { toOptionalString } from "@/chat/coerce";
 import { setSpanAttributes } from "@/chat/logging";
 import { getThreadTs } from "@/chat/runtime/thread-context";
+import { getSlackMessageTs } from "@/chat/slack/message";
 import {
   coerceThreadArtifactsState,
   type ThreadArtifactsState,
@@ -86,6 +87,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
 
     const normalizedUserText =
       normalizeConversationText(args.userText) || "[non-text message]";
+    const slackTs = getSlackMessageTs(args.message);
     const incomingUserMessage: ConversationMessage = {
       id: args.message.id,
       role: "user",
@@ -102,7 +104,7 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       },
       meta: {
         explicitMention: args.explicitMention,
-        slackTs: args.message.id,
+        slackTs,
         imagesHydrated: !messageHasPotentialImageAttachment,
       },
     };

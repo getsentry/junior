@@ -1,6 +1,7 @@
 import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
+import { getSlackMessageTs } from "@/chat/slack/message";
 import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
 import {
   logError,
@@ -178,6 +179,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             },
           }));
 
+        const slackMessageTs = getSlackMessageTs(message);
         const turnId = buildDeterministicTurnId(message.id);
         startActiveTurn({
           conversation: preparedState.conversation,
@@ -232,7 +234,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             channelId,
             runId,
             conversation: preparedState.conversation,
-            messageTs: message.id,
+            messageTs: slackMessageTs,
           },
         );
 
