@@ -128,6 +128,15 @@ export interface ReplyRequestContext {
   };
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
+  /**
+   * Known thread participants. Injected into the system prompt so the LLM can
+   * produce correct <@USERID> mention syntax for people already in the conversation.
+   */
+  threadParticipants?: Array<{
+    userId?: string;
+    userName?: string;
+    fullName?: string;
+  }>;
 }
 
 let startupDiscoveryLogged = false;
@@ -546,6 +555,7 @@ export async function generateAssistantReply(
         invokedSkill,
       ),
       runtimeMetadata: getRuntimeMetadata(),
+      threadParticipants: context.threadParticipants,
     });
 
     const userContentParts: Array<

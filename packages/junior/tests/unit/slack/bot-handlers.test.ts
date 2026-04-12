@@ -89,6 +89,106 @@ describe("bot handlers (integration)", () => {
     expect(hasReply).toBe(true);
   });
 
+  it("handleNewMention: excludes bot-authored history from thread participants", async () => {
+    let capturedThreadParticipants:
+      | Array<{ userId?: string; userName?: string; fullName?: string }>
+      | undefined;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            capturedThreadParticipants = context?.threadParticipants;
+            return {
+              text: "Hello from the bot!",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+        visionContext: {
+          listThreadReplies: async () => [],
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_INT:1700000000.100",
+      state: {
+        conversation: {
+          schemaVersion: 1,
+          messages: [
+            {
+              id: "assistant-1",
+              role: "assistant",
+              text: "Previous assistant reply",
+              createdAtMs: 1700000000000,
+              author: {
+                userId: "U_BOT",
+                userName: "junior",
+                fullName: "Junior",
+                isBot: true,
+              },
+            },
+            {
+              id: "user-1",
+              role: "user",
+              text: "Earlier user message",
+              createdAtMs: 1700000001000,
+              author: {
+                userId: "U_HUMAN",
+                userName: "teammate",
+                fullName: "Team Mate",
+                isBot: false,
+              },
+            },
+          ],
+          compactions: [],
+          backfill: {},
+          processing: {},
+          stats: {
+            compactedMessageCount: 0,
+            estimatedContextTokens: 0,
+            totalMessageCount: 2,
+            updatedAtMs: 1700000001000,
+          },
+          vision: {
+            byFileId: {},
+          },
+        },
+      },
+    });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-participants",
+        threadId: "slack:C_INT:1700000000.100",
+        text: "hey bot",
+        isMention: true,
+      }),
+    );
+
+    expect(capturedThreadParticipants).toEqual([
+      {
+        userId: "U_HUMAN",
+        userName: "teammate",
+        fullName: "Team Mate",
+      },
+      {
+        userId: "U-test",
+        userName: "testuser",
+        fullName: "Test User",
+      },
+    ]);
+  });
+
   it("handleSubscribedMessage with explicit mention: replies when should_reply is true", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {

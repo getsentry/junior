@@ -46,6 +46,7 @@ import {
 import { isDmChannel } from "@/chat/slack/client";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
+import type { ConversationMessage } from "@/chat/state/conversation";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
@@ -120,6 +121,31 @@ interface ReplyExecutorDeps {
     };
   }) => Promise<PreparedTurnState>;
   services: ReplyExecutorServices;
+}
+
+/**
+ * Build participant metadata from known thread messages for prompt injection.
+ */
+function buildParticipants(
+  messages: ConversationMessage[],
+): Array<{ userId?: string; userName?: string; fullName?: string }> {
+  const seen = new Set<string>();
+  const participants: Array<{
+    userId?: string;
+    userName?: string;
+    fullName?: string;
+  }> = [];
+
+  for (const message of messages) {
+    const { userId, userName, fullName } = message.author ?? {};
+    if (!userId || message.author?.isBot) continue;
+    if (!seen.has(userId)) {
+      seen.add(userId);
+      participants.push({ userId, userName, fullName });
+    }
+  }
+
+  return participants;
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -304,6 +330,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         try {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
+          const threadParticipants = buildParticipants(
+            preparedState.conversation.messages,
+          );
           const reply = await deps.services.generateAssistantReply(userText, {
             assistant: {
               userName: botConfig.userName,
@@ -335,6 +364,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sandboxDependencyProfileHash:
                 preparedState.sandboxDependencyProfileHash,
             },
+            threadParticipants,
             onStatus: (status) => progress.setStatus(status),
             onTextDelta: (deltaText) => {
               if (explicitChannelPostIntent) {

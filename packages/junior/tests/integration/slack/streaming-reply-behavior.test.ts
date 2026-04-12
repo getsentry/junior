@@ -95,6 +95,38 @@ describe("Slack behavior: streaming replies", () => {
     expect(thread.posts).toEqual(["First part\n\nSecond part"]);
   });
 
+  it("does not rewrite mention-like text while streaming", async () => {
+    const output =
+      "Ask @alice to review @sentry/junior and see https://x.com/@alice";
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(output);
+            return {
+              text: output,
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006001.500" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-mentions",
+        text: "<@U_APP> continue",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream"]);
+    expect(thread.posts).toEqual([output]);
+  });
+
   it("keeps ack-only replies on the non-streamed post path", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
