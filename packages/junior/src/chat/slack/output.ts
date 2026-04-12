@@ -1,6 +1,5 @@
 import type { FileUpload, PostableMessage } from "chat";
 import { logWarn } from "@/chat/logging";
-import { lookupSlackUserIdByName } from "@/chat/slack/user";
 
 const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
@@ -57,101 +56,6 @@ export function ensureBlockSpacing(text: string): string {
   return result.join("\n");
 }
 
-/**
- * Resolve `@name` patterns in text to Slack `<@USERID>` entities.
- *
- * The postprocessor:
- * 1. Skips patterns inside inline code spans (`` `...` ``) or fenced code blocks (``` ``` ```)
- * 2. Skips patterns that look like email addresses (already have `@host` context)
- * 3. Skips patterns that are already proper Slack mention entities
- * 4. For each remaining `@name` candidate, attempts a name→ID lookup via the
- *    Slack `users.list` API (cached). Unresolvable names are left as-is.
- *
- * The known-participant map is consulted first (zero API cost) before falling
- * back to the full workspace lookup.
- */
-export async function resolveMentions(
-  text: string,
-  knownParticipants?: Map<string, string>,
-): Promise<string> {
-  // Pattern: @word or @first.last, not preceded by a word char (avoids emails)
-  // and not already inside a Slack entity like <@U...>
-  const mentionPattern = /(?<![<\w])@([\w][\w.-]*[\w]|[\w])/g;
-
-  // Build a set of character ranges that are inside code spans/blocks so we
-  // can skip mention resolution for those positions.
-  const codeRanges: Array<[number, number]> = [];
-  // Fenced code blocks: ```...``` (greedy across newlines)
-  const fencePattern = /```[\s\S]*?```/g;
-  // Inline code spans: `...` (single backtick, non-greedy, no newlines)
-  const inlineCodePattern = /`[^`\n]*`/g;
-  for (const m of text.matchAll(fencePattern)) {
-    codeRanges.push([m.index!, m.index! + m[0].length]);
-  }
-  for (const m of text.matchAll(inlineCodePattern)) {
-    codeRanges.push([m.index!, m.index! + m[0].length]);
-  }
-
-  const inCode = (pos: number): boolean =>
-    codeRanges.some(([start, end]) => pos >= start && pos < end);
-
-  const matches = [...text.matchAll(mentionPattern)].filter(
-    (m) => !inCode(m.index!),
-  );
-  if (matches.length === 0) {
-    return text;
-  }
-
-  // Collect unique names to resolve in parallel
-  const uniqueNames = [...new Set(matches.map((m) => m[1]))];
-  const resolvedIds = new Map<string, string>();
-
-  await Promise.all(
-    uniqueNames.map(async (name) => {
-      // Check known participants first (free) — exact match only to avoid
-      // resolving @al to "alex" or similar prefix collisions.
-      const normalizedName = name.toLowerCase().replace(/[\s.]/g, "");
-      for (const [participantName, userId] of knownParticipants ?? []) {
-        const normalizedParticipant = participantName
-          .toLowerCase()
-          .replace(/[\s.]/g, "");
-        if (normalizedParticipant === normalizedName) {
-          resolvedIds.set(name, userId);
-          return;
-        }
-      }
-
-      // Fall back to workspace lookup
-      const userId = await lookupSlackUserIdByName(name);
-      if (userId) {
-        resolvedIds.set(name, userId);
-      }
-    }),
-  );
-
-  if (resolvedIds.size === 0) {
-    return text;
-  }
-
-  // Replace only mentions that are not inside code ranges
-  let result = "";
-  let lastIndex = 0;
-  for (const m of [...text.matchAll(mentionPattern)]) {
-    const start = m.index!;
-    const end = start + m[0].length;
-    result += text.slice(lastIndex, start);
-    if (inCode(start)) {
-      result += m[0];
-    } else {
-      const userId = resolvedIds.get(m[1]);
-      result += userId ? `<@${userId}>` : m[0];
-    }
-    lastIndex = end;
-  }
-  result += text.slice(lastIndex);
-  return result;
-}
-
 function normalizeForSlack(text: string): string {
   let normalized = text.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "");
   normalized = ensureBlockSpacing(normalized);
@@ -159,11 +63,10 @@ function normalizeForSlack(text: string): string {
 }
 
 /** Normalize text for Slack and wrap it as a PostableMessage with optional file attachments. */
-export async function buildSlackOutputMessage(
+export function buildSlackOutputMessage(
   text: string,
   files?: FileUpload[],
-  knownParticipants?: Map<string, string>,
-): Promise<PostableMessage> {
+): PostableMessage {
   const normalized = normalizeForSlack(text);
   const fileCount = files?.length ?? 0;
 
@@ -191,10 +94,8 @@ export async function buildSlackOutputMessage(
     };
   }
 
-  const resolved = await resolveMentions(normalized, knownParticipants);
-
   return {
-    markdown: resolved,
+    markdown: normalized,
     files,
   };
 }

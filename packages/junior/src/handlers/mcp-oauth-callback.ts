@@ -69,8 +69,8 @@ function htmlResponse(kind: keyof typeof CALLBACK_PAGES): Response {
   return htmlCallbackResponse(page.title, page.message, page.status);
 }
 
-async function extractSlackText(text: string, files?: FileUpload[]): Promise<string> {
-  const message = await buildSlackOutputMessage(text, files);
+function extractSlackText(text: string, files?: FileUpload[]): string {
+  const message = buildSlackOutputMessage(text, files);
   if (
     typeof message === "object" &&
     message !== null &&
@@ -126,7 +126,7 @@ async function deliverReplyToThread(
   });
 
   if (shouldPostThreadReply) {
-    const text = await extractSlackText(
+    const text = extractSlackText(
       reply.text,
       attachFiles === "inline" ? replyFiles : undefined,
     );

@@ -123,37 +123,28 @@ interface ReplyExecutorDeps {
 }
 
 /**
- * Build participant data structures from known thread messages.
- * Returns both:
- * - `array`: objects with userId/userName/fullName for system prompt injection
- * - `map`: name→userId mapping for zero-cost mention resolution
- *
- * Both are derived in a single pass to avoid duplication.
+ * Build participant metadata from known thread messages for prompt injection.
  */
-function buildParticipants(messages: ConversationMessage[]): {
-  array: Array<{ userId?: string; userName?: string; fullName?: string }>;
-  map: Map<string, string>;
-} {
+function buildParticipants(
+  messages: ConversationMessage[],
+): Array<{ userId?: string; userName?: string; fullName?: string }> {
   const seen = new Set<string>();
-  const array: Array<{
+  const participants: Array<{
     userId?: string;
     userName?: string;
     fullName?: string;
   }> = [];
-  const map = new Map<string, string>();
 
   for (const message of messages) {
     const { userId, userName, fullName } = message.author ?? {};
     if (!userId) continue;
     if (!seen.has(userId)) {
       seen.add(userId);
-      array.push({ userId, userName, fullName });
+      participants.push({ userId, userName, fullName });
     }
-    if (userName) map.set(userName, userId);
-    if (fullName) map.set(fullName, userId);
   }
 
-  return { array, map };
+  return participants;
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -337,8 +328,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         try {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
-          const { array: threadParticipantsArray, map: knownParticipantsMap } =
-            buildParticipants(preparedState.conversation.messages);
+          const threadParticipants = buildParticipants(
+            preparedState.conversation.messages,
+          );
           const reply = await deps.services.generateAssistantReply(userText, {
             assistant: {
               userName: botConfig.userName,
@@ -370,7 +362,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sandboxDependencyProfileHash:
                 preparedState.sandboxDependencyProfileHash,
             },
-            threadParticipants: threadParticipantsArray,
+            threadParticipants,
             onStatus: (status) => progress.setStatus(status),
             onTextDelta: (deltaText) => {
               if (explicitChannelPostIntent) {
@@ -489,12 +481,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
-              const knownParticipants = knownParticipantsMap;
               const sent = await postThreadReply(
-                await buildSlackOutputMessage(
+                buildSlackOutputMessage(
                   reply.text,
                   resolvedAttachFiles === "inline" ? replyFiles : undefined,
-                  knownParticipants,
                 ),
                 "thread_reply",
               );
@@ -609,7 +599,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             replyFiles
           ) {
             await postThreadReply(
-              await buildSlackOutputMessage("", replyFiles),
+              buildSlackOutputMessage("", replyFiles),
               "thread_reply_files_followup",
             );
           }

@@ -394,12 +394,17 @@ export function buildSystemPrompt(params: {
               renderTag(
                 "thread-participants",
                 [
-                  "Known participants in this thread. Use these user IDs when mentioning people already in the conversation.",
+                  "Known participants in this thread. When you mention one of these people, use the provided Slack mention token exactly as `<@USERID>` and do not write a bare `@name` form.",
                   ...threadParticipants.map((p) => {
                     const parts: string[] = [];
-                    if (p.userId) parts.push(`user_id: ${escapeXml(p.userId)}`);
-                    if (p.userName) parts.push(`user_name: ${escapeXml(p.userName)}`);
-                    if (p.fullName) parts.push(`full_name: ${escapeXml(p.fullName)}`);
+                    if (p.userId) {
+                      parts.push(`user_id: ${escapeXml(p.userId)}`);
+                      parts.push(`slack_mention: <@${p.userId}>`);
+                    }
+                    if (p.userName)
+                      parts.push(`user_name: ${escapeXml(p.userName)}`);
+                    if (p.fullName)
+                      parts.push(`full_name: ${escapeXml(p.fullName)}`);
                     return `- ${parts.join(", ")}`;
                   }),
                 ].join("\n"),
