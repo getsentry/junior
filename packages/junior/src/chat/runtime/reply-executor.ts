@@ -137,7 +137,7 @@ function buildParticipants(
 
   for (const message of messages) {
     const { userId, userName, fullName } = message.author ?? {};
-    if (!userId) continue;
+    if (!userId || message.author?.isBot) continue;
     if (!seen.has(userId)) {
       seen.add(userId);
       participants.push({ userId, userName, fullName });
