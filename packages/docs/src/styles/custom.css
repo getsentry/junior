@@ -516,7 +516,8 @@ table {
   border-radius: var(--jr-radius);
   overflow: hidden;
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: auto;
   background: var(--jr-bg-raised);
   box-shadow: none;
