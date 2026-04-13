@@ -17,6 +17,7 @@ function getEditedMentionMessageId(messageTs: string): string {
 
 interface SlackMessageChangedEvent {
   type: "event_callback";
+  team_id?: string;
   event: {
     type: "message";
     subtype: "message_changed";
@@ -87,12 +88,14 @@ export function extractMessageChangedMention(
   const threadTs = event.message.thread_ts ?? messageTs;
   const userId = event.message.user ?? "unknown";
   const threadId = `slack:${channelId}:${threadTs}`;
+  const teamId = typeof body.team_id === "string" ? body.team_id : undefined;
 
   const raw: Record<string, unknown> = {
     channel: channelId,
     ts: messageTs,
     thread_ts: threadTs,
     user: userId,
+    ...(teamId ? { team_id: teamId } : {}),
   };
 
   const message = new Message({
