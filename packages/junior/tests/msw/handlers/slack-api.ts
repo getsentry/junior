@@ -5,6 +5,9 @@ import {
   canvasesEditOk,
   canvasesSectionsLookupOk,
   chatGetPermalinkOk,
+  chatStartStreamOk,
+  chatAppendStreamOk,
+  chatStopStreamOk,
   chatPostEphemeralOk,
   chatPostMessageOk,
   conversationsCanvasesCreateOk,
@@ -27,6 +30,9 @@ const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
 export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.threads.setStatus",
   "chat.postMessage",
+  "chat.startStream",
+  "chat.appendStream",
+  "chat.stopStream",
   "chat.postEphemeral",
   "chat.getPermalink",
   "views.publish",
@@ -175,6 +181,12 @@ function defaultSlackApiResponse(
       return { body: slackOk() };
     case "chat.postMessage":
       return { body: chatPostMessageOk() };
+    case "chat.startStream":
+      return { body: chatStartStreamOk() };
+    case "chat.appendStream":
+      return { body: chatAppendStreamOk() };
+    case "chat.stopStream":
+      return { body: chatStopStreamOk() };
     case "chat.postEphemeral":
       return { body: chatPostEphemeralOk() };
     case "chat.getPermalink":

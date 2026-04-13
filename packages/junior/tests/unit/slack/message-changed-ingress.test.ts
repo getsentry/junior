@@ -4,6 +4,7 @@ import { extractMessageChangedMention } from "@/chat/ingress/message-changed";
 
 const BOT_USER_ID = "U_BOT_TEST";
 const CHANNEL_ID = "C_CHAN";
+const TEAM_ID = "T_TEAM";
 const MESSAGE_TS = "1700000100.000";
 const THREAD_TS = "1700000000.000";
 const EDITED_MESSAGE_ID = `${MESSAGE_TS}:message_changed_mention`;
@@ -20,6 +21,7 @@ function makeEnvelope(overrides: {
 }): unknown {
   return {
     type: "event_callback",
+    team_id: TEAM_ID,
     event: {
       type: "message",
       subtype: "message_changed",
@@ -84,6 +86,7 @@ describe("extractMessageChangedMention", () => {
       },
       raw: {
         channel: CHANNEL_ID,
+        team_id: TEAM_ID,
         ts: MESSAGE_TS,
         thread_ts: THREAD_TS,
         user: "U_SENDER",

@@ -2,8 +2,11 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
+import type { SlackAdapter } from "@chat-adapter/slack";
 import type { Message } from "chat";
 import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
+import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
+import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import type { WaitUntilFn } from "@/handlers/types";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
@@ -38,6 +41,18 @@ async function flushWaitUntil(tasks: Array<Promise<unknown>>): Promise<void> {
 function collectWaitUntil(tasks: Array<Promise<unknown>>): WaitUntilFn {
   return (task) => {
     tasks.push(typeof task === "function" ? task() : task);
+  };
+}
+
+function makeDiagnostics() {
+  return {
+    assistantMessageCount: 1,
+    modelId: "fake-agent-model",
+    outcome: "success" as const,
+    toolCalls: [],
+    toolErrorCount: 0,
+    toolResultCount: 0,
+    usedPrimaryText: true,
   };
 }
 
@@ -163,6 +178,114 @@ describe("Slack behavior: message_changed webhook ingress", () => {
     expect((handledMessages[1]?.raw as { ts?: string }).ts).toBe(
       "1700000100.000100",
     );
+  });
+
+  it("streams an edited DM mention with the Slack recipient team metadata", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const bot = new JuniorChat<{ slack: SlackAdapter }>({
+      userName: "junior",
+      adapters: {
+        slack: createSlackAdapter({
+          botToken: "xoxb-test",
+          botUserId: BOT_USER_ID,
+          signingSecret: SIGNING_SECRET,
+        }),
+      },
+      state,
+    });
+    const slackRuntime = createSlackRuntime({
+      getSlackAdapter: () => bot.getAdapter("slack"),
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.("Hello world");
+            return {
+              text: "Hello world",
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+    const waitUntilTasks: Array<Promise<unknown>> = [];
+
+    bot.onDirectMessage((thread, message) =>
+      slackRuntime.handleNewMention(thread, message),
+    );
+
+    const editedBody = JSON.stringify({
+      ...slackEventsApiEnvelope({
+        eventType: "message",
+        channel: "D12345",
+        ts: "1700000100.000100",
+        text: "hello there",
+      }),
+      event: {
+        type: "message",
+        subtype: "message_changed",
+        channel: "D12345",
+        hidden: true,
+        message: {
+          type: "message",
+          user: "U123",
+          text: `<@${BOT_USER_ID}> hello there`,
+          ts: "1700000100.000100",
+        },
+        previous_message: {
+          type: "message",
+          user: "U123",
+          text: "hello there",
+          ts: "1700000100.000100",
+        },
+      },
+    });
+    const editedTimestamp = String(Math.floor(Date.now() / 1000));
+    const editedRequest = new Request(
+      "https://example.test/api/webhooks/slack",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-slack-request-timestamp": editedTimestamp,
+          "x-slack-signature": signSlackBody(editedBody, editedTimestamp),
+        },
+        body: editedBody,
+      },
+    );
+
+    const response = await handlePlatformWebhook(
+      editedRequest,
+      "slack",
+      collectWaitUntil(waitUntilTasks),
+      bot,
+    );
+    await flushWaitUntil(waitUntilTasks);
+
+    expect(response.status).toBe(200);
+    expect(getCapturedSlackApiCalls("chat.startStream")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "D12345",
+          thread_ts: "1700000100.000100",
+          recipient_user_id: "U123",
+          recipient_team_id: "T_TEST",
+        }),
+      }),
+    ]);
+    expect(getCapturedSlackApiCalls("chat.stopStream")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "D12345",
+          chunks: [
+            {
+              type: "markdown_text",
+              text: "Hello world",
+            },
+          ],
+        }),
+      }),
+    ]);
   });
 
   it("rejects forged edited mentions before any bot handler runs", async () => {
