@@ -3,8 +3,8 @@ title: Junior
 description: Production-ready docs for the Junior Slack bot runtime.
 template: splash
 hero:
-  title: '<span class="jr-home-mega-inline">Junior</span><span class="jr-home-headline">Slack thread in. <span class="jr-highlight">Useful context out.</span></span>'
-  tagline: "Junior is the intern you never knew you wanted."
+  title: '<span class="jr-home-mega-inline">Junior</span><span class="jr-home-headline">Your company''s tools, <span class="jr-highlight">inside Slack.</span></span>'
+  tagline: "Ask in a thread. Junior figures out the rest — pulling context from Sentry, GitHub, Linear, and whatever else you've connected."
   actions:
     - text: Get Started
       link: /start-here/quickstart/
@@ -12,87 +12,85 @@ hero:
 ---
 
 <div class="jr-home">
-<section class="slack-mock">
-  <header class="slack-mock-header">
-    <div class="slack-channel">
-      <strong>#incident-ops</strong>
+<section class="slk-window">
+  <header class="slk-header">
+    <div class="slk-header-left">
+      <svg class="slk-thread-icon" aria-hidden="true" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 5.5A2.5 2.5 0 014.5 3h11A2.5 2.5 0 0118 5.5v6a2.5 2.5 0 01-2.5 2.5H11l-3.5 3v-3H4.5A2.5 2.5 0 012 11.5v-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+      </svg>
+      <span class="slk-header-title">Thread</span>
     </div>
-    <div class="slack-meta">
-      <span>12:03 PM</span>
-      <span class="slack-dot" aria-hidden="true"></span>
-      <span>9 replies</span>
-    </div>
+    <span class="slk-header-channel"># incident-ops</span>
   </header>
 
-  <div class="slack-thread">
-    <article class="msg user">
-      <div class="msg-head">
-        <span class="avatar" aria-hidden="true">Y</span>
-        <span class="who">You</span>
-        <span class="when">12:03</span>
-      </div>
-      <div class="bubble">
-        <p>
-          Need context on the 5xx spike after deploy. Pull the likely cause and give me a rollback call if this is the
-          auth change.
-        </p>
-      </div>
-    </article>
+  <div class="slk-messages">
 
-    <article class="msg junior">
-      <div class="msg-head">
-        <span class="avatar" aria-hidden="true">J</span>
-        <span class="who">Junior</span>
-        <span class="when">12:03</span>
+    <div class="slk-msg">
+      <div class="slk-avatar slk-avatar-user" aria-hidden="true">DC</div>
+      <div class="slk-msg-body">
+        <div class="slk-msg-meta">
+          <span class="slk-name">David C.</span>
+          <span class="slk-time">12:03 PM</span>
+        </div>
+        <p class="slk-text"><span class="slk-mention slk-mention-user">@jr</span> need context on the 5xx spike after deploy. Pull the likely cause and give me a rollback call if this is the auth change.</p>
       </div>
-      <div class="bubble">
-        <p>
-          On it. I am pulling deploy diff, recent error groups, and queue callback failures for the last 30 min.
-        </p>
-      </div>
-    </article>
+    </div>
 
-    <p class="automation-note">automation: deployed commit mapped • suspect routes identified • rollback drafted</p>
+    <div class="slk-divider">
+      <span class="slk-divider-label">4 replies</span>
+    </div>
 
-    <article class="msg junior">
-      <div class="msg-head">
-        <span class="avatar" aria-hidden="true">J</span>
-        <span class="who">Junior</span>
-        <span class="when">12:04</span>
+    <div class="slk-msg">
+      <div class="slk-avatar slk-avatar-bot" aria-hidden="true">J</div>
+      <div class="slk-msg-body">
+        <div class="slk-msg-meta">
+          <span class="slk-name">Junior</span>
+          <span class="slk-app-badge">App</span>
+          <span class="slk-time">12:03 PM</span>
+        </div>
+        <p class="slk-text">On it. Pulling deploy diff, recent error groups, and queue callback failures for the last 30 min.</p>
+        <div class="slk-tool-call">
+          <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5v5h4.5L8 14.5v-5H3.5L8 1.5z" fill="currentColor"/></svg>
+          Queried Sentry error groups · Fetched deploy diff · Scanned queue callbacks
+        </div>
       </div>
-      <div class="bubble">
-        <p>
-          Found it. Error rate jumped 7x immediately after commit `9f4e2c` in auth middleware. 87% of failures are
-          `invalid_signature` from webhook verification.
-        </p>
-      </div>
-    </article>
+    </div>
 
-    <article class="msg user">
-      <div class="msg-head">
-        <span class="avatar" aria-hidden="true">Y</span>
-        <span class="who">You</span>
-        <span class="when">12:04</span>
+    <div class="slk-msg">
+      <div class="slk-avatar slk-avatar-bot" aria-hidden="true">J</div>
+      <div class="slk-msg-body">
+        <div class="slk-msg-meta">
+          <span class="slk-name">Junior</span>
+          <span class="slk-app-badge">App</span>
+          <span class="slk-time">12:04 PM</span>
+        </div>
+        <p class="slk-text">Found it. Error rate jumped 7x immediately after commit <code class="slk-code">9f4e2c</code> in auth middleware. 87% of failures are <code class="slk-code">invalid_signature</code> from webhook verification.</p>
       </div>
-      <div class="bubble">
-        <p>Roll it back and drop the status update text for #eng-incidents.</p>
-      </div>
-    </article>
+    </div>
 
-    <article class="msg junior">
-      <div class="msg-head">
-        <span class="avatar" aria-hidden="true">J</span>
-        <span class="who">Junior</span>
-        <span class="when">12:05</span>
+    <div class="slk-msg">
+      <div class="slk-avatar slk-avatar-user" aria-hidden="true">DC</div>
+      <div class="slk-msg-body">
+        <div class="slk-msg-meta">
+          <span class="slk-name">David C.</span>
+          <span class="slk-time">12:04 PM</span>
+        </div>
+        <p class="slk-text">Roll it back and drop the status update text for <span class="slk-mention">#eng-incidents</span>.</p>
       </div>
-      <div class="bubble">
-        <p>
-          Done. Rollback is live. Error rate is trending down. Draft posted:
-          “Rolled back auth middleware regression from `9f4e2c`; webhook 5xx recovering.”
-        </p>
+    </div>
+
+    <div class="slk-msg">
+      <div class="slk-avatar slk-avatar-bot" aria-hidden="true">J</div>
+      <div class="slk-msg-body">
+        <div class="slk-msg-meta">
+          <span class="slk-name">Junior</span>
+          <span class="slk-app-badge">App</span>
+          <span class="slk-time">12:05 PM</span>
+        </div>
+        <p class="slk-text">Done. Rollback is live. Error rate is trending down. Draft posted to <span class="slk-mention">#eng-incidents</span>: <em>"Rolled back auth middleware regression from <code class="slk-code">9f4e2c</code>; webhook 5xx recovering."</em></p>
       </div>
-    </article>
+    </div>
+
   </div>
-
 </section>
 </div>

@@ -7,12 +7,7 @@ title: "POST"
 
 > **POST**(`request`, `platform`, `waitUntil`): `Promise`\<`Response`\>
 
-Defined in: [handlers/webhooks.ts:19](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L19)
-
-Handles `POST /api/webhooks/:platform`.
-
-The router only resolves the platform and delegates to the adapter webhook
-implementation; request semantics stay owned by the adapter package.
+Defined in: [handlers/webhooks.ts:236](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L236)
 
 ## Parameters
 
