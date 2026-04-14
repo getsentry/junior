@@ -144,6 +144,23 @@ function isInterruptedVisibleReply(reply: {
   return reply.diagnostics.outcome === "provider_error";
 }
 
+function createSlackStreamDeltaNormalizer() {
+  let pendingCarriageReturn = false;
+
+  return (deltaText: string): string => {
+    let text = deltaText;
+    if (pendingCarriageReturn) {
+      text = `\r${text}`;
+      pendingCarriageReturn = false;
+    }
+    if (text.endsWith("\r")) {
+      text = text.slice(0, -1);
+      pendingCarriageReturn = true;
+    }
+    return text.replace(/\r\n?/g, "\n");
+  };
+}
+
 export function createReplyToThread(deps: ReplyExecutorDeps) {
   return async function replyToThread(
     thread: Thread,
@@ -275,6 +292,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let streamOverflowed = false;
         let beforeFirstResponsePostCalled = false;
         const continuationBudget = getSlackContinuationBudget();
+        const normalizeStreamDelta = createSlackStreamDeltaNormalizer();
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
             return;
@@ -316,35 +334,29 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           flushPendingStreamText();
         };
         const appendVisibleStreamDelta = (deltaText: string) => {
-          if (!deltaText) {
+          const normalizedDeltaText = normalizeStreamDelta(deltaText);
+          if (!normalizedDeltaText) {
             return;
           }
           if (streamOverflowed) {
-            overflowText += deltaText;
+            overflowText += normalizedDeltaText;
             return;
           }
 
-          const candidate = `${streamedVisibleText}${deltaText}`;
-          const { prefix } = takeSlackInlinePrefix(
+          const candidate = `${streamedVisibleText}${normalizedDeltaText}`;
+          const { prefix, rest } = takeSlackInlinePrefix(
             candidate,
             continuationBudget,
           );
-          if (prefix.length === candidate.length) {
-            const additional = candidate.slice(streamedVisibleText.length);
-            streamedVisibleText = prefix;
-            queueVisibleStreamText(additional);
-            return;
-          }
-
           const additional =
             prefix.length > streamedVisibleText.length
               ? prefix.slice(streamedVisibleText.length)
               : "";
           streamedVisibleText = prefix;
           queueVisibleStreamText(additional);
-          overflowText += candidate.slice(prefix.length);
-          streamOverflowed = overflowText.length > 0;
-          if (streamOverflowed) {
+          if (rest) {
+            overflowText += rest;
+            streamOverflowed = true;
             queueVisibleStreamText(getSlackContinuationMarker());
           }
         };

@@ -99,6 +99,37 @@ describe("Slack behavior: streaming replies", () => {
     expect(thread.posts).toEqual(["First part\n\nSecond part"]);
   });
 
+  it("normalizes CRLF text without forcing a continuation post", async () => {
+    const output = "First line\r\nSecond line";
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(output);
+            return {
+              text: output,
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006001.250" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-crlf",
+        text: "<@U_APP> continue",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream"]);
+    expect(thread.posts).toEqual(["First line\nSecond line"]);
+  });
+
   it("does not rewrite mention-like text while streaming", async () => {
     const output =
       "Ask @alice to review @sentry/junior and see https://x.com/@alice";

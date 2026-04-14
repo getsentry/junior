@@ -101,6 +101,21 @@ describe("splitSlackReplyText", () => {
     expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
   });
 
+  it("preserves every line when reserving continuation marker space", () => {
+    const longList = Array.from(
+      { length: slackOutputPolicy.maxInlineLines + 1 },
+      (_, i) => `- item ${i + 1}`,
+    ).join("\n");
+
+    const chunks = splitSlackReplyText(longList);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+    for (let i = 1; i <= slackOutputPolicy.maxInlineLines + 1; i++) {
+      expect(chunks.some((chunk) => chunk.includes(`- item ${i}`))).toBe(true);
+    }
+  });
+
   it("marks interrupted final replies explicitly", () => {
     const chunks = splitSlackReplyText("Partial output", {
       interrupted: true,

@@ -163,33 +163,6 @@ export function takeSlackInlinePrefix(
   };
 }
 
-function appendSlackSuffix(
-  text: string,
-  suffix: string,
-  maxChars = MAX_INLINE_CHARS,
-  maxLines = MAX_INLINE_LINES,
-): string {
-  if (!text) {
-    return suffix.trimStart();
-  }
-
-  let next = `${text}${suffix}`;
-  if (fitsInlineBudget(next, maxChars, maxLines)) {
-    return next;
-  }
-
-  let base = text.trimEnd();
-  while (base.length > 1) {
-    base = base.slice(0, -1).trimEnd();
-    next = `${base}${suffix}`;
-    if (fitsInlineBudget(next, maxChars, maxLines)) {
-      return next;
-    }
-  }
-
-  return text;
-}
-
 /**
  * Split a normalized Slack reply into multiple inline-safe thread messages.
  *
@@ -208,9 +181,24 @@ export function splitSlackReplyText(
   }
 
   const chunks: string[] = [];
+  const continuationBudget = reserveInlineBudgetForSuffix(CONTINUED_MARKER);
+  const finalBudget = options?.interrupted
+    ? reserveInlineBudgetForSuffix(INTERRUPTED_MARKER)
+    : null;
   let remaining = normalized;
   while (remaining) {
-    const { prefix, rest } = takeSlackInlinePrefix(remaining);
+    const fitsFinalChunk = finalBudget
+      ? fitsInlineBudget(remaining, finalBudget.maxChars, finalBudget.maxLines)
+      : fitsInlineBudget(remaining);
+    if (fitsFinalChunk) {
+      chunks.push(remaining);
+      break;
+    }
+
+    const { prefix, rest } = takeSlackInlinePrefix(
+      remaining,
+      continuationBudget,
+    );
     chunks.push(prefix);
     remaining = rest;
   }
@@ -222,10 +210,10 @@ export function splitSlackReplyText(
   return chunks.map((chunk, index) => {
     const isLast = index === chunks.length - 1;
     if (!isLast) {
-      return appendSlackSuffix(chunk, CONTINUED_MARKER);
+      return `${chunk}${CONTINUED_MARKER}`;
     }
     if (options?.interrupted) {
-      return appendSlackSuffix(chunk, INTERRUPTED_MARKER);
+      return `${chunk}${INTERRUPTED_MARKER}`;
     }
     return chunk;
   });
