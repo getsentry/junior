@@ -15,7 +15,9 @@ function createState(
   let turnCreatedCanvasId = options.turnCreatedCanvasId;
   return {
     artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: (patch) => Object.assign(artifactState, patch),
+    patchArtifactState: (patch) => {
+      Object.assign(artifactState, patch);
+    },
     getCurrentCanvasId: () => options.currentCanvasId,
     getTurnCreatedCanvasId: () => turnCreatedCanvasId,
     setTurnCreatedCanvasId: (canvasId: string) => {

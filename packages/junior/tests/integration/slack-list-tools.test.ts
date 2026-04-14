@@ -17,7 +17,9 @@ function createToolState(options: { currentListId?: string } = {}): ToolState {
 
   return {
     artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: (patch) => Object.assign(artifactState, patch),
+    patchArtifactState: (patch) => {
+      Object.assign(artifactState, patch);
+    },
     getCurrentCanvasId: () => undefined,
     getTurnCreatedCanvasId: () => turnCreatedCanvasId,
     setTurnCreatedCanvasId: (canvasId: string) => {

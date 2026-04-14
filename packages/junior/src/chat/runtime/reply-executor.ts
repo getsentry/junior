@@ -34,6 +34,7 @@ import {
   persistThreadState,
   mergeArtifactsState,
 } from "@/chat/runtime/thread-state";
+import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import {
   generateThreadTitle,
@@ -46,7 +47,8 @@ import {
 import { isDmChannel } from "@/chat/slack/client";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
-import type { ConversationMessage } from "@/chat/state/conversation";
+import type { TurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
+import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
@@ -66,6 +68,9 @@ export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
   generateThreadTitle: typeof generateThreadTitle;
   lookupSlackUser: typeof lookupSlackUser;
+  scheduleTurnTimeoutResume: (
+    request: TurnTimeoutResumeRequest,
+  ) => Promise<void>;
 }
 
 function getExecutionFailureReason(reply: {
@@ -121,31 +126,6 @@ interface ReplyExecutorDeps {
     };
   }) => Promise<PreparedTurnState>;
   services: ReplyExecutorServices;
-}
-
-/**
- * Build participant metadata from known thread messages for prompt injection.
- */
-function buildParticipants(
-  messages: ConversationMessage[],
-): Array<{ userId?: string; userName?: string; fullName?: string }> {
-  const seen = new Set<string>();
-  const participants: Array<{
-    userId?: string;
-    userName?: string;
-    fullName?: string;
-  }> = [];
-
-  for (const message of messages) {
-    const { userId, userName, fullName } = message.author ?? {};
-    if (!userId || message.author?.isBot) continue;
-    if (!seen.has(userId)) {
-      seen.add(userId);
-      participants.push({ userId, userName, fullName });
-    }
-  }
-
-  return participants;
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -330,7 +310,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         try {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
-          const threadParticipants = buildParticipants(
+          const threadParticipants = buildThreadParticipants(
             preparedState.conversation.messages,
           );
           const reply = await deps.services.generateAssistantReply(userText, {
@@ -363,6 +343,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               sandboxId: preparedState.sandboxId,
               sandboxDependencyProfileHash:
                 preparedState.sandboxDependencyProfileHash,
+            },
+            onSandboxAcquired: async (sandbox) => {
+              await persistThreadState(thread, {
+                sandboxId: sandbox.sandboxId,
+                sandboxDependencyProfileHash:
+                  sandbox.sandboxDependencyProfileHash,
+              });
+            },
+            onArtifactStateUpdated: async (artifacts) => {
+              await persistThreadState(thread, { artifacts });
             },
             threadParticipants,
             onStatus: (status) => progress.setStatus(status),
@@ -481,6 +471,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             "slackMessageAddReaction",
           );
 
+          // Final Slack delivery is part of turn success. We only mark the turn
+          // completed after the visible reply has been accepted by Slack.
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
               const sent = await postThreadReply(
@@ -606,10 +598,82 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
         } catch (error) {
-          shouldPersistFailureState = !isRetryableTurnError(
-            error,
-            "mcp_auth_resume",
-          );
+          if (isRetryableTurnError(error, "mcp_auth_resume")) {
+            shouldPersistFailureState = false;
+            throw error;
+          }
+
+          if (isRetryableTurnError(error, "turn_timeout_resume")) {
+            textStream.end();
+            const hasVisibleAssistantOutput = Boolean(streamedReplyPromise);
+            if (hasVisibleAssistantOutput) {
+              logWarn(
+                "agent_turn_timeout_resume_skipped_after_visible_output",
+                turnTraceContext,
+                messageTs ? { "messaging.message.id": messageTs } : {},
+                "Skipped automatic timeout resume because assistant text had already started streaming",
+              );
+            }
+
+            const conversationIdForResume = error.metadata?.conversationId;
+            const sessionIdForResume = error.metadata?.sessionId;
+            const checkpointVersion = error.metadata?.checkpointVersion;
+            const nextSliceId = error.metadata?.sliceId;
+            if (
+              !hasVisibleAssistantOutput &&
+              conversationIdForResume &&
+              sessionIdForResume &&
+              typeof checkpointVersion === "number" &&
+              canScheduleTurnTimeoutResume(nextSliceId)
+            ) {
+              try {
+                await deps.services.scheduleTurnTimeoutResume({
+                  conversationId: conversationIdForResume,
+                  sessionId: sessionIdForResume,
+                  expectedCheckpointVersion: checkpointVersion,
+                });
+                shouldPersistFailureState = false;
+                return;
+              } catch (scheduleError) {
+                logException(
+                  scheduleError,
+                  "agent_turn_timeout_resume_schedule_failed",
+                  turnTraceContext,
+                  {
+                    ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                    "app.ai.resume_checkpoint_version": checkpointVersion,
+                  },
+                  "Failed to schedule timeout resume callback",
+                );
+              }
+            } else if (
+              !hasVisibleAssistantOutput &&
+              conversationIdForResume &&
+              sessionIdForResume &&
+              typeof checkpointVersion === "number"
+            ) {
+              logWarn(
+                "agent_turn_timeout_resume_slice_limit_reached",
+                turnTraceContext,
+                {
+                  ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                  ...(typeof nextSliceId === "number"
+                    ? { "app.ai.resume_slice_id": nextSliceId }
+                    : {}),
+                },
+                "Skipped automatic timeout resume because the turn exceeded the slice limit",
+              );
+            } else {
+              logWarn(
+                "agent_turn_timeout_resume_metadata_missing",
+                turnTraceContext,
+                messageTs ? { "messaging.message.id": messageTs } : {},
+                "Timed-out turn could not be scheduled for resume because retry metadata was incomplete",
+              );
+            }
+          }
+
+          shouldPersistFailureState = true;
           throw error;
         } finally {
           textStream.end();

@@ -1,4 +1,4 @@
-import { Agent } from "@mariozechner/pi-agent-core";
+import { Agent, type AgentMessage } from "@mariozechner/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -48,6 +48,7 @@ import {
 } from "@/chat/pi/client";
 import {
   createSandboxExecutor,
+  type SandboxAcquiredState,
   type SandboxExecutor,
 } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -78,6 +79,7 @@ import {
   loadTurnCheckpoint,
   persistCompletedCheckpoint,
   persistAuthPauseCheckpoint,
+  persistTimeoutCheckpoint,
 } from "@/chat/services/turn-checkpoint";
 import {
   createMcpAuthOrchestration,
@@ -123,6 +125,10 @@ export interface ReplyRequestContext {
     sandboxId?: string;
     sandboxDependencyProfileHash?: string;
   };
+  onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
+  onArtifactStateUpdated?: (
+    artifactState: ThreadArtifactsState,
+  ) => void | Promise<void>;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
   };
@@ -140,11 +146,6 @@ export interface ReplyRequestContext {
 }
 
 let startupDiscoveryLogged = false;
-
-type ResumablePiAgent = Agent & {
-  continue?: () => Promise<unknown>;
-  replaceMessages?: (messages: unknown[]) => Promise<void> | void;
-};
 
 /** Convert active MCP tools into ToolDefinition entries for first-class registration. */
 function mcpToolsToDefinitions(
@@ -164,26 +165,6 @@ function mcpToolsToDefinitions(
   return defs;
 }
 
-async function maybeReplaceAgentMessages(
-  agent: Agent,
-  messages: unknown[],
-): Promise<boolean> {
-  const resumable = agent as ResumablePiAgent;
-  if (typeof resumable.replaceMessages !== "function") {
-    return false;
-  }
-  await resumable.replaceMessages(messages);
-  return true;
-}
-
-async function runAgentContinuation(agent: Agent): Promise<unknown> {
-  const resumable = agent as ResumablePiAgent;
-  if (typeof resumable.continue !== "function") {
-    throw new Error("Agent continuation is unavailable in this runtime");
-  }
-  return await resumable.continue();
-}
-
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
   messageText: string,
@@ -192,13 +173,14 @@ export async function generateAssistantReply(
   let timeoutResumeConversationId: string | undefined;
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
-  let timeoutResumeMessages: unknown[] = [];
+  let timeoutResumeMessages: AgentMessage[] = [];
   let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
   let loadedSkillNamesForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
   let sandboxExecutor: SandboxExecutor | undefined;
+  let timedOut = false;
 
   const getSandboxMetadata = () =>
     sandboxExecutor
@@ -254,9 +236,8 @@ export async function generateAssistantReply(
         "Discovered startup SOUL/skills/plugins",
       );
     }
-    const configurationValues: Record<string, unknown> = {
-      ...(context.configuration ?? {}),
-    };
+    let baseInstructions = "";
+    let configurationValues: Record<string, unknown>;
     const userInput = messageText;
     if (shouldTrace) {
       logInfo(
@@ -291,6 +272,13 @@ export async function generateAssistantReply(
     timeoutResumeConversationId = sessionConversationId;
     timeoutResumeSessionId = sessionId;
     timeoutResumeSliceId = currentSliceId;
+    const persistedConfigurationValues = context.channelConfiguration
+      ? await context.channelConfiguration.resolveValues()
+      : {};
+    configurationValues = {
+      ...(context.configuration ?? {}),
+      ...persistedConfigurationValues,
+    };
 
     // ── Sandbox ──────────────────────────────────────────────────────
     const capabilityRuntime = createSkillCapabilityRuntime({
@@ -308,6 +296,12 @@ export async function generateAssistantReply(
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
       onStatus: context.onStatus,
+      onSandboxAcquired: async (sandbox) => {
+        lastKnownSandboxId = sandbox.sandboxId;
+        lastKnownSandboxDependencyProfileHash =
+          sandbox.sandboxDependencyProfileHash;
+        await context.onSandboxAcquired?.(sandbox);
+      },
       runBashCustomCommand: async (command) => {
         const result = await maybeExecuteJrRpcCustomCommand(command, {
           capabilityRuntime,
@@ -481,8 +475,14 @@ export async function generateAssistantReply(
         onGeneratedFiles: (files) => {
           replyFiles.push(...files);
         },
-        onArtifactStatePatch: (patch) => {
+        onArtifactStatePatch: async (patch) => {
           Object.assign(artifactStatePatch, patch);
+          await context.onArtifactStateUpdated?.(
+            mergeArtifactsState(
+              context.artifactState ?? {},
+              artifactStatePatch,
+            ),
+          );
         },
         toolOverrides: context.toolOverrides,
         onSkillLoaded: async (loadedSkill) => {
@@ -541,7 +541,7 @@ export async function generateAssistantReply(
     const activeToolSummaries = turnMcpToolManager
       .getActiveToolCatalog(activeSkills)
       .map(toExposedToolSummary);
-    const baseInstructions = buildSystemPrompt({
+    baseInstructions = buildSystemPrompt({
       availableSkills,
       activeSkills,
       activeTools: activeToolSummaries,
@@ -685,20 +685,12 @@ export async function generateAssistantReply(
     });
 
     let beforeMessageCount = agent.state.messages.length;
-    let newMessages: unknown[] = [];
+    let newMessages: AgentMessage[] = [];
     let completedAssistantTurn = false;
 
     try {
       if (resumedFromCheckpoint) {
-        const didReplace = await maybeReplaceAgentMessages(
-          agent,
-          existingCheckpoint!.piMessages,
-        );
-        if (!didReplace) {
-          throw new Error(
-            "Agent session resume requested but replaceMessages is unavailable",
-          );
-        }
+        agent.replaceMessages(existingCheckpoint!.piMessages);
       }
       beforeMessageCount = agent.state.messages.length;
 
@@ -709,7 +701,7 @@ export async function generateAssistantReply(
         async () => {
           let promptResult: unknown;
           const promptPromise = resumedFromCheckpoint
-            ? runAgentContinuation(agent)
+            ? agent.continue()
             : agent.prompt({
                 role: "user",
                 content: userContentParts,
@@ -717,10 +709,9 @@ export async function generateAssistantReply(
               });
 
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
-          let didTimeout = false;
           const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
-              didTimeout = true;
+              timedOut = true;
               agent.abort();
               reject(
                 new Error(
@@ -733,7 +724,7 @@ export async function generateAssistantReply(
           try {
             promptResult = await Promise.race([promptPromise, timeoutPromise]);
           } catch (error) {
-            if (didTimeout) {
+            if (timedOut) {
               logWarn(
                 "agent_turn_timeout",
                 {},
@@ -748,10 +739,10 @@ export async function generateAssistantReply(
               // Wait for promptPromise to settle before snapshotting messages
               // — the agent loop may still be mutating state.
               await promptPromise.catch(() => {});
-              timeoutResumeMessages = [...(agent.state.messages as unknown[])];
+              timeoutResumeMessages = [...agent.state.messages];
             }
             if (mcpAuth.getPendingPause()) {
-              timeoutResumeMessages = [...(agent.state.messages as unknown[])];
+              timeoutResumeMessages = [...agent.state.messages];
               throw mcpAuth.getPendingPause()!;
             }
             throw error;
@@ -761,12 +752,10 @@ export async function generateAssistantReply(
             }
           }
 
-          newMessages = agent.state.messages.slice(
-            beforeMessageCount,
-          ) as unknown[];
+          newMessages = agent.state.messages.slice(beforeMessageCount);
           completedAssistantTurn = hasCompletedAssistantTurn(newMessages);
           if (mcpAuth.getPendingPause() && !completedAssistantTurn) {
-            timeoutResumeMessages = [...(agent.state.messages as unknown[])];
+            timeoutResumeMessages = [...agent.state.messages];
             throw mcpAuth.getPendingPause()!;
           }
           const outputMessages = newMessages.filter(isAssistantMessage);
@@ -811,7 +800,7 @@ export async function generateAssistantReply(
         conversationId: sessionConversationId,
         sessionId,
         sliceId: currentSliceId,
-        allMessages: agent.state.messages as unknown[],
+        allMessages: agent.state.messages,
         loadedSkillNames: activeSkills.map((skill) => skill.name),
       });
     }
@@ -834,6 +823,37 @@ export async function generateAssistantReply(
       assistantUserName: context.assistant?.userName,
     });
   } catch (error) {
+    if (timedOut && timeoutResumeConversationId && timeoutResumeSessionId) {
+      const checkpoint = await persistTimeoutCheckpoint({
+        conversationId: timeoutResumeConversationId,
+        sessionId: timeoutResumeSessionId,
+        currentSliceId: timeoutResumeSliceId,
+        messages: timeoutResumeMessages,
+        loadedSkillNames: loadedSkillNamesForResume,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        logContext: {
+          threadId: context.correlation?.threadId,
+          requesterId: context.correlation?.requesterId,
+          channelId: context.correlation?.channelId,
+          runId: context.correlation?.runId,
+          assistantUserName: context.assistant?.userName,
+          modelId: botConfig.modelId,
+        },
+      });
+      if (checkpoint) {
+        throw new RetryableTurnError(
+          "turn_timeout_resume",
+          `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${checkpoint.sliceId} version=${checkpoint.checkpointVersion}`,
+          {
+            conversationId: timeoutResumeConversationId,
+            sessionId: timeoutResumeSessionId,
+            sliceId: checkpoint.sliceId,
+            checkpointVersion: checkpoint.checkpointVersion,
+          },
+        );
+      }
+    }
+
     // ── MCP auth pause → checkpoint and retry ────────────────────────
     if (
       error instanceof McpAuthorizationPauseError &&
@@ -859,6 +879,11 @@ export async function generateAssistantReply(
       throw new RetryableTurnError(
         "mcp_auth_resume",
         `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,
+        {
+          conversationId: timeoutResumeConversationId,
+          sessionId: timeoutResumeSessionId,
+          sliceId: nextSliceId,
+        },
       );
     }
 

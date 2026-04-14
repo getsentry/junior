@@ -43,6 +43,11 @@ export interface BashCustomCommandResult {
   stderr_truncated: boolean;
 }
 
+export interface SandboxAcquiredState {
+  sandboxId: string;
+  sandboxDependencyProfileHash?: string;
+}
+
 export interface SandboxExecutor {
   configureSkills(skills: SkillMetadata[]): void;
   configureReferenceFiles(files: string[]): void;
@@ -120,6 +125,7 @@ export function createSandboxExecutor(options?: {
   timeoutMs?: number;
   traceContext?: LogContext;
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+  onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,
   ) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
@@ -133,6 +139,7 @@ export function createSandboxExecutor(options?: {
     timeoutMs: options?.timeoutMs,
     traceContext,
     onStatus: options?.onStatus,
+    onSandboxAcquired: options?.onSandboxAcquired,
   });
 
   const withSandboxSpan = <T>(

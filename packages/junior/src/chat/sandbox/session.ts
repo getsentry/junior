@@ -212,6 +212,10 @@ export function createSandboxSessionManager(options?: {
   timeoutMs?: number;
   traceContext?: LogContext;
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+  onSandboxAcquired?: (sandbox: {
+    sandboxId: string;
+    sandboxDependencyProfileHash?: string;
+  }) => void | Promise<void>;
 }): SandboxSessionManager {
   let sandbox: Sandbox | null = null;
   let sandboxIdHint = options?.sandboxId;
@@ -265,10 +269,16 @@ export function createSandboxSessionManager(options?: {
     toolExecutors = undefined;
   };
 
-  const rememberSandbox = (nextSandbox: Sandbox): Sandbox => {
+  const rememberSandbox = async (nextSandbox: Sandbox): Promise<Sandbox> => {
     sandbox = nextSandbox;
     sandboxIdHint = nextSandbox.sandboxId;
     toolExecutors = undefined;
+    await options?.onSandboxAcquired?.({
+      sandboxId: nextSandbox.sandboxId,
+      ...(dependencyProfileHash
+        ? { sandboxDependencyProfileHash: dependencyProfileHash }
+        : {}),
+    });
     return nextSandbox;
   };
 
@@ -501,7 +511,7 @@ export function createSandboxSessionManager(options?: {
       return failSetup(error);
     }
 
-    return rememberSandbox(createdSandbox);
+    return await rememberSandbox(createdSandbox);
   };
 
   const discardHintIfProfileChanged = (): void => {
@@ -573,7 +583,7 @@ export function createSandboxSessionManager(options?: {
 
     try {
       await syncSkills(hintedSandbox);
-      return rememberSandbox(hintedSandbox);
+      return await rememberSandbox(hintedSandbox);
     } catch (error) {
       if (isSandboxUnavailableError(error)) {
         return await recreateUnavailableSandbox("id_hint");

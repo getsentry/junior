@@ -88,7 +88,7 @@ export function createSlackCanvasCreateTool(
         channelId: targetChannelId,
       });
       state.setTurnCreatedCanvasId(created.canvasId);
-      state.patchArtifactState({
+      await state.patchArtifactState({
         lastCanvasId: created.canvasId,
         lastCanvasUrl: created.permalink,
         recentCanvases: mergeRecentCanvases(
@@ -210,7 +210,7 @@ export function createSlackCanvasUpdateTool(
         operation: resolvedOperation,
         sectionId,
       });
-      state.patchArtifactState({ lastCanvasId: targetCanvasId });
+      await state.patchArtifactState({ lastCanvasId: targetCanvasId });
 
       const response = {
         ok: true,

@@ -1,12 +1,23 @@
-import { describe, expect, it } from "vitest";
-import { resumeAuthorizedRequest } from "@/handlers/oauth-resume";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 describe("oauth resume slack integration", () => {
+  beforeEach(async () => {
+    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    vi.resetModules();
+    await disconnectStateAdapter();
+  });
+
+  afterEach(async () => {
+    await disconnectStateAdapter();
+    delete process.env.JUNIOR_STATE_ADAPTER;
+  });
+
   it("posts resumed status updates through the Slack MSW harness", async () => {
+    const { resumeAuthorizedRequest } = await import("@/handlers/oauth-resume");
     await resumeAuthorizedRequest({
       messageText: "What budget deadline did I mention earlier?",
-      requesterUserId: "U123",
       provider: "eval-auth",
       channelId: "C123",
       threadTs: "1700000000.001",
@@ -14,6 +25,9 @@ describe("oauth resume slack integration", () => {
         "Your eval-auth MCP access is now connected. Continuing the original request...",
       failureText:
         "MCP authorization completed, but resuming the request failed. Please retry the original command.",
+      replyContext: {
+        requester: { userId: "U123" },
+      },
       generateReply: async () =>
         ({
           text: "The budget deadline you mentioned earlier was Friday.",

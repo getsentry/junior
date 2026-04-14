@@ -1,5 +1,6 @@
 import { completeObject, completeText } from "@/chat/pi/client";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
+import { scheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import {
   createConversationMemoryService,
   type ConversationMemoryDeps,
@@ -57,6 +58,9 @@ export function createJuniorRuntimeServices(
         generateAssistantReplyImpl,
       lookupSlackUser:
         overrides.replyExecutor?.lookupSlackUser ?? lookupSlackUser,
+      scheduleTurnTimeoutResume:
+        overrides.replyExecutor?.scheduleTurnTimeoutResume ??
+        scheduleTurnTimeoutResume,
       generateThreadTitle: conversationMemory.generateThreadTitle,
     },
     subscribedReplyPolicy: createSubscribedReplyPolicy({

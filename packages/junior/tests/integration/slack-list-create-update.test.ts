@@ -26,7 +26,9 @@ function createToolState(
 
   return {
     artifactState: artifactState as ToolState["artifactState"],
-    patchArtifactState: (patch) => Object.assign(artifactState, patch),
+    patchArtifactState: (patch) => {
+      Object.assign(artifactState, patch);
+    },
     getCurrentCanvasId: () => undefined,
     getTurnCreatedCanvasId: () => undefined,
     setTurnCreatedCanvasId: () => undefined,

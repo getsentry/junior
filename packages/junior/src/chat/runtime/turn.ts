@@ -16,17 +16,30 @@ export function buildDeterministicTurnId(messageId: string): string {
 // Turn errors
 // ---------------------------------------------------------------------------
 
-export type RetryableTurnReason = "mcp_auth_resume";
+export type RetryableTurnReason = "mcp_auth_resume" | "turn_timeout_resume";
+
+export interface RetryableTurnMetadata {
+  checkpointVersion?: number;
+  conversationId?: string;
+  sessionId?: string;
+  sliceId?: number;
+}
 
 /** Error indicating the turn can be retried (timeout or auth pause). */
 export class RetryableTurnError extends Error {
   readonly code = "retryable_turn";
+  readonly metadata?: RetryableTurnMetadata;
   readonly reason: RetryableTurnReason;
 
-  constructor(reason: RetryableTurnReason, message: string) {
+  constructor(
+    reason: RetryableTurnReason,
+    message: string,
+    metadata?: RetryableTurnMetadata,
+  ) {
     super(message);
     this.name = "RetryableTurnError";
     this.reason = reason;
+    this.metadata = metadata;
   }
 }
 
@@ -57,7 +70,10 @@ export function startActiveTurn(args: {
   args.updateConversationStats(args.conversation);
 }
 
-/** Mark a turn as completed and clear the active turn slot. */
+/**
+ * Mark a turn as completed after the runtime has durably accepted the final
+ * user-visible reply for delivery.
+ */
 export function markTurnCompleted(args: {
   conversation: ThreadConversationState;
   nowMs: number;
@@ -68,7 +84,10 @@ export function markTurnCompleted(args: {
   args.updateConversationStats(args.conversation);
 }
 
-/** Mark a turn as failed, clear the active slot, and annotate the user message. */
+/**
+ * Mark a turn as failed when execution or final user-visible reply delivery
+ * cannot be completed.
+ */
 export function markTurnFailed(args: {
   conversation: ThreadConversationState;
   nowMs: number;

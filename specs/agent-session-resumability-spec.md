@@ -3,13 +3,14 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-03-19
+- Last Edited: 2026-04-13
 
 ## Changelog
 
 - 2026-03-05: Initial canonical contract for timeout-safe multi-slice assistant execution with Pi in serverless runtimes.
 - 2026-03-13: Added auth-driven resume reason and checkpointed dynamic tool state for MCP-backed turns.
 - 2026-03-19: Simplified auth resume contract so resumed slices always use `continue()` after trimming trailing uncommitted assistant messages at the auth pause boundary.
+- 2026-04-13: Aligned the spec with the current implementation: signed internal timeout-resume callbacks, eager thread-state persistence for sandbox/artifact state, and no automatic resume after visible assistant output has started.
 
 ## Status
 
@@ -24,7 +25,8 @@ Define how a single assistant turn is split into resumable execution slices so s
 - Session/slice lifecycle for one assistant turn.
 - Durable checkpoint schema at safe resume boundaries.
 - Pi replay/continue contract (`replaceMessages` + `continue`) across slices.
-- Queue, lease, and idempotency contracts for serverless orchestration.
+- Signed internal callback contract for timeout continuation.
+- Separation between turn-session checkpoints and durable thread state.
 - Failure recovery and observability requirements.
 
 ## Non-Goals
@@ -33,6 +35,8 @@ Define how a single assistant turn is split into resumable execution slices so s
 - Backward compatibility with legacy `inflight_partial` state.
 - Replacing existing tool implementations or Slack transport UX.
 - Multi-turn planning policies (this spec covers one assistant turn/session at a time).
+- A generic queue/lease/fencing workflow runtime.
+- Reconciling or rewriting partially streamed Slack assistant output after timeout.
 
 ## Contracts
 
@@ -42,24 +46,35 @@ Define how a single assistant turn is split into resumable execution slices so s
 - `session_id`: Stable identity for one assistant turn execution attempt.
 - `slice_id`: Monotonic integer starting at `1` for each resumed execution chunk in the same session.
 - `checkpoint_version`: Monotonic integer incremented on every committed checkpoint write.
+- `expected_checkpoint_version`: Version token carried by timeout-resume callbacks so stale callbacks can be dropped.
 
-A conversation can have multiple sessions over time, but only one active session may hold a lease at once.
+A conversation can have multiple sessions over time. Each checkpoint version identifies one safe resume boundary for one session.
+
+### Runtime State Partition
+
+- The turn-session checkpoint store is for Pi transcript state and resume metadata only.
+- Durable thread state is the canonical home for mutable turn-local runtime state that can change mid-slice:
+  - artifact state (for example active canvas/list context)
+  - sandbox identity and dependency-profile hash
+  - conversation/thread state and user/assistant message history
+- Channel configuration is reloaded from the canonical state/configuration services on resume, not copied into the checkpoint payload.
+- Sandbox and artifact state must be persisted eagerly as they change so the next slice can rebuild the same environment without depending on successful turn completion.
 
 ### Session States
 
-- `running`: A worker currently owns the lease and executes a slice.
-- `awaiting_resume`: Slice exited at a safe boundary and a continuation must run.
-- `completed`: Assistant turn finished and terminal output is committed.
-- `failed`: Terminal unrecoverable failure (manual/operator intervention or hard policy limit).
+- The checkpoint schema supports `running | awaiting_resume | completed | failed`.
+- The current runtime writes:
+  - `awaiting_resume` for timeout/auth safe-boundary checkpoints
+  - `completed` when a turn finishes successfully
+- Terminal user-visible failure is currently reflected in conversation/thread state. The timeout-resume implementation does not rely on a `failed` checkpoint write.
 
 Valid transitions:
 
-1. `running -> awaiting_resume`
-2. `running -> completed`
-3. `running -> failed`
-4. `awaiting_resume -> running`
+1. `awaiting_resume -> completed`
+2. `awaiting_resume -> awaiting_resume` (another timeout/auth boundary after a resumed slice)
+3. `completed` is terminal
 
-No other transitions are valid.
+The implementation does not currently persist a `running` lease state between slices.
 
 ### Safe Resume Boundary Contract
 
@@ -83,13 +98,24 @@ Each checkpoint must include:
 - `slice_id`
 - `checkpoint_version`
 - `pi_messages`: Canonical message list to replay into Pi.
-- `tool_call_log`: Ordered committed tool calls and results.
-- `transcript_log`: Ordered committed user/assistant visible messages.
 - `state`: one of `running|awaiting_resume|completed|failed`.
-- `resume_reason`: `timeout|auth|preempted|retry|operator` (when `awaiting_resume`).
+- `updated_at_ms`
+
+Optional checkpoint fields:
+
 - `loaded_skill_names`: Active skills that must be restored before resume when tool availability depends on loaded skills.
-- `deadline_at`: hard deadline for the current slice.
-- `updated_at`
+- `resume_reason`: `timeout|auth` (when `awaiting_resume`).
+- `resumed_from_slice_id`
+- `error_message`
+
+The checkpoint does not store:
+
+- artifact state
+- sandbox identity
+- channel configuration values
+- a durable tool-call log
+- a separate visible transcript log
+- per-slice deadline metadata
 
 `inflight_partial` is not part of the checkpoint schema.
 
@@ -103,92 +129,115 @@ For slice `n+1`, runtime must:
 4. Call `replaceMessages(checkpoint.pi_messages)`.
 5. Resume generation by calling `continue()` to resume generation/tool loop.
 
-For auth-driven pauses, the checkpoint written at the pause boundary must trim any trailing uncommitted assistant-only messages so the restored Pi history is resumable with `continue()`.
+For auth-driven pauses and timeout checkpoints, the checkpoint written at the pause boundary must trim any trailing uncommitted assistant-only messages so the restored Pi history is resumable with `continue()`.
 
 If the previous slice timed out after producing uncommitted partial assistant text, that text may be regenerated in the next slice. User-visible output must only include committed transcript content.
 
-### Slice Deadline And Continuation Contract
+### Slice Deadline And Timeout Checkpoint Contract
 
-- Every slice has:
-  - `soft_deadline_ms`: stop at next safe boundary and checkpoint.
-  - `hard_deadline_ms`: process-level timeout guard.
-- On soft deadline hit at a safe boundary:
-  1. Commit checkpoint with `state=awaiting_resume` and incremented `slice_id` for next run.
-  2. Enqueue continuation task with `(conversation_id, session_id, expected_checkpoint_version)`.
-  3. Release lease.
+- Slice execution is bounded by:
+  - `AGENT_TURN_TIMEOUT_MS` inside `generateAssistantReply(...)`
+  - the platform/function max duration outside the agent loop
+- On timeout:
+  1. Abort the Pi agent and wait for the in-flight prompt/continue call to settle before snapshotting Pi messages.
+  2. If session context exists and a safe boundary can be materialized, commit a timeout checkpoint with:
+     - `state=awaiting_resume`
+     - incremented `slice_id`
+     - incremented `checkpoint_version`
+     - `resume_reason=timeout`
+     - `resumed_from_slice_id=<previous slice>`
+  3. Throw a retryable timeout error carrying `conversation_id`, `session_id`, `slice_id`, and `checkpoint_version`.
+  4. If timeout checkpoint persistence fails, fall back to normal non-resumable turn failure behavior.
 
-### Lease And Concurrency Contract
+### Automatic Continuation Contract
 
-- Lease key is `(conversation_id, session_id)`.
-- Lease must include a fencing token (monotonic lease epoch).
-- Only lease holder with current fencing token may commit checkpoint updates.
-- Concurrent worker without valid lease must exit without side effects.
+- Automatic timeout continuation is best-effort and currently uses a signed internal HTTP callback, not a generic queue/lease system.
+- A timeout checkpoint may be auto-scheduled only when no assistant text has been made visible to the user for the current turn.
+- Once visible assistant output has started streaming or posting, the runtime must not auto-resume that turn or attempt to rewrite/reconcile the partial output.
+- In that case, the last safe checkpoint may still exist for inspection or operator-driven recovery, but the user-visible turn is allowed to fail.
 
-### Queue Contract
+### Internal Timeout-Resume Callback Contract
 
-Continuation enqueue payload:
+The timeout-resume callback payload is:
 
 - `conversation_id`
 - `session_id`
-- `resume_from_slice_id`
 - `expected_checkpoint_version`
-- `enqueued_at`
-- `attempt`
 
-Queue consumers must reject stale messages where `expected_checkpoint_version` is older than durable checkpoint version.
+The callback must:
+
+1. Be authenticated with an HMAC signature over the request body plus timestamp.
+2. Be rejected when the signature is invalid or too old.
+3. Load the checkpoint for `(conversation_id, session_id)`.
+4. Exit without work when:
+   - no checkpoint exists
+   - `state !== awaiting_resume`
+   - `resume_reason !== timeout`
+   - `checkpoint_version !== expected_checkpoint_version`
+5. Acquire the same per-thread state-adapter lock used by live turn execution; if another worker already owns it, exit without mutating state.
+6. Rebuild turn runtime state from durable thread/configuration state:
+   - user message
+   - conversation context
+   - artifact state
+   - sandbox identity
+   - channel configuration
+7. Restore Pi messages with `replaceMessages(...)` and resume with `continue()`.
+8. If the resumed slice times out again before visible output, schedule a new callback carrying the new `checkpoint_version`.
 
 ### Conversation Flow
 
 1. User message starts a new `session_id` under `conversation_id`.
-2. Worker acquires lease and runs slice `1`.
-3. If turn finishes, commit `completed` and release lease.
-4. If time budget is reached at safe boundary, commit `awaiting_resume`, enqueue continuation, release lease.
-5. Next worker acquires lease, validates checkpoint version, restores Pi messages, calls `continue()`, and runs next slice.
-6. Repeat until `completed` or `failed`.
-
-This loop allows unbounded slice count for long-running turns.
+2. Slice `1` runs and eagerly persists sandbox/artifact state as those values change.
+3. If the turn finishes, commit `completed` and persist final thread state/output.
+4. If MCP auth pauses at a safe boundary, commit `awaiting_resume` with `resume_reason=auth`; the OAuth callback path later restores Pi state and resumes.
+5. If timeout is reached before any assistant text is visible, commit `awaiting_resume` with `resume_reason=timeout` and schedule the signed internal timeout-resume callback.
+6. The timeout-resume handler validates `expected_checkpoint_version`, rebuilds durable runtime state, restores Pi messages, and calls `continue()`.
+7. If timeout happens after visible assistant output begins, keep the timeout checkpoint but do not auto-schedule continuation.
 
 ## Failure Model
 
-1. Worker crash before checkpoint commit: no new boundary exists; next run resumes from previous committed checkpoint.
-2. Crash after checkpoint commit but before enqueue: sweeper detects `awaiting_resume` sessions without queued task and enqueues continuation.
-3. Duplicate queue delivery: lease + checkpoint version check make continuation idempotent.
-4. Stale worker commit attempt: fencing token mismatch; commit rejected.
-5. Repeated slice timeout without progress: mark `failed` after policy limit (`max_slices` or `max_wall_time_ms`).
+1. Timeout or crash before checkpoint commit: no new boundary exists; the system can only rely on whatever thread state had already been eagerly persisted.
+2. Checkpoint commit succeeds but the timeout-resume callback is never sent or delivered: there is no sweeper today; continuation requires another explicit callback or operator intervention.
+3. Stale timeout-resume callbacks with an older `expected_checkpoint_version` are dropped without doing work.
+4. Duplicate concurrent callbacks for the same thread are serialized by the shared per-thread state-adapter lock, but there is no delayed retry queue if a callback loses the race for that lock.
+5. Timeout after visible assistant output begins: automatic continuation is skipped to avoid duplicate/corrupt user-visible output.
+6. Repeated resumed timeouts before visible output may produce further `awaiting_resume` checkpoints with incremented `slice_id` and `checkpoint_version`.
 
 ## Observability
 
-Required events:
+Required log events/diagnostics:
 
-- `agent.session.started`
-- `agent.slice.started`
-- `agent.slice.checkpointed`
-- `agent.slice.resumed`
-- `agent.session.completed`
-- `agent.session.failed`
-- `agent.session.stale_message_dropped`
+- `agent_turn_timeout`
+- `agent_turn_timeout_resume_checkpoint_failed`
+- `agent_turn_timeout_resume_schedule_failed`
+- `agent_turn_timeout_resume_skipped_after_visible_output`
+- `timeout_resume_failed`
+- `timeout_resume_handler_failed`
 
-Required attributes on slice/session events when available:
+Required attributes when available:
 
+- `gen_ai.provider.name`
+- `gen_ai.operation.name`
+- `gen_ai.request.model`
+- `app.ai.turn_timeout_ms`
+- `app.ai.resume_conversation_id`
+- `app.ai.resume_session_id`
+- `app.ai.resume_from_slice_id`
+- `app.ai.resume_next_slice_id`
+- `app.ai.resume_checkpoint_version`
 - `app.ai.conversation_id`
 - `app.ai.session_id`
-- `app.ai.slice_id`
-- `app.ai.checkpoint_version`
-- `app.ai.resume_reason`
-- `app.ai.lease_epoch`
-- `app.ai.timeout.soft_ms`
-- `app.ai.timeout.hard_ms`
-- `app.ai.outcome`
+- `messaging.message.id`
 
 ## Verification
 
-1. Unit: checkpoint version/fencing/token rules reject stale commits.
-2. Unit: safe-boundary validator rejects mid-tool-call checkpoints.
-3. Integration: forced timeout at safe boundary resumes with `replaceMessages` + `continue` and reaches same terminal output.
-4. Integration: duplicate continuation message does not produce duplicate tool side effects.
-5. Integration: crash-after-commit-before-enqueue is recovered by sweeper.
-6. Integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
-7. Eval: long-running thread surpassing single serverless timeout completes across multiple slices without user-visible corruption.
+1. Unit: timeout checkpoints trim trailing assistant-only messages and increment `slice_id`/`checkpoint_version`.
+2. Unit: signed timeout-resume callbacks verify successfully and tampered payloads are rejected.
+3. Unit/integration: a timed-out turn resumes with `replaceMessages` + `continue` and reaches a successful terminal reply when no assistant text had been made visible.
+4. Unit/integration: a resumed timeout slice can time out again and schedule the next callback with the new `checkpoint_version`.
+5. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
+6. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across slices.
+7. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
 
 ## Related Specs
 

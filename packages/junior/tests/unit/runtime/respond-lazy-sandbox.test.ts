@@ -288,7 +288,12 @@ vi.mock("@/chat/skills", () => {
 });
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
-  createSandboxExecutor: () => ({
+  createSandboxExecutor: (options?: {
+    onSandboxAcquired?: (sandbox: {
+      sandboxId: string;
+      sandboxDependencyProfileHash?: string;
+    }) => void | Promise<void>;
+  }) => ({
     configureSkills: () => undefined,
     configureReferenceFiles: () => undefined,
     createSandbox: async () => {
@@ -303,6 +308,13 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         });
         pendingWorkspaceRelease.value = undefined;
       }
+      await options?.onSandboxAcquired?.({
+        sandboxId:
+          sandboxVersion === 1
+            ? "sandbox-test"
+            : `sandbox-test-${sandboxVersion}`,
+        sandboxDependencyProfileHash: "hash-test",
+      });
       return {
         sandboxId:
           sandboxVersion === 1
@@ -385,6 +397,13 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       }
 
       createSandboxCallCount.value += 1;
+      await options?.onSandboxAcquired?.({
+        sandboxId:
+          activeSandboxVersion.value === 1
+            ? "sandbox-test"
+            : `sandbox-test-${activeSandboxVersion.value}`,
+        sandboxDependencyProfileHash: "hash-test",
+      });
       return {
         result: {
           ok: true,
@@ -461,6 +480,22 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(createSandboxCallCount.value).toBe(1);
     expect(reply.sandboxId).toBe("sandbox-test");
     expect(reply.sandboxDependencyProfileHash).toBe("hash-test");
+  });
+
+  it("reports sandbox metadata as soon as lazy boot succeeds on error turns", async () => {
+    agentMode.value = "attachFileThenError";
+    const onSandboxAcquired = vi.fn();
+
+    const reply = await generateAssistantReply("attach the report", {
+      onSandboxAcquired,
+    });
+
+    expect(reply.text).toContain("Error: agent exploded");
+    expect(onSandboxAcquired).toHaveBeenCalledTimes(1);
+    expect(onSandboxAcquired).toHaveBeenCalledWith({
+      sandboxId: "sandbox-test",
+      sandboxDependencyProfileHash: "hash-test",
+    });
   });
 
   it("retains sandbox reuse metadata after executor-backed boot on error turns", async () => {

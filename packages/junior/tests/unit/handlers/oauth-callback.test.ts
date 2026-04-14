@@ -14,6 +14,8 @@ vi.mock("@/chat/state/adapter", () => ({
   getStateAdapter: () => ({
     connect: async () => {},
     disconnect: async () => {},
+    acquireLock: async () => ({ key: "lock", lockId: "lock-id" }),
+    releaseLock: async () => {},
     get: async <T>(key: string): Promise<T | null> =>
       (mockStateStore.get(key) as T) ?? null,
     set: async (key: string, value: unknown) => {

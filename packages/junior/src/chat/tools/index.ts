@@ -42,7 +42,7 @@ function createToolState(
     },
   };
 
-  const patchArtifactState = (patch: Partial<ThreadArtifactsState>) => {
+  const patchArtifactState = async (patch: Partial<ThreadArtifactsState>) => {
     Object.assign(artifactState, patch);
     if (patch.listColumnMap) {
       artifactState.listColumnMap = {
@@ -50,7 +50,7 @@ function createToolState(
         ...patch.listColumnMap,
       };
     }
-    hooks.onArtifactStatePatch?.(patch);
+    await hooks.onArtifactStatePatch?.(patch);
   };
 
   return {
