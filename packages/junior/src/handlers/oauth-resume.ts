@@ -26,7 +26,10 @@ function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-/** Post a Slack thread message and surface delivery failures to the caller. */
+/**
+ * Post the final visible Slack thread reply and surface delivery failures so
+ * callers can decide whether the turn actually succeeded.
+ */
 export async function postSlackMessage(
   channelId: string,
   threadTs: string,
@@ -158,7 +161,14 @@ function createResumeReplyContext(
   };
 }
 
-/** Resume a paused Slack turn using a normal reply context and thread lock. */
+/**
+ * Resume a paused Slack turn under the normal thread lock.
+ *
+ * Success is defined by final reply delivery, not only by successful assistant
+ * generation. If the final visible Slack post fails, the resumed turn is
+ * treated as failed so thread state does not claim the user saw a reply that
+ * never arrived.
+ */
 export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
   const requesterUserId = args.replyContext?.requester?.userId;
   if (!requesterUserId) {

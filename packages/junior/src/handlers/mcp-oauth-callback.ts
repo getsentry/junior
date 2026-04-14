@@ -191,6 +191,8 @@ async function persistCompletedReplyState(
   sessionId: string,
   reply: AssistantReply,
 ): Promise<void> {
+  // OAuth resumes only persist completion after the final visible reply has
+  // already been delivered to Slack.
   const threadId = `slack:${channelId}:${threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);

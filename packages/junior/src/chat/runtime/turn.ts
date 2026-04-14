@@ -70,7 +70,10 @@ export function startActiveTurn(args: {
   args.updateConversationStats(args.conversation);
 }
 
-/** Mark a turn as completed and clear the active turn slot. */
+/**
+ * Mark a turn as completed after the runtime has durably accepted the final
+ * user-visible reply for delivery.
+ */
 export function markTurnCompleted(args: {
   conversation: ThreadConversationState;
   nowMs: number;
@@ -81,7 +84,10 @@ export function markTurnCompleted(args: {
   args.updateConversationStats(args.conversation);
 }
 
-/** Mark a turn as failed, clear the active slot, and annotate the user message. */
+/**
+ * Mark a turn as failed when execution or final user-visible reply delivery
+ * cannot be completed.
+ */
 export function markTurnFailed(args: {
   conversation: ThreadConversationState;
   nowMs: number;

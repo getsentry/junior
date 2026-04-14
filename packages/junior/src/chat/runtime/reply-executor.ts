@@ -471,6 +471,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             "slackMessageAddReaction",
           );
 
+          // Final Slack delivery is part of turn success. We only mark the turn
+          // completed after the visible reply has been accepted by Slack.
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
               const sent = await postThreadReply(

@@ -51,12 +51,14 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 - Final reply text is assembled from assistant messages joined by `"\n"` and trimmed.
 - If assistant text is empty, return `buildExecutionFailureMessage(toolErrorCount)`.
 - If assistant text is an execution-escape or raw tool payload shape, return `buildExecutionFailureMessage(toolErrorCount)`.
+- This harness-level contract only defines generation output. Chat runtimes may still treat the turn as failed if final user-visible reply delivery fails.
 
 ### Streaming contract
 
 - Stream `message_update`/`text_delta` events from the Pi `Agent`.
 - Insert `"\n"` between text from consecutive assistant messages to match final non-streamed join behavior.
-- Streaming failures in delivery callbacks are logged and do not fail the turn.
+- Streaming callback failures are logged and do not fail the harness turn by themselves.
+- Final reply delivery is a separate runtime concern and may still determine whether the outer Slack turn succeeds.
 
 ### Visibility rules
 
@@ -68,6 +70,7 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 
 - Tools execute as intermediate actions (`bash`, `readFile`, `webSearch`, Slack tools, skill loading, etc.).
 - The turn is successful when assistant text resolves to a non-empty, non-escape final response.
+- Slack runtimes refine that further: turn completion is only persisted after the final visible reply is delivered.
 - Context-bound target ownership remains runtime/harness-owned. See [Harness Tool Context Spec](./harness-tool-context-spec.md).
 
 ## Failure Model
