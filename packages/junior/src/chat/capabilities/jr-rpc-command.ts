@@ -1,7 +1,6 @@
 import { Bash, defineCommand } from "just-bash";
 import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
-import { parseRepoTarget } from "@/chat/capabilities/target";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
@@ -107,25 +106,25 @@ async function handleIssueCredentialCommand(
     });
   }
 
-  let repoRef: string | undefined;
+  let targetRef: string | undefined;
   const extras = args.slice(1);
   if (extras.length > 0) {
-    if (extras.length === 2 && extras[0] === "--repo") {
-      repoRef = extras[1];
-    } else if (extras.length === 1 && extras[0].startsWith("--repo=")) {
-      repoRef = extras[0].slice("--repo=".length);
+    if (extras.length === 2 && extras[0] === "--target") {
+      targetRef = extras[1]?.trim();
+    } else if (extras.length === 1 && extras[0].startsWith("--target=")) {
+      targetRef = extras[0].slice("--target=".length).trim();
     } else {
       return {
         stdout: "",
         stderr:
-          "jr-rpc issue-credential requires exactly one capability argument and optional --repo <owner/repo>\n",
+          "jr-rpc issue-credential requires exactly one capability argument and optional --target <value>\n",
         exitCode: 2,
       };
     }
-    if (!parseRepoTarget(repoRef ?? "")) {
+    if (!targetRef) {
       return {
         stdout: "",
-        stderr: "jr-rpc issue-credential --repo must be in owner/repo format\n",
+        stderr: "jr-rpc issue-credential --target requires a non-empty value\n",
         exitCode: 2,
       };
     }
@@ -136,7 +135,7 @@ async function handleIssueCredentialCommand(
     outcome = await deps.capabilityRuntime.enableCapabilityForTurn({
       activeSkill: deps.activeSkill,
       capability,
-      ...(repoRef ? { repoRef } : {}),
+      ...(targetRef ? { targetRef } : {}),
       reason: `skill:${deps.activeSkill?.name ?? "unknown"}:jr-rpc:issue-credential`,
     });
   } catch (error) {
@@ -592,7 +591,7 @@ async function handleDeleteTokenCommand(
 function createJrRpcCommand(deps: JrRpcDeps) {
   return defineCommand("jr-rpc", async (args) => {
     const usage = [
-      "jr-rpc issue-credential <capability> [--repo <owner/repo>]",
+      "jr-rpc issue-credential <capability> [--target <value>]",
       "jr-rpc oauth-start <provider>",
       "jr-rpc delete-token <provider>",
       "jr-rpc config get <key>",

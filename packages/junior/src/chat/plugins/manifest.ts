@@ -16,6 +16,7 @@ import type {
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CAPABILITY_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
+const TARGET_FLAG_RE = /^-{1,2}[A-Za-z0-9][A-Za-z0-9-]*$/;
 const AUTH_TOKEN_ENV_RE = /^[A-Z][A-Z0-9_]*$/;
 const API_DOMAIN_RE =
   /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -238,10 +239,11 @@ const mcpSourceSchema = z
 
 const targetSourceSchema = z
   .object({
-    type: z.literal("repo", {
-      error: 'type must be "repo"',
+    type: nonEmptyTrimmedString.refine((value) => PLUGIN_NAME_RE.test(value), {
+      error: "type must be a lowercase target identifier",
     }),
     "config-key": nonEmptyTrimmedString,
+    "command-flags": nonEmptyStringArraySchema("command-flags").optional(),
   })
   .passthrough();
 
@@ -754,7 +756,20 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
         `Plugin ${data.name} target.config-key "${result.data["config-key"]}" must be listed in config-keys`,
       );
     }
-    manifest.target = { type: "repo", configKey: qualifiedKey };
+    const commandFlags = result.data["command-flags"];
+    if (
+      commandFlags &&
+      commandFlags.some((flag) => !TARGET_FLAG_RE.test(flag))
+    ) {
+      throw new Error(
+        `Plugin ${data.name} target.command-flags must contain CLI flags like --repo or -R`,
+      );
+    }
+    manifest.target = {
+      type: result.data.type,
+      configKey: qualifiedKey,
+      ...(commandFlags ? { commandFlags } : {}),
+    };
   }
 
   return manifest;

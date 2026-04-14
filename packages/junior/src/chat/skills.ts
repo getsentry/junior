@@ -160,11 +160,11 @@ const skillFrontmatterSchema = z
       .optional(),
     "requires-capabilities": createTokenFieldSchema(
       "requires-capabilities",
-      "github.issues.write",
+      "provider.scope.write",
     ).optional(),
     "uses-config": createTokenFieldSchema(
       "uses-config",
-      "github.repo",
+      "provider.repo",
     ).optional(),
   })
   .passthrough();

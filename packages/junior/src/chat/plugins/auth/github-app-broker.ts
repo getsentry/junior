@@ -15,13 +15,34 @@ type CachedInstallationToken = {
   expiresAt: number;
 };
 
-function normalizeTargetScope(target?: CapabilityTarget): string {
-  const owner = target?.owner?.trim().toLowerCase();
-  const repo = target?.repo?.trim().toLowerCase();
-  if (!owner || !repo) {
-    return "all";
+function parseRepoTarget(
+  value: string,
+): { owner: string; repo: string } | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
   }
-  return `${owner}/${repo}`;
+
+  const [repoRef] = trimmed.split("#");
+  const [owner, repo, extra] = repoRef.split("/");
+  if (!owner || !repo || extra) {
+    return undefined;
+  }
+
+  return {
+    owner: owner.toLowerCase(),
+    repo: repo.toLowerCase(),
+  };
+}
+
+function getRepoTarget(
+  target?: CapabilityTarget,
+): { owner: string; repo: string } | undefined {
+  if (!target || target.type !== "repo") {
+    return undefined;
+  }
+
+  return parseRepoTarget(target.value);
 }
 
 function base64Url(input: string): string {
@@ -153,18 +174,6 @@ async function githubRequest<T>(
 }
 
 /**
- * Capability aliases that map to a different GitHub permission than their name implies.
- * Key: suffix after plugin name (e.g. "issues.comment"), value: `{ permission, level }`.
- */
-const CAPABILITY_ALIASES: Record<
-  string,
-  { permission: string; level: "read" | "write" }
-> = {
-  "issues.comment": { permission: "issues", level: "write" },
-  "labels.write": { permission: "issues", level: "write" },
-};
-
-/**
  * GitHub App permission scopes that the broker can request.
  * Capabilities follow the convention `<plugin>.<scope>.<read|write>` where
  * the scope name uses dashes in capabilities and underscores in the GitHub API.
@@ -202,11 +211,6 @@ function capabilityToPermissions(
     throw new Error(`Unsupported GitHub capability: ${capability}`);
   }
   const suffix = capability.slice(prefix.length);
-
-  const alias = CAPABILITY_ALIASES[suffix];
-  if (alias) {
-    return { [alias.permission]: alias.level };
-  }
 
   const lastDot = suffix.lastIndexOf(".");
   if (lastDot === -1) {
@@ -277,6 +281,18 @@ export function createGitHubAppBroker(
 
   const supportedCapabilities = new Set(manifest.capabilities);
 
+  function resolveInstallationId(): number {
+    const installationIdRaw = process.env[installationIdEnv]?.trim();
+    if (!installationIdRaw) {
+      throw new Error(`Missing ${installationIdEnv}`);
+    }
+    const installationId = Number(installationIdRaw);
+    if (!Number.isFinite(installationId)) {
+      throw new Error(`Invalid ${installationIdEnv}`);
+    }
+    return installationId;
+  }
+
   return {
     async issue(input: {
       capability: string;
@@ -289,20 +305,24 @@ export function createGitHubAppBroker(
         );
       }
       const permissions = capabilityToPermissions(input.capability, provider);
-      const appId = process.env[appIdEnv];
-      if (!appId) {
-        throw new Error(`Missing ${appIdEnv}`);
-      }
-      const installationIdRaw = process.env[installationIdEnv]?.trim();
-      if (!installationIdRaw) {
-        throw new Error(`Missing ${installationIdEnv}`);
-      }
-      const installationId = Number(installationIdRaw);
-      if (!Number.isFinite(installationId)) {
-        throw new Error(`Invalid ${installationIdEnv}`);
+      const installationId = resolveInstallationId();
+
+      let repoTarget: { owner: string; repo: string } | undefined;
+      if (input.target) {
+        if (input.target.type !== "repo") {
+          throw new Error(
+            `Unsupported github target type: ${input.target.type}`,
+          );
+        }
+        repoTarget = getRepoTarget(input.target);
+        if (!repoTarget) {
+          throw new Error("Invalid github repo target: expected owner/repo");
+        }
       }
 
-      const targetScope = normalizeTargetScope(input.target);
+      const targetScope = repoTarget
+        ? `${repoTarget.owner}/${repoTarget.repo}`
+        : "all";
       const cacheKey = `${installationId}:${input.capability}:${targetScope}`;
       const cached = tokenCache.get(cacheKey);
       const now = Date.now();
@@ -329,17 +349,21 @@ export function createGitHubAppBroker(
         };
       }
 
-      const appJwt = createAppJwt(appId, privateKeyEnv);
-      const repositoryName = input.target?.repo?.trim().toLowerCase();
       const tokenRequestBody: {
         permissions: Record<string, "read" | "write">;
         repositories?: string[];
       } = {
         permissions,
       };
-      if (repositoryName) {
-        tokenRequestBody.repositories = [repositoryName];
+      if (repoTarget) {
+        tokenRequestBody.repositories = [repoTarget.repo];
       }
+
+      const appId = process.env[appIdEnv];
+      if (!appId) {
+        throw new Error(`Missing ${appIdEnv}`);
+      }
+      const appJwt = createAppJwt(appId, privateKeyEnv);
 
       const accessTokenResponse = await githubRequest<{
         token: string;

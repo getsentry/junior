@@ -1,10 +1,13 @@
 import type { CapabilityTarget } from "@/chat/capabilities/types";
-import { getCapabilityProvider } from "@/chat/capabilities/catalog";
+import {
+  getCapabilityProvider,
+  type CapabilityProviderTargetDefinition,
+} from "@/chat/capabilities/catalog";
 import type { CapabilityCredentialRouter } from "@/chat/capabilities/router";
 import { logInfo, logWarn } from "@/chat/logging";
 import {
+  createCapabilityTarget,
   extractCapabilityTarget,
-  parseRepoTarget,
 } from "@/chat/capabilities/target";
 import type {
   CredentialBroker,
@@ -55,57 +58,63 @@ export class SkillCapabilityRuntime {
 
   private async resolveCapabilityTarget(input: {
     activeSkill: Skill | null;
-    repoRef?: string;
-    configKey?: string;
+    target: CapabilityProviderTargetDefinition;
+    targetRef?: string;
   }): Promise<CapabilityTarget | undefined> {
     const activeSkill = input.activeSkill;
-    const explicitTarget = input.repoRef
-      ? parseRepoTarget(input.repoRef)
+    const explicitTarget = input.targetRef
+      ? createCapabilityTarget(input.target.type, input.targetRef)
       : undefined;
     if (explicitTarget) {
       return explicitTarget;
     }
     const inferredTarget = extractCapabilityTarget({
       invocationArgs: this.invocationArgs,
+      target: input.target,
     });
     if (inferredTarget) {
       return inferredTarget;
     }
 
-    if (!input.configKey || !this.resolveConfiguration) {
+    if (!this.resolveConfiguration) {
       return undefined;
     }
 
-    const configuredRepo = await this.resolveConfiguration(input.configKey);
+    const configuredValue = await this.resolveConfiguration(
+      input.target.configKey,
+    );
     if (
-      typeof configuredRepo !== "string" ||
-      configuredRepo.trim().length === 0
+      typeof configuredValue !== "string" ||
+      configuredValue.trim().length === 0
     ) {
       return undefined;
     }
 
-    const configuredTarget = parseRepoTarget(configuredRepo);
+    const configuredTarget = createCapabilityTarget(
+      input.target.type,
+      configuredValue,
+    );
     if (!configuredTarget) {
       logWarn(
         "config_value_invalid_for_capability_target",
         {},
         {
           "app.skill.name": activeSkill?.name,
-          "app.config.key": input.configKey,
+          "app.config.key": input.target.configKey,
         },
-        `Configured ${input.configKey} is invalid for capability target resolution`,
+        `Configured ${input.target.configKey} is invalid for capability target resolution`,
       );
       return undefined;
     }
 
     const declaredConfig = activeSkill?.usesConfig ?? [];
-    if (activeSkill && !declaredConfig.includes(input.configKey)) {
+    if (activeSkill && !declaredConfig.includes(input.target.configKey)) {
       logWarn(
         "config_key_not_declared_for_skill",
         {},
         {
           "app.skill.name": activeSkill.name,
-          "app.config.key": input.configKey,
+          "app.config.key": input.target.configKey,
         },
         "Configuration key used by runtime is not declared in active skill frontmatter (soft enforcement)",
       );
@@ -118,16 +127,14 @@ export class SkillCapabilityRuntime {
     capability: string,
     target?: CapabilityTarget,
   ): string {
-    const owner = target?.owner?.trim().toLowerCase();
-    const repo = target?.repo?.trim().toLowerCase();
-    const scope = owner && repo ? `${owner}/${repo}` : "none";
+    const scope = target ? `${target.type}:${target.value.trim()}` : "none";
     return `${capability}:${scope}`;
   }
 
   async issueCapabilityLease(input: {
     activeSkill: Skill | null;
     capability: string;
-    repoRef?: string;
+    targetRef?: string;
     reason: string;
   }): Promise<CredentialLease> {
     const capabilityProvider = getCapabilityProvider(input.capability);
@@ -138,14 +145,13 @@ export class SkillCapabilityRuntime {
     }
 
     const activeSkill = input.activeSkill;
-    const target =
-      capabilityProvider.target?.type === "repo"
-        ? await this.resolveCapabilityTarget({
-            activeSkill,
-            repoRef: input.repoRef,
-            configKey: capabilityProvider.target.configKey,
-          })
-        : undefined;
+    const target = capabilityProvider.target
+      ? await this.resolveCapabilityTarget({
+          activeSkill,
+          target: capabilityProvider.target,
+          targetRef: input.targetRef,
+        })
+      : undefined;
 
     return await this.router.issue({
       capability: input.capability,
@@ -182,7 +188,7 @@ export class SkillCapabilityRuntime {
   async enableCapabilityForTurn(input: {
     activeSkill: Skill | null;
     capability: string;
-    repoRef?: string;
+    targetRef?: string;
     reason: string;
   }): Promise<{ reused: boolean; expiresAt: string }> {
     if (!this.requesterId) {
@@ -199,20 +205,16 @@ export class SkillCapabilityRuntime {
       );
     }
     const activeSkill = input.activeSkill;
-    const capabilityTarget =
-      capabilityProvider.target?.type === "repo"
-        ? await this.resolveCapabilityTarget({
-            activeSkill,
-            repoRef: input.repoRef,
-            configKey: capabilityProvider.target.configKey,
-          })
-        : undefined;
-    if (
-      capabilityProvider.target?.type === "repo" &&
-      (!capabilityTarget?.owner || !capabilityTarget?.repo)
-    ) {
+    const capabilityTarget = capabilityProvider.target
+      ? await this.resolveCapabilityTarget({
+          activeSkill,
+          target: capabilityProvider.target,
+          targetRef: input.targetRef,
+        })
+      : undefined;
+    if (capabilityProvider.target && !capabilityTarget?.value.trim()) {
       throw new Error(
-        "jr-rpc issue-credential requires repository context; use --repo <owner/repo>",
+        `jr-rpc issue-credential requires ${capabilityProvider.target.type} target context; use --target <value>`,
       );
     }
     const declared = activeSkill?.requiresCapabilities ?? [];
@@ -250,7 +252,7 @@ export class SkillCapabilityRuntime {
       const lease = await this.issueCapabilityLease({
         activeSkill,
         capability,
-        repoRef: input.repoRef,
+        targetRef: input.targetRef,
         reason: input.reason,
       });
       const transforms = this.toHeaderTransforms(lease);

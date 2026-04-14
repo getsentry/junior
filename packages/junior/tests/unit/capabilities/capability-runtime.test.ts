@@ -7,9 +7,24 @@ vi.mock("@/chat/capabilities/catalog", () => ({
           provider: "github",
           capabilities: ["github.issues.write"],
           configKeys: ["github.repo"],
-          target: { type: "repo" as const, configKey: "github.repo" },
+          target: {
+            type: "repo" as const,
+            configKey: "github.repo",
+            commandFlags: ["--repo", "-R"],
+          },
         }
-      : undefined,
+      : capability === "demo.work.write"
+        ? {
+            provider: "demo",
+            capabilities: ["demo.work.write"],
+            configKeys: ["demo.project"],
+            target: {
+              type: "project" as const,
+              configKey: "demo.project",
+              commandFlags: ["--project"],
+            },
+          }
+        : undefined,
 }));
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import type { CredentialBroker } from "@/chat/credentials/broker";
@@ -109,7 +124,7 @@ describe("skill capability runtime", () => {
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
         capability: "github.issues.write",
-        repoRef: "getsentry/junior",
+        targetRef: "getsentry/junior",
         reason: "test:repo-one",
       }),
     ).resolves.toMatchObject({ reused: false });
@@ -117,7 +132,7 @@ describe("skill capability runtime", () => {
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
         capability: "github.issues.write",
-        repoRef: "getsentry/sentry",
+        targetRef: "getsentry/sentry",
         reason: "test:repo-two",
       }),
     ).resolves.toMatchObject({ reused: false });
@@ -145,7 +160,7 @@ describe("skill capability runtime", () => {
       runtime.issueCapabilityLease({
         activeSkill: null,
         capability: "github.issues.write",
-        repoRef: "getsentry/junior",
+        targetRef: "getsentry/junior",
         reason: "test:explicit",
       }),
     ).resolves.toMatchObject({
@@ -173,8 +188,13 @@ describe("skill capability runtime", () => {
     ).rejects.toThrow("Unsupported capability");
   });
 
-  it("forwards explicit repoRef through enableCapabilityForTurn", async () => {
-    let seenTarget: { owner?: string; repo?: string } | undefined;
+  it("forwards explicit targetRef through enableCapabilityForTurn", async () => {
+    let seenTarget:
+      | {
+          type: string;
+          value: string;
+        }
+      | undefined;
     const broker: CredentialBroker = {
       issue: async (input) => {
         seenTarget = input.target;
@@ -205,15 +225,15 @@ describe("skill capability runtime", () => {
       runtime.enableCapabilityForTurn({
         activeSkill: fakeSkill,
         capability: "github.issues.write",
-        repoRef: "getsentry/junior",
+        targetRef: "getsentry/junior",
         reason: "test:repo-ref",
       }),
     ).resolves.toMatchObject({ reused: false });
 
-    expect(seenTarget).toEqual({ owner: "getsentry", repo: "junior" });
+    expect(seenTarget).toEqual({ type: "repo", value: "getsentry/junior" });
   });
 
-  it("requires repo context for github capabilities", async () => {
+  it("requires a provider target when the capability declares one", async () => {
     const broker: CredentialBroker = {
       issue: async () => {
         throw new Error("should not be called");
@@ -231,11 +251,16 @@ describe("skill capability runtime", () => {
         capability: "github.issues.write",
         reason: "test:missing-repo",
       }),
-    ).rejects.toThrow("requires repository context");
+    ).rejects.toThrow("requires repo target context");
   });
 
-  it("falls back to configured github.repo when invocation args do not include --repo", async () => {
-    let seenTarget: { owner?: string; repo?: string } | undefined;
+  it("falls back to configured provider target when invocation args do not include command flags", async () => {
+    let seenTarget:
+      | {
+          type: string;
+          value: string;
+        }
+      | undefined;
     const broker: CredentialBroker = {
       issue: async (input) => {
         seenTarget = input.target;
@@ -276,11 +301,16 @@ describe("skill capability runtime", () => {
       }),
     ).resolves.toMatchObject({ reused: false });
 
-    expect(seenTarget).toEqual({ owner: "getsentry", repo: "junior" });
+    expect(seenTarget).toEqual({ type: "repo", value: "getsentry/junior" });
   });
 
-  it("still uses explicit repoRef when config value exists", async () => {
-    let seenTarget: { owner?: string; repo?: string } | undefined;
+  it("still uses explicit targetRef when config value exists", async () => {
+    let seenTarget:
+      | {
+          type: string;
+          value: string;
+        }
+      | undefined;
     const broker: CredentialBroker = {
       issue: async (input) => {
         seenTarget = input.target;
@@ -315,11 +345,63 @@ describe("skill capability runtime", () => {
           usesConfig: ["github.repo"],
         },
         capability: "github.issues.write",
-        repoRef: "getsentry/sentry",
+        targetRef: "getsentry/sentry",
         reason: "test:explicit-overrides-config",
       }),
     ).resolves.toMatchObject({ reused: false });
 
-    expect(seenTarget).toEqual({ owner: "getsentry", repo: "sentry" });
+    expect(seenTarget).toEqual({ type: "repo", value: "getsentry/sentry" });
+  });
+
+  it("supports non-repo provider targets without core parsing rules", async () => {
+    let seenTarget:
+      | {
+          type: string;
+          value: string;
+        }
+      | undefined;
+    const broker: CredentialBroker = {
+      issue: async (input) => {
+        seenTarget = input.target;
+        return {
+          id: "lease-1",
+          provider: "demo",
+          capability: "demo.work.write",
+          env: { DEMO_TOKEN: "token-1" },
+          headerTransforms: [
+            {
+              domain: "api.demo.test",
+              headers: {
+                Authorization: "Bearer token-1",
+              },
+            },
+          ],
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        };
+      },
+    };
+
+    const runtime = new SkillCapabilityRuntime({
+      broker,
+      invocationArgs: "--project issue-platform",
+      requesterId: "U123",
+      resolveConfiguration: async (key) =>
+        key === "demo.project" ? "fallback-project" : undefined,
+    });
+
+    await expect(
+      runtime.enableCapabilityForTurn({
+        activeSkill: {
+          ...fakeSkill,
+          name: "demo",
+          requiresCapabilities: ["demo.work.write"],
+          usesConfig: ["demo.project"],
+        },
+        capability: "demo.work.write",
+        reason: "test:generic-target",
+      }),
+    ).resolves.toMatchObject({ reused: false });
+
+    expect(seenTarget).toEqual({ type: "project", value: "issue-platform" });
   });
 });

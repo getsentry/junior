@@ -9,7 +9,7 @@ const SECRET_VALUE_PATTERNS: RegExp[] = [
   /\bsk-[A-Za-z0-9]{20,}\b/,
   /\bAIza[0-9A-Za-z\-_]{30,}\b/,
   /\bAKIA[0-9A-Z]{16}\b/,
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
 ];
 
 export function validateConfigKey(key: string): string | undefined {
@@ -18,7 +18,7 @@ export function validateConfigKey(key: string): string | undefined {
     return "Configuration key must not be empty";
   }
   if (!CONFIG_KEY_RE.test(trimmed)) {
-    return `Invalid configuration key "${key}"; expected dotted lowercase namespace (for example "github.repo")`;
+    return `Invalid configuration key "${key}"; expected dotted lowercase namespace (for example "provider.repo")`;
   }
   if (SECRET_KEY_RE.test(trimmed)) {
     return `Configuration key "${key}" appears to be secret-related and is not allowed`;
@@ -26,7 +26,11 @@ export function validateConfigKey(key: string): string | undefined {
   return undefined;
 }
 
-function collectStringValues(value: unknown, output: string[], depth = 0): void {
+function collectStringValues(
+  value: unknown,
+  output: string[],
+  depth = 0,
+): void {
   if (depth > 5) {
     return;
   }
@@ -41,7 +45,9 @@ function collectStringValues(value: unknown, output: string[], depth = 0): void 
     return;
   }
   if (value && typeof value === "object") {
-    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, nested] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
       output.push(key);
       collectStringValues(nested, output, depth + 1);
     }

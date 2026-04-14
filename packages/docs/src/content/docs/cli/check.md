@@ -79,7 +79,7 @@ Checking /repo
 ✓ plugin demo
 ✖ app skills
   └─ ✖ skill repo-local
-✖ error: /repo/app/skills/repo-local/SKILL.md: uses-config token "GITHUB_REPO" is invalid; expected dotted lowercase tokens (for example "github.repo")
+✖ error: /repo/app/skills/repo-local/SKILL.md: uses-config token "GITHUB_REPO" is invalid; expected dotted lowercase tokens (for example "provider.repo")
 junior command failed: Validation failed (1 error, 1 plugin manifest, 1 skill directory checked).
 ```
 

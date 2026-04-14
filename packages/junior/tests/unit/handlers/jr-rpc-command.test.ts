@@ -13,7 +13,11 @@ vi.mock("@/chat/capabilities/catalog", () => ({
           provider: "github",
           capabilities: ["github.issues.write"],
           configKeys: ["github.repo"],
-          target: { type: "repo" as const, configKey: "github.repo" },
+          target: {
+            type: "repo" as const,
+            configKey: "github.repo",
+            commandFlags: ["--repo", "-R"],
+          },
         }
       : undefined,
   listCapabilityProviders: () => [
@@ -181,10 +185,13 @@ describe("jr-rpc custom command", () => {
     expect(handled.result.stdout).toContain("credential_enabled");
   });
 
-  it("handles valid issue-credential command with --repo", async () => {
+  it("handles valid issue-credential command with --target", async () => {
     const broker: CredentialBroker = {
       issue: async (input) => {
-        expect(input.target).toEqual({ owner: "getsentry", repo: "junior" });
+        expect(input.target).toEqual({
+          type: "repo",
+          value: "getsentry/junior",
+        });
         return {
           id: "lease-1",
           provider: "github",
@@ -204,7 +211,7 @@ describe("jr-rpc custom command", () => {
     };
     const runtime = new SkillCapabilityRuntime({ broker, requesterId: "U123" });
     const result = await maybeExecuteJrRpcCustomCommand(
-      "jr-rpc issue-credential github.issues.write --repo getsentry/junior",
+      "jr-rpc issue-credential github.issues.write --target getsentry/junior",
       {
         capabilityRuntime: runtime,
         activeSkill,
@@ -241,9 +248,9 @@ describe("jr-rpc custom command", () => {
     expect(handled.result.stderr).toContain("Unsupported jr-rpc command");
   });
 
-  it("returns usage error for invalid --repo format", async () => {
+  it("returns usage error for empty --target", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
-      "jr-rpc issue-credential github.issues.write --repo invalid",
+      "jr-rpc issue-credential github.issues.write --target ''",
       {
         capabilityRuntime: makeRuntime(),
         activeSkill,
@@ -252,7 +259,7 @@ describe("jr-rpc custom command", () => {
     const handled = expectHandled(result);
     expect(handled.result.exit_code).toBe(2);
     expect(handled.result.stderr).toContain(
-      "--repo must be in owner/repo format",
+      "--target requires a non-empty value",
     );
   });
 
@@ -528,7 +535,7 @@ describe("jr-rpc custom command", () => {
     });
   });
 
-  it("returns structured runtime errors when repo context is missing", async () => {
+  it("returns structured runtime errors when target context is missing", async () => {
     const result = await maybeExecuteJrRpcCustomCommand(
       "jr-rpc issue-credential github.issues.write",
       {
@@ -538,7 +545,7 @@ describe("jr-rpc custom command", () => {
     );
     const handled = expectHandled(result);
     expect(handled.result.exit_code).toBe(1);
-    expect(handled.result.stderr).toContain("requires repository context");
+    expect(handled.result.stderr).toContain("requires repo target context");
   });
 
   it("handles config set/get/list/unset commands with inferred channel configuration context", async () => {

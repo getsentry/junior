@@ -46,10 +46,9 @@ export class TestCredentialBroker implements CredentialBroker {
       expiresAt,
       metadata: {
         reason: input.reason,
-        target:
-          input.target?.owner && input.target?.repo
-            ? `${input.target.owner}/${input.target.repo}`
-            : "none",
+        target: input.target
+          ? `${input.target.type}:${input.target.value}`
+          : "none",
       },
     };
   }

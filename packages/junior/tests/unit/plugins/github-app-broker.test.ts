@@ -24,8 +24,6 @@ const TEST_MANIFEST: PluginManifest = {
   capabilities: [
     "github.issues.read",
     "github.issues.write",
-    "github.issues.comment",
-    "github.labels.write",
     "github.contents.read",
     "github.contents.write",
     "github.pull-requests.read",
@@ -33,7 +31,11 @@ const TEST_MANIFEST: PluginManifest = {
   ],
   configKeys: ["github.repo"],
   credentials: TEST_CREDENTIALS,
-  target: { type: "repo", configKey: "github.repo" },
+  target: {
+    type: "repo",
+    configKey: "github.repo",
+    commandFlags: ["--repo", "-R"],
+  },
 };
 
 function setupValidEnv() {
@@ -45,13 +47,45 @@ function setupValidEnv() {
   process.env.GITHUB_INSTALLATION_ID = "42";
 }
 
-function mockGitHubTokenEndpoint(token = "issued-token") {
-  globalThis.fetch = vi.fn(async () => ({
+function mockJsonResponse(body: unknown) {
+  return {
     ok: true,
     status: 200,
-    text: async () =>
-      JSON.stringify({ token, expires_at: "2099-01-01T00:00:00Z" }),
-  })) as unknown as typeof fetch;
+    text: async () => JSON.stringify(body),
+  };
+}
+
+function mockGitHubApi(options?: {
+  token?: string;
+  onRequest?: (url: string, init?: RequestInit) => void;
+}) {
+  const token = options?.token ?? "issued-token";
+  globalThis.fetch = vi.fn(async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : String(input);
+    options?.onRequest?.(url, init);
+
+    if (url.includes("/access_tokens")) {
+      return mockJsonResponse({
+        token,
+        expires_at: "2099-01-01T00:00:00Z",
+      });
+    }
+
+    throw new Error(`Unexpected fetch request: ${url}`);
+  }) as unknown as typeof fetch;
+}
+
+function findAccessTokenCall() {
+  const call = vi
+    .mocked(globalThis.fetch)
+    .mock.calls.find(([url]) => String(url).includes("/access_tokens"));
+  expect(call).toBeDefined();
+  return call!;
 }
 
 afterEach(() => {
@@ -63,7 +97,7 @@ afterEach(() => {
 describe("github app credential broker", () => {
   it("issues lease with correct shape", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint("issued-token");
+    mockGitHubApi({ token: "issued-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
@@ -83,7 +117,7 @@ describe("github app credential broker", () => {
 
   it("uses placeholder in env, not real token", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint("real-secret-token");
+    mockGitHubApi({ token: "real-secret-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
@@ -97,7 +131,7 @@ describe("github app credential broker", () => {
 
   it("uses configured auth token placeholder when provided by plugin config", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint("real-secret-token");
+    mockGitHubApi({ token: "real-secret-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, {
       ...TEST_CREDENTIALS,
@@ -114,16 +148,69 @@ describe("github app credential broker", () => {
 
   it("scopes token to repository when target is provided", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint();
+    mockGitHubApi();
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.issues.write",
-      target: { owner: "getsentry", repo: "junior" },
+      target: { type: "repo", value: "getsentry/junior" },
       reason: "test:scoped",
     });
 
     expect(lease.metadata).toMatchObject({ targetScope: "getsentry/junior" });
+  });
+
+  it("rejects invalid repo targets before cache lookup", async () => {
+    setupValidEnv();
+    mockGitHubApi();
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    await expect(
+      broker.issue({
+        capability: "github.issues.write",
+        target: { type: "repo", value: "invalid" },
+        reason: "test:invalid-target",
+      }),
+    ).rejects.toThrow("Invalid github repo target");
+
+    expect(vi.mocked(globalThis.fetch).mock.calls).toHaveLength(0);
+  });
+
+  it("uses cached lease without recreating app jwt", async () => {
+    setupValidEnv();
+    mockGitHubApi({ token: "cached-token" });
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const firstLease = await broker.issue({
+      capability: "github.issues.write",
+      reason: "test:cache-prime",
+    });
+
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_PRIVATE_KEY;
+
+    const secondLease = await broker.issue({
+      capability: "github.issues.write",
+      reason: "test:cache-hit",
+    });
+
+    expect(secondLease.headerTransforms).toEqual(firstLease.headerTransforms);
+    expect(vi.mocked(globalThis.fetch).mock.calls).toHaveLength(1);
+  });
+
+  it("maps issues.write to GitHub issues write permission", async () => {
+    setupValidEnv();
+    mockGitHubApi();
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    await broker.issue({
+      capability: "github.issues.write",
+      reason: "test:issues-write",
+    });
+
+    const fetchCall = findAccessTokenCall();
+    const body = JSON.parse(fetchCall[1]?.body as string);
+    expect(body.permissions).toEqual({ issues: "write" });
   });
 
   it("rejects unsupported capabilities", async () => {
@@ -139,6 +226,11 @@ describe("github app credential broker", () => {
   });
 
   it("requires GITHUB_APP_ID", async () => {
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    process.env.GITHUB_INSTALLATION_ID = "42";
     delete process.env.GITHUB_APP_ID;
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
@@ -151,7 +243,11 @@ describe("github app credential broker", () => {
   });
 
   it("requires GITHUB_INSTALLATION_ID", async () => {
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
     process.env.GITHUB_APP_ID = "12345";
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
     delete process.env.GITHUB_INSTALLATION_ID;
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
@@ -165,28 +261,28 @@ describe("github app credential broker", () => {
 
   it("maps contents.read to GitHub contents permission", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint();
+    mockGitHubApi();
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await broker.issue({
       capability: "github.contents.read",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:contents-read",
     });
 
-    const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+    const fetchCall = findAccessTokenCall();
     const body = JSON.parse(fetchCall[1]?.body as string);
     expect(body.permissions).toEqual({ contents: "read" });
   });
 
   it("includes github.com in headerTransforms for contents.read", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint("repo-token");
+    mockGitHubApi({ token: "repo-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.contents.read",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:contents-read-domains",
     });
 
@@ -197,12 +293,12 @@ describe("github app credential broker", () => {
 
   it("uses Basic auth for github.com and Bearer for api.github.com", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint("repo-token");
+    mockGitHubApi({ token: "repo-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.contents.read",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:auth-scheme",
     });
 
@@ -221,12 +317,12 @@ describe("github app credential broker", () => {
 
   it("uses placeholder in env for contents.read", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint("repo-token");
+    mockGitHubApi({ token: "repo-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.contents.read",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:contents-read-env",
     });
 
@@ -235,16 +331,16 @@ describe("github app credential broker", () => {
 
   it("maps contents.write to GitHub contents write permission with git domain", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint("push-token");
+    mockGitHubApi({ token: "push-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.contents.write",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:contents-write",
     });
 
-    const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+    const fetchCall = findAccessTokenCall();
     const body = JSON.parse(fetchCall[1]?.body as string);
     expect(body.permissions).toEqual({ contents: "write" });
 
@@ -255,7 +351,7 @@ describe("github app credential broker", () => {
 
   it("maps pull-requests.read to GitHub pull_requests read permission", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint();
+    mockGitHubApi();
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
@@ -263,7 +359,7 @@ describe("github app credential broker", () => {
       reason: "test:pr-read",
     });
 
-    const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+    const fetchCall = findAccessTokenCall();
     const body = JSON.parse(fetchCall[1]?.body as string);
     expect(body.permissions).toEqual({ pull_requests: "read" });
 
@@ -273,7 +369,7 @@ describe("github app credential broker", () => {
 
   it("maps pull-requests.write to GitHub pull_requests write permission", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint();
+    mockGitHubApi();
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await broker.issue({
@@ -281,14 +377,14 @@ describe("github app credential broker", () => {
       reason: "test:pr-write",
     });
 
-    const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+    const fetchCall = findAccessTokenCall();
     const body = JSON.parse(fetchCall[1]?.body as string);
     expect(body.permissions).toEqual({ pull_requests: "write" });
   });
 
   it("does not include github.com in headerTransforms for issue capabilities", async () => {
     setupValidEnv();
-    mockGitHubTokenEndpoint("issue-token");
+    mockGitHubApi({ token: "issue-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({

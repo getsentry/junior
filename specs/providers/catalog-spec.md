@@ -42,8 +42,9 @@ Each provider entry declares:
 
 ```ts
 interface CapabilityProviderTargetDefinition {
-  type: "repo";
+  type: string;
   configKey: string;
+  commandFlags?: string[];
 }
 
 interface CapabilityProviderDefinition {
@@ -61,13 +62,18 @@ provider: github
 capabilities:
   - github.issues.read
   - github.issues.write
-  - github.issues.comment
-  - github.labels.write
+  - github.contents.read
+  - github.contents.write
+  - github.pull-requests.read
+  - github.pull-requests.write
 configKeys:
   - github.repo
 target:
   type: repo
   configKey: github.repo
+  commandFlags:
+    - --repo
+    - -R
 ```
 
 ## Runtime Contracts
@@ -81,9 +87,9 @@ target:
 
 ### Target Resolution
 
-- If provider target type is `repo`, runtime may resolve repo in this order:
-  1. explicit user argument (for example `--repo owner/repo`)
-  2. invocation arg inference
+- If a provider declares a target, runtime may resolve it in this order:
+  1. explicit user argument (for example `--target owner/repo`)
+  2. provider-declared invocation flag inference (for example `--repo owner/repo`)
   3. provider target config key (for example `github.repo`)
 
 ## Skill Metadata Validation

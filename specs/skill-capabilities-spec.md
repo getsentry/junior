@@ -22,13 +22,13 @@ Draft
 
 ## Purpose
 
-Define a capability model where skills declare required capabilities and runtime enables short-lived provider credentials on demand via `jr-rpc issue-credential <capability>`, delivered through sandbox header transforms.
+Define a capability model where skills declare required capabilities and runtime enables short-lived provider credentials on demand via `jr-rpc issue-credential <capability> [--target <value>]`, delivered through sandbox header transforms.
 
 ## Core model
 
 1. Skill loads normally.
 2. Prompt/runtime expose `requires-capabilities` from the loaded skill for agent guidance.
-3. Agent enables credential with bash custom command `jr-rpc issue-credential <capability>`.
+3. Agent enables credential with bash custom command `jr-rpc issue-credential <capability> [--target <value>]`.
 4. Runtime issues short-lived credentials and applies sandbox header transforms.
 5. Runtime does not persist long-lived secrets in sandbox env/files or skill files.
 
@@ -84,8 +84,10 @@ Rules:
 
 - `github.issues.read`
 - `github.issues.write`
-- `github.issues.comment`
-- `github.labels.write`
+- `github.contents.read`
+- `github.contents.write`
+- `github.pull-requests.read`
+- `github.pull-requests.write`
 
 ### Issuance flow
 
@@ -98,6 +100,12 @@ Rules:
 - Prefer short-lived token leases.
 - Runtime cache can reuse a lease in memory.
 - Current cap: at most 1 hour lease window.
+
+### Security posture
+
+- GitHub capabilities are a lightweight host-side safety rail, not a fine-grained policy engine.
+- The main goals are reducing accidental write scope and wrong-repository mutations while keeping the command model simple.
+- Provider target scoping is a host-side safety rail. GitHub uses `repo` targets to narrow installation tokens when `owner/repo` is known, but the agent can still request broader GitHub capabilities when the task requires them.
 
 ## Sentry profile
 
