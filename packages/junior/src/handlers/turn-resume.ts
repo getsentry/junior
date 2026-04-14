@@ -300,7 +300,20 @@ async function resumeTimedOutTurn(
       });
     },
     onSuccess: async (reply) => {
-      await persistCompletedReplyState({ checkpoint, reply });
+      try {
+        await persistCompletedReplyState({ checkpoint, reply });
+      } catch (persistError) {
+        logException(
+          persistError,
+          "timeout_resume_complete_persist_failed",
+          {},
+          {
+            "app.ai.conversation_id": payload.conversationId,
+            "app.ai.session_id": payload.sessionId,
+          },
+          "Failed to persist completed timeout-resume state after reply delivery",
+        );
+      }
     },
     onFailure: async (error) => {
       logException(

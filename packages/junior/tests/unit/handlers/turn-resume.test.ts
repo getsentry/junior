@@ -46,6 +46,7 @@ vi.mock("@/chat/slack/client", () => ({
 }));
 
 import { RetryableTurnError } from "@/chat/runtime/turn";
+import * as threadStateModule from "@/chat/runtime/thread-state";
 import {
   getChannelConfigurationServiceById,
   getPersistedThreadState,
@@ -313,5 +314,121 @@ describe("turn resume handler", () => {
       sessionId,
       expectedCheckpointVersion: checkpoint.checkpointVersion + 1,
     });
+  });
+
+  it("keeps the delivered reply when completion persistence fails afterward", async () => {
+    const conversationId = "slack:C123:1712345.0001";
+    const sessionId = "turn_msg_1";
+    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
+
+    await persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        messages: [
+          {
+            id: "msg.1",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
+      conversationId,
+      sessionId,
+      expectedCheckpointVersion: checkpoint.checkpointVersion,
+    });
+
+    vi.spyOn(threadStateModule, "persistThreadStateById").mockRejectedValueOnce(
+      new Error("state write failed"),
+    );
+
+    resumeSlackTurnMock.mockImplementationOnce(async (args) => {
+      const reply = {
+        text: "Final resumed answer",
+        diagnostics: {
+          outcome: "success",
+          assistantMessageCount: 1,
+          toolCalls: [],
+          toolResultCount: 0,
+          toolErrorCount: 0,
+          usedPrimaryText: true,
+        },
+      } as any;
+
+      try {
+        await args.onReply?.(reply);
+        await args.onSuccess?.(reply);
+      } catch (error) {
+        await args.onFailure?.(error);
+        if (args.failureText) {
+          await postSlackMessageMock(
+            args.channelId,
+            args.threadTs,
+            args.failureText,
+          );
+        }
+      }
+    });
+
+    const response = await POST(
+      new Request("https://example.com/api/internal/turn-resume", {
+        method: "POST",
+      }),
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(202);
+    await waitUntilCallbacks[0]?.();
+
+    expect(postSlackMessageMock).toHaveBeenCalledTimes(1);
+    expect(postSlackMessageMock).toHaveBeenCalledWith(
+      "C123",
+      "1712345.0001",
+      "Final resumed answer",
+    );
+    expect(postSlackMessageMock).not.toHaveBeenCalledWith(
+      "C123",
+      "1712345.0001",
+      "I hit an error while resuming that request. Please try the command again.",
+    );
   });
 });

@@ -182,6 +182,8 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     threadTs: args.threadTs,
     transport: createSlackWebApiAssistantStatusTransport(),
   });
+  let deferredPauseHandler: (() => Promise<void>) | undefined;
+  let deferredFailureHandler: (() => Promise<void>) | undefined;
   try {
     if (args.initialText) {
       await postSlackMessageBestEffort(
@@ -227,28 +229,40 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     await progress.stop();
 
     if (isRetryableTurnError(error, "mcp_auth_resume") && args.onAuthPause) {
-      await args.onAuthPause(error);
-      return;
-    }
-    if (
+      deferredPauseHandler = async () => {
+        await args.onAuthPause?.(error);
+      };
+    } else if (
       isRetryableTurnError(error, "turn_timeout_resume") &&
       args.onTimeoutPause
     ) {
-      await args.onTimeoutPause(error);
-      return;
-    }
+      deferredPauseHandler = async () => {
+        await args.onTimeoutPause?.(error);
+      };
+    } else {
+      deferredFailureHandler = async () => {
+        await args.onFailure?.(error);
 
-    await args.onFailure?.(error);
-
-    if (args.failureText) {
-      await postSlackMessageBestEffort(
-        args.channelId,
-        args.threadTs,
-        args.failureText,
-      );
+        if (args.failureText) {
+          await postSlackMessageBestEffort(
+            args.channelId,
+            args.threadTs,
+            args.failureText,
+          );
+        }
+      };
     }
   } finally {
     await stateAdapter.releaseLock(lock);
+  }
+
+  if (deferredPauseHandler) {
+    await deferredPauseHandler();
+    return;
+  }
+
+  if (deferredFailureHandler) {
+    await deferredFailureHandler();
   }
 }
 
