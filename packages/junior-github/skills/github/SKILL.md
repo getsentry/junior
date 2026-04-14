@@ -14,29 +14,31 @@ Issue workflows, pull request operations, and repository checkout via `gh` CLI.
 
 Load references conditionally based on the operation:
 
-| Operation          | Load                                                                                                                                                                                        |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Any operation      | [references/api-surface.md](references/api-surface.md)                                                                                                                                      |
-| `clone`            | [references/common-use-cases.md](references/common-use-cases.md)                                                                                                                            |
-| `create`, `update` | [references/issue-examples.md](references/issue-examples.md), the matching type-specific template and type-specific rules, and [references/research-rules.md](references/research-rules.md) |
-| On failure         | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                      |
+| Operation                            | Load                                                                                                                                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Any operation                        | [references/api-surface.md](references/api-surface.md)                                                                                                                                      |
+| `clone`, `pull request create`       | [references/common-use-cases.md](references/common-use-cases.md)                                                                                                                            |
+| `issue create`, `issue body rewrite` | [references/issue-examples.md](references/issue-examples.md), the matching type-specific template and type-specific rules, and [references/research-rules.md](references/research-rules.md) |
+| On failure                           | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                      |
 
 ## Workflow
 
 ### 1. Resolve operation and target
 
-- Determine whether the task is `clone`, an issue operation (`create`, `update`, `comment`, `labels`, `state`, or read-only inspection), or a pull request operation (`create`, `update`, `close`, `merge`, or read-only inspection).
+- Determine whether the task is `clone`, an issue operation (`create`, `update`, `comment`, `labels`, `state`, or read-only inspection), a pull request inspection (`view`, `list`, `diff`, or `checks`), or a pull request mutation (`create`, `update`, `close`, or `merge`).
 - Resolve repository (`owner/repo`). If it is not explicit, query channel config with `jr-rpc config get github.repo`.
 - If config exists and is valid `owner/repo`, use it as the default.
 - If repository is still missing, ask the user for `owner/repo`.
 - Resolve the issue number for non-create issue operations.
+- Resolve the pull request number for pull request operations that target an existing PR.
 - Keep `owner/repo` explicit on both `jr-rpc issue-credential` and `gh` commands whenever the task targets a specific repository. Do not rely on a stale `github.repo` default when hopping between repos.
 
 ### 2. Execute by operation type
 
 **Clone** → Follow the clone path below.
 **Issue operation** → Follow the issue path below.
-**Pull request operation** → Follow the pull request path below.
+**Pull request inspection** → Follow the pull request inspection path below.
+**Pull request mutation** → Follow the pull request mutation path below.
 
 ---
 
@@ -102,21 +104,36 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 ---
 
-### Pull request path
+### Pull request inspection path
 
-#### 3. Resolve branch inputs
+#### 3. Execute inspection
 
-- Resolve the base branch. Use the explicit user request when present; otherwise use the repository default branch.
-- Resolve the head branch from the current checkout or user request.
-- If the current branch may not exist on the remote yet, push it explicitly before PR creation.
+- Issue `github.pull-requests.read --repo owner/repo` before authenticated read-only PR commands.
+- Use exact read-only `gh pr` commands from [references/api-surface.md](references/api-surface.md).
+- Skip branch resolution and push logic for inspection-only work.
+
+#### 4. Report result
+
+- Return canonical PR URL, PR number when available, target repository, and the fields the user asked to inspect.
+- If the requested PR cannot be resolved, report the exact not-found or auth failure and stop.
+
+---
+
+### Pull request mutation path
+
+#### 3. Resolve mutation inputs
+
+- For PR creation, resolve the base branch. Use the explicit user request when present; otherwise use the repository default branch.
+- For PR creation, resolve the head branch from the current checkout or user request.
+- For PR creation, if the current branch may not exist on the remote yet, push it explicitly before PR creation.
 
 #### 4. Execute pull request operation
 
 - Issue the narrowest matching capability credential before executing, and pass `--repo owner/repo` for repo-scoped work.
 - For PR creation, do not rely on `gh pr create` to push or fork implicitly.
-- If the head branch is not already on the remote, first issue `github.contents.write --repo owner/repo` and run `git push`.
-- Then issue `github.pull-requests.write --repo owner/repo` and run `gh pr create --repo owner/repo --head BRANCH ...`.
-- Use `--head` on `gh pr create` so `gh` skips its hidden push/fork flow.
+- For PR creation, if the head branch is not already on the remote, first issue `github.contents.write --repo owner/repo` and run `git push`.
+- For PR creation, then issue `github.pull-requests.write --repo owner/repo` and run `gh pr create --repo owner/repo --head BRANCH ...`.
+- For PR creation, use `--head` so `gh` skips its hidden push/fork flow.
 - Treat `gh pr merge` as a contents mutation: it requires `github.contents.write`, not just `github.pull-requests.write`.
 - Treat issue comments and label edits as `github.issues.write`.
 
