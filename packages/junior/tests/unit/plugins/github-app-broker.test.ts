@@ -156,6 +156,28 @@ describe("github app credential broker", () => {
     expect(lease.metadata).toMatchObject({ targetScope: "getsentry/junior" });
   });
 
+  it("uses cached lease without recreating app jwt", async () => {
+    setupValidEnv();
+    mockGitHubApi({ token: "cached-token" });
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    const firstLease = await broker.issue({
+      capability: "github.issues.write",
+      reason: "test:cache-prime",
+    });
+
+    delete process.env.GITHUB_APP_ID;
+    delete process.env.GITHUB_APP_PRIVATE_KEY;
+
+    const secondLease = await broker.issue({
+      capability: "github.issues.write",
+      reason: "test:cache-hit",
+    });
+
+    expect(secondLease.headerTransforms).toEqual(firstLease.headerTransforms);
+    expect(vi.mocked(globalThis.fetch).mock.calls).toHaveLength(1);
+  });
+
   it("maps issues.write to GitHub issues write permission", async () => {
     setupValidEnv();
     mockGitHubApi();
@@ -184,6 +206,11 @@ describe("github app credential broker", () => {
   });
 
   it("requires GITHUB_APP_ID", async () => {
+    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
+      .privateKey.export({ type: "pkcs8", format: "pem" })
+      .toString();
+    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    process.env.GITHUB_INSTALLATION_ID = "42";
     delete process.env.GITHUB_APP_ID;
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);

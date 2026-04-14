@@ -284,11 +284,6 @@ export function createGitHubAppBroker(
         );
       }
       const permissions = capabilityToPermissions(input.capability, provider);
-      const appId = process.env[appIdEnv];
-      if (!appId) {
-        throw new Error(`Missing ${appIdEnv}`);
-      }
-      const appJwt = createAppJwt(appId, privateKeyEnv);
       const installationId = resolveInstallationId();
 
       const targetScope = normalizeTargetScope(input.target);
@@ -328,6 +323,12 @@ export function createGitHubAppBroker(
       if (repositoryName) {
         tokenRequestBody.repositories = [repositoryName];
       }
+
+      const appId = process.env[appIdEnv];
+      if (!appId) {
+        throw new Error(`Missing ${appIdEnv}`);
+      }
+      const appJwt = createAppJwt(appId, privateKeyEnv);
 
       const accessTokenResponse = await githubRequest<{
         token: string;
