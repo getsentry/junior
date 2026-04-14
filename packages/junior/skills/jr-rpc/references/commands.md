@@ -6,8 +6,8 @@
 
 Enable a capability credential for the current turn.
 
-- `<capability>` — provider-qualified (e.g. `github.issues.write`, `sentry.api`)
-- `--repo <owner/repo>` — required for GitHub capabilities, not needed for Sentry
+- `<capability>` — exact provider-qualified token from the loaded skill or provider-capabilities catalog
+- `--repo <owner/repo>` — required only for repo-targeted capabilities
 
 ### Auto-OAuth
 
@@ -17,9 +17,9 @@ When `issue-credential` fails because no credentials are available for an OAuth-
 {
   "credential_unavailable": true,
   "oauth_started": true,
-  "provider": "sentry",
+  "provider": "provider-name",
   "private_delivery_sent": true,
-  "message": "I need to connect your Sentry account first. I've sent you a private authorization link."
+  "message": "I need to connect your account first. I've sent you a private authorization link."
 }
 ```
 
@@ -42,8 +42,6 @@ Responses:
 - `{ ok: true, already_connected: true, provider: "...", message: "..." }` — user already has a valid token. Relay the `message`.
 
 **Never** post or relay authorization URLs — they are security-sensitive and are only delivered privately.
-
-Supported providers: `sentry`
 
 ## delete-token
 

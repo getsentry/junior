@@ -2,7 +2,6 @@
 name: jr-rpc
 description: Issue capability credentials and manage OAuth flows via jr-rpc bash commands. Use when a task needs authenticated API calls, credentials are not enabled, or a user needs to connect or disconnect a provider account.
 allowed-tools: bash
-uses-config: github.repo
 ---
 
 # jr-rpc
@@ -15,8 +14,9 @@ Run before any authenticated API call:
 
 `jr-rpc issue-credential <capability> [--repo <owner/repo>]`
 
-- GitHub capabilities require repository context. Provide `--repo`, or reuse a configured default via `github.repo` when available.
-- Sentry capabilities are org-scoped and do not use `--repo`.
+- Use the exact capability name declared by the loaded skill's `requires-capabilities` metadata or the runtime provider-capabilities catalog.
+- Repo-targeted capabilities require `--repo`, unless the target provider already has a configured default repository key.
+- Capabilities without repo targets do not use `--repo`.
 - On success, sandbox header transforms are applied for this turn. Do not pass raw tokens.
 - If credential issuance fails with `credential_unavailable` + `oauth_started`, relay the `message` field to the user and **stop the turn** — the callback auto-resumes the request after authorization.
 
@@ -38,7 +38,7 @@ Run before any authenticated API call:
 
 `jr-rpc config get|set|unset|list` — read and write channel-scoped configuration values.
 
-- Use `jr-rpc config set github.repo <owner/repo>` to store a channel default GitHub repository for later credential issuance.
+- Choose config keys from the runtime provider-capabilities catalog or the active skill's `uses-config` metadata.
 
 Read `${CLAUDE_SKILL_ROOT}/references/commands.md` for full command syntax and response shapes.
 
@@ -46,5 +46,5 @@ Read `${CLAUDE_SKILL_ROOT}/references/capabilities.md` for capability naming and
 
 ## Guardrails
 
-- Use provider-qualified capabilities (e.g. `github.issues.write`).
+- Use exact capability and config key names from the loaded skill or provider catalog; do not invent them.
 - Do not print credential values.
