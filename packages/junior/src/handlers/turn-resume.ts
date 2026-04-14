@@ -21,6 +21,7 @@ import {
   getChannelConfigurationServiceById,
 } from "@/chat/runtime/thread-state";
 import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
+import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import {
   buildConversationContext,
   generateConversationId,
@@ -32,13 +33,13 @@ import {
 import { uploadFilesToThread } from "@/chat/slack/client";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  buildDeterministicTurnId,
   isRetryableTurnError,
   markTurnCompleted,
   markTurnFailed,
 } from "@/chat/runtime/turn";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
 import {
+  canScheduleTurnTimeoutResume,
   scheduleTurnTimeoutResume,
   verifyTurnTimeoutResumeRequest,
   type TurnTimeoutResumeRequest,
@@ -135,23 +136,6 @@ async function deliverReplyToThread(args: {
   }
 }
 
-function getUserMessageForTurn(
-  conversation: ReturnType<typeof coerceThreadConversationState>,
-  sessionId: string,
-) {
-  for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
-    const message = conversation.messages[index];
-    if (message?.role !== "user") {
-      continue;
-    }
-    if (buildDeterministicTurnId(message.id) === sessionId) {
-      return message;
-    }
-  }
-
-  return undefined;
-}
-
 async function persistCompletedReplyState(args: {
   checkpoint: AgentTurnSessionCheckpoint;
   reply: AssistantReply;
@@ -164,7 +148,7 @@ async function persistCompletedReplyState(args: {
   const nextArtifacts = args.reply.artifactStatePatch
     ? mergeArtifactsState(artifacts, args.reply.artifactStatePatch)
     : undefined;
-  const userMessage = getUserMessageForTurn(
+  const userMessage = getTurnUserMessage(
     conversation,
     args.checkpoint.sessionId,
   );
@@ -209,8 +193,7 @@ async function persistFailedReplyState(
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
-    userMessageId: getUserMessageForTurn(conversation, checkpoint.sessionId)
-      ?.id,
+    userMessageId: getTurnUserMessage(conversation, checkpoint.sessionId)?.id,
     markConversationMessage,
     updateConversationStats,
   });
@@ -246,7 +229,7 @@ async function resumeTimedOutTurn(
   const currentState = await getPersistedThreadState(payload.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   const artifacts = coerceThreadArtifactsState(currentState);
-  const userMessage = getUserMessageForTurn(conversation, payload.sessionId);
+  const userMessage = getTurnUserMessage(conversation, payload.sessionId);
   if (!userMessage?.author?.userId) {
     throw new Error(
       `Unable to locate the persisted user message for timeout resume session "${payload.sessionId}"`,
@@ -344,9 +327,27 @@ async function resumeTimedOutTurn(
         throw error;
       }
       const checkpointVersion = error.metadata?.checkpointVersion;
+      const nextSliceId = error.metadata?.sliceId;
       if (typeof checkpointVersion !== "number") {
         throw new Error(
           "Timed-out resume turn did not include a checkpoint version",
+        );
+      }
+      if (!canScheduleTurnTimeoutResume(nextSliceId)) {
+        logWarn(
+          "timeout_resume_slice_limit_reached",
+          {},
+          {
+            "app.ai.conversation_id": payload.conversationId,
+            "app.ai.session_id": payload.sessionId,
+            ...(typeof nextSliceId === "number"
+              ? { "app.ai.resume_slice_id": nextSliceId }
+              : {}),
+          },
+          "Skipped automatic timeout resume because the turn exceeded the slice limit",
+        );
+        throw new Error(
+          "Timed-out turn exceeded the automatic resume slice limit",
         );
       }
 

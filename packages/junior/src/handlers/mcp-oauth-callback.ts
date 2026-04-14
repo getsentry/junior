@@ -19,6 +19,10 @@ import {
 } from "@/chat/runtime/thread-state";
 import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import {
+  getTurnUserMessage,
+  getTurnUserMessageId,
+} from "@/chat/runtime/turn-user-message";
+import {
   buildConversationContext,
   generateConversationId,
   markConversationMessage,
@@ -33,13 +37,15 @@ import {
   resumeAuthorizedRequest,
 } from "@/handlers/oauth-resume";
 import {
-  buildDeterministicTurnId,
   isRetryableTurnError,
   markTurnCompleted,
   markTurnFailed,
 } from "@/chat/runtime/turn";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
-import { scheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
+import {
+  canScheduleTurnTimeoutResume,
+  scheduleTurnTimeoutResume,
+} from "@/chat/services/timeout-resume";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 
@@ -164,23 +170,6 @@ async function deliverReplyToThread(
   }
 }
 
-function getUserMessageIdForTurn(
-  conversation: ReturnType<typeof coerceThreadConversationState>,
-  sessionId: string,
-): string | undefined {
-  for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
-    const message = conversation.messages[index];
-    if (message?.role !== "user") {
-      continue;
-    }
-    if (buildDeterministicTurnId(message.id) === sessionId) {
-      return message.id;
-    }
-  }
-
-  return undefined;
-}
-
 async function buildResumeConversationContext(
   channelId: string,
   threadTs: string,
@@ -190,27 +179,10 @@ async function buildResumeConversationContext(
   const conversation = coerceThreadConversationState(
     await getPersistedThreadState(threadId),
   );
-  const userMessageId = getUserMessageIdForTurn(conversation, sessionId);
+  const userMessageId = getTurnUserMessageId(conversation, sessionId);
   return buildConversationContext(conversation, {
     excludeMessageId: userMessageId,
   });
-}
-
-function getUserMessageForTurn(
-  conversation: ReturnType<typeof coerceThreadConversationState>,
-  sessionId: string,
-) {
-  for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
-    const message = conversation.messages[index];
-    if (message?.role !== "user") {
-      continue;
-    }
-    if (buildDeterministicTurnId(message.id) === sessionId) {
-      return message;
-    }
-  }
-
-  return undefined;
 }
 
 async function persistCompletedReplyState(
@@ -226,7 +198,7 @@ async function persistCompletedReplyState(
   const nextArtifacts = reply.artifactStatePatch
     ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
     : undefined;
-  const userMessageId = getUserMessageIdForTurn(conversation, sessionId);
+  const userMessageId = getTurnUserMessageId(conversation, sessionId);
 
   markConversationMessage(conversation, userMessageId, {
     replied: true,
@@ -271,7 +243,7 @@ async function persistFailedReplyState(
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
-    userMessageId: getUserMessageIdForTurn(conversation, sessionId),
+    userMessageId: getTurnUserMessageId(conversation, sessionId),
     markConversationMessage,
     updateConversationStats,
   });
@@ -294,10 +266,7 @@ async function resumeAuthorizedMcpTurn(args: {
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
   const artifacts = coerceThreadArtifactsState(currentState);
-  const userMessage = getUserMessageForTurn(
-    conversation,
-    authSession.sessionId,
-  );
+  const userMessage = getTurnUserMessage(conversation, authSession.sessionId);
   if (conversation.processing.activeTurnId !== authSession.sessionId) {
     return;
   }
@@ -407,9 +376,26 @@ async function resumeAuthorizedMcpTurn(args: {
         throw error;
       }
       const checkpointVersion = error.metadata?.checkpointVersion;
+      const nextSliceId = error.metadata?.sliceId;
       if (typeof checkpointVersion !== "number") {
         throw new Error(
           "Timed-out MCP resume did not include a checkpoint version",
+        );
+      }
+      if (!canScheduleTurnTimeoutResume(nextSliceId)) {
+        logWarn(
+          "mcp_oauth_callback_resume_slice_limit_reached",
+          {},
+          {
+            "app.credential.provider": provider,
+            ...(typeof nextSliceId === "number"
+              ? { "app.ai.resume_slice_id": nextSliceId }
+              : {}),
+          },
+          "Skipped automatic timeout resume because the turn exceeded the slice limit",
+        );
+        throw new Error(
+          "Timed-out turn exceeded the automatic resume slice limit",
         );
       }
       await scheduleTurnTimeoutResume({

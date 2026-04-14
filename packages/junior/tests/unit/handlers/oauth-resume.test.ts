@@ -136,4 +136,37 @@ describe("resumeAuthorizedRequest", () => {
 
     expect(onTimeoutPause).toHaveBeenCalledTimes(1);
   });
+
+  it("falls back to normal failure handling when timeout pause handling throws", async () => {
+    const onFailure = vi.fn(async () => undefined);
+
+    await resumeSlackTurn({
+      messageText: "continue this turn",
+      channelId: "C-test",
+      threadTs: "1700000000.0003",
+      failureText: "resume failed",
+      replyContext: {
+        requester: { userId: "U-test" },
+      },
+      generateReply: async () => {
+        throw new RetryableTurnError("turn_timeout_resume", "timed out again", {
+          conversationId: "conversation-1",
+          sessionId: "turn-1",
+          checkpointVersion: 3,
+          sliceId: 6,
+        });
+      },
+      onTimeoutPause: async () => {
+        throw new Error("slice limit reached");
+      },
+      onFailure,
+    });
+
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(postMessageMock).toHaveBeenCalledWith({
+      channel: "C-test",
+      thread_ts: "1700000000.0003",
+      text: "resume failed",
+    });
+  });
 });

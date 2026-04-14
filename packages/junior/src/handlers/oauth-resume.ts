@@ -257,8 +257,21 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
   }
 
   if (deferredPauseHandler) {
-    await deferredPauseHandler();
-    return;
+    try {
+      await deferredPauseHandler();
+      return;
+    } catch (pauseError) {
+      await args.onFailure?.(pauseError);
+
+      if (args.failureText) {
+        await postSlackMessageBestEffort(
+          args.channelId,
+          args.threadTs,
+          args.failureText,
+        );
+      }
+      return;
+    }
   }
 
   if (deferredFailureHandler) {

@@ -48,6 +48,7 @@ import { isDmChannel } from "@/chat/slack/client";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
+import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import { resolveReplyDelivery } from "@/chat/runtime/turn";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
@@ -615,11 +616,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             const conversationIdForResume = error.metadata?.conversationId;
             const sessionIdForResume = error.metadata?.sessionId;
             const checkpointVersion = error.metadata?.checkpointVersion;
+            const nextSliceId = error.metadata?.sliceId;
             if (
               !hasVisibleAssistantOutput &&
               conversationIdForResume &&
               sessionIdForResume &&
-              typeof checkpointVersion === "number"
+              typeof checkpointVersion === "number" &&
+              canScheduleTurnTimeoutResume(nextSliceId)
             ) {
               try {
                 await deps.services.scheduleTurnTimeoutResume({
@@ -641,6 +644,23 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   "Failed to schedule timeout resume callback",
                 );
               }
+            } else if (
+              !hasVisibleAssistantOutput &&
+              conversationIdForResume &&
+              sessionIdForResume &&
+              typeof checkpointVersion === "number"
+            ) {
+              logWarn(
+                "agent_turn_timeout_resume_slice_limit_reached",
+                turnTraceContext,
+                {
+                  ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                  ...(typeof nextSliceId === "number"
+                    ? { "app.ai.resume_slice_id": nextSliceId }
+                    : {}),
+                },
+                "Skipped automatic timeout resume because the turn exceeded the slice limit",
+              );
             } else {
               logWarn(
                 "agent_turn_timeout_resume_metadata_missing",

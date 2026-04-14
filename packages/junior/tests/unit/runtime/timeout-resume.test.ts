@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  canScheduleTurnTimeoutResume,
   scheduleTurnTimeoutResume,
   verifyTurnTimeoutResumeRequest,
 } from "@/chat/services/timeout-resume";
@@ -71,5 +72,12 @@ describe("timeout resume callback signing", () => {
     await expect(
       verifyTurnTimeoutResumeRequest(request),
     ).resolves.toBeUndefined();
+  });
+
+  it("caps automatic timeout resume depth", () => {
+    expect(canScheduleTurnTimeoutResume(2)).toBe(true);
+    expect(canScheduleTurnTimeoutResume(5)).toBe(true);
+    expect(canScheduleTurnTimeoutResume(6)).toBe(false);
+    expect(canScheduleTurnTimeoutResume(undefined)).toBe(false);
   });
 });

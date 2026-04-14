@@ -431,4 +431,111 @@ describe("turn resume handler", () => {
       "I hit an error while resuming that request. Please try the command again.",
     );
   });
+
+  it("fails the resumed turn when the timeout slice limit is reached", async () => {
+    const conversationId = "slack:C123:1712345.0001";
+    const sessionId = "turn_msg_1";
+    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+      conversationId,
+      sessionId,
+      sliceId: 5,
+      state: "awaiting_resume",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "timeout",
+      resumedFromSliceId: 4,
+      errorMessage: "Agent turn timed out",
+    });
+
+    await persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        messages: [
+          {
+            id: "msg.1",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
+      conversationId,
+      sessionId,
+      expectedCheckpointVersion: checkpoint.checkpointVersion,
+    });
+
+    resumeSlackTurnMock.mockImplementationOnce(async (args) => {
+      try {
+        await args.onTimeoutPause?.(
+          new RetryableTurnError("turn_timeout_resume", "timed out again", {
+            conversationId,
+            sessionId,
+            checkpointVersion: checkpoint.checkpointVersion + 1,
+            sliceId: 6,
+          }),
+        );
+      } catch (error) {
+        await args.onFailure?.(error);
+        if (args.failureText) {
+          await postSlackMessageMock(
+            args.channelId,
+            args.threadTs,
+            args.failureText,
+          );
+        }
+      }
+    });
+
+    const response = await POST(
+      new Request("https://example.com/api/internal/turn-resume", {
+        method: "POST",
+      }),
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(202);
+    await waitUntilCallbacks[0]?.();
+
+    expect(scheduleTurnTimeoutResumeMock).not.toHaveBeenCalled();
+    expect(postSlackMessageMock).toHaveBeenCalledWith(
+      "C123",
+      "1712345.0001",
+      "I hit an error while resuming that request. Please try the command again.",
+    );
+
+    const persisted = await getPersistedThreadState(conversationId);
+    const conversation = (persisted.conversation ?? {}) as {
+      processing?: { activeTurnId?: string };
+    };
+    expect(conversation.processing?.activeTurnId).toBeUndefined();
+  });
 });

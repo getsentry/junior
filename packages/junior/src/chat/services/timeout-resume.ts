@@ -7,11 +7,23 @@ const TURN_TIMEOUT_RESUME_SIGNATURE_VERSION = "v1";
 const TURN_TIMEOUT_RESUME_MAX_SKEW_MS = 5 * 60 * 1000;
 const TURN_TIMEOUT_RESUME_TIMESTAMP_HEADER = "x-junior-resume-timestamp";
 const TURN_TIMEOUT_RESUME_SIGNATURE_HEADER = "x-junior-resume-signature";
+const MAX_TURN_TIMEOUT_RESUME_SLICE_ID = 5;
 
 export interface TurnTimeoutResumeRequest {
   conversationId: string;
   expectedCheckpointVersion: number;
   sessionId: string;
+}
+
+/** Bound automatic timeout continuation so one bad turn cannot loop forever. */
+export function canScheduleTurnTimeoutResume(
+  nextSliceId: number | undefined,
+): boolean {
+  return (
+    typeof nextSliceId === "number" &&
+    nextSliceId > 1 &&
+    nextSliceId <= MAX_TURN_TIMEOUT_RESUME_SLICE_ID
+  );
 }
 
 function getTurnTimeoutResumeSecret(): string | undefined {
