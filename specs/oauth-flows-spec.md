@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-20
+- Last Edited: 2026-04-13
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-03-13: Documented MCP challenge-driven OAuth, MCP callback routing, and auth-driven turn resume.
 - 2026-03-18: Clarified lazy MCP auth-session creation, host-managed MCP server-session storage, and disconnect cleanup for stored credentials plus pending auth sessions.
 - 2026-03-20: Removed stale slash-command examples in favor of generic connect/disconnect requests and direct jr-rpc initiation.
+- 2026-04-13: Clarified that `mcp.url` implies hosted HTTP transport, so explicit `mcp.transport: http` is optional.
 
 ## Status
 
@@ -219,7 +220,7 @@ Providers are configured via plugin manifests (`plugin.yaml`) and exposed throug
 
 ### MCP-backed plugins
 
-- Plugin manifests may also declare `mcp.transport: http` and `mcp.url`.
+- Plugin manifests may also declare `mcp.url`; hosted HTTP transport is inferred when present, so explicit `mcp.transport: http` is optional.
 - MCP headers are optional but may not include `Authorization`.
 - MCP callback path is `/api/oauth/callback/mcp/<plugin>`.
 - MCP OAuth is challenge-driven by the SDK rather than initiated through `jr-rpc oauth-start`.

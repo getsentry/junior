@@ -2,7 +2,6 @@ name: notion
 description: Notion page search and summarization
 
 mcp:
-  transport: http
   url: https://mcp.notion.com/mcp
   allowed-tools:
     - notion-search

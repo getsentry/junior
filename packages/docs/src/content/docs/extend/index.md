@@ -156,7 +156,7 @@ runtime-postinstall:
 - `target`: optional credential target scope tied to a declared config key
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
-- `mcp`: optional MCP server configuration for provider-scoped tool sources
+- `mcp`: optional MCP server configuration for provider-scoped tool sources; `mcp.url` implies hosted HTTP transport, so `mcp.transport: http` is optional
 - `mcp.allowed-tools`: optional raw MCP tool-name allowlist when a plugin should expose only part of a provider's tool surface
 
 ### Add skills to the plugin
