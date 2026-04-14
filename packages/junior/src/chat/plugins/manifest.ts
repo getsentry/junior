@@ -225,9 +225,11 @@ const oauthSourceSchema = z
 
 const mcpSourceSchema = z
   .object({
-    transport: nonEmptyTrimmedString.refine((value) => value === "http", {
-      error: 'must be "http"',
-    }),
+    transport: nonEmptyTrimmedString
+      .refine((value) => value === "http", {
+        error: 'must be "http"',
+      })
+      .optional(),
     url: httpsUrlString,
     headers: stringMapSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),

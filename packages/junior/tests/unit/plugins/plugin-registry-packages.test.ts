@@ -336,7 +336,6 @@ async function writePackagedPluginWithMcp(tempRoot: string): Promise<void> {
       "name: demo",
       "description: Demo MCP plugin",
       "mcp:",
-      "  transport: http",
       "  url: https://mcp.example.com",
       "  headers:",
       '    X-Workspace: "acme"',
@@ -842,7 +841,7 @@ describe("plugin registry package discovery", () => {
     );
   });
 
-  it("parses HTTP MCP configuration from packaged plugins", async () => {
+  it("infers HTTP MCP configuration from packaged plugins with a URL", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-package-"),
     );
