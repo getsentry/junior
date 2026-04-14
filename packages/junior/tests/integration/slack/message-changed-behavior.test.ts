@@ -175,9 +175,12 @@ describe("Slack behavior: message_changed webhook ingress", () => {
       text: `<@${BOT_USER_ID}> hello there`,
       isMention: true,
     });
-    expect((handledMessages[1]?.raw as { ts?: string }).ts).toBe(
-      "1700000100.000100",
-    );
+    const editedMessage = handledMessages[1];
+    expect(editedMessage).toBeDefined();
+    if (!editedMessage) {
+      throw new Error("expected edited message to be handled");
+    }
+    expect((editedMessage.raw as { ts?: string }).ts).toBe("1700000100.000100");
   });
 
   it("streams an edited DM mention with the Slack recipient team metadata", async () => {

@@ -43,6 +43,7 @@ This starts the example app on `http://localhost:3000` by default.
 ## Common checks
 
 ```bash
+pnpm lint
 pnpm test
 pnpm typecheck
 pnpm skills:check

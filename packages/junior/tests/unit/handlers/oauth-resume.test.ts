@@ -86,15 +86,18 @@ describe("resumeAuthorizedRequest", () => {
       text: "resume failed",
     });
     expect(setStatusMock).toHaveBeenCalledTimes(2);
-    expect(setStatusMock.mock.calls[0]?.[0]).toMatchObject({
+    const firstStatusCall = setStatusMock.mock.calls[0]?.[0];
+    expect(firstStatusCall).toBeDefined();
+    if (!firstStatusCall) {
+      throw new Error("expected status update call");
+    }
+    expect(firstStatusCall).toMatchObject({
       channel_id: "C-test",
       thread_ts: "1700000000.0001",
       status: expect.any(String),
       loading_messages: expect.arrayContaining([expect.any(String)]),
     });
-    expect(
-      (setStatusMock.mock.calls[0]?.[0] as { status?: string }).status,
-    ).not.toBe("");
+    expect((firstStatusCall as { status?: string }).status).not.toBe("");
     expect(setStatusMock.mock.calls[1]?.[0]).toMatchObject({
       channel_id: "C-test",
       thread_ts: "1700000000.0001",

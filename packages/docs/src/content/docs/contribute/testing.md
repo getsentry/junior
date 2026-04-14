@@ -20,6 +20,7 @@ related:
 Run core suite:
 
 ```bash
+pnpm lint
 pnpm test
 pnpm typecheck
 ```

@@ -21,7 +21,7 @@ describe("timeout resume callback signing", () => {
   });
 
   it("signs scheduled callbacks so the handler can verify them", async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
@@ -49,7 +49,7 @@ describe("timeout resume callback signing", () => {
   });
 
   it("rejects requests whose signature does not match the body", async () => {
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
