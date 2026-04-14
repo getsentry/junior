@@ -38,6 +38,7 @@
     "@chat-adapter/slack": "4.23.0",
     "@chat-adapter/state-memory": "4.23.0",
     "@chat-adapter/state-redis": "4.23.0",
+    "@logtape/logtape": "^2.0.5",
     "@mariozechner/pi-agent-core": "0.59.0",
     "@mariozechner/pi-ai": "0.59.0",
     "@modelcontextprotocol/sdk": "1.29.0",

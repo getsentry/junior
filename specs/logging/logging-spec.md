@@ -143,6 +143,7 @@ Rules:
 - Structured records remain rich for sinks and Sentry; console rendering may project a smaller view for readability.
 - Default dev console output should keep a small stable core (`event.name`, conversation/turn correlation, trace/span ids, and event-local outcome fields) and suppress low-value ambient fields that are repeated on nearly every line.
 - Default console output should suppress duplicated correlation fields when a stronger equivalent is already present (for example `app.agent.id` when it matches `app.turn.id`).
+- Development console output may render a human-oriented summary line instead of the full key/value projection, as long as structured attributes remain intact for non-console sinks and `JUNIOR_LOG_FORMAT=structured` can force the full projection. This explicitly applies to worker-based dev runtimes that do not expose TTY state to the logging process.
 - Large payload attributes should be compacted for `debug` and `info` console output using short previews plus length metadata. `warn` and `error` console output may retain fuller payload detail subject to normal redaction/truncation rules.
 - Console projection is a presentation concern only; it must not remove the underlying structured attributes from emitted log records.
 
@@ -330,12 +331,12 @@ Only when no semantic key exists:
 
 ## Decision Record
 
-- Keep current logging stack (`packages/junior/src/chat/logging.ts` + `AsyncLocalStorage` + Sentry transport) for this migration.
-- Do not adopt LogTape in this phase.
-- Revisit LogTape (or another logger) only if one or more become true:
-  - We need multi-sink fanout not reasonably supported in current transport.
-  - We need first-class local structured log sinks that are hard to support with current stack.
-  - Current transport limitations block required queryability, performance, or reliability.
+- Adopt LogTape as the internal logging backend in `packages/junior/src/chat/logging.ts`.
+- Keep the repo-local logging facade (`logInfo`, `logWarn`, `logError`, `logException`, context helpers) as the only application logging API; call sites should not import LogTape directly.
+- Keep `AsyncLocalStorage` as the ambient context carrier and provide it to LogTape via `contextLocalStorage`.
+- Configure the LogTape backend lazily from the facade on first use; importing Junior logging must not reset or eagerly reconfigure process-global LogTape state.
+- Keep a repo-local console formatter instead of LogTape's stock text formatters because Junior emits standalone structured properties (`event.name`, correlation ids, event-local attrs) that must remain visible without interpolating every property into the message template.
+- Keep Sentry exception/event-id behavior project-owned so `logException(...): eventId` and error-reference generation remain stable.
 
 ## Open Questions
 
