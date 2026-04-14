@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -9,8 +9,17 @@ const workspaceRoot = path.resolve(
 );
 const nodeEnv = process.env.NODE_ENV ?? "development";
 const devPort = process.env.PORT?.trim() || "3000";
+const juniorPackageDir = path.join(workspaceRoot, "packages", "junior");
 
+process.env.NODE_ENV = nodeEnv;
 process.env.PORT = devPort;
+if (!process.env.NO_COLOR && !process.env.FORCE_COLOR) {
+  const hasTty =
+    Boolean(process.stdout?.isTTY) || Boolean(process.stderr?.isTTY);
+  if (hasTty) {
+    process.env.FORCE_COLOR = "1";
+  }
+}
 
 const envCandidates = [
   `.env.${nodeEnv}.local`,
@@ -55,13 +64,42 @@ function terminateChildren(signal = "SIGTERM") {
   }
 }
 
+function runRequiredChild(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    stdio: "inherit",
+    env: process.env,
+    ...options,
+  });
+
+  if (result.signal) {
+    process.kill(process.pid, result.signal);
+    return;
+  }
+  if (typeof result.status === "number" && result.status !== 0) {
+    process.exit(result.status);
+  }
+}
+
 const tunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
 const tunnelUrl =
   process.env.CLOUDFLARE_TUNNEL_URL?.trim() || `http://localhost:${devPort}`;
 
+runRequiredChild("pnpm", ["build"], {
+  cwd: juniorPackageDir,
+});
+
+spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
+  cwd: juniorPackageDir,
+});
+
 if (tunnelToken) {
   spawnChild("cloudflared", [
     "tunnel",
+    "--no-autoupdate",
+    "--loglevel",
+    "warn",
+    "--transport-loglevel",
+    "error",
     "run",
     "--token",
     tunnelToken,

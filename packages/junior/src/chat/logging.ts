@@ -1,4 +1,19 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import path from "node:path";
+import { styleText } from "node:util";
+import {
+  ConfigError,
+  configureSync,
+  getConfig,
+  getLogger,
+  type Logger as LogTapeLogger,
+  type LogRecord as LogTapeRecord,
+  type Sink as LogTapeSink,
+} from "@logtape/logtape";
+import type {
+  Logger as ChatSdkLogger,
+  LogLevel as ChatSdkLogLevel,
+} from "chat";
 import { toOptionalString } from "@/chat/coerce";
 import * as Sentry from "@/chat/sentry";
 
@@ -85,20 +100,14 @@ const LEGACY_KEY_MAP: Record<string, string> = {
 
 const contextStorage = new AsyncLocalStorage<LogAttributes>();
 const logRecordSinks = new Set<(record: EmittedLogRecord) => void>();
-const ANSI = {
-  reset: "\u001b[0m",
-  faint: "\u001b[2m",
-  red: "\u001b[31m",
-  yellow: "\u001b[33m",
-  green: "\u001b[32m",
-  blue: "\u001b[34m",
-  cyan: "\u001b[36m",
-  gray: "\u001b[90m",
-} as const;
+type ConsoleTextStyle = Parameters<typeof styleText>[0];
+const LOGTAPE_BODY_KEY = "__logtape_body";
+const ROOT_LOGGER_CATEGORY = ["junior"] as const;
 const CONSOLE_PRIORITY_KEYS = [
   "gen_ai.conversation.id",
   "app.turn.id",
   "event.name",
+  "app.log.source",
   "error.message",
   "messaging.message.id",
   "app.trace_id",
@@ -156,6 +165,51 @@ function shouldEmitConsole(level: LogLevel): boolean {
   }
 
   return true;
+}
+
+function isDevelopmentLoggingMode(): boolean {
+  if (process.env.NODE_ENV !== "development") {
+    return false;
+  }
+  if (process.env.CI) {
+    return false;
+  }
+  return true;
+}
+
+function shouldUseDevelopmentConsoleFormat(): boolean {
+  if (!isDevelopmentLoggingMode()) {
+    return false;
+  }
+  return process.env.JUNIOR_LOG_FORMAT?.trim().toLowerCase() !== "structured";
+}
+
+function shouldUsePrettyConsole(level: LogLevel): boolean {
+  if (level === "warn" || level === "error") {
+    return false;
+  }
+  return shouldUseDevelopmentConsoleFormat();
+}
+
+function shouldUseConsoleColor(): boolean {
+  if (!shouldUseDevelopmentConsoleFormat()) {
+    return false;
+  }
+  if (process.env.NO_COLOR) {
+    return false;
+  }
+  return (
+    process.env.FORCE_COLOR?.trim() === "1" ||
+    Boolean(process.stdout?.isTTY) ||
+    Boolean(process.stderr?.isTTY)
+  );
+}
+
+function formatConsoleTimestamp(timestamp: Date): string {
+  if (shouldUseDevelopmentConsoleFormat()) {
+    return timestamp.toTimeString().slice(0, 8);
+  }
+  return timestamp.toISOString();
 }
 
 function findNextBlankLineBoundary(
@@ -395,6 +449,148 @@ function mergeAttributes(
   return merged;
 }
 
+function fromLogTapeLevel(level: LogTapeRecord["level"]): LogLevel {
+  if (level === "warning") {
+    return "warn";
+  }
+  if (level === "fatal") {
+    return "error";
+  }
+  if (level === "trace") {
+    return "debug";
+  }
+  return level;
+}
+
+function getLogSource(category: readonly string[]): string | undefined {
+  if (category.length <= ROOT_LOGGER_CATEGORY.length) {
+    return undefined;
+  }
+
+  const sourceParts = category.slice(ROOT_LOGGER_CATEGORY.length);
+  return sourceParts.length > 0 ? sourceParts.join(".") : undefined;
+}
+
+function toEmittedLogRecord(record: LogTapeRecord): EmittedLogRecord {
+  const properties = { ...record.properties };
+  const rawBody = properties[LOGTAPE_BODY_KEY];
+  delete properties[LOGTAPE_BODY_KEY];
+
+  const attributes = mergeAttributes(properties);
+  const source = getLogSource(record.category);
+  if (source && attributes["app.log.source"] === undefined) {
+    attributes["app.log.source"] = source;
+  }
+
+  const body =
+    toOptionalString(rawBody) ??
+    record.message
+      .map((segment) =>
+        typeof segment === "string" ? segment : String(segment ?? ""),
+      )
+      .join("");
+  const eventName =
+    toOptionalString(attributes["event.name"]) ?? "log_record_emitted";
+
+  return {
+    level: fromLogTapeLevel(record.level),
+    eventName,
+    body,
+    attributes,
+  };
+}
+
+function createConsoleSink(): LogTapeSink {
+  return (record) => {
+    const emitted = toEmittedLogRecord(record);
+    emitConsole(
+      emitted.level,
+      emitted.eventName,
+      emitted.body,
+      emitted.attributes,
+    );
+  };
+}
+
+function createSentrySink(): LogTapeSink {
+  return (record) => {
+    const emitted = toEmittedLogRecord(record);
+    emitSentry(emitted.level, emitted.body, emitted.attributes);
+  };
+}
+
+function createRecordSink(): LogTapeSink {
+  return (record) => {
+    const emitted = toEmittedLogRecord(record);
+    for (const sink of logRecordSinks) {
+      try {
+        sink(emitted);
+      } catch {
+        // Test-only sink failures must not break runtime logging.
+      }
+    }
+  };
+}
+
+let rootLogger: LogTapeLogger | undefined;
+let ownsLogTapeBackend = false;
+let usesDirectEmissionFallback = false;
+
+function ensureLoggerBackend(): void {
+  if (rootLogger || usesDirectEmissionFallback) {
+    return;
+  }
+
+  if (getConfig() !== null) {
+    usesDirectEmissionFallback = true;
+    return;
+  }
+
+  try {
+    configureSync({
+      sinks: {
+        console: createConsoleSink(),
+        sentry: createSentrySink(),
+        records: createRecordSink(),
+      },
+      loggers: [
+        {
+          category: [...ROOT_LOGGER_CATEGORY],
+          sinks: ["console", "sentry", "records"],
+          lowestLevel: "debug",
+        },
+        {
+          category: ["logtape"],
+          sinks: ["console"],
+          lowestLevel: "error",
+        },
+      ],
+      contextLocalStorage: contextStorage,
+    });
+    ownsLogTapeBackend = true;
+    rootLogger = getLogger([...ROOT_LOGGER_CATEGORY]);
+  } catch (error) {
+    if (error instanceof ConfigError && getConfig() !== null) {
+      usesDirectEmissionFallback = true;
+      return;
+    }
+    throw error;
+  }
+}
+
+function getLogTapeLogger(category: readonly string[] = []): LogTapeLogger {
+  ensureLoggerBackend();
+  if (!rootLogger) {
+    throw new Error("LogTape backend is unavailable");
+  }
+
+  let logger = rootLogger as LogTapeLogger;
+  for (const part of category) {
+    logger = logger.getChild(part);
+  }
+  return logger;
+}
+
 function emitSentry(
   level: LogLevel,
   body: string,
@@ -451,11 +647,11 @@ function formatConsoleLevel(level: LogLevel): "DBG" | "INF" | "WRN" | "ERR" {
   return "ERR";
 }
 
-function consoleLevelColor(level: LogLevel): string {
-  if (level === "error") return ANSI.red;
-  if (level === "warn") return ANSI.yellow;
-  if (level === "info") return ANSI.green;
-  return ANSI.blue;
+function consoleLevelStyle(level: LogLevel): ConsoleTextStyle {
+  if (level === "error") return "red";
+  if (level === "warn") return "yellow";
+  if (level === "info") return "green";
+  return "blue";
 }
 
 function quoteConsoleValue(value: string): string {
@@ -563,6 +759,157 @@ function summarizeConsoleString(value: string, maxChars: number): string {
   return `${collapsed.slice(0, maxChars)}... [${collapsed.length} chars]`;
 }
 
+function abbreviateConsoleId(value: string): string {
+  if (value.length <= 20) {
+    return value;
+  }
+  return `${value.slice(0, 12)}...${value.slice(-4)}`;
+}
+
+function toRelativeConsolePath(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    return normalized;
+  }
+
+  try {
+    const relative = path.relative(process.cwd(), normalized);
+    if (
+      relative.length > 0 &&
+      !relative.startsWith("..") &&
+      !path.isAbsolute(relative)
+    ) {
+      return relative;
+    }
+  } catch {
+    // Ignore path projection failures and keep the original value.
+  }
+
+  return normalized;
+}
+
+function pushPrettyConsoleToken(
+  tokens: string[],
+  token: string | undefined,
+): void {
+  if (!token || tokens.includes(token)) {
+    return;
+  }
+  tokens.push(token);
+}
+
+function numericConsoleToken(
+  label: string,
+  value: AttributeValue | undefined,
+): string | undefined {
+  return typeof value === "number" ? `${label}=${value}` : undefined;
+}
+
+function booleanConsoleToken(
+  label: string,
+  value: AttributeValue | undefined,
+): string | undefined {
+  return typeof value === "boolean"
+    ? `${label}=${value ? "yes" : "no"}`
+    : undefined;
+}
+
+function shouldShowPrettyCorrelation(eventName: string): boolean {
+  return !(
+    eventName === "plugin_loaded" ||
+    eventName === "startup_discovery_summary" ||
+    eventName === "capability_catalog_loaded" ||
+    eventName.endsWith("_loaded")
+  );
+}
+
+function getPrettyConsoleSummaryTokens(
+  level: LogLevel,
+  eventName: string,
+  attributes: LogAttributes,
+): string[] {
+  const tokens: string[] = [];
+  pushPrettyConsoleToken(
+    tokens,
+    toOptionalString(attributes["app.log.source"]) ?? undefined,
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    toOptionalString(attributes["app.plugin.name"]) ?? undefined,
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    numericConsoleToken("caps", attributes["app.plugin.capability_count"]),
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    numericConsoleToken("config", attributes["app.plugin.config_key_count"]),
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    booleanConsoleToken("mcp", attributes["app.plugin.has_mcp"]),
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    numericConsoleToken("plugins", attributes["app.plugin.count"]),
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    numericConsoleToken("skills", attributes["app.skill.count"]),
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    numericConsoleToken("capabilities", attributes["app.capability.count"]),
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    numericConsoleToken("config", attributes["app.config.key_count"]),
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    numericConsoleToken("chars", attributes["app.message.length"]),
+  );
+  pushPrettyConsoleToken(
+    tokens,
+    numericConsoleToken(
+      "attachments",
+      attributes["app.message.attachment_count"],
+    ),
+  );
+
+  const filePath = toOptionalString(attributes["file.path"]);
+  if (filePath && eventName.endsWith("_loaded")) {
+    pushPrettyConsoleToken(tokens, toRelativeConsolePath(filePath));
+  }
+
+  if (shouldShowPrettyCorrelation(eventName)) {
+    const conversationId = toOptionalString(
+      attributes["gen_ai.conversation.id"],
+    );
+    const turnId = toOptionalString(attributes["app.turn.id"]);
+    const messageId = toOptionalString(attributes["messaging.message.id"]);
+    if (conversationId) {
+      pushPrettyConsoleToken(
+        tokens,
+        `conv=${abbreviateConsoleId(conversationId)}`,
+      );
+    }
+    if (turnId) {
+      pushPrettyConsoleToken(tokens, `turn=${abbreviateConsoleId(turnId)}`);
+    }
+    if (messageId) {
+      pushPrettyConsoleToken(tokens, `msg=${abbreviateConsoleId(messageId)}`);
+    }
+  }
+
+  const model = toOptionalString(attributes["gen_ai.request.model"]);
+  if (model && shouldShowConsoleModel(level, eventName)) {
+    pushPrettyConsoleToken(tokens, `model=${model}`);
+  }
+
+  return tokens;
+}
+
 function projectConsoleValue(
   level: LogLevel,
   key: string,
@@ -609,15 +956,28 @@ function formatConsoleLine(
   body: string,
   attributes: LogAttributes,
 ): string {
-  const timestamp = new Date().toISOString();
-  const useColor =
-    process.env.NODE_ENV === "development" && Boolean(process.stdout?.isTTY);
-  const levelColor = consoleLevelColor(level);
-  const colorize = (text: string, color: string) =>
-    useColor ? `${color}${text}${ANSI.reset}` : text;
+  const timestamp = new Date();
+  const useColor = shouldUseConsoleColor();
+  const levelStyle = consoleLevelStyle(level);
+  const colorize = (text: string, style: ConsoleTextStyle) =>
+    useColor ? styleText(style, text) : text;
+
+  if (shouldUsePrettyConsole(level)) {
+    const summaryTokens = getPrettyConsoleSummaryTokens(
+      level,
+      eventName,
+      attributes,
+    );
+    const summary = [body, ...summaryTokens].join(" ");
+    return [
+      colorize(formatConsoleTimestamp(timestamp), "gray"),
+      colorize(formatConsoleLevel(level), levelStyle),
+      summary,
+    ].join(" ");
+  }
 
   const parts = [
-    `${colorize(timestamp, ANSI.gray)} ${colorize(formatConsoleLevel(level), levelColor)} ${body}`,
+    `${colorize(formatConsoleTimestamp(timestamp), "gray")} ${colorize(formatConsoleLevel(level), levelStyle)} ${body}`,
   ];
   const projectedAttributes = projectConsoleAttributes(
     level,
@@ -637,7 +997,7 @@ function formatConsoleLine(
     },
   );
   for (const [key, value] of sortedAttributes) {
-    const rendered = `${colorize(key, ANSI.cyan)}=${colorize(formatConsoleValue(value), ANSI.faint)}`;
+    const rendered = `${colorize(key, "cyan")}=${colorize(formatConsoleValue(value), "dim")}`;
     parts.push(rendered);
   }
   return parts.join(" ");
@@ -669,27 +1029,18 @@ function emitConsole(
   console.debug(line);
 }
 
-function emit(
+function emitDirect(
   level: LogLevel,
   eventName: string,
-  attrs: Record<string, unknown> = {},
-  body?: string,
+  body: string,
+  attributes: LogAttributes,
 ): void {
-  const contextAttributes = contextStorage.getStore() ?? {};
-  const traceAttributes = getTraceCorrelationAttributes();
-  const normalizedEventName = toSnakeCase(eventName);
-  const message = body ? redactSecrets(body) : normalizedEventName;
-  const attributes = mergeAttributes(contextAttributes, traceAttributes, {
-    "event.name": normalizedEventName,
-    ...attrs,
-  });
-
   for (const sink of logRecordSinks) {
     try {
       sink({
         level,
-        eventName: normalizedEventName,
-        body: message,
+        eventName,
+        body,
         attributes,
       });
     } catch {
@@ -697,8 +1048,64 @@ function emit(
     }
   }
 
-  emitConsole(level, normalizedEventName, message, attributes);
-  emitSentry(level, message, attributes);
+  emitConsole(level, eventName, body, attributes);
+  emitSentry(level, body, attributes);
+}
+
+function emitRecord(
+  category: readonly string[],
+  level: LogLevel,
+  eventName: string,
+  attrs: Record<string, unknown> = {},
+  body?: string,
+): void {
+  ensureLoggerBackend();
+  const traceAttributes = getTraceCorrelationAttributes();
+  const normalizedEventName = toSnakeCase(eventName);
+  const message = body ? redactSecrets(body) : normalizedEventName;
+  const source = getLogSource([...ROOT_LOGGER_CATEGORY, ...category]);
+  const contextAttributes = ownsLogTapeBackend
+    ? undefined
+    : contextStorage.getStore();
+  const attributes = mergeAttributes(contextAttributes, traceAttributes, {
+    "event.name": normalizedEventName,
+    ...(source ? { "app.log.source": source } : {}),
+    ...attrs,
+  });
+
+  if (usesDirectEmissionFallback) {
+    emitDirect(level, normalizedEventName, message, attributes);
+    return;
+  }
+
+  const logger = getLogTapeLogger(category);
+  const properties: Record<string, unknown> = {
+    [LOGTAPE_BODY_KEY]: message,
+    ...attributes,
+  };
+
+  if (level === "error") {
+    logger.error(`{${LOGTAPE_BODY_KEY}}`, properties);
+    return;
+  }
+  if (level === "warn") {
+    logger.warn(`{${LOGTAPE_BODY_KEY}}`, properties);
+    return;
+  }
+  if (level === "info") {
+    logger.info(`{${LOGTAPE_BODY_KEY}}`, properties);
+    return;
+  }
+  logger.debug(`{${LOGTAPE_BODY_KEY}}`, properties);
+}
+
+function emit(
+  level: LogLevel,
+  eventName: string,
+  attrs: Record<string, unknown> = {},
+  body?: string,
+): void {
+  emitRecord([], level, eventName, attrs, body);
 }
 
 export const log = {
@@ -785,6 +1192,118 @@ export const log = {
     return eventId;
   },
 };
+
+const CHAT_SDK_LEVEL_PRIORITY: Record<
+  Exclude<ChatSdkLogLevel, "silent">,
+  number
+> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+function resolveChatSdkLogLevel(): ChatSdkLogLevel {
+  if (isDevelopmentLoggingMode()) {
+    return "warn";
+  }
+
+  return "info";
+}
+
+function shouldEmitChatSdkLevel(
+  level: Exclude<ChatSdkLogLevel, "silent">,
+  minimumLevel: ChatSdkLogLevel,
+): boolean {
+  if (minimumLevel === "silent") {
+    return false;
+  }
+
+  return (
+    CHAT_SDK_LEVEL_PRIORITY[level] >= CHAT_SDK_LEVEL_PRIORITY[minimumLevel]
+  );
+}
+
+function renderChatSdkArgument(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof Error) {
+    return value.message;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatChatSdkBody(message: string, args: unknown[]): string {
+  const renderedArgs = args
+    .map((arg) => renderChatSdkArgument(arg).trim())
+    .filter((arg) => arg.length > 0);
+  if (renderedArgs.length === 0) {
+    return message;
+  }
+  return `${message} ${renderedArgs.join(" ")}`;
+}
+
+function createChatSdkLoggerImpl(
+  category: readonly string[],
+  minimumLevel: ChatSdkLogLevel,
+): ChatSdkLogger {
+  const emitChatSdkLog = (
+    level: Exclude<ChatSdkLogLevel, "silent">,
+    message: string,
+    args: unknown[],
+  ): void => {
+    if (!shouldEmitChatSdkLevel(level, minimumLevel)) {
+      return;
+    }
+
+    emitRecord(
+      category,
+      level === "warn" ? "warn" : level,
+      level === "error"
+        ? "chat_sdk_error"
+        : level === "warn"
+          ? "chat_sdk_warning"
+          : "chat_sdk_log",
+      args.length > 0
+        ? {
+            "app.log.args": args.length === 1 ? args[0] : args,
+          }
+        : {},
+      formatChatSdkBody(message, args),
+    );
+  };
+
+  return {
+    child(prefix: string): ChatSdkLogger {
+      return createChatSdkLoggerImpl([...category, prefix], minimumLevel);
+    },
+    debug(message: string, ...args: unknown[]): void {
+      emitChatSdkLog("debug", message, args);
+    },
+    info(message: string, ...args: unknown[]): void {
+      emitChatSdkLog("info", message, args);
+    },
+    warn(message: string, ...args: unknown[]): void {
+      emitChatSdkLog("warn", message, args);
+    },
+    error(message: string, ...args: unknown[]): void {
+      emitChatSdkLog("error", message, args);
+    },
+  };
+}
+
+/** Create a Chat SDK logger that routes records through Junior's logging backend. */
+export function createChatSdkLogger(): ChatSdkLogger {
+  return createChatSdkLoggerImpl(["chat-sdk"], resolveChatSdkLogLevel());
+}
 
 export function withLogContext<T>(
   context: LogContext,

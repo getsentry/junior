@@ -11,7 +11,7 @@ import {
 } from "@/chat/config";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
-import { logException, withSpan } from "@/chat/logging";
+import { createChatSdkLogger, logException, withSpan } from "@/chat/logging";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
@@ -22,8 +22,10 @@ let productionBot: JuniorChat<{ slack: SlackAdapter }> | undefined;
 let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
 
 function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
+  const logger = createChatSdkLogger();
   return new JuniorChat<{ slack: SlackAdapter }>({
     userName: botConfig.userName,
+    logger,
     concurrency: {
       strategy: "queue",
       // The SDK's default queueEntryTtlMs is 90s, but Junior turns can
@@ -45,6 +47,7 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
         }
 
         return createSlackAdapter({
+          logger: logger.child("slack"),
           signingSecret,
           ...(botToken ? { botToken } : {}),
           ...(clientId ? { clientId } : {}),
