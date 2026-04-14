@@ -39,7 +39,7 @@ describe("createMcpOAuthClientProvider", () => {
   afterEach(async () => {
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
-    vi.unmock("@/chat/plugins/registry");
+    vi.doUnmock("@/chat/plugins/registry");
     vi.resetModules();
     process.env = { ...ORIGINAL_ENV };
   });

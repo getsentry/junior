@@ -33,7 +33,7 @@ import {
 import { uploadFilesToThread } from "@/chat/slack/client";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  postSlackMessage,
+  postSlackReply,
   resumeAuthorizedRequest,
 } from "@/handlers/oauth-resume";
 import {
@@ -146,7 +146,9 @@ async function deliverReplyToThread(
       attachFiles === "inline" ? replyFiles : undefined,
     );
     if (text.trim().length > 0) {
-      await postSlackMessage(channelId, threadTs, text);
+      await postSlackReply(channelId, threadTs, text, {
+        interrupted: reply.diagnostics.outcome === "provider_error",
+      });
     }
   }
 

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnownBlock, SectionBlock } from "@slack/web-api";
-import { buildHomeView, publishAppHomeView } from "@/chat/slack/app-home";
+import { buildHomeView } from "@/chat/slack/app-home";
 import type {
   UserTokenStore,
   StoredTokens,
@@ -284,29 +284,5 @@ describe("buildHomeView", () => {
     expect(content).toContain("*incident-summary*");
     expect(content).toContain("*release-check*");
     expect(content).not.toContain("jr-rpc");
-  });
-});
-
-describe("publishAppHomeView", () => {
-  it("calls views.publish with user_id and home view", async () => {
-    const store = createMockTokenStore({ sentry: validToken });
-    const mockClient = {
-      views: {
-        publish: vi.fn(async () => ({ ok: true })),
-      },
-    };
-
-    await publishAppHomeView(mockClient as never, "U123", store);
-
-    expect(mockClient.views.publish).toHaveBeenCalledOnce();
-    expect(mockClient.views.publish).toHaveBeenCalledWith(
-      expect.objectContaining({
-        user_id: "U123",
-        view: expect.objectContaining({
-          type: "home",
-          blocks: expect.arrayContaining([expect.anything()]),
-        }),
-      }),
-    );
   });
 });

@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  getSlackContinuationMarker,
+  getSlackInterruptionMarker,
+} from "@/chat/slack/output";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -231,6 +235,87 @@ describe("Slack behavior: streaming replies", () => {
           }),
         ],
       }),
+    );
+  });
+
+  it("overflows long streamed replies into explicit continuation posts", async () => {
+    const longReply = Array.from(
+      { length: 80 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(longReply);
+            return {
+              text: longReply,
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006005.000" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-6",
+        text: "<@U_APP> summarize",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds[0]).toBe("stream");
+    expect(thread.postKinds.slice(1).every((kind) => kind === "value")).toBe(
+      true,
+    );
+    expect(thread.posts.length).toBeGreaterThan(1);
+    expect(String(thread.posts[0])).toContain(getSlackContinuationMarker());
+    expect(toPostedText(thread.posts[1])).toContain(
+      getSlackContinuationMarker(),
+    );
+    const lastPost = thread.posts[thread.posts.length - 1];
+    expect(lastPost).toBeDefined();
+    expect(toPostedText(lastPost)).not.toContain(getSlackContinuationMarker());
+    expect(toPostedText(lastPost)).toContain("line 80");
+  });
+
+  it("posts an interruption notice when a streamed reply ends in provider error", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.("Partial output...");
+            return {
+              text: "Partial output...",
+              diagnostics: {
+                ...makeDiagnostics(),
+                outcome: "provider_error" as const,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006006.000" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-7",
+        text: "<@U_APP> continue",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream", "value"]);
+    expect(thread.posts[0]).toBe("Partial output...");
+    expect(toPostedText(thread.posts[1])).toBe(
+      getSlackInterruptionMarker().trimStart(),
     );
   });
 });

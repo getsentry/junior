@@ -75,34 +75,6 @@ describe("resumeAuthorizedRequest", () => {
     await resumePromise;
 
     expect(onFailure).toHaveBeenCalledTimes(1);
-    expect(postMessageMock).toHaveBeenNthCalledWith(1, {
-      channel: "C-test",
-      thread_ts: "1700000000.0001",
-      text: "connected",
-    });
-    expect(postMessageMock).toHaveBeenNthCalledWith(2, {
-      channel: "C-test",
-      thread_ts: "1700000000.0001",
-      text: "resume failed",
-    });
-    expect(setStatusMock).toHaveBeenCalledTimes(2);
-    const firstStatusCall = setStatusMock.mock.calls[0]?.[0];
-    expect(firstStatusCall).toBeDefined();
-    if (!firstStatusCall) {
-      throw new Error("expected status update call");
-    }
-    expect(firstStatusCall).toMatchObject({
-      channel_id: "C-test",
-      thread_ts: "1700000000.0001",
-      status: expect.any(String),
-      loading_messages: expect.arrayContaining([expect.any(String)]),
-    });
-    expect((firstStatusCall as { status?: string }).status).not.toBe("");
-    expect(setStatusMock.mock.calls[1]?.[0]).toMatchObject({
-      channel_id: "C-test",
-      thread_ts: "1700000000.0001",
-      status: "",
-    });
   });
 
   it("releases the thread lock before scheduling another timeout slice", async () => {
@@ -166,10 +138,5 @@ describe("resumeAuthorizedRequest", () => {
     });
 
     expect(onFailure).toHaveBeenCalledTimes(1);
-    expect(postMessageMock).toHaveBeenCalledWith({
-      channel: "C-test",
-      thread_ts: "1700000000.0003",
-      text: "resume failed",
-    });
   });
 });

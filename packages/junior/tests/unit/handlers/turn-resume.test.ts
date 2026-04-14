@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   postSlackMessageMock,
+  postSlackReplyMock,
   resumeSlackTurnMock,
   scheduleTurnTimeoutResumeMock,
   uploadFilesToThreadMock,
@@ -9,6 +10,7 @@ const {
   waitUntilCallbacks,
 } = vi.hoisted(() => ({
   postSlackMessageMock: vi.fn(),
+  postSlackReplyMock: vi.fn(),
   resumeSlackTurnMock: vi.fn(),
   scheduleTurnTimeoutResumeMock: vi.fn(),
   uploadFilesToThreadMock: vi.fn(),
@@ -38,6 +40,7 @@ vi.mock("@/chat/services/timeout-resume", async (importOriginal) => ({
 vi.mock("@/handlers/oauth-resume", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/handlers/oauth-resume")>()),
   postSlackMessage: postSlackMessageMock,
+  postSlackReply: postSlackReplyMock,
   resumeSlackTurn: resumeSlackTurnMock,
 }));
 
@@ -65,6 +68,7 @@ describe("turn resume handler", () => {
   beforeEach(async () => {
     waitUntilCallbacks.length = 0;
     postSlackMessageMock.mockReset();
+    postSlackReplyMock.mockReset();
     resumeSlackTurnMock.mockReset();
     scheduleTurnTimeoutResumeMock.mockReset();
     uploadFilesToThreadMock.mockReset();
@@ -74,6 +78,7 @@ describe("turn resume handler", () => {
     await disconnectStateAdapter();
 
     postSlackMessageMock.mockResolvedValue(undefined);
+    postSlackReplyMock.mockResolvedValue(undefined);
     scheduleTurnTimeoutResumeMock.mockResolvedValue(undefined);
     uploadFilesToThreadMock.mockResolvedValue(undefined);
   });
@@ -98,7 +103,7 @@ describe("turn resume handler", () => {
     expect(waitUntilCallbacks).toHaveLength(0);
   });
 
-  it("rebuilds persisted turn state and posts the resumed reply on success", async () => {
+  it("rebuilds persisted turn state and persists completion on success", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
     const checkpoint = await upsertAgentTurnSessionCheckpoint({
@@ -209,12 +214,6 @@ describe("turn resume handler", () => {
 
     await waitUntilCallbacks[0]?.();
 
-    expect(postSlackMessageMock).toHaveBeenCalledWith(
-      "C123",
-      "1712345.0001",
-      "Final resumed answer",
-    );
-
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = (persisted.conversation ?? {}) as {
       messages?: Array<{ role?: string; text?: string }>;
@@ -316,7 +315,7 @@ describe("turn resume handler", () => {
     });
   });
 
-  it("keeps the delivered reply when completion persistence fails afterward", async () => {
+  it("does not mutate persisted state when completion persistence fails afterward", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
     const checkpoint = await upsertAgentTurnSessionCheckpoint({
@@ -419,17 +418,15 @@ describe("turn resume handler", () => {
     expect(response.status).toBe(202);
     await waitUntilCallbacks[0]?.();
 
-    expect(postSlackMessageMock).toHaveBeenCalledTimes(1);
-    expect(postSlackMessageMock).toHaveBeenCalledWith(
-      "C123",
-      "1712345.0001",
-      "Final resumed answer",
-    );
-    expect(postSlackMessageMock).not.toHaveBeenCalledWith(
-      "C123",
-      "1712345.0001",
-      "I hit an error while resuming that request. Please try the command again.",
-    );
+    expect(scheduleTurnTimeoutResumeMock).not.toHaveBeenCalled();
+
+    const persisted = await getPersistedThreadState(conversationId);
+    const conversation = (persisted.conversation ?? {}) as {
+      processing?: { activeTurnId?: string };
+      messages?: Array<{ role?: string; text?: string }>;
+    };
+    expect(conversation.processing?.activeTurnId).toBe(sessionId);
+    expect(conversation.messages).toHaveLength(1);
   });
 
   it("fails the resumed turn when the timeout slice limit is reached", async () => {
@@ -526,11 +523,6 @@ describe("turn resume handler", () => {
     await waitUntilCallbacks[0]?.();
 
     expect(scheduleTurnTimeoutResumeMock).not.toHaveBeenCalled();
-    expect(postSlackMessageMock).toHaveBeenCalledWith(
-      "C123",
-      "1712345.0001",
-      "I hit an error while resuming that request. Please try the command again.",
-    );
 
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = (persisted.conversation ?? {}) as {

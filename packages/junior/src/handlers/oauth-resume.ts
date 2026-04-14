@@ -9,6 +9,7 @@ import { createSlackWebApiAssistantStatusTransport } from "@/chat/runtime/assist
 import { createProgressReporter } from "@/chat/runtime/progress-reporter";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getSlackClient } from "@/chat/slack/client";
+import { splitSlackReplyText } from "@/chat/slack/output";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -40,6 +41,21 @@ export async function postSlackMessage(
     thread_ts: threadTs,
     text,
   });
+}
+
+/** Post a visible Slack reply using repo-owned chunking/interruption policy. */
+export async function postSlackReply(
+  channelId: string,
+  threadTs: string,
+  text: string,
+  options?: {
+    interrupted?: boolean;
+  },
+): Promise<void> {
+  const chunks = splitSlackReplyText(text, options);
+  for (const chunk of chunks) {
+    await postSlackMessage(channelId, threadTs, chunk);
+  }
 }
 
 async function postSlackMessageBestEffort(
@@ -232,7 +248,9 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     if (args.onReply) {
       await args.onReply(reply);
     } else if (reply.text) {
-      await postSlackMessage(args.channelId, args.threadTs, reply.text);
+      await postSlackReply(args.channelId, args.threadTs, reply.text, {
+        interrupted: reply.diagnostics.outcome === "provider_error",
+      });
     }
     await args.onSuccess?.(reply);
   } catch (error) {

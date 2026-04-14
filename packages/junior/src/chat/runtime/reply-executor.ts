@@ -12,7 +12,14 @@ import {
   setTags,
   withSpan,
 } from "@/chat/logging";
-import { buildSlackOutputMessage } from "@/chat/slack/output";
+import {
+  buildSlackOutputMessage,
+  getSlackContinuationMarker,
+  getSlackContinuationBudget,
+  getSlackInterruptionMarker,
+  splitSlackReplyText,
+  takeSlackInlinePrefix,
+} from "@/chat/slack/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/runtime/progress-reporter";
 import { createSlackAdapterAssistantStatusTransport } from "@/chat/runtime/assistant-status";
@@ -62,6 +69,7 @@ import {
 type SlackReplyPostStage =
   | "streaming_initial_post"
   | "thread_reply"
+  | "thread_reply_continuation"
   | "thread_reply_files_followup";
 
 export interface ReplyExecutorServices {
@@ -126,6 +134,14 @@ interface ReplyExecutorDeps {
     };
   }) => Promise<PreparedTurnState>;
   services: ReplyExecutorServices;
+}
+
+function isInterruptedVisibleReply(reply: {
+  diagnostics: {
+    outcome: "success" | "execution_failure" | "provider_error";
+  };
+}): boolean {
+  return reply.diagnostics.outcome === "provider_error";
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -254,7 +270,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const textStream = createTextStreamBridge();
         let streamedReplyPromise: Promise<SentMessage> | undefined;
         let pendingStreamText = "";
+        let streamedVisibleText = "";
+        let overflowText = "";
+        let streamOverflowed = false;
         let beforeFirstResponsePostCalled = false;
+        const continuationBudget = getSlackContinuationBudget();
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
             return;
@@ -280,6 +300,53 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           startStreamingReply();
           textStream.push(pendingStreamText);
           pendingStreamText = "";
+        };
+        const queueVisibleStreamText = (text: string) => {
+          if (!text) {
+            return;
+          }
+          if (streamedReplyPromise) {
+            textStream.push(text);
+            return;
+          }
+          pendingStreamText += text;
+          if (isPotentialRedundantReactionAckText(pendingStreamText)) {
+            return;
+          }
+          flushPendingStreamText();
+        };
+        const appendVisibleStreamDelta = (deltaText: string) => {
+          if (!deltaText) {
+            return;
+          }
+          if (streamOverflowed) {
+            overflowText += deltaText;
+            return;
+          }
+
+          const candidate = `${streamedVisibleText}${deltaText}`;
+          const { prefix } = takeSlackInlinePrefix(
+            candidate,
+            continuationBudget,
+          );
+          if (prefix.length === candidate.length) {
+            const additional = candidate.slice(streamedVisibleText.length);
+            streamedVisibleText = prefix;
+            queueVisibleStreamText(additional);
+            return;
+          }
+
+          const additional =
+            prefix.length > streamedVisibleText.length
+              ? prefix.slice(streamedVisibleText.length)
+              : "";
+          streamedVisibleText = prefix;
+          queueVisibleStreamText(additional);
+          overflowText += candidate.slice(prefix.length);
+          streamOverflowed = overflowText.length > 0;
+          if (streamOverflowed) {
+            queueVisibleStreamText(getSlackContinuationMarker());
+          }
         };
         const postThreadReply = async (
           payload: Parameters<typeof thread.post>[0],
@@ -360,15 +427,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               if (explicitChannelPostIntent) {
                 return;
               }
-              if (streamedReplyPromise) {
-                textStream.push(deltaText);
-                return;
-              }
-              pendingStreamText += deltaText;
-              if (isPotentialRedundantReactionAckText(pendingStreamText)) {
-                return;
-              }
-              flushPendingStreamText();
+              appendVisibleStreamDelta(deltaText);
             },
           });
           if (streamedReplyPromise) {
@@ -470,26 +529,60 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const reactionPerformed = reply.diagnostics.toolCalls.includes(
             "slackMessageAddReaction",
           );
+          const interrupted = isInterruptedVisibleReply(reply);
+          const replyTextChunks = splitSlackReplyText(reply.text, {
+            interrupted,
+          });
+          const overflowChunks =
+            streamedReplyPromise && overflowText
+              ? splitSlackReplyText(overflowText, {
+                  interrupted,
+                })
+              : [];
 
           // Final Slack delivery is part of turn success. We only mark the turn
           // completed after the visible reply has been accepted by Slack.
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
-              const sent = await postThreadReply(
-                buildSlackOutputMessage(
-                  reply.text,
-                  resolvedAttachFiles === "inline" ? replyFiles : undefined,
-                ),
-                "thread_reply",
-              );
+              let sent: SentMessage | undefined;
+              for (const [index, chunk] of replyTextChunks.entries()) {
+                sent = await postThreadReply(
+                  buildSlackOutputMessage(
+                    chunk,
+                    index === 0 && resolvedAttachFiles === "inline"
+                      ? replyFiles
+                      : undefined,
+                  ),
+                  index === 0 ? "thread_reply" : "thread_reply_continuation",
+                );
+              }
               // When a reaction already acknowledged the turn, delete the
               // redundant thread reply. The post itself completes Slack's
               // assistant response cycle (clearing the typing indicator).
-              if (reactionPerformed && isRedundantReactionAckText(reply.text)) {
+              if (
+                sent &&
+                reactionPerformed &&
+                replyTextChunks.length === 1 &&
+                isRedundantReactionAckText(reply.text)
+              ) {
                 await sent.delete();
               }
             } else {
               await streamedReplyPromise;
+              for (const chunk of overflowChunks) {
+                await postThreadReply(
+                  buildSlackOutputMessage(chunk),
+                  "thread_reply_continuation",
+                );
+              }
+              if (!overflowChunks.length && interrupted) {
+                await postThreadReply(
+                  buildSlackOutputMessage(
+                    getSlackInterruptionMarker().trimStart(),
+                  ),
+                  "thread_reply_continuation",
+                );
+              }
             }
           }
 

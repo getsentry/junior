@@ -1,6 +1,5 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createSlackAdapter } from "@chat-adapter/slack";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { Message } from "chat";
@@ -8,6 +7,7 @@ import { slackEventsApiEnvelope } from "../../fixtures/slack/factories/events";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
+import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { WaitUntilFn } from "@/handlers/types";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
 
@@ -61,7 +61,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
     const bot = new JuniorChat({
       userName: "junior",
       adapters: {
-        slack: createSlackAdapter({
+        slack: createJuniorSlackAdapter({
           botToken: "xoxb-test",
           botUserId: BOT_USER_ID,
           signingSecret: SIGNING_SECRET,
@@ -189,7 +189,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
     const bot = new JuniorChat<{ slack: SlackAdapter }>({
       userName: "junior",
       adapters: {
-        slack: createSlackAdapter({
+        slack: createJuniorSlackAdapter({
           botToken: "xoxb-test",
           botUserId: BOT_USER_ID,
           signingSecret: SIGNING_SECRET,
@@ -273,13 +273,6 @@ describe("Slack behavior: message_changed webhook ingress", () => {
           thread_ts: "1700000100.000100",
           recipient_user_id: "U123",
           recipient_team_id: "T_TEST",
-        }),
-      }),
-    ]);
-    expect(getCapturedSlackApiCalls("chat.stopStream")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "D12345",
           chunks: [
             {
               type: "markdown_text",
@@ -289,13 +282,137 @@ describe("Slack behavior: message_changed webhook ingress", () => {
         }),
       }),
     ]);
+    expect(getCapturedSlackApiCalls("chat.stopStream")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "D12345",
+          chunks: [],
+        }),
+      }),
+    ]);
+  });
+
+  it("flushes appendStream before stopStream for multi-chunk edited DM replies", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const bot = new JuniorChat<{ slack: SlackAdapter }>({
+      userName: "junior",
+      adapters: {
+        slack: createJuniorSlackAdapter({
+          botToken: "xoxb-test",
+          botUserId: BOT_USER_ID,
+          signingSecret: SIGNING_SECRET,
+        }),
+      },
+      state,
+    });
+    const firstChunk = `${"A".repeat(96)}\n`;
+    const secondChunk = `${"B".repeat(96)}\n`;
+    const slackRuntime = createSlackRuntime({
+      getSlackAdapter: () => bot.getAdapter("slack"),
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(firstChunk);
+            await context?.onTextDelta?.(secondChunk);
+            return {
+              text: `${firstChunk}${secondChunk}`.trimEnd(),
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+    const waitUntilTasks: Array<Promise<unknown>> = [];
+
+    bot.onDirectMessage((thread, message) =>
+      slackRuntime.handleNewMention(thread, message),
+    );
+
+    const editedBody = JSON.stringify({
+      ...slackEventsApiEnvelope({
+        eventType: "message",
+        channel: "D12345",
+        ts: "1700000100.000101",
+        text: "hello there",
+      }),
+      event: {
+        type: "message",
+        subtype: "message_changed",
+        channel: "D12345",
+        hidden: true,
+        message: {
+          type: "message",
+          user: "U123",
+          text: `<@${BOT_USER_ID}> hello there`,
+          ts: "1700000100.000101",
+        },
+        previous_message: {
+          type: "message",
+          user: "U123",
+          text: "hello there",
+          ts: "1700000100.000101",
+        },
+      },
+    });
+    const editedTimestamp = String(Math.floor(Date.now() / 1000));
+    const editedRequest = new Request(
+      "https://example.test/api/webhooks/slack",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-slack-request-timestamp": editedTimestamp,
+          "x-slack-signature": signSlackBody(editedBody, editedTimestamp),
+        },
+        body: editedBody,
+      },
+    );
+
+    const response = await handlePlatformWebhook(
+      editedRequest,
+      "slack",
+      collectWaitUntil(waitUntilTasks),
+      bot,
+    );
+    await flushWaitUntil(waitUntilTasks);
+
+    expect(response.status).toBe(200);
+    expect(getCapturedSlackApiCalls("chat.startStream")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "D12345",
+          thread_ts: "1700000100.000101",
+          chunks: [
+            {
+              type: "markdown_text",
+              text: firstChunk,
+            },
+          ],
+        }),
+      }),
+    ]);
+    expect(getCapturedSlackApiCalls("chat.appendStream")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "D12345",
+          chunks: [
+            {
+              type: "markdown_text",
+              text: secondChunk,
+            },
+          ],
+        }),
+      }),
+    ]);
+    expect(getCapturedSlackApiCalls("chat.stopStream")).toHaveLength(1);
   });
 
   it("rejects forged edited mentions before any bot handler runs", async () => {
     const bot = new JuniorChat({
       userName: "junior",
       adapters: {
-        slack: createSlackAdapter({
+        slack: createJuniorSlackAdapter({
           botToken: "xoxb-test",
           botUserId: BOT_USER_ID,
           signingSecret: SIGNING_SECRET,

@@ -454,7 +454,7 @@ describe("bot handlers (integration)", () => {
     expect(lastMessage?.meta?.skippedReason).toBeUndefined();
   });
 
-  it("does not post synthetic failure reply when primary text was streamed", async () => {
+  it("posts an explicit interruption notice when primary text was streamed", async () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
@@ -491,8 +491,13 @@ describe("bot handlers (integration)", () => {
       }),
     );
 
-    expect(thread.posts).toHaveLength(1);
+    expect(thread.posts).toHaveLength(2);
     expect(thread.posts[0]).toBe("Partial output...");
+    expect(thread.posts[1]).toEqual(
+      expect.objectContaining({
+        markdown: "[Response interrupted before completion]",
+      }),
+    );
   });
 
   it("emits assistant status updates in shared channel threads", async () => {

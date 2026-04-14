@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildSlackOutputMessage,
   ensureBlockSpacing,
+  fitsSlackInlineBudget,
+  getSlackContinuationMarker,
+  getSlackInterruptionMarker,
   slackOutputPolicy,
+  splitSlackReplyText,
 } from "@/chat/slack/output";
 
 describe("buildSlackOutputMessage", () => {
@@ -75,6 +79,34 @@ describe("buildSlackOutputMessage", () => {
     };
 
     expect(message.markdown).toBe("one\n\ntwo");
+  });
+});
+
+describe("splitSlackReplyText", () => {
+  it("splits long replies into inline-safe continuation chunks", () => {
+    const longText = Array.from(
+      { length: slackOutputPolicy.maxInlineLines + 24 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
+
+    const chunks = splitSlackReplyText(longText);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(true);
+    expect(
+      chunks
+        .slice(0, -1)
+        .every((chunk) => chunk.endsWith(getSlackContinuationMarker())),
+    ).toBe(true);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+  });
+
+  it("marks interrupted final replies explicitly", () => {
+    const chunks = splitSlackReplyText("Partial output", {
+      interrupted: true,
+    });
+
+    expect(chunks).toEqual([`Partial output${getSlackInterruptionMarker()}`]);
   });
 });
 

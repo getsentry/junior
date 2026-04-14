@@ -4,7 +4,7 @@ import { botConfig } from "@/chat/config";
 import { logException, logWarn } from "@/chat/logging";
 import {
   ResumeTurnBusyError,
-  postSlackMessage,
+  postSlackReply,
   resumeSlackTurn,
 } from "@/handlers/oauth-resume";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
@@ -112,7 +112,9 @@ async function deliverReplyToThread(args: {
       attachFiles === "inline" ? replyFiles : undefined,
     );
     if (text.trim().length > 0) {
-      await postSlackMessage(args.channelId, args.threadTs, text);
+      await postSlackReply(args.channelId, args.threadTs, text, {
+        interrupted: args.reply.diagnostics.outcome === "provider_error",
+      });
     }
   }
 
