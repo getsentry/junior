@@ -1,54 +1,67 @@
+import type { CapabilityProviderTargetDefinition } from "@/chat/capabilities/catalog";
 import type { CapabilityTarget } from "@/chat/capabilities/types";
 
-const REPO_FLAG_RE =
-  /(?:^|\s)(?:--repo|-R)(?:\s+|=)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:#[0-9]+)?)/;
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-export function parseRepoTarget(
-  value: string,
-): { owner: string; repo: string } | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) {
+function normalizeTargetValue(value: string): string | undefined {
+  let normalized = value.trim();
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+
+  return normalized || undefined;
+}
+
+function extractFlagValue(text: string, flags: string[]): string | undefined {
+  if (flags.length === 0) {
     return undefined;
   }
 
-  const [repoRef] = trimmed.split("#");
-  const [owner, repo] = repoRef.split("/");
-  if (!owner || !repo) {
+  const pattern = flags.map(escapeRegExp).join("|");
+  const match = new RegExp(
+    String.raw`(?:^|\s)(?:${pattern})(?:\s+|=)([^\s]+)`,
+  ).exec(text);
+  return match ? normalizeTargetValue(match[1] ?? "") : undefined;
+}
+
+export function createCapabilityTarget(
+  type: string,
+  value: string,
+): CapabilityTarget | undefined {
+  const normalizedType = type.trim();
+  const normalizedValue = normalizeTargetValue(value);
+  if (!normalizedType || !normalizedValue) {
     return undefined;
   }
 
   return {
-    owner: owner.toLowerCase(),
-    repo: repo.toLowerCase(),
+    type: normalizedType,
+    value: normalizedValue,
   };
-}
-
-function extractRepoRef(
-  text: string,
-): { owner: string; repo: string } | undefined {
-  const byFlag = REPO_FLAG_RE.exec(text);
-  if (byFlag) {
-    return parseRepoTarget(byFlag[1]);
-  }
-
-  return undefined;
 }
 
 export function extractCapabilityTarget(params: {
   commandText?: string;
   invocationArgs?: string;
+  target: CapabilityProviderTargetDefinition;
 }): CapabilityTarget | undefined {
+  const flags = params.target.commandFlags ?? [];
   if (params.commandText) {
-    const commandRepo = extractRepoRef(params.commandText);
-    if (commandRepo) {
-      return commandRepo;
+    const value = extractFlagValue(params.commandText, flags);
+    if (value) {
+      return createCapabilityTarget(params.target.type, value);
     }
   }
 
   if (params.invocationArgs) {
-    const invocationRepo = extractRepoRef(params.invocationArgs);
-    if (invocationRepo) {
-      return invocationRepo;
+    const value = extractFlagValue(params.invocationArgs, flags);
+    if (value) {
+      return createCapabilityTarget(params.target.type, value);
     }
   }
 

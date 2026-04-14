@@ -287,7 +287,14 @@ export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
     capabilities: [...plugin.manifest.capabilities],
     configKeys: [...plugin.manifest.configKeys],
     ...(plugin.manifest.target
-      ? { target: { ...plugin.manifest.target } }
+      ? {
+          target: {
+            ...plugin.manifest.target,
+            ...(plugin.manifest.target.commandFlags
+              ? { commandFlags: [...plugin.manifest.target.commandFlags] }
+              : {}),
+          },
+        }
       : {}),
   }));
 }

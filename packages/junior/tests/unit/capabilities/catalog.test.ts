@@ -74,7 +74,11 @@ describe("capability catalog", () => {
         provider: "demo",
         capabilities: ["demo.read"],
         configKeys: ["demo.token"],
-        target: { type: "repo", configKey: "demo.repo" },
+        target: {
+          type: "repo",
+          configKey: "demo.repo",
+          commandFlags: ["--repo", "-R"],
+        },
       },
     ];
 
@@ -88,24 +92,34 @@ describe("capability catalog", () => {
     listed[0]!.capabilities.push("demo.write");
     listed[0]!.configKeys.push("demo.extra");
     listed[0]!.target!.configKey = "mutated.repo";
+    listed[0]!.target!.commandFlags!.push("--mutated");
     direct!.provider = "direct-mutation";
     direct!.capabilities.push("direct.write");
     direct!.configKeys.push("direct.extra");
     direct!.target!.configKey = "direct.repo";
+    direct!.target!.commandFlags!.push("--direct");
 
     expect(catalog.listCapabilityProviders()).toEqual([
       {
         provider: "demo",
         capabilities: ["demo.read"],
         configKeys: ["demo.token"],
-        target: { type: "repo", configKey: "demo.repo" },
+        target: {
+          type: "repo",
+          configKey: "demo.repo",
+          commandFlags: ["--repo", "-R"],
+        },
       },
     ]);
     expect(catalog.getCapabilityProvider("demo.read")).toEqual({
       provider: "demo",
       capabilities: ["demo.read"],
       configKeys: ["demo.token"],
-      target: { type: "repo", configKey: "demo.repo" },
+      target: {
+        type: "repo",
+        configKey: "demo.repo",
+        commandFlags: ["--repo", "-R"],
+      },
     });
   });
 });

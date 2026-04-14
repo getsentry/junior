@@ -107,8 +107,10 @@ oauth: # optional — omit for non-OAuth providers
     Content-Type: application/json
 
 target: # optional — omit for org-scoped providers
-  type: repo
+  type: project
   config-key: sentry.project
+  command-flags:
+    - --project
 
 runtime-dependencies: # optional — preinstalled CLI dependencies for sandbox snapshots
   - type: npm

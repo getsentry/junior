@@ -85,7 +85,7 @@ git -C repo fetch --unshallow
 GitHub operations still require scoped credentials:
 
 ```bash
-jr-rpc issue-credential github.issues.write --repo owner/repo
+jr-rpc issue-credential github.issues.write --target owner/repo
 gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sandbox/tmp/issue.md
 ```
 
@@ -105,9 +105,9 @@ Be careful with mixed-surface PR commands:
 For PR creation in automation, push explicitly and use `--head`:
 
 ```bash
-jr-rpc issue-credential github.contents.write --repo owner/repo
+jr-rpc issue-credential github.contents.write --target owner/repo
 git -C repo push -u origin BRANCH
-jr-rpc issue-credential github.pull-requests.write --repo owner/repo
+jr-rpc issue-credential github.pull-requests.write --target owner/repo
 gh pr create --repo owner/repo --head BRANCH --base main --title "Example PR" --body-file /vercel/sandbox/tmp/pr.md
 ```
 

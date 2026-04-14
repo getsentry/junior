@@ -84,8 +84,9 @@ export interface PluginManifest {
   mcp?: PluginMcpConfig;
   oauth?: PluginOAuthConfig;
   target?: {
-    type: "repo";
+    type: string;
     configKey: string;
+    commandFlags?: string[];
   };
 }
 

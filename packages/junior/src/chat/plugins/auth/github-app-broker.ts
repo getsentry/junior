@@ -15,13 +15,34 @@ type CachedInstallationToken = {
   expiresAt: number;
 };
 
-function normalizeTargetScope(target?: CapabilityTarget): string {
-  const owner = target?.owner?.trim().toLowerCase();
-  const repo = target?.repo?.trim().toLowerCase();
-  if (!owner || !repo) {
-    return "all";
+function parseRepoTarget(
+  value: string,
+): { owner: string; repo: string } | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
   }
-  return `${owner}/${repo}`;
+
+  const [repoRef] = trimmed.split("#");
+  const [owner, repo, extra] = repoRef.split("/");
+  if (!owner || !repo || extra) {
+    return undefined;
+  }
+
+  return {
+    owner: owner.toLowerCase(),
+    repo: repo.toLowerCase(),
+  };
+}
+
+function getRepoTarget(
+  target?: CapabilityTarget,
+): { owner: string; repo: string } | undefined {
+  if (!target || target.type !== "repo") {
+    return undefined;
+  }
+
+  return parseRepoTarget(target.value);
 }
 
 function base64Url(input: string): string {
@@ -286,7 +307,22 @@ export function createGitHubAppBroker(
       const permissions = capabilityToPermissions(input.capability, provider);
       const installationId = resolveInstallationId();
 
-      const targetScope = normalizeTargetScope(input.target);
+      let repoTarget: { owner: string; repo: string } | undefined;
+      if (input.target) {
+        if (input.target.type !== "repo") {
+          throw new Error(
+            `Unsupported github target type: ${input.target.type}`,
+          );
+        }
+        repoTarget = getRepoTarget(input.target);
+        if (!repoTarget) {
+          throw new Error("Invalid github repo target: expected owner/repo");
+        }
+      }
+
+      const targetScope = repoTarget
+        ? `${repoTarget.owner}/${repoTarget.repo}`
+        : "all";
       const cacheKey = `${installationId}:${input.capability}:${targetScope}`;
       const cached = tokenCache.get(cacheKey);
       const now = Date.now();
@@ -313,15 +349,14 @@ export function createGitHubAppBroker(
         };
       }
 
-      const repositoryName = input.target?.repo?.trim().toLowerCase();
       const tokenRequestBody: {
         permissions: Record<string, "read" | "write">;
         repositories?: string[];
       } = {
         permissions,
       };
-      if (repositoryName) {
-        tokenRequestBody.repositories = [repositoryName];
+      if (repoTarget) {
+        tokenRequestBody.repositories = [repoTarget.repo];
       }
 
       const appId = process.env[appIdEnv];

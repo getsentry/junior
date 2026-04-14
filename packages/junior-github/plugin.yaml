@@ -25,6 +25,9 @@ credentials:
 target:
   type: repo
   config-key: repo
+  command-flags:
+    - --repo
+    - -R
 
 runtime-dependencies:
   - type: system

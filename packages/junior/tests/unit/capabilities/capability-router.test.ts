@@ -11,7 +11,11 @@ describe("provider credential router", () => {
         provider: "github",
         capabilities: ["github.issues.read"],
         configKeys: ["github.repo"],
-        target: { type: "repo", configKey: "github.repo" },
+        target: {
+          type: "repo",
+          configKey: "github.repo",
+          commandFlags: ["--repo", "-R"],
+        },
       });
     const broker: CredentialBroker = {
       issue: async (input) => ({
@@ -70,7 +74,11 @@ describe("provider credential router", () => {
         provider: "github",
         capabilities: ["github.issues.read"],
         configKeys: ["github.repo"],
-        target: { type: "repo", configKey: "github.repo" },
+        target: {
+          type: "repo",
+          configKey: "github.repo",
+          commandFlags: ["--repo", "-R"],
+        },
       });
     const router = new ProviderCredentialRouter({
       brokersByProvider: {},

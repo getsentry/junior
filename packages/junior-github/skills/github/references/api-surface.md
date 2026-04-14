@@ -5,7 +5,7 @@ All operations use `gh` CLI. Commands must be deterministic and non-interactive.
 ## Authentication
 
 Issue credentials with `jr-rpc issue-credential <capability>` before executing commands. The runtime handles token injection transparently.
-GitHub capabilities are repo-scoped. Pass `--repo owner/repo` unless you intentionally rely on a verified `github.repo` default for the same repository.
+GitHub capabilities are repo-scoped. Pass `--target owner/repo` to `jr-rpc issue-credential` and `--repo owner/repo` to `gh` unless you intentionally rely on a verified `github.repo` default for the same repository.
 Treat capability scope as a safety rail that reduces accidental writes and wrong-repo mutations, not as a perfect command-by-command security boundary.
 
 ## Capability to command mapping
@@ -58,12 +58,12 @@ jr-rpc config set github.repo owner/repo
 Issue scoped credentials:
 
 ```bash
-jr-rpc issue-credential github.contents.read --repo owner/repo
-jr-rpc issue-credential github.contents.write --repo owner/repo
-jr-rpc issue-credential github.issues.read --repo owner/repo
-jr-rpc issue-credential github.issues.write --repo owner/repo
-jr-rpc issue-credential github.pull-requests.read --repo owner/repo
-jr-rpc issue-credential github.pull-requests.write --repo owner/repo
+jr-rpc issue-credential github.contents.read --target owner/repo
+jr-rpc issue-credential github.contents.write --target owner/repo
+jr-rpc issue-credential github.issues.read --target owner/repo
+jr-rpc issue-credential github.issues.write --target owner/repo
+jr-rpc issue-credential github.pull-requests.read --target owner/repo
+jr-rpc issue-credential github.pull-requests.write --target owner/repo
 ```
 
 ## Behavior notes

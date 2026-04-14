@@ -31,7 +31,7 @@ Load references conditionally based on the operation:
 - If repository is still missing, ask the user for `owner/repo`.
 - Resolve the issue number for non-create issue operations.
 - Resolve the pull request number for pull request operations that target an existing PR.
-- Keep `owner/repo` explicit on both `jr-rpc issue-credential` and `gh` commands whenever the task targets a specific repository. Do not rely on a stale `github.repo` default when hopping between repos.
+- Keep `owner/repo` explicit on both `jr-rpc issue-credential --target ...` and `gh` commands whenever the task targets a specific repository. Do not rely on a stale `github.repo` default when hopping between repos.
 
 ### 2. Execute by operation type
 
@@ -45,7 +45,7 @@ Load references conditionally based on the operation:
 ### Clone path
 
 - Issue a `contents.read` credential scoped to the target repository before cloning:
-  - `jr-rpc issue-credential github.contents.read --repo owner/repo`
+  - `jr-rpc issue-credential github.contents.read --target owner/repo`
 - Default to a shallow clone.
 - Use exact command forms from [references/api-surface.md](references/api-surface.md) or [references/common-use-cases.md](references/common-use-cases.md).
 - Deepen incrementally only when the task needs repository history.
@@ -89,7 +89,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 #### 5. Execute operation
 
 - Issue the narrowest matching capability credential before executing.
-- Pass `--repo owner/repo` when issuing repo-scoped GitHub credentials.
+- Pass `--target owner/repo` when issuing repo-scoped GitHub credentials.
 - Use fully specified, non-interactive `gh` commands from [references/api-surface.md](references/api-surface.md).
 - Use [references/common-use-cases.md](references/common-use-cases.md) only when you need a concrete command pattern.
 - Check duplicates silently before creating a new issue. Only mention duplicates when relevant matches are actually found.
@@ -108,7 +108,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 #### 3. Execute inspection
 
-- Issue `github.pull-requests.read --repo owner/repo` before authenticated read-only PR commands.
+- Issue `github.pull-requests.read --target owner/repo` before authenticated read-only PR commands.
 - Use exact read-only `gh pr` commands from [references/api-surface.md](references/api-surface.md).
 - Skip branch resolution and push logic for inspection-only work.
 
@@ -129,10 +129,10 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 #### 4. Execute pull request operation
 
-- Issue the narrowest matching capability credential before executing, and pass `--repo owner/repo` for repo-scoped work.
+- Issue the narrowest matching capability credential before executing, and pass `--target owner/repo` for repo-scoped work.
 - For PR creation, do not rely on `gh pr create` to push or fork implicitly.
-- For PR creation, if the head branch is not already on the remote, first issue `github.contents.write --repo owner/repo` and run `git push`.
-- For PR creation, then issue `github.pull-requests.write --repo owner/repo` and run `gh pr create --repo owner/repo --head BRANCH ...`.
+- For PR creation, if the head branch is not already on the remote, first issue `github.contents.write --target owner/repo` and run `git push`.
+- For PR creation, then issue `github.pull-requests.write --target owner/repo` and run `gh pr create --repo owner/repo --head BRANCH ...`.
 - For PR creation, use `--head` so `gh` skips its hidden push/fork flow.
 - Treat `gh pr merge` as a contents mutation: it requires `github.contents.write`, not just `github.pull-requests.write`.
 - Treat issue comments and label edits as `github.issues.write`.

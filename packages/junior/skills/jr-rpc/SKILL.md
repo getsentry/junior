@@ -12,11 +12,11 @@ Enable provider credentials and manage OAuth authorization for the current agent
 
 Run before any authenticated API call:
 
-`jr-rpc issue-credential <capability> [--repo <owner/repo>]`
+`jr-rpc issue-credential <capability> [--target <value>]`
 
 - Use the exact capability name declared by the loaded skill's `requires-capabilities` metadata or the runtime provider-capabilities catalog.
-- Repo-targeted capabilities require `--repo`, unless the target provider already has a configured default repository key.
-- Capabilities without repo targets do not use `--repo`.
+- Provider-targeted capabilities require `--target`, unless the target provider already has a configured default target key.
+- Capabilities without provider targets do not use `--target`.
 - On success, sandbox header transforms are applied for this turn. Do not pass raw tokens.
 - If credential issuance fails with `credential_unavailable` + `oauth_started`, relay the `message` field to the user and **stop the turn** — the callback auto-resumes the request after authorization.
 

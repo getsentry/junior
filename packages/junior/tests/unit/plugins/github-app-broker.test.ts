@@ -31,7 +31,11 @@ const TEST_MANIFEST: PluginManifest = {
   ],
   configKeys: ["github.repo"],
   credentials: TEST_CREDENTIALS,
-  target: { type: "repo", configKey: "github.repo" },
+  target: {
+    type: "repo",
+    configKey: "github.repo",
+    commandFlags: ["--repo", "-R"],
+  },
 };
 
 function setupValidEnv() {
@@ -149,11 +153,27 @@ describe("github app credential broker", () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.issues.write",
-      target: { owner: "getsentry", repo: "junior" },
+      target: { type: "repo", value: "getsentry/junior" },
       reason: "test:scoped",
     });
 
     expect(lease.metadata).toMatchObject({ targetScope: "getsentry/junior" });
+  });
+
+  it("rejects invalid repo targets before cache lookup", async () => {
+    setupValidEnv();
+    mockGitHubApi();
+
+    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
+    await expect(
+      broker.issue({
+        capability: "github.issues.write",
+        target: { type: "repo", value: "invalid" },
+        reason: "test:invalid-target",
+      }),
+    ).rejects.toThrow("Invalid github repo target");
+
+    expect(vi.mocked(globalThis.fetch).mock.calls).toHaveLength(0);
   });
 
   it("uses cached lease without recreating app jwt", async () => {
@@ -246,7 +266,7 @@ describe("github app credential broker", () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await broker.issue({
       capability: "github.contents.read",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:contents-read",
     });
 
@@ -262,7 +282,7 @@ describe("github app credential broker", () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.contents.read",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:contents-read-domains",
     });
 
@@ -278,7 +298,7 @@ describe("github app credential broker", () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.contents.read",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:auth-scheme",
     });
 
@@ -302,7 +322,7 @@ describe("github app credential broker", () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.contents.read",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:contents-read-env",
     });
 
@@ -316,7 +336,7 @@ describe("github app credential broker", () => {
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
       capability: "github.contents.write",
-      target: { owner: "getsentry", repo: "sentry" },
+      target: { type: "repo", value: "getsentry/sentry" },
       reason: "test:contents-write",
     });
 

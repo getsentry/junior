@@ -5,8 +5,9 @@ import {
 } from "@/chat/plugins/registry";
 
 export interface CapabilityProviderTargetDefinition {
-  type: "repo";
+  type: string;
   configKey: string;
+  commandFlags?: string[];
 }
 
 export interface CapabilityProviderDefinition {
@@ -32,7 +33,16 @@ function cloneProviderDefinition(
     ...provider,
     capabilities: [...provider.capabilities],
     configKeys: [...provider.configKeys],
-    ...(provider.target ? { target: { ...provider.target } } : {}),
+    ...(provider.target
+      ? {
+          target: {
+            ...provider.target,
+            ...(provider.target.commandFlags
+              ? { commandFlags: [...provider.target.commandFlags] }
+              : {}),
+          },
+        }
+      : {}),
   };
 }
 

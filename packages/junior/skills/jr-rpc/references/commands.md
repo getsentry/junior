@@ -2,12 +2,12 @@
 
 ## issue-credential
 
-`jr-rpc issue-credential <capability> [--repo <owner/repo>]`
+`jr-rpc issue-credential <capability> [--target <value>]`
 
 Enable a capability credential for the current turn.
 
 - `<capability>` — exact provider-qualified token from the loaded skill or provider-capabilities catalog
-- `--repo <owner/repo>` — required only for repo-targeted capabilities
+- `--target <value>` — required only for provider-targeted capabilities
 
 ### Auto-OAuth
 

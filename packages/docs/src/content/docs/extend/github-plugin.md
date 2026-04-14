@@ -92,7 +92,7 @@ Then confirm:
 
 - `Access denied` from GitHub: the app is not installed on the target repository or organization. Install the app on that target, then retry.
 - `Bad credentials` or signing errors: `GITHUB_APP_PRIVATE_KEY` does not match the App ID. Upload the private key generated for the same app as `GITHUB_APP_ID`.
-- Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request and retry.
+- Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or pass `--target owner/repo` to `jr-rpc issue-credential`, and retry.
 - Permission-style failures during issue or pull request workflows: the GitHub App lacks the required permission or installation scope. Update the app permissions or install target, then retry.
 
 ## Next step
