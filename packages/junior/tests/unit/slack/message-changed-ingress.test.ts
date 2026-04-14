@@ -49,12 +49,15 @@ describe("extractMessageChangedMention", () => {
     const result = extractMessageChangedMention(body, BOT_USER_ID, fakeAdapter);
 
     expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error("expected synthesized edited mention");
+    }
     expect(result?.threadId).toBe(`slack:${CHANNEL_ID}:${THREAD_TS}`);
     expect(result?.message.text).toBe(`<@${BOT_USER_ID}> please help`);
     expect(result?.message.isMention).toBe(true);
     expect(result?.message.id).toBe(EDITED_MESSAGE_ID);
-    expect((result?.message.raw as { ts: string }).ts).toBe(MESSAGE_TS);
-    expect((result?.message.metadata as { edited: boolean }).edited).toBe(true);
+    expect((result.message.raw as { ts: string }).ts).toBe(MESSAGE_TS);
+    expect((result.message.metadata as { edited: boolean }).edited).toBe(true);
   });
 
   it("serializes the synthesized message for queue rehydration", () => {
