@@ -1,14 +1,14 @@
 ---
 name: github
 description: Manage GitHub issue workflows, pull request operations, and repository checkout via GitHub CLI with concise, evidence-backed content. Use when users ask to open, edit, label, comment on, close/reopen, or inspect GitHub issues, view or create pull requests, or when they need `gh repo clone` guidance, especially shallow-clone defaults and exact CLI commands.
-requires-capabilities: github.issues.read github.issues.write github.issues.comment github.labels.write github.contents.read github.contents.write github.pull-requests.read github.pull-requests.write
+requires-capabilities: github.issues.read github.issues.write github.contents.read github.contents.write github.pull-requests.read github.pull-requests.write
 uses-config: github.repo
 allowed-tools: bash
 ---
 
 # GitHub Operations
 
-Issue workflows and repository checkout via `gh` CLI.
+Issue workflows, pull request operations, and repository checkout via `gh` CLI.
 
 ## Reference loading
 
@@ -25,16 +25,18 @@ Load references conditionally based on the operation:
 
 ### 1. Resolve operation and target
 
-- Determine whether the task is `clone` or an issue operation (`create`, `update`, `comment`, `labels`, `state`, or read-only inspection).
+- Determine whether the task is `clone`, an issue operation (`create`, `update`, `comment`, `labels`, `state`, or read-only inspection), or a pull request operation (`create`, `update`, `close`, `merge`, or read-only inspection).
 - Resolve repository (`owner/repo`). If it is not explicit, query channel config with `jr-rpc config get github.repo`.
 - If config exists and is valid `owner/repo`, use it as the default.
 - If repository is still missing, ask the user for `owner/repo`.
 - Resolve the issue number for non-create issue operations.
+- Keep `owner/repo` explicit on both `jr-rpc issue-credential` and `gh` commands whenever the task targets a specific repository. Do not rely on a stale `github.repo` default when hopping between repos.
 
 ### 2. Execute by operation type
 
 **Clone** → Follow the clone path below.
 **Issue operation** → Follow the issue path below.
+**Pull request operation** → Follow the pull request path below.
 
 ---
 
@@ -85,9 +87,11 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 #### 5. Execute operation
 
 - Issue the narrowest matching capability credential before executing.
+- Pass `--repo owner/repo` when issuing repo-scoped GitHub credentials.
 - Use fully specified, non-interactive `gh` commands from [references/api-surface.md](references/api-surface.md).
 - Use [references/common-use-cases.md](references/common-use-cases.md) only when you need a concrete command pattern.
 - Check duplicates silently before creating a new issue. Only mention duplicates when relevant matches are actually found.
+- Treat GitHub capability scoping as an operational safety rail that reduces accidental writes and wrong-repo mutations. It is not a perfect command-by-command permission model.
 
 #### 6. Report result
 
@@ -95,6 +99,31 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 - Include references used for verified claims.
 - Keep routine issue-creation steps silent. Do not post progress chatter about duplicate checks, drafting, credential issuance, or command execution before the final result.
 - If duplicate checking found no relevant matches, omit that fact entirely and report only the created issue, for example `Created issue #123: ...`, not `No duplicates found. Creating the issue now.`
+
+---
+
+### Pull request path
+
+#### 3. Resolve branch inputs
+
+- Resolve the base branch. Use the explicit user request when present; otherwise use the repository default branch.
+- Resolve the head branch from the current checkout or user request.
+- If the current branch may not exist on the remote yet, push it explicitly before PR creation.
+
+#### 4. Execute pull request operation
+
+- Issue the narrowest matching capability credential before executing, and pass `--repo owner/repo` for repo-scoped work.
+- For PR creation, do not rely on `gh pr create` to push or fork implicitly.
+- If the head branch is not already on the remote, first issue `github.contents.write --repo owner/repo` and run `git push`.
+- Then issue `github.pull-requests.write --repo owner/repo` and run `gh pr create --repo owner/repo --head BRANCH ...`.
+- Use `--head` on `gh pr create` so `gh` skips its hidden push/fork flow.
+- Treat `gh pr merge` as a contents mutation: it requires `github.contents.write`, not just `github.pull-requests.write`.
+- Treat issue comments and label edits as `github.issues.write`.
+
+#### 5. Report result
+
+- Return canonical PR URL, PR number when available, target repository, and applied changes.
+- If PR creation fails after explicit push + explicit repo scoping, report the exact auth or validation failure and stop.
 
 ## Guardrails
 

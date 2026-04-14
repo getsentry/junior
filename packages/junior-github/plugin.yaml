@@ -4,8 +4,6 @@ description: GitHub issue management via GitHub App
 capabilities:
   - issues.read
   - issues.write
-  - issues.comment
-  - labels.write
   - contents.read
   - contents.write
   - pull-requests.read

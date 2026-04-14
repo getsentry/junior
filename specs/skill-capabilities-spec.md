@@ -84,8 +84,10 @@ Rules:
 
 - `github.issues.read`
 - `github.issues.write`
-- `github.issues.comment`
-- `github.labels.write`
+- `github.contents.read`
+- `github.contents.write`
+- `github.pull-requests.read`
+- `github.pull-requests.write`
 
 ### Issuance flow
 
@@ -98,6 +100,12 @@ Rules:
 - Prefer short-lived token leases.
 - Runtime cache can reuse a lease in memory.
 - Current cap: at most 1 hour lease window.
+
+### Security posture
+
+- GitHub capabilities are a lightweight host-side safety rail, not a fine-grained policy engine.
+- The main goals are reducing accidental write scope and wrong-repository mutations while keeping the command model simple.
+- Repo targeting narrows installation tokens when `owner/repo` is known, but the agent can still request broader GitHub capabilities when the task requires them.
 
 ## Sentry profile
 

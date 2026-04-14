@@ -153,18 +153,6 @@ async function githubRequest<T>(
 }
 
 /**
- * Capability aliases that map to a different GitHub permission than their name implies.
- * Key: suffix after plugin name (e.g. "issues.comment"), value: `{ permission, level }`.
- */
-const CAPABILITY_ALIASES: Record<
-  string,
-  { permission: string; level: "read" | "write" }
-> = {
-  "issues.comment": { permission: "issues", level: "write" },
-  "labels.write": { permission: "issues", level: "write" },
-};
-
-/**
  * GitHub App permission scopes that the broker can request.
  * Capabilities follow the convention `<plugin>.<scope>.<read|write>` where
  * the scope name uses dashes in capabilities and underscores in the GitHub API.
@@ -202,11 +190,6 @@ function capabilityToPermissions(
     throw new Error(`Unsupported GitHub capability: ${capability}`);
   }
   const suffix = capability.slice(prefix.length);
-
-  const alias = CAPABILITY_ALIASES[suffix];
-  if (alias) {
-    return { [alias.permission]: alias.level };
-  }
 
   const lastDot = suffix.lastIndexOf(".");
   if (lastDot === -1) {
@@ -277,6 +260,18 @@ export function createGitHubAppBroker(
 
   const supportedCapabilities = new Set(manifest.capabilities);
 
+  function resolveInstallationId(): number {
+    const installationIdRaw = process.env[installationIdEnv]?.trim();
+    if (!installationIdRaw) {
+      throw new Error(`Missing ${installationIdEnv}`);
+    }
+    const installationId = Number(installationIdRaw);
+    if (!Number.isFinite(installationId)) {
+      throw new Error(`Invalid ${installationIdEnv}`);
+    }
+    return installationId;
+  }
+
   return {
     async issue(input: {
       capability: string;
@@ -293,14 +288,8 @@ export function createGitHubAppBroker(
       if (!appId) {
         throw new Error(`Missing ${appIdEnv}`);
       }
-      const installationIdRaw = process.env[installationIdEnv]?.trim();
-      if (!installationIdRaw) {
-        throw new Error(`Missing ${installationIdEnv}`);
-      }
-      const installationId = Number(installationIdRaw);
-      if (!Number.isFinite(installationId)) {
-        throw new Error(`Invalid ${installationIdEnv}`);
-      }
+      const appJwt = createAppJwt(appId, privateKeyEnv);
+      const installationId = resolveInstallationId();
 
       const targetScope = normalizeTargetScope(input.target);
       const cacheKey = `${installationId}:${input.capability}:${targetScope}`;
@@ -329,7 +318,6 @@ export function createGitHubAppBroker(
         };
       }
 
-      const appJwt = createAppJwt(appId, privateKeyEnv);
       const repositoryName = input.target?.repo?.trim().toLowerCase();
       const tokenRequestBody: {
         permissions: Record<string, "read" | "write">;

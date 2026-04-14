@@ -61,8 +61,10 @@ provider: github
 capabilities:
   - github.issues.read
   - github.issues.write
-  - github.issues.comment
-  - github.labels.write
+  - github.contents.read
+  - github.contents.write
+  - github.pull-requests.read
+  - github.pull-requests.write
 configKeys:
   - github.repo
 target:

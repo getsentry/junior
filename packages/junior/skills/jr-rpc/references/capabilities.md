@@ -4,8 +4,6 @@ Use provider-qualified capability names:
 
 - `github.issues.read`
 - `github.issues.write`
-- `github.issues.comment`
-- `github.labels.write`
 - `sentry.api`
 
 Examples:

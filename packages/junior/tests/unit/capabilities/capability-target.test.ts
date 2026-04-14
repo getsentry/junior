@@ -10,6 +10,14 @@ describe("capability target extraction", () => {
     expect(target).toEqual({ owner: "getsentry", repo: "junior" });
   });
 
+  it("extracts repo from -R alias in command", () => {
+    const target = extractCapabilityTarget({
+      commandText: "gh issue view 123 -R getsentry/junior --json number,title",
+    });
+
+    expect(target).toEqual({ owner: "getsentry", repo: "junior" });
+  });
+
   it("extracts repo from invocation args when command lacks repo", () => {
     const target = extractCapabilityTarget({
       commandText: "node script.mjs create --title x",

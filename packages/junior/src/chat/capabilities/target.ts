@@ -1,8 +1,11 @@
 import type { CapabilityTarget } from "@/chat/capabilities/types";
 
-const REPO_FLAG_RE = /(?:^|\s)--repo(?:\s+|=)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:#[0-9]+)?)/;
+const REPO_FLAG_RE =
+  /(?:^|\s)(?:--repo|-R)(?:\s+|=)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:#[0-9]+)?)/;
 
-export function parseRepoTarget(value: string): { owner: string; repo: string } | undefined {
+export function parseRepoTarget(
+  value: string,
+): { owner: string; repo: string } | undefined {
   const trimmed = value.trim();
   if (!trimmed) {
     return undefined;
@@ -16,11 +19,13 @@ export function parseRepoTarget(value: string): { owner: string; repo: string } 
 
   return {
     owner: owner.toLowerCase(),
-    repo: repo.toLowerCase()
+    repo: repo.toLowerCase(),
   };
 }
 
-function extractRepoRef(text: string): { owner: string; repo: string } | undefined {
+function extractRepoRef(
+  text: string,
+): { owner: string; repo: string } | undefined {
   const byFlag = REPO_FLAG_RE.exec(text);
   if (byFlag) {
     return parseRepoTarget(byFlag[1]);
