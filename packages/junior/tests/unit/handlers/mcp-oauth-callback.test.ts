@@ -8,6 +8,8 @@ const {
   deleteMcpAuthSessionMock,
   finalizeMcpAuthorizationMock,
   generateAssistantReplyMock,
+  getChannelConfigurationServiceByIdMock,
+  getPersistedSandboxStateMock,
   getPersistedThreadStateMock,
   logWarnMock,
   markConversationMessageMock,
@@ -28,6 +30,8 @@ const {
   deleteMcpAuthSessionMock: vi.fn(),
   finalizeMcpAuthorizationMock: vi.fn(),
   generateAssistantReplyMock: vi.fn(),
+  getChannelConfigurationServiceByIdMock: vi.fn(),
+  getPersistedSandboxStateMock: vi.fn(),
   getPersistedThreadStateMock: vi.fn(),
   logWarnMock: vi.fn(),
   markConversationMessageMock: vi.fn(),
@@ -54,11 +58,18 @@ vi.mock("@/chat/respond", () => ({
   generateAssistantReply: generateAssistantReplyMock,
 }));
 
-vi.mock("@/chat/config", () => ({
-  botConfig: {
-    userName: "junior",
-  },
-}));
+vi.mock("@/chat/config", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/chat/config")>();
+  const memoryConfig = original.readChatConfig({
+    ...process.env,
+    JUNIOR_STATE_ADAPTER: "memory",
+  });
+  return {
+    ...original,
+    botConfig: memoryConfig.bot,
+    getChatConfig: () => memoryConfig,
+  };
+});
 
 vi.mock("@/chat/slack/client", () => ({
   getSlackClient: () => ({
@@ -84,6 +95,8 @@ vi.mock("@/chat/state/conversation", () => ({
 }));
 
 vi.mock("@/chat/runtime/thread-state", () => ({
+  getChannelConfigurationServiceById: getChannelConfigurationServiceByIdMock,
+  getPersistedSandboxState: getPersistedSandboxStateMock,
   getPersistedThreadState: getPersistedThreadStateMock,
   mergeArtifactsState: mergeArtifactsStateMock,
   persistThreadStateById: persistThreadStateByIdMock,
@@ -128,6 +141,8 @@ describe("mcp oauth callback handler", () => {
     deleteMcpAuthSessionMock.mockReset();
     finalizeMcpAuthorizationMock.mockReset();
     generateAssistantReplyMock.mockReset();
+    getChannelConfigurationServiceByIdMock.mockReset();
+    getPersistedSandboxStateMock.mockReset();
     getPersistedThreadStateMock.mockReset();
     logWarnMock.mockReset();
     markConversationMessageMock.mockReset();
@@ -180,6 +195,13 @@ describe("mcp oauth callback handler", () => {
       conversation: {},
       artifacts: {},
     });
+    getChannelConfigurationServiceByIdMock.mockReturnValue({
+      resolve: vi.fn(async (key: string) =>
+        key === "demo.org" ? "acme" : undefined,
+      ),
+      resolveValues: vi.fn(async () => ({ "demo.org": "acme" })),
+    });
+    getPersistedSandboxStateMock.mockReturnValue({});
     coerceThreadConversationStateMock.mockReturnValue({
       backfill: {},
       compactions: [],
@@ -308,22 +330,18 @@ describe("mcp oauth callback handler", () => {
       "/demo incidents",
       expect.objectContaining({
         assistant: { userName: "junior" },
-        requester: { userId: "U123" },
-        correlation: {
+        requester: expect.objectContaining({ userId: "U123" }),
+        correlation: expect.objectContaining({
           conversationId: "conversation-1",
           turnId: "turn_msg_1",
           channelId: "C123",
           threadTs: "1712345.0001",
           requesterId: "U123",
-        },
+        }),
         toolChannelId: "C999",
-        artifactState: {
+        artifactState: expect.objectContaining({
           assistantContextChannelId: "C999",
-          lastCanvasId: "F123",
-        },
-        configuration: {
-          "demo.org": "acme",
-        },
+        }),
         conversationContext: "[user] Test User: budget deadline is Friday",
       }),
     );

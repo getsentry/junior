@@ -56,11 +56,9 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
   });
 }
 
-// Timeout turns fail gracefully: the Slack runtime posts an error
-// reply to the thread. The checkpoint infrastructure in respond.ts
-// still writes an "awaiting_resume" checkpoint on timeout for
-// observability, but no retry mechanism picks it up. MCP auth pauses
-// are the only retryable path (resumed via OAuth callback).
+// Timeout turns checkpoint and schedule an internal continuation when
+// they hit a safe boundary. MCP auth pauses remain retryable too,
+// resumed via the OAuth callback path.
 function registerProductionHandlers(
   bot: JuniorChat<{ slack: SlackAdapter }>,
   slackRuntime: ReturnType<typeof createSlackRuntime>,

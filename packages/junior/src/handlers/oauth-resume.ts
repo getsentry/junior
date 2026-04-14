@@ -1,11 +1,16 @@
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { generateAssistantReply, type AssistantReply } from "@/chat/respond";
+import {
+  generateAssistantReply,
+  type AssistantReply,
+  type ReplyRequestContext,
+} from "@/chat/respond";
 import { createSlackWebApiAssistantStatusTransport } from "@/chat/runtime/assistant-status";
 import { createProgressReporter } from "@/chat/runtime/progress-reporter";
+import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { getSlackClient } from "@/chat/slack/client";
-import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
+import { getStateAdapter } from "@/chat/state/adapter";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
@@ -21,22 +26,32 @@ function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+/** Post a Slack thread message and surface delivery failures to the caller. */
 export async function postSlackMessage(
   channelId: string,
   threadTs: string,
   text: string,
 ): Promise<void> {
+  await getSlackClient().chat.postMessage({
+    channel: channelId,
+    thread_ts: threadTs,
+    text,
+  });
+}
+
+async function postSlackMessageBestEffort(
+  channelId: string,
+  threadTs: string,
+  text: string,
+): Promise<void> {
   try {
-    await getSlackClient().chat.postMessage({
-      channel: channelId,
-      thread_ts: threadTs,
-      text,
-    });
+    await postSlackMessage(channelId, threadTs, text);
   } catch {
     // Best effort.
   }
 }
 
+/** Create a read-only configuration service from persisted values. */
 export function createReadOnlyConfigService(
   values: Record<string, unknown>,
 ): ChannelConfigurationService {
@@ -68,60 +83,119 @@ export function createReadOnlyConfigService(
   };
 }
 
-export async function resumeAuthorizedRequest(args: {
+/** Error raised when another worker already owns the resume lock. */
+export class ResumeTurnBusyError extends Error {
+  constructor(lockKey: string) {
+    super(`A turn already owns resume lock "${lockKey}"`);
+    this.name = "ResumeTurnBusyError";
+  }
+}
+
+export interface ResumeSlackTurnArgs {
   messageText: string;
-  requesterUserId: string;
-  provider: string;
   channelId: string;
   threadTs: string;
-  connectedText: string;
-  failureText: string;
-  correlation?: {
-    conversationId?: string;
-    turnId?: string;
-    channelId?: string;
-    threadTs?: string;
-    requesterId?: string;
-  };
-  toolChannelId?: string;
-  artifactState?: ThreadArtifactsState;
-  conversationContext?: string;
-  configuration?: Record<string, unknown>;
+  replyContext?: ReplyRequestContext;
+  lockKey?: string;
+  initialText?: string;
+  failureText?: string;
   generateReply?: typeof generateAssistantReply;
   onReply?: (reply: AssistantReply) => Promise<void>;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;
+  onTimeoutPause?: (error: unknown) => Promise<void>;
   replyTimeoutMs?: number;
-}) {
+}
+
+function getDefaultLockKey(channelId: string, threadTs: string): string {
+  return `slack:${channelId}:${threadTs}`;
+}
+
+function createResumeReplyContext(
+  args: ResumeSlackTurnArgs,
+  progress: ReturnType<typeof createProgressReporter>,
+): ReplyRequestContext {
+  const replyContext = args.replyContext ?? {};
+  const threadId =
+    args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
+  const persistedChannelConfiguration =
+    replyContext.channelConfiguration ??
+    (replyContext.configuration
+      ? createReadOnlyConfigService(replyContext.configuration)
+      : undefined);
+
+  return {
+    ...replyContext,
+    assistant: {
+      userName: botConfig.userName,
+      ...replyContext.assistant,
+    },
+    correlation: {
+      ...replyContext.correlation,
+      threadId: replyContext.correlation?.threadId ?? threadId,
+      channelId: replyContext.correlation?.channelId ?? args.channelId,
+      threadTs: replyContext.correlation?.threadTs ?? args.threadTs,
+      requesterId:
+        replyContext.correlation?.requesterId ?? replyContext.requester?.userId,
+    },
+    channelConfiguration: persistedChannelConfiguration,
+    onSandboxAcquired: async (sandbox) => {
+      await persistThreadStateById(threadId, {
+        sandboxId: sandbox.sandboxId,
+        sandboxDependencyProfileHash: sandbox.sandboxDependencyProfileHash,
+      });
+      await replyContext.onSandboxAcquired?.(sandbox);
+    },
+    onArtifactStateUpdated: async (artifacts) => {
+      await persistThreadStateById(threadId, { artifacts });
+      await replyContext.onArtifactStateUpdated?.(artifacts);
+    },
+    onStatus: async (status) => {
+      await progress.setStatus(status);
+      await replyContext.onStatus?.(status);
+    },
+  };
+}
+
+/** Resume a paused Slack turn using a normal reply context and thread lock. */
+export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
+  const requesterUserId = args.replyContext?.requester?.userId;
+  if (!requesterUserId) {
+    throw new Error("Resumed turn requires replyContext.requester.userId");
+  }
+
+  const stateAdapter = getStateAdapter();
+  await stateAdapter.connect();
+  const lockKey =
+    args.lockKey ?? getDefaultLockKey(args.channelId, args.threadTs);
+  const lock = await stateAdapter.acquireLock(
+    lockKey,
+    botConfig.turnTimeoutMs + 60_000,
+  );
+  if (!lock) {
+    throw new ResumeTurnBusyError(lockKey);
+  }
+
   const progress = createProgressReporter({
     channelId: args.channelId,
     threadTs: args.threadTs,
     transport: createSlackWebApiAssistantStatusTransport(),
   });
-  await postSlackMessage(args.channelId, args.threadTs, args.connectedText);
-  await progress.start();
-
   try {
+    if (args.initialText) {
+      await postSlackMessageBestEffort(
+        args.channelId,
+        args.threadTs,
+        args.initialText,
+      );
+    }
+    await progress.start();
+
     const generateReply = args.generateReply ?? generateAssistantReply;
+    const replyContext = createResumeReplyContext(args, progress);
     const replyPromise = generateReply(args.messageText, {
-      assistant: { userName: botConfig.userName },
-      requester: { userId: args.requesterUserId },
-      correlation: {
-        conversationId: args.correlation?.conversationId,
-        turnId: args.correlation?.turnId,
-        channelId: args.correlation?.channelId ?? args.channelId,
-        threadTs: args.correlation?.threadTs ?? args.threadTs,
-        requesterId: args.correlation?.requesterId ?? args.requesterUserId,
-      },
-      toolChannelId: args.toolChannelId,
-      conversationContext: args.conversationContext,
-      artifactState: args.artifactState,
-      configuration: args.configuration,
-      channelConfiguration: args.configuration
-        ? createReadOnlyConfigService(args.configuration)
-        : undefined,
-      onStatus: (status) => progress.setStatus(status),
+      ...replyContext,
     });
     const replyTimeoutMs = resolveReplyTimeoutMs(args.replyTimeoutMs);
     const reply =
@@ -156,9 +230,60 @@ export async function resumeAuthorizedRequest(args: {
       await args.onAuthPause(error);
       return;
     }
+    if (
+      isRetryableTurnError(error, "turn_timeout_resume") &&
+      args.onTimeoutPause
+    ) {
+      await args.onTimeoutPause(error);
+      return;
+    }
 
     await args.onFailure?.(error);
 
-    await postSlackMessage(args.channelId, args.threadTs, args.failureText);
+    if (args.failureText) {
+      await postSlackMessageBestEffort(
+        args.channelId,
+        args.threadTs,
+        args.failureText,
+      );
+    }
+  } finally {
+    await stateAdapter.releaseLock(lock);
   }
+}
+
+/** Resume an OAuth-paused Slack request through the shared resume runner. */
+export async function resumeAuthorizedRequest(args: {
+  messageText: string;
+  provider: string;
+  channelId: string;
+  threadTs: string;
+  connectedText: string;
+  failureText: string;
+  replyContext?: ReplyRequestContext;
+  lockKey?: string;
+  generateReply?: typeof generateAssistantReply;
+  onReply?: (reply: AssistantReply) => Promise<void>;
+  onSuccess?: (reply: AssistantReply) => Promise<void>;
+  onFailure?: (error: unknown) => Promise<void>;
+  onAuthPause?: (error: unknown) => Promise<void>;
+  onTimeoutPause?: (error: unknown) => Promise<void>;
+  replyTimeoutMs?: number;
+}) {
+  await resumeSlackTurn({
+    messageText: args.messageText,
+    channelId: args.channelId,
+    threadTs: args.threadTs,
+    replyContext: args.replyContext,
+    lockKey: args.lockKey,
+    initialText: args.connectedText,
+    failureText: args.failureText,
+    generateReply: args.generateReply,
+    onReply: args.onReply,
+    onSuccess: args.onSuccess,
+    onFailure: args.onFailure,
+    onAuthPause: args.onAuthPause,
+    onTimeoutPause: args.onTimeoutPause,
+    replyTimeoutMs: args.replyTimeoutMs,
+  });
 }

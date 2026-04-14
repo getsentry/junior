@@ -14,7 +14,9 @@ export interface ToolHooks {
   getGeneratedFile?: (filename: string) => FileUpload | undefined;
   onGeneratedArtifactFiles?: (files: FileUpload[]) => void;
   onGeneratedFiles?: (files: FileUpload[]) => void;
-  onArtifactStatePatch?: (patch: Partial<ThreadArtifactsState>) => void;
+  onArtifactStatePatch?: (
+    patch: Partial<ThreadArtifactsState>,
+  ) => void | Promise<void>;
   onSkillLoaded?: (
     skill: Skill,
   ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
@@ -38,7 +40,9 @@ export interface ToolRuntimeContext {
 
 export interface ToolState {
   artifactState: ThreadArtifactsState;
-  patchArtifactState: (patch: Partial<ThreadArtifactsState>) => void;
+  patchArtifactState: (
+    patch: Partial<ThreadArtifactsState>,
+  ) => void | Promise<void>;
   getCurrentCanvasId: () => string | undefined;
   getTurnCreatedCanvasId: () => string | undefined;
   setTurnCreatedCanvasId: (canvasId: string) => void;

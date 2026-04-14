@@ -37,7 +37,7 @@ export function createSlackListCreateTool(state: ToolState) {
       }
 
       const list = await createTodoList(name);
-      state.patchArtifactState({
+      await state.patchArtifactState({
         lastListId: list.listId,
         lastListUrl: list.permalink,
         listColumnMap: list.listColumnMap,
@@ -111,7 +111,7 @@ export function createSlackListAddItemsTool(state: ToolState) {
         dueDate: due_date,
       });
 
-      state.patchArtifactState({
+      await state.patchArtifactState({
         lastListId: targetListId,
         listColumnMap: result.listColumnMap,
       });
@@ -220,7 +220,7 @@ export function createSlackListUpdateItemTool(state: ToolState) {
         listColumnMap: state.artifactState.listColumnMap ?? {},
       });
 
-      state.patchArtifactState({ lastListId: targetListId });
+      await state.patchArtifactState({ lastListId: targetListId });
 
       const response = {
         ok: true,

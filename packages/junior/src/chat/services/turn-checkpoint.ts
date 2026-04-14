@@ -1,3 +1,4 @@
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import {
   getAgentTurnSessionCheckpoint,
   upsertAgentTurnSessionCheckpoint,
@@ -47,7 +48,7 @@ export async function persistCompletedCheckpoint(args: {
   conversationId: string;
   sessionId: string;
   sliceId: number;
-  allMessages: unknown[];
+  allMessages: AgentMessage[];
   loadedSkillNames: string[];
 }): Promise<void> {
   await upsertAgentTurnSessionCheckpoint({
@@ -68,7 +69,7 @@ export async function persistAuthPauseCheckpoint(args: {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
-  messages: unknown[];
+  messages: AgentMessage[];
   loadedSkillNames: string[];
   errorMessage: string;
   logContext: {
@@ -124,4 +125,71 @@ export async function persistAuthPauseCheckpoint(args: {
     );
   }
   return nextSliceId;
+}
+
+/**
+ * Persist a timeout checkpoint at the last safe boundary. Returns the durable
+ * checkpoint when persistence succeeds so callers can enqueue a continuation.
+ */
+export async function persistTimeoutCheckpoint(args: {
+  conversationId: string;
+  sessionId: string;
+  currentSliceId: number;
+  messages: AgentMessage[];
+  loadedSkillNames: string[];
+  errorMessage: string;
+  logContext: {
+    threadId?: string;
+    requesterId?: string;
+    channelId?: string;
+    runId?: string;
+    assistantUserName?: string;
+    modelId: string;
+  };
+}): Promise<AgentTurnSessionCheckpoint | undefined> {
+  const nextSliceId = args.currentSliceId + 1;
+
+  try {
+    const latestCheckpoint = await getAgentTurnSessionCheckpoint(
+      args.conversationId,
+      args.sessionId,
+    );
+    const piMessages = trimTrailingAssistantMessages(
+      args.messages.length > 0
+        ? args.messages
+        : (latestCheckpoint?.piMessages ?? []),
+    );
+    return await upsertAgentTurnSessionCheckpoint({
+      conversationId: args.conversationId,
+      sessionId: args.sessionId,
+      sliceId: nextSliceId,
+      state: "awaiting_resume",
+      piMessages,
+      loadedSkillNames: args.loadedSkillNames,
+      resumeReason: "timeout",
+      resumedFromSliceId: args.currentSliceId,
+      errorMessage: args.errorMessage,
+    });
+  } catch (checkpointError) {
+    logException(
+      checkpointError,
+      "agent_turn_timeout_resume_checkpoint_failed",
+      {
+        slackThreadId: args.logContext.threadId,
+        slackUserId: args.logContext.requesterId,
+        slackChannelId: args.logContext.channelId,
+        runId: args.logContext.runId,
+        assistantUserName: args.logContext.assistantUserName,
+        modelId: args.logContext.modelId,
+      },
+      {
+        "app.ai.resume_conversation_id": args.conversationId,
+        "app.ai.resume_session_id": args.sessionId,
+        "app.ai.resume_from_slice_id": args.currentSliceId,
+        "app.ai.resume_next_slice_id": nextSliceId,
+      },
+      "Failed to persist timeout checkpoint before scheduling resume",
+    );
+    return undefined;
+  }
 }

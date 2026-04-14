@@ -6,6 +6,7 @@ import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
+import { POST as turnResumePOST } from "@/handlers/turn-resume";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 import type { WaitUntilFn } from "@/handlers/types";
 
@@ -79,6 +80,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.get("/api/oauth/callback/:provider", (c) => {
     return oauthCallbackGET(c.req.raw, c.req.param("provider"), waitUntil);
+  });
+
+  app.post("/api/internal/turn-resume", (c) => {
+    return turnResumePOST(c.req.raw, waitUntil);
   });
 
   app.post("/api/webhooks/:platform", (c) => {

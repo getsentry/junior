@@ -4,6 +4,7 @@
  * These are extracted to reduce the size of the main orchestration module and
  * make individual helpers independently testable.
  */
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
 import type { Skill } from "@/chat/skills";
 
@@ -295,7 +296,7 @@ export function extractAssistantText(message: AssistantMessage): string {
 }
 
 /** True when messages end with a completed, text-bearing assistant turn. */
-export function hasCompletedAssistantTurn(messages: unknown[]): boolean {
+export function hasCompletedAssistantTurn(messages: AgentMessage[]): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!isAssistantMessage(message)) {
@@ -346,7 +347,9 @@ export function collectRelevantConfigurationKeys(
 }
 
 /** Remove trailing assistant messages before checkpointing. */
-export function trimTrailingAssistantMessages(messages: unknown[]): unknown[] {
+export function trimTrailingAssistantMessages(
+  messages: AgentMessage[],
+): AgentMessage[] {
   let end = messages.length;
   while (end > 0 && getPiMessageRole(messages[end - 1]) === "assistant") {
     end -= 1;

@@ -1,3 +1,4 @@
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "./adapter";
 
@@ -17,7 +18,7 @@ export interface AgentTurnSessionCheckpoint {
   conversationId: string;
   errorMessage?: string;
   loadedSkillNames?: string[];
-  piMessages: unknown[];
+  piMessages: AgentMessage[];
   resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
   sessionId: string;
@@ -78,7 +79,9 @@ function parseAgentTurnSessionCheckpoint(
       sliceId,
       state: status,
       updatedAtMs,
-      piMessages: Array.isArray(parsed.piMessages) ? parsed.piMessages : [],
+      piMessages: Array.isArray(parsed.piMessages)
+        ? (parsed.piMessages as AgentMessage[])
+        : [],
       ...(Array.isArray(parsed.loadedSkillNames)
         ? {
             loadedSkillNames: parsed.loadedSkillNames.filter(
@@ -118,7 +121,7 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   sessionId: string;
   sliceId: number;
   state: AgentTurnSessionStatus;
-  piMessages: unknown[];
+  piMessages: AgentMessage[];
   loadedSkillNames?: string[];
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;

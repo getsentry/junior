@@ -5,11 +5,18 @@ const { postMessageMock, setStatusMock } = vi.hoisted(() => ({
   setStatusMock: vi.fn(),
 }));
 
-vi.mock("@/chat/config", () => ({
-  botConfig: {
-    userName: "junior",
-  },
-}));
+vi.mock("@/chat/config", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/chat/config")>();
+  const memoryConfig = original.readChatConfig({
+    ...process.env,
+    JUNIOR_STATE_ADAPTER: "memory",
+  });
+  return {
+    ...original,
+    botConfig: memoryConfig.bot,
+    getChatConfig: () => memoryConfig,
+  };
+});
 
 vi.mock("@/chat/slack/client", () => ({
   getSlackClient: () => ({
@@ -44,12 +51,14 @@ describe("resumeAuthorizedRequest", () => {
 
     const resumePromise = resumeAuthorizedRequest({
       messageText: "tell me the saved deadline",
-      requesterUserId: "U-test",
       provider: "eval-auth",
       channelId: "C-test",
       threadTs: "1700000000.0001",
       connectedText: "connected",
       failureText: "resume failed",
+      replyContext: {
+        requester: { userId: "U-test" },
+      },
       generateReply: () => new Promise<never>(() => {}),
       replyTimeoutMs: 10,
       onFailure,

@@ -67,14 +67,16 @@ async function resumePendingOAuthMessage(
   );
   await resumeAuthorizedRequest({
     messageText: stored.pendingMessage,
-    requesterUserId: stored.userId,
     provider: stored.provider,
     channelId: stored.channelId,
     threadTs: stored.threadTs,
     connectedText: `Your ${providerLabel} account is now connected. Processing your request...`,
     failureText: `I connected your account but hit an error processing your request. Please try \`${stored.pendingMessage}\` again.`,
-    conversationContext,
-    configuration: stored.configuration,
+    replyContext: {
+      requester: { userId: stored.userId },
+      conversationContext,
+      configuration: stored.configuration,
+    },
     onSuccess: async (reply) => {
       logInfo(
         "oauth_callback_resume_complete",

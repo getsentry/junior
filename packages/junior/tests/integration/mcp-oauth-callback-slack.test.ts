@@ -122,6 +122,19 @@ describe("mcp oauth callback slack integration", () => {
         lastCanvasId: "F123",
       },
     });
+    await stateAdapterModule.getStateAdapter().set("channel-state:C123", {
+      configuration: {
+        schemaVersion: 1,
+        entries: {
+          region: {
+            key: "region",
+            value: "us",
+            scope: "conversation",
+            updatedAt: new Date(0).toISOString(),
+          },
+        },
+      },
+    });
 
     const authProvider = await mcpOauthModule.createMcpOAuthClientProvider({
       provider: EVAL_MCP_AUTH_PROVIDER,
@@ -206,15 +219,12 @@ describe("mcp oauth callback slack integration", () => {
     expect(generateAssistantReplyMock).toHaveBeenCalledWith(
       "what did i say about the budget?",
       expect.objectContaining({
-        requester: { userId: "U123" },
+        requester: expect.objectContaining({ userId: "U123" }),
         toolChannelId: "C999",
-        artifactState: {
+        artifactState: expect.objectContaining({
           assistantContextChannelId: "C999",
           lastCanvasId: "F123",
-        },
-        configuration: {
-          region: "us",
-        },
+        }),
         conversationContext: expect.stringContaining(
           "You need the budget by Friday.",
         ),
@@ -223,10 +233,15 @@ describe("mcp oauth callback slack integration", () => {
 
     const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
       conversationContext?: string;
+      configuration?: Record<string, unknown>;
+      channelConfiguration?: {
+        resolve: (key: string) => Promise<unknown>;
+      };
     };
     expect(resumeContext.conversationContext).not.toContain(
       "what did i say about the budget?",
     );
+    expect(resumeContext.configuration?.region).toBe("us");
 
     const persistedState = await stateAdapterModule
       .getStateAdapter()

@@ -206,6 +206,44 @@ describe("createSandboxExecutor", () => {
     expect(executor.getSandboxId()).toBe("sbx_fresh");
   });
 
+  it("reports acquired sandbox metadata immediately after fresh sandbox boot", async () => {
+    const freshSandbox = makeSandbox("sbx_fresh");
+    const onSandboxAcquired = vi.fn();
+    sandboxCreateMock.mockResolvedValue(freshSandbox);
+
+    const executor = createSandboxExecutor({
+      onSandboxAcquired,
+    });
+    executor.configureSkills([]);
+
+    await executor.createSandbox();
+    await executor.createSandbox();
+
+    expect(onSandboxAcquired).toHaveBeenCalledTimes(1);
+    expect(onSandboxAcquired).toHaveBeenCalledWith({
+      sandboxId: "sbx_fresh",
+    });
+  });
+
+  it("reports acquired sandbox metadata when restoring from a sandbox id hint", async () => {
+    const restoredSandbox = makeSandbox("sbx_restored");
+    const onSandboxAcquired = vi.fn();
+    sandboxGetMock.mockResolvedValue(restoredSandbox);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_restored",
+      onSandboxAcquired,
+    });
+    executor.configureSkills([]);
+
+    await executor.createSandbox();
+
+    expect(onSandboxAcquired).toHaveBeenCalledTimes(1);
+    expect(onSandboxAcquired).toHaveBeenCalledWith({
+      sandboxId: "sbx_restored",
+    });
+  });
+
   it("passes token-based Vercel Sandbox credentials to the sandbox SDK", async () => {
     process.env.VERCEL_TOKEN = "sandbox-token";
     process.env.VERCEL_TEAM_ID = "team_123";
