@@ -228,6 +228,36 @@ function takeSlackContinuationChunk(
 }
 
 /**
+ * Return the first continuation-safe chunk for streamed Slack output along
+ * with any remaining text that should move to continuation messages.
+ */
+export function takeSlackContinuationPrefix(
+  text: string,
+  options?: {
+    forceSplit?: boolean;
+    maxChars?: number;
+    maxLines?: number;
+  },
+): { prefix: string; renderedPrefix: string; rest: string } {
+  const budget = {
+    maxChars: options?.maxChars ?? getSlackContinuationBudget().maxChars,
+    maxLines: options?.maxLines ?? getSlackContinuationBudget().maxLines,
+  };
+  const { prefix, rest } = (() => {
+    if (options?.forceSplit) {
+      return takeSlackContinuationChunk(text, budget);
+    }
+    const initial = takeSlackInlinePrefix(text, budget);
+    return initial.rest ? takeSlackContinuationChunk(text, budget) : initial;
+  })();
+  return {
+    prefix,
+    renderedPrefix: rest ? appendSlackSuffix(prefix, CONTINUED_MARKER) : prefix,
+    rest,
+  };
+}
+
+/**
  * Take the largest Slack-safe inline prefix from `text` under the configured
  * character and line budgets. Returns the consumed prefix plus remaining text.
  */
@@ -294,32 +324,23 @@ export function splitSlackReplyText(
       ? fitsInlineBudget(appendSlackSuffix(remaining, INTERRUPTED_MARKER))
       : fitsInlineBudget(remaining);
     if (fitsFinalChunk) {
-      chunks.push(remaining);
+      chunks.push(
+        options?.interrupted
+          ? appendSlackSuffix(remaining, INTERRUPTED_MARKER)
+          : remaining,
+      );
       break;
     }
 
-    const { prefix, rest } = takeSlackContinuationChunk(
-      remaining,
-      continuationBudget,
-    );
-    chunks.push(prefix);
+    const { renderedPrefix, rest } = takeSlackContinuationPrefix(remaining, {
+      ...continuationBudget,
+      forceSplit: true,
+    });
+    chunks.push(renderedPrefix);
     remaining = rest;
   }
 
-  if (chunks.length === 1 && !options?.interrupted) {
-    return chunks;
-  }
-
-  return chunks.map((chunk, index) => {
-    const isLast = index === chunks.length - 1;
-    if (!isLast) {
-      return appendSlackSuffix(chunk, CONTINUED_MARKER);
-    }
-    if (options?.interrupted) {
-      return appendSlackSuffix(chunk, INTERRUPTED_MARKER);
-    }
-    return chunk;
-  });
+  return chunks;
 }
 
 /** Return the marker added to non-final overflow chunks. */

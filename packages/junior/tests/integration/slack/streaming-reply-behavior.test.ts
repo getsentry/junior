@@ -359,6 +359,45 @@ describe("Slack behavior: streaming replies", () => {
     expect(toPostedText(lastPost)).toContain("line 80");
   });
 
+  it("closes and reopens code fences when streamed replies overflow", async () => {
+    const code = Array.from(
+      { length: 80 },
+      (_, i) => `const value${i + 1} = ${i + 1};`,
+    ).join("\n");
+    const longReply = `\`\`\`ts\n${code}\n\`\`\``;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(longReply);
+            return {
+              text: longReply,
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006005.500" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-6-code",
+        text: "<@U_APP> show code",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds[0]).toBe("stream");
+    expect(thread.posts.length).toBeGreaterThan(1);
+    expect(String(thread.posts[0])).toContain(
+      `\`\`\`${getSlackContinuationMarker()}`,
+    );
+    expect(toPostedText(thread.posts[1])).toMatch(/^```ts\nconst value/);
+  });
+
   it("posts an interruption notice when a streamed reply ends in provider error", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {

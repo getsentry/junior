@@ -14,11 +14,10 @@ import {
 } from "@/chat/logging";
 import {
   buildSlackOutputMessage,
-  getSlackContinuationMarker,
   getSlackContinuationBudget,
   getSlackInterruptionMarker,
   splitSlackReplyText,
-  takeSlackInlinePrefix,
+  takeSlackContinuationPrefix,
 } from "@/chat/slack/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/runtime/progress-reporter";
@@ -288,6 +287,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let streamedReplyPromise: Promise<SentMessage> | undefined;
         let pendingStreamText = "";
         let streamedVisibleText = "";
+        let streamedRenderedText = "";
         let overflowText = "";
         let streamOverflowed = false;
         let beforeFirstResponsePostCalled = false;
@@ -344,20 +344,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           const candidate = `${streamedVisibleText}${normalizedDeltaText}`;
-          const { prefix, rest } = takeSlackInlinePrefix(
+          const { prefix, renderedPrefix, rest } = takeSlackContinuationPrefix(
             candidate,
             continuationBudget,
           );
           const additional =
-            prefix.length > streamedVisibleText.length
-              ? prefix.slice(streamedVisibleText.length)
+            renderedPrefix.length > streamedRenderedText.length
+              ? renderedPrefix.slice(streamedRenderedText.length)
               : "";
           streamedVisibleText = prefix;
+          streamedRenderedText = renderedPrefix;
           queueVisibleStreamText(additional);
           if (rest) {
             overflowText += rest;
             streamOverflowed = true;
-            queueVisibleStreamText(getSlackContinuationMarker());
           }
         };
         const postThreadReply = async (
