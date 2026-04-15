@@ -5,6 +5,7 @@ const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
 const CONTINUED_MARKER = "\n\n[Continued below]";
 const INTERRUPTED_MARKER = "\n\n[Response interrupted before completion]";
+const STREAMING_FENCE_CLOSE_GUARD = "\n```";
 
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {
@@ -370,6 +371,19 @@ export function getSlackContinuationBudget(): {
   maxLines: number;
 } {
   return reserveInlineBudgetForSuffix(CONTINUED_MARKER);
+}
+
+/**
+ * Reserve enough inline budget for streamed continuations, including the
+ * close fence we may need to append once overflow is detected mid-code block.
+ */
+export function getSlackStreamingContinuationBudget(): {
+  maxChars: number;
+  maxLines: number;
+} {
+  return reserveInlineBudgetForSuffix(
+    `${STREAMING_FENCE_CLOSE_GUARD}${CONTINUED_MARKER}`,
+  );
 }
 
 /** Normalize text for Slack and wrap it as a PostableMessage with optional file attachments. */

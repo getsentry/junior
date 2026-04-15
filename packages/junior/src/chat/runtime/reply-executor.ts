@@ -14,8 +14,8 @@ import {
 } from "@/chat/logging";
 import {
   buildSlackOutputMessage,
-  getSlackContinuationBudget,
   getSlackInterruptionMarker,
+  getSlackStreamingContinuationBudget,
   splitSlackReplyText,
   takeSlackContinuationPrefix,
 } from "@/chat/slack/output";
@@ -291,7 +291,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let overflowText = "";
         let streamOverflowed = false;
         let beforeFirstResponsePostCalled = false;
-        const continuationBudget = getSlackContinuationBudget();
+        const continuationBudget = getSlackStreamingContinuationBudget();
         const normalizeStreamDelta = createSlackStreamDeltaNormalizer();
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
@@ -556,8 +556,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // completed after the visible reply has been accepted by Slack.
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
-              const postChunks =
-                replyTextChunks.length > 0 ? replyTextChunks : [reply.text];
+              const hasNormalizedPostChunks = replyTextChunks.length > 0;
+              const postChunks = hasNormalizedPostChunks
+                ? replyTextChunks
+                : [reply.text];
               let sent: SentMessage | undefined;
               for (const [index, chunk] of postChunks.entries()) {
                 sent = await postThreadReply(
@@ -566,7 +568,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     index === 0 && resolvedAttachFiles === "inline"
                       ? replyFiles
                       : undefined,
-                    { normalized: true },
+                    { normalized: hasNormalizedPostChunks },
                   ),
                   index === 0 ? "thread_reply" : "thread_reply_continuation",
                 );

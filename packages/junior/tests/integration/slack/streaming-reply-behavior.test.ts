@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
+  slackOutputPolicy,
 } from "@/chat/slack/output";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
@@ -238,6 +239,35 @@ describe("Slack behavior: streaming replies", () => {
     );
   });
 
+  it("normalizes raw non-streamed fallback replies before posting", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "\r\n\t  \r\n",
+            diagnostics: makeDiagnostics(),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.750" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-whitespace-fallback",
+        text: "<@U_APP> whitespace",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(toPostedText(thread.posts[0])).toBe(
+      "I couldn't produce a response.",
+    );
+  });
+
   it("keeps trailing ack-like text once streaming has started", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -396,6 +426,53 @@ describe("Slack behavior: streaming replies", () => {
       `\`\`\`${getSlackContinuationMarker()}`,
     );
     expect(toPostedText(thread.posts[1])).toMatch(/^```ts\nconst value/);
+  });
+
+  it("does not garble streamed fence continuations near the budget boundary", async () => {
+    const firstDelta =
+      "```\n" +
+      "a".repeat(
+        slackOutputPolicy.maxInlineChars -
+          getSlackContinuationMarker().length -
+          1 -
+          "```\n".length,
+      );
+    const tail = "bcdef\n```";
+    const fullReply = `${firstDelta}${tail}`;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(firstDelta);
+            await context?.onTextDelta?.(tail);
+            return {
+              text: fullReply,
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006005.750" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-6-code-boundary",
+        text: "<@U_APP> show edge code",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream", "value"]);
+    const firstPost = String(thread.posts[0]);
+    const secondPost = toPostedText(thread.posts[1]);
+    const continuationSuffix = `\n\`\`\`${getSlackContinuationMarker()}`;
+
+    expect(firstPost.endsWith(continuationSuffix)).toBe(true);
+    expect(secondPost.startsWith("```\n")).toBe(true);
+    expect(secondPost).toContain("bcdef\n```");
   });
 
   it("posts an interruption notice when a streamed reply ends in provider error", async () => {
