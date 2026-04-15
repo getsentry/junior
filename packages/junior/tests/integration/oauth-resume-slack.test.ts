@@ -8,6 +8,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getCapturedSlackApiCalls,
   getCapturedSlackFileUploadCalls,
+  queueSlackApiError,
 } from "../msw/handlers/slack-api";
 
 function makeDiagnostics(outcome: "success" | "provider_error" = "success") {
@@ -206,5 +207,57 @@ describe("oauth resume slack integration", () => {
       }),
     ]);
     expect(getCapturedSlackFileUploadCalls()).toHaveLength(1);
+  });
+
+  it("keeps the resumed reply visible when file upload followups fail", async () => {
+    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
+    queueSlackApiError("files.completeUploadExternal", {
+      error: "upload_failed",
+    });
+
+    await resumeAuthorizedRequest({
+      messageText: "Continue the original request",
+      channelId: "C123",
+      threadTs: "1700000000.005",
+      connectedText: "Connected. Continuing...",
+      failureText: "Resume failed.",
+      replyContext: {
+        requester: { userId: "U123" },
+      },
+      generateReply: async () =>
+        ({
+          text: "Here is the resumed artifact.",
+          files: [
+            {
+              data: Buffer.from("resume-file"),
+              filename: "resume.txt",
+            },
+          ],
+          diagnostics: makeDiagnostics(),
+        }) as any,
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.005",
+          text: "Connected. Continuing...",
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1700000000.005",
+          text: "Here is the resumed artifact.",
+        }),
+      }),
+    ]);
+    expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
+      1,
+    );
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal"),
+    ).toHaveLength(1);
   });
 });

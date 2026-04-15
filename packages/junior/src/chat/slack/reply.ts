@@ -77,6 +77,22 @@ async function normalizeFileUploads(
   );
 }
 
+async function uploadReplyFilesBestEffort(args: {
+  channelId: string;
+  threadTs: string;
+  files: FileUpload[];
+}): Promise<void> {
+  try {
+    await uploadFilesToThread({
+      channelId: args.channelId,
+      threadTs: args.threadTs,
+      files: await normalizeFileUploads(args.files),
+    });
+  } catch {
+    // File followups should not turn a delivered resume reply into a failed turn.
+  }
+}
+
 function getReplyMessageText(message: PostableMessage): string | undefined {
   if (typeof message !== "object" || message === null) {
     return undefined;
@@ -265,10 +281,10 @@ export async function postSlackApiReplyPosts(args: {
       continue;
     }
 
-    await uploadFilesToThread({
+    await uploadReplyFilesBestEffort({
       channelId: args.channelId,
       threadTs: args.threadTs,
-      files: await normalizeFileUploads(files),
+      files,
     });
   }
 }

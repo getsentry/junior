@@ -269,7 +269,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         let pendingStreamDeltaCount = 0;
         let awaitingPostToolAssistantMessage = false;
         let beforeFirstResponsePostCalled = false;
-        const streamedReplyState = createSlackStreamAccumulator();
+        let streamedReplyState = createSlackStreamAccumulator();
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
             return;
@@ -300,6 +300,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const clearPendingStreamText = () => {
           pendingStreamText = "";
           pendingStreamDeltaCount = 0;
+        };
+        const discardPendingStreamPreview = () => {
+          clearPendingStreamText();
+          streamedReplyState = createSlackStreamAccumulator();
         };
         const finalizePendingStreamText = () => {
           if (
@@ -338,6 +342,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           flushPendingStreamText();
         };
         const appendVisibleStreamDelta = (deltaText: string) => {
+          if (awaitingPostToolAssistantMessage && !streamedReplyPromise) {
+            return;
+          }
           queueVisibleStreamText(streamedReplyState.append(deltaText));
         };
         const postThreadReply = async (
@@ -426,12 +433,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 return;
               }
               awaitingPostToolAssistantMessage = false;
-              clearPendingStreamText();
+              discardPendingStreamPreview();
             },
             onToolCall: () => {
               if (!streamedReplyPromise) {
                 awaitingPostToolAssistantMessage = true;
-                clearPendingStreamText();
+                discardPendingStreamPreview();
               }
             },
           });

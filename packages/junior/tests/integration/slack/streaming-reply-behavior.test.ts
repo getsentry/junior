@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
+  getSlackStreamingContinuationBudget,
   slackOutputPolicy,
 } from "@/chat/slack/output";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
@@ -228,6 +229,45 @@ describe("Slack behavior: streaming replies", () => {
       createTestMessage({
         id: "m-stream-research-no-chatter",
         text: "<@U_APP> find the hottest news article today and summarize it",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream"]);
+    expect(thread.posts).toEqual([finalReply]);
+  });
+
+  it("does not spend the stream budget on provisional text that gets discarded before tool work", async () => {
+    const provisionalText = "p".repeat(64);
+    const finalReply = "a".repeat(
+      getSlackStreamingContinuationBudget().maxChars - 8,
+    );
+    const midpoint = Math.floor(finalReply.length / 2);
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(provisionalText);
+            await context?.onToolCall?.("webSearch");
+            await context?.onAssistantMessageStart?.();
+            await context?.onTextDelta?.(finalReply.slice(0, midpoint));
+            await context?.onTextDelta?.(finalReply.slice(midpoint));
+            return {
+              text: finalReply,
+              diagnostics: makeDiagnostics(["webSearch"]),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.438" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-research-budget-reset",
+        text: "<@U_APP> research and summarize",
         isMention: true,
         threadId: thread.id,
       }),
