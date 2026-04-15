@@ -123,6 +123,33 @@ describe("splitSlackReplyText", () => {
 
     expect(chunks).toEqual([`Partial output${getSlackInterruptionMarker()}`]);
   });
+
+  it("keeps interrupted continuation chunks within the inline budget", () => {
+    const text = "a".repeat(
+      slackOutputPolicy.maxInlineChars -
+        getSlackInterruptionMarker().length +
+        1,
+    );
+
+    const chunks = splitSlackReplyText(text, {
+      interrupted: true,
+    });
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(true);
+    expect(chunks[1]?.endsWith(getSlackInterruptionMarker())).toBe(true);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+    expect(
+      chunks
+        .map((chunk, index) => {
+          if (index === chunks.length - 1) {
+            return chunk.slice(0, -getSlackInterruptionMarker().length);
+          }
+          return chunk.slice(0, -getSlackContinuationMarker().length);
+        })
+        .join(""),
+    ).toBe(text);
+  });
 });
 
 describe("ensureBlockSpacing", () => {

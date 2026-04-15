@@ -82,8 +82,8 @@ function patchSlackClientStream(adapter: SlackAdapter): void {
   const originalChatStream = client.chatStream.bind(client);
   client.chatStream = (params) =>
     originalChatStream({
-      buffer_size: STREAM_BUFFER_SIZE,
       ...params,
+      buffer_size: STREAM_BUFFER_SIZE,
     });
   client[CLIENT_STREAM_PATCHED] = true;
 }

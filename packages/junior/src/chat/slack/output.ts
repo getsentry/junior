@@ -195,10 +195,10 @@ export function splitSlackReplyText(
       break;
     }
 
-    const { prefix, rest } = takeSlackInlinePrefix(
-      remaining,
-      continuationBudget,
-    );
+    let { prefix, rest } = takeSlackInlinePrefix(remaining, continuationBudget);
+    if (options?.interrupted && !rest && finalBudget) {
+      ({ prefix, rest } = takeSlackInlinePrefix(remaining, finalBudget));
+    }
     chunks.push(prefix);
     remaining = rest;
   }
