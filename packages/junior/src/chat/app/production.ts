@@ -1,5 +1,4 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { createSlackAdapter } from "@chat-adapter/slack";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import {
@@ -13,6 +12,7 @@ import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { createChatSdkLogger, logException, withSpan } from "@/chat/logging";
 import { publishAppHomeView } from "@/chat/slack/app-home";
+import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { getSlackClient } from "@/chat/slack/client";
 import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
@@ -46,7 +46,7 @@ function createProductionBot(): JuniorChat<{ slack: SlackAdapter }> {
           throw new Error("SLACK_SIGNING_SECRET is required");
         }
 
-        return createSlackAdapter({
+        return createJuniorSlackAdapter({
           logger: logger.child("slack"),
           signingSecret,
           ...(botToken ? { botToken } : {}),

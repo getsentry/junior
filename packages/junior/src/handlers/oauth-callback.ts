@@ -7,10 +7,7 @@ import {
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
 import { buildConversationContext } from "@/chat/services/conversation-memory";
-import {
-  resumeAuthorizedRequest,
-  postSlackMessage,
-} from "@/handlers/oauth-resume";
+import { resumeAuthorizedRequest, postSlackMessage } from "@/chat/slack/resume";
 import { logException, logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
@@ -67,7 +64,6 @@ async function resumePendingOAuthMessage(
   );
   await resumeAuthorizedRequest({
     messageText: stored.pendingMessage,
-    provider: stored.provider,
     channelId: stored.channelId,
     threadTs: stored.threadTs,
     connectedText: `Your ${providerLabel} account is now connected. Processing your request...`,

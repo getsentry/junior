@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildSlackOutputMessage,
   ensureBlockSpacing,
+  fitsSlackInlineBudget,
+  getSlackContinuationMarker,
+  getSlackInterruptionMarker,
   slackOutputPolicy,
+  splitSlackReplyText,
 } from "@/chat/slack/output";
 
 describe("buildSlackOutputMessage", () => {
@@ -75,6 +79,89 @@ describe("buildSlackOutputMessage", () => {
     };
 
     expect(message.markdown).toBe("one\n\ntwo");
+  });
+});
+
+describe("splitSlackReplyText", () => {
+  it("splits long replies into inline-safe continuation chunks", () => {
+    const longText = Array.from(
+      { length: slackOutputPolicy.maxInlineLines + 24 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
+
+    const chunks = splitSlackReplyText(longText);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(true);
+    expect(
+      chunks
+        .slice(0, -1)
+        .every((chunk) => chunk.endsWith(getSlackContinuationMarker())),
+    ).toBe(true);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+  });
+
+  it("preserves every line when reserving continuation marker space", () => {
+    const longList = Array.from(
+      { length: slackOutputPolicy.maxInlineLines + 1 },
+      (_, i) => `- item ${i + 1}`,
+    ).join("\n");
+
+    const chunks = splitSlackReplyText(longList);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+    for (let i = 1; i <= slackOutputPolicy.maxInlineLines + 1; i++) {
+      expect(chunks.some((chunk) => chunk.includes(`- item ${i}`))).toBe(true);
+    }
+  });
+
+  it("marks interrupted final replies explicitly", () => {
+    const chunks = splitSlackReplyText("Partial output", {
+      interrupted: true,
+    });
+
+    expect(chunks).toEqual([`Partial output${getSlackInterruptionMarker()}`]);
+  });
+
+  it("keeps interrupted continuation chunks within the inline budget", () => {
+    const text = "a".repeat(
+      slackOutputPolicy.maxInlineChars -
+        getSlackInterruptionMarker().length +
+        1,
+    );
+
+    const chunks = splitSlackReplyText(text, {
+      interrupted: true,
+    });
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(true);
+    expect(chunks[1]?.endsWith(getSlackInterruptionMarker())).toBe(true);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+    expect(
+      chunks
+        .map((chunk, index) => {
+          if (index === chunks.length - 1) {
+            return chunk.slice(0, -getSlackInterruptionMarker().length);
+          }
+          return chunk.slice(0, -getSlackContinuationMarker().length);
+        })
+        .join(""),
+    ).toBe(text);
+  });
+
+  it("closes and reopens code fences across continuation chunks", () => {
+    const code = Array.from(
+      { length: slackOutputPolicy.maxInlineLines + 20 },
+      (_, i) => `const value${i + 1} = ${i + 1};`,
+    ).join("\n");
+    const chunks = splitSlackReplyText(`\`\`\`ts\n${code}\n\`\`\``);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0]).toContain(`\`\`\`${getSlackContinuationMarker()}`);
+    expect(chunks[1]?.startsWith("```ts\n")).toBe(true);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
   });
 });
 

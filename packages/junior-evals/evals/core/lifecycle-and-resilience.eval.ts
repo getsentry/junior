@@ -15,7 +15,7 @@ describe("Conversational Evals: Lifecycle and Resilience", () => {
   });
 
   slackEval(
-    "resilience: streamed text does not end with a synthetic failure reply",
+    "resilience: streamed provider error keeps partial text and adds interruption notice",
     {
       overrides: {
         reply_results: [
@@ -28,7 +28,7 @@ describe("Conversational Evals: Lifecycle and Resilience", () => {
       },
       events: [mention("Quick budget update?")],
       criteria:
-        "assistant_posts contains exactly one entry whose text includes the budget update. No entry in assistant_posts mentions execution failure or logged for debugging.",
+        "assistant_posts contains exactly two entries. The first entry includes the budget update. The second entry clearly says the response was interrupted before completion. No entry in assistant_posts mentions execution failure or logged for debugging.",
     },
   );
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveReplyDelivery } from "@/chat/runtime/turn";
+import { resolveReplyDelivery } from "@/chat/services/reply-delivery-plan";
 
 describe("resolveReplyDelivery", () => {
   it("uses delivery plan directly when available", () => {
@@ -55,6 +55,35 @@ describe("resolveReplyDelivery", () => {
     expect(resolved).toEqual({
       shouldPostThreadReply: true,
       attachFiles: "inline",
+    });
+  });
+
+  it("coerces inline files to followup when the thread reply already streamed", () => {
+    const resolved = resolveReplyDelivery({
+      hasStreamedThreadReply: true,
+      reply: {
+        text: "Done.",
+        files: [{ data: Buffer.from("x"), filename: "a.txt" }],
+        deliveryPlan: {
+          mode: "thread",
+          postThreadText: true,
+          attachFiles: "inline",
+        },
+        diagnostics: {
+          assistantMessageCount: 1,
+          modelId: "model",
+          outcome: "success",
+          toolCalls: [],
+          toolErrorCount: 0,
+          toolResultCount: 0,
+          usedPrimaryText: true,
+        },
+      },
+    });
+
+    expect(resolved).toEqual({
+      shouldPostThreadReply: true,
+      attachFiles: "followup",
     });
   });
 

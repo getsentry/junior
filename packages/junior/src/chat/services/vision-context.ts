@@ -56,6 +56,21 @@ interface ResolveUserAttachmentsContext {
   messageTs?: string;
 }
 
+/** Report whether the current Slack message carries an image that needs vision hydration. */
+export function hasPotentialImageAttachment(
+  attachments: Attachment[] | undefined,
+): boolean {
+  return (
+    attachments?.some((attachment) => {
+      if (attachment.type === "image") {
+        return true;
+      }
+      const mimeType = attachment.mimeType ?? "";
+      return attachment.type === "file" && mimeType.startsWith("image/");
+    }) ?? false
+  );
+}
+
 /** Report whether a dedicated vision model is configured for image analysis. */
 export function isVisionEnabled(): boolean {
   return Boolean(botConfig.visionModelId);
@@ -480,6 +495,7 @@ async function hydrateConversationVisionContextWithDeps(
       continue;
     }
     hydratedMessageIds.add(conversationMessage.id);
+    const existingMeta = conversationMessage.meta ?? {};
 
     const imageFiles = (reply.files ?? [])
       .filter((file) => {
@@ -490,13 +506,18 @@ async function hydrateConversationVisionContextWithDeps(
       })
       .slice(0, MAX_MESSAGE_IMAGE_ATTACHMENTS);
     if (imageFiles.length === 0) {
+      conversationMessage.meta = {
+        ...existingMeta,
+        slackTs: existingMeta.slackTs ?? ts,
+        imagesHydrated: true,
+      };
+      mutated = true;
       continue;
     }
 
     const imageFileIds = imageFiles
       .map((file) => toOptionalString(file.id))
       .filter((fileId): fileId is string => Boolean(fileId));
-    const existingMeta = conversationMessage.meta ?? {};
     conversationMessage.meta = {
       ...existingMeta,
       slackTs: existingMeta.slackTs ?? ts,

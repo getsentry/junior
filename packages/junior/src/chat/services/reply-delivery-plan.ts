@@ -1,3 +1,5 @@
+import type { AssistantReply } from "@/chat/respond";
+
 export type ReplyDeliveryMode = "thread" | "channel_only";
 export type ReplyFileDelivery = "none" | "inline" | "followup";
 
@@ -74,6 +76,41 @@ export function buildReplyDeliveryPlan(args: {
   return {
     mode,
     postThreadText: mode === "thread",
+    attachFiles,
+  };
+}
+
+/** Resolve the effective thread-text/file delivery behavior for a completed reply. */
+export function resolveReplyDelivery(args: {
+  reply: AssistantReply;
+  hasStreamedThreadReply: boolean;
+}): {
+  shouldPostThreadReply: boolean;
+  attachFiles: ReplyFileDelivery;
+} {
+  const replyHasFiles = Boolean(
+    args.reply.files && args.reply.files.length > 0,
+  );
+  const deliveryPlan = args.reply.deliveryPlan ?? {
+    mode: args.reply.deliveryMode ?? "thread",
+    postThreadText: (args.reply.deliveryMode ?? "thread") !== "channel_only",
+    attachFiles: replyHasFiles
+      ? args.hasStreamedThreadReply
+        ? "followup"
+        : "inline"
+      : "none",
+  };
+
+  let attachFiles = replyHasFiles ? deliveryPlan.attachFiles : "none";
+  if (attachFiles === "followup" && !args.hasStreamedThreadReply) {
+    attachFiles = "inline";
+  }
+  if (attachFiles === "inline" && args.hasStreamedThreadReply) {
+    attachFiles = "followup";
+  }
+
+  return {
+    shouldPostThreadReply: deliveryPlan.postThreadText,
     attachFiles,
   };
 }

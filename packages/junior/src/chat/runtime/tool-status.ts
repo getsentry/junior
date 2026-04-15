@@ -43,13 +43,13 @@ export function buildToolStatus(
     return makeAssistantStatus("loading", skillName);
   }
   if (query && toolName === "webSearch") {
-    return makeAssistantStatus("searching", `"${query}"`);
-  }
-  if (query && provider && toolName === "searchTools") {
-    return makeAssistantStatus("searching", `${provider} "${query}"`);
+    return makeAssistantStatus("searching", "sources");
   }
   if (query && toolName === "searchTools") {
-    return makeAssistantStatus("searching", `"${query}"`);
+    return makeAssistantStatus(
+      "searching",
+      provider ? `${provider} tools` : "tools",
+    );
   }
   if (domain && toolName === "webFetch") {
     return makeAssistantStatus("fetching", domain);

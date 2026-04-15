@@ -15,12 +15,16 @@ import {
 import {
   compactConversationIfNeeded,
   buildConversationContext,
+  isHumanConversationMessage,
   normalizeConversationText,
   seedConversationBackfill,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { hydrateConversationVisionContext } from "@/chat/services/vision-context";
-import { isVisionEnabled } from "@/chat/services/vision-context";
+import {
+  hasPotentialImageAttachment,
+  hydrateConversationVisionContext,
+  isVisionEnabled,
+} from "@/chat/services/vision-context";
 import { getChannelConfigurationService } from "@/chat/runtime/thread-state";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 
@@ -39,6 +43,15 @@ export interface PreparedTurnState {
 export interface PrepareTurnStateDeps {
   compactConversationIfNeeded: typeof compactConversationIfNeeded;
   hydrateConversationVisionContext: typeof hydrateConversationVisionContext;
+}
+
+function hasPendingImageHydration(
+  conversation: ThreadConversationState,
+): boolean {
+  return conversation.messages.some(
+    (message) =>
+      isHumanConversationMessage(message) && !message.meta?.imagesHydrated,
+  );
 }
 
 export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
@@ -75,14 +88,8 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       messageId: args.message.id,
       messageCreatedAtMs: args.message.metadata.dateSent.getTime(),
     });
-    const messageHasPotentialImageAttachment = args.message.attachments.some(
-      (attachment) => {
-        if (attachment.type === "image") {
-          return true;
-        }
-        const mimeType = attachment.mimeType ?? "";
-        return attachment.type === "file" && mimeType.startsWith("image/");
-      },
+    const messageHasPotentialImageAttachment = hasPotentialImageAttachment(
+      args.message.attachments,
     );
 
     const normalizedUserText =
@@ -114,11 +121,12 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
       incomingUserMessage,
     );
 
-    if (
-      isVisionEnabled() &&
-      (!conversation.vision.backfillCompletedAtMs ||
-        messageHasPotentialImageAttachment)
-    ) {
+    const shouldHydrateVisionContext =
+      !conversation.vision.backfillCompletedAtMs ||
+      messageHasPotentialImageAttachment ||
+      hasPendingImageHydration(conversation);
+
+    if (isVisionEnabled() && shouldHydrateVisionContext) {
       await deps.hydrateConversationVisionContext(conversation, {
         threadId: args.context.threadId,
         channelId: args.context.channelId,

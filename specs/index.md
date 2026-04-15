@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-21
+- Last Edited: 2026-04-15
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-03-05: Added canonical session resumability spec for multi-slice serverless execution.
 - 2026-03-06: Added canonical sandbox snapshot lifecycle spec.
 - 2026-03-21: Added canonical chat architecture spec.
+- 2026-04-15: Added canonical Slack agent delivery spec.
 
 ## Status
 
@@ -44,6 +45,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 
 - `specs/security-policy.md`
 - `specs/chat-architecture-spec.md`
+- `specs/slack-agent-delivery-spec.md`
 - `specs/skill-capabilities-spec.md`
 - `specs/oauth-flows-spec.md`
 - `specs/harness-agent-spec.md`

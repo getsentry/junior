@@ -92,6 +92,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
 - `specs/security-policy.md` (global runtime/container/token security policy)
 - `specs/chat-architecture-spec.md` (chat composition, service, and test-seam architecture contract)
+- `specs/slack-agent-delivery-spec.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
 - `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
 - `specs/oauth-flows-spec.md` (OAuth authorization code flow + Slack UX contract)
 - `specs/harness-agent-spec.md` (agent loop and output contract)

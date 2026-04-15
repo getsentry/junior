@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-25
+- Last Edited: 2026-04-15
 
 ## Changelog
 
@@ -14,6 +14,7 @@
 - 2026-03-17: Clarified that behavior tests should not assert internal logs or telemetry unless instrumentation is the contract under test.
 - 2026-03-22: Defined the default layer preference order: evals first for LLM-dependent behavior, integration next for real wiring without the LLM, unit last for local invariants only.
 - 2026-03-25: Banned prompt-prose substring assertions as a testing strategy; prompt wording changes must be validated through behavior contracts, not static string matching.
+- 2026-04-15: Clarified that Slack transport-contract assertions remain integration tests but should live in dedicated contract-oriented suites instead of general behavior files.
 
 ## Purpose
 
@@ -60,6 +61,7 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 8. Workflow behavior integration tests should execute real runtime paths and only substitute deterministic fake agent output at the agent boundary.
 9. Do not assert internal observability emission (`logInfo`, `logWarn`, spans, trace attributes) in behavior tests unless instrumentation output is itself the contract under test.
 10. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
+11. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
 
 ## Coverage Budget (Avoid Over-Testing)
 

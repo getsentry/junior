@@ -35,8 +35,8 @@ vi.mock("@/chat/services/timeout-resume", async (importOriginal) => ({
   verifyTurnTimeoutResumeRequest: verifyTurnTimeoutResumeRequestMock,
 }));
 
-vi.mock("@/handlers/oauth-resume", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/handlers/oauth-resume")>()),
+vi.mock("@/chat/slack/resume", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/slack/resume")>()),
   postSlackMessage: postSlackMessageMock,
   resumeSlackTurn: resumeSlackTurnMock,
 }));
@@ -98,7 +98,7 @@ describe("turn resume handler", () => {
     expect(waitUntilCallbacks).toHaveLength(0);
   });
 
-  it("rebuilds persisted turn state and posts the resumed reply on success", async () => {
+  it("rebuilds persisted turn state and persists completion on success", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
     const checkpoint = await upsertAgentTurnSessionCheckpoint({
@@ -209,12 +209,6 @@ describe("turn resume handler", () => {
 
     await waitUntilCallbacks[0]?.();
 
-    expect(postSlackMessageMock).toHaveBeenCalledWith(
-      "C123",
-      "1712345.0001",
-      "Final resumed answer",
-    );
-
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = (persisted.conversation ?? {}) as {
       messages?: Array<{ role?: string; text?: string }>;
@@ -316,7 +310,7 @@ describe("turn resume handler", () => {
     });
   });
 
-  it("keeps the delivered reply when completion persistence fails afterward", async () => {
+  it("does not mutate persisted state when completion persistence fails afterward", async () => {
     const conversationId = "slack:C123:1712345.0001";
     const sessionId = "turn_msg_1";
     const checkpoint = await upsertAgentTurnSessionCheckpoint({
@@ -419,17 +413,15 @@ describe("turn resume handler", () => {
     expect(response.status).toBe(202);
     await waitUntilCallbacks[0]?.();
 
-    expect(postSlackMessageMock).toHaveBeenCalledTimes(1);
-    expect(postSlackMessageMock).toHaveBeenCalledWith(
-      "C123",
-      "1712345.0001",
-      "Final resumed answer",
-    );
-    expect(postSlackMessageMock).not.toHaveBeenCalledWith(
-      "C123",
-      "1712345.0001",
-      "I hit an error while resuming that request. Please try the command again.",
-    );
+    expect(scheduleTurnTimeoutResumeMock).not.toHaveBeenCalled();
+
+    const persisted = await getPersistedThreadState(conversationId);
+    const conversation = (persisted.conversation ?? {}) as {
+      processing?: { activeTurnId?: string };
+      messages?: Array<{ role?: string; text?: string }>;
+    };
+    expect(conversation.processing?.activeTurnId).toBe(sessionId);
+    expect(conversation.messages).toHaveLength(1);
   });
 
   it("fails the resumed turn when the timeout slice limit is reached", async () => {
@@ -526,11 +518,6 @@ describe("turn resume handler", () => {
     await waitUntilCallbacks[0]?.();
 
     expect(scheduleTurnTimeoutResumeMock).not.toHaveBeenCalled();
-    expect(postSlackMessageMock).toHaveBeenCalledWith(
-      "C123",
-      "1712345.0001",
-      "I hit an error while resuming that request. Please try the command again.",
-    );
 
     const persisted = await getPersistedThreadState(conversationId);
     const conversation = (persisted.conversation ?? {}) as {

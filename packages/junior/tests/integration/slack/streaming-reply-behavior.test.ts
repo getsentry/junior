@@ -1,4 +1,11 @@
+import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
+import {
+  getSlackContinuationMarker,
+  getSlackInterruptionMarker,
+  getSlackStreamingContinuationBudget,
+  slackOutputPolicy,
+} from "@/chat/slack/output";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -95,6 +102,37 @@ describe("Slack behavior: streaming replies", () => {
     expect(thread.posts).toEqual(["First part\n\nSecond part"]);
   });
 
+  it("normalizes CRLF text without forcing a continuation post", async () => {
+    const output = "First line\r\nSecond line";
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(output);
+            return {
+              text: output,
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006001.250" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-crlf",
+        text: "<@U_APP> continue",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream"]);
+    expect(thread.posts).toEqual(["First line\nSecond line"]);
+  });
+
   it("does not rewrite mention-like text while streaming", async () => {
     const output =
       "Ask @alice to review @sentry/junior and see https://x.com/@alice";
@@ -156,6 +194,253 @@ describe("Slack behavior: streaming replies", () => {
 
     expect(thread.postKinds).toEqual(["value"]);
     expect(toPostedText(thread.posts[0])).toBe("ok");
+  });
+
+  it("waits for a fresh assistant message after tool work before streaming the visible reply", async () => {
+    const finalReply =
+      "I checked five outlets. The dominant story is the escalating US-Iran conflict, with the clearest cross-source agreement on the blockade and the conflicting signals about whether talks will resume.";
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onToolCall?.("webSearch");
+            await context?.onTextDelta?.(
+              "Good — 5 solid sources. Fetching all of them now.\n",
+            );
+            await context?.onToolCall?.("webFetch");
+            await context?.onTextDelta?.(
+              "Live blogs are too large — let me try fetching with smaller limits.\n",
+            );
+            await context?.onToolCall?.("webFetch");
+            await context?.onAssistantMessageStart?.();
+            await context?.onTextDelta?.(finalReply);
+            return {
+              text: finalReply,
+              diagnostics: makeDiagnostics(["webSearch", "webFetch"]),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.375" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-research-no-chatter",
+        text: "<@U_APP> find the hottest news article today and summarize it",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream"]);
+    expect(thread.posts).toEqual([finalReply]);
+  });
+
+  it("does not spend the stream budget on provisional text that gets discarded before tool work", async () => {
+    const provisionalText = "p".repeat(64);
+    const finalReply = "a".repeat(
+      getSlackStreamingContinuationBudget().maxChars - 8,
+    );
+    const midpoint = Math.floor(finalReply.length / 2);
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(provisionalText);
+            await context?.onToolCall?.("webSearch");
+            await context?.onAssistantMessageStart?.();
+            await context?.onTextDelta?.(finalReply.slice(0, midpoint));
+            await context?.onTextDelta?.(finalReply.slice(midpoint));
+            return {
+              text: finalReply,
+              diagnostics: makeDiagnostics(["webSearch"]),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.438" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-research-budget-reset",
+        text: "<@U_APP> research and summarize",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream"]);
+    expect(thread.posts).toEqual([finalReply]);
+  });
+
+  it("keeps file-only replies on the non-streamed inline post path", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "",
+            files: [
+              {
+                data: Buffer.from("image-bytes"),
+                filename: "generated.png",
+                mimeType: "image/png",
+              },
+            ],
+            diagnostics: makeDiagnostics(),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.500" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-file-only",
+        text: "<@U_APP> generate image",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(thread.posts[0]).toEqual(
+      expect.objectContaining({
+        raw: "",
+        files: [
+          expect.objectContaining({
+            filename: "generated.png",
+            mimeType: "image/png",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("still delivers files when thread text is suppressed", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "👍",
+            files: [
+              {
+                data: Buffer.from("image-bytes"),
+                filename: "generated.png",
+                mimeType: "image/png",
+              },
+            ],
+            deliveryPlan: {
+              mode: "thread",
+              postThreadText: false,
+              attachFiles: "inline",
+            },
+            diagnostics: makeDiagnostics(),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.625" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-file-only-suppressed",
+        text: "<@U_APP> generate image",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(thread.posts[0]).toEqual(
+      expect.objectContaining({
+        raw: "",
+        files: [
+          expect.objectContaining({
+            filename: "generated.png",
+            mimeType: "image/png",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("does not delete an ack reply when it also carries files", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "ok",
+            files: [
+              {
+                data: Buffer.from("image-bytes"),
+                filename: "generated.png",
+                mimeType: "image/png",
+              },
+            ],
+            diagnostics: makeDiagnostics(["slackMessageAddReaction"]),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.688" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-ack-file",
+        text: "<@U_APP> react and attach",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(thread.posts[0]).toEqual(
+      expect.objectContaining({
+        markdown: "ok",
+        files: [
+          expect.objectContaining({
+            filename: "generated.png",
+            mimeType: "image/png",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("normalizes raw non-streamed fallback replies before posting", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "\r\n\t  \r\n",
+            diagnostics: makeDiagnostics(),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.750" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-whitespace-fallback",
+        text: "<@U_APP> whitespace",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(toPostedText(thread.posts[0])).toBe(
+      "I couldn't produce a response.",
+    );
   });
 
   it("keeps trailing ack-like text once streaming has started", async () => {
@@ -231,6 +516,173 @@ describe("Slack behavior: streaming replies", () => {
           }),
         ],
       }),
+    );
+  });
+
+  it("overflows long streamed replies into explicit continuation posts", async () => {
+    const longReply = Array.from(
+      { length: 80 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(longReply);
+            return {
+              text: longReply,
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006005.000" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-6",
+        text: "<@U_APP> summarize",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds[0]).toBe("stream");
+    expect(thread.postKinds.slice(1).every((kind) => kind === "value")).toBe(
+      true,
+    );
+    expect(thread.posts.length).toBeGreaterThan(1);
+    expect(String(thread.posts[0])).toContain(getSlackContinuationMarker());
+    expect(toPostedText(thread.posts[1])).toContain(
+      getSlackContinuationMarker(),
+    );
+    const lastPost = thread.posts[thread.posts.length - 1];
+    expect(lastPost).toBeDefined();
+    expect(toPostedText(lastPost)).not.toContain(getSlackContinuationMarker());
+    expect(toPostedText(lastPost)).toContain("line 80");
+  });
+
+  it("closes and reopens code fences when streamed replies overflow", async () => {
+    const code = Array.from(
+      { length: 80 },
+      (_, i) => `const value${i + 1} = ${i + 1};`,
+    ).join("\n");
+    const longReply = `\`\`\`ts\n${code}\n\`\`\``;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(longReply);
+            return {
+              text: longReply,
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006005.500" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-6-code",
+        text: "<@U_APP> show code",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds[0]).toBe("stream");
+    expect(thread.posts.length).toBeGreaterThan(1);
+    expect(String(thread.posts[0])).toContain(
+      `\`\`\`${getSlackContinuationMarker()}`,
+    );
+    expect(toPostedText(thread.posts[1])).toMatch(/^```ts\nconst value/);
+  });
+
+  it("does not garble streamed fence continuations near the budget boundary", async () => {
+    const firstDelta =
+      "```\n" +
+      "a".repeat(
+        slackOutputPolicy.maxInlineChars -
+          getSlackContinuationMarker().length -
+          1 -
+          "```\n".length,
+      );
+    const tail = "bcdef\n```";
+    const fullReply = `${firstDelta}${tail}`;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.(firstDelta);
+            await context?.onTextDelta?.(tail);
+            return {
+              text: fullReply,
+              diagnostics: makeDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006005.750" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-6-code-boundary",
+        text: "<@U_APP> show edge code",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream", "value"]);
+    const firstPost = String(thread.posts[0]);
+    const secondPost = toPostedText(thread.posts[1]);
+    const continuationSuffix = `\n\`\`\`${getSlackContinuationMarker()}`;
+
+    expect(firstPost.endsWith(continuationSuffix)).toBe(true);
+    expect(secondPost.startsWith("```\n")).toBe(true);
+    expect(secondPost).toContain("bcdef\n```");
+  });
+
+  it("posts an interruption notice when a streamed reply ends in provider error", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onTextDelta?.("Partial output...");
+            return {
+              text: "Partial output...",
+              diagnostics: {
+                ...makeDiagnostics(),
+                outcome: "provider_error" as const,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006006.000" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-7",
+        text: "<@U_APP> continue",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream", "value"]);
+    expect(thread.posts[0]).toBe("Partial output...");
+    expect(toPostedText(thread.posts[1])).toBe(
+      getSlackInterruptionMarker().trimStart(),
     );
   });
 });
