@@ -39,12 +39,15 @@ describe("tool status formatters", () => {
   it("keeps MCP dispatcher statuses functional", () => {
     expect(
       buildToolStatus("searchTools", { query: "holiday schedule" }),
-    ).toEqual(makeAssistantStatus("searching", '"holiday schedule"'));
+    ).toEqual(makeAssistantStatus("searching", "tools"));
     expect(
       buildToolStatus("searchTools", {
         query: "holiday schedule",
         provider: "notion",
       }),
-    ).toEqual(makeAssistantStatus("searching", 'notion "holiday schedule"'));
+    ).toEqual(makeAssistantStatus("searching", "notion tools"));
+    expect(
+      buildToolStatus("webSearch", { query: "hottest news story today 2025" }),
+    ).toEqual(makeAssistantStatus("searching", "sources"));
   });
 });

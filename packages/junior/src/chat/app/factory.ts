@@ -34,6 +34,7 @@ import {
 } from "@/chat/services/conversation-memory";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
+import { hasPotentialImageAttachment } from "@/chat/services/vision-context";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
@@ -109,7 +110,7 @@ export function createSlackRuntime(
           slackTs,
           replied: false,
           skippedReason: decision.reason,
-          imagesHydrated: true,
+          imagesHydrated: !hasPotentialImageAttachment(message.attachments),
         },
       });
       conversation.processing.activeTurnId = undefined;

@@ -1,6 +1,4 @@
 import type { ThreadConversationState } from "@/chat/state/conversation";
-import type { ReplyFileDelivery } from "@/chat/services/reply-delivery-plan";
-import type { AssistantReply } from "@/chat/respond";
 
 // ---------------------------------------------------------------------------
 // Turn ID
@@ -106,40 +104,4 @@ export function markTurnFailed(args: {
     skippedReason: "reply failed",
   });
   args.updateConversationStats(args.conversation);
-}
-
-// ---------------------------------------------------------------------------
-// Reply delivery resolution
-// ---------------------------------------------------------------------------
-
-/** Determine whether the thread reply should post and how files should attach. */
-export function resolveReplyDelivery(args: {
-  reply: AssistantReply;
-  hasStreamedThreadReply: boolean;
-}): {
-  shouldPostThreadReply: boolean;
-  attachFiles: ReplyFileDelivery;
-} {
-  const replyHasFiles = Boolean(
-    args.reply.files && args.reply.files.length > 0,
-  );
-  const deliveryPlan = args.reply.deliveryPlan ?? {
-    mode: args.reply.deliveryMode ?? "thread",
-    postThreadText: (args.reply.deliveryMode ?? "thread") !== "channel_only",
-    attachFiles: replyHasFiles
-      ? args.hasStreamedThreadReply
-        ? "followup"
-        : "inline"
-      : "none",
-  };
-
-  let attachFiles = replyHasFiles ? deliveryPlan.attachFiles : "none";
-  if (attachFiles === "followup" && !args.hasStreamedThreadReply) {
-    attachFiles = "inline";
-  }
-
-  return {
-    shouldPostThreadReply: deliveryPlan.postThreadText,
-    attachFiles,
-  };
 }

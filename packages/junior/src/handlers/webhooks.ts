@@ -3,6 +3,7 @@ import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
 } from "@/chat/ingress/message-changed";
+import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
 import {
   createRequestContext,
   logException,
@@ -73,6 +74,7 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
       return false;
     }
 
+    rehydrateAttachmentFetchers(result.message);
     args.bot.processMessage(
       slackAdapter,
       result.threadId,

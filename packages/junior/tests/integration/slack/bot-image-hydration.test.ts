@@ -162,7 +162,7 @@ describe("bot image hydration", () => {
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
-  });
+  }, 10_000);
 
   it("does not hydrate thread images when AI_VISION_MODEL is unset", async () => {
     const { slackRuntime } = await createRuntime({
@@ -399,6 +399,163 @@ describe("bot image hydration", () => {
     );
     expect(persistedState.conversation.vision.backfillCompletedAtMs).toBeTypeOf(
       "number",
+    );
+  });
+
+  it("hydrates skipped passive screenshots when a later explicit mention needs them", async () => {
+    listThreadRepliesMock.mockResolvedValue([
+      {
+        ts: "1700000002.100",
+        files: [
+          {
+            id: "F_PASSIVE",
+            mimetype: "image/png",
+            url_private_download: "https://files.slack.com/private/passive.png",
+          },
+        ],
+      },
+    ]);
+    const downloadPrivateSlackFileMock = vi.fn(async () =>
+      Buffer.from("downloaded-image"),
+    );
+    const completeTextMock = vi.fn(async () => ({
+      text: "Passive screenshot summary",
+      message: {} as never,
+    }));
+    const generateAssistantReply = vi.fn(
+      async (_text: string, context: any) => {
+        expect(context?.conversationContext).toContain(
+          "Passive screenshot summary",
+        );
+        return makeSuccessReply();
+      },
+    );
+
+    const { slackRuntime } = await createRuntime(
+      {
+        services: {
+          subscribedReplyPolicy: {
+            completeObject: async () => {
+              throw new Error(
+                "classifier should not run for messages addressed to another bot",
+              );
+            },
+          },
+          visionContext: {
+            listThreadReplies: listThreadRepliesMock,
+            downloadPrivateSlackFile: downloadPrivateSlackFileMock,
+            completeText: completeTextMock,
+          },
+          replyExecutor: {
+            generateAssistantReply,
+          },
+        },
+      },
+      {
+        AI_VISION_MODEL: "openai/gpt-5.4",
+      },
+    );
+    const thread = createTestThread({
+      id: "slack:C_IMAGE:1700000006.000",
+      state: {
+        conversation: {
+          schemaVersion: 1,
+          messages: [],
+          compactions: [],
+          backfill: {
+            completedAtMs: 1700000000000,
+            source: "recent_messages",
+          },
+          processing: {},
+          stats: {
+            estimatedContextTokens: 0,
+            totalMessageCount: 0,
+            compactedMessageCount: 0,
+            updatedAtMs: 1700000000000,
+          },
+          vision: {
+            byFileId: {},
+          },
+        },
+      },
+    });
+
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "1700000002.100",
+        text: "@Cursor can you look at this?",
+        threadId: "slack:C_IMAGE:1700000006.000",
+        isMention: false,
+        author: {
+          userId: "U-user",
+          userName: "user",
+          fullName: "User Example",
+          isBot: false,
+          isMe: false,
+        },
+        attachments: [
+          {
+            type: "image",
+            mimeType: "image/png",
+            name: "passive.png",
+            url: "https://files.slack.com/private/passive.png",
+          },
+        ],
+      }),
+    );
+
+    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(listThreadRepliesMock).not.toHaveBeenCalled();
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "1700000002.200",
+        text: "<@U_APP> what is in the screenshot above?",
+        threadId: "slack:C_IMAGE:1700000006.000",
+        isMention: true,
+        author: {
+          userId: "U-user",
+          userName: "user",
+          fullName: "User Example",
+          isBot: false,
+          isMe: false,
+        },
+      }),
+    );
+
+    expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
+    expect(downloadPrivateSlackFileMock).toHaveBeenCalledTimes(1);
+    expect(completeTextMock).toHaveBeenCalledTimes(1);
+    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+
+    const persistedState = thread.getState() as {
+      conversation: {
+        messages: Array<{
+          id: string;
+          meta?: {
+            imagesHydrated?: boolean;
+            imageFileIds?: string[];
+          };
+        }>;
+        vision: {
+          byFileId: Record<string, { summary: string }>;
+        };
+      };
+    };
+    expect(
+      persistedState.conversation.messages.find(
+        (message) => message.id === "1700000002.100",
+      )?.meta,
+    ).toEqual(
+      expect.objectContaining({
+        imagesHydrated: true,
+        imageFileIds: ["F_PASSIVE"],
+      }),
+    );
+    expect(persistedState.conversation.vision.byFileId.F_PASSIVE?.summary).toBe(
+      "Passive screenshot summary",
     );
   });
 

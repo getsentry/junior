@@ -13,12 +13,10 @@ import {
   withSpan,
 } from "@/chat/logging";
 import {
-  buildSlackOutputMessage,
-  getSlackInterruptionMarker,
-  getSlackStreamingContinuationBudget,
-  splitSlackReplyText,
-  takeSlackContinuationPrefix,
-} from "@/chat/slack/output";
+  createSlackStreamAccumulator,
+  planSlackReplyPosts,
+  type PlannedSlackReplyStage,
+} from "@/chat/slack/reply";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { createProgressReporter } from "@/chat/runtime/progress-reporter";
 import { createSlackAdapterAssistantStatusTransport } from "@/chat/runtime/assistant-status";
@@ -55,7 +53,6 @@ import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
 import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
-import { resolveReplyDelivery } from "@/chat/runtime/turn";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
@@ -65,11 +62,7 @@ import {
   isPotentialRedundantReactionAckText,
 } from "@/chat/services/reply-delivery-plan";
 
-type SlackReplyPostStage =
-  | "streaming_initial_post"
-  | "thread_reply"
-  | "thread_reply_continuation"
-  | "thread_reply_files_followup";
+type SlackReplyPostStage = "streaming_initial_post" | PlannedSlackReplyStage;
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
@@ -98,6 +91,18 @@ function getExecutionFailureReason(reply: {
     return "assistant returned no text";
   }
   return "empty assistant turn";
+}
+
+function shouldAutoStartStreaming(args: {
+  text: string;
+  deltaCount: number;
+}): boolean {
+  const { text, deltaCount } = args;
+  const trimmed = text.trim();
+  if (!trimmed || isPotentialRedundantReactionAckText(trimmed)) {
+    return false;
+  }
+  return deltaCount >= 2;
 }
 
 interface ReplyExecutorDeps {
@@ -133,31 +138,6 @@ interface ReplyExecutorDeps {
     };
   }) => Promise<PreparedTurnState>;
   services: ReplyExecutorServices;
-}
-
-function isInterruptedVisibleReply(reply: {
-  diagnostics: {
-    outcome: "success" | "execution_failure" | "provider_error";
-  };
-}): boolean {
-  return reply.diagnostics.outcome === "provider_error";
-}
-
-function createSlackStreamDeltaNormalizer() {
-  let pendingCarriageReturn = false;
-
-  return (deltaText: string): string => {
-    let text = deltaText;
-    if (pendingCarriageReturn) {
-      text = `\r${text}`;
-      pendingCarriageReturn = false;
-    }
-    if (text.endsWith("\r")) {
-      text = text.slice(0, -1);
-      pendingCarriageReturn = true;
-    }
-    return text.replace(/\r\n?/g, "\n");
-  };
 }
 
 export function createReplyToThread(deps: ReplyExecutorDeps) {
@@ -286,13 +266,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const textStream = createTextStreamBridge();
         let streamedReplyPromise: Promise<SentMessage> | undefined;
         let pendingStreamText = "";
-        let streamedVisibleText = "";
-        let streamedRenderedText = "";
-        let overflowText = "";
-        let streamOverflowed = false;
+        let pendingStreamDeltaCount = 0;
+        let awaitingPostToolAssistantMessage = false;
         let beforeFirstResponsePostCalled = false;
-        const continuationBudget = getSlackStreamingContinuationBudget();
-        const normalizeStreamDelta = createSlackStreamDeltaNormalizer();
+        const streamedReplyState = createSlackStreamAccumulator();
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
             return;
@@ -318,9 +295,27 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           startStreamingReply();
           textStream.push(pendingStreamText);
           pendingStreamText = "";
+          pendingStreamDeltaCount = 0;
+        };
+        const clearPendingStreamText = () => {
+          pendingStreamText = "";
+          pendingStreamDeltaCount = 0;
+        };
+        const finalizePendingStreamText = () => {
+          if (
+            !pendingStreamText ||
+            streamedReplyPromise ||
+            isPotentialRedundantReactionAckText(pendingStreamText)
+          ) {
+            return;
+          }
+          flushPendingStreamText();
         };
         const queueVisibleStreamText = (text: string) => {
           if (!text) {
+            return;
+          }
+          if (awaitingPostToolAssistantMessage) {
             return;
           }
           if (streamedReplyPromise) {
@@ -328,37 +323,22 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
           pendingStreamText += text;
+          pendingStreamDeltaCount += 1;
           if (isPotentialRedundantReactionAckText(pendingStreamText)) {
+            return;
+          }
+          if (
+            !shouldAutoStartStreaming({
+              text: pendingStreamText,
+              deltaCount: pendingStreamDeltaCount,
+            })
+          ) {
             return;
           }
           flushPendingStreamText();
         };
         const appendVisibleStreamDelta = (deltaText: string) => {
-          const normalizedDeltaText = normalizeStreamDelta(deltaText);
-          if (!normalizedDeltaText) {
-            return;
-          }
-          if (streamOverflowed) {
-            overflowText += normalizedDeltaText;
-            return;
-          }
-
-          const candidate = `${streamedVisibleText}${normalizedDeltaText}`;
-          const { prefix, renderedPrefix, rest } = takeSlackContinuationPrefix(
-            candidate,
-            continuationBudget,
-          );
-          const additional =
-            renderedPrefix.length > streamedRenderedText.length
-              ? renderedPrefix.slice(streamedRenderedText.length)
-              : "";
-          streamedVisibleText = prefix;
-          streamedRenderedText = renderedPrefix;
-          queueVisibleStreamText(additional);
-          if (rest) {
-            overflowText += rest;
-            streamOverflowed = true;
-          }
+          queueVisibleStreamText(streamedReplyState.append(deltaText));
         };
         const postThreadReply = async (
           payload: Parameters<typeof thread.post>[0],
@@ -441,9 +421,24 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               }
               appendVisibleStreamDelta(deltaText);
             },
+            onAssistantMessageStart: () => {
+              if (!awaitingPostToolAssistantMessage) {
+                return;
+              }
+              awaitingPostToolAssistantMessage = false;
+              clearPendingStreamText();
+            },
+            onToolCall: () => {
+              if (!streamedReplyPromise) {
+                awaitingPostToolAssistantMessage = true;
+                clearPendingStreamText();
+              }
+            },
           });
           if (streamedReplyPromise) {
             flushPendingStreamText();
+          } else {
+            finalizePendingStreamText();
           }
           textStream.end();
           const diagnosticsContext = {
@@ -530,77 +525,48 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const artifactStatePatch: Partial<ThreadArtifactsState> =
             reply.artifactStatePatch ? { ...reply.artifactStatePatch } : {};
 
-          const replyFiles =
-            reply.files && reply.files.length > 0 ? reply.files : undefined;
-          const { shouldPostThreadReply, attachFiles: resolvedAttachFiles } =
-            resolveReplyDelivery({
-              reply,
-              hasStreamedThreadReply: Boolean(streamedReplyPromise),
-            });
-
           const reactionPerformed = reply.diagnostics.toolCalls.includes(
             "slackMessageAddReaction",
           );
-          const interrupted = isInterruptedVisibleReply(reply);
-          const replyTextChunks = splitSlackReplyText(reply.text, {
-            interrupted,
+          const plannedPosts = planSlackReplyPosts({
+            reply,
+            hasStreamedThreadReply: Boolean(streamedReplyPromise),
+            streamedOverflowText: streamedReplyState.getOverflowText(),
           });
-          const overflowChunks =
-            streamedReplyPromise && overflowText
-              ? splitSlackReplyText(overflowText, {
-                  interrupted,
-                })
-              : [];
 
           // Final Slack delivery is part of turn success. We only mark the turn
           // completed after the visible reply has been accepted by Slack.
-          if (shouldPostThreadReply) {
+          if (streamedReplyPromise) {
+            await streamedReplyPromise;
+          }
+          if (plannedPosts.length > 0) {
             if (!streamedReplyPromise) {
-              const hasNormalizedPostChunks = replyTextChunks.length > 0;
-              const postChunks = hasNormalizedPostChunks
-                ? replyTextChunks
-                : [reply.text];
               let sent: SentMessage | undefined;
-              for (const [index, chunk] of postChunks.entries()) {
-                sent = await postThreadReply(
-                  buildSlackOutputMessage(
-                    chunk,
-                    index === 0 && resolvedAttachFiles === "inline"
-                      ? replyFiles
-                      : undefined,
-                    { normalized: hasNormalizedPostChunks },
-                  ),
-                  index === 0 ? "thread_reply" : "thread_reply_continuation",
-                );
+              for (const post of plannedPosts) {
+                sent = await postThreadReply(post.message, post.stage);
               }
+              const firstPlannedMessage = plannedPosts[0]?.message;
+              const firstPlannedMessageHasFiles =
+                typeof firstPlannedMessage === "object" &&
+                firstPlannedMessage !== null &&
+                "files" in firstPlannedMessage &&
+                Array.isArray(firstPlannedMessage.files) &&
+                firstPlannedMessage.files.length > 0;
               // When a reaction already acknowledged the turn, delete the
               // redundant thread reply. The post itself completes Slack's
               // assistant response cycle (clearing the typing indicator).
               if (
                 sent &&
                 reactionPerformed &&
-                postChunks.length === 1 &&
+                plannedPosts.length === 1 &&
+                !firstPlannedMessageHasFiles &&
                 isRedundantReactionAckText(reply.text)
               ) {
                 await sent.delete();
               }
             } else {
-              await streamedReplyPromise;
-              for (const chunk of overflowChunks) {
-                await postThreadReply(
-                  buildSlackOutputMessage(chunk, undefined, {
-                    normalized: true,
-                  }),
-                  "thread_reply_continuation",
-                );
-              }
-              if (!overflowChunks.length && interrupted) {
-                await postThreadReply(
-                  buildSlackOutputMessage(
-                    getSlackInterruptionMarker().trimStart(),
-                  ),
-                  "thread_reply_continuation",
-                );
+              for (const post of plannedPosts) {
+                await postThreadReply(post.message, post.stage);
               }
             }
           }
@@ -697,17 +663,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   "Thread title generation failed",
                 );
               });
-          }
-
-          if (
-            shouldPostThreadReply &&
-            resolvedAttachFiles === "followup" &&
-            replyFiles
-          ) {
-            await postThreadReply(
-              buildSlackOutputMessage("", replyFiles),
-              "thread_reply_files_followup",
-            );
           }
         } catch (error) {
           if (isRetryableTurnError(error, "mcp_auth_resume")) {

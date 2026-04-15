@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-22
+- Last Edited: 2026-04-15
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
 - 2026-03-21: Replaced runtime-global test mutation guidance with composition-bound runtime/service fixtures.
 - 2026-03-22: Clarified that integration is the default layer for real runtime behavior when the LLM does not need to be in the loop.
+- 2026-04-15: Clarified the split between behavior-oriented integration tests and dedicated Slack transport-contract integration tests.
 
 ## Intent
 
@@ -54,6 +55,20 @@ Disallowed in integration behavior tests:
 1. Use `packages/junior/tests/fixtures/slack/*` factories and harness helpers.
 2. Use `packages/junior/tests/msw/*` handler utilities for Slack API sequencing and assertions.
 3. Prefer scenario-style tests that drive events and assert resulting user-visible outputs + captured Slack API calls.
+
+## Behavior vs Transport-Contract Tests
+
+Both of the following remain integration tests when they use the real runtime path:
+
+1. Behavior integration tests:
+   - describe the scenario in user/runtime terms
+   - assert user-visible outcomes first
+   - avoid framing the test around internal call choreography
+2. Slack transport-contract integration tests:
+   - assert request payload shape, stream lifecycle, recipient metadata, or other Slack API details when those details are the real external contract
+   - should live in dedicated `*contract*.test.ts` files or clearly separated contract-focused suites
+
+Do not let low-level stream ordering or request-shape assertions dominate general `*-behavior.test.ts` files.
 
 ## Classification Guidance
 
@@ -100,7 +115,7 @@ Required approach:
 Avoid:
 
 1. Duplicating the same assertion across multiple near-identical payload variants.
-2. Asserting internal call choreography that is not part of the contract.
+2. Asserting internal call choreography that is not part of the contract. If request ordering is the contract, move it into a dedicated transport-contract integration test instead of a general behavior file.
 3. Encoding speculative edge cases with no concrete bug history or risk signal.
 
 ## Enforcement

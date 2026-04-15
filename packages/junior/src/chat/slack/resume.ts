@@ -7,10 +7,13 @@ import {
 } from "@/chat/respond";
 import { createSlackWebApiAssistantStatusTransport } from "@/chat/runtime/assistant-status";
 import { createProgressReporter } from "@/chat/runtime/progress-reporter";
-import { persistThreadStateById } from "@/chat/runtime/thread-state";
-import { getSlackClient } from "@/chat/slack/client";
-import { splitSlackReplyText } from "@/chat/slack/output";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
+import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import {
+  planSlackReplyPosts,
+  postSlackApiReplyPosts,
+} from "@/chat/slack/reply";
+import { getSlackClient } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
@@ -41,22 +44,6 @@ export async function postSlackMessage(
     thread_ts: threadTs,
     text,
   });
-}
-
-/** Post a visible Slack reply using repo-owned chunking/interruption policy. */
-export async function postSlackReply(
-  channelId: string,
-  threadTs: string,
-  text: string,
-  options?: {
-    interrupted?: boolean;
-    normalized?: boolean;
-  },
-): Promise<void> {
-  const chunks = splitSlackReplyText(text, options);
-  for (const chunk of chunks) {
-    await postSlackMessage(channelId, threadTs, chunk);
-  }
 }
 
 async function postSlackMessageBestEffort(
@@ -120,7 +107,6 @@ export interface ResumeSlackTurnArgs {
   initialText?: string;
   failureText?: string;
   generateReply?: typeof generateAssistantReply;
-  onReply?: (reply: AssistantReply) => Promise<void>;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;
@@ -246,13 +232,15 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
         : await replyPromise;
 
     await progress.stop();
-    if (args.onReply) {
-      await args.onReply(reply);
-    } else if (reply.text) {
-      await postSlackReply(args.channelId, args.threadTs, reply.text, {
-        interrupted: reply.diagnostics.outcome === "provider_error",
-      });
-    }
+    await postSlackApiReplyPosts({
+      channelId: args.channelId,
+      threadTs: args.threadTs,
+      posts: planSlackReplyPosts({
+        reply,
+        hasStreamedThreadReply: false,
+      }),
+      postMessage: postSlackMessage,
+    });
     await args.onSuccess?.(reply);
   } catch (error) {
     await progress.stop();
@@ -311,7 +299,6 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
 /** Resume an OAuth-paused Slack request through the shared resume runner. */
 export async function resumeAuthorizedRequest(args: {
   messageText: string;
-  provider: string;
   channelId: string;
   threadTs: string;
   connectedText: string;
@@ -319,7 +306,6 @@ export async function resumeAuthorizedRequest(args: {
   replyContext?: ReplyRequestContext;
   lockKey?: string;
   generateReply?: typeof generateAssistantReply;
-  onReply?: (reply: AssistantReply) => Promise<void>;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (error: unknown) => Promise<void>;
@@ -335,7 +321,6 @@ export async function resumeAuthorizedRequest(args: {
     initialText: args.connectedText,
     failureText: args.failureText,
     generateReply: args.generateReply,
-    onReply: args.onReply,
     onSuccess: args.onSuccess,
     onFailure: args.onFailure,
     onAuthPause: args.onAuthPause,

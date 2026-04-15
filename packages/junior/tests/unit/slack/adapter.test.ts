@@ -47,4 +47,16 @@ describe("createJuniorSlackAdapter", () => {
       thread_ts: "1700000000.001",
     });
   });
+
+  it("fails fast when the upstream adapter no longer exposes the patched stream internals", () => {
+    createSlackAdapterMock.mockReturnValue({
+      client: {
+        chatStream: vi.fn(),
+      },
+    });
+
+    expect(() => createJuniorSlackAdapter()).toThrow(
+      "Slack adapter does not expose stream()",
+    );
+  });
 });

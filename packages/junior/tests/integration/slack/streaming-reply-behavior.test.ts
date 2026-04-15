@@ -195,6 +195,48 @@ describe("Slack behavior: streaming replies", () => {
     expect(toPostedText(thread.posts[0])).toBe("ok");
   });
 
+  it("waits for a fresh assistant message after tool work before streaming the visible reply", async () => {
+    const finalReply =
+      "I checked five outlets. The dominant story is the escalating US-Iran conflict, with the clearest cross-source agreement on the blockade and the conflicting signals about whether talks will resume.";
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onToolCall?.("webSearch");
+            await context?.onTextDelta?.(
+              "Good — 5 solid sources. Fetching all of them now.\n",
+            );
+            await context?.onToolCall?.("webFetch");
+            await context?.onTextDelta?.(
+              "Live blogs are too large — let me try fetching with smaller limits.\n",
+            );
+            await context?.onToolCall?.("webFetch");
+            await context?.onAssistantMessageStart?.();
+            await context?.onTextDelta?.(finalReply);
+            return {
+              text: finalReply,
+              diagnostics: makeDiagnostics(["webSearch", "webFetch"]),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.375" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-research-no-chatter",
+        text: "<@U_APP> find the hottest news article today and summarize it",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["stream"]);
+    expect(thread.posts).toEqual([finalReply]);
+  });
+
   it("keeps file-only replies on the non-streamed inline post path", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -229,6 +271,99 @@ describe("Slack behavior: streaming replies", () => {
     expect(thread.posts[0]).toEqual(
       expect.objectContaining({
         raw: "",
+        files: [
+          expect.objectContaining({
+            filename: "generated.png",
+            mimeType: "image/png",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("still delivers files when thread text is suppressed", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "👍",
+            files: [
+              {
+                data: Buffer.from("image-bytes"),
+                filename: "generated.png",
+                mimeType: "image/png",
+              },
+            ],
+            deliveryPlan: {
+              mode: "thread",
+              postThreadText: false,
+              attachFiles: "inline",
+            },
+            diagnostics: makeDiagnostics(),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.625" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-file-only-suppressed",
+        text: "<@U_APP> generate image",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(thread.posts[0]).toEqual(
+      expect.objectContaining({
+        raw: "",
+        files: [
+          expect.objectContaining({
+            filename: "generated.png",
+            mimeType: "image/png",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("does not delete an ack reply when it also carries files", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "ok",
+            files: [
+              {
+                data: Buffer.from("image-bytes"),
+                filename: "generated.png",
+                mimeType: "image/png",
+              },
+            ],
+            diagnostics: makeDiagnostics(["slackMessageAddReaction"]),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.688" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-ack-file",
+        text: "<@U_APP> react and attach",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(thread.posts[0]).toEqual(
+      expect.objectContaining({
+        markdown: "ok",
         files: [
           expect.objectContaining({
             filename: "generated.png",

@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   postSlackMessageMock,
-  postSlackReplyMock,
   resumeSlackTurnMock,
   scheduleTurnTimeoutResumeMock,
   uploadFilesToThreadMock,
@@ -10,7 +9,6 @@ const {
   waitUntilCallbacks,
 } = vi.hoisted(() => ({
   postSlackMessageMock: vi.fn(),
-  postSlackReplyMock: vi.fn(),
   resumeSlackTurnMock: vi.fn(),
   scheduleTurnTimeoutResumeMock: vi.fn(),
   uploadFilesToThreadMock: vi.fn(),
@@ -37,10 +35,9 @@ vi.mock("@/chat/services/timeout-resume", async (importOriginal) => ({
   verifyTurnTimeoutResumeRequest: verifyTurnTimeoutResumeRequestMock,
 }));
 
-vi.mock("@/handlers/oauth-resume", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/handlers/oauth-resume")>()),
+vi.mock("@/chat/slack/resume", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/slack/resume")>()),
   postSlackMessage: postSlackMessageMock,
-  postSlackReply: postSlackReplyMock,
   resumeSlackTurn: resumeSlackTurnMock,
 }));
 
@@ -68,7 +65,6 @@ describe("turn resume handler", () => {
   beforeEach(async () => {
     waitUntilCallbacks.length = 0;
     postSlackMessageMock.mockReset();
-    postSlackReplyMock.mockReset();
     resumeSlackTurnMock.mockReset();
     scheduleTurnTimeoutResumeMock.mockReset();
     uploadFilesToThreadMock.mockReset();
@@ -78,7 +74,6 @@ describe("turn resume handler", () => {
     await disconnectStateAdapter();
 
     postSlackMessageMock.mockResolvedValue(undefined);
-    postSlackReplyMock.mockResolvedValue(undefined);
     scheduleTurnTimeoutResumeMock.mockResolvedValue(undefined);
     uploadFilesToThreadMock.mockResolvedValue(undefined);
   });

@@ -1,7 +1,9 @@
+import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WaitUntilFn } from "@/handlers/types";
 import {
   getCapturedSlackApiCalls,
+  getCapturedSlackFileUploadCalls,
   resetSlackApiMockState,
 } from "../msw/handlers/slack-api";
 
@@ -313,5 +315,126 @@ describe("turn resume slack integration", () => {
       processing?: { activeTurnId?: string };
     };
     expect(conversation.processing?.activeTurnId).toBeUndefined();
+  });
+
+  it("uploads resumed reply files through the shared delivery path", async () => {
+    const conversationId = "slack:C123:1712345.0003";
+    const sessionId = "turn_msg_3";
+    const checkpoint =
+      await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+        conversationId,
+        sessionId,
+        sliceId: 2,
+        state: "awaiting_resume",
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "hello" }],
+            timestamp: 1,
+          },
+        ],
+        loadedSkillNames: ["demo-skill"],
+        resumeReason: "timeout",
+        resumedFromSliceId: 1,
+        errorMessage: "Agent turn timed out",
+      });
+
+    generateAssistantReplyMock.mockResolvedValueOnce({
+      text: "Final resumed answer with artifact",
+      files: [
+        {
+          data: Buffer.from("resume-file"),
+          filename: "resume.txt",
+        },
+      ],
+      diagnostics: {
+        outcome: "success",
+        toolCalls: [],
+      },
+    });
+
+    await threadStateModule.persistThreadStateById(conversationId, {
+      artifacts: {
+        assistantContextChannelId: "C999",
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        messages: [
+          {
+            id: "msg.3",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+              userName: "alice",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    const response = await turnResumeHandlerModule.POST(
+      await buildSignedTurnResumeRequest({
+        conversationId,
+        sessionId,
+        expectedCheckpointVersion: checkpoint.checkpointVersion,
+      }),
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(202);
+    expect(waitUntilCallbacks).toHaveLength(1);
+
+    await waitUntilCallbacks[0]?.();
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          thread_ts: "1712345.0003",
+          text: "Final resumed answer with artifact",
+        }),
+      }),
+    ]);
+    expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
+      1,
+    );
+    expect(getCapturedSlackApiCalls("files.completeUploadExternal")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel_id: "C123",
+          thread_ts: "1712345.0003",
+        }),
+      }),
+    ]);
+    expect(getCapturedSlackFileUploadCalls()).toHaveLength(1);
+
+    const persisted =
+      await threadStateModule.getPersistedThreadState(conversationId);
+    const conversation = (persisted.conversation ?? {}) as {
+      messages?: Array<{ role?: string; text?: string }>;
+      processing?: { activeTurnId?: string };
+    };
+    expect(conversation.processing?.activeTurnId).toBeUndefined();
+    expect(conversation.messages?.at(-1)).toMatchObject({
+      role: "assistant",
+      text: "Final resumed answer with artifact",
+    });
   });
 });

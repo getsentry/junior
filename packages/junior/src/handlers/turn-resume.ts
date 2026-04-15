@@ -1,13 +1,6 @@
-import { Buffer } from "node:buffer";
-import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logException, logWarn } from "@/chat/logging";
-import {
-  ResumeTurnBusyError,
-  postSlackReply,
-  resumeSlackTurn,
-} from "@/handlers/oauth-resume";
-import { buildSlackOutputMessage } from "@/chat/slack/output";
+import { ResumeTurnBusyError, resumeSlackTurn } from "@/chat/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   getAgentTurnSessionCheckpoint,
@@ -30,14 +23,12 @@ import {
   upsertConversationMessage,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
-import { uploadFilesToThread } from "@/chat/slack/client";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   isRetryableTurnError,
   markTurnCompleted,
   markTurnFailed,
 } from "@/chat/runtime/turn";
-import { resolveReplyDelivery } from "@/chat/runtime/turn";
 import {
   canScheduleTurnTimeoutResume,
   scheduleTurnTimeoutResume,
@@ -47,97 +38,6 @@ import {
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AssistantReply } from "@/chat/respond";
 import type { WaitUntilFn } from "@/handlers/types";
-
-function extractSlackText(text: string, files?: FileUpload[]): string {
-  const message = buildSlackOutputMessage(text, files);
-  if (
-    typeof message === "object" &&
-    message !== null &&
-    "markdown" in message &&
-    typeof message.markdown === "string"
-  ) {
-    return message.markdown;
-  }
-  if (
-    typeof message === "object" &&
-    message !== null &&
-    "raw" in message &&
-    typeof message.raw === "string"
-  ) {
-    return message.raw;
-  }
-  return text;
-}
-
-async function normalizeFileUploads(
-  files: FileUpload[],
-): Promise<Array<{ data: Buffer; filename: string }>> {
-  const normalized: Array<{ data: Buffer; filename: string }> = [];
-
-  for (const file of files) {
-    let data: Buffer;
-    if (Buffer.isBuffer(file.data)) {
-      data = file.data;
-    } else if (file.data instanceof ArrayBuffer) {
-      data = Buffer.from(file.data);
-    } else {
-      data = Buffer.from(await file.data.arrayBuffer());
-    }
-    normalized.push({
-      data,
-      filename: file.filename,
-    });
-  }
-
-  return normalized;
-}
-
-async function deliverReplyToThread(args: {
-  channelId: string;
-  threadTs: string;
-  reply: AssistantReply;
-}): Promise<void> {
-  const replyFiles =
-    args.reply.files && args.reply.files.length > 0
-      ? args.reply.files
-      : undefined;
-  const { shouldPostThreadReply, attachFiles } = resolveReplyDelivery({
-    reply: args.reply,
-    hasStreamedThreadReply: false,
-  });
-
-  if (shouldPostThreadReply) {
-    const text = extractSlackText(
-      args.reply.text,
-      attachFiles === "inline" ? replyFiles : undefined,
-    );
-    if (text.trim().length > 0) {
-      await postSlackReply(args.channelId, args.threadTs, text, {
-        interrupted: args.reply.diagnostics.outcome === "provider_error",
-        normalized: true,
-      });
-    }
-  }
-
-  if (!replyFiles || attachFiles === "none") {
-    return;
-  }
-
-  const files = await normalizeFileUploads(replyFiles);
-  if (files.length === 0) {
-    return;
-  }
-
-  try {
-    await uploadFilesToThread({
-      channelId: args.channelId,
-      threadTs: args.threadTs,
-      files,
-    });
-  } catch {
-    // Best effort.
-  }
-}
 
 async function persistCompletedReplyState(args: {
   checkpoint: AgentTurnSessionCheckpoint;
@@ -279,13 +179,6 @@ async function resumeTimedOutTurn(
       channelConfiguration,
       sandbox,
       threadParticipants: buildThreadParticipants(conversation.messages),
-    },
-    onReply: async (reply) => {
-      await deliverReplyToThread({
-        channelId: thread.channelId,
-        threadTs: thread.threadTs,
-        reply,
-      });
     },
     onSuccess: async (reply) => {
       try {

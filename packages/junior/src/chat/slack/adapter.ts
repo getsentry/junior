@@ -41,6 +41,30 @@ type SlackAdapterInternals = {
   ) => Promise<SentMessage>;
 };
 
+function assertSlackAdapterInternals(
+  internals: Partial<SlackAdapterInternals>,
+): asserts internals is SlackAdapterInternals {
+  if (!internals.client || typeof internals.client.chatStream !== "function") {
+    throw new Error("Slack adapter client does not expose chatStream()");
+  }
+  if (typeof internals.stream !== "function") {
+    throw new Error("Slack adapter does not expose stream()");
+  }
+  if (typeof internals.decodeThreadId !== "function") {
+    throw new Error("Slack adapter does not expose decodeThreadId()");
+  }
+  if (typeof internals.getToken !== "function") {
+    throw new Error("Slack adapter does not expose getToken()");
+  }
+  if (
+    !internals.logger ||
+    typeof internals.logger.debug !== "function" ||
+    typeof internals.logger.warn !== "function"
+  ) {
+    throw new Error("Slack adapter does not expose logger debug/warn methods");
+  }
+}
+
 function shouldEagerFlushPlainText(text: string): boolean {
   return text.length > 0 && !text.includes("\n") && !/[`*~[\]|]/.test(text);
 }
@@ -215,9 +239,7 @@ export function createJuniorSlackAdapter(
 ): SlackAdapter {
   const adapter = createSlackAdapter(config);
   const internals = adapter as unknown as SlackAdapterInternals;
-  if (!internals.client || typeof internals.client.chatStream !== "function") {
-    throw new Error("Slack adapter client does not expose chatStream()");
-  }
+  assertSlackAdapterInternals(internals);
   patchSlackClientStream(adapter);
   patchSlackAdapterStream(adapter);
   return adapter;

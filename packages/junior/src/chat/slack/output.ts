@@ -310,10 +310,9 @@ export function splitSlackReplyText(
   text: string,
   options?: {
     interrupted?: boolean;
-    normalized?: boolean;
   },
 ): string[] {
-  const normalized = options?.normalized ? text : normalizeForSlack(text);
+  const normalized = normalizeForSlack(text);
   if (!normalized) {
     return [];
   }
@@ -390,11 +389,8 @@ export function getSlackStreamingContinuationBudget(): {
 export function buildSlackOutputMessage(
   text: string,
   files?: FileUpload[],
-  options?: {
-    normalized?: boolean;
-  },
 ): PostableMessage {
-  const normalized = options?.normalized ? text : normalizeForSlack(text);
+  const normalized = normalizeForSlack(text);
   const fileCount = files?.length ?? 0;
 
   if (!normalized) {

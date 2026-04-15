@@ -33,10 +33,7 @@ vi.mock("@/chat/slack/client", () => ({
   }),
 }));
 
-import {
-  resumeAuthorizedRequest,
-  resumeSlackTurn,
-} from "@/handlers/oauth-resume";
+import { resumeAuthorizedRequest, resumeSlackTurn } from "@/chat/slack/resume";
 
 describe("resumeAuthorizedRequest", () => {
   beforeEach(async () => {
@@ -58,7 +55,6 @@ describe("resumeAuthorizedRequest", () => {
 
     const resumePromise = resumeAuthorizedRequest({
       messageText: "tell me the saved deadline",
-      provider: "eval-auth",
       channelId: "C-test",
       threadTs: "1700000000.0001",
       connectedText: "connected",

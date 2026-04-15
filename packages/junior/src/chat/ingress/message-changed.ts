@@ -1,4 +1,4 @@
-import { Message, type Adapter } from "chat";
+import { Message, type Adapter, type Attachment } from "chat";
 
 /**
  * Parsed result from a Slack `message_changed` event that contains a newly
@@ -23,6 +23,7 @@ interface SlackMessageChangedEvent {
     subtype: "message_changed";
     channel: string;
     message: {
+      files?: SlackEditedMessageFile[];
       text?: string;
       ts: string;
       thread_ts?: string;
@@ -32,6 +33,16 @@ interface SlackMessageChangedEvent {
       text?: string;
     };
   };
+}
+
+interface SlackEditedMessageFile {
+  mimetype?: string;
+  name?: string;
+  original_h?: number;
+  original_w?: number;
+  size?: number;
+  url_private?: string;
+  url_private_download?: string;
 }
 
 export function isMessageChangedEnvelope(
@@ -60,6 +71,37 @@ export function isMessageChangedEnvelope(
  */
 function textMentionsBot(text: string, botUserId: string): boolean {
   return text.includes(`<@${botUserId}>`);
+}
+
+function getAttachmentType(mimeType: string | undefined): Attachment["type"] {
+  if (mimeType?.startsWith("image/")) {
+    return "image";
+  }
+  if (mimeType?.startsWith("video/")) {
+    return "video";
+  }
+  if (mimeType?.startsWith("audio/")) {
+    return "audio";
+  }
+  return "file";
+}
+
+function extractEditedMessageAttachments(
+  files: SlackEditedMessageFile[] | undefined,
+): Attachment[] {
+  if (!files || files.length === 0) {
+    return [];
+  }
+
+  return files.map((file) => ({
+    type: getAttachmentType(file.mimetype),
+    url: file.url_private_download ?? file.url_private,
+    name: file.name,
+    mimeType: file.mimetype,
+    size: file.size,
+    width: file.original_w,
+    height: file.original_h,
+  }));
 }
 
 /**
@@ -103,7 +145,7 @@ export function extractMessageChangedMention(
     threadId,
     text: newText,
     isMention: true,
-    attachments: [],
+    attachments: extractEditedMessageAttachments(event.message.files),
     metadata: { dateSent: new Date(Number(messageTs) * 1000), edited: true },
     formatted: { type: "root" as const, children: [] },
     raw,

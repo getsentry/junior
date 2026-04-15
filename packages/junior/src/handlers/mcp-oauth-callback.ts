@@ -1,12 +1,9 @@
-import { Buffer } from "node:buffer";
-import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   deleteMcpAuthSession,
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
-import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
 import { logException, logWarn } from "@/chat/logging";
 import type { AssistantReply } from "@/chat/respond";
@@ -30,18 +27,13 @@ import {
   upsertConversationMessage,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
-import { uploadFilesToThread } from "@/chat/slack/client";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import {
-  postSlackReply,
-  resumeAuthorizedRequest,
-} from "@/handlers/oauth-resume";
+import { resumeAuthorizedRequest } from "@/chat/slack/resume";
 import {
   isRetryableTurnError,
   markTurnCompleted,
   markTurnFailed,
 } from "@/chat/runtime/turn";
-import { resolveReplyDelivery } from "@/chat/runtime/turn";
 import {
   canScheduleTurnTimeoutResume,
   scheduleTurnTimeoutResume,
@@ -82,95 +74,6 @@ const CALLBACK_PAGES = {
 function htmlResponse(kind: keyof typeof CALLBACK_PAGES): Response {
   const page = CALLBACK_PAGES[kind];
   return htmlCallbackResponse(page.title, page.message, page.status);
-}
-
-function extractSlackText(text: string, files?: FileUpload[]): string {
-  const message = buildSlackOutputMessage(text, files);
-  if (
-    typeof message === "object" &&
-    message !== null &&
-    "markdown" in message &&
-    typeof message.markdown === "string"
-  ) {
-    return message.markdown;
-  }
-  if (
-    typeof message === "object" &&
-    message !== null &&
-    "raw" in message &&
-    typeof message.raw === "string"
-  ) {
-    return message.raw;
-  }
-  return text;
-}
-
-async function normalizeFileUploads(
-  files: FileUpload[],
-): Promise<Array<{ data: Buffer; filename: string }>> {
-  const normalized: Array<{ data: Buffer; filename: string }> = [];
-
-  for (const file of files) {
-    let data: Buffer;
-    if (Buffer.isBuffer(file.data)) {
-      data = file.data;
-    } else if (file.data instanceof ArrayBuffer) {
-      data = Buffer.from(file.data);
-    } else {
-      data = Buffer.from(await file.data.arrayBuffer());
-    }
-    normalized.push({
-      data,
-      filename: file.filename,
-    });
-  }
-
-  return normalized;
-}
-
-async function deliverReplyToThread(
-  channelId: string,
-  threadTs: string,
-  reply: AssistantReply,
-): Promise<void> {
-  const replyFiles =
-    reply.files && reply.files.length > 0 ? reply.files : undefined;
-  const { shouldPostThreadReply, attachFiles } = resolveReplyDelivery({
-    reply,
-    hasStreamedThreadReply: false,
-  });
-
-  if (shouldPostThreadReply) {
-    const text = extractSlackText(
-      reply.text,
-      attachFiles === "inline" ? replyFiles : undefined,
-    );
-    if (text.trim().length > 0) {
-      await postSlackReply(channelId, threadTs, text, {
-        interrupted: reply.diagnostics.outcome === "provider_error",
-        normalized: true,
-      });
-    }
-  }
-
-  if (!replyFiles || attachFiles === "none") {
-    return;
-  }
-
-  const files = await normalizeFileUploads(replyFiles);
-  if (files.length === 0) {
-    return;
-  }
-
-  try {
-    await uploadFilesToThread({
-      channelId,
-      threadTs,
-      files,
-    });
-  } catch {
-    // Best effort.
-  }
 }
 
 async function buildResumeConversationContext(
@@ -287,7 +190,6 @@ async function resumeAuthorizedMcpTurn(args: {
 
   await resumeAuthorizedRequest({
     messageText: authSession.userMessage,
-    provider,
     channelId: authSession.channelId,
     threadTs: authSession.threadTs,
     lockKey: authSession.conversationId,
@@ -318,13 +220,6 @@ async function resumeAuthorizedMcpTurn(args: {
       channelConfiguration,
       sandbox: getPersistedSandboxState(currentState),
       threadParticipants: buildThreadParticipants(conversation.messages),
-    },
-    onReply: async (reply) => {
-      await deliverReplyToThread(
-        authSession.channelId!,
-        authSession.threadTs!,
-        reply,
-      );
     },
     onSuccess: async (reply) => {
       try {

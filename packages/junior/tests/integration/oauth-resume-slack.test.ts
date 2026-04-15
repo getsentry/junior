@@ -1,10 +1,14 @@
+import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
 } from "@/chat/slack/output";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import {
+  getCapturedSlackApiCalls,
+  getCapturedSlackFileUploadCalls,
+} from "../msw/handlers/slack-api";
 
 function makeDiagnostics(outcome: "success" | "provider_error" = "success") {
   return {
@@ -31,10 +35,9 @@ describe("oauth resume slack integration", () => {
   });
 
   it("posts resumed status updates through the Slack MSW harness", async () => {
-    const { resumeAuthorizedRequest } = await import("@/handlers/oauth-resume");
+    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
     await resumeAuthorizedRequest({
       messageText: "What budget deadline did I mention earlier?",
-      provider: "eval-auth",
       channelId: "C123",
       threadTs: "1700000000.001",
       connectedText:
@@ -88,7 +91,7 @@ describe("oauth resume slack integration", () => {
   });
 
   it("chunks long resumed replies into explicit continuation messages", async () => {
-    const { resumeAuthorizedRequest } = await import("@/handlers/oauth-resume");
+    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
     const longReply = Array.from(
       { length: 80 },
       (_, i) => `line ${i + 1}`,
@@ -96,7 +99,6 @@ describe("oauth resume slack integration", () => {
 
     await resumeAuthorizedRequest({
       messageText: "Continue the original request",
-      provider: "eval-auth",
       channelId: "C123",
       threadTs: "1700000000.002",
       connectedText: "Connected. Continuing...",
@@ -128,11 +130,10 @@ describe("oauth resume slack integration", () => {
   });
 
   it("marks interrupted resumed replies explicitly", async () => {
-    const { resumeAuthorizedRequest } = await import("@/handlers/oauth-resume");
+    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
 
     await resumeAuthorizedRequest({
       messageText: "Continue the original request",
-      provider: "eval-auth",
       channelId: "C123",
       threadTs: "1700000000.003",
       connectedText: "Connected. Continuing...",
@@ -154,5 +155,56 @@ describe("oauth resume slack integration", () => {
       thread_ts: "1700000000.003",
       text: `Partial output${getSlackInterruptionMarker()}`,
     });
+  });
+
+  it("delivers resumed reply files through the shared reply planner", async () => {
+    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
+
+    await resumeAuthorizedRequest({
+      messageText: "Continue the original request",
+      channelId: "C123",
+      threadTs: "1700000000.004",
+      connectedText: "Connected. Continuing...",
+      failureText: "Resume failed.",
+      replyContext: {
+        requester: { userId: "U123" },
+      },
+      generateReply: async () =>
+        ({
+          text: "Here is the resumed artifact.",
+          files: [
+            {
+              data: Buffer.from("resume-file"),
+              filename: "resume.txt",
+            },
+          ],
+          diagnostics: makeDiagnostics(),
+        }) as any,
+    });
+
+    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    expect(postCalls).toHaveLength(2);
+    expect(postCalls[0]?.params).toMatchObject({
+      channel: "C123",
+      thread_ts: "1700000000.004",
+      text: "Connected. Continuing...",
+    });
+    expect(postCalls[1]?.params).toMatchObject({
+      channel: "C123",
+      thread_ts: "1700000000.004",
+      text: "Here is the resumed artifact.",
+    });
+    expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
+      1,
+    );
+    expect(getCapturedSlackApiCalls("files.completeUploadExternal")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel_id: "C123",
+          thread_ts: "1700000000.004",
+        }),
+      }),
+    ]);
+    expect(getCapturedSlackFileUploadCalls()).toHaveLength(1);
   });
 });
