@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 import {
   getSlackContinuationMarker,
@@ -191,6 +192,50 @@ describe("Slack behavior: streaming replies", () => {
 
     expect(thread.postKinds).toEqual(["value"]);
     expect(toPostedText(thread.posts[0])).toBe("ok");
+  });
+
+  it("keeps file-only replies on the non-streamed inline post path", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "",
+            files: [
+              {
+                data: Buffer.from("image-bytes"),
+                filename: "generated.png",
+                mimeType: "image/png",
+              },
+            ],
+            diagnostics: makeDiagnostics(),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_STREAM:1700006002.500" });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-stream-file-only",
+        text: "<@U_APP> generate image",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(thread.posts[0]).toEqual(
+      expect.objectContaining({
+        raw: "",
+        files: [
+          expect.objectContaining({
+            filename: "generated.png",
+            mimeType: "image/png",
+          }),
+        ],
+      }),
+    );
   });
 
   it("keeps trailing ack-like text once streaming has started", async () => {

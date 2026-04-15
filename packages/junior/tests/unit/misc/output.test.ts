@@ -150,6 +150,19 @@ describe("splitSlackReplyText", () => {
         .join(""),
     ).toBe(text);
   });
+
+  it("closes and reopens code fences across continuation chunks", () => {
+    const code = Array.from(
+      { length: slackOutputPolicy.maxInlineLines + 20 },
+      (_, i) => `const value${i + 1} = ${i + 1};`,
+    ).join("\n");
+    const chunks = splitSlackReplyText(`\`\`\`ts\n${code}\n\`\`\``);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0]).toContain(`\`\`\`${getSlackContinuationMarker()}`);
+    expect(chunks[1]?.startsWith("```ts\n")).toBe(true);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+  });
 });
 
 describe("ensureBlockSpacing", () => {

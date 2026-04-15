@@ -121,6 +121,112 @@ function reserveInlineBudgetForSuffix(
   };
 }
 
+type InlineBudget = {
+  maxChars: number;
+  maxLines: number;
+};
+
+type FenceContinuation = {
+  closeSuffix: string;
+  reopenPrefix: string;
+};
+
+function forceSplitBudget(text: string, budget: InlineBudget): InlineBudget {
+  const lineCount = countSlackLines(text);
+  return {
+    maxChars:
+      text.length <= budget.maxChars
+        ? Math.max(1, text.length - 1)
+        : budget.maxChars,
+    maxLines:
+      lineCount <= budget.maxLines
+        ? Math.max(1, lineCount - 1)
+        : budget.maxLines,
+  };
+}
+
+function getFenceContinuation(text: string): FenceContinuation | null {
+  let open:
+    | {
+        fence: string;
+        openerLine: string;
+      }
+    | undefined;
+
+  for (const line of text.split("\n")) {
+    const trimmed = line.trimStart();
+    const openerMatch = trimmed.match(/^(`{3,}|~{3,})(.*)$/);
+    if (!openerMatch) {
+      continue;
+    }
+
+    if (!open) {
+      open = {
+        fence: openerMatch[1],
+        openerLine: trimmed,
+      };
+      continue;
+    }
+
+    if (new RegExp(`^${open.fence}\\s*$`).test(trimmed)) {
+      open = undefined;
+    }
+  }
+
+  if (!open) {
+    return null;
+  }
+
+  return {
+    closeSuffix: text.endsWith("\n") ? open.fence : `\n${open.fence}`,
+    reopenPrefix: `${open.openerLine}\n`,
+  };
+}
+
+function appendSlackSuffix(text: string, marker: string): string {
+  const carryover = getFenceContinuation(text);
+  return `${text}${carryover?.closeSuffix ?? ""}${marker}`;
+}
+
+function takeSlackContinuationChunk(
+  text: string,
+  budget: InlineBudget,
+): { prefix: string; rest: string } {
+  let { prefix, rest } = takeSlackInlinePrefix(text, budget);
+  if (!rest) {
+    ({ prefix, rest } = takeSlackInlinePrefix(
+      text,
+      forceSplitBudget(text, budget),
+    ));
+  }
+
+  let carryover = rest ? getFenceContinuation(prefix) : null;
+  if (!carryover) {
+    return { prefix, rest };
+  }
+
+  const carryoverBudget = reserveInlineBudgetForSuffix(
+    `${carryover.closeSuffix}${CONTINUED_MARKER}`,
+  );
+  ({ prefix, rest } = takeSlackInlinePrefix(text, carryoverBudget));
+  if (!rest) {
+    ({ prefix, rest } = takeSlackInlinePrefix(
+      text,
+      forceSplitBudget(text, carryoverBudget),
+    ));
+  }
+
+  carryover = rest ? getFenceContinuation(prefix) : null;
+  if (!carryover) {
+    return { prefix, rest };
+  }
+
+  return {
+    prefix,
+    rest: `${carryover.reopenPrefix}${rest}`,
+  };
+}
+
 /**
  * Take the largest Slack-safe inline prefix from `text` under the configured
  * character and line budgets. Returns the consumed prefix plus remaining text.
@@ -182,23 +288,20 @@ export function splitSlackReplyText(
 
   const chunks: string[] = [];
   const continuationBudget = reserveInlineBudgetForSuffix(CONTINUED_MARKER);
-  const finalBudget = options?.interrupted
-    ? reserveInlineBudgetForSuffix(INTERRUPTED_MARKER)
-    : null;
   let remaining = normalized;
   while (remaining) {
-    const fitsFinalChunk = finalBudget
-      ? fitsInlineBudget(remaining, finalBudget.maxChars, finalBudget.maxLines)
+    const fitsFinalChunk = options?.interrupted
+      ? fitsInlineBudget(appendSlackSuffix(remaining, INTERRUPTED_MARKER))
       : fitsInlineBudget(remaining);
     if (fitsFinalChunk) {
       chunks.push(remaining);
       break;
     }
 
-    let { prefix, rest } = takeSlackInlinePrefix(remaining, continuationBudget);
-    if (options?.interrupted && !rest && finalBudget) {
-      ({ prefix, rest } = takeSlackInlinePrefix(remaining, finalBudget));
-    }
+    const { prefix, rest } = takeSlackContinuationChunk(
+      remaining,
+      continuationBudget,
+    );
     chunks.push(prefix);
     remaining = rest;
   }
@@ -210,10 +313,10 @@ export function splitSlackReplyText(
   return chunks.map((chunk, index) => {
     const isLast = index === chunks.length - 1;
     if (!isLast) {
-      return `${chunk}${CONTINUED_MARKER}`;
+      return appendSlackSuffix(chunk, CONTINUED_MARKER);
     }
     if (options?.interrupted) {
-      return `${chunk}${INTERRUPTED_MARKER}`;
+      return appendSlackSuffix(chunk, INTERRUPTED_MARKER);
     }
     return chunk;
   });

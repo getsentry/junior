@@ -556,8 +556,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // completed after the visible reply has been accepted by Slack.
           if (shouldPostThreadReply) {
             if (!streamedReplyPromise) {
+              const postChunks =
+                replyTextChunks.length > 0 ? replyTextChunks : [reply.text];
               let sent: SentMessage | undefined;
-              for (const [index, chunk] of replyTextChunks.entries()) {
+              for (const [index, chunk] of postChunks.entries()) {
                 sent = await postThreadReply(
                   buildSlackOutputMessage(
                     chunk,
@@ -574,7 +576,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               if (
                 sent &&
                 reactionPerformed &&
-                replyTextChunks.length === 1 &&
+                postChunks.length === 1 &&
                 isRedundantReactionAckText(reply.text)
               ) {
                 await sent.delete();
