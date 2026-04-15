@@ -163,6 +163,28 @@ describe("splitSlackReplyText", () => {
     expect(chunks[1]?.startsWith("```ts\n")).toBe(true);
     expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
   });
+
+  it("keeps pre-normalized continuation chunks stable when posting", () => {
+    const code = Array.from(
+      { length: slackOutputPolicy.maxInlineLines + 20 },
+      (_, i) => `const value${i + 1} = ${i + 1};`,
+    ).join("\n");
+    const normalized = (
+      buildSlackOutputMessage(`\`\`\`ts\n${code}\n\`\`\``) as {
+        markdown: string;
+      }
+    ).markdown;
+    const chunks = splitSlackReplyText(normalized, {
+      normalized: true,
+    });
+    const message = buildSlackOutputMessage(chunks[0] ?? "", undefined, {
+      normalized: true,
+    }) as { markdown: string };
+
+    expect(chunks[0]).toContain(`\`\`\`${getSlackContinuationMarker()}`);
+    expect(message.markdown).toBe(chunks[0]);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+  });
 });
 
 describe("ensureBlockSpacing", () => {

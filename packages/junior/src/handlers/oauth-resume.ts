@@ -50,6 +50,7 @@ export async function postSlackReply(
   text: string,
   options?: {
     interrupted?: boolean;
+    normalized?: boolean;
   },
 ): Promise<void> {
   const chunks = splitSlackReplyText(text, options);

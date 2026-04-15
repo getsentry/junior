@@ -566,6 +566,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     index === 0 && resolvedAttachFiles === "inline"
                       ? replyFiles
                       : undefined,
+                    { normalized: true },
                   ),
                   index === 0 ? "thread_reply" : "thread_reply_continuation",
                 );
@@ -585,7 +586,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await streamedReplyPromise;
               for (const chunk of overflowChunks) {
                 await postThreadReply(
-                  buildSlackOutputMessage(chunk),
+                  buildSlackOutputMessage(chunk, undefined, {
+                    normalized: true,
+                  }),
                   "thread_reply_continuation",
                 );
               }

@@ -148,6 +148,7 @@ async function deliverReplyToThread(
     if (text.trim().length > 0) {
       await postSlackReply(channelId, threadTs, text, {
         interrupted: reply.diagnostics.outcome === "provider_error",
+        normalized: true,
       });
     }
   }
