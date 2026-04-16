@@ -4,7 +4,6 @@ import { resolveReplyDelivery } from "@/chat/services/reply-delivery-plan";
 describe("resolveReplyDelivery", () => {
   it("uses delivery plan directly when available", () => {
     const resolved = resolveReplyDelivery({
-      hasStreamedThreadReply: true,
       reply: {
         text: "Done.",
         files: [],
@@ -32,9 +31,8 @@ describe("resolveReplyDelivery", () => {
     });
   });
 
-  it("falls back to inline files when legacy followup path has no stream", () => {
+  it("falls back to inline files for legacy thread replies", () => {
     const resolved = resolveReplyDelivery({
-      hasStreamedThreadReply: false,
       reply: {
         text: "Done.",
         files: [{ data: Buffer.from("x"), filename: "a.txt" }],
@@ -58,16 +56,15 @@ describe("resolveReplyDelivery", () => {
     });
   });
 
-  it("coerces inline files to followup when the thread reply already streamed", () => {
+  it("coerces legacy followup file plans to inline delivery", () => {
     const resolved = resolveReplyDelivery({
-      hasStreamedThreadReply: true,
       reply: {
         text: "Done.",
         files: [{ data: Buffer.from("x"), filename: "a.txt" }],
         deliveryPlan: {
           mode: "thread",
           postThreadText: true,
-          attachFiles: "inline",
+          attachFiles: "followup",
         },
         diagnostics: {
           assistantMessageCount: 1,
@@ -83,13 +80,12 @@ describe("resolveReplyDelivery", () => {
 
     expect(resolved).toEqual({
       shouldPostThreadReply: true,
-      attachFiles: "followup",
+      attachFiles: "inline",
     });
   });
 
   it("always posts thread reply for reaction-only turns to complete Slack response cycle", () => {
     const resolved = resolveReplyDelivery({
-      hasStreamedThreadReply: false,
       reply: {
         text: "👍",
         files: [],
@@ -114,7 +110,6 @@ describe("resolveReplyDelivery", () => {
 
   it("keeps thread text when a reaction accompanies a substantive reply", () => {
     const resolved = resolveReplyDelivery({
-      hasStreamedThreadReply: false,
       reply: {
         text: "Added the reaction. I also posted the update in channel.",
         files: [],

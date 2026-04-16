@@ -15,6 +15,11 @@ function parseChannelFromThreadId(threadId: string): string | undefined {
   return undefined;
 }
 
+function toAdapterChannelId(threadId: string): string | undefined {
+  const channelId = parseChannelFromThreadId(threadId);
+  return channelId ? `slack:${channelId}` : undefined;
+}
+
 // ── Test Author ──────────────────────────────────────────────────────
 
 const defaultAuthor: Author = {
@@ -130,7 +135,7 @@ export function createTestThread(args: {
   threadTs?: string;
 }): TestThread {
   const id = args.id ?? "slack:C_TEST:1700000000.000";
-  const channelId = args.channelId ?? parseChannelFromThreadId(id) ?? id;
+  const channelId = args.channelId ?? toAdapterChannelId(id) ?? id;
   let stateData: Record<string, unknown> = { ...(args.state ?? {}) };
   const posts: unknown[] = [];
   const postKinds: Array<"stream" | "value"> = [];

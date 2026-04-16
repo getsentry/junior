@@ -953,18 +953,16 @@ describe("bot image hydration", () => {
     ).toBe("generated.png");
   });
 
-  it("posts files separately when streamed reply is already in progress", async () => {
+  it("attaches files inline on the finalized reply post", async () => {
     const { slackRuntime } = await createRuntime({
       services: {
         visionContext: {
           listThreadReplies: listThreadRepliesMock.mockResolvedValue([]),
         },
         replyExecutor: {
-          generateAssistantReply: async (_text: string, context: any) => {
-            context?.onTextDelta?.("streamed ");
-            context?.onTextDelta?.("content");
+          generateAssistantReply: async (_text: string, _context: any) => {
             return {
-              ...makeSuccessReply("streamed content"),
+              ...makeSuccessReply("finalized content"),
               files: [
                 {
                   data: Buffer.from("fake-png"),
@@ -989,7 +987,7 @@ describe("bot image hydration", () => {
       thread,
       createTestMessage({
         id: "1700000000.200",
-        text: "generate an image with streaming",
+        text: "generate an image",
         threadId: "slack:C_STREAM:1700000000.000",
         isMention: true,
         author: {
@@ -1002,10 +1000,8 @@ describe("bot image hydration", () => {
       }),
     );
 
-    // Should have at least 2 posts: the streamed reply and the file upload
-    expect(postSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(postSpy.mock.calls).toHaveLength(1);
 
-    // The file follow-up post should be file-only without placeholder markdown text.
     const filePost = postSpy.mock.calls.find(
       (call: unknown[]) =>
         typeof call[0] === "object" &&
@@ -1016,8 +1012,7 @@ describe("bot image hydration", () => {
     );
     expect(filePost).toBeDefined();
     const filePostArg = filePost![0] as Record<string, unknown>;
-    expect(filePostArg).toHaveProperty("raw", "");
-    expect(filePostArg).not.toHaveProperty("markdown");
+    expect(filePostArg).toHaveProperty("markdown", "finalized content");
     expect((filePostArg.files as Array<{ filename: string }>)[0].filename).toBe(
       "generated.png",
     );

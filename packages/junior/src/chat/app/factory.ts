@@ -14,7 +14,10 @@ import {
   withSpan,
 } from "@/chat/logging";
 import { createReplyToThread } from "@/chat/runtime/reply-executor";
-import { initializeAssistantThread as initializeAssistantThreadImpl } from "@/chat/runtime/assistant-lifecycle";
+import {
+  initializeAssistantThread as initializeAssistantThreadImpl,
+  refreshAssistantThreadContext as refreshAssistantThreadContextImpl,
+} from "@/chat/runtime/assistant-lifecycle";
 import {
   getChannelId,
   getRunId,
@@ -152,6 +155,20 @@ export function createSlackRuntime(
       sourceChannelId,
     }) => {
       await initializeAssistantThreadImpl({
+        threadId,
+        channelId,
+        threadTs,
+        sourceChannelId,
+        getSlackAdapter: options.getSlackAdapter,
+      });
+    },
+    refreshAssistantThreadContext: async ({
+      threadId,
+      channelId,
+      threadTs,
+      sourceChannelId,
+    }) => {
+      await refreshAssistantThreadContextImpl({
         threadId,
         channelId,
         threadTs,

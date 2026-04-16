@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-04-13
+- Last Edited: 2026-04-16
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-03-13: Added auth-driven resume reason and checkpointed dynamic tool state for MCP-backed turns.
 - 2026-03-19: Simplified auth resume contract so resumed slices always use `continue()` after trimming trailing uncommitted assistant messages at the auth pause boundary.
 - 2026-04-13: Aligned the spec with the current implementation: signed internal timeout-resume callbacks, eager thread-state persistence for sandbox/artifact state, and no automatic resume after visible assistant output has started.
+- 2026-04-16: Clarified that Slack delivery now waits for finalized replies, so timeout continuation remains eligible until final visible reply posting begins.
 
 ## Status
 
@@ -36,7 +37,7 @@ Define how a single assistant turn is split into resumable execution slices so s
 - Replacing existing tool implementations or Slack transport UX.
 - Multi-turn planning policies (this spec covers one assistant turn/session at a time).
 - A generic queue/lease/fencing workflow runtime.
-- Reconciling or rewriting partially streamed Slack assistant output after timeout.
+- Reconciling or rewriting partially visible Slack assistant output after timeout.
 
 ## Contracts
 
@@ -153,7 +154,8 @@ If the previous slice timed out after producing uncommitted partial assistant te
 
 - Automatic timeout continuation is best-effort and currently uses a signed internal HTTP callback, not a generic queue/lease system.
 - A timeout checkpoint may be auto-scheduled only when no assistant text has been made visible to the user for the current turn.
-- Once visible assistant output has started streaming or posting, the runtime must not auto-resume that turn or attempt to rewrite/reconcile the partial output.
+- Once visible assistant output has started posting, the runtime must not auto-resume that turn or attempt to rewrite/reconcile the partial output.
+- In the current Slack delivery contract, assistant text is not posted until the reply is finalized, so ordinary agent-generation timeouts still occur before visible output begins.
 - In that case, the last safe checkpoint may still exist for inspection or operator-driven recovery, but the user-visible turn is allowed to fail.
 
 ### Internal Timeout-Resume Callback Contract

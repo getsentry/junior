@@ -10,7 +10,6 @@
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated MSW and fixture path references to repo-root paths under `packages/junior/`.
 
-
 ## Purpose
 
 Define the Slack HTTP contract testing model used by integration tests.
@@ -57,10 +56,12 @@ This spec is subordinate to `specs/testing/integration-spec.md`.
 - `packages/junior/tests/msw/handlers/slack-webhooks.ts`
 
 Handlers support:
+
 - success responses
 - Slack API error envelopes
 - pagination cursors
 - rate limit responses and retry paths
+- contract validation for Slack-only request shapes that matter in production, including rejecting adapter-scoped `slack:<channel>` IDs where Slack expects raw conversation IDs
 
 ### 3) Shared fixture/factory layer
 
@@ -69,6 +70,7 @@ Handlers support:
 - `packages/junior/tests/fixtures/slack/factories/ids.ts`
 
 Conventions:
+
 - deterministic defaults
 - narrow payloads with fields consumed by app/test assertions
 - override-friendly builders
@@ -87,6 +89,7 @@ Conventions:
 - Error mapping coverage (`missing_scope`, `not_in_channel`, `invalid_arguments`, `not_found`, etc.).
 - Retry coverage for rate limits (`429`, retry-after).
 - Pagination coverage where list/history APIs are used.
+- Failure on adapter-scoped `slack:<channel>` conversation IDs for endpoints that require raw Slack conversation IDs.
 - Failure on unhandled Slack request paths.
 
 ## Acceptance Criteria

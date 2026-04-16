@@ -12,7 +12,6 @@ export interface ReplyDeliveryPlan {
 const REACTION_ONLY_ACK_RE =
   /^(?::[a-z0-9_+-]+:|[\p{Extended_Pictographic}\uFE0F\u200D]+)$/u;
 const REDUNDANT_REACTION_ACK_TEXT = ["done", "got it", "ok", "okay"] as const;
-const REACTION_ALIAS_PREFIX_RE = /^:[a-z0-9_+-]*$/i;
 
 function normalizeReactionAckText(text: string): string {
   return text
@@ -37,31 +36,11 @@ export function isRedundantReactionAckText(text: string): boolean {
   );
 }
 
-/** Prefix-aware check for streaming: delays stream start while text looks like a short ack. */
-export function isPotentialRedundantReactionAckText(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return true;
-  }
-  if (
-    REACTION_ONLY_ACK_RE.test(trimmed) ||
-    REACTION_ALIAS_PREFIX_RE.test(trimmed)
-  ) {
-    return true;
-  }
-
-  const normalized = normalizeReactionAckText(text);
-  return REDUNDANT_REACTION_ACK_TEXT.some((candidate) =>
-    candidate.startsWith(normalized),
-  );
-}
-
 /** Determine how a reply should be delivered (thread vs channel, file handling). */
 export function buildReplyDeliveryPlan(args: {
   explicitChannelPostIntent: boolean;
   channelPostPerformed: boolean;
   hasFiles: boolean;
-  streamingThreadReply: boolean;
 }): ReplyDeliveryPlan {
   const mode: ReplyDeliveryMode =
     args.explicitChannelPostIntent && args.channelPostPerformed
@@ -70,7 +49,7 @@ export function buildReplyDeliveryPlan(args: {
 
   let attachFiles: ReplyFileDelivery = "none";
   if (args.hasFiles && mode === "thread") {
-    attachFiles = args.streamingThreadReply ? "followup" : "inline";
+    attachFiles = "inline";
   }
 
   return {
@@ -81,10 +60,7 @@ export function buildReplyDeliveryPlan(args: {
 }
 
 /** Resolve the effective thread-text/file delivery behavior for a completed reply. */
-export function resolveReplyDelivery(args: {
-  reply: AssistantReply;
-  hasStreamedThreadReply: boolean;
-}): {
+export function resolveReplyDelivery(args: { reply: AssistantReply }): {
   shouldPostThreadReply: boolean;
   attachFiles: ReplyFileDelivery;
 } {
@@ -94,23 +70,12 @@ export function resolveReplyDelivery(args: {
   const deliveryPlan = args.reply.deliveryPlan ?? {
     mode: args.reply.deliveryMode ?? "thread",
     postThreadText: (args.reply.deliveryMode ?? "thread") !== "channel_only",
-    attachFiles: replyHasFiles
-      ? args.hasStreamedThreadReply
-        ? "followup"
-        : "inline"
-      : "none",
+    attachFiles: replyHasFiles ? "inline" : "none",
   };
-
-  let attachFiles = replyHasFiles ? deliveryPlan.attachFiles : "none";
-  if (attachFiles === "followup" && !args.hasStreamedThreadReply) {
-    attachFiles = "inline";
-  }
-  if (attachFiles === "inline" && args.hasStreamedThreadReply) {
-    attachFiles = "followup";
-  }
 
   return {
     shouldPostThreadReply: deliveryPlan.postThreadText,
-    attachFiles,
+    attachFiles:
+      replyHasFiles && deliveryPlan.attachFiles !== "none" ? "inline" : "none",
   };
 }

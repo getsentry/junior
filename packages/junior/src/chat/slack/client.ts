@@ -14,6 +14,8 @@ export type SlackActionErrorCode =
   | "invalid_arguments"
   | "not_found"
   | "not_in_channel"
+  | "already_reacted"
+  | "no_reaction"
   | "internal_error";
 
 export class SlackActionError extends Error {
@@ -222,6 +224,14 @@ function mapSlackError(error: unknown): SlackActionError {
     return new SlackActionError(message, "not_in_channel", baseOptions);
   }
 
+  if (apiError === "already_reacted") {
+    return new SlackActionError(message, "already_reacted", baseOptions);
+  }
+
+  if (apiError === "no_reaction") {
+    return new SlackActionError(message, "no_reaction", baseOptions);
+  }
+
   if (apiError === "invalid_arguments") {
     return new SlackActionError(message, "invalid_arguments", baseOptions);
   }
@@ -230,7 +240,11 @@ function mapSlackError(error: unknown): SlackActionError {
     return new SlackActionError(message, "invalid_arguments", baseOptions);
   }
 
-  if (apiError === "not_found") {
+  if (
+    apiError === "not_found" ||
+    apiError === "channel_not_found" ||
+    apiError === "message_not_found"
+  ) {
     return new SlackActionError(message, "not_found", baseOptions);
   }
 
@@ -390,24 +404,6 @@ export async function getFilePermalink(
   );
 
   return response.file?.permalink;
-}
-
-export async function uploadFilesToThread(args: {
-  channelId: string;
-  threadTs: string;
-  files: Array<{ data: Buffer; filename: string }>;
-}): Promise<void> {
-  const client = getClient();
-  await withSlackRetries(() =>
-    client.filesUploadV2({
-      channel_id: args.channelId,
-      thread_ts: args.threadTs,
-      file_uploads: args.files.map((f) => ({
-        file: f.data,
-        filename: f.filename,
-      })),
-    }),
-  );
 }
 
 export async function downloadPrivateSlackFile(url: string): Promise<Buffer> {

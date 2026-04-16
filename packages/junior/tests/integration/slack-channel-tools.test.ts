@@ -271,6 +271,28 @@ describe("slack channel tools", () => {
     });
   });
 
+  it("treats already_reacted as a safe reaction success", async () => {
+    queueSlackApiError("reactions.add", {
+      error: "already_reacted",
+    });
+    const tool = createSlackMessageAddReactionTool(
+      createContext("yep"),
+      createToolState(),
+    );
+
+    const result = await executeTool(tool, {
+      emoji: ":wave:",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      channel_id: "C123",
+      message_ts: "1700000000.321",
+      emoji: "wave",
+    });
+    expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(1);
+  });
+
   it("passes Slack skin-tone aliases through to reactions.add", async () => {
     queueSlackApiResponse("reactions.add", {
       body: reactionsAddOk(),

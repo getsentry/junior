@@ -32,10 +32,7 @@ export interface ConversationMemoryService {
       runId?: string;
     },
   ) => Promise<void>;
-  generateThreadTitle: (
-    userText: string,
-    assistantText: string,
-  ) => Promise<string>;
+  generateThreadTitle: (sourceText: string) => Promise<string>;
 }
 
 export function generateConversationId(
@@ -287,27 +284,59 @@ async function summarizeConversationChunk(
 }
 
 async function generateThreadTitleWithDeps(
-  userText: string,
-  assistantText: string,
+  sourceText: string,
   deps: ConversationMemoryDeps,
 ): Promise<string> {
   const result = await deps.completeText({
-    modelId: botConfig.fastModelId,
+    modelId: botConfig.lightModelId,
     temperature: 0,
     messages: [
       {
         role: "user",
         content: [
-          "Generate a concise 5-8 word title for this conversation. Reply with ONLY the title, no quotes or punctuation.",
+          "Generate a concise 5-8 word Slack conversation title from the first user message below.",
+          "Capture the user's main request.",
+          "Reply with ONLY the title, with no quotes or trailing punctuation.",
           "",
-          `User: ${userText.slice(0, 500)}`,
-          `Assistant: ${assistantText.slice(0, 500)}`,
+          `First user message: ${sourceText.slice(0, 500)}`,
         ].join("\n"),
         timestamp: Date.now(),
       },
     ],
   });
   return result.text.trim().slice(0, 60);
+}
+
+/** Return the earliest human-authored message known for a thread. */
+export function getThreadTitleSourceMessage(
+  conversation: ThreadConversationState,
+): ConversationMessage | undefined {
+  let firstMessage: ConversationMessage | undefined;
+
+  for (const message of conversation.messages) {
+    if (!isHumanConversationMessage(message)) {
+      continue;
+    }
+
+    if (!firstMessage) {
+      firstMessage = message;
+      continue;
+    }
+
+    if (message.createdAtMs < firstMessage.createdAtMs) {
+      firstMessage = message;
+      continue;
+    }
+
+    if (
+      message.createdAtMs === firstMessage.createdAtMs &&
+      message.id < firstMessage.id
+    ) {
+      firstMessage = message;
+    }
+  }
+
+  return firstMessage;
 }
 
 async function compactConversationIfNeededWithDeps(
@@ -374,8 +403,8 @@ export function createConversationMemoryService(
   return {
     compactConversationIfNeeded: async (conversation, context) =>
       await compactConversationIfNeededWithDeps(conversation, context, deps),
-    generateThreadTitle: async (userText, assistantText) =>
-      await generateThreadTitleWithDeps(userText, assistantText, deps),
+    generateThreadTitle: async (sourceText) =>
+      await generateThreadTitleWithDeps(sourceText, deps),
   };
 }
 

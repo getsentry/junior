@@ -295,21 +295,34 @@ export function extractAssistantText(message: AssistantMessage): string {
     .join("\n");
 }
 
+/** Return assistant messages that belong to the terminal post-tool reply phase. */
+export function getTerminalAssistantMessages(
+  messages: readonly unknown[],
+): AssistantMessage[] {
+  let lastToolResultIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (isToolResultMessage(messages[index])) {
+      lastToolResultIndex = index;
+      break;
+    }
+  }
+
+  return messages.slice(lastToolResultIndex + 1).filter(isAssistantMessage);
+}
+
 /** True when messages end with a completed, text-bearing assistant turn. */
 export function hasCompletedAssistantTurn(messages: AgentMessage[]): boolean {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!isAssistantMessage(message)) {
-      continue;
-    }
-    const stopReason = (message as { stopReason?: unknown }).stopReason;
-    return (
-      typeof stopReason === "string" &&
-      stopReason !== "error" &&
-      extractAssistantText(message).trim().length > 0
-    );
+  const message = getTerminalAssistantMessages(messages).at(-1);
+  if (!message) {
+    return false;
   }
-  return false;
+
+  const stopReason = (message as { stopReason?: unknown }).stopReason;
+  return (
+    typeof stopReason === "string" &&
+    stopReason !== "error" &&
+    extractAssistantText(message).trim().length > 0
+  );
 }
 
 /** Upsert a skill into the active skills list by name. */

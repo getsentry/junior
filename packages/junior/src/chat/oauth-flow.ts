@@ -3,6 +3,10 @@ import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { logInfo, logWarn } from "@/chat/logging";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { getSlackClient, isDmChannel } from "@/chat/slack/client";
+import {
+  postSlackEphemeralMessage,
+  postSlackMessage,
+} from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   isToolResultError,
@@ -74,17 +78,17 @@ export async function deliverPrivateMessage(input: {
   if (input.channelId) {
     try {
       if (isDmChannel(input.channelId)) {
-        await client.chat.postMessage({
-          channel: input.channelId,
+        await postSlackMessage({
+          channelId: input.channelId,
           text: input.text,
-          ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+          threadTs: input.threadTs,
         });
       } else {
-        await client.chat.postEphemeral({
-          channel: input.channelId,
-          user: input.userId,
+        await postSlackEphemeralMessage({
+          channelId: input.channelId,
+          userId: input.userId,
           text: input.text,
-          ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+          threadTs: input.threadTs,
         });
       }
       return "in_context";
@@ -116,7 +120,7 @@ export async function deliverPrivateMessage(input: {
       return false;
     }
 
-    await client.chat.postMessage({ channel: dmChannelId, text: input.text });
+    await postSlackMessage({ channelId: dmChannelId, text: input.text });
     return "fallback_dm";
   } catch (error) {
     logWarn(

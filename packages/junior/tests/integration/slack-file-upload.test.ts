@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { uploadFilesToThread } from "@/chat/slack/client";
+import { uploadFilesToThread } from "@/chat/slack/outbound";
 import {
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
@@ -16,6 +16,23 @@ describe("uploadFilesToThread", () => {
   beforeEach(() => {
     process.env.SLACK_BOT_TOKEN =
       process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+  });
+
+  it("rejects empty file batches before calling Slack", async () => {
+    await expect(
+      uploadFilesToThread({
+        channelId: "C-test",
+        threadTs: "1700000000.000",
+        files: [],
+      }),
+    ).rejects.toThrow("at least one file");
+
+    expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
+      0,
+    );
+    expect(
+      getCapturedSlackApiCalls("files.completeUploadExternal"),
+    ).toHaveLength(0);
   });
 
   it("calls Slack file upload endpoints with correct channel, thread, and file metadata", async () => {

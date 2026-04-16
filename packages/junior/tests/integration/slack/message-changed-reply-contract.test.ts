@@ -87,7 +87,7 @@ function createEditedMentionRequest(args: {
   });
 }
 
-async function createEditedDmStreamingBot(args: {
+async function createEditedDmBot(args: {
   generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
 }) {
   const state = createMemoryState();
@@ -119,9 +119,9 @@ async function createEditedDmStreamingBot(args: {
   return bot;
 }
 
-describe("Slack contract: edited-message streaming", () => {
-  it("includes recipient metadata on the first edited-DM stream request", async () => {
-    const bot = await createEditedDmStreamingBot({
+describe("Slack contract: edited-message reply delivery", () => {
+  it("posts the finalized reply into the edited DM thread with chat.postMessage", async () => {
+    const bot = await createEditedDmBot({
       generateAssistantReply: async (_prompt, context) => {
         await context?.onTextDelta?.("Hello world");
         return {
@@ -145,46 +145,27 @@ describe("Slack contract: edited-message streaming", () => {
     await flushWaitUntil(waitUntilTasks);
 
     expect(response.status).toBe(200);
-    expect(getCapturedSlackApiCalls("chat.startStream")).toEqual([
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "D12345",
           thread_ts: "1700000100.000100",
-          recipient_user_id: "U123",
-          recipient_team_id: "T_TEST",
-          chunks: [
-            {
-              type: "markdown_text",
-              text: "Hello world",
-            },
-          ],
-        }),
-      }),
-    ]);
-    expect(getCapturedSlackApiCalls("chat.stopStream")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "D12345",
-          chunks: [],
+          text: "Hello world",
         }),
       }),
     ]);
   });
 
-  it("finalizes an edited-DM stream after appended content is sent", async () => {
-    const firstChunk = `${"A".repeat(96)}\n`;
-    const secondChunk = `${"B".repeat(96)}\n`;
-    const thirdChunk = `${"C".repeat(96)}\n`;
-    const bot = await createEditedDmStreamingBot({
-      generateAssistantReply: async (_prompt, context) => {
-        await context?.onTextDelta?.(firstChunk);
-        await context?.onTextDelta?.(secondChunk);
-        await context?.onTextDelta?.(thirdChunk);
-        return {
-          text: `${firstChunk}${secondChunk}${thirdChunk}`.trimEnd(),
-          diagnostics: makeDiagnostics(),
-        };
-      },
+  it("posts continuation messages with chat.postMessage when the final reply overflows", async () => {
+    const longReply = Array.from(
+      { length: 80 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
+    const bot = await createEditedDmBot({
+      generateAssistantReply: async () => ({
+        text: longReply,
+        diagnostics: makeDiagnostics(),
+      }),
     });
     const waitUntilTasks: Array<Promise<unknown>> = [];
 
@@ -201,33 +182,15 @@ describe("Slack contract: edited-message streaming", () => {
     await flushWaitUntil(waitUntilTasks);
 
     expect(response.status).toBe(200);
-    expect(getCapturedSlackApiCalls("chat.startStream")).toEqual([
+    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    expect(postCalls.length).toBeGreaterThan(1);
+    expect(postCalls[0]).toEqual(
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "D12345",
           thread_ts: "1700000100.000101",
-          chunks: [
-            {
-              type: "markdown_text",
-              text: `${firstChunk}${secondChunk}`,
-            },
-          ],
         }),
       }),
-    ]);
-    expect(getCapturedSlackApiCalls("chat.appendStream")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "D12345",
-          chunks: [
-            {
-              type: "markdown_text",
-              text: thirdChunk,
-            },
-          ],
-        }),
-      }),
-    ]);
-    expect(getCapturedSlackApiCalls("chat.stopStream")).toHaveLength(1);
+    );
   });
 });

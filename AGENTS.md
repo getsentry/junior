@@ -61,6 +61,7 @@ Co-Authored-By: (agent model name) <email>
 - When changing a function signature, error contract, or shared pattern, grep for all consumers and verify each one still works. Do not assume fixing one call site is sufficient.
 - If a fix attempt fails, stop. Re-read the error, trace the full system from input to output, and identify the root cause before trying another fix. Do not commit progressive patches that address symptoms layer-by-layer.
 - When implementing message handling or Slack interactions, explicitly verify both DM and channel paths, and both first-delivery and retry paths.
+- Slack-specific runtime and contract rules live in `specs/slack-agent-delivery-spec.md`, `specs/slack-outbound-contract-spec.md`, and `.agents/skills/slack-development/SKILL.md`. Keep `AGENTS.md` as a pointer, not a duplicate.
 
 ## Architecture Discipline
 
@@ -93,6 +94,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/security-policy.md` (global runtime/container/token security policy)
 - `specs/chat-architecture-spec.md` (chat composition, service, and test-seam architecture contract)
 - `specs/slack-agent-delivery-spec.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
+- `specs/slack-outbound-contract-spec.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
 - `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
 - `specs/oauth-flows-spec.md` (OAuth authorization code flow + Slack UX contract)
 - `specs/harness-agent-spec.md` (agent loop and output contract)

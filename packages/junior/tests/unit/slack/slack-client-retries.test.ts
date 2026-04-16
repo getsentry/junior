@@ -132,4 +132,40 @@ describe("withSlackRetries", () => {
     );
     expect(task).toHaveBeenCalledTimes(1);
   });
+
+  it("maps already_reacted as a dedicated Slack action error", async () => {
+    const task = vi.fn<() => Promise<string>>().mockRejectedValue({
+      data: {
+        error: "already_reacted",
+      },
+      message: "An API error occurred: already_reacted",
+    });
+
+    await expect(withSlackRetries(task, 3)).rejects.toEqual(
+      expect.objectContaining<Partial<SlackActionError>>({
+        name: "SlackActionError",
+        code: "already_reacted",
+        apiError: "already_reacted",
+      }),
+    );
+    expect(task).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps no_reaction as a dedicated Slack action error", async () => {
+    const task = vi.fn<() => Promise<string>>().mockRejectedValue({
+      data: {
+        error: "no_reaction",
+      },
+      message: "An API error occurred: no_reaction",
+    });
+
+    await expect(withSlackRetries(task, 3)).rejects.toEqual(
+      expect.objectContaining<Partial<SlackActionError>>({
+        name: "SlackActionError",
+        code: "no_reaction",
+        apiError: "no_reaction",
+      }),
+    );
+    expect(task).toHaveBeenCalledTimes(1);
+  });
 });

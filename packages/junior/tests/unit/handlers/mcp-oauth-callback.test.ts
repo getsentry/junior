@@ -72,6 +72,17 @@ vi.mock("@/chat/config", async (importOriginal) => {
 });
 
 vi.mock("@/chat/slack/client", () => ({
+  SlackActionError: class SlackActionError extends Error {
+    code: string;
+
+    constructor(message: string, code: string) {
+      super(message);
+      this.name = "SlackActionError";
+      this.code = code;
+    }
+  },
+  normalizeSlackConversationId: (value: string | undefined) => value,
+  withSlackRetries: async (task: () => Promise<unknown>) => await task(),
   getSlackClient: () => ({
     chat: {
       postMessage: postMessageMock,
@@ -82,7 +93,11 @@ vi.mock("@/chat/slack/client", () => ({
       },
     },
   }),
+}));
+
+vi.mock("@/chat/slack/outbound", () => ({
   uploadFilesToThread: uploadFilesToThreadMock,
+  postSlackMessage: vi.fn(),
 }));
 
 vi.mock("@/chat/logging", () => ({
@@ -188,7 +203,7 @@ describe("mcp oauth callback handler", () => {
         toolCalls: [],
       },
     });
-    postMessageMock.mockResolvedValue(undefined);
+    postMessageMock.mockResolvedValue({ ts: "1700000000.100" });
     setStatusMock.mockResolvedValue(undefined);
     uploadFilesToThreadMock.mockResolvedValue(undefined);
     getPersistedThreadStateMock.mockResolvedValue({

@@ -27,4 +27,31 @@ describe("Slack MSW server", () => {
     expect(payload.ok).toBe(true);
     expect(payload.ts).toBe("1700000000.100");
   });
+
+  it("rejects adapter-scoped Slack conversation ids", async () => {
+    const response = await fetch(
+      "https://slack.com/api/assistant.threads.setStatus",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          channel_id: "slack:D_TEST",
+          thread_ts: "1700000000.100",
+          status: "Thinking …",
+        }).toString(),
+      },
+    );
+
+    expect(response.ok).toBe(true);
+    const payload = (await response.json()) as {
+      ok?: boolean;
+      error?: string;
+      detail?: string;
+    };
+    expect(payload.ok).toBe(false);
+    expect(payload.error).toBe("channel_not_found");
+    expect(payload.detail).toBe("Invalid channel_id");
+  });
 });

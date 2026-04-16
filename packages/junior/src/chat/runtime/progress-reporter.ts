@@ -54,6 +54,16 @@ export function createProgressReporter(args: {
   let rotationTimer: TimerHandle | null = null;
   let inflightStatusUpdate: Promise<void> = Promise.resolve();
 
+  const enqueueStatusUpdate = (task: () => Promise<void>): Promise<void> => {
+    const request = inflightStatusUpdate
+      .catch(() => undefined)
+      .then(async () => {
+        await task();
+      });
+    inflightStatusUpdate = request.catch(() => undefined);
+    return request;
+  };
+
   const scheduleRotation = () => {
     if (rotationTimer) {
       clearTimer(rotationTimer);
@@ -89,13 +99,9 @@ export function createProgressReporter(args: {
     currentVisibleStatus = text;
     lastStatusAt = now();
     scheduleRotation();
-    const previous = inflightStatusUpdate;
-    const request = (async () => {
-      await previous;
+    await enqueueStatusUpdate(async () => {
       await args.transport.setStatus(channelId, threadTs, text, suggestions);
-    })();
-    inflightStatusUpdate = request;
-    await request;
+    });
   };
 
   const postRenderedStatus = async (

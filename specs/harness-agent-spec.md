@@ -48,7 +48,8 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 
 ### Terminal output contract
 
-- Final reply text is assembled from assistant messages joined by `"\n"` and trimmed.
+- Final reply text is assembled from assistant messages after the last tool-result message, joined by `"\n"` and trimmed.
+- Provisional assistant narration emitted before tool execution does not count as terminal user-visible output.
 - If assistant text is empty, return `buildExecutionFailureMessage(toolErrorCount)`.
 - If assistant text is an execution-escape or raw tool payload shape, return `buildExecutionFailureMessage(toolErrorCount)`.
 - This harness-level contract only defines generation output. Chat runtimes may still treat the turn as failed if final user-visible reply delivery fails.

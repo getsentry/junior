@@ -5,9 +5,6 @@ import {
   canvasesEditOk,
   canvasesSectionsLookupOk,
   chatGetPermalinkOk,
-  chatStartStreamOk,
-  chatAppendStreamOk,
-  chatStopStreamOk,
   chatPostEphemeralOk,
   chatPostMessageOk,
   conversationsCanvasesCreateOk,
@@ -29,10 +26,9 @@ const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
 
 export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.threads.setStatus",
+  "assistant.threads.setSuggestedPrompts",
+  "assistant.threads.setTitle",
   "chat.postMessage",
-  "chat.startStream",
-  "chat.appendStream",
-  "chat.stopStream",
   "chat.postEphemeral",
   "chat.getPermalink",
   "views.publish",
@@ -178,15 +174,11 @@ function defaultSlackApiResponse(
 ): SlackMockHttpResponse {
   switch (method) {
     case "assistant.threads.setStatus":
+    case "assistant.threads.setSuggestedPrompts":
+    case "assistant.threads.setTitle":
       return { body: slackOk() };
     case "chat.postMessage":
       return { body: chatPostMessageOk() };
-    case "chat.startStream":
-      return { body: chatStartStreamOk() };
-    case "chat.appendStream":
-      return { body: chatAppendStreamOk() };
-    case "chat.stopStream":
-      return { body: chatStopStreamOk() };
     case "chat.postEphemeral":
       return { body: chatPostEphemeralOk() };
     case "chat.getPermalink":
@@ -265,6 +257,39 @@ function toHttpResponse(response: SlackMockHttpResponse): Response {
     status,
     headers,
   });
+}
+
+function getSlackConversationParam(
+  params: Record<string, unknown>,
+): { key: "channel" | "channel_id"; value: string } | undefined {
+  const channel = params.channel;
+  if (typeof channel === "string") {
+    return { key: "channel", value: channel };
+  }
+
+  const channelId = params.channel_id;
+  if (typeof channelId === "string") {
+    return { key: "channel_id", value: channelId };
+  }
+
+  return undefined;
+}
+
+function validateSlackApiRequest(
+  method: SlackApiMethod,
+  params: Record<string, unknown>,
+): SlackMockHttpResponse | undefined {
+  const conversation = getSlackConversationParam(params);
+  if (conversation?.value.startsWith("slack:")) {
+    return {
+      body: slackError({
+        error: "channel_not_found",
+        detail: `Invalid ${conversation.key}`,
+      }),
+    };
+  }
+
+  return undefined;
 }
 
 export function queueSlackApiResponse(
@@ -354,6 +379,11 @@ export const slackApiHandlers = [
       headers: normalizeHeaders(request.headers),
       params: requestBody,
     });
+
+    const validationResponse = validateSlackApiRequest(rawMethod, requestBody);
+    if (validationResponse) {
+      return toHttpResponse(validationResponse);
+    }
 
     const response =
       dequeueResponse(rawMethod) ?? defaultSlackApiResponse(rawMethod);

@@ -13,7 +13,7 @@ import {
   planSlackReplyPosts,
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
-import { getSlackClient } from "@/chat/slack/client";
+import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
@@ -39,9 +39,9 @@ export async function postSlackMessage(
   threadTs: string,
   text: string,
 ): Promise<void> {
-  await getSlackClient().chat.postMessage({
-    channel: channelId,
-    thread_ts: threadTs,
+  await postSlackApiMessage({
+    channelId,
+    threadTs,
     text,
   });
 }
@@ -235,10 +235,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     await postSlackApiReplyPosts({
       channelId: args.channelId,
       threadTs: args.threadTs,
-      posts: planSlackReplyPosts({
-        reply,
-        hasStreamedThreadReply: false,
-      }),
+      posts: planSlackReplyPosts({ reply }),
       postMessage: postSlackMessage,
     });
     await args.onSuccess?.(reply);

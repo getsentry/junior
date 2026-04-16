@@ -41,7 +41,8 @@ vi.mock("@/chat/slack/resume", async (importOriginal) => ({
   resumeSlackTurn: resumeSlackTurnMock,
 }));
 
-vi.mock("@/chat/slack/client", () => ({
+vi.mock("@/chat/slack/outbound", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/slack/outbound")>()),
   uploadFilesToThread: uploadFilesToThreadMock,
 }));
 

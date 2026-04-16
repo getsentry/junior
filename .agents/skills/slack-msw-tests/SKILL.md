@@ -17,10 +17,10 @@ If the target test is pure business logic with no Slack HTTP contract assertions
 
 ## Step 2: Load only required references
 
-| Need | Read |
-| --- | --- |
-| End-to-end authoring workflow | `${CLAUDE_SKILL_ROOT}/references/test-authoring-playbook.md` |
-| Endpoint and fixture mapping | `${CLAUDE_SKILL_ROOT}/references/endpoint-fixture-matrix.md` |
+| Need                           | Read                                                         |
+| ------------------------------ | ------------------------------------------------------------ |
+| End-to-end authoring workflow  | `${CLAUDE_SKILL_ROOT}/references/test-authoring-playbook.md` |
+| Endpoint and fixture mapping   | `${CLAUDE_SKILL_ROOT}/references/endpoint-fixture-matrix.md` |
 | Existing bad patterns to avoid | `${CLAUDE_SKILL_ROOT}/references/anti-patterns-and-fixes.md` |
 
 ## Step 3: Author the test using project harness
@@ -33,6 +33,12 @@ If the target test is pure business logic with no Slack HTTP contract assertions
 6. Assert both:
    - returned behavior/result
    - captured outbound Slack request payload(s)
+
+Required Slack assistant-thread matrix when the change touches status/title/progress:
+
+- Current inbound message has explicit `thread_ts`: assert `assistant.threads.*` uses that live thread context.
+- Current inbound message omits `thread_ts`: assert status/title calls are skipped rather than synthesized from persisted state or generic message `ts`.
+- If assistant lifecycle events are involved, verify they initialize assistant metadata without becoming an implicit substitute for the current message's `thread_ts`.
 
 Do not create local MSW servers in test files. Global lifecycle is already configured via `tests/msw/setup.ts`.
 

@@ -5,7 +5,6 @@ const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
 const CONTINUED_MARKER = "\n\n[Continued below]";
 const INTERRUPTED_MARKER = "\n\n[Response interrupted before completion]";
-const STREAMING_FENCE_CLOSE_GUARD = "\n```";
 
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {
@@ -59,7 +58,13 @@ export function ensureBlockSpacing(text: string): string {
   return result.join("\n");
 }
 
-function normalizeForSlack(text: string): string {
+/**
+ * Render model-authored markdown into Slack-friendly `mrkdwn`.
+ *
+ * This module owns reply-text translation for Slack. Delivery modules should
+ * post the returned text without applying Slack-specific formatting rules again.
+ */
+export function renderSlackMrkdwn(text: string): string {
   let normalized = text.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "");
   normalized = ensureBlockSpacing(normalized);
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
@@ -228,10 +233,7 @@ function takeSlackContinuationChunk(
   };
 }
 
-/**
- * Return the first continuation-safe chunk for streamed Slack output along
- * with any remaining text that should move to continuation messages.
- */
+/** Return the first continuation-safe chunk plus any remaining text. */
 export function takeSlackContinuationPrefix(
   text: string,
   options?: {
@@ -312,7 +314,7 @@ export function splitSlackReplyText(
     interrupted?: boolean;
   },
 ): string[] {
-  const normalized = normalizeForSlack(text);
+  const normalized = renderSlackMrkdwn(text);
   if (!normalized) {
     return [];
   }
@@ -359,7 +361,7 @@ export function getSlackInterruptionMarker(): string {
  * budget without needing continuation messages.
  */
 export function fitsSlackInlineBudget(text: string): boolean {
-  return fitsInlineBudget(normalizeForSlack(text));
+  return fitsInlineBudget(renderSlackMrkdwn(text));
 }
 
 /**
@@ -372,25 +374,12 @@ export function getSlackContinuationBudget(): {
   return reserveInlineBudgetForSuffix(CONTINUED_MARKER);
 }
 
-/**
- * Reserve enough inline budget for streamed continuations, including the
- * close fence we may need to append once overflow is detected mid-code block.
- */
-export function getSlackStreamingContinuationBudget(): {
-  maxChars: number;
-  maxLines: number;
-} {
-  return reserveInlineBudgetForSuffix(
-    `${STREAMING_FENCE_CLOSE_GUARD}${CONTINUED_MARKER}`,
-  );
-}
-
 /** Normalize text for Slack and wrap it as a PostableMessage with optional file attachments. */
 export function buildSlackOutputMessage(
   text: string,
   files?: FileUpload[],
 ): PostableMessage {
-  const normalized = normalizeForSlack(text);
+  const normalized = renderSlackMrkdwn(text);
   const fileCount = files?.length ?? 0;
 
   if (!normalized) {

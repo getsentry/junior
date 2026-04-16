@@ -841,7 +841,6 @@ export async function generateAssistantReply(
       sandboxDependencyProfileHash:
         currentSandboxExecutor.getDependencyProfileHash(),
       generatedFileCount: generatedFiles.length,
-      hasTextDeltaCallback: Boolean(context.onTextDelta),
       shouldTrace,
       spanContext,
       correlation: context.correlation,

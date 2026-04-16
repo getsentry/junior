@@ -66,6 +66,12 @@ const secondSearchingStatus = "Searching sources";
 const secondReadingStatus = "Reading source files";
 const secondReviewingStatus = "Reviewing results";
 
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe("createProgressReporter", () => {
   it("posts an initial playful status on start", async () => {
     const scheduler = createFakeScheduler();
@@ -85,7 +91,7 @@ describe("createProgressReporter", () => {
     });
 
     await reporter.start();
-    await Promise.resolve();
+    await flushAsyncWork();
 
     expect(statuses).toEqual([firstPlayfulStatus]);
   });
@@ -108,11 +114,86 @@ describe("createProgressReporter", () => {
     });
 
     await reporter.start();
-    await Promise.resolve();
+    await flushAsyncWork();
 
     await reporter.stop();
 
     expect(statuses).toEqual([firstPlayfulStatus, ""]);
+  });
+
+  it("does not wait for the initial status request before start() resolves", async () => {
+    const scheduler = createFakeScheduler();
+    let resolveThinking: (() => void) | undefined;
+    const reporter = createProgressReporter({
+      channelId: "C1",
+      threadTs: "123.45",
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          if (text !== firstPlayfulStatus) {
+            return;
+          }
+          await new Promise<void>((resolve) => {
+            resolveThinking = resolve;
+          });
+        },
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    let settled = false;
+    const startPromise = reporter.start().then(() => {
+      settled = true;
+    });
+
+    await flushAsyncWork();
+    expect(settled).toBe(true);
+
+    resolveThinking!();
+    await startPromise;
+    expect(settled).toBe(true);
+  });
+
+  it("does not wait for an immediate replacement status before setStatus() resolves", async () => {
+    const scheduler = createFakeScheduler();
+    let resolveReviewing: (() => void) | undefined;
+    const reporter = createProgressReporter({
+      channelId: "C1",
+      threadTs: "123.45",
+      transport: {
+        setStatus: async (_channelId, _threadTs, text) => {
+          if (text !== secondReviewingStatus) {
+            return;
+          }
+          await new Promise<void>((resolve) => {
+            resolveReviewing = resolve;
+          });
+        },
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    await reporter.start();
+    await flushAsyncWork();
+
+    scheduler.advance(1200);
+    let settled = false;
+    const setStatusPromise = reporter
+      .setStatus(makeAssistantStatus("reviewing"))
+      .then(() => {
+        settled = true;
+      });
+
+    await flushAsyncWork();
+    expect(settled).toBe(true);
+
+    resolveReviewing!();
+    await setStatusPromise;
   });
 
   it("omits loading suggestions when clearing the assistant status", async () => {
@@ -133,7 +214,7 @@ describe("createProgressReporter", () => {
     });
 
     await reporter.start();
-    await Promise.resolve();
+    await flushAsyncWork();
 
     await reporter.stop();
 
@@ -164,12 +245,12 @@ describe("createProgressReporter", () => {
     });
 
     await reporter.start();
-    await Promise.resolve();
+    await flushAsyncWork();
 
     await reporter.setStatus(makeAssistantStatus("searching"));
     await reporter.setStatus(makeAssistantStatus("searching"));
     scheduler.advance(1200);
-    await Promise.resolve();
+    await flushAsyncWork();
 
     expect(statuses).toEqual([firstPlayfulStatus, secondSearchingStatus]);
   });
@@ -192,15 +273,15 @@ describe("createProgressReporter", () => {
     });
 
     await reporter.start();
-    await Promise.resolve();
+    await flushAsyncWork();
 
     await reporter.setStatus(makeAssistantStatus("reading", "source files"));
     scheduler.advance(1000);
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(statuses).toEqual([firstPlayfulStatus]);
 
     scheduler.advance(200);
-    await Promise.resolve();
+    await flushAsyncWork();
     expect(statuses).toEqual([firstPlayfulStatus, secondReadingStatus]);
   });
 
@@ -222,13 +303,13 @@ describe("createProgressReporter", () => {
     });
 
     await reporter.start();
-    await Promise.resolve();
+    await flushAsyncWork();
 
     await reporter.setStatus(makeAssistantStatus("searching", "docs"));
     await reporter.setStatus(makeAssistantStatus("reviewing"));
 
     scheduler.advance(1200);
-    await Promise.resolve();
+    await flushAsyncWork();
 
     expect(statuses).toEqual([firstPlayfulStatus, secondReviewingStatus]);
   });
@@ -256,7 +337,8 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    const startPromise = reporter.start();
+    await flushAsyncWork();
     // Initial playful status is now in flight but blocked
 
     const stopPromise = reporter.stop();
@@ -264,7 +346,7 @@ describe("createProgressReporter", () => {
 
     // Unblock the slow initial status call
     resolveThinking!();
-    await stopPromise;
+    await Promise.all([startPromise, stopPromise]);
 
     // The clear must always be the last status sent to Slack
     expect(statuses).toEqual([firstPlayfulStatus, ""]);
@@ -288,11 +370,11 @@ describe("createProgressReporter", () => {
     });
 
     await reporter.start();
-    await Promise.resolve();
+    await flushAsyncWork();
 
     await reporter.setStatus(makeAssistantStatus("reviewing"));
     scheduler.advance(1200);
-    await Promise.resolve();
+    await flushAsyncWork();
 
     await reporter.stop();
 
@@ -317,10 +399,10 @@ describe("createProgressReporter", () => {
     });
 
     await reporter.start();
-    await Promise.resolve();
+    await flushAsyncWork();
 
     scheduler.advance(30_000);
-    await Promise.resolve();
+    await flushAsyncWork();
 
     expect(statuses).toEqual([firstPlayfulStatus, firstPlayfulStatus]);
   });

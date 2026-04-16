@@ -2,13 +2,10 @@ import { Buffer } from "node:buffer";
 import type { FileUpload, PostableMessage } from "chat";
 import type { AssistantReply } from "@/chat/respond";
 import { resolveReplyDelivery } from "@/chat/services/reply-delivery-plan";
-import { uploadFilesToThread } from "@/chat/slack/client";
+import { uploadFilesToThread } from "@/chat/slack/outbound";
 import {
   buildSlackOutputMessage,
-  getSlackInterruptionMarker,
-  getSlackStreamingContinuationBudget,
   splitSlackReplyText,
-  takeSlackContinuationPrefix,
 } from "@/chat/slack/output";
 
 export type PlannedSlackReplyStage =
@@ -125,75 +122,11 @@ function getReplyMessageFiles(
 }
 
 /**
- * Track live Slack stream deltas until the initial streamed message reaches the
- * continuation budget, then retain the remaining text for follow-up posts.
- */
-export function createSlackStreamAccumulator(): {
-  append: (deltaText: string) => string;
-  getOverflowText: () => string;
-} {
-  let pendingCarriageReturn = false;
-  let streamedVisibleText = "";
-  let streamedRenderedText = "";
-  let overflowText = "";
-  let streamOverflowed = false;
-  const continuationBudget = getSlackStreamingContinuationBudget();
-
-  const normalizeDelta = (deltaText: string): string => {
-    let text = deltaText;
-    if (pendingCarriageReturn) {
-      text = `\r${text}`;
-      pendingCarriageReturn = false;
-    }
-    if (text.endsWith("\r")) {
-      text = text.slice(0, -1);
-      pendingCarriageReturn = true;
-    }
-    return text.replace(/\r\n?/g, "\n");
-  };
-
-  return {
-    append(deltaText: string): string {
-      const normalizedDeltaText = normalizeDelta(deltaText);
-      if (!normalizedDeltaText) {
-        return "";
-      }
-      if (streamOverflowed) {
-        overflowText += normalizedDeltaText;
-        return "";
-      }
-
-      const candidate = `${streamedVisibleText}${normalizedDeltaText}`;
-      const { prefix, renderedPrefix, rest } = takeSlackContinuationPrefix(
-        candidate,
-        continuationBudget,
-      );
-      const additional =
-        renderedPrefix.length > streamedRenderedText.length
-          ? renderedPrefix.slice(streamedRenderedText.length)
-          : "";
-      streamedVisibleText = prefix;
-      streamedRenderedText = renderedPrefix;
-      if (rest) {
-        overflowText += rest;
-        streamOverflowed = true;
-      }
-      return additional;
-    },
-    getOverflowText(): string {
-      return overflowText;
-    },
-  };
-}
-
-/**
  * Plan the Slack thread posts needed to realize a completed assistant reply,
  * including chunking, interruption markers, and file delivery.
  */
 export function planSlackReplyPosts(args: {
   reply: AssistantReply;
-  hasStreamedThreadReply: boolean;
-  streamedOverflowText?: string;
 }): PlannedSlackReplyPost[] {
   const replyFiles =
     args.reply.files && args.reply.files.length > 0
@@ -201,49 +134,29 @@ export function planSlackReplyPosts(args: {
       : undefined;
   const { shouldPostThreadReply, attachFiles } = resolveReplyDelivery({
     reply: args.reply,
-    hasStreamedThreadReply: args.hasStreamedThreadReply,
   });
   const interrupted = isInterruptedVisibleReply(args.reply);
   const posts: PlannedSlackReplyPost[] = [];
 
-  if (args.hasStreamedThreadReply) {
-    if (shouldPostThreadReply && args.streamedOverflowText) {
-      posts.push(
-        ...buildTextPosts({
-          text: args.streamedOverflowText,
-          interrupted,
-          firstStage: "thread_reply_continuation",
-        }),
-      );
-    } else if (shouldPostThreadReply && interrupted) {
-      posts.push({
-        message: buildSlackOutputMessage(
-          getSlackInterruptionMarker().trimStart(),
-        ),
-        stage: "thread_reply_continuation",
-      });
-    }
-  } else {
-    const textPosts = shouldPostThreadReply
-      ? buildTextPosts({
-          text: args.reply.text,
-          interrupted,
-          firstFiles: attachFiles === "inline" ? replyFiles : undefined,
-        })
-      : [];
-    posts.push(...textPosts);
+  const textPosts = shouldPostThreadReply
+    ? buildTextPosts({
+        text: args.reply.text,
+        interrupted,
+        firstFiles: attachFiles === "inline" ? replyFiles : undefined,
+      })
+    : [];
+  posts.push(...textPosts);
 
-    if (attachFiles === "inline" && replyFiles && textPosts.length === 0) {
-      posts.push({
-        message: buildSlackOutputMessage("", replyFiles),
-        stage: "thread_reply",
-      });
-    } else if (shouldPostThreadReply && textPosts.length === 0) {
-      posts.push({
-        message: buildSlackOutputMessage(args.reply.text),
-        stage: "thread_reply",
-      });
-    }
+  if (attachFiles === "inline" && replyFiles && textPosts.length === 0) {
+    posts.push({
+      message: buildSlackOutputMessage("", replyFiles),
+      stage: "thread_reply",
+    });
+  } else if (shouldPostThreadReply && textPosts.length === 0) {
+    posts.push({
+      message: buildSlackOutputMessage(args.reply.text),
+      stage: "thread_reply",
+    });
   }
 
   if (attachFiles === "followup" && replyFiles) {

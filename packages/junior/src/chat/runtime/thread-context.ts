@@ -1,9 +1,13 @@
 import type { Message, Thread } from "chat";
 import { botConfig } from "@/chat/config";
 import { toOptionalString } from "@/chat/coerce";
-import { getHeaderString } from "@/chat/slack/client";
+import {
+  getHeaderString,
+  normalizeSlackConversationId,
+} from "@/chat/slack/client";
 import {
   parseSlackThreadId,
+  resolveSlackChannelIdFromThreadId,
   resolveSlackChannelIdFromMessage,
 } from "@/chat/slack/context";
 
@@ -57,11 +61,42 @@ export function getChannelId(
   thread: Thread,
   message: Message,
 ): string | undefined {
-  return thread.channelId ?? resolveSlackChannelIdFromMessage(message);
+  return (
+    resolveSlackChannelIdFromThreadId(toOptionalString(thread.id)) ??
+    normalizeSlackConversationId(toOptionalString(thread.channelId)) ??
+    resolveSlackChannelIdFromMessage(message)
+  );
 }
 
 export function getThreadTs(threadId: string | undefined): string | undefined {
   return parseSlackThreadId(threadId)?.threadTs;
+}
+
+/**
+ * Resolve Slack assistant-thread API context for the current turn.
+ *
+ * Slack assistant-thread methods must use the live inbound thread context
+ * Slack provided on the current message. Slack's assistant utilities build
+ * `setStatus`/`setTitle` from `message.channel` plus explicit `message.thread_ts`
+ * for `message.im` events, or from `assistant_thread.channel_id/thread_ts` for
+ * lifecycle events. Do not synthesize assistant-thread roots from persisted
+ * state, and do not fall back to a generic message `ts` for status/title calls.
+ */
+export function getAssistantThreadContext(
+  message: Message,
+): { channelId: string; threadTs: string } | undefined {
+  const raw = (message as unknown as { raw?: unknown }).raw;
+  const rawRecord =
+    raw && typeof raw === "object"
+      ? (raw as Record<string, unknown>)
+      : undefined;
+  const channelId = toOptionalString(rawRecord?.channel);
+  const threadTs = toOptionalString(rawRecord?.thread_ts);
+  if (!channelId || !threadTs) {
+    return undefined;
+  }
+
+  return { channelId, threadTs };
 }
 
 export function getMessageTs(message: Message): string | undefined {

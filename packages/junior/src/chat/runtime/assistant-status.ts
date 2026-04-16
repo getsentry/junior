@@ -1,5 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { logWarn } from "@/chat/logging";
+import { normalizeSlackConversationId } from "@/chat/slack/client";
 import { getSlackClient } from "@/chat/slack/client";
 import { truncateStatusText } from "@/chat/runtime/status-format";
 
@@ -141,17 +142,69 @@ export function buildAssistantStatusPresentation(args: {
 export function createSlackAdapterAssistantStatusTransport(args: {
   getSlackAdapter: () => Pick<SlackAdapter, "setAssistantStatus">;
 }): AssistantStatusTransport {
+  const adapter = args.getSlackAdapter() as Pick<
+    SlackAdapter,
+    "setAssistantStatus" | "withBotToken"
+  > & {
+    requestContext?: {
+      getStore: () => { token?: string } | undefined;
+    };
+  };
+  const boundToken = getSlackAdapterRequestToken(adapter);
+
   return {
     async setStatus(channelId, threadTs, status, suggestions) {
+      const normalizedChannelId = normalizeSlackConversationId(channelId);
+      if (!normalizedChannelId) {
+        return;
+      }
       try {
-        await args
-          .getSlackAdapter()
-          .setAssistantStatus(channelId, threadTs, status, suggestions);
+        await runWithBoundSlackToken(adapter, boundToken, () =>
+          adapter.setAssistantStatus(
+            normalizedChannelId,
+            threadTs,
+            status,
+            suggestions,
+          ),
+        );
       } catch (error) {
-        logAssistantStatusFailure(status, error);
+        logAssistantStatusFailure({
+          status,
+          error,
+          channelId,
+          normalizedChannelId,
+          threadTs,
+        });
       }
     },
   };
+}
+
+function getSlackAdapterRequestToken(adapter: {
+  requestContext?: {
+    getStore: () => { token?: string } | undefined;
+  };
+}): string | undefined {
+  // Slack assistant status updates can be emitted later from debounce/rotation
+  // timers. Capture the adapter's current request-scoped token up front so
+  // those delayed updates stay pinned to the same workspace installation.
+  const token = adapter.requestContext?.getStore()?.token;
+  if (typeof token !== "string") {
+    return undefined;
+  }
+  const trimmed = token.trim();
+  return trimmed || undefined;
+}
+
+async function runWithBoundSlackToken<T>(
+  adapter: Pick<SlackAdapter, "withBotToken">,
+  token: string | undefined,
+  task: () => Promise<T>,
+): Promise<T> {
+  if (!token) {
+    return await task();
+  }
+  return await adapter.withBotToken(token, task);
 }
 
 /**
@@ -167,28 +220,48 @@ export function createSlackWebApiAssistantStatusTransport(args?: {
   const getClient = args?.getSlackClient ?? getSlackClient;
   return {
     async setStatus(channelId, threadTs, status, suggestions) {
+      const normalizedChannelId = normalizeSlackConversationId(channelId);
+      if (!normalizedChannelId) {
+        return;
+      }
       try {
         await getClient().assistant.threads.setStatus({
-          channel_id: channelId,
+          channel_id: normalizedChannelId,
           thread_ts: threadTs,
           status,
           ...(suggestions ? { loading_messages: suggestions } : {}),
         });
       } catch (error) {
-        logAssistantStatusFailure(status, error);
+        logAssistantStatusFailure({
+          status,
+          error,
+          channelId,
+          normalizedChannelId,
+          threadTs,
+        });
       }
     },
   };
 }
 
-function logAssistantStatusFailure(status: string, error: unknown): void {
+function logAssistantStatusFailure(args: {
+  status: string;
+  error: unknown;
+  channelId: string;
+  normalizedChannelId: string;
+  threadTs: string;
+}): void {
   logWarn(
     "assistant_status_update_failed",
     {},
     {
-      "app.slack.status_text": status || "(clear)",
-      "error.message": error instanceof Error ? error.message : String(error),
+      "app.slack.status_text": args.status || "(clear)",
+      "app.slack.channel_id_raw": args.channelId,
+      "app.slack.channel_id": args.normalizedChannelId,
+      "app.slack.thread_ts": args.threadTs,
+      "error.message":
+        args.error instanceof Error ? args.error.message : String(args.error),
     },
-    "Failed to update assistant status",
+    `Failed to update assistant status channel=${args.normalizedChannelId} raw=${args.channelId} thread=${args.threadTs}`,
   );
 }

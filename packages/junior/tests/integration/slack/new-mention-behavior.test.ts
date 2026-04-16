@@ -166,7 +166,6 @@ describe("Slack behavior: new mention", () => {
 
     // Reply posted then deleted to complete Slack's response cycle without visible noise
     expect(thread.posts).toHaveLength(0);
-    // Status must be cleared
     expect(slackAdapter.statusCalls.length).toBeGreaterThan(0);
     expect(slackAdapter.statusCalls.at(-1)).toEqual({
       channelId: "C_STATUS",

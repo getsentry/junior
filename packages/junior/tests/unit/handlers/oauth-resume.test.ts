@@ -21,6 +21,17 @@ vi.mock("@/chat/config", async (importOriginal) => {
 });
 
 vi.mock("@/chat/slack/client", () => ({
+  SlackActionError: class SlackActionError extends Error {
+    code: string;
+
+    constructor(message: string, code: string) {
+      super(message);
+      this.name = "SlackActionError";
+      this.code = code;
+    }
+  },
+  normalizeSlackConversationId: (value: string | undefined) => value,
+  withSlackRetries: async (task: () => Promise<unknown>) => await task(),
   getSlackClient: () => ({
     chat: {
       postMessage: postMessageMock,
@@ -40,7 +51,7 @@ describe("resumeAuthorizedRequest", () => {
     vi.useFakeTimers();
     postMessageMock.mockReset();
     setStatusMock.mockReset();
-    postMessageMock.mockResolvedValue(undefined);
+    postMessageMock.mockResolvedValue({ ts: "1700000000.100" });
     setStatusMock.mockResolvedValue(undefined);
     await disconnectStateAdapter();
   });

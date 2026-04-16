@@ -5,17 +5,32 @@ import {
   mergeArtifactsState,
   persistThreadState,
 } from "@/chat/runtime/thread-state";
+import { normalizeSlackConversationId } from "@/chat/slack/client";
 
-export async function initializeAssistantThread(event: {
+interface AssistantThreadLifecycleEvent {
   threadId: string;
   channelId: string;
   threadTs: string;
   sourceChannelId?: string;
   getSlackAdapter: () => SlackAdapter;
-}): Promise<void> {
+}
+
+async function syncAssistantThreadContext(
+  event: AssistantThreadLifecycleEvent,
+  options: { setInitialTitle: boolean },
+): Promise<void> {
+  const channelId = normalizeSlackConversationId(event.channelId);
+  if (!channelId) {
+    throw new Error("Assistant thread initialization requires a channel ID");
+  }
+  const sourceChannelId = event.sourceChannelId
+    ? normalizeSlackConversationId(event.sourceChannelId)
+    : undefined;
   const slack = event.getSlackAdapter();
-  await slack.setAssistantTitle(event.channelId, event.threadTs, "Junior");
-  await slack.setSuggestedPrompts(event.channelId, event.threadTs, [
+  if (options.setInitialTitle) {
+    await slack.setAssistantTitle(channelId, event.threadTs, "Junior");
+  }
+  await slack.setSuggestedPrompts(channelId, event.threadTs, [
     {
       title: "Summarize thread",
       message: "Summarize the latest discussion in this thread.",
@@ -27,22 +42,36 @@ export async function initializeAssistantThread(event: {
     },
   ]);
 
-  if (!event.sourceChannelId) {
+  if (!sourceChannelId) {
     return;
   }
 
   const thread = ThreadImpl.fromJSON({
     _type: "chat:Thread",
     adapterName: "slack",
-    channelId: event.channelId,
+    channelId,
     id: event.threadId,
-    isDM: event.channelId.startsWith("D"),
+    isDM: channelId.startsWith("D"),
   });
   const currentArtifacts = coerceThreadArtifactsState(await thread.state);
   const nextArtifacts = mergeArtifactsState(currentArtifacts, {
-    assistantContextChannelId: event.sourceChannelId,
+    assistantContextChannelId: sourceChannelId,
   });
   await persistThreadState(thread, {
     artifacts: nextArtifacts,
   });
+}
+
+/** Initialize a newly started Slack assistant thread. */
+export async function initializeAssistantThread(
+  event: AssistantThreadLifecycleEvent,
+): Promise<void> {
+  await syncAssistantThreadContext(event, { setInitialTitle: true });
+}
+
+/** Refresh Slack assistant thread context without resetting the thread title. */
+export async function refreshAssistantThreadContext(
+  event: AssistantThreadLifecycleEvent,
+): Promise<void> {
+  await syncAssistantThreadContext(event, { setInitialTitle: false });
 }

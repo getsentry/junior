@@ -454,7 +454,7 @@ describe("bot handlers (integration)", () => {
     expect(lastMessage?.meta?.skippedReason).toBeUndefined();
   });
 
-  it("posts an explicit interruption notice when primary text was streamed", async () => {
+  it("posts an interruption marker on the finalized provider-error reply", async () => {
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
@@ -491,11 +491,11 @@ describe("bot handlers (integration)", () => {
       }),
     );
 
-    expect(thread.posts).toHaveLength(2);
-    expect(thread.posts[0]).toBe("Partial output...");
-    expect(thread.posts[1]).toEqual(
+    expect(thread.posts).toHaveLength(1);
+    expect(thread.posts[0]).toEqual(
       expect.objectContaining({
-        markdown: "[Response interrupted before completion]",
+        markdown:
+          "Partial output...\n\n[Response interrupted before completion]",
       }),
     );
   });
@@ -554,6 +554,68 @@ describe("bot handlers (integration)", () => {
     });
   });
 
+  it("does not block assistant reply generation on slow assistant status writes", async () => {
+    const fakeAdapter = new FakeSlackAdapter();
+    let releaseFirstStatus: (() => void) | undefined;
+    let statusCallCount = 0;
+    fakeAdapter.setAssistantStatus = async () => {
+      statusCallCount += 1;
+      if (statusCallCount !== 1) {
+        return;
+      }
+      await new Promise<void>((resolve) => {
+        releaseFirstStatus = resolve;
+      });
+    };
+
+    let replyStarted = false;
+    const { slackRuntime } = createRuntime({
+      slackAdapter: fakeAdapter,
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyStarted = true;
+            return {
+              text: "Still replied while status was pending.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    let settled = false;
+    const turnPromise = slackRuntime
+      .handleNewMention(
+        createTestThread({ id: "slack:D_STATUSBLOCK:1700000000.000" }),
+        createTestMessage({
+          id: "msg-status-block",
+          threadId: "slack:D_STATUSBLOCK:1700000000.000",
+          text: "show the channel",
+          isMention: true,
+        }),
+      )
+      .then(() => {
+        settled = true;
+      });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(replyStarted).toBe(true);
+    expect(settled).toBe(false);
+
+    releaseFirstStatus!();
+    await turnPromise;
+  });
+
   it("thread title: generates and sets title after first assistant reply", async () => {
     const fakeAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({
@@ -604,6 +666,209 @@ describe("bot handlers (integration)", () => {
     expect(generatedTitleCall!.title).toBe("Debugging Node.js Memory Leaks");
     expect(generatedTitleCall!.channelId).toBe("D_TITLE");
     expect(generatedTitleCall!.threadTs).toBe("1700000000.000");
+  });
+
+  it("thread title: uses the first human message we know about in the thread", async () => {
+    const fakeAdapter = new FakeSlackAdapter();
+    const { slackRuntime } = createRuntime({
+      slackAdapter: fakeAdapter,
+      services: {
+        conversationMemory: {
+          completeText: async (params) => {
+            const prompt =
+              typeof params.messages[0]?.content === "string"
+                ? params.messages[0].content
+                : "";
+            return {
+              text: prompt.includes("Original production issue summary")
+                ? "Production Issue Summary"
+                : "Follow-up Clarification",
+              message: { role: "assistant", content: "" },
+            } as any;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "Here is the updated answer.",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "test-model",
+              outcome: "success" as const,
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:D_TITLE4:1700000000.000" });
+    const earlierMessage = createTestMessage({
+      id: "msg-title4-earlier",
+      threadId: "slack:D_TITLE4:1700000000.000",
+      text: "Original production issue summary",
+      author: { userId: "U-title4", isBot: false },
+    });
+    earlierMessage.metadata.dateSent = new Date(1_700_000_000_000);
+    thread.recentMessages = [earlierMessage];
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-title4-current",
+        threadId: "slack:D_TITLE4:1700000000.000",
+        text: "Can you also include the regression window?",
+        isMention: true,
+      }),
+    );
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    const generatedTitleCall = fakeAdapter.titleCalls.find(
+      (c) => c.title !== "Junior",
+    );
+    expect(generatedTitleCall).toBeDefined();
+    expect(generatedTitleCall!.title).toBe("Production Issue Summary");
+  });
+
+  it("thread title: still generates for a new thread with starter assistant content", async () => {
+    const fakeAdapter = new FakeSlackAdapter();
+    const { slackRuntime } = createRuntime({
+      slackAdapter: fakeAdapter,
+      services: {
+        conversationMemory: {
+          completeText: async () =>
+            ({
+              text: "Today's Date",
+              message: { role: "assistant", content: "" },
+            }) as any,
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "Today is April 16, 2026.",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "test-model",
+              outcome: "success" as const,
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:D_TITLE5:1700000000.000",
+    });
+    const starterMessage = createTestMessage({
+      id: "msg-title5-starter",
+      threadId: "slack:D_TITLE5:1700000000.000",
+      text: "How can I help?",
+      author: {
+        isBot: true,
+        isMe: true,
+        userId: "B-title5",
+        userName: "junior",
+      },
+    });
+    starterMessage.metadata.dateSent = new Date(1_700_000_000_000);
+    thread.recentMessages = [starterMessage];
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-title5-user",
+        threadId: "slack:D_TITLE5:1700000000.000",
+        text: "what's today's date",
+        isMention: true,
+      }),
+    );
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    const generatedTitleCall = fakeAdapter.titleCalls.find(
+      (c) => c.title !== "Junior",
+    );
+    expect(generatedTitleCall).toBeDefined();
+    expect(generatedTitleCall!.title).toBe("Today's Date");
+  });
+
+  it("thread title: runs in parallel with reply delivery when generation is slow", async () => {
+    const fakeAdapter = new FakeSlackAdapter();
+    let resolveTitle: (() => void) | undefined;
+    const { slackRuntime } = createRuntime({
+      slackAdapter: fakeAdapter,
+      services: {
+        conversationMemory: {
+          completeText: async () =>
+            await new Promise((resolve) => {
+              resolveTitle = () =>
+                resolve({
+                  text: "Today's Date",
+                  message: { role: "assistant", content: "" },
+                } as any);
+            }),
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "Today is April 16, 2026.",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "test-model",
+              outcome: "success" as const,
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:D_TITLE6:1700000000.000" });
+    let settled = false;
+    const turnPromise = slackRuntime
+      .handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-title-6",
+          threadId: "slack:D_TITLE6:1700000000.000",
+          text: "what's today's date",
+          isMention: true,
+        }),
+      )
+      .then(() => {
+        settled = true;
+      });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const hasReply = thread.posts.some((post) => {
+      if (typeof post === "string") {
+        return post.includes("Today is April 16, 2026.");
+      }
+      if (
+        post &&
+        typeof post === "object" &&
+        "markdown" in (post as Record<string, unknown>)
+      ) {
+        return String((post as { markdown: string }).markdown).includes(
+          "Today is April 16, 2026.",
+        );
+      }
+      return false;
+    });
+    expect(hasReply).toBe(true);
+    expect(settled).toBe(false);
+
+    resolveTitle!();
+    await turnPromise;
   });
 
   it("thread title: does not generate title on subsequent replies", async () => {
@@ -727,6 +992,72 @@ describe("bot handlers (integration)", () => {
     ).resolves.toBeUndefined();
     await new Promise((r) => setTimeout(r, 0));
     expect(thread.posts.length).toBeGreaterThan(0);
+  });
+
+  it("thread title: does not regenerate after stable Slack permission failures", async () => {
+    const fakeAdapter = new FakeSlackAdapter();
+    fakeAdapter.setAssistantTitle = async () => {
+      const error = new Error(
+        "An API error occurred: no_permission",
+      ) as Error & {
+        data?: { error?: string };
+      };
+      error.data = { error: "no_permission" };
+      throw error;
+    };
+
+    let titleGenerationCount = 0;
+    const { slackRuntime } = createRuntime({
+      slackAdapter: fakeAdapter,
+      services: {
+        conversationMemory: {
+          completeText: async () => {
+            titleGenerationCount += 1;
+            return {
+              text: "Stable Permission Title",
+              message: { role: "assistant", content: "" },
+            } as any;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: "Reply still succeeds.",
+            diagnostics: {
+              assistantMessageCount: 1,
+              modelId: "test-model",
+              outcome: "success" as const,
+              toolCalls: [],
+              toolErrorCount: 0,
+              toolResultCount: 0,
+              usedPrimaryText: true,
+            },
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:D_TITLE7:1700000000.000" });
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-title7-1",
+        threadId: "slack:D_TITLE7:1700000000.000",
+        text: "first message",
+        isMention: true,
+      }),
+    );
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "msg-title7-2",
+        threadId: "slack:D_TITLE7:1700000000.000",
+        text: "second message",
+        isMention: true,
+      }),
+    );
+
+    expect(titleGenerationCount).toBe(1);
   });
 
   it("subscribed message: does not include newer thread messages in turn context", async () => {
