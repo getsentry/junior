@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSlackOutputMessage,
-  renderSlackMrkdwn,
-  ensureBlockSpacing,
   fitsSlackInlineBudget,
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
   slackOutputPolicy,
   splitSlackReplyText,
 } from "@/chat/slack/output";
+import { ensureBlockSpacing, renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
 
 describe("renderSlackMrkdwn", () => {
   it("normalizes line endings and block spacing for Slack replies", () => {

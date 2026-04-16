@@ -1,5 +1,5 @@
-import type { AssistantStatusSpec } from "@/chat/runtime/assistant-status";
-import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
+import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
+import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import {
   compactStatusCommand,
   compactStatusFilename,

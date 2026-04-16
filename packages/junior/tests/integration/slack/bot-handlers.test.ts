@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
+import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import {
   FakeSlackAdapter,

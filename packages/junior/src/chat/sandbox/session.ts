@@ -10,7 +10,7 @@ import {
 import {
   makeAssistantStatus,
   type AssistantStatusSpec,
-} from "@/chat/runtime/assistant-status";
+} from "@/chat/slack/assistant-thread/status";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   isAlreadyExistsError,

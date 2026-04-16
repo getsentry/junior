@@ -17,7 +17,7 @@ import { createReplyToThread } from "@/chat/runtime/reply-executor";
 import {
   initializeAssistantThread as initializeAssistantThreadImpl,
   refreshAssistantThreadContext as refreshAssistantThreadContextImpl,
-} from "@/chat/runtime/assistant-lifecycle";
+} from "@/chat/slack/assistant-thread/lifecycle";
 import {
   getChannelId,
   getRunId,

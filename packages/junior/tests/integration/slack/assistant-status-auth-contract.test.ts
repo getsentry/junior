@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import {
-  createSlackAdapterAssistantStatusTransport,
+  createSlackAdapterAssistantStatusSession,
   makeAssistantStatus,
-} from "@/chat/runtime/assistant-status";
-import { createProgressReporter } from "@/chat/runtime/progress-reporter";
+} from "@/chat/slack/assistant-thread/status";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import {
   getCapturedSlackApiCalls,
@@ -102,17 +101,19 @@ describe("Slack contract: assistant status auth", () => {
     resetSlackApiMockState();
   });
 
-  it("binds the active Slack token when creating the assistant status transport", async () => {
+  it("binds the active Slack token when creating the assistant status session", async () => {
     const adapter = createAdapter();
-    const transport = adapter.withBotToken(TEAM_BOT_TOKEN, () =>
-      createSlackAdapterAssistantStatusTransport({
+    const status = adapter.withBotToken(TEAM_BOT_TOKEN, () =>
+      createSlackAdapterAssistantStatusSession({
+        channelId: DM_CHANNEL_ID,
+        threadTs: THREAD_TS,
         getSlackAdapter: () => adapter,
+        random: () => 0,
       }),
     );
 
-    await transport.setStatus(DM_CHANNEL_ID, THREAD_TS, "Thinking ...", [
-      "Thinking ...",
-    ]);
+    status.start();
+    await flushAsyncWork();
 
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([
       expect.objectContaining({
@@ -122,7 +123,7 @@ describe("Slack contract: assistant status auth", () => {
         params: expect.objectContaining({
           channel_id: DM_CHANNEL_ID,
           thread_ts: THREAD_TS,
-          status: "Thinking ...",
+          status: "Thinking …",
         }),
       }),
     ]);
@@ -131,24 +132,21 @@ describe("Slack contract: assistant status auth", () => {
   it("reuses the bound Slack token for delayed progress updates", async () => {
     const adapter = createAdapter();
     const scheduler = createFakeScheduler();
-    const transport = adapter.withBotToken(TEAM_BOT_TOKEN, () =>
-      createSlackAdapterAssistantStatusTransport({
+    const reporter = adapter.withBotToken(TEAM_BOT_TOKEN, () =>
+      createSlackAdapterAssistantStatusSession({
+        channelId: DM_CHANNEL_ID,
+        threadTs: THREAD_TS,
         getSlackAdapter: () => adapter,
+        now: scheduler.now,
+        setTimer: scheduler.setTimer,
+        clearTimer: scheduler.clearTimer,
+        random: () => 0,
       }),
     );
-    const reporter = createProgressReporter({
-      channelId: DM_CHANNEL_ID,
-      threadTs: THREAD_TS,
-      transport,
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
-    });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
-    await reporter.setStatus(makeAssistantStatus("searching", "sources"));
+    reporter.update(makeAssistantStatus("searching", "sources"));
 
     scheduler.advance(1200);
     await flushAsyncWork();

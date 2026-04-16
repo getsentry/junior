@@ -54,7 +54,7 @@ import {
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import type { AssistantStatusSpec } from "@/chat/runtime/assistant-status";
+import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";

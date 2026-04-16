@@ -1,74 +1,11 @@
 import type { FileUpload, PostableMessage } from "chat";
 import { logWarn } from "@/chat/logging";
+import { renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
 
 const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
 const CONTINUED_MARKER = "\n\n[Continued below]";
 const INTERRUPTED_MARKER = "\n\n[Response interrupted before completion]";
-
-/** Insert blank lines between content blocks so Slack renders them with visual separation. */
-export function ensureBlockSpacing(text: string): string {
-  const codeBlockPattern = /^```/;
-  const listItemPattern = /^[-*•]\s|^\d+\.\s/;
-  const lines = text.split("\n");
-  const result: string[] = [];
-  let inCodeBlock = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const isCodeFence = codeBlockPattern.test(line.trimStart());
-
-    if (isCodeFence) {
-      // Insert blank line before code fence if needed (only outside code blocks)
-      if (!inCodeBlock) {
-        const prev = result.length > 0 ? result[result.length - 1] : undefined;
-        if (prev !== undefined && prev.trim() !== "") {
-          result.push("");
-        }
-      }
-      inCodeBlock = !inCodeBlock;
-      result.push(line);
-      continue;
-    }
-
-    if (inCodeBlock) {
-      result.push(line);
-      continue;
-    }
-
-    const prev = result.length > 0 ? result[result.length - 1] : undefined;
-
-    // Insert blank line if: prev is non-empty, current is non-empty,
-    // prev is not already a blank line, and they're not both list items
-    if (
-      prev !== undefined &&
-      prev.trim() !== "" &&
-      line.trim() !== "" &&
-      !(
-        listItemPattern.test(prev.trimStart()) &&
-        listItemPattern.test(line.trimStart())
-      )
-    ) {
-      result.push("");
-    }
-
-    result.push(line);
-  }
-
-  return result.join("\n");
-}
-
-/**
- * Render model-authored markdown into Slack-friendly `mrkdwn`.
- *
- * This module owns reply-text translation for Slack. Delivery modules should
- * post the returned text without applying Slack-specific formatting rules again.
- */
-export function renderSlackMrkdwn(text: string): string {
-  let normalized = text.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "");
-  normalized = ensureBlockSpacing(normalized);
-  return normalized.replace(/\n{3,}/g, "\n\n").trim();
-}
 
 function countSlackLines(text: string): number {
   if (!text) {

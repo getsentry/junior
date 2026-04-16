@@ -3,7 +3,6 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
-  logError,
   logException,
   logInfo,
   logWarn,
@@ -15,21 +14,18 @@ import {
   planSlackReplyPosts,
   type PlannedSlackReplyStage,
 } from "@/chat/slack/reply";
+import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
-import { createProgressReporter } from "@/chat/runtime/progress-reporter";
-import { createSlackAdapterAssistantStatusTransport } from "@/chat/runtime/assistant-status";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   getAssistantThreadContext,
   getChannelId,
   getMessageTs,
-  getSlackApiErrorCode,
   getSlackErrorObservabilityAttributes,
   getThreadId,
   getThreadTs,
   getRunId,
-  isSlackTitlePermissionError,
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
 import {
@@ -40,14 +36,14 @@ import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import {
   generateThreadTitle,
-  getThreadTitleSourceMessage,
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
   generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
-import { isDmChannel } from "@/chat/slack/client";
+import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
+import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
@@ -238,12 +234,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           },
         );
 
-        const progress = createProgressReporter({
+        const status = createSlackAdapterAssistantStatusSession({
           channelId: assistantThreadContext?.channelId,
           threadTs: assistantThreadContext?.threadTs,
-          transport: createSlackAdapterAssistantStatusTransport({
-            getSlackAdapter: deps.getSlackAdapter,
-          }),
+          getSlackAdapter: deps.getSlackAdapter,
         });
         let beforeFirstResponsePostCalled = false;
         const beforeFirstResponsePost = async (): Promise<void> => {
@@ -275,78 +269,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             throw error;
           }
         };
-        await progress.start();
-        const titleSourceMessage = getThreadTitleSourceMessage(
-          preparedState.conversation,
-        );
-        const assistantTitleTask =
-          assistantThreadContext?.channelId &&
-          isDmChannel(assistantThreadContext.channelId) &&
-          assistantThreadContext.threadTs &&
-          titleSourceMessage &&
-          preparedState.artifacts.assistantTitleSourceMessageId !==
-            titleSourceMessage.id
-            ? (async () => {
-                try {
-                  const title = await deps.services.generateThreadTitle(
-                    titleSourceMessage.text,
-                  );
-                  await deps
-                    .getSlackAdapter()
-                    .setAssistantTitle(
-                      assistantThreadContext.channelId,
-                      assistantThreadContext.threadTs,
-                      title,
-                    );
-                  return { sourceMessageId: titleSourceMessage.id };
-                } catch (error) {
-                  const slackErrorCode = getSlackApiErrorCode(error);
-                  const assistantTitleErrorAttributes = {
-                    "app.slack.assistant_title.outcome": "permission_denied",
-                    ...(slackErrorCode
-                      ? {
-                          "app.slack.assistant_title.error_code":
-                            slackErrorCode,
-                        }
-                      : {}),
-                  };
-                  if (isSlackTitlePermissionError(error)) {
-                    setSpanAttributes(assistantTitleErrorAttributes);
-                    logError(
-                      "thread_title_generation_permission_denied",
-                      {
-                        slackThreadId: threadId,
-                        slackUserId: message.author.userId,
-                        slackChannelId: channelId,
-                        runId,
-                        assistantUserName: botConfig.userName,
-                        modelId: botConfig.lightModelId,
-                      },
-                      assistantTitleErrorAttributes,
-                      "Skipping thread title update due to Slack permission error",
-                    );
-                    return { sourceMessageId: titleSourceMessage.id };
-                  }
-                  logWarn(
-                    "thread_title_generation_failed",
-                    {
-                      slackThreadId: threadId,
-                      slackUserId: message.author.userId,
-                      slackChannelId: channelId,
-                      runId,
-                      assistantUserName: botConfig.userName,
-                      modelId: botConfig.lightModelId,
-                    },
-                    {
-                      "error.message":
-                        error instanceof Error ? error.message : String(error),
-                    },
-                    "Thread title generation failed",
-                  );
-                  return undefined;
-                }
-              })()
-            : Promise.resolve(undefined);
+        status.start();
+        const assistantTitleTask = maybeUpdateAssistantTitle({
+          assistantThreadContext,
+          assistantUserName: botConfig.userName,
+          artifacts: preparedState.artifacts,
+          channelId,
+          conversation: preparedState.conversation,
+          generateThreadTitle: deps.services.generateThreadTitle,
+          getSlackAdapter: deps.getSlackAdapter,
+          modelId: botConfig.lightModelId,
+          requesterId: message.author.userId,
+          runId,
+          threadId,
+        });
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
 
@@ -398,7 +334,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await persistThreadState(thread, { artifacts });
             },
             threadParticipants,
-            onStatus: (status) => progress.setStatus(status),
+            onStatus: (nextStatus) => status.update(nextStatus),
           });
           const diagnosticsContext = {
             slackThreadId: threadId,
@@ -494,15 +430,13 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           if (plannedPosts.length > 0) {
             let sent: SentMessage | undefined;
             for (const post of plannedPosts) {
-              sent = await postThreadReply(post.message, post.stage);
+              sent = await postThreadReply(
+                buildSlackOutputMessage(post.text, post.files),
+                post.stage,
+              );
             }
-            const firstPlannedMessage = plannedPosts[0]?.message;
             const firstPlannedMessageHasFiles =
-              typeof firstPlannedMessage === "object" &&
-              firstPlannedMessage !== null &&
-              "files" in firstPlannedMessage &&
-              Array.isArray(firstPlannedMessage.files) &&
-              firstPlannedMessage.files.length > 0;
+              (plannedPosts[0]?.files?.length ?? 0) > 0;
             // When a reaction already acknowledged the turn, delete the
             // redundant thread reply. The post itself completes Slack's
             // assistant response cycle (clearing the typing indicator).
@@ -518,9 +452,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           const titleUpdateResult = await assistantTitleTask;
-          if (titleUpdateResult?.sourceMessageId) {
+          if (titleUpdateResult) {
             artifactStatePatch.assistantTitleSourceMessageId =
-              titleUpdateResult.sourceMessageId;
+              titleUpdateResult;
           }
 
           const shouldPersistArtifacts =
@@ -643,7 +577,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               );
             }
           }
-          await progress.stop();
+          await status.stop();
         }
       },
     );

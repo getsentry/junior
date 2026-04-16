@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
+import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { FakeSlackAdapter } from "../../fixtures/slack-harness";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {

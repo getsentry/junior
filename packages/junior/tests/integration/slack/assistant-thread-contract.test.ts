@@ -9,7 +9,7 @@ import {
 } from "../../msw/handlers/slack-api";
 import { createSlackRuntime } from "@/chat/app/factory";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
-import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
+import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { ConversationMemoryDeps } from "@/chat/services/conversation-memory";

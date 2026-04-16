@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
-import { createProgressReporter } from "@/chat/runtime/progress-reporter";
+import {
+  createSlackAssistantStatusSession,
+  makeAssistantStatus,
+} from "@/chat/slack/assistant-thread/status";
 
 interface FakeTimer {
   id: number;
@@ -72,17 +74,15 @@ async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
 }
 
-describe("createProgressReporter", () => {
+describe("createSlackAssistantStatusSession", () => {
   it("posts an initial playful status on start", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          statuses.push(text);
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        statuses.push(text);
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -90,7 +90,7 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
 
     expect(statuses).toEqual([firstPlayfulStatus]);
@@ -99,13 +99,11 @@ describe("createProgressReporter", () => {
   it("clears the assistant status when stopped", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          statuses.push(text);
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        statuses.push(text);
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -113,7 +111,7 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
 
     await reporter.stop();
@@ -121,21 +119,19 @@ describe("createProgressReporter", () => {
     expect(statuses).toEqual([firstPlayfulStatus, ""]);
   });
 
-  it("does not wait for the initial status request before start() resolves", async () => {
+  it("does not wait for the initial status request before start() returns", async () => {
     const scheduler = createFakeScheduler();
     let resolveThinking: (() => void) | undefined;
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          if (text !== firstPlayfulStatus) {
-            return;
-          }
-          await new Promise<void>((resolve) => {
-            resolveThinking = resolve;
-          });
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        if (text !== firstPlayfulStatus) {
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          resolveThinking = resolve;
+        });
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -143,34 +139,27 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    let settled = false;
-    const startPromise = reporter.start().then(() => {
-      settled = true;
-    });
-
+    const result = reporter.start();
+    expect(result).toBeUndefined();
     await flushAsyncWork();
-    expect(settled).toBe(true);
 
     resolveThinking!();
-    await startPromise;
-    expect(settled).toBe(true);
+    await flushAsyncWork();
   });
 
-  it("does not wait for an immediate replacement status before setStatus() resolves", async () => {
+  it("does not wait for an immediate replacement status before update() returns", async () => {
     const scheduler = createFakeScheduler();
     let resolveReviewing: (() => void) | undefined;
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          if (text !== secondReviewingStatus) {
-            return;
-          }
-          await new Promise<void>((resolve) => {
-            resolveReviewing = resolve;
-          });
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        if (text !== secondReviewingStatus) {
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          resolveReviewing = resolve;
+        });
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -178,34 +167,26 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
 
     scheduler.advance(1200);
-    let settled = false;
-    const setStatusPromise = reporter
-      .setStatus(makeAssistantStatus("reviewing"))
-      .then(() => {
-        settled = true;
-      });
-
+    const result = reporter.update(makeAssistantStatus("reviewing"));
+    expect(result).toBeUndefined();
     await flushAsyncWork();
-    expect(settled).toBe(true);
 
     resolveReviewing!();
-    await setStatusPromise;
+    await flushAsyncWork();
   });
 
   it("omits loading suggestions when clearing the assistant status", async () => {
     const scheduler = createFakeScheduler();
     const calls: Array<{ text: string; suggestions?: string[] }> = [];
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text, suggestions) => {
-          calls.push({ text, suggestions });
-        },
+      setStatus: async (_channelId, _threadTs, text, suggestions) => {
+        calls.push({ text, suggestions });
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -213,7 +194,7 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
 
     await reporter.stop();
@@ -230,13 +211,11 @@ describe("createProgressReporter", () => {
   it("suppresses duplicate pending statuses", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          statuses.push(text);
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        statuses.push(text);
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -244,11 +223,11 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
 
-    await reporter.setStatus(makeAssistantStatus("searching"));
-    await reporter.setStatus(makeAssistantStatus("searching"));
+    reporter.update(makeAssistantStatus("searching"));
+    reporter.update(makeAssistantStatus("searching"));
     scheduler.advance(1200);
     await flushAsyncWork();
 
@@ -258,13 +237,11 @@ describe("createProgressReporter", () => {
   it("enforces minimum visible duration before replacement", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          statuses.push(text);
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        statuses.push(text);
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -272,10 +249,10 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
 
-    await reporter.setStatus(makeAssistantStatus("reading", "source files"));
+    reporter.update(makeAssistantStatus("reading", "source files"));
     scheduler.advance(1000);
     await flushAsyncWork();
     expect(statuses).toEqual([firstPlayfulStatus]);
@@ -288,13 +265,11 @@ describe("createProgressReporter", () => {
   it("keeps the latest status when multiple updates arrive before flush", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          statuses.push(text);
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        statuses.push(text);
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -302,11 +277,11 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
 
-    await reporter.setStatus(makeAssistantStatus("searching", "docs"));
-    await reporter.setStatus(makeAssistantStatus("reviewing"));
+    reporter.update(makeAssistantStatus("searching", "docs"));
+    reporter.update(makeAssistantStatus("reviewing"));
 
     scheduler.advance(1200);
     await flushAsyncWork();
@@ -318,18 +293,16 @@ describe("createProgressReporter", () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
     let resolveThinking: (() => void) | undefined;
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          if (text === firstPlayfulStatus) {
-            await new Promise<void>((resolve) => {
-              resolveThinking = resolve;
-            });
-          }
-          statuses.push(text);
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        if (text === firstPlayfulStatus) {
+          await new Promise<void>((resolve) => {
+            resolveThinking = resolve;
+          });
+        }
+        statuses.push(text);
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -337,16 +310,16 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    const startPromise = reporter.start();
+    reporter.start();
     await flushAsyncWork();
     // Initial playful status is now in flight but blocked
 
-    const stopPromise = reporter.stop();
+    const endPromise = reporter.stop();
     // stop() should wait for the inflight status before sending ""
 
     // Unblock the slow initial status call
     resolveThinking!();
-    await Promise.all([startPromise, stopPromise]);
+    await endPromise;
 
     // The clear must always be the last status sent to Slack
     expect(statuses).toEqual([firstPlayfulStatus, ""]);
@@ -355,13 +328,11 @@ describe("createProgressReporter", () => {
   it("clears after the latest visible status when stopping", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          statuses.push(text);
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        statuses.push(text);
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -369,10 +340,10 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
 
-    await reporter.setStatus(makeAssistantStatus("reviewing"));
+    reporter.update(makeAssistantStatus("reviewing"));
     scheduler.advance(1200);
     await flushAsyncWork();
 
@@ -384,13 +355,11 @@ describe("createProgressReporter", () => {
   it("refreshes the current status during long-running work", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createProgressReporter({
+    const reporter = createSlackAssistantStatusSession({
       channelId: "C1",
       threadTs: "123.45",
-      transport: {
-        setStatus: async (_channelId, _threadTs, text) => {
-          statuses.push(text);
-        },
+      setStatus: async (_channelId, _threadTs, text) => {
+        statuses.push(text);
       },
       now: scheduler.now,
       setTimer: scheduler.setTimer,
@@ -398,7 +367,7 @@ describe("createProgressReporter", () => {
       random: () => 0,
     });
 
-    await reporter.start();
+    reporter.start();
     await flushAsyncWork();
 
     scheduler.advance(30_000);
