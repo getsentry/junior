@@ -616,6 +616,86 @@ describe("bot handlers (integration)", () => {
     await turnPromise;
   });
 
+  it("waits for the initial assistant status write before posting the final reply", async () => {
+    const fakeAdapter = new FakeSlackAdapter();
+    let releaseFirstStatus: (() => void) | undefined;
+    let statusCallCount = 0;
+    fakeAdapter.setAssistantStatus = async (
+      channelId,
+      threadTs,
+      text,
+      suggestions,
+    ) => {
+      statusCallCount += 1;
+      if (statusCallCount === 1) {
+        await new Promise<void>((resolve) => {
+          releaseFirstStatus = resolve;
+        });
+      }
+      fakeAdapter.statusCalls.push({ channelId, threadTs, text, suggestions });
+    };
+
+    let replyStarted = false;
+    const thread = createTestThread({
+      id: "slack:D_STATUSORDER:1700000001.000",
+    });
+    const { slackRuntime } = createRuntime({
+      slackAdapter: fakeAdapter,
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyStarted = true;
+            return {
+              text: "Reply lands after the pending status is drained.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "test-model",
+                outcome: "success" as const,
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    let settled = false;
+    const turnPromise = slackRuntime
+      .handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-status-order",
+          threadId: thread.id,
+          text: "answer quickly",
+          isMention: true,
+        }),
+      )
+      .then(() => {
+        settled = true;
+      });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(replyStarted).toBe(true);
+    expect(thread.posts).toEqual([]);
+    expect(settled).toBe(false);
+
+    releaseFirstStatus!();
+    await turnPromise;
+
+    expect(thread.posts.length).toBeGreaterThan(0);
+    expect(fakeAdapter.statusCalls[0]?.text).not.toBe("");
+    expect(fakeAdapter.statusCalls.at(-1)).toEqual({
+      channelId: "D_STATUSORDER",
+      threadTs: "1700000001.000",
+      text: "",
+      suggestions: undefined,
+    });
+  });
+
   it("thread title: generates and sets title after first assistant reply", async () => {
     const fakeAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createRuntime({

@@ -147,6 +147,39 @@ describe("createSlackAssistantStatusSession", () => {
     await flushAsyncWork();
   });
 
+  it("flushes only writes that already started", async () => {
+    const scheduler = createFakeScheduler();
+    let resolveThinking: (() => void) | undefined;
+    const statuses: string[] = [];
+    const reporter = createSlackAssistantStatusSession({
+      channelId: "C1",
+      threadTs: "123.45",
+      setStatus: async (_channelId, _threadTs, text) => {
+        if (text === firstPlayfulStatus) {
+          await new Promise<void>((resolve) => {
+            resolveThinking = resolve;
+          });
+        }
+        statuses.push(text);
+      },
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    reporter.start();
+    await flushAsyncWork();
+
+    const flushPromise = reporter.flush();
+    expect(statuses).toEqual([]);
+
+    resolveThinking!();
+    await flushPromise;
+
+    expect(statuses).toEqual([firstPlayfulStatus]);
+  });
+
   it("does not wait for an immediate replacement status before update() returns", async () => {
     const scheduler = createFakeScheduler();
     let resolveReviewing: (() => void) | undefined;

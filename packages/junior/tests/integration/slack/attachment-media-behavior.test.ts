@@ -153,6 +153,7 @@ describe("Slack behavior: mixed attachment media", () => {
 
     const capturedAttachmentMediaTypes: string[][] = [];
     const capturedAttachmentNames: string[][] = [];
+    const capturedOmittedImageCounts: number[] = [];
 
     const { slackRuntime } = await createRuntime({
       services: {
@@ -164,6 +165,9 @@ describe("Slack behavior: mixed attachment media", () => {
             );
             capturedAttachmentNames.push(
               attachments.map((attachment) => attachment.filename ?? ""),
+            );
+            capturedOmittedImageCounts.push(
+              context?.omittedImageAttachmentCount ?? 0,
             );
             return {
               text: "Processed attachments.",
@@ -211,27 +215,38 @@ describe("Slack behavior: mixed attachment media", () => {
     expect(imageFetch).not.toHaveBeenCalled();
     expect(capturedAttachmentMediaTypes).toEqual([["application/pdf"]]);
     expect(capturedAttachmentNames).toEqual([["incident.pdf"]]);
+    expect(capturedOmittedImageCounts).toEqual([1]);
   });
 
-  it("posts a truthful fallback when only images are attached and vision is disabled", async () => {
+  it("still runs the assistant when only images are attached and vision is disabled", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
-    const generateAssistantReply = vi.fn(async () => ({
-      text: "There is no image attached.",
-      diagnostics: {
-        assistantMessageCount: 1,
-        modelId: "fake-agent-model",
-        outcome: "success" as const,
-        toolCalls: [],
-        toolErrorCount: 0,
-        toolResultCount: 0,
-        usedPrimaryText: true,
+    const capturedOmittedImageCounts: number[] = [];
+    const generateAssistantReply = vi.fn(
+      async (_prompt?: string, _context?: unknown) => {
+        return {
+          text: "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true,
+          },
+        };
       },
-    }));
+    );
 
     const { slackRuntime } = await createRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply,
+          generateAssistantReply: async (prompt, context) => {
+            capturedOmittedImageCounts.push(
+              context?.omittedImageAttachmentCount ?? 0,
+            );
+            return generateAssistantReply(prompt, context);
+          },
         },
       },
     });
@@ -257,13 +272,11 @@ describe("Slack behavior: mixed attachment media", () => {
     await slackRuntime.handleNewMention(thread, message);
 
     expect(imageFetch).not.toHaveBeenCalled();
-    expect(generateAssistantReply).not.toHaveBeenCalled();
+    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(capturedOmittedImageCounts).toEqual([1]);
     expect(thread.posts).toHaveLength(1);
     expect(toPostedText(thread.posts[0])).toContain(
-      "I can see that you attached an image",
-    );
-    expect(toPostedText(thread.posts[0])).toContain(
-      "image analysis is not enabled",
+      "I can’t inspect the attached image",
     );
   });
 });

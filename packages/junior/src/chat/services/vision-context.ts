@@ -60,14 +60,21 @@ interface ResolveUserAttachmentsContext {
 export function hasPotentialImageAttachment(
   attachments: Attachment[] | undefined,
 ): boolean {
+  return countPotentialImageAttachments(attachments) > 0;
+}
+
+/** Count image-bearing Slack attachments before vision filtering removes them. */
+export function countPotentialImageAttachments(
+  attachments: Attachment[] | undefined,
+): number {
   return (
-    attachments?.some((attachment) => {
+    attachments?.filter((attachment) => {
       if (attachment.type === "image") {
         return true;
       }
       const mimeType = attachment.mimeType ?? "";
       return attachment.type === "file" && mimeType.startsWith("image/");
-    }) ?? false
+    }).length ?? 0
   );
 }
 

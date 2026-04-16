@@ -122,6 +122,7 @@ export interface ReplyRequestContext {
     promptText?: string;
   }>;
   inboundAttachmentCount?: number;
+  omittedImageAttachmentCount?: number;
   sandbox?: {
     sandboxId?: string;
     sandboxDependencyProfileHash?: string;
@@ -149,6 +150,17 @@ export interface ReplyRequestContext {
 }
 
 let startupDiscoveryLogged = false;
+
+function buildOmittedImageAttachmentNotice(count: number): string {
+  return [
+    "<omitted-image-attachments>",
+    `count: ${count}`,
+    "Slack included image attachments with this turn, but this runtime cannot analyze images because no vision model is configured.",
+    "Do not claim that no image was attached.",
+    "If the user asks about image contents, explain that image analysis is unavailable in this runtime and continue with any text or non-image files that are still available.",
+    "</omitted-image-attachments>",
+  ].join("\n");
+}
 
 /** Convert active MCP tools into ToolDefinition entries for first-class registration. */
 function mcpToolsToDefinitions(
@@ -570,6 +582,15 @@ export async function generateAssistantReply(
       | { type: "text"; text: string }
       | { type: "image"; data: string; mimeType: string }
     > = [{ type: "text", text: userTurnText }];
+
+    const omittedImageAttachmentCount =
+      context.omittedImageAttachmentCount ?? 0;
+    if (omittedImageAttachmentCount > 0) {
+      userContentParts.push({
+        type: "text",
+        text: buildOmittedImageAttachmentNotice(omittedImageAttachmentCount),
+      });
+    }
 
     for (const attachment of context.userAttachments ?? []) {
       if (attachment.promptText) {
