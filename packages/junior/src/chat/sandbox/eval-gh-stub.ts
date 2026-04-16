@@ -115,7 +115,11 @@ function pickFields(record, csv) {
 }
 
 function outputJson(value) {
-  process.stdout.write(JSON.stringify(value, null, 2) + "\\n");
+  fs.writeFileSync(process.stdout.fd, JSON.stringify(value, null, 2) + "\\n");
+}
+
+function outputText(value) {
+  fs.writeFileSync(process.stdout.fd, value);
 }
 
 function fallbackToRealGh() {
@@ -131,12 +135,12 @@ function fallbackToRealGh() {
 }
 
 if (args.length === 0 || args[0] === "--version" || args[0] === "version") {
-  process.stdout.write("gh version 2.0.0 (junior-eval)\\n");
+  outputText("gh version 2.0.0 (junior-eval)\\n");
   process.exit(0);
 }
 
 if (args[0] === "auth" && args[1] === "status") {
-  process.stdout.write("github.com\\n  ✓ Logged in to github.com as junior-eval\\n");
+  outputText("github.com\\n  ✓ Logged in to github.com as junior-eval\\n");
   process.exit(0);
 }
 
@@ -160,7 +164,7 @@ if (args[0] === "repo" && args[1] === "view") {
   if (jsonFields) {
     outputJson(pickFields(record, jsonFields));
   } else {
-    process.stdout.write(record.url + "\\n");
+    outputText(record.url + "\\n");
   }
   process.exit(0);
 }
@@ -212,7 +216,7 @@ if (args[0] === "issue") {
     if (jsonFields) {
       outputJson(pickFields(record, jsonFields));
     } else {
-      process.stdout.write(record.url + "\\n");
+      outputText(record.url + "\\n");
     }
     process.exit(0);
   }
@@ -228,7 +232,7 @@ if (args[0] === "issue") {
     if (jsonFields) {
       outputJson(pickFields(record, jsonFields));
     } else {
-      process.stdout.write(record.url + "\\n");
+      outputText(record.url + "\\n");
     }
     process.exit(0);
   }
@@ -245,7 +249,7 @@ if (args[0] === "issue") {
   }
 
   if (subcommand === "comment") {
-    process.stdout.write(record.url + "#issuecomment-1\\n");
+    outputText(record.url + "#issuecomment-1\\n");
     process.exit(0);
   }
 

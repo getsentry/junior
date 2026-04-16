@@ -145,7 +145,9 @@ function patchSlackAdapterStream(adapter: SlackAdapter): void {
     let first = true;
     let lastAppended = "";
     let structuredChunksSupported = true;
-    const renderer = new StreamingMarkdownRenderer();
+    const renderer = new StreamingMarkdownRenderer({
+      wrapTablesForAppend: false,
+    });
 
     const flushMarkdownDelta = async (delta: string): Promise<void> => {
       if (delta.length === 0) {
@@ -231,8 +233,9 @@ function patchSlackAdapterStream(adapter: SlackAdapter): void {
  * `buffer_size`, so the SDK waits for 256 characters before it emits the first
  * `chat.startStream`/`chat.appendStream` call. The upstream stream method also
  * withholds plain single-line text until the markdown renderer decides it has a
- * committable prefix. Junior lowers the hidden SDK buffer and eagerly flushes
- * safe plain-text prefixes so Slack threads show visible content sooner.
+ * committable prefix. Junior keeps the upstream table-wrapping setting, lowers
+ * the hidden SDK buffer, and eagerly flushes safe plain-text prefixes so Slack
+ * threads show visible content sooner.
  */
 export function createJuniorSlackAdapter(
   config?: SlackAdapterConfig,

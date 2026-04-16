@@ -16,7 +16,7 @@
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "astro": "^5.18.1",
     "starlight-typedoc": "^0.21.5",
-    "typedoc": "^0.28.18",
+    "typedoc": "^0.28.19",
     "typedoc-plugin-markdown": "^4.11.0",
     "typescript": "^5.9.3"
   }

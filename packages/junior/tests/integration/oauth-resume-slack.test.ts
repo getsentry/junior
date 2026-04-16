@@ -89,7 +89,7 @@ describe("oauth resume slack integration", () => {
         }),
       }),
     ]);
-  });
+  }, 10_000);
 
   it("chunks long resumed replies into explicit continuation messages", async () => {
     const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");

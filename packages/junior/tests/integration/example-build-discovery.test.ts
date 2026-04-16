@@ -37,8 +37,10 @@ function buildJuniorPackage(): void {
   });
 
   // Re-sync pnpm store so the example app's node_modules/@sentry/junior
-  // points to the freshly built dist, not a stale hardlink.
-  execFileSync("pnpm", ["install"], {
+  // points to the freshly built dist, not a stale hardlink. The relink does
+  // not need workspace prepare hooks, which would rebuild @sentry/junior and
+  // make the full suite timeout-prone.
+  execFileSync("pnpm", ["install", "--ignore-scripts"], {
     cwd: repoRoot,
     env,
     stdio: "pipe",
