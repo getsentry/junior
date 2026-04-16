@@ -34,23 +34,23 @@
     "skills:check": "node scripts/check-skills.mjs"
   },
   "dependencies": {
-    "@ai-sdk/gateway": "^3.0.83",
-    "@chat-adapter/slack": "4.23.0",
-    "@chat-adapter/state-memory": "4.23.0",
-    "@chat-adapter/state-redis": "4.23.0",
+    "@ai-sdk/gateway": "^3.0.99",
+    "@chat-adapter/slack": "4.26.0",
+    "@chat-adapter/state-memory": "4.26.0",
+    "@chat-adapter/state-redis": "4.26.0",
     "@logtape/logtape": "^2.0.5",
     "@mariozechner/pi-agent-core": "0.59.0",
     "@mariozechner/pi-ai": "0.59.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@sinclair/typebox": "^0.34.49",
-    "@slack/web-api": "^7.15.0",
+    "@slack/web-api": "^7.15.1",
     "@vercel/functions": "^3.4.3",
-    "@vercel/sandbox": "^1.9.3",
-    "ai": "^6.0.141",
-    "bash-tool": "^1.3.15",
-    "chat": "4.23.0",
-    "hono": "^4.12.9",
-    "just-bash": "^2.14.0",
+    "@vercel/sandbox": "^1.10.0",
+    "ai": "^6.0.162",
+    "bash-tool": "^1.3.16",
+    "chat": "4.26.0",
+    "hono": "^4.12.14",
+    "just-bash": "^2.14.2",
     "node-html-markdown": "^2.0.0",
     "yaml": "^2.8.3",
     "zod": "^4.3.6"
@@ -59,15 +59,15 @@
     "@sentry/node": ">=10.0.0"
   },
   "devDependencies": {
-    "@sentry/node": "^10.46.0",
-    "@types/node": "^25.5.0",
+    "@sentry/node": "^10.48.0",
+    "@types/node": "^25.6.0",
     "dependency-cruiser": "^17.3.10",
-    "msw": "^2.12.14",
-    "nitro": "3.0.260311-beta",
-    "oxlint": "^1.58.0",
+    "msw": "^2.13.3",
+    "nitro": "3.0.260415-beta",
+    "oxlint": "^1.60.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vercel": "^50.37.3",
-    "vitest": "^4.1.2"
+    "vercel": "^51.4.0",
+    "vitest": "^4.1.4"
   }
 }

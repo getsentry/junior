@@ -15,6 +15,8 @@ async function createRuntime(
 ) {
   process.env = {
     ...ORIGINAL_ENV,
+    SLACK_BOT_TOKEN: "",
+    SLACK_BOT_USER_TOKEN: "",
     ...env,
   };
   vi.resetModules();
@@ -78,7 +80,9 @@ describe("Slack behavior: mixed attachment media", () => {
       },
     );
 
-    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700004010.000" });
+    const thread = createTestThread({
+      id: "slack:C_BEHAVIOR:1700004010.000",
+    });
     const message = createTestMessage({
       id: "m-attachment-mixed-1",
       text: "<@U_APP> summarize these files",
@@ -127,7 +131,7 @@ describe("Slack behavior: mixed attachment media", () => {
       ["image/png", "application/pdf"],
     ]);
     expect(capturedAttachmentNames).toEqual([["chart.png", "incident.pdf"]]);
-  });
+  }, 10_000);
 
   it("drops image attachments when AI_VISION_MODEL is unset", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));

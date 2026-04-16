@@ -26,6 +26,7 @@ type ChatInternals = {
     event: Omit<ActionEvent, "thread" | "openModal"> & {
       adapter: Adapter;
     },
+    options: WebhookOptions | undefined,
   ) => Promise<void>;
   retrieveModalContext: (
     adapterName: string,
@@ -40,6 +41,7 @@ type ChatInternals = {
       adapter: Adapter;
       channelId: string;
     },
+    options: WebhookOptions | undefined,
   ) => Promise<void>;
   modalCloseHandlers: Array<{
     callbackIds: string[];
@@ -164,24 +166,23 @@ export class JuniorChat<
     event: Omit<ActionEvent, "thread" | "openModal"> & {
       adapter: Adapter;
     },
-    options?: WebhookOptions,
-  ): void {
+    options: WebhookOptions | undefined,
+  ): Promise<void> {
     const runtime = this as unknown as ChatInternals;
 
-    enqueueBackgroundTask(
-      options,
-      (async (): Promise<void> => {
-        try {
-          await runtime.handleActionEvent(event);
-        } catch (error) {
-          runtime.logger?.error?.("Action processing error", {
-            error,
-            actionId: event.actionId,
-            messageId: event.messageId,
-          });
-        }
-      })(),
-    );
+    const task = (async (): Promise<void> => {
+      try {
+        await runtime.handleActionEvent(event, options);
+      } catch (error) {
+        runtime.logger?.error?.("Action processing error", {
+          error,
+          actionId: event.actionId,
+          messageId: event.messageId,
+        });
+      }
+    })();
+    enqueueBackgroundTask(options, task);
+    return task;
   }
 
   override processModalClose(
@@ -232,7 +233,7 @@ export class JuniorChat<
       adapter: Adapter;
       channelId: string;
     },
-    options?: WebhookOptions,
+    options: WebhookOptions | undefined,
   ): void {
     const runtime = this as unknown as ChatInternals;
 
@@ -240,7 +241,7 @@ export class JuniorChat<
       options,
       (async (): Promise<void> => {
         try {
-          await runtime.handleSlashCommandEvent(event);
+          await runtime.handleSlashCommandEvent(event, options);
         } catch (error) {
           runtime.logger?.error?.("Slash command processing error", {
             error,

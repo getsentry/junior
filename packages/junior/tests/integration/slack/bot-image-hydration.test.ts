@@ -16,6 +16,8 @@ async function createRuntime(
 ) {
   process.env = {
     ...ORIGINAL_ENV,
+    SLACK_BOT_TOKEN: "",
+    SLACK_BOT_USER_TOKEN: "",
     ...env,
   };
   vi.resetModules();
