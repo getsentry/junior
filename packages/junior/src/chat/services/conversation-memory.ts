@@ -288,7 +288,7 @@ async function generateThreadTitleWithDeps(
   deps: ConversationMemoryDeps,
 ): Promise<string> {
   const result = await deps.completeText({
-    modelId: botConfig.lightModelId,
+    modelId: botConfig.fastModelId,
     temperature: 0,
     messages: [
       {
@@ -303,6 +303,9 @@ async function generateThreadTitleWithDeps(
         timestamp: Date.now(),
       },
     ],
+    metadata: {
+      modelId: botConfig.fastModelId,
+    },
   });
   return result.text.trim().slice(0, 60);
 }

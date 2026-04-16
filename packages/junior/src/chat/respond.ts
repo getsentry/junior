@@ -121,6 +121,7 @@ export interface ReplyRequestContext {
     filename?: string;
     promptText?: string;
   }>;
+  inboundAttachmentCount?: number;
   sandbox?: {
     sandboxId?: string;
     sandboxDependencyProfileHash?: string;
@@ -242,6 +243,8 @@ export async function generateAssistantReply(
     let configurationValues: Record<string, unknown>;
     const userInput = messageText;
     if (shouldTrace) {
+      const inboundAttachmentCount = context.inboundAttachmentCount ?? 0;
+      const promptAttachmentCount = context.userAttachments?.length ?? 0;
       logInfo(
         "agent_message_in",
         spanContext,
@@ -249,7 +252,10 @@ export async function generateAssistantReply(
           "app.message.kind": "user_inbound",
           "app.message.length": userInput.length,
           "app.message.input": summarizeMessageText(userInput),
-          "app.message.attachment_count": context.userAttachments?.length ?? 0,
+          // Log both counts so image uploads filtered by vision/config do not
+          // look indistinguishable from Slack ingress dropping attachments.
+          "app.message.attachment_count": inboundAttachmentCount,
+          "app.message.prompt_attachment_count": promptAttachmentCount,
           "messaging.message.id": context.correlation?.messageTs ?? "",
         },
         "Agent message received",

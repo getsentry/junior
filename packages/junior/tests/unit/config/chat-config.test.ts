@@ -30,22 +30,21 @@ describe("chat config", () => {
     expect(botConfig.fastModelId).toBe("anthropic/custom-fast-model");
   });
 
-  it("defaults lightModelId to the lightweight title model when fast model is unset", async () => {
-    process.env.AI_MODEL = "anthropic/custom-model";
+  it("uses the default fast model when AI_MODEL and AI_FAST_MODEL are unset", async () => {
+    delete process.env.AI_MODEL;
     delete process.env.AI_FAST_MODEL;
-    delete process.env.AI_LIGHT_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.lightModelId).toBe("anthropic/claude-haiku-4.5");
+    expect(botConfig.fastModelId).toBe("anthropic/claude-haiku-4.5");
   });
 
-  it("prefers AI_LIGHT_MODEL over AI_FAST_MODEL for lightModelId", async () => {
+  it("ignores AI_LIGHT_MODEL and keeps using AI_FAST_MODEL", async () => {
     process.env.AI_MODEL = "anthropic/custom-model";
     process.env.AI_FAST_MODEL = "anthropic/custom-fast-model";
     process.env.AI_LIGHT_MODEL = "openai/gpt-5.4-mini";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.lightModelId).toBe("openai/gpt-5.4-mini");
+    expect(botConfig.fastModelId).toBe("anthropic/custom-fast-model");
   });
 
   it("leaves visionModelId unset when AI_VISION_MODEL is absent", async () => {

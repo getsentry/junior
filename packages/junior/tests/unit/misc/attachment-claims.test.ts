@@ -21,4 +21,11 @@ describe("enforceAttachmentClaimTruth", () => {
     expect(result).toContain("attach the file");
     expect(result).not.toContain("attachFile");
   });
+
+  it("does not treat missing-attachment statements as positive attachment claims", () => {
+    const text =
+      "There's still no image attached to this message. Could you share the image you'd like me to look at?";
+
+    expect(enforceAttachmentClaimTruth(text, false)).toBe(text);
+  });
 });

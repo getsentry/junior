@@ -13,6 +13,13 @@ function sentenceClaimsAttachment(sentence: string): boolean {
   if (!hasAttachmentNoun) {
     return false;
   }
+  const hasNegativeAttachmentPhrase =
+    /\bno (?:screenshot|image|file|attachment)\b/i.test(sentence) ||
+    /\b(?:isn['’]t|is not|wasn['’]t|was not)\s+attached\b/i.test(sentence) ||
+    /\bwithout (?:an? )?(?:screenshot|image|file|attachment)\b/i.test(sentence);
+  if (hasNegativeAttachmentPhrase) {
+    return false;
+  }
 
   const hasPositiveAttachmentVerb =
     /\b(attached|shared|uploaded|included)\b/i.test(sentence);

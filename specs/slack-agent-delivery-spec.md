@@ -184,6 +184,7 @@ Current rules:
 2. Private-file fetchers must be rehydrated before runtime processing whenever messages are deserialized or side-channeled through webhook handlers.
 3. Passive subscribed-thread messages that include potential image attachments must not be permanently marked as already hydrated before image hydration has actually run.
 4. Later explicit mentions in the same thread may rely on previously skipped screenshots or image uploads still being recoverable from persisted conversation state.
+5. If Slack delivered an image attachment but the current Junior runtime cannot analyze images, replies must say that the image was received but cannot be analyzed; they must not claim that no image was attached.
 
 ### 10. Resume Delivery Contract
 

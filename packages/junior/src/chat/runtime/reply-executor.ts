@@ -42,6 +42,10 @@ import {
   generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
+import {
+  hasPotentialImageAttachment,
+  isVisionEnabled,
+} from "@/chat/services/vision-context";
 import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -81,6 +85,36 @@ function getExecutionFailureReason(reply: {
     return "assistant returned no text";
   }
   return "empty assistant turn";
+}
+
+function buildVisionUnavailableReply(): ReturnType<
+  typeof buildVisionUnavailableReplyImpl
+> {
+  return buildVisionUnavailableReplyImpl();
+}
+
+function buildVisionUnavailableReplyImpl() {
+  return {
+    text: "I can see that you attached an image, but image analysis is not enabled in this Junior runtime right now. If you want, describe the image in text or enable vision support and try again.",
+    files: undefined,
+    artifactStatePatch: undefined,
+    deliveryPlan: undefined,
+    deliveryMode: "thread" as const,
+    sandboxId: undefined,
+    sandboxDependencyProfileHash: undefined,
+    diagnostics: {
+      assistantMessageCount: 0,
+      modelId: botConfig.modelId,
+      outcome: "success" as const,
+      toolCalls: [] as string[],
+      toolErrorCount: 0,
+      toolResultCount: 0,
+      usedPrimaryText: true,
+      stopReason: undefined,
+      errorMessage: undefined,
+      providerError: undefined,
+    },
+  };
 }
 
 interface ReplyExecutorDeps {
@@ -233,6 +267,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             messageTs: slackMessageTs,
           },
         );
+        const needsVisionButHasNoPromptAttachments =
+          hasPotentialImageAttachment(message.attachments) &&
+          !isVisionEnabled() &&
+          userAttachments.length === 0;
 
         const status = createSlackAdapterAssistantStatusSession({
           channelId: assistantThreadContext?.channelId,
@@ -278,7 +316,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           conversation: preparedState.conversation,
           generateThreadTitle: deps.services.generateThreadTitle,
           getSlackAdapter: deps.getSlackAdapter,
-          modelId: botConfig.lightModelId,
+          modelId: botConfig.fastModelId,
           requesterId: message.author.userId,
           runId,
           threadId,
@@ -292,50 +330,56 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const threadParticipants = buildThreadParticipants(
             preparedState.conversation.messages,
           );
-          const reply = await deps.services.generateAssistantReply(userText, {
-            assistant: {
-              userName: botConfig.userName,
-            },
-            requester: {
-              userId: message.author.userId,
-              userName: message.author.userName ?? fallbackIdentity?.userName,
-              fullName: message.author.fullName ?? fallbackIdentity?.fullName,
-            },
-            conversationContext:
-              preparedState.routingContext ?? preparedState.conversationContext,
-            artifactState: preparedState.artifacts,
-            configuration: preparedState.configuration,
-            channelConfiguration: preparedState.channelConfiguration,
-            userAttachments,
-            correlation: {
-              conversationId,
-              threadId,
-              turnId,
-              threadTs,
-              messageTs,
-              runId,
-              channelId,
-              requesterId: message.author.userId,
-            },
-            toolChannelId,
-            sandbox: {
-              sandboxId: preparedState.sandboxId,
-              sandboxDependencyProfileHash:
-                preparedState.sandboxDependencyProfileHash,
-            },
-            onSandboxAcquired: async (sandbox) => {
-              await persistThreadState(thread, {
-                sandboxId: sandbox.sandboxId,
-                sandboxDependencyProfileHash:
-                  sandbox.sandboxDependencyProfileHash,
+          const reply = needsVisionButHasNoPromptAttachments
+            ? buildVisionUnavailableReply()
+            : await deps.services.generateAssistantReply(userText, {
+                assistant: {
+                  userName: botConfig.userName,
+                },
+                requester: {
+                  userId: message.author.userId,
+                  userName:
+                    message.author.userName ?? fallbackIdentity?.userName,
+                  fullName:
+                    message.author.fullName ?? fallbackIdentity?.fullName,
+                },
+                conversationContext:
+                  preparedState.routingContext ??
+                  preparedState.conversationContext,
+                artifactState: preparedState.artifacts,
+                configuration: preparedState.configuration,
+                channelConfiguration: preparedState.channelConfiguration,
+                inboundAttachmentCount: message.attachments.length,
+                userAttachments,
+                correlation: {
+                  conversationId,
+                  threadId,
+                  turnId,
+                  threadTs,
+                  messageTs,
+                  runId,
+                  channelId,
+                  requesterId: message.author.userId,
+                },
+                toolChannelId,
+                sandbox: {
+                  sandboxId: preparedState.sandboxId,
+                  sandboxDependencyProfileHash:
+                    preparedState.sandboxDependencyProfileHash,
+                },
+                onSandboxAcquired: async (sandbox) => {
+                  await persistThreadState(thread, {
+                    sandboxId: sandbox.sandboxId,
+                    sandboxDependencyProfileHash:
+                      sandbox.sandboxDependencyProfileHash,
+                  });
+                },
+                onArtifactStateUpdated: async (artifacts) => {
+                  await persistThreadState(thread, { artifacts });
+                },
+                threadParticipants,
+                onStatus: (nextStatus) => status.update(nextStatus),
               });
-            },
-            onArtifactStateUpdated: async (artifacts) => {
-              await persistThreadState(thread, { artifacts });
-            },
-            threadParticipants,
-            onStatus: (nextStatus) => status.update(nextStatus),
-          });
           const diagnosticsContext = {
             slackThreadId: threadId,
             slackUserId: message.author.userId,

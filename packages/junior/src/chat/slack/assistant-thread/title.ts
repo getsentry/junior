@@ -18,7 +18,7 @@ import type { ThreadConversationState } from "@/chat/state/conversation";
  * Title generation is intentionally detached from reply generation and visible
  * reply delivery. Stable Slack permission failures are treated as a terminal
  * skip for the current source message so later turns do not keep paying for
- * the same lightweight title generation call.
+ * the same fast-model title generation call.
  */
 export function maybeUpdateAssistantTitle(args: {
   assistantThreadContext?: {
@@ -76,7 +76,7 @@ export function maybeUpdateAssistantTitle(args: {
       };
       if (isSlackTitlePermissionError(error)) {
         // Persist the source message anyway so later turns do not keep paying
-        // for another lightweight title generation call Slack will reject.
+        // for another fast-model title generation call Slack will reject.
         setSpanAttributes(assistantTitleErrorAttributes);
         logError(
           "thread_title_generation_permission_denied",
