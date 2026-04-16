@@ -12,6 +12,7 @@
 - 2026-04-16: Clarified that reply-text translation is owned by the shared Slack output module and direct outbound callers only deliver already-rendered Slack text.
 - 2026-04-16: Clarified that Chat SDK Slack `thread.channelId` values are adapter-scoped (`slack:<channel>`) and must be normalized before assistant status/title API calls.
 - 2026-04-16: Corrected the assistant-thread context rule to match Slack assistant utilities: `message.im` uses `channel + thread_ts`, lifecycle events use `assistant_thread.channel_id + assistant_thread.thread_ts`, and runtime code does not synthesize a fallback from generic message `ts`.
+- 2026-04-16: Labeled long-running assistant status behavior as Slack-required behavior versus Junior runtime policy versus product policy.
 
 ## Status
 
@@ -105,6 +106,23 @@ Current contract:
 9. Assistant status is best effort and must not sit on the critical path for model/tool execution. Starting a turn or updating mid-turn status may queue Slack writes, but must not wait for Slack round-trips before assistant work continues.
 
 Status is the only in-flight progress surface required by the contract. Visible assistant reply text is posted only after the turn result is finalized and delivery has been planned.
+
+Design note:
+
+1. Slack-required behavior:
+   - `assistant.threads.setStatus` uses the live `channel_id` + `thread_ts`.
+   - Slack clears assistant status automatically when a reply arrives, or after its timeout if no reply arrives.
+   - An empty status explicitly clears the indicator.
+   - `loading_messages` is a Slack-owned optional field and, when used, must remain within Slack's documented limits.
+2. Junior runtime policy:
+   - Status writes are best effort and never block model/tool execution.
+   - Deferred status writes are ordered so a late in-flight update cannot land after the turn already cleared status.
+   - Long-running turns refresh the current status before Slack's timeout would remove it.
+   - Delayed callbacks bind the active installation token when the turn starts.
+3. Product policy:
+   - Junior may randomize phrasing for statuses derived from the same stable status kind.
+   - Junior may debounce and minimum-display-time status transitions to avoid unreadable flicker.
+   - Junior may supply `loading_messages` suggestions as part of the Slack status UX.
 
 ### 5. Primary Reply Contract
 

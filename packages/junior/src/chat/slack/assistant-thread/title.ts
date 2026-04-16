@@ -75,6 +75,8 @@ export function maybeUpdateAssistantTitle(args: {
           : {}),
       };
       if (isSlackTitlePermissionError(error)) {
+        // Persist the source message anyway so later turns do not keep paying
+        // for another lightweight title generation call Slack will reject.
         setSpanAttributes(assistantTitleErrorAttributes);
         logError(
           "thread_title_generation_permission_denied",

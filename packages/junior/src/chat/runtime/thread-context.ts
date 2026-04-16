@@ -93,6 +93,8 @@ export function getAssistantThreadContext(
   const channelId = toOptionalString(rawRecord?.channel);
   const threadTs = toOptionalString(rawRecord?.thread_ts);
   if (!channelId || !threadTs) {
+    // When Slack omits thread_ts, skip assistant-thread APIs instead of
+    // guessing from message ts or persisted state.
     return undefined;
   }
 
