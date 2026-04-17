@@ -14,7 +14,10 @@ export function buildDeterministicTurnId(messageId: string): string {
 // Turn errors
 // ---------------------------------------------------------------------------
 
-export type RetryableTurnReason = "mcp_auth_resume" | "turn_timeout_resume";
+export type RetryableTurnReason =
+  | "mcp_auth_resume"
+  | "plugin_auth_resume"
+  | "turn_timeout_resume";
 
 export interface RetryableTurnMetadata {
   checkpointVersion?: number;

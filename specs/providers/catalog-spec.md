@@ -27,7 +27,7 @@ This spec answers:
 - Which providers exist (for example `github`)
 - Which capability tokens each provider supports
 - Which non-secret configuration keys each provider exposes
-- How provider-specific target context is inferred (for example repo target)
+- How provider-specific defaults are exposed (for example a repo config key)
 
 ## Core Model
 
@@ -36,7 +36,7 @@ Each provider entry declares:
 - `provider`: stable provider identifier
 - `capabilities[]`: provider-qualified capability names
 - `configKeys[]`: allowed non-secret config keys
-- optional `target` contract (for example repository target key)
+- optional `target` metadata (for example repository default key)
 
 ## Type Shape
 
@@ -94,7 +94,7 @@ target:
 
 ## Skill Metadata Validation
 
-- `requires-capabilities` values must exist in catalog capabilities.
+- Plugin manifests define capabilities; skills consume provider config via `uses-config` rather than declaring capabilities.
 - `uses-config` values must exist in catalog config keys.
 - Invalid values are warn+skip during skill discovery (`skill_frontmatter_invalid`).
 
@@ -120,7 +120,7 @@ target:
 
 To add a new provider:
 
-1. Add provider entry to catalog with capabilities/config keys/target contract.
+1. Add provider entry to catalog with capabilities, config keys, and any provider-default metadata.
 2. Implement provider credential broker.
 3. Register broker in provider router factory.
 4. Add tests for:

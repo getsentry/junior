@@ -10,9 +10,12 @@ related:
 
 ## Mental model
 
+Skills tell Junior how to behave. Plugins tell Junior what external capability
+surface and credential sources may exist.
+
 - Skills define focused instruction bundles.
 - Plugins declare optional capabilities, optional credentials, and optional skills.
-- Runtime selects and executes skills based on task context plus capability access.
+- Runtime selects and executes skills based on task context, then uses the loaded skills to constrain credential access.
 
 ## Skill sources
 
@@ -21,7 +24,11 @@ related:
 
 ## Capability gating
 
-Capabilities are not implicitly granted. Runtime actions that require credentials must issue capability-scoped credentials explicitly.
+Credentials are not ambient. When a loaded skill runs an authenticated command,
+the runtime infers the narrowest declared capability for that command, fetches
+the credential for the current requester and turn, and injects it automatically.
+If no loaded skill declares the needed capability, the command runs without
+provider auth.
 
 ## Validation
 

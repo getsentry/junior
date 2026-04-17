@@ -168,7 +168,9 @@ describe("skills", () => {
         .map((attributes) => String(attributes?.["error.message"] ?? ""));
       expect(
         warningMessages.some((message) =>
-          message.includes("Unknown requires-capabilities values"),
+          message.includes(
+            'Frontmatter field "requires-capabilities" is no longer supported',
+          ),
         ),
       ).toBe(true);
       expect(
@@ -220,7 +222,6 @@ describe("skills", () => {
           "name: demo-connect",
           "description: Demo plugin skill",
           "allowed-tools: bash",
-          "requires-capabilities: demo.read",
           "---",
           "",
           "# Body",
@@ -237,7 +238,6 @@ describe("skills", () => {
       ).toMatchObject({
         name: "demo-connect",
         pluginProvider: "demo",
-        requiresCapabilities: ["demo.read"],
       });
       expect(getCapabilityProvider("demo.read")).toMatchObject({
         provider: "demo",

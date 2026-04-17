@@ -8,11 +8,6 @@ import {
   postSlackMessage,
 } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
-import {
-  isToolResultError,
-  normalizeToolNameFromResult,
-  parseJsonCandidate,
-} from "@/chat/respond-helpers";
 
 type PrivateDeliveryResult = "in_context" | "fallback_dm" | false;
 
@@ -23,6 +18,8 @@ export type OAuthStatePayload = {
   threadTs?: string;
   pendingMessage?: string;
   configuration?: Record<string, unknown>;
+  resumeConversationId?: string;
+  resumeSessionId?: string;
 };
 
 type OAuthFlowInput = {
@@ -32,6 +29,8 @@ type OAuthFlowInput = {
   userMessage?: string;
   channelConfiguration?: ChannelConfigurationService;
   activeSkillName?: string;
+  resumeConversationId?: string;
+  resumeSessionId?: string;
 };
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -185,6 +184,12 @@ export async function startOAuthFlow(
       ...(configuration && Object.keys(configuration).length > 0
         ? { configuration }
         : {}),
+      ...(input.resumeConversationId
+        ? { resumeConversationId: input.resumeConversationId }
+        : {}),
+      ...(input.resumeSessionId
+        ? { resumeSessionId: input.resumeSessionId }
+        : {}),
     } satisfies OAuthStatePayload,
     OAUTH_STATE_TTL_MS,
   );
@@ -225,90 +230,4 @@ export async function startOAuthFlow(
       text: `<${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}|Click here to link your ${formatProviderLabel(provider)} account>. Once you've authorized, you'll see a confirmation in Slack.`,
     }),
   };
-}
-
-// ---------------------------------------------------------------------------
-// Tool result OAuth detection
-// ---------------------------------------------------------------------------
-
-function extractOAuthStartedPayload(
-  value: unknown,
-): { message?: string } | undefined {
-  if (typeof value === "string") {
-    const parsed = parseJsonCandidate(value);
-    return parsed === undefined
-      ? undefined
-      : extractOAuthStartedPayload(parsed);
-  }
-
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      const found = extractOAuthStartedPayload(entry);
-      if (found) {
-        return found;
-      }
-    }
-    return undefined;
-  }
-
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (record.oauth_started === true) {
-    const message =
-      typeof record.message === "string" ? record.message.trim() : undefined;
-    return message ? { message } : {};
-  }
-
-  const content = record.content;
-  if (Array.isArray(content)) {
-    for (const part of content) {
-      const text =
-        part &&
-        typeof part === "object" &&
-        (part as { type?: unknown }).type === "text" &&
-        typeof (part as { text?: unknown }).text === "string"
-          ? (part as { text: string }).text
-          : part;
-      const found = extractOAuthStartedPayload(text);
-      if (found) {
-        return found;
-      }
-    }
-  }
-
-  for (const key of ["details", "output", "result", "stdout"]) {
-    if (!(key in record)) {
-      continue;
-    }
-    const found = extractOAuthStartedPayload(record[key]);
-    if (found) {
-      return found;
-    }
-  }
-
-  return undefined;
-}
-
-/** Scan bash tool results for an OAuth authorization-started signal. */
-export function extractOAuthStartedMessageFromToolResults(
-  toolResults: unknown[],
-): string | undefined {
-  for (const result of toolResults) {
-    if (
-      normalizeToolNameFromResult(result) !== "bash" ||
-      isToolResultError(result)
-    ) {
-      continue;
-    }
-
-    const found = extractOAuthStartedPayload(result);
-    if (found?.message) {
-      return found.message;
-    }
-  }
-
-  return undefined;
 }

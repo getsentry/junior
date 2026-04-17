@@ -18,7 +18,6 @@ Users work through normal requests about GitHub, Sentry, Notion, and other enabl
 
 - Run the plugin workflow in Slack or the host chat surface.
 - If Junior asks for authorization, follow the private prompt it sends.
-- For Sentry, users can ask Junior to connect or reconnect their account proactively.
 - If the target repository, org, or project is unclear, include it directly in the request.
 
 ## Auth behavior
@@ -28,12 +27,14 @@ Different plugins authenticate in different ways, but the visible pattern stays 
 - GitHub uses host-managed GitHub App access configured by the operator.
 - OAuth-based plugins such as Sentry send sign-in links privately to the requesting user.
 - If a user token is stale or no longer has access, Junior prompts for re-authorization instead of asking users to manage tokens manually.
+- Credentials are fetched for the current requester and turn when the loaded skill actually needs them; they are not kept as ambient chat-session auth.
 - GitHub capability and repo scoping are lightweight safety rails meant to reduce accidental writes and wrong-target mutations. They are not a hard boundary against an agent that is already allowed to request broader GitHub credentials.
 
 ## Context behavior
 
 Junior works best when the request names the target clearly.
 
+- Loaded skills determine which provider credentials are even eligible for injection.
 - For GitHub, include `owner/repo` when the repository is not obvious from the request or surrounding conversation.
 - For Sentry, include the org and project when your workspace spans multiple targets.
 - When follow-up requests stay on the same target, Junior can continue the workflow without restating every detail.

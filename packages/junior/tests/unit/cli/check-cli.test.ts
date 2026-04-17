@@ -65,7 +65,6 @@ describe("check cli", () => {
         "name: demo-helper",
         "description: Help with demo tasks.",
         "uses-config: demo.repo",
-        "requires-capabilities: demo.issues.read",
         "---",
         "",
         "Use this skill.",

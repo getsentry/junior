@@ -14,7 +14,6 @@ export type LoadSkillResult = {
   available_skills?: string[];
   skill_name?: string;
   description?: string;
-  requires_capabilities?: string[];
   skill_dir?: string;
   location?: string;
   instructions?: string;
@@ -48,9 +47,6 @@ function toLoadedSkill(
       ? { pluginProvider: metadata.pluginProvider }
       : {}),
     ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : {}),
-    ...(metadata?.requiresCapabilities
-      ? { requiresCapabilities: metadata.requiresCapabilities }
-      : {}),
     ...(metadata?.usesConfig ? { usesConfig: metadata.usesConfig } : {}),
     body: result.instructions,
   };
@@ -83,9 +79,6 @@ async function loadSkillFromHost(
     ok: true,
     skill_name: skill.name,
     description: skill.description,
-    ...(skill.requiresCapabilities
-      ? { requires_capabilities: skill.requiresCapabilities }
-      : {}),
     skill_dir: skillDir,
     location: skillFilePath,
     instructions: loaded.body,
@@ -102,7 +95,7 @@ export function createLoadSkillTool(
 ) {
   return tool({
     description:
-      "Load a skill by name so its instructions are available for this turn. The result includes `requires_capabilities` when the skill declares authenticated provider access, and `available_tools` when the skill exposes MCP tools for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
+      "Load a skill by name so its instructions are available for this turn. The result includes `available_tools` when the skill exposes MCP tools for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,

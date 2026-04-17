@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { waitUntilCallbacks, generateAssistantReplyMock } = vi.hoisted(() => ({
-  waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
-  generateAssistantReplyMock: vi.fn(async (..._args: unknown[]) => ({
-    text: "test reply",
-    diagnostics: { outcome: "success", toolCalls: [] },
-  })),
-}));
+const { waitUntilCallbacks, generateAssistantReplyMock, resumeSlackTurnMock } =
+  vi.hoisted(() => ({
+    waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
+    generateAssistantReplyMock: vi.fn(async (..._args: unknown[]) => ({
+      text: "test reply",
+      diagnostics: { outcome: "success", toolCalls: [] },
+    })),
+    resumeSlackTurnMock: vi.fn(),
+  }));
 
 // Mock state adapter
 const mockStateStore = new Map<string, unknown>();
@@ -86,6 +88,11 @@ vi.mock("@/chat/respond", () => ({
   generateAssistantReply: generateAssistantReplyMock,
 }));
 
+vi.mock("@/chat/slack/resume", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/slack/resume")>()),
+  resumeSlackTurn: resumeSlackTurnMock,
+}));
+
 // Mock botConfig
 vi.mock("@/chat/config", () => ({
   botConfig: { userName: "junior" },
@@ -113,6 +120,7 @@ beforeEach(() => {
   mockTokenStore.clear();
   waitUntilCallbacks.length = 0;
   generateAssistantReplyMock.mockClear();
+  resumeSlackTurnMock.mockReset();
 });
 
 afterEach(() => {
@@ -525,5 +533,116 @@ describe("oauth callback handler", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("being processed in Slack");
+  });
+
+  it("resumes a checkpointed turn when OAuth state includes turn session context", async () => {
+    mockStateStore.set("oauth-state:checkpointed-resume", {
+      userId: "U111",
+      provider: "sentry",
+      channelId: "C123",
+      threadTs: "123.789",
+      pendingMessage: "list my sentry issues",
+      resumeConversationId: "slack:C123:123.789",
+      resumeSessionId: "turn_msg_1",
+    });
+    mockStateStore.set(
+      "junior:agent_turn_session:slack:C123:123.789:turn_msg_1",
+      JSON.stringify({
+        checkpointVersion: 2,
+        conversationId: "slack:C123:123.789",
+        sessionId: "turn_msg_1",
+        sliceId: 2,
+        state: "awaiting_resume",
+        updatedAtMs: 1,
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "list my sentry issues" }],
+            timestamp: 1,
+          },
+        ],
+        loadedSkillNames: ["sentry"],
+        resumeReason: "auth",
+        resumedFromSliceId: 1,
+      }),
+    );
+    mockStateStore.set("thread-state:slack:C123:123.789", {
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        messages: [
+          {
+            id: "msg.1",
+            role: "user",
+            text: "list my sentry issues",
+            createdAtMs: 1,
+            author: {
+              userId: "U111",
+              userName: "alice",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: "turn_msg_1",
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+      artifacts: {
+        assistantContextChannelId: "C999",
+        listColumnMap: {},
+      },
+    });
+
+    process.env.SENTRY_CLIENT_ID = "client-id";
+    process.env.SENTRY_CLIENT_SECRET = "client-secret";
+    process.env.JUNIOR_BASE_URL = "https://example.com";
+
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "token",
+        refresh_token: "refresh",
+        expires_in: 3600,
+      }),
+    })) as unknown as typeof fetch;
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/sentry?code=code&state=checkpointed-resume",
+      ),
+      "sentry",
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(200);
+    expect(waitUntilCallbacks).toHaveLength(2);
+
+    await waitUntilCallbacks[1]?.();
+
+    expect(resumeSlackTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelId: "C123",
+        threadTs: "123.789",
+        lockKey: "slack:C123:123.789",
+        replyContext: expect.objectContaining({
+          correlation: expect.objectContaining({
+            channelId: "C123",
+            threadTs: "123.789",
+            requesterId: "U111",
+          }),
+          toolChannelId: "C999",
+        }),
+      }),
+    );
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
   });
 });

@@ -2,29 +2,37 @@ import { describe, expect, it, vi } from "vitest";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import type { Skill } from "@/chat/skills";
 
-vi.mock("@/chat/capabilities/catalog", () => ({
-  getCapabilityProvider: (capability: string) =>
-    capability === "sentry.api"
+vi.mock("@/chat/plugins/registry", () => ({
+  getPluginDefinition: (provider: string) =>
+    provider === "sentry"
       ? {
-          provider: "sentry",
-          capabilities: ["sentry.api"],
-          configKeys: [],
+          manifest: {
+            name: "sentry",
+            description: "Sentry",
+            capabilities: ["sentry.api"],
+            configKeys: ["sentry.org", "sentry.project"],
+            credentials: {
+              type: "oauth-bearer",
+              apiDomains: ["sentry.io"],
+              authTokenEnv: "SENTRY_AUTH_TOKEN",
+            },
+          },
         }
       : undefined,
 }));
 
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 
-const fakeSkill: Skill = {
+const sentrySkill: Skill = {
   name: "sentry",
   description: "Sentry helper",
   skillPath: "/tmp/sentry",
   body: "instructions",
-  requiresCapabilities: ["sentry.api"],
+  pluginProvider: "sentry",
 };
 
 describe("skill capability runtime requester binding", () => {
-  it("requires requester context for issue-credential in runtime mode", async () => {
+  it("requires requester context before enabling provider credentials", async () => {
     const broker: CredentialBroker = {
       issue: async () => {
         throw new Error("should not be called");
@@ -33,15 +41,14 @@ describe("skill capability runtime requester binding", () => {
 
     const runtime = new SkillCapabilityRuntime({ broker });
     await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "sentry.api",
+      runtime.enableCredentialsForTurn({
+        activeSkill: sentrySkill,
         reason: "test:missing-requester",
       }),
     ).rejects.toThrow("requires requester context");
   });
 
-  it("allows credential issuance with requester context and reuses within the turn", async () => {
+  it("reuses a provider lease within the same turn", async () => {
     let issueCalls = 0;
     const broker: CredentialBroker = {
       issue: async () => {
@@ -49,7 +56,6 @@ describe("skill capability runtime requester binding", () => {
         return {
           id: "lease-1",
           provider: "sentry",
-          capability: "sentry.api",
           env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
           headerTransforms: [
             {
@@ -66,16 +72,14 @@ describe("skill capability runtime requester binding", () => {
 
     const runtime = new SkillCapabilityRuntime({ broker, requesterId: "U123" });
     await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "sentry.api",
+      runtime.enableCredentialsForTurn({
+        activeSkill: sentrySkill,
         reason: "test:first",
       }),
     ).resolves.toMatchObject({ reused: false });
     await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "sentry.api",
+      runtime.enableCredentialsForTurn({
+        activeSkill: sentrySkill,
         reason: "test:second",
       }),
     ).resolves.toMatchObject({ reused: true });

@@ -1,17 +1,17 @@
-import { getCapabilityProvider } from "@/chat/capabilities/catalog";
-import type { CredentialBroker, CredentialLease } from "@/chat/credentials/broker";
-import type { CapabilityTarget } from "@/chat/capabilities/types";
+import type {
+  CredentialBroker,
+  CredentialLease,
+} from "@/chat/credentials/broker";
 
-export interface CapabilityCredentialRouter {
+export interface CredentialRouter {
   issue(input: {
-    capability: string;
-    target?: CapabilityTarget;
+    provider: string;
     reason: string;
     requesterId?: string;
   }): Promise<CredentialLease>;
 }
 
-export class ProviderCredentialRouter implements CapabilityCredentialRouter {
+export class ProviderCredentialRouter implements CredentialRouter {
   private readonly brokersByProvider: Record<string, CredentialBroker>;
 
   constructor(input: { brokersByProvider: Record<string, CredentialBroker> }) {
@@ -19,21 +19,20 @@ export class ProviderCredentialRouter implements CapabilityCredentialRouter {
   }
 
   async issue(input: {
-    capability: string;
-    target?: CapabilityTarget;
+    provider: string;
     reason: string;
     requesterId?: string;
   }): Promise<CredentialLease> {
-    const provider = getCapabilityProvider(input.capability)?.provider;
-    if (!provider) {
-      throw new Error(`Unsupported capability: ${input.capability}`);
-    }
-
-    const broker = this.brokersByProvider[provider];
+    const broker = this.brokersByProvider[input.provider];
     if (!broker) {
-      throw new Error(`No credential broker registered for provider: ${provider}`);
+      throw new Error(
+        `No credential broker registered for provider: ${input.provider}`,
+      );
     }
 
-    return await broker.issue(input);
+    return await broker.issue({
+      reason: input.reason,
+      requesterId: input.requesterId,
+    });
   }
 }

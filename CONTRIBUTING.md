@@ -99,7 +99,7 @@ pnpm --filter @sentry/junior exec vitest run -c vitest.evals.config.ts path/to/e
 
 Use evals for end-to-end behavior testing of Junior's reply pipeline (prompting, tools, and expected outputs). Evals do not test live Slack transport.
 
-See `packages/junior/evals/README.md` and `specs/testing/evals-spec.md` for authoring details.
+See `packages/junior-evals/README.md` and `specs/testing/evals-spec.md` for authoring details.
 
 ## Slack Tunnel (Cloudflare)
 

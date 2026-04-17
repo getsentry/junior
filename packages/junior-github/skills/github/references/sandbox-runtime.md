@@ -11,6 +11,7 @@ This skill runs in the harness sandbox (`node22`) and commands execute via the `
 
 ## Credential strategy
 
-1. Issue credentials with `jr-rpc issue-credential <capability>` before executing commands. See [api-surface.md](api-surface.md) for the capability-to-command mapping.
-2. Credentials are scoped per command execution. Do not persist tokens in files.
-3. If 401/403 appears after credential issuance, reissue once, then stop with remediation guidance.
+1. After the GitHub skill is loaded, the runtime injects GitHub credentials implicitly for the current turn.
+2. Keep repository context explicit on `gh` and `git` commands so the command itself targets the correct repo.
+3. Credentials are valid only for the current turn. Do not persist tokens in files.
+4. If auth fails, verify the command still targets the correct repo, then retry the real GitHub command once so the runtime can reconnect automatically when needed.

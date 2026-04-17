@@ -1,52 +1,25 @@
 ---
 name: jr-rpc
-description: Manage OAuth, token, and config flows via jr-rpc bash commands. Use when the user explicitly asks to connect or disconnect a provider account, manage provider defaults, or work directly with jr-rpc credential/config commands. For authenticated operational work, first load the matching domain skill before using `jr-rpc issue-credential`.
+description: Manage low-level config flows via jr-rpc bash commands. Use when the user explicitly asks to read or update provider defaults. Normal authenticated operational work under plugin-owned skills should run the real provider command and let the runtime fetch credentials automatically.
 allowed-tools: bash
 ---
 
 # jr-rpc
 
-Enable provider credentials and manage OAuth authorization for the current agent turn.
-
-## Credential issuance
-
-Run before any authenticated API call:
-
-`jr-rpc issue-credential <capability> [--target <value>]`
-
-- Run this only after the matching domain skill is loaded and its `requires-capabilities` metadata declares the capability.
-- Use the exact capability name declared by the loaded skill's `requires-capabilities` metadata.
-- Provider-targeted capabilities require `--target`, unless the target provider already has a configured default target key.
-- Capabilities without provider targets do not use `--target`.
-- On success, sandbox header transforms are applied for this turn. Do not pass raw tokens.
-- If credential issuance fails with `credential_unavailable` + `oauth_started`, relay the `message` field to the user and **stop the turn** — the callback auto-resumes the request after authorization.
-
-## OAuth authorization
-
-`jr-rpc oauth-start <provider>` — explicitly start an OAuth authorization code flow without auto-resume.
-
-- The authorization link is delivered privately (visible only to the requesting user).
-- Returns `{ ok: true, private_delivery_sent: true }` on success.
-- If `private_delivery_sent` is false, tell the user to send a direct message and try again.
-- If the user is already connected, returns `{ ok: true, already_connected: true, message }`.
-- **Never** post or relay authorization URLs — they are security-sensitive.
-
-## Token management
-
-`jr-rpc delete-token <provider>` — remove stored OAuth tokens for the current user.
+Manage low-level config flows for the current agent turn.
 
 ## Configuration
 
 `jr-rpc config get|set|unset|list` — read and write channel-scoped configuration values.
 
-- Choose config keys from the runtime provider-capabilities catalog or the active skill's `uses-config` metadata.
+- Choose config keys from the runtime provider-config catalog or the active skill's `uses-config` metadata.
 
 Read `${CLAUDE_SKILL_ROOT}/references/commands.md` for full command syntax and response shapes.
 
-Read `${CLAUDE_SKILL_ROOT}/references/capabilities.md` for capability naming and scoping rules.
+Read `${CLAUDE_SKILL_ROOT}/references/capabilities.md` for config-key selection rules.
 
 ## Guardrails
 
-- Use exact capability names from the loaded domain skill and exact config keys from the loaded skill or provider catalog; do not invent them.
-- Do not use this skill to choose a provider for an unrelated operational task. Load the matching domain skill first, then issue its declared capability.
+- Use exact config keys from the loaded skill or provider catalog; do not invent them.
+- Do not use this skill to choose a provider for an unrelated operational task. Load the matching domain skill first, then run the real provider command.
 - Do not print credential values.

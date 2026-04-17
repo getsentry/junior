@@ -5,6 +5,8 @@ const {
   createSandboxCallCount,
   activeSandboxVersion,
   attachFileReadVersions,
+  enabledCredentialSkillNames,
+  checkpointLoadedSkillNames,
   pendingWorkspaceRelease,
 } = vi.hoisted(() => ({
   agentMode: {
@@ -25,6 +27,12 @@ const {
   },
   attachFileReadVersions: {
     value: [] as number[],
+  },
+  enabledCredentialSkillNames: {
+    value: [] as string[],
+  },
+  checkpointLoadedSkillNames: {
+    value: [] as string[],
   },
   pendingWorkspaceRelease: {
     value: undefined as (() => void) | undefined,
@@ -218,8 +226,17 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 
 vi.mock("@/chat/capabilities/factory", () => ({
   createSkillCapabilityRuntime: () => ({
-    getTurnHeaderTransforms: () => [],
-    getTurnEnv: () => ({}),
+    enableCredentialsForTurn: async (input: {
+      activeSkill: { name?: string } | null;
+    }) => {
+      const skillName = input.activeSkill?.name;
+      if (skillName) {
+        enabledCredentialSkillNames.value.push(skillName);
+      }
+      return undefined;
+    },
+    getTurnHeaderTransforms: () => undefined,
+    getTurnEnv: () => undefined,
   }),
   createUserTokenStore: () => ({
     get: async () => undefined,
@@ -245,7 +262,13 @@ vi.mock("@/chat/services/turn-checkpoint", () => ({
   loadTurnCheckpoint: async () => ({
     resumedFromCheckpoint: false,
     currentSliceId: 1,
-    existingCheckpoint: undefined,
+    existingCheckpoint:
+      checkpointLoadedSkillNames.value.length > 0
+        ? {
+            loadedSkillNames: [...checkpointLoadedSkillNames.value],
+            piMessages: [],
+          }
+        : undefined,
     canUseTurnSession: false,
   }),
   persistCompletedCheckpoint: async () => undefined,
@@ -270,6 +293,7 @@ vi.mock("@/chat/skills", () => {
     name: "demo-skill",
     description: "Demo skill",
     skillPath: "/tmp/skills/demo-skill",
+    pluginProvider: "demo",
   };
 
   return {
@@ -438,6 +462,8 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     createSandboxCallCount.value = 0;
     activeSandboxVersion.value = 1;
     attachFileReadVersions.value = [];
+    enabledCredentialSkillNames.value = [];
+    checkpointLoadedSkillNames.value = [];
     pendingWorkspaceRelease.value = undefined;
   });
 
@@ -457,8 +483,20 @@ describe("generateAssistantReply lazy sandbox boot", () => {
 
     expect(reply.text).toBe("Loaded demo skill.");
     expect(createSandboxCallCount.value).toBe(0);
+    expect(enabledCredentialSkillNames.value).toEqual(["demo-skill"]);
     expect(reply.sandboxId).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual(["loadSkill"]);
+  });
+
+  it("reprovisions plugin credentials for checkpoint-loaded skills at turn start", async () => {
+    checkpointLoadedSkillNames.value = ["demo-skill"];
+
+    const reply = await generateAssistantReply("hello");
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(createSandboxCallCount.value).toBe(0);
+    expect(enabledCredentialSkillNames.value).toEqual(["demo-skill"]);
+    expect(reply.diagnostics.toolCalls).toEqual([]);
   });
 
   it("memoizes the lazy sandbox workspace across multiple workspace calls", async () => {

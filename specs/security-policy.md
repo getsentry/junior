@@ -50,9 +50,10 @@ This policy applies to:
 
 ### Issuance and injection
 
-- Runtime issues short-lived, scoped credentials for skill-declared capabilities.
-- Credential enablement is explicit via bash custom command `jr-rpc issue-credential <capability>`.
-- Credential issuance must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
+- Runtime issues short-lived provider credentials for loaded plugin-backed skills when authenticated commands require them.
+- Loaded skills and their plugin declarations determine which provider credentials may be injected into a turn.
+- Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
+- Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.
 - Real tokens are delivered exclusively via host-level header transforms — the host proxies `Authorization` headers for matching API domains (e.g. `api.github.com`, `sentry.io`). The sandbox never sees real token values.
 - When CLI tools require an auth env var (e.g. `SENTRY_AUTH_TOKEN`), set it to a non-secret placeholder so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
 - Never inject real tokens into sandbox env vars, files, or command arguments.
@@ -66,6 +67,7 @@ This policy applies to:
 - Inject `Authorization` header transform for `api.github.com` and `github.com` domains (the latter for git HTTPS operations).
 - Disable git credential helpers in sandbox env (`GIT_ASKPASS`, `credential.helper=`) so git never sends its own auth — the proxy header transform is the sole credential source.
 - Set `GITHUB_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
+- Keep explicit `--repo owner/repo` and remote targets for command correctness and wrong-repo protection; they are not a credential-scoping boundary.
 
 ### OAuth authorization link privacy
 
@@ -81,7 +83,7 @@ This policy applies to:
 - Keep `SENTRY_CLIENT_SECRET` on host only.
 - Token exchange and storage happen server-side in the OAuth callback handler — the agent never sees token values.
 - Refresh tokens on host, deliver short-lived access tokens via header transforms.
-- Fall back to static `SENTRY_AUTH_TOKEN` env var for dev/testing only.
+- Fall back to static `SENTRY_AUTH_TOKEN` env var only for local/dev/test paths outside requester-bound turn execution.
 - Inject `Authorization` header transform for `sentry.io` domain.
 - Set `SENTRY_AUTH_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
 - See [OAuth Flows Spec](./oauth-flows-spec.md) for full flow details.
@@ -95,7 +97,7 @@ This policy applies to:
 
 Privileged changes should verify:
 
-- successful issuance path
+- successful automatic injection path
 - failed issuance path
 - lease expiry/refresh behavior
 - no secret values in logs

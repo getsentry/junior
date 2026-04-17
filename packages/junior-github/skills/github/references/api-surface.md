@@ -4,10 +4,10 @@ All operations use `gh` CLI. Commands must be deterministic and non-interactive.
 
 ## Authentication
 
-Issue credentials with `jr-rpc issue-credential <capability>` before executing commands. The runtime handles token injection transparently.
-`jr-rpc issue-credential` is skill-scoped: load the matching domain skill first, then issue only capabilities that skill declares.
-GitHub capabilities are repo-scoped. Pass `--target owner/repo` to `jr-rpc issue-credential` and `--repo owner/repo` to `gh` unless you intentionally rely on a verified `github.repo` default for the same repository.
-Treat capability scope as a safety rail that reduces accidental writes and wrong-repo mutations, not as a perfect command-by-command security boundary.
+Load the GitHub skill first, then keep `--repo owner/repo` explicit on authenticated `gh` commands unless you intentionally rely on a verified `github.repo` default for the same repository.
+When the user omits `owner/repo`, resolve `github.repo` first with `jr-rpc config get github.repo`, then pass the resolved repo explicitly on the actual `gh` command.
+The runtime injects GitHub credentials implicitly for the current turn once the GitHub skill is active.
+Treat explicit repo flags as command-targeting safety rails that reduce accidental writes and wrong-repo mutations, not as a credential-scoping mechanism.
 
 ## Capability to command mapping
 
@@ -42,7 +42,7 @@ Treat capability scope as a safety rail that reduces accidental writes and wrong
 | Close pull request                 | `gh pr close NUMBER --repo owner/repo`                                                                        |
 | Merge pull request                 | `gh pr merge NUMBER --repo owner/repo [--merge                                                                | --squash | --rebase]` |
 
-## Credential and config helpers
+## Config helpers
 
 Resolve repo default:
 
@@ -56,25 +56,15 @@ Set repo default:
 jr-rpc config set github.repo owner/repo
 ```
 
-Issue scoped credentials:
-
-```bash
-jr-rpc issue-credential github.contents.read --target owner/repo
-jr-rpc issue-credential github.contents.write --target owner/repo
-jr-rpc issue-credential github.issues.read --target owner/repo
-jr-rpc issue-credential github.issues.write --target owner/repo
-jr-rpc issue-credential github.pull-requests.read --target owner/repo
-jr-rpc issue-credential github.pull-requests.write --target owner/repo
-```
-
 ## Behavior notes
 
 - Prefer `--json` output for machine-readable parsing where available.
 - Use `gh api` for endpoints not fully covered by `gh issue` subcommands.
 - Pass extra `git clone` flags after `--` (e.g. `gh repo clone owner/repo -- --depth=1`).
 - For automation, always fully specify `gh issue create` with `--title` and `--body` or `--body-file`; never rely on interactive prompts.
-- Before `gh pr create`, push the head branch explicitly with `github.contents.write`, then use `--head` so `gh` does not trigger hidden push/fork behavior.
-- If that explicit `git push` fails with 401/403 or another auth/permission error, issue or reissue `github.contents.write --target owner/repo` and retry the same push once before surfacing the failure.
+- Before `gh pr create`, push the head branch explicitly, then use `--head` so `gh` does not trigger hidden push/fork behavior.
+- That explicit `git push` step requires GitHub write access to the remote repository.
+- If that explicit `git push` fails with 401/403 or another auth/permission error, verify the repo context and retry the same push once after clearing stale GitHub auth only when the error explicitly indicates bad credentials.
 - Keep `--repo owner/repo` explicit on authenticated GitHub commands when working across repositories.
 - `gh pr edit` is not a single-permission command: title/body/base/reviewer changes fit `github.pull-requests.write`, label, assignee, and milestone changes fit `github.issues.write`, and project flags are outside the current GitHub App capability model.
 - `gh pr close --comment` may need `github.issues.write`, and `gh pr close --delete-branch` needs `github.contents.write`.

@@ -161,10 +161,9 @@ runtime-postinstall:
 
 ### Add skills to the plugin
 
-Put at least one skill under `skills/<skill-name>/SKILL.md` and reference the qualified capability or config tokens in frontmatter.
+Put at least one skill under `skills/<skill-name>/SKILL.md` and declare any provider config keys it reads in frontmatter.
 
 ```yaml
-requires-capabilities: my-provider.api.read
 uses-config: my-provider.org my-provider.project
 ```
 

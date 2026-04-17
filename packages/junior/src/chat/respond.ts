@@ -21,6 +21,7 @@ import {
 } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   discoverSkills,
@@ -84,6 +85,10 @@ import {
   createMcpAuthOrchestration,
   McpAuthorizationPauseError,
 } from "@/chat/services/mcp-auth-orchestration";
+import {
+  createPluginAuthOrchestration,
+  PluginAuthorizationPauseError,
+} from "@/chat/services/plugin-auth-orchestration";
 
 // Re-export types for backward compatibility with existing consumers.
 export type { AssistantReply, AgentTurnDiagnostics };
@@ -303,14 +308,9 @@ export async function generateAssistantReply(
 
     // ── Sandbox ──────────────────────────────────────────────────────
     const capabilityRuntime = createSkillCapabilityRuntime({
-      invocationArgs: skillInvocation?.args,
       requesterId: context.requester?.userId,
-      resolveConfiguration: async (key) => configurationValues[key],
     });
-    const providerAuthActions = new Map<
-      string,
-      import("@/chat/capabilities/jr-rpc-command").ProviderAuthAction
-    >();
+    const userTokenStore = createUserTokenStore();
     sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       sandboxDependencyProfileHash:
@@ -325,15 +325,9 @@ export async function generateAssistantReply(
       },
       runBashCustomCommand: async (command) => {
         const result = await maybeExecuteJrRpcCustomCommand(command, {
-          capabilityRuntime,
           activeSkill: skillSandbox.getActiveSkill(),
           channelConfiguration: context.channelConfiguration,
           requesterId: context.requester?.userId,
-          channelId: context.correlation?.channelId,
-          threadTs: context.correlation?.threadTs,
-          userMessage: userInput,
-          userTokenStore: createUserTokenStore(),
-          providerAuthActions,
           onConfigurationValueChanged: (key, value) => {
             if (value === undefined) {
               delete configurationValues[key];
@@ -462,14 +456,55 @@ export async function generateAssistantReply(
       },
       () => agent?.abort(),
     );
+    const pluginAuth = createPluginAuthOrchestration(
+      {
+        conversationId: sessionConversationId,
+        sessionId,
+        requesterId: context.requester?.userId,
+        channelId: context.correlation?.channelId,
+        threadTs: context.correlation?.threadTs,
+        userMessage: userInput,
+        channelConfiguration: context.channelConfiguration,
+        userTokenStore,
+      },
+      () => agent?.abort(),
+    );
 
     mcpToolManager = new McpToolManager(getPluginMcpProviders(), {
       authProviderFactory: mcpAuth.authProviderFactory,
       onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
     });
     const turnMcpToolManager = mcpToolManager;
+    const getPendingAuthPause = () =>
+      pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
     const syncResumeState = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
+    };
+    const enableSkillCredentials = async (
+      skill: Skill | null,
+      reason: string,
+    ): Promise<void> => {
+      if (!skill?.pluginProvider) {
+        return;
+      }
+
+      try {
+        await capabilityRuntime.enableCredentialsForTurn({
+          activeSkill: skill,
+          reason,
+        });
+      } catch (error) {
+        if (
+          error instanceof CredentialUnavailableError &&
+          context.requester?.userId
+        ) {
+          await pluginAuth.handleCredentialUnavailable({
+            activeSkill: skill,
+            error,
+          });
+        }
+        throw error;
+      }
     };
 
     setTags({
@@ -518,6 +553,10 @@ export async function generateAssistantReply(
             // aborted turn park cleanly.
             return undefined;
           }
+          await enableSkillCredentials(
+            effective,
+            `skill:${effective.name}:turn:load`,
+          );
           if (!effective.pluginProvider) {
             return undefined;
           }
@@ -555,6 +594,7 @@ export async function generateAssistantReply(
         timeoutResumeMessages = existingCheckpoint?.piMessages ?? [];
         throw mcpAuth.getPendingPause()!;
       }
+      await enableSkillCredentials(skill, `skill:${skill.name}:turn:resume`);
     }
     syncResumeState();
 
@@ -660,6 +700,7 @@ export async function generateAssistantReply(
       context.onStatus,
       sandboxExecutor,
       capabilityRuntime,
+      pluginAuth,
       agentToolHooks,
     );
 
@@ -677,6 +718,7 @@ export async function generateAssistantReply(
         context.onStatus,
         sandboxExecutor,
         capabilityRuntime,
+        pluginAuth,
         agentToolHooks,
       );
       agentTools.length = 0;
@@ -797,9 +839,9 @@ export async function generateAssistantReply(
               await promptPromise.catch(() => {});
               timeoutResumeMessages = [...agent.state.messages];
             }
-            if (mcpAuth.getPendingPause()) {
+            if (getPendingAuthPause()) {
               timeoutResumeMessages = [...agent.state.messages];
-              throw mcpAuth.getPendingPause()!;
+              throw getPendingAuthPause()!;
             }
             throw error;
           } finally {
@@ -810,9 +852,9 @@ export async function generateAssistantReply(
 
           newMessages = agent.state.messages.slice(beforeMessageCount);
           completedAssistantTurn = hasCompletedAssistantTurn(newMessages);
-          if (mcpAuth.getPendingPause() && !completedAssistantTurn) {
+          if (getPendingAuthPause() && !completedAssistantTurn) {
             timeoutResumeMessages = [...agent.state.messages];
-            throw mcpAuth.getPendingPause()!;
+            throw getPendingAuthPause()!;
           }
           const outputMessages = newMessages.filter(isAssistantMessage);
           const outputMessagesAttribute =
@@ -853,8 +895,8 @@ export async function generateAssistantReply(
       unsubscribe();
     }
 
-    if (mcpAuth.getPendingPause() && !completedAssistantTurn) {
-      throw mcpAuth.getPendingPause()!;
+    if (getPendingAuthPause() && !completedAssistantTurn) {
+      throw getPendingAuthPause()!;
     }
 
     // ── Persist completed checkpoint ─────────────────────────────────
@@ -924,7 +966,8 @@ export async function generateAssistantReply(
 
     // ── MCP auth pause → checkpoint and retry ────────────────────────
     if (
-      error instanceof McpAuthorizationPauseError &&
+      (error instanceof McpAuthorizationPauseError ||
+        error instanceof PluginAuthorizationPauseError) &&
       timeoutResumeConversationId &&
       timeoutResumeSessionId
     ) {
@@ -945,7 +988,9 @@ export async function generateAssistantReply(
         },
       });
       throw new RetryableTurnError(
-        "mcp_auth_resume",
+        error instanceof PluginAuthorizationPauseError
+          ? "plugin_auth_resume"
+          : "mcp_auth_resume",
         `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,
         {
           conversationId: timeoutResumeConversationId,

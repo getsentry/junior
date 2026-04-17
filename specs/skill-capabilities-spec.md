@@ -3,14 +3,14 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-04-16
+- Last Edited: 2026-04-17
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated repo-root file paths and aligned OAuth URL visibility contract with security policy.
 - 2026-03-20: Documented prompt exposure of declared capabilities and clarified Sentry OAuth initiation paths.
-- 2026-04-16: Changed `jr-rpc issue-credential` from soft to hard skill-declaration enforcement and clarified skill-first routing expectations.
+- 2026-04-17: Removed skill-level capability declarations and explicit model-facing auth commands in favor of plugin-owned permission manifests plus runtime-owned implicit auth.
 
 ## Status
 
@@ -19,125 +19,100 @@ Draft
 ## Related
 
 - [Security Policy](./security-policy.md)
+- [OAuth Flows Spec](./oauth-flows-spec.md)
 - Provider Catalog: `packages/junior/src/chat/capabilities/catalog.ts`
 
 ## Purpose
 
-Define a capability model where skills declare required capabilities and runtime enables short-lived provider credentials on demand via `jr-rpc issue-credential <capability> [--target <value>]`, delivered through sandbox header transforms.
+Define how Junior maps a loaded plugin-backed skill to host-managed credentials without exposing secrets or manual auth commands to the model.
 
 ## Core model
 
-1. Skill loads normally.
-2. Prompt/runtime expose `requires-capabilities` from the loaded skill for agent guidance.
-3. Agent enables credential with bash custom command `jr-rpc issue-credential <capability> [--target <value>]`.
-4. Runtime issues short-lived credentials and applies sandbox header transforms.
-5. Runtime does not persist long-lived secrets in sandbox env/files or skill files.
+1. Plugins own provider permissions in `plugin.yaml`.
+2. Skills may declare `uses-config` keys, but they do not declare capabilities.
+3. After a plugin-backed skill is loaded, the agent runs the real provider command.
+4. The runtime resolves the provider from the active skill, issues a provider lease, and injects credentials for the current turn only.
+5. If auth is missing or stale, the runtime starts a private OAuth flow and resumes the paused turn after authorization.
+
+## Plugin contract
+
+Plugins define:
+
+- `capabilities`: host-side permission manifest for the provider integration
+- `credentials`: how runtime leases are delivered to tools
+- `oauth`: optional per-user OAuth configuration
+- `target`: optional provider-default metadata such as a repo config key
+
+Capabilities remain a host-side permission description. They are not a model-facing command surface.
 
 ## Skill contract
 
-Skills declare required capabilities in frontmatter.
+Plugin-backed skills may declare:
 
 ```yaml
 ---
 name: github
 description: Create and update GitHub issues.
-requires-capabilities: github.issues.read github.issues.write
+uses-config: github.repo
 ---
 ```
 
 Rules:
 
-- `requires-capabilities` is optional.
-- Value is a whitespace-delimited token list.
-- Tokens must match `^[a-z0-9]+(\.[a-z0-9-]+)+$`.
+- `uses-config` is optional.
+- `requires-capabilities` is no longer supported.
 - Skills must never include secret values.
+- Skills should keep provider defaults explicit so repo/project commands stay deterministic.
 
 ## Runtime contract
 
-### Capability resolution
+### Lease issuance
 
-- Resolve capabilities from active skill context for guidance and observability.
-- Expose declared capabilities to the agent through loaded-skill prompt context and `loadSkill` results.
-- `jr-rpc issue-credential` requires an active domain skill that explicitly declares the requested capability.
-- Missing or mismatched capability declarations fail fast instead of issuing credentials speculatively.
-
-### Credential issuance
-
-- Use provider-specific broker implementations.
+- Resolve provider from `activeSkill.pluginProvider`.
+- Require requester context before issuing provider credentials.
 - Return short-lived leases only.
-- Keep lease reuse in memory only.
-- Require requester context for runtime `issue-credential` enablement; do not issue credentials in ambiguous/no-requester contexts.
+- Keep lease reuse in memory only, keyed by provider for the active turn.
 
 ### Injection behavior
 
-- Enablement happens on explicit `jr-rpc issue-credential` bash custom command, not at skill-load time.
+- Enablement happens when the authenticated provider command runs, not at skill-load time.
 - Delivery uses sandbox header transforms for matching domains.
 - Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
-- Do not inject privileged credentials into sandbox env vars.
-- Do not write long-lived credentials into sandbox files.
+- Do not inject long-lived secrets into sandbox files.
 
-### Capability caching
+### Security goals
 
-- Runtime may reuse in-memory lease state for repeated issue-credential calls in the same active context.
+- Secrets are hidden from the model and sandbox filesystem.
+- Credentials are requester-bound.
+- Leases are valid only for the active turn.
+- Provider defaults may guide command construction, but credential availability is still provider-level and turn-bound.
 
 ## GitHub profile
 
-### Capabilities
+### Permission model
 
-- `github.issues.read`
-- `github.issues.write`
-- `github.contents.read`
-- `github.contents.write`
-- `github.pull-requests.read`
-- `github.pull-requests.write`
-
-### Issuance flow
-
-1. Host runtime signs a GitHub App JWT using `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY`.
-2. Runtime exchanges JWT for installation token using required `GITHUB_INSTALLATION_ID`.
-3. Runtime applies `Authorization` header transform for `api.github.com`.
+- Plugin manifest capabilities map to GitHub App installation permissions.
+- Runtime requests the full permission set declared by the GitHub plugin manifest.
+- Repo context is still important for command correctness, but credential issuance is provider-level and turn-bound.
 
 ### Lease behavior
 
-- Prefer short-lived token leases.
-- Runtime cache can reuse a lease in memory.
-- Current cap: at most 1 hour lease window.
-
-### Security posture
-
-- GitHub capabilities are a lightweight host-side safety rail, not a fine-grained policy engine.
-- The main goals are reducing accidental write scope and wrong-repository mutations while keeping the command model simple.
-- Provider target scoping is a host-side safety rail. GitHub uses `repo` targets to narrow installation tokens when `owner/repo` is known, and `jr-rpc issue-credential` is bound to the capabilities declared by the active skill.
+- Header transforms target `api.github.com`.
+- If repo contents access is declared, runtime also injects auth for `github.com` git smart-HTTP.
+- Runtime cache may reuse a lease in memory for repeated GitHub commands in the same turn.
 
 ## Sentry profile
 
-### Capabilities
+### Permission model
 
-- `sentry.api`
+- The Sentry plugin currently declares a single host-side capability: `sentry.api`.
+- Runtime still treats issuance as provider-level, not command-level.
 
-### Issuance flow
+### OAuth behavior
 
-1. `OAuthBearerBroker` checks for per-user OAuth token (stored by Slack user ID via `UserTokenStore`).
-2. If stored token is near expiry, refreshes via Sentry token endpoint (`grant_type=refresh_token`).
-3. Falls back to static `SENTRY_AUTH_TOKEN` env var for dev/testing/CI.
-4. Runtime applies `Authorization` header transform for `sentry.io`.
-5. Lease env includes `SENTRY_AUTH_TOKEN` for CLI consumption.
-
-### OAuth authorization code flow
-
-- Auth initiated by `jr-rpc oauth-start sentry` directly or by auto-OAuth during `jr-rpc issue-credential sentry.api`.
-- Uses Authorization Code Grant (RFC 6749 §4.1) via `jr-rpc oauth-start sentry`.
-- Callback handler at `/api/oauth/callback/sentry` exchanges code for tokens server-side.
-- Tokens stored per Slack user ID via `StateAdapterTokenStore` (Redis-backed).
-- Agent never sees token values or raw authorization URLs; `oauth-start` delivers URLs privately via Slack transport.
-- Requires `SENTRY_CLIENT_ID` and `SENTRY_CLIENT_SECRET` on host.
-- See [OAuth Flows Spec](./oauth-flows-spec.md) for full flow details.
-
-### Lease behavior
-
-- Prefer short-lived token leases.
-- Current cap: at most 1 hour lease window (or remaining token TTL, whichever is shorter).
-- Per-user tokens refreshed when within 5 minutes of expiry.
+- `OAuthBearerBroker` checks for a per-user OAuth token stored by requester ID.
+- If the token is near expiry, runtime refreshes it server-side.
+- Missing or stale auth triggers the private OAuth resume flow defined in the OAuth Flows Spec.
 
 ## Observability
 
@@ -146,15 +121,15 @@ Emit events without secret material:
 - `credential_issue_request`
 - `credential_issue_success`
 - `credential_issue_failed`
-- `credential_issue_blocked_by_skill_contract`
 - `credential_inject_start`
-- `credential_inject_cleanup`
 
 ## Non-goals
 
-- External policy/config systems for capability allowlists.
-- Multi-provider policy engines.
+- Skill-level capability allowlists.
+- Model-visible auth-management commands.
+- Provider-specific policy engines beyond requester and turn scoping.
 
 ## Backward compatibility
 
-- Skills without `requires-capabilities` continue to work for unauthenticated tasks, but they cannot issue credentials until they declare the required capabilities.
+- Plugin-backed skills must migrate off `requires-capabilities`.
+- Authenticated provider work should run the real provider command and let the runtime handle auth implicitly.

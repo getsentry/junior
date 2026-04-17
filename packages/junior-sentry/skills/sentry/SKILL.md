@@ -1,7 +1,6 @@
 ---
 name: sentry
 description: Query live Sentry telemetry (issues, events, replays, traces) and generate deep links scoped to users or timeframes. Use this skill when users ask to investigate live Sentry data, search errors, find replays, inspect traces, or look up Sentry issues/events. Do not use it for repository/source-code/PR tasks, even when the topic concerns Sentry products.
-requires-capabilities: sentry.api
 uses-config: sentry.org sentry.project
 allowed-tools: bash
 ---
@@ -22,11 +21,11 @@ Use this skill for Sentry investigation workflows in the harness.
 2. Execute via CLI:
 
 - Use `sentry <command>` for structured queries.
-- The CLI reads `SENTRY_AUTH_TOKEN` from env after the runtime enables the declared Sentry capability for this turn.
+- The runtime injects `SENTRY_AUTH_TOKEN` automatically for authenticated `sentry` CLI commands in this skill.
 - Read [references/cli-commands.md](references/cli-commands.md) for command shapes and flags.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
-- If a Sentry API call returns `401`, or clearly says the token is invalid, expired, revoked, or unauthorized, run `jr-rpc delete-token sentry` to clear the stale token, then retry after re-enabling the declared capability.
-- If a Sentry API call explicitly says `missing scope`, `missing scopes`, or `insufficient scope`, run `jr-rpc delete-token sentry` to clear the outdated grant, then retry after re-enabling the declared capability.
+- If a Sentry API call returns `401`, or clearly says the token is invalid, expired, revoked, or unauthorized, rerun the real Sentry command once and let the runtime trigger a reconnect flow when needed.
+- If a Sentry API call explicitly says `missing scope`, `missing scopes`, or `insufficient scope`, rerun the real Sentry command once and let the runtime trigger a reconnect flow when needed.
 - If a Sentry API call returns a generic `403`, `permission denied`, or otherwise indicates missing org/project access without naming missing scopes, stop and tell the user the current Sentry connection could not access the requested Sentry data.
 - Only mention a specific missing scope when the CLI or API error explicitly names that scope. Do not guess scope names from a generic `403`.
 

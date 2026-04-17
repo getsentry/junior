@@ -213,7 +213,7 @@ System runtime dependency execution environment:
 - No two plugins may declare the same capability token.
 - No two plugins may use the same `name`.
 - If `target.config-key` is set, it must be listed in `config-keys`.
-- If a plugin declares capabilities without credentials, manifest load succeeds and `jr-rpc issue-credential` fails with an explicit no-credentials error.
+- If a plugin declares capabilities without credentials, manifest load succeeds and runtime credential enablement fails with an explicit no-broker error when an authenticated command needs that provider.
 
 ## Discovery and loading
 
@@ -340,7 +340,7 @@ function resolveSkillRoots(): string[] {
 }
 ```
 
-Plugin skills are subject to the same frontmatter validation, `requires-capabilities` checks, and name-deduplication as non-plugin skills.
+Plugin skills are subject to the same frontmatter validation, `uses-config` checks, and name-deduplication as non-plugin skills.
 
 ## Security properties
 

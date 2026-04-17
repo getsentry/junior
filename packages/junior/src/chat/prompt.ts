@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { listCapabilityProviders } from "@/chat/capabilities/catalog";
 import { botConfig } from "@/chat/config";
 import {
   listReferenceFiles,
@@ -8,6 +7,7 @@ import {
   worldPathCandidates,
 } from "@/chat/discovery";
 import { logInfo, logWarn } from "@/chat/logging";
+import { getPluginProviders } from "@/chat/plugins/registry";
 import { slackOutputPolicy } from "@/chat/slack/output";
 import type { RuntimeMetadata } from "@/chat/config";
 import { SANDBOX_DATA_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
@@ -162,11 +162,6 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
     if (skill.pluginProvider) {
       lines.push(`    <provider>${escapeXml(skill.pluginProvider)}</provider>`);
     }
-    if (skill.requiresCapabilities && skill.requiresCapabilities.length > 0) {
-      lines.push(
-        `    <requires_capabilities>${escapeXml(skill.requiresCapabilities.join(" "))}</requires_capabilities>`,
-      );
-    }
     if (skill.usesConfig && skill.usesConfig.length > 0) {
       lines.push(
         `    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`,
@@ -190,11 +185,6 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
       `  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skillDir}/SKILL.md`)}">`,
     );
     lines.push(`References are relative to ${escapeXml(skillDir)}.`);
-    if (skill.requiresCapabilities && skill.requiresCapabilities.length > 0) {
-      lines.push(
-        `Requires capabilities: ${escapeXml(skill.requiresCapabilities.join(", "))}.`,
-      );
-    }
     if (skill.usesConfig && skill.usesConfig.length > 0) {
       lines.push(
         `Uses config keys: ${escapeXml(skill.usesConfig.join(", "))}.`,
@@ -209,14 +199,14 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
 }
 
 function formatProviderCatalogForPrompt(): string {
-  const providers = listCapabilityProviders();
+  const providers = getPluginProviders().map((plugin) => plugin.manifest);
   if (providers.length === 0) {
     return "- none";
   }
 
   const lines: string[] = [];
   for (const provider of providers) {
-    lines.push(`- provider: ${escapeXml(provider.provider)}`);
+    lines.push(`- provider: ${escapeXml(provider.name)}`);
     lines.push(
       `  - config_keys: ${
         provider.configKeys.length > 0
@@ -225,9 +215,11 @@ function formatProviderCatalogForPrompt(): string {
       }`,
     );
     lines.push(
-      `  - capabilities: ${
-        provider.capabilities.length > 0
-          ? escapeXml(provider.capabilities.join(", "))
+      `  - default_context: ${
+        provider.target
+          ? escapeXml(
+              `${provider.target.type} via ${provider.target.configKey}`,
+            )
           : "none"
       }`,
     );
@@ -500,11 +492,12 @@ export function buildSystemPrompt(params: {
       ].join("\n"),
     ),
     renderTag(
-      "provider-capabilities",
+      "provider-config",
       [
-        "Use this catalog to map already-chosen provider work to valid config keys and capability names.",
+        "Use this catalog to map already-chosen provider work to valid config keys and provider defaults.",
         "Do not use this catalog by itself to decide which domain skill matches an operational task.",
         "When user intent is to set a provider default, choose a config key from this catalog and use jr-rpc config set.",
+        "The `jr-rpc` config command is a built-in bash custom command when conversation config is available; do not claim it is missing just because no `jr-rpc` skill is loaded.",
         formatProviderCatalogForPrompt(),
       ].join("\n"),
     ),
@@ -514,8 +507,8 @@ export function buildSystemPrompt(params: {
         "- Choose the skill that matches the requested operation, not incidental nouns, product names, organization names, or channel context.",
         "- When multiple skills seem adjacent, prefer the one whose description matches the user's requested action most directly.",
         "- If the task needs evidence from a specialized external system or workflow, load the matching skill before drawing conclusions.",
-        "- The provider-capabilities catalog is for exact capability/config names after skill selection, or for explicit connect/disconnect/config tasks. It is not a shortcut for choosing a domain.",
-        "- Never start OAuth or issue provider credentials speculatively. First load the skill that owns the operation, then issue only capabilities declared by that skill.",
+        "- The provider-config catalog is for exact config keys and provider defaults after skill selection. It is not a shortcut for choosing a domain.",
+        "- Never start provider auth speculatively. First load the skill that owns the operation, then let runtime-managed credential injection handle authenticated provider commands for that skill.",
       ].join("\n"),
     ),
     renderTag(
@@ -530,6 +523,8 @@ export function buildSystemPrompt(params: {
         "- Prefer a single result-focused reply after tool work completes. Only send an interim reply when you need user input or have a concrete blocking problem to report.",
         "- For external/factual research requests that require tools, do not send any preliminary conclusion, 'let me check', or progress narration before the evidence-gathering work is done. Use assistant status for in-progress work and make the first visible reply the researched answer.",
         "- For evidence-gathering tasks, never state a factual conclusion before you have actually gathered and checked the sources.",
+        "- When the user provides multiple sources, synthesize them explicitly as one combined answer instead of anchoring the reply on a single page or API call.",
+        "- When the user provides explicit URLs or named sources, briefly anchor the answer to those provided sources (for example, 'Across the provided Slack docs...') so the summary reads as researched rather than generic memory.",
         "- Do not include internal process chatter such as 'let me find', 'fetching now', 'good, I have sources', 'trying smaller limits', or 'I now have sufficient context' in the final user-facing reply.",
         "- Use `attachFile` for files that actually exist in the sandbox (for example screenshots, PDFs, logs), or for `attachment_path` values returned by `imageGenerate`.",
         "- If the user asks to see/share/show a screenshot or file, attach the file with `attachFile` instead of only reporting its path.",
@@ -547,15 +542,14 @@ export function buildSystemPrompt(params: {
         "- Use `slackMessageAddReaction` for rare lightweight acknowledgements. It reacts to the current inbound message via runtime context; never pick a target message yourself.",
         "- If the user explicitly asks for an emoji reaction instead of text, use `slackMessageAddReaction` with a Slack emoji alias name (for example `thumbsup`, `white_check_mark`, or `eyes`, not unicode emoji), and avoid redundant acknowledgment text.",
         "- Suggested acknowledgement reactions include `wave`, `white_check_mark`, `thumbsup`, and `eyes`, but choose what best fits the request.",
-        "- Only after the matching skill is loaded, and only when that skill or its `loadSkill` result declares `requires_capabilities`, run `jr-rpc issue-credential <capability> [--target <value>]` as a bash command before authenticated bash/API work for that skill.",
-        "- If no loaded skill declares the needed capability, load the matching skill first instead of guessing from the provider catalog.",
-        "- Use the minimum declared capability needed for the current operation.",
-        "- If `jr-rpc issue-credential` returns `oauth_started`, relay its `message` to the user and stop. The runtime will resume after authorization.",
-        "- For disconnect + reconnect requests, run `jr-rpc delete-token <provider>` first, then `jr-rpc issue-credential` — the system handles the reconnect without auto-resuming the reconnect message.",
-        "- Use `jr-rpc oauth-start <provider>` only when the user explicitly asks to connect a provider and there is no task to resume after authorization.",
-        "- Provider-targeted capabilities may need `--target <value>` or a provider-specific configured default target key when the provider catalog shows one.",
+        "- After the matching plugin-owned skill is loaded, authenticated bash commands for that skill get provider credentials injected automatically for the current turn.",
+        "- Resolve repo/project/org defaults before authenticated provider commands so the runtime can narrow injected credentials correctly.",
+        "- If no loaded skill clearly owns the authenticated command, load the matching skill first instead of guessing from the provider catalog.",
+        "- If provider authorization is required, the runtime sends the private authorization link itself and resumes the paused turn after authorization.",
+        "- Do not try to manage provider auth directly. Run the real provider command and let the runtime handle authorization, reconnect, and resume behavior.",
+        "- Provider-targeted commands may need `--target <value>` or a provider-specific configured default target key when the provider catalog shows one.",
         "- To persist or read conversation defaults, choose a config key from the provider catalog or active skill metadata and run `jr-rpc config get|set|unset|list ...` as a bash command.",
-        "- Capabilities must match the exact provider-qualified tokens declared by the loaded skill or provider catalog.",
+        "- `jr-rpc` config commands are built into the bash runtime for conversation-scoped config work; they do not require a separate helper binary in the sandbox.",
         "- When your work is complete, provide the exact user-facing markdown response.",
         "- Do not use reaction-based progress signals; Assistants API status already covers in-progress UX.",
         "- Prefer `webSearch` before `webFetch` when the user gave no URL.",
@@ -574,7 +568,7 @@ export function buildSystemPrompt(params: {
         "- Otherwise, for an explicitly invoked skill, call `loadSkill` for that exact skill before applying skill-specific behavior.",
         "- For requests without an explicit trigger where a skill clearly matches, call `loadSkill` before applying skill-specific behavior.",
         "- When multiple skills appear relevant, prefer the skill whose description best matches the requested action rather than incidental domain nouns in the prompt.",
-        "- For explicit connect/disconnect/config tasks, you may load the helper skill that owns credential/config commands, but do not use helper skills to choose the provider for unrelated operational work.",
+        "- For explicit config tasks, you may load the helper skill that owns config commands, but do not use helper skills to choose the provider for unrelated operational work.",
         "- Do not claim to have used a skill unless it is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Never apply skill-specific behavior unless the skill is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",

@@ -563,7 +563,7 @@ describe("createSandboxExecutor", () => {
       },
     } as never);
     const runBashCustomCommand = vi.fn(async (command: string) =>
-      command === "jr-rpc issue-credential github.issues.write"
+      command === "jr-rpc config get github.repo"
         ? {
             handled: true,
             result: {
@@ -591,12 +591,12 @@ describe("createSandboxExecutor", () => {
     const response = await executor.execute({
       toolName: "bash",
       input: {
-        command: "jr-rpc issue-credential github.issues.write",
+        command: "jr-rpc config get github.repo",
       },
     });
 
     expect(runBashCustomCommand).toHaveBeenCalledWith(
-      "jr-rpc issue-credential github.issues.write",
+      "jr-rpc config get github.repo",
     );
     expect(sandbox.runCommand).not.toHaveBeenCalled();
     expect(response.result).toMatchObject({

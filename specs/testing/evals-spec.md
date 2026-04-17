@@ -66,7 +66,7 @@ Do not in eval files:
 
 ## Execution
 
-Operational commands and harness details live in `evals/README.md`.
+Operational commands and harness details live in `packages/junior-evals/README.md`.
 
 The eval artifact contract should preserve user-visible output structure. In particular, assistant thread posts must retain attachment metadata instead of flattening attachments into synthetic text.
 Eval output should also stay readable in failure reports. Preserve the structured JSON shape instead of collapsing it into prose or synthetic summaries.

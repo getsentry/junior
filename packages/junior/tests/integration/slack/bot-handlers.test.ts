@@ -454,6 +454,56 @@ describe("bot handlers (integration)", () => {
     expect(lastMessage?.meta?.skippedReason).toBeUndefined();
   });
 
+  it("parks plugin auth resume turns without rethrowing to the queue", async () => {
+    const { slackRuntime } = createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            throw new RetryableTurnError(
+              "plugin_auth_resume",
+              "simulated plugin auth pause",
+            );
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_PLUGIN_AUTH:1700000000.000",
+    });
+    await expect(
+      slackRuntime.handleNewMention(
+        thread,
+        createTestMessage({
+          id: "msg-plugin-auth-pause",
+          threadId: "slack:C_PLUGIN_AUTH:1700000000.000",
+          text: "please use github",
+          isMention: true,
+        }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(thread.posts).toHaveLength(0);
+    const state = thread.getState();
+    const conversation = (
+      state as {
+        conversation?: {
+          processing?: { activeTurnId?: string };
+          messages?: Array<{
+            meta?: { replied?: boolean; skippedReason?: string };
+          }>;
+        };
+      }
+    ).conversation;
+    expect(conversation?.processing?.activeTurnId).toBe(
+      "turn_msg-plugin-auth-pause",
+    );
+    const lastMessage =
+      conversation?.messages?.[conversation.messages.length - 1];
+    expect(lastMessage?.meta?.replied).toBeUndefined();
+    expect(lastMessage?.meta?.skippedReason).toBeUndefined();
+  });
+
   it("posts an interruption marker on the finalized provider-error reply", async () => {
     const { slackRuntime } = createRuntime({
       services: {

@@ -21,9 +21,7 @@ export function createUserTokenStore(): UserTokenStore {
 // changing agent orchestration code in respond.ts.
 export function createSkillCapabilityRuntime(
   options: {
-    invocationArgs?: string;
     requesterId?: string;
-    resolveConfiguration?: (key: string) => Promise<unknown>;
   } = {},
 ): SkillCapabilityRuntime {
   logCapabilityCatalogLoadedOnce();
@@ -54,8 +52,6 @@ export function createSkillCapabilityRuntime(
 
   return new SkillCapabilityRuntime({
     router,
-    invocationArgs: options.invocationArgs,
     requesterId: options.requesterId,
-    resolveConfiguration: options.resolveConfiguration,
   });
 }

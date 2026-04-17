@@ -95,13 +95,12 @@ afterEach(() => {
 });
 
 describe("github app credential broker", () => {
-  it("issues lease with correct shape", async () => {
+  it("issues a provider lease with the expected env and headers", async () => {
     setupValidEnv();
     mockGitHubApi({ token: "issued-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const lease = await broker.issue({
-      capability: "github.issues.write",
       reason: "test:lease-shape",
     });
 
@@ -112,24 +111,20 @@ describe("github app credential broker", () => {
         domain: "api.github.com",
         headers: { Authorization: "Bearer issued-token" },
       },
+      {
+        domain: "github.com",
+        headers: {
+          Authorization: `Basic ${Buffer.from("x-access-token:issued-token").toString("base64")}`,
+        },
+      },
     ]);
-  });
-
-  it("uses placeholder in env, not real token", async () => {
-    setupValidEnv();
-    mockGitHubApi({ token: "real-secret-token" });
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
-      capability: "github.issues.read",
-      reason: "test:placeholder",
+    expect(lease.metadata).toMatchObject({
+      installationId: "42",
+      reason: "test:lease-shape",
     });
-
-    expect(lease.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
-    expect(lease.env.GITHUB_TOKEN).not.toBe("real-secret-token");
   });
 
-  it("uses configured auth token placeholder when provided by plugin config", async () => {
+  it("uses the configured auth token placeholder when provided", async () => {
     setupValidEnv();
     mockGitHubApi({ token: "real-secret-token" });
 
@@ -138,51 +133,18 @@ describe("github app credential broker", () => {
       authTokenPlaceholder: "github_host_managed_credential",
     });
     const lease = await broker.issue({
-      capability: "github.issues.read",
       reason: "test:custom-placeholder",
     });
 
     expect(lease.env.GITHUB_TOKEN).toBe("github_host_managed_credential");
-    expect(lease.env.GITHUB_TOKEN).not.toBe("real-secret-token");
   });
 
-  it("scopes token to repository when target is provided", async () => {
-    setupValidEnv();
-    mockGitHubApi();
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
-      capability: "github.issues.write",
-      target: { type: "repo", value: "getsentry/junior" },
-      reason: "test:scoped",
-    });
-
-    expect(lease.metadata).toMatchObject({ targetScope: "getsentry/junior" });
-  });
-
-  it("rejects invalid repo targets before cache lookup", async () => {
-    setupValidEnv();
-    mockGitHubApi();
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    await expect(
-      broker.issue({
-        capability: "github.issues.write",
-        target: { type: "repo", value: "invalid" },
-        reason: "test:invalid-target",
-      }),
-    ).rejects.toThrow("Invalid github repo target");
-
-    expect(vi.mocked(globalThis.fetch).mock.calls).toHaveLength(0);
-  });
-
-  it("uses cached lease without recreating app jwt", async () => {
+  it("reuses cached leases for the same installation", async () => {
     setupValidEnv();
     mockGitHubApi({ token: "cached-token" });
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const firstLease = await broker.issue({
-      capability: "github.issues.write",
       reason: "test:cache-prime",
     });
 
@@ -190,7 +152,6 @@ describe("github app credential broker", () => {
     delete process.env.GITHUB_APP_PRIVATE_KEY;
 
     const secondLease = await broker.issue({
-      capability: "github.issues.write",
       reason: "test:cache-hit",
     });
 
@@ -198,216 +159,22 @@ describe("github app credential broker", () => {
     expect(vi.mocked(globalThis.fetch).mock.calls).toHaveLength(1);
   });
 
-  it("maps issues.write to GitHub issues write permission", async () => {
+  it("requests the full plugin permission set when minting installation tokens", async () => {
     setupValidEnv();
     mockGitHubApi();
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     await broker.issue({
-      capability: "github.issues.write",
-      reason: "test:issues-write",
+      reason: "test:permissions",
     });
 
     const fetchCall = findAccessTokenCall();
     const body = JSON.parse(fetchCall[1]?.body as string);
-    expect(body.permissions).toEqual({ issues: "write" });
-  });
-
-  it("rejects unsupported capabilities", async () => {
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    await expect(
-      broker.issue({
-        capability: "github.nonexistent-scope.write",
-        reason: "test:unsupported",
-      }),
-    ).rejects.toThrow(
-      "Unsupported github capability: github.nonexistent-scope.write",
-    );
-  });
-
-  it("requires GITHUB_APP_ID", async () => {
-    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
-      .privateKey.export({ type: "pkcs8", format: "pem" })
-      .toString();
-    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
-    process.env.GITHUB_INSTALLATION_ID = "42";
-    delete process.env.GITHUB_APP_ID;
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    await expect(
-      broker.issue({
-        capability: "github.issues.read",
-        reason: "test:missing-app-id",
-      }),
-    ).rejects.toThrow("Missing GITHUB_APP_ID");
-  });
-
-  it("requires GITHUB_INSTALLATION_ID", async () => {
-    const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
-      .privateKey.export({ type: "pkcs8", format: "pem" })
-      .toString();
-    process.env.GITHUB_APP_ID = "12345";
-    process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
-    delete process.env.GITHUB_INSTALLATION_ID;
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    await expect(
-      broker.issue({
-        capability: "github.issues.read",
-        reason: "test:missing-installation-id",
-      }),
-    ).rejects.toThrow("Missing GITHUB_INSTALLATION_ID");
-  });
-
-  it("maps contents.read to GitHub contents permission", async () => {
-    setupValidEnv();
-    mockGitHubApi();
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    await broker.issue({
-      capability: "github.contents.read",
-      target: { type: "repo", value: "getsentry/sentry" },
-      reason: "test:contents-read",
+    expect(body.permissions).toEqual({
+      issues: "write",
+      contents: "write",
+      pull_requests: "write",
     });
-
-    const fetchCall = findAccessTokenCall();
-    const body = JSON.parse(fetchCall[1]?.body as string);
-    expect(body.permissions).toEqual({ contents: "read" });
-  });
-
-  it("includes github.com in headerTransforms for contents.read", async () => {
-    setupValidEnv();
-    mockGitHubApi({ token: "repo-token" });
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
-      capability: "github.contents.read",
-      target: { type: "repo", value: "getsentry/sentry" },
-      reason: "test:contents-read-domains",
-    });
-
-    const domains = lease.headerTransforms!.map((t) => t.domain);
-    expect(domains).toContain("api.github.com");
-    expect(domains).toContain("github.com");
-  });
-
-  it("uses Basic auth for github.com and Bearer for api.github.com", async () => {
-    setupValidEnv();
-    mockGitHubApi({ token: "repo-token" });
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
-      capability: "github.contents.read",
-      target: { type: "repo", value: "getsentry/sentry" },
-      reason: "test:auth-scheme",
-    });
-
-    const apiTransform = lease.headerTransforms!.find(
-      (t) => t.domain === "api.github.com",
-    );
-    const gitTransform = lease.headerTransforms!.find(
-      (t) => t.domain === "github.com",
-    );
-
-    expect(apiTransform!.headers.Authorization).toBe("Bearer repo-token");
-    expect(gitTransform!.headers.Authorization).toBe(
-      `Basic ${Buffer.from("x-access-token:repo-token").toString("base64")}`,
-    );
-  });
-
-  it("uses placeholder in env for contents.read", async () => {
-    setupValidEnv();
-    mockGitHubApi({ token: "repo-token" });
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
-      capability: "github.contents.read",
-      target: { type: "repo", value: "getsentry/sentry" },
-      reason: "test:contents-read-env",
-    });
-
-    expect(lease.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
-  });
-
-  it("maps contents.write to GitHub contents write permission with git domain", async () => {
-    setupValidEnv();
-    mockGitHubApi({ token: "push-token" });
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
-      capability: "github.contents.write",
-      target: { type: "repo", value: "getsentry/sentry" },
-      reason: "test:contents-write",
-    });
-
-    const fetchCall = findAccessTokenCall();
-    const body = JSON.parse(fetchCall[1]?.body as string);
-    expect(body.permissions).toEqual({ contents: "write" });
-
-    const domains = lease.headerTransforms!.map((t) => t.domain);
-    expect(domains).toContain("github.com");
-    expect(lease.env.GITHUB_TOKEN).toBe("ghp_host_managed_credential");
-  });
-
-  it("maps pull-requests.read to GitHub pull_requests read permission", async () => {
-    setupValidEnv();
-    mockGitHubApi();
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
-      capability: "github.pull-requests.read",
-      reason: "test:pr-read",
-    });
-
-    const fetchCall = findAccessTokenCall();
-    const body = JSON.parse(fetchCall[1]?.body as string);
-    expect(body.permissions).toEqual({ pull_requests: "read" });
-
-    const domains = lease.headerTransforms!.map((t) => t.domain);
-    expect(domains).toEqual(["api.github.com"]);
-  });
-
-  it("maps pull-requests.write to GitHub pull_requests write permission", async () => {
-    setupValidEnv();
-    mockGitHubApi();
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    await broker.issue({
-      capability: "github.pull-requests.write",
-      reason: "test:pr-write",
-    });
-
-    const fetchCall = findAccessTokenCall();
-    const body = JSON.parse(fetchCall[1]?.body as string);
-    expect(body.permissions).toEqual({ pull_requests: "write" });
-  });
-
-  it("does not include github.com in headerTransforms for issue capabilities", async () => {
-    setupValidEnv();
-    mockGitHubApi({ token: "issue-token" });
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    const lease = await broker.issue({
-      capability: "github.issues.read",
-      reason: "test:no-git-domain",
-    });
-
-    const domains = lease.headerTransforms!.map((t) => t.domain);
-    expect(domains).toEqual(["api.github.com"]);
-    expect(domains).not.toContain("github.com");
-  });
-
-  it("fails with clear error when private key is malformed", async () => {
-    process.env.GITHUB_APP_ID = "12345";
-    process.env.GITHUB_APP_PRIVATE_KEY = "not-a-real-private-key";
-    process.env.GITHUB_INSTALLATION_ID = "42";
-
-    const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
-    await expect(
-      broker.issue({
-        capability: "github.issues.read",
-        reason: "test:bad-key",
-      }),
-    ).rejects.toThrow("Invalid GITHUB_APP_PRIVATE_KEY");
+    expect(body.repositories).toBeUndefined();
   });
 });

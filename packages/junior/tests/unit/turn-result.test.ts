@@ -1,21 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const { logWarn } = vi.hoisted(() => ({
+  logWarn: vi.fn(),
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logWarn,
+}));
+
 import { buildTurnResult } from "@/chat/services/turn-result";
 
 describe("buildTurnResult", () => {
-  it("keeps diagnostics aligned with oauth fallback outcomes", () => {
+  beforeEach(() => {
+    logWarn.mockClear();
+  });
+
+  it("treats empty tool-only turns as execution failures", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
           role: "toolResult",
           toolName: "bash",
           isError: false,
-          stdout: JSON.stringify({
-            credential_unavailable: true,
-            oauth_started: true,
-            provider: "github",
-            message:
-              "I need to connect your GitHub account first. I've sent you a private authorization link.",
-          }),
+          stdout: "ok",
         },
         {
           role: "assistant",
@@ -38,9 +45,9 @@ describe("buildTurnResult", () => {
     });
 
     expect(reply.text).toBe(
-      "I need to connect your GitHub account first. I've sent you a private authorization link.",
+      "I couldn't complete this request in this turn due to an execution failure. I've logged the details for debugging.",
     );
-    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.outcome).toBe("execution_failure");
   });
 
   it("ignores provisional assistant text that appears before the last tool result", () => {
@@ -109,6 +116,67 @@ describe("buildTurnResult", () => {
     expect(reply.text).toBe("Here is the actual summary.");
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
+  });
+
+  it("treats reaction-only turns as successful without fallback text", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "slackMessageAddReaction",
+          isError: false,
+          content: [{ type: "text", text: "reaction added" }],
+        },
+      ],
+      userInput: "react to this",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["slackMessageAddReaction"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: false,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(false);
+    expect(logWarn).not.toHaveBeenCalled();
+  });
+
+  it("keeps thread text when a turn adds a reaction and returns real text", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "slackMessageAddReaction",
+          isError: false,
+          content: [{ type: "text", text: "reaction added" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Handled it." }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "react and confirm",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["slackMessageAddReaction"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+    });
+
+    expect(reply.text).toBe("Handled it.");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: true,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(true);
+    expect(logWarn).not.toHaveBeenCalled();
   });
 
   it("preserves structured timing and usage diagnostics", () => {

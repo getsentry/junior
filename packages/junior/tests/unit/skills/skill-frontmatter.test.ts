@@ -51,7 +51,7 @@ describe("skill frontmatter validation", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("accepts valid requires-capabilities tokens", () => {
+  it("rejects requires-capabilities frontmatter", () => {
     const raw = [
       "---",
       "name: brief",
@@ -63,19 +63,14 @@ describe("skill frontmatter validation", () => {
     ].join("\n");
 
     const result = parseSkillFile(raw, "brief");
-    expect(result.ok).toBe(true);
-    expect(result.ok ? result.skill.requiresCapabilities : null).toEqual([
-      "github.issues.read",
-      "github.issues.write",
-    ]);
+    expect(result.ok).toBe(false);
   });
 
-  it("accepts hyphenated provider prefixes in dotted tokens", () => {
+  it("accepts hyphenated provider prefixes in uses-config tokens", () => {
     const raw = [
       "---",
       "name: brief",
       "description: Create a candidate brief from public engineering signals.",
-      "requires-capabilities: eval-oauth.read",
       "uses-config: eval-oauth.repo",
       "---",
       "",
@@ -84,15 +79,12 @@ describe("skill frontmatter validation", () => {
 
     const result = parseSkillFile(raw, "brief");
     expect(result.ok).toBe(true);
-    expect(result.ok ? result.skill.requiresCapabilities : null).toEqual([
-      "eval-oauth.read",
-    ]);
     expect(result.ok ? result.skill.usesConfig : null).toEqual([
       "eval-oauth.repo",
     ]);
   });
 
-  it("rejects invalid requires-capabilities tokens", () => {
+  it("rejects requires-capabilities even when invalid", () => {
     const raw = [
       "---",
       "name: brief",

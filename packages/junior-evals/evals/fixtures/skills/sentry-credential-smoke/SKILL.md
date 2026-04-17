@@ -1,17 +1,16 @@
 ---
 name: sentry-credential-smoke
 description: Smoke-test Sentry capability credential injection with an eval-only token. Use only in eval scenarios.
-requires-capabilities: sentry.api
 allowed-tools: bash
 ---
 
 # Sentry Credential Smoke
 
-## Step 1: Enable The Credential
+## Step 1: Run An Authenticated Command
 
 Call `bash` with exactly:
 
-`jr-rpc issue-credential sentry.api`
+`sentry issues list --org getsentry`
 
 ## Step 2: Return The Result
 

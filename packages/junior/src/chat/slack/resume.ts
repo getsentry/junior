@@ -240,7 +240,11 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
   } catch (error) {
     await status.stop();
 
-    if (isRetryableTurnError(error, "mcp_auth_resume") && args.onAuthPause) {
+    if (
+      (isRetryableTurnError(error, "mcp_auth_resume") ||
+        isRetryableTurnError(error, "plugin_auth_resume")) &&
+      args.onAuthPause
+    ) {
       deferredPauseHandler = async () => {
         await args.onAuthPause?.(error);
       };

@@ -1,7 +1,6 @@
 ---
 name: github
-description: Manage GitHub issue workflows, source-code investigation, pull request operations, repository checkout, and repo-scoped GitHub credentials via GitHub CLI with concise, evidence-backed content. Use when users ask to inspect implementation details in a repository, clone code, edit files, answer source-code questions from repo evidence, open/edit/view pull requests, or open/edit/inspect GitHub issues. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
-requires-capabilities: github.issues.read github.issues.write github.contents.read github.contents.write github.pull-requests.read github.pull-requests.write
+description: Manage GitHub issue workflows, source-code investigation, pull request operations, repository checkout, and implicit GitHub credentials via GitHub CLI with concise, evidence-backed content. Use when users ask to inspect implementation details in a repository, clone code, edit files, answer source-code questions from repo evidence, open/edit/view pull requests, or open/edit/inspect GitHub issues. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
 uses-config: github.repo
 allowed-tools: bash
 ---
@@ -27,12 +26,12 @@ Load references conditionally based on the operation:
 ### 1. Resolve operation and target
 
 - Determine whether the task is `clone`, `source-code investigation`, an issue operation (`create`, `update`, `comment`, `labels`, `state`, or read-only inspection), a pull request inspection (`view`, `list`, `diff`, or `checks`), or a pull request mutation (`create`, `update`, `close`, or `merge`).
-- Resolve repository (`owner/repo`). If it is not explicit, query channel config with `jr-rpc config get github.repo`.
-- If config exists and is valid `owner/repo`, use it as the default.
+- Resolve repository (`owner/repo`). If it is not explicit, query channel config with `jr-rpc config get github.repo` before running any `gh` or `git` command.
+- If config exists and is valid `owner/repo`, use it as the default and still pass it explicitly on subsequent `gh` commands instead of relying on ambient CLI context.
 - If repository is still missing, ask the user for `owner/repo`.
 - Resolve the issue number for non-create issue operations.
 - Resolve the pull request number for pull request operations that target an existing PR.
-- Keep `owner/repo` explicit on both `jr-rpc issue-credential --target ...` and `gh` commands whenever the task targets a specific repository. Do not rely on a stale `github.repo` default when hopping between repos.
+- Keep `owner/repo` explicit on `gh` commands whenever the task targets a specific repository. This keeps the command pointed at the right repo and avoids accidental cross-repo mutations. Do not rely on a stale `github.repo` default when hopping between repos.
 
 ### 2. Execute by operation type
 
@@ -46,8 +45,6 @@ Load references conditionally based on the operation:
 
 ### Clone path
 
-- Issue a `contents.read` credential scoped to the target repository before cloning:
-  - `jr-rpc issue-credential github.contents.read --target owner/repo`
 - Default to a shallow clone.
 - Use exact command forms from [references/api-surface.md](references/api-surface.md) or [references/common-use-cases.md](references/common-use-cases.md).
 - Deepen incrementally only when the task needs repository history.
@@ -60,7 +57,7 @@ Load references conditionally based on the operation:
 
 - Use this path for questions like "where is this implemented?", "how does this workflow work in code?", "is there already logic for X?", or "verify this from the repo."
 - Resolve repository (`owner/repo`). If the current workspace already contains the target repository, inspect local files directly before cloning anything.
-- If you need repository access outside the current workspace, issue `github.contents.read --target owner/repo` before cloning or other authenticated repo reads.
+- If you need repository access outside the current workspace, keep `owner/repo` explicit on the authenticated command so the command itself targets the correct repository.
 - Default to a shallow clone when you need a fresh checkout; deepen only if the question truly needs history.
 - Prefer the narrowest deterministic evidence that answers the question: local file search, exact file reads, targeted clone inspection, existing issues/PRs, and tests.
 - Cite repository evidence in the reply: file paths, symbols, issue/PR numbers, or commit references when known.
@@ -102,18 +99,17 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 #### 5. Execute operation
 
-- Issue the narrowest matching capability credential before executing.
-- Pass `--target owner/repo` when issuing repo-scoped GitHub credentials.
 - Use fully specified, non-interactive `gh` commands from [references/api-surface.md](references/api-surface.md).
 - Use [references/common-use-cases.md](references/common-use-cases.md) only when you need a concrete command pattern.
 - Check duplicates silently before creating a new issue. Only mention duplicates when relevant matches are actually found.
-- Treat GitHub capability scoping as an operational safety rail that reduces accidental writes and wrong-repo mutations. It is not a perfect command-by-command permission model.
+- Treat GitHub auth as plugin-owned and turn-scoped. The skill determines whether GitHub credentials are available for the turn; explicit repo flags are still for command correctness and mutation safety.
 
 #### 6. Report result
 
 - Return canonical issue URL, issue number, issue type, applied changes, and confidence.
 - Include references used for verified claims.
 - Keep routine issue-creation steps silent. Do not post progress chatter about duplicate checks, drafting, credential issuance, or command execution before the final result.
+- Never mention silent duplicate checking in the final reply unless you actually found a relevant duplicate that changed the outcome.
 - If duplicate checking found no relevant matches, omit that fact entirely and report only the created issue, for example `Created issue #123: ...`, not `No duplicates found. Creating the issue now.`
 
 ---
@@ -122,7 +118,6 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 #### 3. Execute inspection
 
-- Issue `github.pull-requests.read --target owner/repo` before authenticated read-only PR commands.
 - Use exact read-only `gh pr` commands from [references/api-surface.md](references/api-surface.md).
 - Skip branch resolution and push logic for inspection-only work.
 
@@ -143,14 +138,13 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 
 #### 4. Execute pull request operation
 
-- Issue the narrowest matching capability credential before executing, and pass `--target owner/repo` for repo-scoped work.
 - For PR creation, do not rely on `gh pr create` to push or fork implicitly.
-- For PR creation, if the head branch is not already on the remote, first issue `github.contents.write --target owner/repo` and run `git push`.
-- If `git push` returns 401, 403, or another auth/permission error, issue or reissue `github.contents.write --target owner/repo` and retry the same push once before reporting failure.
-- For PR creation, then issue `github.pull-requests.write --target owner/repo` and run `gh pr create --repo owner/repo --head BRANCH ...`.
+- For PR creation, if the head branch is not already on the remote, run `git push` first. That push step needs GitHub write access for the remote repository.
+- If `git push` returns 401, 403, or another auth/permission error, verify the command is still targeting the right repository and retry once. If the error still clearly indicates bad or revoked credentials, rerun the real GitHub command and let the runtime trigger a reconnect flow.
+- After the branch exists remotely, run `gh pr create --repo owner/repo --head BRANCH ...`.
 - For PR creation, use `--head` so `gh` skips its hidden push/fork flow.
-- Treat `gh pr merge` as a contents mutation: it requires `github.contents.write`, not just `github.pull-requests.write`.
-- Treat issue comments and label edits as `github.issues.write`.
+- Treat `gh pr merge` as a contents mutation and keep repository context explicit so the command cannot hit the wrong repository.
+- Treat issue comments and label edits as issue mutations and keep repository context explicit on the command.
 
 #### 5. Report result
 

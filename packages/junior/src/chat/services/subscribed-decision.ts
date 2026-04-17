@@ -4,6 +4,7 @@ import { escapeXml } from "@/chat/xml";
 export enum SubscribedReplyReason {
   ThreadOptOut = "thread_opt_out",
   ExplicitMention = "explicit_mention",
+  DirectedFollowUp = "directed_follow_up",
   DirectedToOtherParty = "directed_to_other_party",
   EmptyMessage = "empty_message",
   Classifier = "llm_classifier",
@@ -427,6 +428,22 @@ export async function decideSubscribedThreadReply(args: {
     return {
       shouldReply: true,
       reason: SubscribedReplyReason.ExplicitMention,
+    };
+  }
+
+  if (
+    signals.assistantWasLastSpeaker &&
+    signals.humanMessagesSinceLastAssistant === 0 &&
+    !signals.currentMessageHasAttachments &&
+    (signals.currentMessageHasDirectedFollowUpCue ||
+      signals.currentMessageIsTerseClarification)
+  ) {
+    return {
+      shouldReply: true,
+      reason: SubscribedReplyReason.DirectedFollowUp,
+      reasonDetail: signals.currentMessageIsTerseClarification
+        ? "immediate terse clarification"
+        : "immediate directed follow-up cue",
     };
   }
 

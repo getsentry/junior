@@ -4,6 +4,7 @@ import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
 } from "@/chat/runtime/slack-runtime";
+import { RetryableTurnError } from "@/chat/runtime/turn";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import {
   createTestThread,
@@ -223,6 +224,31 @@ describe("createSlackTurnRuntime", () => {
         "Failed to post fallback error reply for mention handler",
       );
     });
+
+    it("uses a generic auth-resume message for plugin auth pauses", async () => {
+      const replyError = new RetryableTurnError(
+        "plugin_auth_resume",
+        "resume auth",
+      );
+      const deps = createMockDeps({
+        replyToThread: vi.fn().mockRejectedValue(replyError),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
+      });
+      const runtime = createSlackTurnRuntime<TestState>(deps);
+
+      await runtime.handleNewMention(
+        createTestThread({}),
+        createTestMessage({}),
+      );
+
+      expect(deps.logException).toHaveBeenCalledWith(
+        replyError,
+        "mention_handler_auth_pause",
+        expect.any(Object),
+        { "app.turn.retryable_reason": "plugin_auth_resume" },
+        "onNewMention parked turn for auth resume",
+      );
+    });
   });
 
   describe("handleSubscribedMessage", () => {
@@ -257,6 +283,31 @@ describe("createSlackTurnRuntime", () => {
         "shouldReply",
         "replyToThread",
       ]);
+    });
+
+    it("uses a generic auth-resume message for subscribed plugin auth pauses", async () => {
+      const replyError = new RetryableTurnError(
+        "plugin_auth_resume",
+        "resume auth",
+      );
+      const deps = createMockDeps({
+        replyToThread: vi.fn().mockRejectedValue(replyError),
+        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
+      });
+      const runtime = createSlackTurnRuntime<TestState>(deps);
+
+      await runtime.handleSubscribedMessage(
+        createTestThread({}),
+        createTestMessage({}),
+      );
+
+      expect(deps.logException).toHaveBeenCalledWith(
+        replyError,
+        "subscribed_message_handler_auth_pause",
+        expect.any(Object),
+        { "app.turn.retryable_reason": "plugin_auth_resume" },
+        "onSubscribedMessage parked turn for auth resume",
+      );
     });
 
     it("passes stripped text via stripLeadingBotMention to prepareTurnState", async () => {

@@ -16,8 +16,10 @@ related:
 2. Junior validates and routes the event.
 3. Thread work is enqueued to `junior-thread-message`.
 4. `/api/queue/callback` processes queued work.
-5. Agent turn runs with configured tools, skills, and capability gates.
-6. Reply is posted back to the original Slack thread.
+5. Agent turn runs with configured tools, loaded skills, and capability gates.
+6. If an authenticated command needs provider access, the runtime infers the required capability, fetches requester-bound credentials for that turn, and injects them at the host boundary.
+7. If OAuth is required, Junior sends the link privately to the requesting user and resumes the blocked request after the callback.
+8. Reply is posted back to the original Slack thread.
 
 ## Why queue-backed processing exists
 
@@ -28,7 +30,8 @@ related:
 ## Core invariants
 
 - Webhook ingress and queue callback are both required for production.
-- Tool/credential usage is capability-gated and requester-bound.
+- Tool and credential usage is capability-gated, requester-bound, and turn-scoped.
+- Loaded skill plugins determine which provider credentials can be injected at all.
 - Failure states are logged and surfaced for operator recovery.
 
 ## Where to go next

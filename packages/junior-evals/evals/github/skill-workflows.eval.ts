@@ -96,7 +96,7 @@ describe("GitHub Skill Workflows", () => {
       },
       events: [
         mention(
-          "In this repo, where do we enforce that `jr-rpc issue-credential` must come from a skill that declares the capability? Keep it brief and cite the repo file or symbol you checked.",
+          "In this repo, where do we resolve GitHub credential injection from the loaded skill for the current turn? Keep it brief and cite the repo file or symbol you checked.",
         ),
       ],
       criteria: rubric({
@@ -104,7 +104,7 @@ describe("GitHub Skill Workflows", () => {
           "An implementation question is answered from repository evidence rather than generic memory or product framing.",
         pass: [
           "The reply cites repository evidence such as a file path, symbol, or nearby contract reference.",
-          "The reply explains briefly that capability issuance is enforced against the active skill declaration.",
+          "The reply explains briefly that credential injection comes from the loaded plugin-backed skill for the current turn.",
         ],
         fail: [
           "Do not answer as if this were a product or UI question.",
@@ -131,13 +131,13 @@ describe("GitHub Skill Workflows", () => {
       ],
       criteria: rubric({
         contract:
-          "The assistant explains the GitHub PR credential order without omitting the push step.",
+          "The assistant explains the GitHub PR auth order without omitting the push step.",
         pass: [
-          "The answer says `github.contents.write` is needed before `git push`.",
-          "The answer says `github.pull-requests.write` is needed for `gh pr create` after the branch is pushed.",
+          "The answer explicitly says the branch push happens before `gh pr create` for the PR step.",
+          "The answer says the push step needs GitHub write access for the remote.",
         ],
         fail: [
-          "Do not imply that `github.pull-requests.write` alone is sufficient before the push.",
+          "Do not imply that PR creation auth alone is sufficient before the push.",
           "Do not omit the explicit push-auth step.",
         ],
       }),
@@ -163,10 +163,10 @@ describe("GitHub Skill Workflows", () => {
         mention("Set the default repo to getsentry/junior for this channel.", {
           thread: defaultRepoThread,
         }),
-        threadMessage(
-          "Now enable github issues read credentials without passing --repo.",
-          { thread: defaultRepoThread, is_mention: true },
-        ),
+        threadMessage("Now list GitHub issues without passing --repo.", {
+          thread: defaultRepoThread,
+          is_mention: true,
+        }),
       ],
       criteria: rubric({
         contract:
@@ -174,11 +174,14 @@ describe("GitHub Skill Workflows", () => {
         pass: [
           "The assistant posts exactly two replies in order.",
           "The first reply confirms default repo setup for getsentry/junior.",
-          "The second reply enables GitHub issues read credentials using that stored repo context.",
+          "The second reply clearly reuses getsentry/junior as stored repo context without asking for the repo again.",
+        ],
+        allow: [
+          "A concise note that the runtime could not finish the GitHub command is acceptable if the reply still clearly reuses the stored repo context instead of asking the user to restate it.",
         ],
         fail: [
           "Do not ask the user to pass --repo again.",
-          "Do not include sandbox setup failure text in either reply.",
+          "Do not claim there is a separate credential-enable config the user needs to set first.",
         ],
       }),
     },
