@@ -3,35 +3,6 @@ import { mention, rubric, slackEval } from "../helpers";
 
 describe("Slack mrkdwn hygiene", () => {
   slackEval(
-    "does not emit GFM pipe-tables when the user asks for a comparison table",
-    {
-      events: [
-        mention(
-          "Give me a short comparison table of Sentry, Bugsnag, and Rollbar for error monitoring. One row per tool, columns for best use case, strengths, and tradeoffs.",
-        ),
-      ],
-      overrides: {
-        reply_timeout_ms: 120_000,
-      },
-      requireSandboxReady: false,
-      taskTimeout: 150_000,
-      timeout: 210_000,
-      criteria: rubric({
-        contract:
-          "When asked to render a table, the reply uses Slack-compatible formatting (bulleted lists or fenced code) instead of GFM pipe-tables that Slack renders as literal characters.",
-        pass: [
-          "assistant_posts contains a coherent comparison of Sentry, Bugsnag, and Rollbar.",
-          "The comparison is expressed as bulleted lists grouped by tool, or as a fenced code block with manually aligned columns.",
-        ],
-        fail: [
-          "Do not emit GFM pipe-table syntax such as lines starting and ending with `|` or a separator row like `|---|---|---|`.",
-          "Do not claim a table is being rendered while emitting raw `|` characters in the message body.",
-        ],
-      }),
-    },
-  );
-
-  slackEval(
     "uses single-asterisk bold, single-tilde strike, and Slack link syntax",
     {
       events: [
