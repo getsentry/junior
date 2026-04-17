@@ -22,7 +22,7 @@ Junior intentionally keeps this package read-only by limiting the MCP tool surfa
 
 ## Datadog site
 
-The packaged manifest points at the US1 endpoint (`mcp.datadoghq.com`) and enables the `core`, `apm`, and `error-tracking` toolsets. Teams on other Datadog sites (US3, US5, EU, AP1, AP2) can copy this plugin into `app/plugins/datadog/` and override the `mcp.url` to their regional endpoint.
+The packaged manifest defaults to the US1 endpoint (`mcp.datadoghq.com`) and enables the `core`, `apm`, and `error-tracking` toolsets. Teams on other Datadog sites (US3, US5, EU, AP1, AP2, GovCloud) set `DATADOG_SITE` in their Junior deployment env to their site host (e.g. `us5.datadoghq.com`, `datadoghq.eu`, `ddog-gov.com`). No code changes or plugin copy needed. See the [Datadog plugin docs](https://junior.sentry.dev/extend/datadog-plugin/) for the full site table.
 
 ## Optional channel defaults
 
