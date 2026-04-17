@@ -123,8 +123,12 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
         }
       : baseDeliveryPlan;
   const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
+  const sideEffectOnlySuccess =
+    !primaryText &&
+    toolErrorCount === 0 &&
+    (reactionPerformed || channelPostPerformed || replyFiles.length > 0);
 
-  if (!primaryText) {
+  if (!primaryText && !sideEffectOnlySuccess) {
     logWarn(
       "ai_model_response_empty",
       {
@@ -156,10 +160,6 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
       ? lastAssistant.errorMessage
       : undefined;
   const usedPrimaryText = Boolean(primaryText);
-  const sideEffectOnlySuccess =
-    !primaryText &&
-    toolErrorCount === 0 &&
-    (reactionPerformed || channelPostPerformed || replyFiles.length > 0);
   const outcome: AgentTurnDiagnostics["outcome"] = primaryText
     ? stopReason === "error"
       ? "provider_error"

@@ -1,7 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const { logWarn } = vi.hoisted(() => ({
+  logWarn: vi.fn(),
+}));
+
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logWarn,
+}));
+
 import { buildTurnResult } from "@/chat/services/turn-result";
 
 describe("buildTurnResult", () => {
+  beforeEach(() => {
+    logWarn.mockClear();
+  });
+
   it("treats empty tool-only turns as execution failures", () => {
     const reply = buildTurnResult({
       newMessages: [
@@ -130,6 +143,7 @@ describe("buildTurnResult", () => {
     });
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
+    expect(logWarn).not.toHaveBeenCalled();
   });
 
   it("preserves structured timing and usage diagnostics", () => {

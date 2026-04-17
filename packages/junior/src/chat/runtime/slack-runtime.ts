@@ -322,7 +322,7 @@ export function createSlackTurnRuntime<
             "mention_handler_auth_pause",
             errorContext,
             { "app.turn.retryable_reason": error.reason },
-            "onNewMention parked turn for MCP auth resume",
+            "onNewMention parked turn for auth resume",
           );
           return;
         }
@@ -476,7 +476,7 @@ export function createSlackTurnRuntime<
             "subscribed_message_handler_auth_pause",
             errorContext,
             { "app.turn.retryable_reason": error.reason },
-            "onSubscribedMessage parked turn for MCP auth resume",
+            "onSubscribedMessage parked turn for auth resume",
           );
           return;
         }

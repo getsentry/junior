@@ -110,6 +110,7 @@ export function createAgentTools(
             if (bashCommand && pluginAuthOrchestration) {
               await pluginAuthOrchestration.handleCommandFailure({
                 activeSkill: sandbox.getActiveSkill(),
+                command: bashCommand,
                 details: normalized.details,
               });
             }

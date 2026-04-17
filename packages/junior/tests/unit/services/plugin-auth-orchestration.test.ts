@@ -7,11 +7,13 @@ import type { Skill } from "@/chat/skills";
 
 const {
   formatProviderLabel,
+  getPluginDefinition,
   getPluginOAuthConfig,
   startOAuthFlow,
   unlinkProvider,
 } = vi.hoisted(() => ({
   formatProviderLabel: vi.fn((provider: string) => provider),
+  getPluginDefinition: vi.fn(),
   getPluginOAuthConfig: vi.fn(),
   startOAuthFlow: vi.fn(),
   unlinkProvider: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock("@/chat/oauth-flow", () => ({
 }));
 
 vi.mock("@/chat/plugins/registry", () => ({
+  getPluginDefinition,
   getPluginOAuthConfig,
 }));
 
@@ -43,6 +46,17 @@ const githubSkill: Skill = {
 describe("createPluginAuthOrchestration", () => {
   beforeEach(() => {
     formatProviderLabel.mockClear();
+    getPluginDefinition.mockReset();
+    getPluginDefinition.mockReturnValue({
+      manifest: {
+        name: "github",
+        credentials: {
+          type: "github-app",
+          apiDomains: ["api.github.com"],
+          authTokenEnv: "GITHUB_TOKEN",
+        },
+      },
+    });
     getPluginOAuthConfig.mockReset();
     getPluginOAuthConfig.mockReturnValue({ provider: "github" });
     startOAuthFlow.mockReset();
@@ -77,6 +91,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
+        command: "gh issue view 123",
         details: {
           exit_code: 1,
           stderr: "bad credentials",
@@ -111,6 +126,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
+        command: "gh issue view 123",
         details: {
           exit_code: 1,
           stderr: "bad credentials",
@@ -118,6 +134,31 @@ describe("createPluginAuthOrchestration", () => {
       }),
     ).rejects.toThrow("Missing base URL");
 
+    expect(unlinkProvider).not.toHaveBeenCalled();
+  });
+
+  it("ignores auth-like failures for commands unrelated to the provider", async () => {
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "check GitHub",
+        userTokenStore: {} as any,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: githubSkill,
+        command: "curl https://other-api.example.test",
+        details: {
+          exit_code: 1,
+          stderr: "401 unauthorized",
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 });

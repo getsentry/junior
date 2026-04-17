@@ -3,7 +3,10 @@ import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
-import { getPluginOAuthConfig } from "@/chat/plugins/registry";
+import {
+  getPluginDefinition,
+  getPluginOAuthConfig,
+} from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
 
 export class PluginAuthorizationPauseError extends Error {
@@ -34,6 +37,7 @@ export interface PluginAuthOrchestration {
   }) => Promise<never>;
   handleCommandFailure: (input: {
     activeSkill: Skill | null;
+    command: string;
     details: unknown;
   }) => Promise<void>;
   getPendingPause: () => PluginAuthorizationPauseError | undefined;
@@ -75,6 +79,41 @@ function isCommandAuthFailure(details: unknown): details is {
     /\binvalid grant\b/,
     /\breauthoriz/,
   ].some((pattern) => pattern.test(text));
+}
+
+function commandTargetsProvider(
+  provider: string,
+  command: string,
+  details: {
+    stdout?: string;
+    stderr?: string;
+  },
+): boolean {
+  const normalizedCommand = command.trim().toLowerCase();
+  if (!normalizedCommand) {
+    return false;
+  }
+
+  if (provider === "github" && /^(gh|git)\b/.test(normalizedCommand)) {
+    return true;
+  }
+
+  if (provider === "sentry" && /\bsentry-cli\b/.test(normalizedCommand)) {
+    return true;
+  }
+
+  const plugin = getPluginDefinition(provider);
+  const candidates = new Set<string>([provider.toLowerCase()]);
+  const credentials = plugin?.manifest.credentials;
+  if (credentials) {
+    candidates.add(credentials.authTokenEnv.toLowerCase());
+    for (const domain of credentials.apiDomains) {
+      candidates.add(domain.toLowerCase());
+    }
+  }
+
+  const combinedText = `${normalizedCommand}\n${details.stdout?.toLowerCase() ?? ""}\n${details.stderr?.toLowerCase() ?? ""}`;
+  return [...candidates].some((candidate) => combinedText.includes(candidate));
 }
 
 /**
@@ -161,7 +200,8 @@ export function createPluginAuthOrchestration(
         !deps.requesterId ||
         !deps.userTokenStore ||
         !getPluginOAuthConfig(provider) ||
-        !isCommandAuthFailure(input.details)
+        !isCommandAuthFailure(input.details) ||
+        !commandTargetsProvider(provider, input.command, input.details)
       ) {
         return;
       }

@@ -152,6 +152,11 @@ describe("createAgentTools", () => {
     await expect(
       bashTool!.execute("tool-2", { command: "gh issue view 123" }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
+    expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith({
+      activeSkill: githubSkill,
+      command: "gh issue view 123",
+      details: expect.any(Object),
+    });
     expect(handleToolExecutionError).not.toHaveBeenCalled();
   });
 });
