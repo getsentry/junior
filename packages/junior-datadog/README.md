@@ -1,5 +1,10 @@
 # @sentry/junior-datadog
 
+> [!WARNING]
+> **This plugin does not currently work.** Datadog's hosted MCP server requires OAuth Dynamic Client Registration (DCR, [RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)) for third-party clients like Junior, and DCR is locked down on Datadog's side. Until Datadog exposes DCR (or an equivalent registration path) on `mcp.datadoghq.com`, Junior cannot complete the OAuth handshake and every Datadog tool call will fail.
+>
+> The package is kept in-tree so the integration is ready to ship the moment Datadog unblocks DCR. Do not add it to a production deployment in the meantime.
+
 `@sentry/junior-datadog` adds read-only Datadog telemetry workflows to Junior through Datadog's hosted MCP server.
 
 Install it alongside `@sentry/junior`:

@@ -9,6 +9,12 @@ related:
   - /operate/security-hardening/
 ---
 
+:::danger[This plugin does not currently work]
+Datadog's hosted MCP server requires OAuth Dynamic Client Registration ([DCR, RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)) for third-party clients like Junior, and **DCR is locked down on Datadog's side**. Until Datadog exposes DCR (or an equivalent registration path) on `mcp.datadoghq.com`, Junior cannot complete the OAuth handshake and every Datadog tool call will fail at connect time.
+
+The `@sentry/junior-datadog` package is kept in-tree so the integration is ready to ship the moment Datadog unblocks DCR. **Do not add it to a production deployment in the meantime.** The rest of this page documents how the plugin will behave once Datadog unblocks DCR.
+:::
+
 The Datadog plugin uses Datadog's hosted MCP server so Slack users can query their own Datadog account context — logs, metrics, APM traces, monitors, incidents, dashboards, and RUM — without sharing a workspace API key.
 
 Junior intentionally keeps this plugin read-only. The packaged manifest exposes only search-, fetch-, and analytics-oriented Datadog MCP tools. It does not expose notebook, monitor, SLO, or incident mutations, even though Datadog's MCP server supports some of them.
