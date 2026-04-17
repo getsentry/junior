@@ -16,6 +16,7 @@ Load references conditionally based on the request:
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Any Linear operation                             | [references/api-surface.md](references/api-surface.md)                                                                                                                                     |
 | Create, update, comment, assign, or state change | [references/common-use-cases.md](references/common-use-cases.md), [references/issue-writing.md](references/issue-writing.md), [references/issue-examples.md](references/issue-examples.md) |
+| Issue or project view returning a single entity  | [references/slack-render-intents.md](references/slack-render-intents.md) when Slack is the reply surface                                                                                   |
 | Auth issues, ambiguity, or tool failures         | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                     |
 
 ## Workflow
