@@ -20,7 +20,6 @@ import {
 import { setPluginPackages } from "@/chat/plugins/package-discovery";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import { generateAssistantReply } from "@/chat/respond";
-import type { SlackRenderIntent } from "@/chat/slack/render/intents";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { resetSkillDiscoveryCache } from "@/chat/skills";
 import {
@@ -155,11 +154,6 @@ export interface EvalResult {
     emoji: string;
     timestamp: string;
   }>;
-  /**
-   * Render intents captured from reply tool calls during the turn, in the
-   * order they resolved. Empty when the model responded in plain text.
-   */
-  replyIntents: SlackRenderIntent[];
   slackAdapter: FakeSlackAdapter;
 }
 
@@ -800,7 +794,6 @@ function buildRuntimeServices(
   scenario: EvalScenario,
   env: HarnessEnvironment,
   threadRecordsById: Map<string, EvalThreadRecord>,
-  replyIntents: SlackRenderIntent[],
 ): JuniorRuntimeServiceOverrides {
   const replyResults = scenario.overrides?.reply_results ?? [];
   const replyTexts = scenario.overrides?.reply_texts ?? [];
@@ -947,9 +940,6 @@ function buildRuntimeServices(
         }
 
         replyState.successfulCount += 1;
-        if (reply.intent) {
-          replyIntents.push(reply.intent);
-        }
         return reply;
       },
     },
@@ -1092,7 +1082,6 @@ function collectResults(
   threadRecordsById: Map<string, EvalThreadRecord>,
   slackAdapter: FakeSlackAdapter,
   logRecords: EmittedLogRecord[],
-  replyIntents: SlackRenderIntent[],
 ): EvalResult {
   const posts = [...threadRecordsById.values()].flatMap((record) =>
     record.thread.posts.map(toEvalAssistantPost),
@@ -1106,7 +1095,6 @@ function collectResults(
     logRecords,
     reactions,
     posts,
-    replyIntents,
     slackAdapter,
   };
 }
@@ -1120,7 +1108,6 @@ export async function runEvalScenario(
   options: EvalScenarioRunOptions = {},
 ): Promise<EvalResult> {
   const logRecords = options.logRecords ?? [];
-  const replyIntents: SlackRenderIntent[] = [];
   const env = await setupHarnessEnvironment(scenario);
 
   const slackAdapter = new FakeSlackAdapter();
@@ -1161,12 +1148,7 @@ export async function runEvalScenario(
     return record;
   };
 
-  const services = buildRuntimeServices(
-    scenario,
-    env,
-    threadRecordsById,
-    replyIntents,
-  );
+  const services = buildRuntimeServices(scenario, env, threadRecordsById);
 
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => slackAdapter as any,
@@ -1187,12 +1169,7 @@ export async function runEvalScenario(
     await teardownHarnessEnvironment(scenario, env);
   }
 
-  return collectResults(
-    threadRecordsById,
-    slackAdapter,
-    logRecords,
-    replyIntents,
-  );
+  return collectResults(threadRecordsById, slackAdapter, logRecords);
 }
 
 // Compile-time guards for Thread and Message fakes are in tests/fixtures/slack-harness.ts.

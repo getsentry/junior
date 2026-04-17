@@ -14,7 +14,7 @@
 - 2026-03-21: Added canonical chat architecture spec.
 - 2026-04-15: Added canonical Slack agent delivery spec.
 - 2026-04-16: Added canonical Slack write contract spec.
-- 2026-04-17: Added draft Slack rendering spec for render intents, plugin renderer registry, and Work Object lanes.
+- 2026-04-17: Added draft Slack output contract spec (`slack-rendering-spec.md`) covering the `mrkdwn` allow-list and forbid-list for the Slack surface.
 
 ## Status
 

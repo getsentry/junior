@@ -100,7 +100,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/chat-architecture-spec.md` (chat composition, service, and test-seam architecture contract)
 - `specs/slack-agent-delivery-spec.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
 - `specs/slack-outbound-contract-spec.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
-- `specs/slack-rendering-spec.md` (Slack render-intent layer, plugin renderer registry, and Work Object lane contract — draft)
+- `specs/slack-rendering-spec.md` (Slack `mrkdwn` output contract: allow-list / forbid-list for the Slack surface — draft)
 - `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
 - `specs/oauth-flows-spec.md` (OAuth authorization code flow + Slack UX contract)
 - `specs/harness-agent-spec.md` (agent loop and output contract)

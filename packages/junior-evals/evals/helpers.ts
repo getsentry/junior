@@ -53,23 +53,6 @@ const assistantPostSchema = z.object({
   text: z.string().describe("Visible text the assistant posted in the thread"),
 });
 
-const replyIntentSchema = z
-  .object({
-    kind: z
-      .string()
-      .describe(
-        "Render intent kind the assistant emitted via the reply tool (e.g. 'comparison_table', 'summary_card', 'alert', 'result_carousel', 'progress_plan', 'plain_reply')",
-      ),
-    payload: z
-      .unknown()
-      .describe(
-        "Structured fields the assistant supplied for this intent, verbatim. Inspect to judge whether the intent's content is correct.",
-      ),
-  })
-  .describe(
-    "One render intent captured from a `reply` tool call during the turn",
-  );
-
 const evalOutputSchema = z.object({
   assistant_posts: z
     .array(assistantPostSchema)
@@ -109,11 +92,6 @@ const evalOutputSchema = z.object({
       }),
     )
     .describe("Slack reactions added by the assistant"),
-  reply_intents: z
-    .array(replyIntentSchema)
-    .describe(
-      "Render intents the assistant emitted via the `reply` tool during the turn, in call order. Empty when the turn ended with plain assistant text.",
-    ),
   slack_metadata: slackMetadataSchema.describe(
     "Slack thread metadata set by the assistant",
   ),
@@ -135,10 +113,6 @@ function serializeEvalResult(result: EvalResult): string {
     assistant_posts: result.posts,
     channel_posts: result.channelPosts,
     reactions: result.reactions,
-    reply_intents: result.replyIntents.map((intent) => {
-      const { kind, ...payload } = intent;
-      return { kind, payload };
-    }),
     slack_metadata: {
       thread_title_set: result.slackAdapter.titleCalls.length > 0,
       suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,

@@ -1,7 +1,7 @@
 /**
- * Slack Block Kit types used by the render-intent layer and the outbound
- * boundary. This is a local subset of the Slack API surface — just the
- * fields the repository actually emits.
+ * Slack Block Kit types used by the outbound reply boundary. This is a local
+ * subset of the Slack API surface — just the fields the repository actually
+ * emits when wrapping final `mrkdwn` replies in section/context envelopes.
  */
 
 export interface SlackMrkdwnText {
