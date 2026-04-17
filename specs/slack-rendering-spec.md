@@ -115,16 +115,18 @@ The `reply` tool has the following properties:
 4. _Cross-validated_. The TypeBox schema on the tool is the provider-enforced contract. Core re-validates the payload with the same Zod schema that the renderer consumes, so the renderer never sees a shape the tests were not written against. Divergence between the two schemas is a loud runtime error, not a silent fallback.
 5. _Captured onto `AssistantReply`_. The validated intent is surfaced on the turn's `AssistantReply` as an optional field. Delivery reads the intent (if present) and renders via the core intent renderer into blocks + fallback text; otherwise the existing plain-text path runs unchanged. This keeps the reply-delivery contract in `slack-agent-delivery-spec.md` intact.
 
-### 5. Plugin Guidance Model
+### 5. Guidance Model
 
-1. Plugins do not register renderers, templates, or presentation YAML. Rendering code stays in core.
-2. Plugins influence intent rendering through their existing surface area (YAML manifests plus `SKILL.md` content), along two axes:
+Model guidance about render intents is split into two layers so the core capability is taught in one place and plugins add only the domain-specific detail.
+
+1. _Core capability (surface-owned)_. When the Slack runtime registers the native `reply` tool on a turn, the system prompt includes a `<render-capabilities>` section that names the full palette, describes when to prefer each kind over plain mrkdwn, states the "at most one `reply` per turn" rule, and tells the model when to skip `reply` entirely (ordinary prose, acknowledgements, clarifying questions). This section is generic across plugins — it does not reference any specific domain object — and it is the only place the palette is taught at the model level.
+2. _Plugin recipes (domain-owned)_. Plugins do not register renderers, templates, or presentation YAML; rendering code stays in core. Plugins influence intent rendering through their existing surface area (YAML manifests plus `SKILL.md` content), along two axes:
    - _When_ — which of their domain objects are best expressed as which intent kind (for example, "a pull request returned from `gh pr view` is a `summary_card`", "a Sentry search result list is a `result_carousel`").
    - _How_ — the concrete field recipe the model should populate for that entity: title shape, which labels to surface as `fields`, recommended `actions` (usually a deep link back to the source system), when to use `subtitle` vs. `body`, and any domain-specific phrasing conventions.
-3. Plugin-owned prompt snippets, where present, may reference the intent names and field recipes directly but must not describe Slack block shapes. Blocks are a core implementation detail.
-4. This keeps the plugin contract declarative (YAML manifest plus markdown skills) and preserves the principle that plugins are not code.
-5. Adding support for a new plugin-domain entity in Slack rendering does not require any core change when the existing intent set already covers the presentation. The work is an edit to that plugin's `SKILL.md`.
-6. Adding a new intent kind is a core change. Intents are the shared vocabulary; the palette is not plugin-extensible.
+     Plugin recipes reference the intent names and field shapes directly but must not describe Slack block shapes, restate the palette, or restate the "when to skip `reply`" rules. Blocks are a core implementation detail and the palette is already taught by the surface.
+3. This keeps the plugin contract declarative (YAML manifest plus markdown skills) and preserves the principle that plugins are not code.
+4. Adding support for a new plugin-domain entity in Slack rendering does not require any core change when the existing intent set already covers the presentation. The work is an edit to that plugin's `SKILL.md`.
+5. Adding a new intent kind is a core change. Intents are the shared vocabulary; the palette is not plugin-extensible.
 
 ### 6. Renderer Implementation
 
@@ -141,11 +143,10 @@ Slack has announced newer AI-oriented block primitives (native Card, Alert, Data
 
 ### 8. Prompt and Model Behavior
 
-1. The prompt teaches the model to choose a render intent from the final reply lane instead of authoring `slack-mrkdwn` for structured answers.
-2. The prompt lists the selection rules from section 3 with short examples and lets the model fall back to `plain_reply` when no rich intent fits.
-3. The prompt does not describe Slack Block Kit JSON shapes and does not let the model author blocks.
-4. Progress-lane affordances (status, `progress_plan`) are offered to the model only when the turn is expected to be long-running or tool-heavy, consistent with the long-running status contract.
-5. Plugin `SKILL.md` content extends the selection rules with plugin-specific guidance (for example, "when returning a GitHub pull request, a `summary_card` with title, author, state, and review status is usually best"). Plugin guidance cannot expand or redefine the palette itself.
+1. The Slack surface adds a `<render-capabilities>` section to the system prompt when the `reply` tool is registered on the turn. This section enumerates the palette, gives the selection rules from section 3, states the one-`reply`-per-turn rule, and tells the model to skip `reply` for ordinary prose. It is the only place the palette is taught at the model level.
+2. The prompt does not describe Slack Block Kit JSON shapes and does not let the model author blocks. Plain mrkdwn remains the default reply format and is taught by the existing `<output-contract>` section.
+3. Progress-lane affordances (status, `progress_plan`) are offered to the model only when the turn is expected to be long-running or tool-heavy, consistent with the long-running status contract.
+4. Plugin `SKILL.md` content extends the selection rules with plugin-specific recipes (for example, "when returning a GitHub pull request, a `summary_card` with title, author, state, and review status is usually best"). Plugin guidance cannot expand or redefine the palette itself and should not restate what `<render-capabilities>` already teaches.
 
 ### 9. First-Party Coverage Targets
 
