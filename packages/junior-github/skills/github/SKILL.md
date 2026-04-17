@@ -13,13 +13,14 @@ Issue workflows, pull request operations, and repository checkout via `gh` CLI.
 
 Load references conditionally based on the operation:
 
-| Operation                            | Load                                                                                                                                                                                        |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Any operation                        | [references/api-surface.md](references/api-surface.md)                                                                                                                                      |
-| `clone`, `pull request create`       | [references/common-use-cases.md](references/common-use-cases.md)                                                                                                                            |
-| `source-code investigation`          | [references/research-rules.md](references/research-rules.md)                                                                                                                                |
-| `issue create`, `issue body rewrite` | [references/issue-examples.md](references/issue-examples.md), the matching type-specific template and type-specific rules, and [references/research-rules.md](references/research-rules.md) |
-| On failure                           | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                      |
+| Operation                                                        | Load                                                                                                                                                                                        |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Any operation                                                    | [references/api-surface.md](references/api-surface.md)                                                                                                                                      |
+| `clone`, `pull request create`                                   | [references/common-use-cases.md](references/common-use-cases.md)                                                                                                                            |
+| `source-code investigation`                                      | [references/research-rules.md](references/research-rules.md)                                                                                                                                |
+| `issue create`, `issue body rewrite`                             | [references/issue-examples.md](references/issue-examples.md), the matching type-specific template and type-specific rules, and [references/research-rules.md](references/research-rules.md) |
+| `pull request inspection`, `pull request mutation`, `issue view` | [references/slack-render-intents.md](references/slack-render-intents.md) when Slack is the reply surface                                                                                    |
+| On failure                                                       | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                      |
 
 ## Workflow
 

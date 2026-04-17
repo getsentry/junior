@@ -1,6 +1,7 @@
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createAttachFileTool } from "@/chat/tools/sandbox/attach-file";
 import type { SkillMetadata } from "@/chat/skills";
+import { createReplyTool } from "@/chat/slack/render/reply-tool";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
@@ -99,6 +100,12 @@ export function createTools(
     slackListGetItems: createSlackListGetItemsTool(state),
     slackListUpdateItem: createSlackListUpdateItemTool(state),
   };
+
+  if (hooks.captureReplyIntent) {
+    tools.reply = createReplyTool({
+      captureReplyIntent: hooks.captureReplyIntent,
+    });
+  }
 
   if (context.mcpToolManager && context.getActiveSkills) {
     tools.searchTools = createSearchToolsTool(
