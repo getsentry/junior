@@ -115,14 +115,6 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     channelPostPerformed,
     hasFiles: replyFiles.length > 0,
   });
-  const deliveryPlan =
-    reactionPerformed && replyFiles.length === 0 && !channelPostPerformed
-      ? {
-          ...baseDeliveryPlan,
-          postThreadText: false,
-        }
-      : baseDeliveryPlan;
-  const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
   const sideEffectOnlySuccess =
     !primaryText &&
     toolErrorCount === 0 &&
@@ -177,6 +169,17 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
   const resolvedText = escapedOrRawPayload
     ? fallbackText
     : enforceAttachmentClaimTruth(responseText, replyFiles.length > 0);
+  const deliveryPlan =
+    reactionPerformed &&
+    !resolvedText &&
+    replyFiles.length === 0 &&
+    !channelPostPerformed
+      ? {
+          ...baseDeliveryPlan,
+          postThreadText: false,
+        }
+      : baseDeliveryPlan;
+  const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
   const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
     ? "execution_failure"
     : outcome;

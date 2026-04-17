@@ -146,6 +146,39 @@ describe("buildTurnResult", () => {
     expect(logWarn).not.toHaveBeenCalled();
   });
 
+  it("keeps thread text when a turn adds a reaction and returns real text", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "slackMessageAddReaction",
+          isError: false,
+          content: [{ type: "text", text: "reaction added" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Handled it." }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "react and confirm",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["slackMessageAddReaction"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+    });
+
+    expect(reply.text).toBe("Handled it.");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: true,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(true);
+    expect(logWarn).not.toHaveBeenCalled();
+  });
+
   it("preserves structured timing and usage diagnostics", () => {
     const reply = buildTurnResult({
       newMessages: [
