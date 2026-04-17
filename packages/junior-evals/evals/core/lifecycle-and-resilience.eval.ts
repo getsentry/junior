@@ -1,21 +1,44 @@
 import { describe } from "vitest";
-import { mention, slackEval, threadStart } from "../helpers";
+import { mention, rubric, slackEval, threadStart } from "../helpers";
 
-describe("Conversational Evals: Lifecycle and Resilience", () => {
-  slackEval("lifecycle: assistant thread init metadata", {
-    events: [threadStart()],
-    criteria:
-      "No reply is posted. Thread title and suggested prompts are each set exactly once.",
-  });
-
-  slackEval("resilience: handler error is user-visible", {
-    overrides: { fail_reply_call: 1 },
-    events: [mention("What's the status of the deploy?")],
-    criteria: "A single error reply is posted when response generation fails.",
-  });
+describe("Lifecycle and Resilience", () => {
+  slackEval(
+    "when an assistant thread starts, set title and prompts without posting a reply",
+    {
+      events: [threadStart()],
+      criteria: rubric({
+        contract:
+          "The assistant initializes Slack thread metadata without posting a visible reply.",
+        pass: [
+          "No assistant reply is posted.",
+          "The thread title is set exactly once.",
+          "Suggested prompts are set exactly once.",
+        ],
+      }),
+    },
+  );
 
   slackEval(
-    "resilience: streamed provider error keeps partial text and adds interruption notice",
+    "when reply generation fails before any answer, post one clear error reply",
+    {
+      overrides: { fail_reply_call: 1 },
+      events: [mention("What's the status of the deploy?")],
+      criteria: rubric({
+        contract:
+          "When reply generation fails before any answer is posted, the user still gets one clear failure reply.",
+        pass: [
+          "assistant_posts contains exactly one reply.",
+          "That reply clearly tells the user the request failed in user-facing language.",
+        ],
+        fail: [
+          "Do not leak stack traces, exception text, or debugging narration in the reply.",
+        ],
+      }),
+    },
+  );
+
+  slackEval(
+    "when a short reply is interrupted by the provider, keep the partial answer in one marked post",
     {
       overrides: {
         reply_results: [
@@ -27,8 +50,19 @@ describe("Conversational Evals: Lifecycle and Resilience", () => {
         ],
       },
       events: [mention("Quick budget update?")],
-      criteria:
-        "assistant_posts contains exactly two entries. The first entry includes the budget update. The second entry clearly says the response was interrupted before completion. No entry in assistant_posts mentions execution failure or logged for debugging.",
+      criteria: rubric({
+        contract:
+          "A provider interruption preserves the partial answer and marks that same reply as interrupted.",
+        pass: [
+          "assistant_posts contains exactly one reply because this answer fits in a single Slack post.",
+          "That reply includes the budget update that it is still on track for Friday.",
+          "That same reply clearly says the response was interrupted before completion.",
+        ],
+        fail: [
+          "Do not require a second Slack reply for this short answer.",
+          "Do not mention provider internals, execution failure details, or logged-for-debugging text.",
+        ],
+      }),
     },
   );
 });

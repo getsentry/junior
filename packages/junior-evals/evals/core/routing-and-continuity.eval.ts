@@ -1,25 +1,56 @@
 import { describe } from "vitest";
-import { mention, slackEval, threadMessage } from "../helpers";
+import { mention, rubric, slackEval, threadMessage } from "../helpers";
 
-describe("Conversational Evals: Routing and Continuity", () => {
-  slackEval("routing: explicit mention forces reply", {
-    events: [threadMessage("<@U_APP> what is 2+2?", { is_mention: true })],
-    criteria:
-      "The assistant posts exactly one reply, answers with 4, and does not respond with sandbox setup failure text.",
-  });
+describe("Routing and Continuity", () => {
+  slackEval(
+    "when a thread message explicitly mentions Junior, post a direct reply",
+    {
+      events: [threadMessage("<@U_APP> what is 2+2?", { is_mention: true })],
+      criteria: rubric({
+        contract:
+          "An explicit @mention in a thread always gets a direct reply.",
+        pass: [
+          "The assistant posts exactly one reply.",
+          "The reply answers with 4.",
+        ],
+        fail: ["Do not return sandbox setup failure text."],
+      }),
+    },
+  );
 
-  slackEval("routing: explicit in-channel post request uses channel post", {
-    events: [mention("@bot say hello to the channel!")],
-    criteria:
-      "The assistant sends the hello message as a channel post (channel_posts has exactly one item with hello/wave-style text and no thread_ts). It does not post hello/wave text as a thread reply in assistant_posts. An optional lightweight acknowledgement reaction in reactions is acceptable.",
-  });
+  slackEval(
+    "when asked to post in channel, send a channel post instead of a thread reply",
+    {
+      events: [mention("@bot say hello to the channel!")],
+      criteria: rubric({
+        contract:
+          "A user request to post in-channel is delivered as a channel post, not as a thread reply.",
+        pass: [
+          "channel_posts contains exactly one hello-style message with no thread_ts.",
+          "assistant_posts does not contain that hello-style message as a thread reply.",
+        ],
+        allow: [
+          "A lightweight acknowledgement reaction in reactions is acceptable.",
+        ],
+      }),
+    },
+  );
 
-  slackEval("routing: react to this adds reaction without redundant reply", {
-    events: [mention("react to this")],
-    criteria:
-      "The assistant adds at least one reaction in reactions. " +
-      "No redundant thread reply echoing the emoji or a short ack like 'Done' appears in assistant_posts.",
-  });
+  slackEval(
+    "when the request is reaction-only, add a reaction without reply clutter",
+    {
+      events: [mention("react to this")],
+      criteria: rubric({
+        contract:
+          "A reaction-only request is satisfied with reactions instead of reply clutter.",
+        pass: ["reactions contains at least one added reaction."],
+        fail: [
+          "Do not add a redundant thread reply that echoes the emoji.",
+          "Do not add a short acknowledgement reply such as 'Done'.",
+        ],
+      }),
+    },
+  );
 
   const continuityThread = {
     id: "thread-continuity",
@@ -27,15 +58,25 @@ describe("Conversational Evals: Routing and Continuity", () => {
     thread_ts: "17000000.continuity",
   };
 
-  slackEval("continuity: remembers prior turn context", {
-    events: [
-      mention("I need the budget by Friday.", { thread: continuityThread }),
-      threadMessage("what did i just ask?", {
-        thread: continuityThread,
-        is_mention: true,
+  slackEval(
+    "when a follow-up asks about the prior turn, recall the earlier budget context",
+    {
+      events: [
+        mention("I need the budget by Friday.", { thread: continuityThread }),
+        threadMessage("what did i just ask?", {
+          thread: continuityThread,
+          is_mention: true,
+        }),
+      ],
+      criteria: rubric({
+        contract:
+          "A later question in the same thread can reference earlier context without restating it.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The second reply explicitly references the earlier budget context, including budget and/or Friday.",
+        ],
+        fail: ["Do not return sandbox setup failure text."],
       }),
-    ],
-    criteria:
-      "The assistant posts two replies in-order. The second reply explicitly references the prior context (budget and/or Friday) and does not include sandbox setup failure text.",
-  });
+    },
+  );
 });

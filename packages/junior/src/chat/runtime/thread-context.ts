@@ -3,6 +3,7 @@ import { botConfig } from "@/chat/config";
 import { toOptionalString } from "@/chat/coerce";
 import {
   getHeaderString,
+  isDmChannel,
   normalizeSlackConversationId,
 } from "@/chat/slack/client";
 import {
@@ -77,10 +78,9 @@ export function getThreadTs(threadId: string | undefined): string | undefined {
  *
  * Slack assistant-thread methods must use the live inbound thread context
  * Slack provided on the current message. Slack's assistant utilities build
- * `setStatus`/`setTitle` from `message.channel` plus explicit `message.thread_ts`
- * for `message.im` events, or from `assistant_thread.channel_id/thread_ts` for
- * lifecycle events. Do not synthesize assistant-thread roots from persisted
- * state, and do not fall back to a generic message `ts` for status/title calls.
+ * `setStatus`/`setTitle` from `message.channel` plus `message.thread_ts ?? message.ts`
+ * for non-DM message events, while `message.im` still requires an explicit
+ * `thread_ts`. Do not synthesize assistant-thread roots from persisted state.
  */
 export function getAssistantThreadContext(
   message: Message,
@@ -91,14 +91,24 @@ export function getAssistantThreadContext(
       ? (raw as Record<string, unknown>)
       : undefined;
   const channelId = toOptionalString(rawRecord?.channel);
-  const threadTs = toOptionalString(rawRecord?.thread_ts);
-  if (!channelId || !threadTs) {
-    // When Slack omits thread_ts, skip assistant-thread APIs instead of
-    // guessing from message ts or persisted state.
+  if (channelId) {
+    const rawThreadTs = toOptionalString(rawRecord?.thread_ts);
+    const threadTs = isDmChannel(channelId)
+      ? rawThreadTs
+      : (rawThreadTs ?? toOptionalString(rawRecord?.ts));
+    if (threadTs) {
+      return { channelId, threadTs };
+    }
+  }
+
+  const parsedThreadId = parseSlackThreadId(
+    toOptionalString((message as unknown as { threadId?: unknown }).threadId),
+  );
+  if (!parsedThreadId || isDmChannel(parsedThreadId.channelId)) {
     return undefined;
   }
 
-  return { channelId, threadTs };
+  return parsedThreadId;
 }
 
 export function getMessageTs(message: Message): string | undefined {

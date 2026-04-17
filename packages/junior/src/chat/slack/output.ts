@@ -131,6 +131,12 @@ function appendSlackSuffix(text: string, marker: string): string {
   return `${text}${carryover?.closeSuffix ?? ""}${marker}`;
 }
 
+function stripTrailingContinuationMarker(text: string): string {
+  return text.endsWith(CONTINUED_MARKER)
+    ? text.slice(0, -CONTINUED_MARKER.length)
+    : text;
+}
+
 function takeSlackContinuationChunk(
   text: string,
   budget: InlineBudget,
@@ -242,7 +248,8 @@ export function takeSlackInlinePrefix(
 /**
  * Split a normalized Slack reply into multiple inline-safe thread messages.
  *
- * Non-final chunks receive an explicit continuation marker. When
+ * Replies split across more than two messages receive explicit continuation
+ * markers on non-final chunks. When
  * `interrupted` is true, the final chunk receives an interruption marker.
  */
 export function splitSlackReplyText(
@@ -278,6 +285,10 @@ export function splitSlackReplyText(
     });
     chunks.push(renderedPrefix);
     remaining = rest;
+  }
+
+  if (chunks.length === 2) {
+    chunks[0] = stripTrailingContinuationMarker(chunks[0] ?? "");
   }
 
   return chunks;

@@ -119,15 +119,22 @@ function serializeEvalResult(result: EvalResult): string {
       assistant_status_pending: hasAssistantStatusPending(result),
     },
   };
-  return JSON.stringify(output);
+  return JSON.stringify(output, null, 2);
 }
 
 // ── Core eval wrapper ──────────────────────────────────────
 
+interface EvalRubric {
+  contract: string;
+  pass: readonly string[];
+  allow?: readonly string[];
+  fail?: readonly string[];
+}
+
 interface SlackEvalOptions {
   events: EvalEvent[];
   overrides?: EvalOverrides;
-  criteria: string;
+  criteria: EvalRubric;
   requireGatewayReady?: boolean;
   taskTimeout?: number;
   threshold?: number;
@@ -141,6 +148,28 @@ const GATEWAY_AUTH_FAILURE_PATTERNS = [
   "Missing AI gateway credentials",
   '"type":"authentication_error"',
 ];
+
+function formatBulletSection(
+  title: string,
+  items: readonly string[] | undefined,
+): string | null {
+  if (!items || items.length === 0) {
+    return null;
+  }
+
+  return `${title}:\n${items.map((item) => `- ${item}`).join("\n")}`;
+}
+
+function formatRubric(criteria: EvalRubric): string {
+  return [
+    `Contract:\n${criteria.contract}`,
+    formatBulletSection("Pass", criteria.pass),
+    formatBulletSection("Allow", criteria.allow),
+    formatBulletSection("Fail", criteria.fail),
+  ]
+    .filter((section): section is string => section !== null)
+    .join("\n\n");
+}
 
 function assertGatewayReady(name: string, result: EvalResult): void {
   const failure = result.logRecords.find((record) => {
@@ -197,6 +226,18 @@ function assertStatusCleared(name: string, result: EvalResult): void {
   }
 }
 
+/** Builds a structured, maintainer-readable judge rubric for an eval case. */
+export function rubric(criteria: EvalRubric): EvalRubric {
+  if (criteria.contract.trim() === "") {
+    throw new Error("Eval rubric contract must be a non-empty sentence.");
+  }
+  if (criteria.pass.length === 0) {
+    throw new Error("Eval rubric must include at least one pass condition.");
+  }
+  return criteria;
+}
+
+/** Defines one end-to-end conversational eval case for the Slack harness. */
 export function slackEval(name: string, opts: SlackEvalOptions) {
   evaluate(name, {
     timeout: opts.timeout ?? 120_000,
@@ -243,7 +284,7 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
         unregisterLogSink();
       }
     },
-    criteria: opts.criteria,
+    criteria: formatRubric(opts.criteria),
   });
 }
 
@@ -268,6 +309,7 @@ interface ThreadOverrides {
   thread_ts?: string;
 }
 
+/** Builds a first-turn mention event for a harnessed Slack eval. */
 export function mention(text: string, opts?: { thread?: ThreadOverrides }) {
   const seq = nextId();
   return {
@@ -287,6 +329,7 @@ export function mention(text: string, opts?: { thread?: ThreadOverrides }) {
   };
 }
 
+/** Builds a follow-up subscribed-thread message for a harnessed Slack eval. */
 export function threadMessage(
   text: string,
   opts?: { thread?: ThreadOverrides; is_mention?: boolean },
@@ -309,6 +352,7 @@ export function threadMessage(
   };
 }
 
+/** Builds an assistant thread lifecycle start event for a harnessed Slack eval. */
 export function threadStart(opts?: {
   thread?: ThreadOverrides;
   user_id?: string;

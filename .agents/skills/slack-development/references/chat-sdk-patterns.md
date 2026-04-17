@@ -6,17 +6,19 @@ Implementation patterns for responsive Slack UX in Chat SDK based bots.
 
 ## Long-running interaction pattern
 
+Repository-specific policy:
+
 1. Start with immediate feedback:
 
-- call `thread.startTyping("Working...")` when appropriate
-- or post a short acknowledgement message when typing is insufficient
+- prefer assistant status as the primary in-flight progress surface
+- use `thread.startTyping(...)` only when the current surface genuinely supports it and it does not conflict with the repository delivery contract
 
-2. Stream final output:
+2. Keep visible reply text finalized:
 
-- use AI SDK streaming (`streamText` or equivalent)
-- pass `textStream` to `thread.post(textStream)` for incremental Slack updates
+- do not treat incremental `thread.post(textStream)` output as the default correctness path in this repository
+- deliver the visible Slack reply after planning, chunking, and formatting are finalized
 
-3. Emit progress transitions for multi-step/tool-heavy work:
+3. Emit progress transitions for multi-step/tool-heavy work through assistant status:
 
 - "searching sources"
 - "fetching details"
@@ -28,14 +30,14 @@ Implementation patterns for responsive Slack UX in Chat SDK based bots.
 
 1. Avoids "silent" multi-minute runs.
 2. Improves user trust during tool execution.
-3. Produces better perceived latency without sacrificing completeness.
+3. Keeps Slack-visible text aligned with the finalized reply contract.
 
 ## Slack adapter capabilities to use
 
-1. `thread.startTyping(...)` for typing/status feedback.
-2. Native stream support through `thread.post(asyncIterable)` on Slack.
-3. `thread.postEphemeral(user, message, { fallbackToDM })` for messages visible only to one user.
-4. Optional Assistants API status features when `assistant:write` and assistant events are configured.
+1. `thread.startTyping(...)` for typing/status feedback when the current surface and contract allow it.
+2. `thread.postEphemeral(user, message, { fallbackToDM })` for messages visible only to one user.
+3. Optional Assistants API status features when the current Slack status/title scopes and assistant events are configured. Slack's status scope rules have changed recently, so verify the current docs before assuming `assistant:write` is required.
+4. Native stream support through `thread.post(asyncIterable)` exists, but in this repository it is not the baseline delivery contract for Slack replies.
 
 ## Ephemeral messages
 
@@ -66,11 +68,13 @@ Note: Ephemeral messages are only available when you have a thread handle (e.g. 
 
 1. Keep webhook processing asynchronous with `waitUntil` in the webhook route.
 2. Keep external search behavior aligned with AI Gateway-native tools.
-3. Prefer one streaming response per user turn over many separate short messages.
+3. Prefer one finalized response plan per user turn over many separate short messages.
 
 ## Sources
 
 - Chat SDK streaming guide: https://chat-sdk.dev/docs/streaming
 - Chat SDK Slack adapter guide: https://chat-sdk.dev/docs/adapters/slack
 - Hono webhook pattern in Chat SDK guide: https://chat-sdk.dev/docs/guides/slack-hono
+- Slack `assistant.threads.setStatus` docs: https://docs.slack.dev/reference/methods/assistant.threads.setStatus
+- Slack status scope update: https://docs.slack.dev/changelog/2026/03/05/set-status-scope-update/
 - AI Gateway web search capabilities: https://vercel.com/docs/ai-gateway/capabilities/web-search

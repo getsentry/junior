@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-22
+- Last Edited: 2026-04-16
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
 - 2026-03-20: Added natural-prompt authoring rule and explicit ban on scripting internal commands/tools into eval prompts.
 - 2026-03-22: Clarified that evals are the preferred layer for end-to-end behavior when model behavior is part of the contract.
+- 2026-04-16: Standardized eval judge criteria on a structured rubric format so cases and failures stay human-readable for maintainers.
 
 ## Intent
 
@@ -33,11 +34,19 @@ In scope:
 
 1. Define cases via `slackEval()` and event builders.
 2. Keep each case focused on one primary behavior outcome.
-3. Express expectations in natural-language criteria.
-4. Avoid asserting tool-internal mechanics unless explicitly user-visible.
-5. Keep user prompts natural and product-realistic. Do not script exact internal commands, tool names, or implementation steps into the prompt just to force a path.
-6. If a case only works when the prompt prescribes internal mechanics, treat that as an eval-design failure or product-behavior gap, not a passing eval.
-7. If a case uses harness-controlled decision fixtures such as subscribed-message reply gating, do not claim those gated behaviors are being validated by the eval outcome.
+3. Express expectations through the structured rubric shape used by `rubric({ contract, pass, allow, fail })`.
+4. Every new or edited eval must keep its rubric human-readable to maintainers.
+   `contract` states the user-visible behavior being proven.
+   `pass` lists the observable pass conditions.
+   `allow` lists acceptable optional variations.
+   `fail` lists failure conditions or forbidden output.
+5. Do not write judge criteria as one dense paragraph.
+6. Let the `describe()` block own the behavior area. The file path and `describe()` context already provide scope, so each individual eval name should only state the specific scenario and outcome.
+7. Prefer `when <trigger>, <outcome>` over vague labels like `continuity: remembers prior turn context`.
+8. Avoid asserting tool-internal mechanics unless explicitly user-visible.
+9. Keep user prompts natural and product-realistic. Do not script exact internal commands, tool names, or implementation steps into the prompt just to force a path.
+10. If a case only works when the prompt prescribes internal mechanics, treat that as an eval-design failure or product-behavior gap, not a passing eval.
+11. If a case uses harness-controlled decision fixtures such as subscribed-message reply gating, do not claim those gated behaviors are being validated by the eval outcome.
 
 ## Boundaries
 
@@ -60,3 +69,4 @@ Do not in eval files:
 Operational commands and harness details live in `evals/README.md`.
 
 The eval artifact contract should preserve user-visible output structure. In particular, assistant thread posts must retain attachment metadata instead of flattening attachments into synthetic text.
+Eval output should also stay readable in failure reports. Preserve the structured JSON shape instead of collapsing it into prose or synthetic summaries.
