@@ -321,28 +321,57 @@ async function writePackagedPluginWithForbiddenApiHeader(
   );
 }
 
-async function writePackagedPluginWithMcp(tempRoot: string): Promise<void> {
-  const packageRoot = path.join(
-    tempRoot,
-    "node_modules",
-    "@acme",
-    "junior-plugin-mcp",
-  );
+interface WritePackagedPluginWithMcpOptions {
+  packageName?: string;
+  description?: string;
+  url?: string;
+  headers?: Record<string, string>;
+  allowedTools?: string[];
+  envVars?: Record<string, { default?: string } | null>;
+}
+
+async function writePackagedPluginWithMcp(
+  tempRoot: string,
+  options: WritePackagedPluginWithMcpOptions = {},
+): Promise<void> {
+  const packageName = options.packageName ?? "junior-plugin-mcp";
+  const packageRoot = path.join(tempRoot, "node_modules", "@acme", packageName);
   const skillsDir = path.join(packageRoot, "skills", "demo");
   await fs.mkdir(skillsDir, { recursive: true });
+
+  const lines: string[] = [
+    "name: demo",
+    `description: ${options.description ?? "Demo MCP plugin"}`,
+  ];
+
+  if (options.envVars) {
+    lines.push("env-vars:");
+    for (const [name, decl] of Object.entries(options.envVars)) {
+      lines.push(`  ${name}:`);
+      if (decl && decl.default !== undefined) {
+        lines.push(`    default: ${decl.default}`);
+      }
+    }
+  }
+
+  lines.push("mcp:");
+  lines.push(`  url: ${options.url ?? "https://mcp.example.com"}`);
+  if (options.headers) {
+    lines.push("  headers:");
+    for (const [key, value] of Object.entries(options.headers)) {
+      lines.push(`    ${key}: "${value}"`);
+    }
+  }
+  if (options.allowedTools) {
+    lines.push("  allowed-tools:");
+    for (const tool of options.allowedTools) {
+      lines.push(`    - ${tool}`);
+    }
+  }
+
   await fs.writeFile(
     path.join(packageRoot, "plugin.yaml"),
-    [
-      "name: demo",
-      "description: Demo MCP plugin",
-      "mcp:",
-      "  url: https://mcp.example.com",
-      "  headers:",
-      '    X-Workspace: "acme"',
-      "  allowed-tools:",
-      "    - search",
-      "    - fetch",
-    ].join("\n"),
+    lines.join("\n"),
     "utf8",
   );
 }
@@ -845,7 +874,10 @@ describe("plugin registry package discovery", () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-package-"),
     );
-    await writePackagedPluginWithMcp(tempRoot);
+    await writePackagedPluginWithMcp(tempRoot, {
+      headers: { "X-Workspace": "acme" },
+      allowedTools: ["search", "fetch"],
+    });
     await fs.writeFile(
       path.join(tempRoot, "package.json"),
       JSON.stringify({
@@ -938,6 +970,212 @@ describe("plugin registry package discovery", () => {
     await expectRegistryLoadFailure(
       ["@acme/junior-plugin-mcp-forbidden-header"],
       "Plugin demo mcp.headers.Authorization is not allowed",
+    );
+  });
+
+  it("resolves ${VAR} to env-vars default when process.env is unset", async () => {
+    const previous = process.env.JUNIOR_TEST_MCP_HOST;
+    delete process.env.JUNIOR_TEST_MCP_HOST;
+    try {
+      const tempRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "junior-plugin-package-"),
+      );
+      await writePackagedPluginWithMcp(tempRoot, {
+        packageName: "junior-plugin-mcp-template",
+        url: "https://mcp.${JUNIOR_TEST_MCP_HOST}/api/unstable/mcp-server/mcp?toolsets=core",
+        envVars: { JUNIOR_TEST_MCP_HOST: { default: "example.com" } },
+      });
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-junior-app",
+          private: true,
+          dependencies: {
+            "@acme/junior-plugin-mcp-template": "1.0.0",
+          },
+        }),
+        "utf8",
+      );
+      process.chdir(tempRoot);
+
+      vi.resetModules();
+      vi.doMock("@/chat/discovery", async (importOriginal) => ({
+        ...(await importOriginal<typeof import("@/chat/discovery")>()),
+        pluginRoots: () => [],
+      }));
+
+      await setPackages(["@acme/junior-plugin-mcp-template"]);
+      const registry = await import("@/chat/plugins/registry");
+      const provider = registry.getPluginProviders()[0];
+      expect(provider?.manifest.mcp?.url).toBe(
+        "https://mcp.example.com/api/unstable/mcp-server/mcp?toolsets=core",
+      );
+      expect(provider?.manifest.envVars).toEqual({
+        JUNIOR_TEST_MCP_HOST: { default: "example.com" },
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.JUNIOR_TEST_MCP_HOST;
+      } else {
+        process.env.JUNIOR_TEST_MCP_HOST = previous;
+      }
+    }
+  });
+
+  it("prefers process.env over the env-vars default when both are present", async () => {
+    const previous = process.env.JUNIOR_TEST_MCP_HOST;
+    process.env.JUNIOR_TEST_MCP_HOST = "us5.example.com";
+    try {
+      const tempRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "junior-plugin-package-"),
+      );
+      await writePackagedPluginWithMcp(tempRoot, {
+        packageName: "junior-plugin-mcp-template",
+        url: "https://mcp.${JUNIOR_TEST_MCP_HOST}/api/unstable/mcp-server/mcp?toolsets=core",
+        envVars: { JUNIOR_TEST_MCP_HOST: { default: "example.com" } },
+      });
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-junior-app",
+          private: true,
+          dependencies: {
+            "@acme/junior-plugin-mcp-template": "1.0.0",
+          },
+        }),
+        "utf8",
+      );
+      process.chdir(tempRoot);
+
+      vi.resetModules();
+      vi.doMock("@/chat/discovery", async (importOriginal) => ({
+        ...(await importOriginal<typeof import("@/chat/discovery")>()),
+        pluginRoots: () => [],
+      }));
+
+      await setPackages(["@acme/junior-plugin-mcp-template"]);
+      const registry = await import("@/chat/plugins/registry");
+      const provider = registry.getPluginProviders()[0];
+      expect(provider?.manifest.mcp?.url).toBe(
+        "https://mcp.us5.example.com/api/unstable/mcp-server/mcp?toolsets=core",
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.JUNIOR_TEST_MCP_HOST;
+      } else {
+        process.env.JUNIOR_TEST_MCP_HOST = previous;
+      }
+    }
+  });
+
+  it("fails to load when ${VAR} is declared without a default and process.env is unset", async () => {
+    const previous = process.env.JUNIOR_TEST_MCP_HOST;
+    delete process.env.JUNIOR_TEST_MCP_HOST;
+    try {
+      const tempRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "junior-plugin-package-"),
+      );
+      await writePackagedPluginWithMcp(tempRoot, {
+        packageName: "junior-plugin-mcp-template",
+        url: "https://mcp.${JUNIOR_TEST_MCP_HOST}/api/unstable/mcp-server/mcp",
+        envVars: { JUNIOR_TEST_MCP_HOST: null },
+      });
+      await fs.writeFile(
+        path.join(tempRoot, "package.json"),
+        JSON.stringify({
+          name: "temp-junior-app",
+          private: true,
+          dependencies: {
+            "@acme/junior-plugin-mcp-template": "1.0.0",
+          },
+        }),
+        "utf8",
+      );
+      process.chdir(tempRoot);
+
+      vi.resetModules();
+      vi.doMock("@/chat/discovery", async (importOriginal) => ({
+        ...(await importOriginal<typeof import("@/chat/discovery")>()),
+        pluginRoots: () => [],
+      }));
+
+      await expectRegistryLoadFailure(
+        ["@acme/junior-plugin-mcp-template"],
+        "Plugin demo mcp.url env var JUNIOR_TEST_MCP_HOST is unset and has no default in env-vars",
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.JUNIOR_TEST_MCP_HOST;
+      } else {
+        process.env.JUNIOR_TEST_MCP_HOST = previous;
+      }
+    }
+  });
+
+  it("fails to load when mcp.url references an env var that is not declared in env-vars", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-package-"),
+    );
+    await writePackagedPluginWithMcp(tempRoot, {
+      packageName: "junior-plugin-mcp-template",
+      url: "https://mcp.${JUNIOR_TEST_UNDECLARED_HOST}/api/unstable/mcp-server/mcp",
+    });
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-mcp-template": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
+      pluginRoots: () => [],
+    }));
+
+    await expectRegistryLoadFailure(
+      ["@acme/junior-plugin-mcp-template"],
+      "Plugin demo mcp.url references env var JUNIOR_TEST_UNDECLARED_HOST which is not declared in env-vars",
+    );
+  });
+
+  it("rejects env-vars keys that do not match [A-Z_][A-Z0-9_]*", async () => {
+    const tempRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "junior-plugin-package-"),
+    );
+    await writePackagedPluginWithMcp(tempRoot, {
+      packageName: "junior-plugin-mcp-bad-env",
+      url: "https://mcp.example.com/api",
+      envVars: { "lowercase-name": { default: "x" } },
+    });
+    await fs.writeFile(
+      path.join(tempRoot, "package.json"),
+      JSON.stringify({
+        name: "temp-junior-app",
+        private: true,
+        dependencies: {
+          "@acme/junior-plugin-mcp-bad-env": "1.0.0",
+        },
+      }),
+      "utf8",
+    );
+    process.chdir(tempRoot);
+
+    vi.resetModules();
+    vi.doMock("@/chat/discovery", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@/chat/discovery")>()),
+      pluginRoots: () => [],
+    }));
+
+    await expectRegistryLoadFailure(
+      ["@acme/junior-plugin-mcp-bad-env"],
+      'Plugin demo env-vars key "lowercase-name" must match [A-Z_][A-Z0-9_]*',
     );
   });
 

@@ -21,6 +21,7 @@ Start here:
 | ------------------------------ | --------------------------------------------------- |
 | `@sentry/junior`               | Core Slack bot runtime                              |
 | `@sentry/junior-agent-browser` | Agent Browser plugin package for browser automation |
+| `@sentry/junior-datadog`       | Datadog plugin package for observability workflows  |
 | `@sentry/junior-github`        | GitHub plugin package for issue workflows           |
 | `@sentry/junior-linear`        | Linear plugin package for issue workflows           |
 | `@sentry/junior-notion`        | Notion plugin package for page search workflows     |

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 import type {
   GitHubAppCredentials,
+  PluginEnvVarDeclaration,
   PluginMcpConfig,
   OAuthBearerCredentials,
   PluginCredentials,
@@ -18,6 +19,7 @@ const SHORT_CAPABILITY_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 const TARGET_FLAG_RE = /^-{1,2}[A-Za-z0-9][A-Za-z0-9-]*$/;
 const AUTH_TOKEN_ENV_RE = /^[A-Z][A-Z0-9_]*$/;
+const ENV_VAR_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
 const API_DOMAIN_RE =
   /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const RUNTIME_POSTINSTALL_CMD_RE = /^[A-Za-z0-9._/-]+$/;
@@ -276,6 +278,11 @@ const manifestSourceSchema = z
     "runtime-postinstall": z
       .array(z.unknown(), {
         error: "must be an array",
+      })
+      .optional(),
+    "env-vars": z
+      .record(z.string(), z.unknown(), {
+        error: "must be an object",
       })
       .optional(),
     mcp: z
@@ -553,11 +560,94 @@ function normalizeRuntimePostinstall(
   return parsed.length > 0 ? parsed : undefined;
 }
 
+const ENV_PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+
+const envVarDeclarationSchema = z.preprocess(
+  (value) => (value === null || value === undefined ? {} : value),
+  z
+    .object({
+      default: z.string().optional(),
+    })
+    .passthrough(),
+);
+
+function normalizeEnvVars(
+  data: Record<string, unknown>,
+  pluginName: string,
+): Record<string, PluginEnvVarDeclaration> {
+  const normalized: Record<string, PluginEnvVarDeclaration> = {};
+  for (const [rawName, rawDecl] of Object.entries(data)) {
+    const name = rawName.trim();
+    if (!ENV_VAR_NAME_RE.test(name)) {
+      throw new Error(
+        `Plugin ${pluginName} env-vars key "${rawName}" must match [A-Z_][A-Z0-9_]*`,
+      );
+    }
+    const parsed = envVarDeclarationSchema.safeParse(rawDecl);
+    if (!parsed.success) {
+      throw new Error(
+        issueMessage(parsed.error, `Plugin ${pluginName} env-vars.${name}`),
+      );
+    }
+    const decl: PluginEnvVarDeclaration = {};
+    if (parsed.data.default !== undefined) {
+      decl.default = parsed.data.default;
+    }
+    normalized[name] = decl;
+  }
+  return normalized;
+}
+
+/**
+ * Expand `${NAME}` placeholders in a manifest string field using the plugin's
+ * declared env-vars block. `NAME` must match `[A-Z_][A-Z0-9_]*` and must be
+ * declared in the plugin's `env-vars` block — otherwise load fails. This
+ * keeps the manifest's env-var surface explicit and auditable, and prevents
+ * a plugin manifest from opportunistically exfiltrating ambient process env
+ * vars via `mcp.url`. If `NAME` is declared without a default and
+ * `process.env[NAME]` is unset, load also fails.
+ */
+function expandEnvPlaceholders(
+  template: string,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+  context: string,
+): string {
+  return template.replace(ENV_PLACEHOLDER_RE, (_match, name) => {
+    const varName = name as string;
+    if (!Object.prototype.hasOwnProperty.call(envVars, varName)) {
+      throw new Error(
+        `${context} references env var ${varName} which is not declared in env-vars`,
+      );
+    }
+    const decl = envVars[varName] as PluginEnvVarDeclaration;
+    const fromProcess = process.env[varName];
+    if (fromProcess !== undefined && fromProcess !== "") {
+      return fromProcess;
+    }
+    if (decl.default !== undefined) {
+      return decl.default;
+    }
+    throw new Error(
+      `${context} env var ${varName} is unset and has no default in env-vars`,
+    );
+  });
+}
+
 function normalizeMcp(
   data: Record<string, unknown>,
+  envVars: Record<string, PluginEnvVarDeclaration>,
   name: string,
 ): PluginMcpConfig {
-  const result = mcpSourceSchema.safeParse(data);
+  const prepared: Record<string, unknown> = { ...data };
+  if (typeof prepared.url === "string") {
+    prepared.url = expandEnvPlaceholders(
+      prepared.url,
+      envVars,
+      `Plugin ${name} mcp.url`,
+    );
+  }
+
+  const result = mcpSourceSchema.safeParse(prepared);
   if (!result.success) {
     throw new Error(issueMessage(result.error, `Plugin ${name} mcp`));
   }
@@ -635,6 +725,11 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
         `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} runtime-postinstall must be an array`,
       );
     }
+    if (path === "env-vars") {
+      throw new Error(
+        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} env-vars must be an object`,
+      );
+    }
     if (path === "mcp") {
       throw new Error(
         `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} mcp must be an object`,
@@ -679,13 +774,17 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
   const runtimePostinstall = data["runtime-postinstall"]
     ? normalizeRuntimePostinstall(data["runtime-postinstall"], data.name)
     : undefined;
-  const mcp = data.mcp ? normalizeMcp(data.mcp, data.name) : undefined;
+  const envVars = data["env-vars"]
+    ? normalizeEnvVars(data["env-vars"], data.name)
+    : {};
+  const mcp = data.mcp ? normalizeMcp(data.mcp, envVars, data.name) : undefined;
 
   const manifest: PluginManifest = {
     name: data.name,
     description: data.description,
     capabilities,
     configKeys,
+    ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
     ...(credentials ? { credentials } : {}),
     ...(runtimeDependencies ? { runtimeDependencies } : {}),
     ...(runtimePostinstall ? { runtimePostinstall } : {}),
