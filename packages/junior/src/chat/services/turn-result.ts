@@ -2,6 +2,7 @@ import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
+import type { SlackRenderIntent } from "@/chat/slack/render/intents";
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
   buildReplyDeliveryPlan,
@@ -44,6 +45,13 @@ export interface AssistantReply {
   artifactStatePatch?: Partial<ThreadArtifactsState>;
   deliveryPlan?: ReplyDeliveryPlan;
   deliveryMode?: "thread" | "channel_only";
+  /**
+   * Optional render intent captured from the agent's `reply` tool call.
+   * When present, delivery prefers the intent (rendered into blocks +
+   * fallback text) over `text`. When absent, the turn renders as a plain
+   * mrkdwn reply using `text`.
+   */
+  intent?: SlackRenderIntent;
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
   diagnostics: AgentTurnDiagnostics;
@@ -55,6 +63,8 @@ export interface TurnResultInput {
   replyFiles: FileUpload[];
   artifactStatePatch: Partial<ThreadArtifactsState>;
   toolCalls: string[];
+  /** Render intent captured from a `reply` tool call during this turn, if any. */
+  replyIntent?: SlackRenderIntent;
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
   durationMs?: number;
@@ -79,6 +89,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     replyFiles,
     artifactStatePatch,
     toolCalls,
+    replyIntent,
     sandboxId,
     sandboxDependencyProfileHash,
     durationMs,
@@ -217,6 +228,12 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     providerError: undefined,
   };
 
+  // Only surface the intent when the turn is a clean success. On
+  // execution failure or escaped/raw payloads we want the fallback text
+  // path, not a stale intent captured earlier in the turn.
+  const intentOnReply =
+    replyIntent && resolvedOutcome === "success" ? replyIntent : undefined;
+
   return {
     text: resolvedText,
     files: replyFiles.length > 0 ? replyFiles : undefined,
@@ -226,6 +243,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
         : undefined,
     deliveryPlan,
     deliveryMode,
+    intent: intentOnReply,
     sandboxId,
     sandboxDependencyProfileHash,
     diagnostics: resolvedDiagnostics,

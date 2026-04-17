@@ -1,21 +1,10 @@
+import type {
+  SlackContextBlock,
+  SlackMessageBlock,
+} from "@/chat/slack/render/blocks";
 import type { AgentTurnUsage } from "@/chat/usage";
 
-interface SlackMrkdwnTextObject {
-  text: string;
-  type: "mrkdwn";
-}
-
-interface SlackSectionBlock {
-  text: SlackMrkdwnTextObject;
-  type: "section";
-}
-
-interface SlackContextBlock {
-  elements: SlackMrkdwnTextObject[];
-  type: "context";
-}
-
-export type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
+export type { SlackMessageBlock };
 
 export interface SlackReplyFooterItem {
   label: string;
@@ -108,12 +97,38 @@ export function buildSlackReplyFooter(args: {
   return items.length > 0 ? { items } : undefined;
 }
 
+/**
+ * Build the standalone footer `context` block (no surrounding section).
+ * Used when composing the footer onto an existing block-bearing message
+ * (e.g. an intent-rendered reply) so we don't double-render the body.
+ */
+export function buildSlackFooterContextBlock(
+  footer: SlackReplyFooter | undefined,
+): SlackContextBlock | undefined {
+  if (!footer?.items.length) {
+    return undefined;
+  }
+
+  return {
+    type: "context",
+    elements: footer.items.map((item) => ({
+      type: "mrkdwn",
+      text: `*${escapeSlackMrkdwn(item.label)}:* ${escapeSlackMrkdwn(item.value)}`,
+    })),
+  };
+}
+
 /** Build Slack blocks for a finalized reply plus its optional footer context block. */
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,
 ): SlackMessageBlock[] | undefined {
   if (!text.trim() || !footer?.items.length) {
+    return undefined;
+  }
+
+  const footerBlock = buildSlackFooterContextBlock(footer);
+  if (!footerBlock) {
     return undefined;
   }
 
@@ -125,12 +140,6 @@ export function buildSlackReplyBlocks(
         text,
       },
     },
-    {
-      type: "context",
-      elements: footer.items.map((item) => ({
-        type: "mrkdwn",
-        text: `*${escapeSlackMrkdwn(item.label)}:* ${escapeSlackMrkdwn(item.value)}`,
-      })),
-    },
+    footerBlock,
   ];
 }
