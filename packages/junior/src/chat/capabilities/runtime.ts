@@ -131,6 +131,30 @@ export class SkillCapabilityRuntime {
     return `${capability}:${scope}`;
   }
 
+  private assertCapabilityDeclaredForActiveSkill(
+    activeSkill: Skill | null,
+    capability: string,
+  ): void {
+    const declared = activeSkill?.requiresCapabilities ?? [];
+    if (activeSkill && declared.includes(capability)) {
+      return;
+    }
+
+    logWarn(
+      "credential_issue_blocked_by_skill_contract",
+      {},
+      {
+        "app.skill.name": activeSkill?.name,
+        "app.capability.name": capability,
+      },
+      "Blocked capability issuance because the active skill does not declare it",
+    );
+
+    throw new Error(
+      `jr-rpc issue-credential requires an active skill that declares ${capability}; current active skill: ${activeSkill?.name ?? "none"}. Load the matching skill first.`,
+    );
+  }
+
   async issueCapabilityLease(input: {
     activeSkill: Skill | null;
     capability: string;
@@ -205,6 +229,7 @@ export class SkillCapabilityRuntime {
       );
     }
     const activeSkill = input.activeSkill;
+    this.assertCapabilityDeclaredForActiveSkill(activeSkill, capability);
     const capabilityTarget = capabilityProvider.target
       ? await this.resolveCapabilityTarget({
           activeSkill,
@@ -215,18 +240,6 @@ export class SkillCapabilityRuntime {
     if (capabilityProvider.target && !capabilityTarget?.value.trim()) {
       throw new Error(
         `jr-rpc issue-credential requires ${capabilityProvider.target.type} target context; use --target <value>`,
-      );
-    }
-    const declared = activeSkill?.requiresCapabilities ?? [];
-    if (activeSkill && !declared.includes(capability)) {
-      logWarn(
-        "capability_not_declared_for_skill",
-        {},
-        {
-          "app.skill.name": activeSkill.name,
-          "app.capability.name": capability,
-        },
-        "Capability issued even though it is not declared in the active skill (soft enforcement)",
       );
     }
     const cacheKey = this.capabilityCacheKey(capability, capabilityTarget);

@@ -21,7 +21,6 @@ Co-Authored-By: (agent model name) <email>
 
 ## Key Conventions
 
-- Commit to `main` only.
 - Use `/commit` skill for any commit operation.
 - Use `/create-pr` skill for any PR creation operation.
 - Use `/skill-creator` skill when creating or updating skills.

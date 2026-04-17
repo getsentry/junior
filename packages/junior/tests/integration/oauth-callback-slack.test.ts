@@ -4,6 +4,7 @@ import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../msw/handlers/slack-api";
+import type { Skill } from "@/chat/skills";
 
 const { generateAssistantReplyMock } = vi.hoisted(() => ({
   generateAssistantReplyMock: vi.fn(),
@@ -18,6 +19,14 @@ const EVAL_OAUTH_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
   "../fixtures/plugins/eval-oauth",
 );
+
+const evalOauthSkill: Skill = {
+  name: "eval-oauth",
+  description: "Eval OAuth integration skill",
+  skillPath: "/tmp/eval-oauth",
+  body: "Use eval-oauth for integration tests.",
+  requiresCapabilities: ["eval-oauth.read"],
+};
 
 type StateAdapterModule = typeof import("@/chat/state/adapter");
 type OAuthCallbackHarnessModule =
@@ -218,7 +227,7 @@ describe("oauth callback slack integration", () => {
       "jr-rpc issue-credential eval-oauth.read",
       {
         capabilityRuntime: runtime,
-        activeSkill: null,
+        activeSkill: evalOauthSkill,
         requesterId: "U123",
         channelId: "C123",
         threadTs: "1700000000.001",

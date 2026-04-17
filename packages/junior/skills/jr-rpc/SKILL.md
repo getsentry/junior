@@ -1,6 +1,6 @@
 ---
 name: jr-rpc
-description: Issue capability credentials and manage OAuth flows via jr-rpc bash commands. Use when a task needs authenticated API calls, credentials are not enabled, or a user needs to connect or disconnect a provider account.
+description: Manage OAuth, token, and config flows via jr-rpc bash commands. Use when the user explicitly asks to connect or disconnect a provider account, manage provider defaults, or work directly with jr-rpc credential/config commands. For authenticated operational work, first load the matching domain skill before using `jr-rpc issue-credential`.
 allowed-tools: bash
 ---
 
@@ -14,7 +14,8 @@ Run before any authenticated API call:
 
 `jr-rpc issue-credential <capability> [--target <value>]`
 
-- Use the exact capability name declared by the loaded skill's `requires-capabilities` metadata or the runtime provider-capabilities catalog.
+- Run this only after the matching domain skill is loaded and its `requires-capabilities` metadata declares the capability.
+- Use the exact capability name declared by the loaded skill's `requires-capabilities` metadata.
 - Provider-targeted capabilities require `--target`, unless the target provider already has a configured default target key.
 - Capabilities without provider targets do not use `--target`.
 - On success, sandbox header transforms are applied for this turn. Do not pass raw tokens.
@@ -46,5 +47,6 @@ Read `${CLAUDE_SKILL_ROOT}/references/capabilities.md` for capability naming and
 
 ## Guardrails
 
-- Use exact capability and config key names from the loaded skill or provider catalog; do not invent them.
+- Use exact capability names from the loaded domain skill and exact config keys from the loaded skill or provider catalog; do not invent them.
+- Do not use this skill to choose a provider for an unrelated operational task. Load the matching domain skill first, then issue its declared capability.
 - Do not print credential values.
