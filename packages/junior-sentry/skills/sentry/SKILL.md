@@ -24,6 +24,7 @@ Use this skill for Sentry investigation workflows in the harness.
 - The runtime injects `SENTRY_AUTH_TOKEN` automatically for authenticated `sentry` CLI commands in this skill.
 - Read [references/cli-commands.md](references/cli-commands.md) for command shapes and flags.
 - Read [references/sandbox-runtime.md](references/sandbox-runtime.md) before relying on sandbox credentials.
+- Read [references/slack-render-intents.md](references/slack-render-intents.md) when Slack is the reply surface and the turn returns a specific issue or a small issue list.
 - If a Sentry API call returns `401`, or clearly says the token is invalid, expired, revoked, or unauthorized, rerun the real Sentry command once and let the runtime trigger a reconnect flow when needed.
 - If a Sentry API call explicitly says `missing scope`, `missing scopes`, or `insufficient scope`, rerun the real Sentry command once and let the runtime trigger a reconnect flow when needed.
 - If a Sentry API call returns a generic `403`, `permission denied`, or otherwise indicates missing org/project access without naming missing scopes, stop and tell the user the current Sentry connection could not access the requested Sentry data.

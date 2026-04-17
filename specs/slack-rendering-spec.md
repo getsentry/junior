@@ -9,7 +9,8 @@
 
 - 2026-04-17: Initial draft of the render-intent layer, plugin renderer registry, and Work Object boundary for Slack delivery.
 - 2026-04-17: Dropped Work Objects. Replaced the declarative plugin-template registry with a native-intent palette the model selects from; plugins now teach intent usage through SKILL.md rather than YAML templates. Collapsed durable-entity lane; lanes are now final reply and in-flight progress.
-- 2026-04-17: Added the Intent Delivery Mechanism section (ToolStrategy via the native `reply` tool, Renderer pattern). Documented the single-tool discriminated-union shape, capture-onto-AssistantReply plumbing, and the Renderer vs Terminator trade-off. Phase 1 wires `summary_card` end-to-end through the GitHub plugin as the test bed.
+- 2026-04-17: Added the Intent Delivery Mechanism section (ToolStrategy via the native `reply` tool, Renderer pattern). Documented the single-tool discriminated-union shape, capture-onto-`AssistantReply` plumbing, and the Renderer vs Terminator trade-off.
+- 2026-04-17: Removed phased-rollout framing. The rendering engine ships as one coherent feature: all six intent kinds render end-to-end from the same plumbing. Strengthened the plugin guidance model to cover both _when_ to use an intent and _how_ the plugin's domain objects populate the intent's structured fields.
 
 ## Status
 
@@ -104,38 +105,32 @@ Intent selection replaces the current "emit `slack-mrkdwn` and avoid tables" pro
 Render intents reach core through the agent's tool surface, not through a structured-output channel on the final assistant message. This is a deliberate choice between two established patterns:
 
 1. _ToolStrategy_ (chosen). A native `reply` tool accepts the render intent as its input. `stop_reason: "tool_use"` is a legitimate terminal state in both Anthropic and OpenAI APIs, so the turn can end on a `reply` call without a trailing assistant text message. Schema enforcement happens at the provider before any payload reaches core.
-2. _ProviderStrategy_ (not used). The assistant's text itself is constrained to an intent schema via Claude's `output_config.format` or OpenAI's `response_format: json_schema`. This requires pi-agent-core to surface the provider-native structured-output field, which it does not today. Revisiting this is a Phase 2 option; when available it can replace `reply` with no changes to the palette or renderers.
+2. _ProviderStrategy_ (not used). The assistant's text itself is constrained to an intent schema via Claude's `output_config.format` or OpenAI's `response_format: json_schema`. This requires pi-agent-core to surface the provider-native structured-output field, which it does not today. If that lands upstream, it can replace `reply` with no changes to the palette or renderers; the intent schema is the contract, the delivery mechanism is an implementation detail.
 
 The `reply` tool has the following properties:
 
 1. _One tool, discriminated union_. There is a single `reply` tool whose input schema is the closed discriminated union of all six intent kinds (`plain_reply`, `summary_card`, `alert`, `comparison_table`, `result_carousel`, `progress_plan`). Adding a new intent kind is a schema edit, not a new tool. This caps the tool-list cost at +1 regardless of palette size.
-2. _Optional, not required_. The `reply` tool follows the _Renderer_ pattern: assistant turns that end with ordinary text still render as `plain_reply` through the existing mrkdwn path. The model is instructed to call `reply` only when a richer intent is warranted. The _Terminator_ alternative (every turn must end with `reply`) was rejected because it taxes every plain-text reply with the tool-call round-trip in exchange for uniform plumbing that core does not otherwise need. This trade-off is revisitable: if Phase 2 Slack blocks introduce per-reply affordances (feedback buttons, context actions) that require a block-bearing payload on every turn, switching to Terminator is a runtime change with no palette or renderer impact.
+2. _Optional, not required_. The `reply` tool follows the _Renderer_ pattern: assistant turns that end with ordinary text still render as `plain_reply` through the existing mrkdwn path. The model is instructed to call `reply` only when a richer intent is warranted. The _Terminator_ alternative (every turn must end with `reply`) was rejected because it taxes every plain-text reply with the tool-call round-trip in exchange for uniform plumbing that core does not otherwise need. This trade-off is revisitable: if future Slack per-reply affordances (feedback buttons, context actions) require a block-bearing payload on every turn, switching to Terminator is a runtime change with no palette or renderer impact.
 3. _Terminal, not recursive_. A successful `reply` call signals the end of the turn. The runtime does not feed a tool-result message back into the loop for the `reply` call; it captures the validated intent onto turn state and finalizes the reply. If the agent invokes `reply` more than once, the last invocation wins — this matches the visible behavior that only one final message is delivered per turn.
 4. _Cross-validated_. The TypeBox schema on the tool is the provider-enforced contract. Core re-validates the payload with the same Zod schema that the renderer consumes, so the renderer never sees a shape the tests were not written against. Divergence between the two schemas is a loud runtime error, not a silent fallback.
 5. _Captured onto `AssistantReply`_. The validated intent is surfaced on the turn's `AssistantReply` as an optional field. Delivery reads the intent (if present) and renders via the core intent renderer into blocks + fallback text; otherwise the existing plain-text path runs unchanged. This keeps the reply-delivery contract in `slack-agent-delivery-spec.md` intact.
 
-Phase 1 of the implementation wires `summary_card` end-to-end through the GitHub plugin. The GitHub skill's `SKILL.md` teaches the model when a pull request or issue is a `summary_card` and which fields to populate; core renders and delivers the result. The remaining intents share the same plumbing and the same renderer shape but do not yet have per-plugin SKILL.md guidance.
-
 ### 5. Plugin Guidance Model
 
 1. Plugins do not register renderers, templates, or presentation YAML. Rendering code stays in core.
-2. Plugins influence intent usage through their existing surface area:
-   - `SKILL.md` content teaches the model when a plugin's domain objects are best expressed as which intent, with short examples of the structured fields the model should populate.
-   - Plugin-owned prompt snippets, where present, may reference the intent names directly but must not describe Slack block shapes.
-3. This keeps the plugin contract declarative (YAML manifest plus markdown skills) and preserves the principle that plugins are not code.
-4. Adding support for a new plugin-domain entity in Slack rendering does not require any core change when the existing intent set already covers the presentation. The work is an edit to that plugin's `SKILL.md`.
-5. Adding a new intent kind is a core change. Intents are the shared vocabulary; the palette is not plugin-extensible.
+2. Plugins influence intent rendering through their existing surface area (YAML manifests plus `SKILL.md` content), along two axes:
+   - _When_ — which of their domain objects are best expressed as which intent kind (for example, "a pull request returned from `gh pr view` is a `summary_card`", "a Sentry search result list is a `result_carousel`").
+   - _How_ — the concrete field recipe the model should populate for that entity: title shape, which labels to surface as `fields`, recommended `actions` (usually a deep link back to the source system), when to use `subtitle` vs. `body`, and any domain-specific phrasing conventions.
+3. Plugin-owned prompt snippets, where present, may reference the intent names and field recipes directly but must not describe Slack block shapes. Blocks are a core implementation detail.
+4. This keeps the plugin contract declarative (YAML manifest plus markdown skills) and preserves the principle that plugins are not code.
+5. Adding support for a new plugin-domain entity in Slack rendering does not require any core change when the existing intent set already covers the presentation. The work is an edit to that plugin's `SKILL.md`.
+6. Adding a new intent kind is a core change. Intents are the shared vocabulary; the palette is not plugin-extensible.
 
-### 6. SDK-First Phasing
+### 6. Renderer Implementation
 
-1. Phase 1 uses capabilities already present in the installed `chat` and `@chat-adapter/slack` packages before adding Slack-specific block abstractions:
-   - Chat SDK `Card(...)` for `summary_card`.
-   - Chat SDK `Table` element for `comparison_table`.
-   - Chat SDK `Plan` object plus `task_update` / `plan_update` stream chunks for `progress_plan`.
-   - Final-message actions where follow-up workflows matter.
-2. Phase 2 adds a Slack-specific renderer layer for blocks that are newer than the current Chat SDK abstractions. Initial targets are `alert`, richer `card` variants, and `carousel`. This layer sits behind the outbound boundary and must always emit top-level `text`. It must degrade cleanly when Slack block support or SDK support is unavailable.
+All six intent kinds render end-to-end through the core renderer at `packages/junior/src/chat/slack/render/renderer.ts`. Each renderer translates a validated intent view model into a Slack Block Kit payload plus a non-empty fallback `text` derived from the same structured fields. The renderers use a local TypeScript subset of Block Kit (section, header, divider, context, actions, link buttons) that maps directly to the shapes `chat.postMessage` accepts.
 
-The phased ordering is a contract: Phase 2 additions must not land before the Phase 1 render-intent palette is the canonical path for final replies.
+Slack has announced newer AI-oriented block primitives (native Card, Alert, Data Table, Carousel). When those become available in the installed `chat` / `@chat-adapter/slack` surfaces, the corresponding renderer can swap to the native shape without changing the palette, the intent schema, or the plugin guidance. That swap is an implementation change, not a new contract.
 
 ### 7. Accessibility and Fallback Rules
 
