@@ -36,8 +36,9 @@ If the target test is pure business logic with no Slack HTTP contract assertions
 
 Required Slack assistant-thread matrix when the change touches status/title/progress:
 
-- Current inbound message has explicit `thread_ts`: assert `assistant.threads.*` uses that live thread context.
-- Current inbound message omits `thread_ts`: assert status/title calls are skipped rather than synthesized from persisted state or generic message `ts`.
+- Current non-DM inbound message has explicit `thread_ts`: assert `assistant.threads.*` uses that live thread context.
+- Current non-DM inbound message omits `thread_ts`: assert status/title calls use the live message `ts` for the first thread reply rather than persisted state.
+- Current DM inbound message omits `thread_ts`: assert status/title calls are skipped rather than synthesized from persisted state or generic message `ts`.
 - If assistant lifecycle events are involved, verify they initialize assistant metadata without becoming an implicit substitute for the current message's `thread_ts`.
 
 Do not create local MSW servers in test files. Global lifecycle is already configured via `tests/msw/setup.ts`.

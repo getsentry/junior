@@ -124,6 +124,16 @@ describe("splitSlackReplyText", () => {
     }
   });
 
+  it("omits the continuation marker when a reply only needs two posts", () => {
+    const text = "a".repeat(slackOutputPolicy.maxInlineChars + 1);
+    const chunks = splitSlackReplyText(text);
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(false);
+    expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
+    expect(chunks.join("")).toBe(text);
+  });
+
   it("marks interrupted final replies explicitly", () => {
     const chunks = splitSlackReplyText("Partial output", {
       interrupted: true,
@@ -144,7 +154,7 @@ describe("splitSlackReplyText", () => {
     });
 
     expect(chunks).toHaveLength(2);
-    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(true);
+    expect(chunks[0]?.endsWith(getSlackContinuationMarker())).toBe(false);
     expect(chunks[1]?.endsWith(getSlackInterruptionMarker())).toBe(true);
     expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
     expect(
@@ -153,7 +163,7 @@ describe("splitSlackReplyText", () => {
           if (index === chunks.length - 1) {
             return chunk.slice(0, -getSlackInterruptionMarker().length);
           }
-          return chunk.slice(0, -getSlackContinuationMarker().length);
+          return chunk;
         })
         .join(""),
     ).toBe(text);
@@ -167,7 +177,7 @@ describe("splitSlackReplyText", () => {
     const chunks = splitSlackReplyText(`\`\`\`ts\n${code}\n\`\`\``);
 
     expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks[0]).toContain(`\`\`\`${getSlackContinuationMarker()}`);
+    expect(chunks[0]?.endsWith("```")).toBe(true);
     expect(chunks[1]?.startsWith("```ts\n")).toBe(true);
     expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
   });

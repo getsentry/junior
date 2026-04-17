@@ -20,6 +20,8 @@ const SIGNING_SECRET = "test-signing-secret";
 const BOT_USER_ID = "U_BOT";
 const DM_CHANNEL_ID = "D12345";
 const DM_THREAD_TS = "1700000000.000001";
+const CHANNEL_ID = "C12345";
+const CHANNEL_ROOT_TS = "1700000200.000200";
 
 function signSlackBody(body: string, timestamp: string): string {
   const base = `v0:${timestamp}:${body}`;
@@ -35,6 +37,32 @@ function createDirectMessageRequest(
       eventType: "message",
       channel: DM_CHANNEL_ID,
       ts: "1700000100.000100",
+      text,
+      ...(options?.threadTs ? { threadTs: options.threadTs } : {}),
+    }),
+  );
+  const timestamp = String(Math.floor(Date.now() / 1000));
+
+  return new Request("https://example.test/api/webhooks/slack", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-slack-request-timestamp": timestamp,
+      "x-slack-signature": signSlackBody(body, timestamp),
+    },
+    body,
+  });
+}
+
+function createChannelMentionRequest(
+  text: string,
+  options?: { threadTs?: string; ts?: string },
+): Request {
+  const body = JSON.stringify(
+    slackEventsApiEnvelope({
+      eventType: "app_mention",
+      channel: CHANNEL_ID,
+      ts: options?.ts ?? CHANNEL_ROOT_TS,
       text,
       ...(options?.threadTs ? { threadTs: options.threadTs } : {}),
     }),
@@ -115,6 +143,36 @@ async function createDirectMessageBot(args: {
   return bot;
 }
 
+async function createMentionBot(args: {
+  generateAssistantReply: ReplyExecutorServices["generateAssistantReply"];
+}) {
+  const bot = new JuniorChat<{ slack: SlackAdapter }>({
+    userName: "junior",
+    adapters: {
+      slack: createJuniorSlackAdapter({
+        botToken: "xoxb-test",
+        botUserId: BOT_USER_ID,
+        signingSecret: SIGNING_SECRET,
+      }),
+    },
+    state: createMemoryState(),
+  });
+  const slackRuntime = createSlackRuntime({
+    getSlackAdapter: () => bot.getAdapter("slack"),
+    services: {
+      replyExecutor: {
+        generateAssistantReply: args.generateAssistantReply,
+      },
+    },
+  });
+
+  bot.onNewMention((thread, message) =>
+    slackRuntime.handleNewMention(thread, message),
+  );
+
+  return bot;
+}
+
 describe("Slack contract: assistant-thread delivery", () => {
   beforeEach(() => {
     resetSlackApiMockState();
@@ -186,6 +244,48 @@ describe("Slack contract: assistant-thread delivery", () => {
           params: expect.objectContaining({
             channel_id: DM_CHANNEL_ID,
             thread_ts: DM_THREAD_TS,
+            status: "",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("posts assistant status for the first channel-thread reply before Slack adds thread_ts", async () => {
+    const bot = await createMentionBot({
+      generateAssistantReply: async (_prompt, context) => {
+        await context?.onStatus?.(makeAssistantStatus("running", "bash"));
+        return {
+          text: "Done.",
+          diagnostics: makeDiagnostics(),
+        };
+      },
+    });
+    const waitUntilTasks: Array<Promise<unknown>> = [];
+
+    const response = await handlePlatformWebhook(
+      createChannelMentionRequest("<@U_BOT> run a command"),
+      "slack",
+      collectWaitUntil(waitUntilTasks),
+      bot,
+    );
+
+    expect(response.status).toBe(200);
+    await flushWaitUntil(waitUntilTasks);
+
+    expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          params: expect.objectContaining({
+            channel_id: CHANNEL_ID,
+            thread_ts: CHANNEL_ROOT_TS,
+            status: expect.any(String),
+          }),
+        }),
+        expect.objectContaining({
+          params: expect.objectContaining({
+            channel_id: CHANNEL_ID,
+            thread_ts: CHANNEL_ROOT_TS,
             status: "",
           }),
         }),

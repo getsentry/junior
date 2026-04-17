@@ -1,11 +1,22 @@
 import { describe } from "vitest";
-import { mention, slackEval } from "../helpers";
+import { mention, rubric, slackEval } from "../helpers";
 
-describe("Conversational Evals: Media and Attachments", () => {
-  slackEval("media: feeling prompt returns generated image attachment", {
-    overrides: { mock_image_generation: true },
-    events: [mention("show me how you feel")],
-    criteria:
-      "The assistant responds by actually attaching an image in the thread, not merely describing one in text. A text-only answer, or text claiming an image was attached, is insufficient. The output must not include sandbox setup failure text.",
-  });
+describe("Media and Attachments", () => {
+  slackEval(
+    "when the user asks for an image, attach an image instead of replying with text alone",
+    {
+      overrides: { mock_image_generation: true },
+      events: [mention("show me how you feel")],
+      criteria: rubric({
+        contract:
+          "An image-generation prompt returns an actual image attachment in the thread.",
+        pass: ["The assistant responds by attaching an image in the thread."],
+        fail: [
+          "Do not respond with text that merely describes an image.",
+          "Do not claim an image was attached when the reply is text-only.",
+          "Do not include sandbox setup failure text.",
+        ],
+      }),
+    },
+  );
 });

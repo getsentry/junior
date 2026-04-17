@@ -1,14 +1,14 @@
 import { describe } from "vitest";
-import { mention, slackEval, threadMessage } from "../helpers";
+import { mention, rubric, slackEval, threadMessage } from "../helpers";
 
-describe("Conversational Evals: Passive Behavior", () => {
+describe("Passive Behavior", () => {
   const sideConversationThread = {
     id: "thread-passive-side-conversation",
     channel_id: "C-passive-side-conversation",
     thread_ts: "17000000.passive-side-conversation",
   };
 
-  slackEval("passive: human follow-up question is skipped", {
+  slackEval("when a later question is human-to-human, stay out of the thread", {
     overrides: {
       reply_texts: [
         "The deploy changed the billing worker and the API auth flow.",
@@ -25,8 +25,16 @@ describe("Conversational Evals: Passive Behavior", () => {
         thread: sideConversationThread,
       }),
     ],
-    criteria:
-      "The assistant posts exactly one reply: the initial helpful answer about the deploy. It does not answer the later human-to-human question addressed to @sam about who should take the rollback, even though that later message is phrased as a question.",
+    criteria: rubric({
+      contract:
+        "A later human-to-human question is ignored even when it is phrased like something Junior could answer.",
+      pass: [
+        "The assistant posts exactly one reply: the initial helpful answer about the deploy.",
+      ],
+      fail: [
+        "Do not answer the later question addressed to @sam about who should take the rollback.",
+      ],
+    }),
   });
 
   const directedFollowUpThread = {
@@ -35,21 +43,30 @@ describe("Conversational Evals: Passive Behavior", () => {
     thread_ts: "17000000.passive-directed-follow-up",
   };
 
-  slackEval("passive: follow-up to Junior response gets a reply", {
-    overrides: {
-      reply_texts: ["You need the budget by Friday."],
+  slackEval(
+    "when a follow-up is clearly directed at Junior's prior answer, reply without another @mention",
+    {
+      overrides: {
+        reply_texts: ["You need the budget by Friday."],
+      },
+      events: [
+        mention("I need the budget by Friday.", {
+          thread: directedFollowUpThread,
+        }),
+        threadMessage("What did you just say about the budget?", {
+          thread: directedFollowUpThread,
+        }),
+      ],
+      criteria: rubric({
+        contract:
+          "A follow-up that clearly refers to Junior's prior answer gets a reply even without another @mention.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The second reply plainly restates that the budget is needed by Friday.",
+        ],
+      }),
     },
-    events: [
-      mention("I need the budget by Friday.", {
-        thread: directedFollowUpThread,
-      }),
-      threadMessage("What did you just say about the budget?", {
-        thread: directedFollowUpThread,
-      }),
-    ],
-    criteria:
-      "The assistant posts two replies in order. The second reply plainly restates that the budget is needed by Friday because the follow-up is clearly directed at Junior's previous response, even without another @mention.",
-  });
+  );
 
   const casualPronounThread = {
     id: "thread-passive-casual-pronoun",
@@ -57,24 +74,35 @@ describe("Conversational Evals: Passive Behavior", () => {
     thread_ts: "17000000.passive-casual-pronoun",
   };
 
-  slackEval("passive: casual human question with pronouns is skipped", {
-    overrides: {
-      reply_texts: [
-        "The deploy changed the billing worker and the API auth flow.",
+  slackEval(
+    "when a casual pronoun question reads like coworker talk, stay out of the thread",
+    {
+      overrides: {
+        reply_texts: [
+          "The deploy changed the billing worker and the API auth flow.",
+        ],
+      },
+      events: [
+        mention(
+          "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
+          { thread: casualPronounThread },
+        ),
+        threadMessage("Is that the right approach?", {
+          thread: casualPronounThread,
+        }),
       ],
-    },
-    events: [
-      mention(
-        "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
-        { thread: casualPronounThread },
-      ),
-      threadMessage("Is that the right approach?", {
-        thread: casualPronounThread,
+      criteria: rubric({
+        contract:
+          "A casual pronoun-based question stays ignored when it reads like human-to-human discussion rather than a turn back to Junior.",
+        pass: [
+          "The assistant posts exactly one reply: the initial helpful answer about the deploy.",
+        ],
+        fail: [
+          "Do not reply to the later casual question 'Is that the right approach?'",
+        ],
       }),
-    ],
-    criteria:
-      "The assistant posts exactly one reply: the initial helpful answer about the deploy. It does not reply to the later casual question 'Is that the right approach?' because it is human-to-human discussion, not directed at Junior.",
-  });
+    },
+  );
 
   const domainVocabThread = {
     id: "thread-passive-domain-vocab",
@@ -82,23 +110,34 @@ describe("Conversational Evals: Passive Behavior", () => {
     thread_ts: "17000000.passive-domain-vocab",
   };
 
-  slackEval("passive: question sharing domain vocabulary is skipped", {
-    overrides: {
-      reply_texts: [
-        "The billing worker handles invoice processing and payment retries.",
+  slackEval(
+    "when a later question only shares topic vocabulary, do not treat it as directed at Junior",
+    {
+      overrides: {
+        reply_texts: [
+          "The billing worker handles invoice processing and payment retries.",
+        ],
+      },
+      events: [
+        mention("What does the billing worker do?", {
+          thread: domainVocabThread,
+        }),
+        threadMessage("What about the billing worker timeline?", {
+          thread: domainVocabThread,
+        }),
       ],
+      criteria: rubric({
+        contract:
+          "Shared domain vocabulary alone does not make a later human discussion message directed at Junior.",
+        pass: [
+          "The assistant posts exactly one reply: the initial answer about the billing worker.",
+        ],
+        fail: [
+          "Do not reply to the later question about the billing worker timeline.",
+        ],
+      }),
     },
-    events: [
-      mention("What does the billing worker do?", {
-        thread: domainVocabThread,
-      }),
-      threadMessage("What about the billing worker timeline?", {
-        thread: domainVocabThread,
-      }),
-    ],
-    criteria:
-      "The assistant posts exactly one reply: the initial answer about the billing worker. It does not reply to the later question about the billing worker timeline because it is human-to-human discussion that happens to share domain vocabulary with Junior's earlier response.",
-  });
+  );
 
   const canYouThread = {
     id: "thread-passive-can-you",
@@ -106,17 +145,26 @@ describe("Conversational Evals: Passive Behavior", () => {
     thread_ts: "17000000.passive-can-you",
   };
 
-  slackEval("passive: 'can you' directed at coworker is skipped", {
-    overrides: {
-      reply_texts: ["Here's the deployment status."],
+  slackEval(
+    "when 'can you' is directed at a coworker, stay out of the thread",
+    {
+      overrides: {
+        reply_texts: ["Here's the deployment status."],
+      },
+      events: [
+        mention("Show me the deployment status.", { thread: canYouThread }),
+        threadMessage("Can you check on this?", { thread: canYouThread }),
+      ],
+      criteria: rubric({
+        contract:
+          "A casual 'can you' request is ignored when it is directed at a coworker, not at Junior.",
+        pass: [
+          "The assistant posts exactly one reply: the initial answer about deployment status.",
+        ],
+        fail: ["Do not reply to the later 'Can you check on this?' message."],
+      }),
     },
-    events: [
-      mention("Show me the deployment status.", { thread: canYouThread }),
-      threadMessage("Can you check on this?", { thread: canYouThread }),
-    ],
-    criteria:
-      "The assistant posts exactly one reply: the initial answer about deployment status. It does not reply to the later 'Can you check on this?' because it is a casual request directed at a human coworker, not at Junior.",
-  });
+  );
 
   const genuineFollowUpThread = {
     id: "thread-passive-genuine-follow-up",
@@ -124,24 +172,33 @@ describe("Conversational Evals: Passive Behavior", () => {
     thread_ts: "17000000.passive-genuine-follow-up",
   };
 
-  slackEval("passive: genuine follow-up with explicit reference gets a reply", {
-    overrides: {
-      reply_texts: ["The deploy changed three services."],
-    },
-    events: [
-      mention(
-        "What changed in the last deploy? It updated the API gateway, billing worker, and auth service.",
-        {
+  slackEval(
+    "when the user explicitly asks Junior to elaborate, post a second reply",
+    {
+      overrides: {
+        reply_texts: ["The deploy changed three services."],
+      },
+      events: [
+        mention(
+          "What changed in the last deploy? It updated the API gateway, billing worker, and auth service.",
+          {
+            thread: genuineFollowUpThread,
+          },
+        ),
+        threadMessage("Can you explain your last response in more detail?", {
           thread: genuineFollowUpThread,
-        },
-      ),
-      threadMessage("Can you explain your last response in more detail?", {
-        thread: genuineFollowUpThread,
+        }),
+      ],
+      criteria: rubric({
+        contract:
+          "An explicit request to expand Junior's prior answer gets a second reply.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The second reply provides more detail about the deploy changes.",
+        ],
       }),
-    ],
-    criteria:
-      "The assistant posts two replies in order. The second reply provides more detail about the deploy changes because the follow-up explicitly references Junior's last response.",
-  });
+    },
+  );
 
   const terseFollowUpThread = {
     id: "thread-passive-terse-follow-up",
@@ -150,7 +207,7 @@ describe("Conversational Evals: Passive Behavior", () => {
   };
 
   slackEval(
-    "passive: terse clarification right after Junior reply gets a reply",
+    "when a terse clarification comes right after Junior's answer, treat it as directed back to Junior",
     {
       overrides: {
         reply_texts: [
@@ -166,8 +223,14 @@ describe("Conversational Evals: Passive Behavior", () => {
           thread: terseFollowUpThread,
         }),
       ],
-      criteria:
-        "The assistant posts two replies in order. The second reply clarifies which services changed because the terse follow-up 'Which one?' came immediately after Junior's answer and is naturally directed at Junior.",
+      criteria: rubric({
+        contract:
+          "A terse clarification right after Junior's reply is treated as directed back to Junior.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The second reply clarifies which services changed.",
+        ],
+      }),
     },
   );
 
@@ -178,7 +241,7 @@ describe("Conversational Evals: Passive Behavior", () => {
   };
 
   slackEval(
-    "passive: same-topic question is skipped after humans take the floor",
+    "when humans resume the thread, keep ignoring same-topic questions unless they turn back to Junior",
     {
       overrides: {
         reply_texts: ["The deploy changed billing, auth, and the API gateway."],
@@ -194,8 +257,14 @@ describe("Conversational Evals: Passive Behavior", () => {
           thread: humansTookFloorThread,
         }),
       ],
-      criteria:
-        "The assistant posts exactly one reply: the initial deploy summary. It does not answer the later same-topic question about the billing worker timeline because humans resumed the thread and the later question does not clearly turn back to Junior.",
+      criteria: rubric({
+        contract:
+          "Once humans resume the conversation, a later same-topic question stays ignored unless it clearly turns back to Junior.",
+        pass: [
+          "The assistant posts exactly one reply: the initial deploy summary.",
+        ],
+        fail: ["Do not answer the later billing worker timeline question."],
+      }),
     },
   );
 
@@ -205,22 +274,37 @@ describe("Conversational Evals: Passive Behavior", () => {
     thread_ts: "17000000.optout",
   };
 
-  slackEval("passive: explicit stop request opts out until re-mentioned", {
-    overrides: {
-      reply_texts: [
-        "I can help in this thread.",
-        "I'm back because you mentioned me again.",
+  slackEval(
+    "when the user says to stop participating, stay quiet until re-mentioned",
+    {
+      overrides: {
+        reply_texts: [
+          "I can help in this thread.",
+          "I'm back because you mentioned me again.",
+        ],
+      },
+      events: [
+        mention("Can you help in this thread?", { thread: optOutThread }),
+        threadMessage(
+          "<@U_APP> stop watching or participating in this thread",
+          {
+            thread: optOutThread,
+            is_mention: true,
+          },
+        ),
+        mention("Actually jump back in.", { thread: optOutThread }),
       ],
-    },
-    events: [
-      mention("Can you help in this thread?", { thread: optOutThread }),
-      threadMessage("<@U_APP> stop watching or participating in this thread", {
-        thread: optOutThread,
-        is_mention: true,
+      criteria: rubric({
+        contract:
+          "An explicit stop request pauses thread participation until the assistant is mentioned again.",
+        pass: [
+          "The assistant posts exactly three visible replies in order.",
+          "The first reply is a normal helpful reply to the initial mention.",
+          "The second reply briefly acknowledges that it will stay out of the thread unless mentioned again.",
+          "The third reply appears only after the later direct mention.",
+        ],
+        fail: ["Do not treat the stop message like an ordinary help request."],
       }),
-      mention("Actually jump back in.", { thread: optOutThread }),
-    ],
-    criteria:
-      "The assistant posts exactly three visible replies in order: first a normal helpful reply, second a short acknowledgment that it will stay out of the thread unless mentioned again, and third a fresh reply only after the later direct mention. The stop message is not treated like an ordinary help request.",
-  });
+    },
+  );
 });

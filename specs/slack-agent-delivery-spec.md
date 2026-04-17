@@ -11,7 +11,7 @@
 - 2026-04-16: Removed streamed Slack text from the primary delivery contract. Standardized on assistant status for in-flight progress plus finalized thread replies for visible output.
 - 2026-04-16: Clarified that reply-text translation is owned by the shared Slack output module and direct outbound callers only deliver already-rendered Slack text.
 - 2026-04-16: Clarified that Chat SDK Slack `thread.channelId` values are adapter-scoped (`slack:<channel>`) and must be normalized before assistant status/title API calls.
-- 2026-04-16: Corrected the assistant-thread context rule to match Slack assistant utilities: `message.im` uses `channel + thread_ts`, lifecycle events use `assistant_thread.channel_id + assistant_thread.thread_ts`, and runtime code does not synthesize a fallback from generic message `ts`.
+- 2026-04-16: Corrected the assistant-thread context rule to match Slack adapter behavior: non-DM message events use `channel + (thread_ts ?? ts)`, `message.im` uses `channel + thread_ts`, lifecycle events use `assistant_thread.channel_id + assistant_thread.thread_ts`, and runtime code does not synthesize DM roots from persisted state or generic message `ts`.
 - 2026-04-16: Labeled long-running assistant status behavior as Slack-required behavior versus Junior runtime policy versus product policy.
 
 ## Status
@@ -71,7 +71,7 @@ Current contract:
 2. Persist normalized user and assistant messages into thread conversation state as the canonical ongoing context.
 3. Rebuild per-turn prompt context from persisted conversation state, not from ad-hoc Slack history fetches.
 4. Preserve attachment/image context across ingress and skipped-thread paths so later turns can still reason about earlier screenshots or uploaded images.
-5. For Slack assistant status/title updates, Junior must use Slack's live assistant-thread identifiers from the current event: `message.im` uses `channel` + explicit `thread_ts`, while lifecycle events use `assistant_thread.channel_id` + `assistant_thread.thread_ts`. Junior must not synthesize assistant-thread roots from persisted state or generic message `ts`.
+5. For Slack assistant status/title updates, Junior must use Slack's live assistant-thread identifiers from the current event: non-DM message events use `channel` + (`thread_ts` when present, otherwise the live message `ts` for the first thread reply), `message.im` uses `channel` + explicit `thread_ts`, and lifecycle events use `assistant_thread.channel_id` + `assistant_thread.thread_ts`. Junior must not synthesize assistant-thread roots from persisted state, and it must not substitute DM roots from a generic message `ts`.
 
 This contract is intentional because Slack thread-history fetches are not a stable per-turn dependency for modern agent behavior, especially given Slack's newer `conversations.replies` limits for some app classes.
 
@@ -101,7 +101,7 @@ Current contract:
 4. Clear the status explicitly when the turn stops.
 5. Treat status updates as best effort. Status-update failures are observable but do not by themselves fail the turn.
 6. Normalize Chat SDK Slack channel identifiers before `assistant.threads.setStatus`. Runtime code must not pass adapter-scoped `slack:<channel>` values through to Slack.
-7. Slack `assistant.threads.*` calls must use the current inbound event's live assistant-thread key. For `message.im`, an explicit `thread_ts` is required; when Slack omits it, Junior skips assistant status/title updates instead of substituting the message `ts` or a stored root.
+7. Slack `assistant.threads.*` calls must use the current inbound event's live assistant-thread key. For non-DM message events, the first reply may target `thread_ts ?? ts` from the live event. For `message.im`, an explicit `thread_ts` is still required; when Slack omits it, Junior skips assistant status/title updates instead of substituting the message `ts` or a stored root.
 8. Status transports that debounce, rotate, or otherwise defer updates must bind the active Slack bot token when the turn starts instead of relying on later ambient request context. Delayed status updates must keep targeting the same workspace installation as the turn's final reply.
 9. Assistant status is best effort and must not sit on the critical path for model/tool execution. Starting a turn or updating mid-turn status may queue Slack writes, but must not wait for Slack round-trips before assistant work continues.
 
@@ -147,10 +147,11 @@ Current rules:
 
 1. A single inline Slack reply is capped by the repository reply budget (`2200` chars, `45` lines).
 2. If a finalized reply exceeds that budget, Junior splits it into multiple thread messages.
-3. Every non-final overflow chunk ends with `[Continued below]`.
-4. The final chunk does not carry `[Continued below]`.
-5. If a visible reply ended because the provider failed mid-turn, the final visible chunk ends with `[Response interrupted before completion]`.
-6. Continuation markers are delivery-time formatting, not model-authored text.
+3. When a finalized reply needs more than two messages, every non-final overflow chunk ends with `[Continued below]`.
+4. When a finalized reply needs exactly two messages, Junior omits `[Continued below]` because Slack thread ordering already makes the continuation obvious.
+5. The final chunk does not carry `[Continued below]`.
+6. If a visible reply ended because the provider failed mid-turn, the final visible chunk ends with `[Response interrupted before completion]`.
+7. Continuation markers are delivery-time formatting, not model-authored text.
 
 ### 7. Code Fence Continuation Contract
 

@@ -58,6 +58,7 @@ For each case (`slackEval()` call):
 2. Create a fresh runtime instance for the case via the chat composition root; do not mutate the production singleton runtime.
 3. Route message events through real ingress + queue-worker behavior, with only the external queue transport replaced by an in-memory harness shim.
 4. Return observed artifacts as JSON for LLM judgment, including structured `assistant_posts` with text plus actual attached-file metadata, and Slack-visible metadata.
+   The helper pretty-prints this JSON so failure output stays readable in local runs and CI.
 5. `vitest-evals` scores the output against `criteria` (A–E → 1.0–0.0).
 
 Harness override knobs (in `EvalOverrides`):
@@ -102,6 +103,15 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 - For multi-turn, pass the same `thread` override so events land in one thread.
 - Keep each case focused on one primary behavior.
 - Encode all expectations in `criteria`; do not add deterministic inline assertions.
+- New and edited evals must express `criteria` with `rubric({ contract, pass, allow, fail })`.
+- `contract` should name the user-visible behavior being proven.
+- `pass` should list observable pass conditions.
+- `allow` should list acceptable optional variations.
+- `fail` should list forbidden outputs or failure conditions.
+- Do not write judge criteria as one dense paragraph.
+- Let the `describe()` block own the behavior area. The file path and `describe()` context already provide scope.
+- Each eval name should only state the specific scenario and outcome.
+- Prefer `when <trigger>, <outcome>` over vague labels like `continuity: remembers prior turn context`.
 - Keep user prompts natural. They should read like plausible user requests, not scripted implementation instructions.
 - Do not tell the assistant which exact internal command, tool, skill-loading step, or transport sequence to use unless that exact surface is what the user would naturally say and is the behavior under evaluation.
 - If an eval only passes when the prompt prescribes internal mechanics, the eval is invalid and the product behavior is not adequately covered.
@@ -123,10 +133,10 @@ Do not do these in eval files:
     - `lifecycle-and-resilience.eval.ts`
     - `oauth-workflows.eval.ts`
     - `skill-workflows.eval.ts`
-- Test naming: `<area>: <user-observable outcome>`
+- Test naming inside a describe block: `when <trigger>, <user-observable outcome>`
   - Examples:
-    - `routing: explicit mention forces reply`
-    - `skills: default repo setup via natural language`
+    - `when a thread message explicitly mentions Junior, post a direct reply`
+    - `when a default repo is set in one turn, reuse it in the next turn without asking again`
 
 ## Eval Quality Rubric
 
@@ -136,6 +146,7 @@ Good conversational evals should:
 - Describe user-visible outcomes first (reply count, reply content, metadata effects visible to Slack users).
 - Use concrete real-world scenarios (incident updates, planning follow-ups, capability setup requests), not abstract mechanics like "posted two replies."
 - Use judge criteria written in product language, not implementation language.
+- Use rubric sections that are easy for maintainers to scan in a failure: one `contract`, a short `pass` list, and focused `allow` / `fail` lists only when needed.
 - Cover realistic failure behavior (clear user-visible errors) without depending on internal tool wiring.
 - Keep eval output payload user-facing (assistant posts + Slack-visible metadata), excluding low-level tool-call traces.
 
@@ -148,8 +159,13 @@ Avoid:
 ## Minimal Case
 
 ```typescript
-slackEval("mention basic reply", {
+import { mention, rubric, slackEval } from "../helpers";
+
+slackEval("when explicitly mentioned, post one direct reply", {
   events: [mention("<@U_APP> summarize this")],
-  criteria: "Posts exactly one reply to the mention.",
+  criteria: rubric({
+    contract: "An explicit mention gets one direct reply.",
+    pass: ["The assistant posts exactly one reply to the mention."],
+  }),
 });
 ```
