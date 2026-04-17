@@ -1765,6 +1765,12 @@ export function serializeGenAiAttribute(
   return truncateGenAiString(serialized, maxChars);
 }
 
+export interface GenAiUsageSummary {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -1830,12 +1836,10 @@ function collectUsageRoots(source: unknown): Record<string, unknown>[] {
   return roots;
 }
 
-/** Extract input/output token counts from AI provider usage metadata. */
-export function extractGenAiUsageAttributes(
+/** Extract a structured token-usage summary from provider metadata roots. */
+export function extractGenAiUsageSummary(
   ...sources: unknown[]
-): Partial<
-  Record<"gen_ai.usage.input_tokens" | "gen_ai.usage.output_tokens", number>
-> {
+): GenAiUsageSummary {
   const roots = sources.flatMap((source) => collectUsageRoots(source));
   if (roots.length === 0) {
     return {};
@@ -1868,6 +1872,32 @@ export function extractGenAiUsageAttributes(
         ]),
       )
       .find((value) => value !== undefined) ?? undefined;
+
+  const totalTokens =
+    roots
+      .map((root) =>
+        readTokenCount(root, [
+          "total_tokens",
+          "totalTokens",
+          "totalTokenCount",
+        ]),
+      )
+      .find((value) => value !== undefined) ?? undefined;
+
+  return {
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+  };
+}
+
+/** Extract input/output token counts from AI provider usage metadata for tracing. */
+export function extractGenAiUsageAttributes(
+  ...sources: unknown[]
+): Partial<
+  Record<"gen_ai.usage.input_tokens" | "gen_ai.usage.output_tokens", number>
+> {
+  const { inputTokens, outputTokens } = extractGenAiUsageSummary(...sources);
 
   return {
     ...(inputTokens !== undefined

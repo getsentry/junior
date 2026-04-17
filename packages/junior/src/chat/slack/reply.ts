@@ -2,7 +2,11 @@ import { Buffer } from "node:buffer";
 import type { FileUpload } from "chat";
 import type { AssistantReply } from "@/chat/respond";
 import type { ReplyFileDelivery } from "@/chat/services/reply-delivery-plan";
-import { uploadFilesToThread } from "@/chat/slack/outbound";
+import {
+  buildSlackReplyBlocks,
+  type SlackReplyFooter,
+} from "@/chat/slack/footer";
+import { postSlackMessage, uploadFilesToThread } from "@/chat/slack/outbound";
 import {
   buildSlackOutputMessage,
   splitSlackReplyText,
@@ -102,8 +106,19 @@ async function normalizeFileUploads(
   );
 }
 
-async function uploadReplyFilesBestEffort(args: {
+function findLastTextPostIndex(posts: PlannedSlackReplyPost[]): number {
+  for (let index = posts.length - 1; index >= 0; index -= 1) {
+    if (posts[index]?.text.trim().length) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+async function uploadReplyFiles(args: {
   channelId: string;
+  failureMode: "best_effort" | "strict";
   threadTs: string;
   files: FileUpload[];
 }): Promise<void> {
@@ -113,7 +128,11 @@ async function uploadReplyFilesBestEffort(args: {
       threadTs: args.threadTs,
       files: await normalizeFileUploads(args.files),
     });
-  } catch {
+  } catch (error) {
+    if (args.failureMode === "strict") {
+      throw error;
+    }
+
     // File followups should not turn a delivered resume reply into a failed turn.
   }
 }
@@ -173,28 +192,62 @@ export function planSlackReplyPosts(args: {
  * callback handlers that do not have a Chat SDK thread object.
  */
 export async function postSlackApiReplyPosts(args: {
+  beforePost?: () => Promise<void>;
+  footer?: SlackReplyFooter;
   channelId: string;
+  fileUploadFailureMode?: "best_effort" | "strict";
+  onPostError?: (context: {
+    error: unknown;
+    messageTs?: string;
+    stage: PlannedSlackReplyStage;
+  }) => Promise<void> | void;
   threadTs: string;
   posts: PlannedSlackReplyPost[];
-  postMessage: (
-    channelId: string,
-    threadTs: string,
-    text: string,
-  ) => Promise<void>;
-}): Promise<void> {
-  for (const post of args.posts) {
-    if (post.text.trim().length > 0) {
-      await args.postMessage(args.channelId, args.threadTs, post.text);
+}): Promise<string | undefined> {
+  const lastTextPostIndex = findLastTextPostIndex(args.posts);
+  let lastPostedMessageTs: string | undefined;
+
+  for (const [index, post] of args.posts.entries()) {
+    const hasVisibleDelivery =
+      post.text.trim().length > 0 || post.files?.length;
+    if (hasVisibleDelivery) {
+      await args.beforePost?.();
     }
 
-    if (!post.files?.length) {
-      continue;
-    }
+    let messageTs: string | undefined;
+    try {
+      if (post.text.trim().length > 0) {
+        const response = await postSlackMessage({
+          channelId: args.channelId,
+          threadTs: args.threadTs,
+          text: post.text,
+          ...(index === lastTextPostIndex && args.footer
+            ? { blocks: buildSlackReplyBlocks(post.text, args.footer) }
+            : {}),
+        });
+        messageTs = response.ts;
+        lastPostedMessageTs = response.ts;
+      }
 
-    await uploadReplyFilesBestEffort({
-      channelId: args.channelId,
-      threadTs: args.threadTs,
-      files: post.files,
-    });
+      if (!post.files?.length) {
+        continue;
+      }
+
+      await uploadReplyFiles({
+        channelId: args.channelId,
+        failureMode: args.fileUploadFailureMode ?? "best_effort",
+        threadTs: args.threadTs,
+        files: post.files,
+      });
+    } catch (error) {
+      await args.onPostError?.({
+        error,
+        messageTs,
+        stage: post.stage,
+      });
+      throw error;
+    }
   }
+
+  return lastPostedMessageTs;
 }

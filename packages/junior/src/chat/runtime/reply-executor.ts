@@ -3,6 +3,7 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
+  getActiveTraceId,
   logException,
   logInfo,
   logWarn,
@@ -12,6 +13,7 @@ import {
 } from "@/chat/logging";
 import {
   planSlackReplyPosts,
+  postSlackApiReplyPosts,
   type PlannedSlackReplyStage,
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
@@ -48,6 +50,7 @@ import {
   isVisionEnabled,
 } from "@/chat/services/vision-context";
 import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
+import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
@@ -58,6 +61,7 @@ import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
 import { isRedundantReactionAckText } from "@/chat/services/reply-delivery-plan";
+import { deleteSlackMessage } from "@/chat/slack/outbound";
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
@@ -435,16 +439,73 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             "slackMessageAddReaction",
           );
           const plannedPosts = planSlackReplyPosts({ reply });
+          const replyFooter = buildSlackReplyFooter({
+            conversationId,
+            durationMs: reply.diagnostics.durationMs,
+            traceId: getActiveTraceId(),
+            usage: reply.diagnostics.usage,
+          });
+          const shouldUseSlackFooter =
+            Boolean(replyFooter) &&
+            Boolean(channelId && threadTs) &&
+            (thread.adapter as { name?: string } | undefined)?.name === "slack";
 
           // Final Slack delivery is part of turn success. We only mark the turn
           // completed after the visible reply has been accepted by Slack.
           if (plannedPosts.length > 0) {
             let sent: SentMessage | undefined;
-            for (const post of plannedPosts) {
-              sent = await postThreadReply(
-                buildSlackOutputMessage(post.text, post.files),
-                post.stage,
-              );
+            if (shouldUseSlackFooter) {
+              const slackChannelId = channelId;
+              const slackThreadTs = threadTs;
+              if (!slackChannelId || !slackThreadTs) {
+                throw new Error(
+                  "Slack footer delivery requires a concrete channel and thread timestamp",
+                );
+              }
+
+              const sentMessageTs = await postSlackApiReplyPosts({
+                beforePost: beforeFirstResponsePost,
+                channelId: slackChannelId,
+                threadTs: slackThreadTs,
+                posts: plannedPosts,
+                fileUploadFailureMode: "strict",
+                footer: replyFooter,
+                onPostError: ({ error, messageTs, stage }) => {
+                  logException(
+                    error,
+                    "slack_thread_post_failed",
+                    turnTraceContext,
+                    {
+                      "app.slack.reply_stage": stage,
+                      ...(messageTs
+                        ? { "messaging.message.id": messageTs }
+                        : {}),
+                      ...getSlackErrorObservabilityAttributes(error),
+                    },
+                    "Failed to post Slack thread reply",
+                  );
+                },
+              });
+
+              if (sentMessageTs) {
+                sent = {
+                  id: sentMessageTs,
+                  text: reply.text,
+                  delete: async () => {
+                    await deleteSlackMessage({
+                      channelId: slackChannelId,
+                      timestamp: sentMessageTs,
+                    });
+                  },
+                } as SentMessage;
+              }
+            } else {
+              for (const post of plannedPosts) {
+                sent = await postThreadReply(
+                  buildSlackOutputMessage(post.text, post.files),
+                  post.stage,
+                );
+              }
             }
             const firstPlannedMessageHasFiles =
               (plannedPosts[0]?.files?.length ?? 0) > 0;

@@ -23,8 +23,15 @@ import {
   summarizeMessageText,
 } from "@/chat/respond-helpers";
 
+export interface AgentTurnUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+}
+
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
+  durationMs?: number;
   errorMessage?: string;
   providerError?: unknown;
   modelId: string;
@@ -33,6 +40,7 @@ export interface AgentTurnDiagnostics {
   toolCalls: string[];
   toolErrorCount: number;
   toolResultCount: number;
+  usage?: AgentTurnUsage;
   usedPrimaryText: boolean;
 }
 
@@ -55,9 +63,11 @@ export interface TurnResultInput {
   toolCalls: string[];
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
+  durationMs?: number;
   generatedFileCount: number;
   shouldTrace: boolean;
   spanContext: LogContext;
+  usage?: AgentTurnUsage;
   correlation?: {
     threadId?: string;
     requesterId?: string;
@@ -77,8 +87,10 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     toolCalls,
     sandboxId,
     sandboxDependencyProfileHash,
+    durationMs,
     shouldTrace,
     spanContext,
+    usage,
     correlation,
     assistantUserName,
   } = input;
@@ -192,6 +204,8 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     toolResultCount: toolResults.length,
     toolErrorCount,
     usedPrimaryText,
+    durationMs,
+    usage,
     stopReason,
     errorMessage,
     providerError: undefined,

@@ -110,4 +110,36 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("success");
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
+
+  it("preserves structured timing and usage diagnostics", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Done." }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "Do the thing",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: [],
+      durationMs: 1532,
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      usage: {
+        inputTokens: 321,
+        outputTokens: 144,
+        totalTokens: 465,
+      },
+    });
+
+    expect(reply.diagnostics.durationMs).toBe(1532);
+    expect(reply.diagnostics.usage).toEqual({
+      inputTokens: 321,
+      outputTokens: 144,
+      totalTokens: 465,
+    });
+  });
 });

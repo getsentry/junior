@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  buildSlackReplyBlocks,
+  buildSlackReplyFooter,
+} from "@/chat/slack/footer";
+import {
   addReactionToMessage,
   postSlackMessage,
   uploadFilesToThread,
@@ -32,6 +36,50 @@ describe("Slack contract: outbound normalization", () => {
         params: expect.objectContaining({
           channel: "C123",
           text: "hello",
+        }),
+      }),
+    ]);
+  });
+
+  it("passes block payloads with a top-level fallback text", async () => {
+    const footer = buildSlackReplyFooter({
+      conversationId: "slack:C123:1700000000.000100",
+      traceId: "trace_123",
+    });
+
+    await postSlackMessage({
+      channelId: "slack:C123",
+      text: "hello",
+      blocks: buildSlackReplyBlocks("hello", footer),
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          text: "hello",
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "hello",
+              },
+            },
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: "*ID:* slack:C123:1700000000.000100",
+                },
+                {
+                  type: "mrkdwn",
+                  text: "*Trace:* trace_123",
+                },
+              ],
+            },
+          ],
         }),
       }),
     ]);

@@ -8,6 +8,7 @@
 ## Changelog
 
 - 2026-04-16: Initial canonical contract for Slack outbound operations and reply-text translation ownership.
+- 2026-04-16: Added support for finalized reply footers rendered as Slack context blocks with top-level text fallbacks.
 
 ## Status
 
@@ -63,6 +64,9 @@ Current rules:
 4. Thread replies pass `thread_ts`; channel posts omit it.
 5. Channel permalink lookup is best effort and must not turn a successful post into a failed action.
 6. Slack message posts use `text` with `mrkdwn` enabled; callers do not switch between competing text fields ad hoc.
+7. When a caller supplies Slack blocks, outbound posting still includes the top-level `text` fallback for notifications and accessibility.
+8. Finalized reply footers that show correlation or diagnostic metadata are rendered as Slack `context` blocks attached through the shared outbound boundary, not assembled ad hoc by callers.
+9. Footer values such as token counts and turn duration are passed as structured reply diagnostics into delivery. Outbound rendering formats those values for Slack; it does not derive them from tracing/logging side effects.
 
 ### 4. Ephemeral Message Contract
 
@@ -105,6 +109,7 @@ Current rules:
 2. Rate-limited Slack writes may be retried.
 3. Non-retryable Slack failures surface as `SlackActionError` values unless the contract explicitly defines them as idempotent success.
 4. Best-effort follow-on work, such as permalink lookup, must not retroactively fail a successful message post.
+5. Message deletion used for post-delivery cleanup goes through the shared outbound boundary.
 
 ## Observability
 
@@ -122,7 +127,7 @@ Required verification coverage for this contract:
 
 1. Unit: outbound-boundary validation and reaction idempotence.
 2. Unit: error mapping for Slack outbound-specific API errors.
-3. Integration: message-post request shape and permalink lookup behavior.
+3. Integration: message-post request shape, footer block shape, and permalink lookup behavior.
 4. Integration: file upload request flow and validation edges.
 5. Integration: reaction request shape and `already_reacted` success semantics.
 6. Runtime behavior tests continue to verify reply planning separately from raw Slack request details.

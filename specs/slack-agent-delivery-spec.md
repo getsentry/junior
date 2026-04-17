@@ -13,6 +13,7 @@
 - 2026-04-16: Clarified that Chat SDK Slack `thread.channelId` values are adapter-scoped (`slack:<channel>`) and must be normalized before assistant status/title API calls.
 - 2026-04-16: Corrected the assistant-thread context rule to match Slack assistant utilities: `message.im` uses `channel + thread_ts`, lifecycle events use `assistant_thread.channel_id + assistant_thread.thread_ts`, and runtime code does not synthesize a fallback from generic message `ts`.
 - 2026-04-16: Labeled long-running assistant status behavior as Slack-required behavior versus Junior runtime policy versus product policy.
+- 2026-04-16: Added an optional finalized-reply footer contract for Slack context-block metadata.
 
 ## Status
 
@@ -136,6 +137,8 @@ Current rules:
 4. If explicit user intent requested an in-channel post and that post already satisfied the request, Junior may suppress the thread text reply according to the reply-delivery plan.
 5. Persisted assistant conversation state must reflect the same finalized reply content the user saw, not provisional pre-tool text.
 6. Reply text must be rendered through the shared Slack output translator before delivery; raw Slack API writers do not own markdown translation rules.
+7. When Junior adds reply footer metadata, it attaches that metadata as a Slack `context` block on the final text chunk only, while keeping the main reply text as the top-level fallback.
+8. Footer metadata is derived from structured reply diagnostics and correlation state. Conversation ID, trace ID, token totals, and turn duration may be shown when available; footer rendering must not scrape logs or spans after the fact.
 
 This is intentional. Slack-native text streaming may still exist as an adapter capability, but it is not part of Junior's correctness contract.
 

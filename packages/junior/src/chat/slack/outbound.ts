@@ -1,4 +1,5 @@
 import { SlackActionError } from "@/chat/slack/client";
+import type { SlackMessageBlock } from "@/chat/slack/footer";
 import {
   getSlackClient,
   normalizeSlackConversationId,
@@ -69,6 +70,7 @@ async function getPermalinkBestEffort(args: {
 
 /** Post Slack `mrkdwn` text to a conversation or thread via the shared outbound boundary. */
 export async function postSlackMessage(input: {
+  blocks?: SlackMessageBlock[];
   channelId: string;
   text: string;
   threadTs?: string;
@@ -92,6 +94,11 @@ export async function postSlackMessage(input: {
         channel: channelId,
         text,
         mrkdwn: true,
+        ...(input.blocks?.length
+          ? {
+              blocks: input.blocks as unknown as Array<Record<string, unknown>>,
+            }
+          : {}),
         ...(threadTs ? { thread_ts: threadTs } : {}),
       }),
     3,
@@ -113,6 +120,31 @@ export async function postSlackMessage(input: {
         }
       : {}),
   };
+}
+
+/** Delete a previously posted Slack message through the shared outbound boundary. */
+export async function deleteSlackMessage(input: {
+  channelId: string;
+  timestamp: string;
+}): Promise<void> {
+  const channelId = requireSlackConversationId(
+    input.channelId,
+    "Slack message deletion",
+  );
+  const timestamp = requireSlackMessageTimestamp(
+    input.timestamp,
+    "Slack message deletion",
+  );
+
+  await withSlackRetries(
+    () =>
+      getSlackClient().chat.delete({
+        channel: channelId,
+        ts: timestamp,
+      }),
+    3,
+    { action: "chat.delete" },
+  );
 }
 
 /**
