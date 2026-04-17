@@ -19,6 +19,7 @@ const SHORT_CAPABILITY_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
 const TARGET_FLAG_RE = /^-{1,2}[A-Za-z0-9][A-Za-z0-9-]*$/;
 const AUTH_TOKEN_ENV_RE = /^[A-Z][A-Z0-9_]*$/;
+const ENV_VAR_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
 const API_DOMAIN_RE =
   /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const RUNTIME_POSTINSTALL_CMD_RE = /^[A-Za-z0-9._/-]+$/;
@@ -577,7 +578,7 @@ function normalizeEnvVars(
   const normalized: Record<string, PluginEnvVarDeclaration> = {};
   for (const [rawName, rawDecl] of Object.entries(data)) {
     const name = rawName.trim();
-    if (!AUTH_TOKEN_ENV_RE.test(name)) {
+    if (!ENV_VAR_NAME_RE.test(name)) {
       throw new Error(
         `Plugin ${pluginName} env-vars key "${rawName}" must match [A-Z_][A-Z0-9_]*`,
       );

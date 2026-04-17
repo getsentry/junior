@@ -38,7 +38,7 @@ Use this reference when Datadog MCP calls fail or return unexpected results.
 
 ## Multiple Datadog sites
 
-- The packaged plugin defaults to the US1 endpoint (`mcp.datadoghq.com`). The manifest uses `${DATADOG_SITE:-datadoghq.com}`, so non-US1 operators (US3, US5, EU, AP1, AP2, GovCloud) set `DATADOG_SITE` in their Junior deployment env to their site host (e.g. `us5.datadoghq.com`, `datadoghq.eu`, `ddog-gov.com`). Users hitting auth failures against the wrong regional endpoint should have the operator confirm `DATADOG_SITE` is set correctly.
+- The packaged plugin defaults to the US1 endpoint (`mcp.datadoghq.com`). The manifest declares `DATADOG_SITE` in its `env-vars` block with a default of `datadoghq.com` and references it from `mcp.url` as `${DATADOG_SITE}`, so non-US1 operators (US3, US5, EU, AP1, AP2, GovCloud) set `DATADOG_SITE` in their Junior deployment env to their site host (e.g. `us5.datadoghq.com`, `datadoghq.eu`, `ddog-gov.com`). Users hitting auth failures against the wrong regional endpoint should have the operator confirm `DATADOG_SITE` is set correctly.
 - If the user's Datadog account lives on a different site than the deployment is configured for, advise the operator to update the `DATADOG_SITE` environment variable. Do not try to work around this silently inside a turn.
 
 ## Read-only scope
