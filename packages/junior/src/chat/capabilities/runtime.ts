@@ -182,14 +182,4 @@ export class SkillCapabilityRuntime {
     }
     return Object.keys(env).length > 0 ? env : undefined;
   }
-
-  async enableCredentialsForCommand(input: {
-    activeSkill: Skill | null;
-    reason: string;
-  }): Promise<void> {
-    await this.enableCredentialsForTurn({
-      activeSkill: input.activeSkill,
-      reason: input.reason,
-    });
-  }
 }

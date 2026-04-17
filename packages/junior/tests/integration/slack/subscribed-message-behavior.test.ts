@@ -674,7 +674,7 @@ describe("Slack behavior: subscribed messages", () => {
     );
   });
 
-  it("routes follow-up questions through the classifier", async () => {
+  it("replies immediately to directed follow-up questions after junior just spoke", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];
 
@@ -736,13 +736,13 @@ describe("Slack behavior: subscribed messages", () => {
       }),
     );
 
-    expect(classifierCalled).toBe(true);
+    expect(classifierCalled).toBe(false);
     expect(replyCalls).toContain("what did you just say about the budget?");
     expect(thread.posts).toHaveLength(2);
     expect(toPostedText(thread.posts[1])).toContain("budget by Friday");
   });
 
-  it("accepts a lower-confidence follow-up when junior just spoke", async () => {
+  it("replies immediately to terse clarifications after junior just spoke", async () => {
     let classifierCalled = false;
     const replyCalls: string[] = [];
 
@@ -807,7 +807,7 @@ describe("Slack behavior: subscribed messages", () => {
       }),
     );
 
-    expect(classifierCalled).toBe(true);
+    expect(classifierCalled).toBe(false);
     expect(replyCalls).toContain("which one?");
     expect(thread.posts).toHaveLength(2);
     expect(toPostedText(thread.posts[1])).toContain(

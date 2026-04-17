@@ -4,7 +4,10 @@ import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
+import {
+  PluginAuthorizationPauseError,
+  type PluginAuthOrchestration,
+} from "@/chat/services/plugin-auth-orchestration";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import { buildToolStatus } from "@/chat/runtime/tool-status";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
@@ -78,7 +81,7 @@ export function createAgentTools(
                 : "";
             if (bashCommand && capabilityRuntime) {
               try {
-                await capabilityRuntime.enableCredentialsForCommand({
+                await capabilityRuntime.enableCredentialsForTurn({
                   activeSkill: sandbox.getActiveSkill(),
                   reason: `skill:${sandbox.getActiveSkill()?.name ?? "unknown"}:bash:auto-enable`,
                 });
@@ -140,6 +143,9 @@ export function createAgentTools(
             }
             return normalized;
           } catch (error) {
+            if (error instanceof PluginAuthorizationPauseError) {
+              throw error;
+            }
             handleToolExecutionError(
               error,
               toolName,

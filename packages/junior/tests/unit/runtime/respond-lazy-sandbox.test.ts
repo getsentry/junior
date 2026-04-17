@@ -218,8 +218,9 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 
 vi.mock("@/chat/capabilities/factory", () => ({
   createSkillCapabilityRuntime: () => ({
-    getTurnHeaderTransforms: () => [],
-    getTurnEnv: () => ({}),
+    enableCredentialsForTurn: async () => undefined,
+    getTurnHeaderTransforms: () => undefined,
+    getTurnEnv: () => undefined,
   }),
   createUserTokenStore: () => ({
     get: async () => undefined,

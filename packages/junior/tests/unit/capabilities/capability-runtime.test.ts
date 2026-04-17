@@ -194,11 +194,11 @@ describe("skill capability runtime", () => {
     });
 
     await expect(
-      runtime.enableCredentialsForCommand({
+      runtime.enableCredentialsForTurn({
         activeSkill: githubSkill,
         reason: "test:no-target",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ reused: false });
 
     expect(seenReason).toBe("test:no-target");
   });

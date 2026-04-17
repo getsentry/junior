@@ -1,7 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PluginAuthorizationPauseError } from "@/chat/services/plugin-auth-orchestration";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import type { Skill } from "@/chat/skills";
+
+const { handleToolExecutionError } = vi.hoisted(() => ({
+  handleToolExecutionError: vi.fn((error: unknown) => {
+    throw error;
+  }),
+}));
+
+vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
+  handleToolExecutionError,
+}));
 
 const githubSkill: Skill = {
   name: "github",
@@ -14,11 +25,15 @@ const githubSkill: Skill = {
 };
 
 describe("createAgentTools", () => {
+  beforeEach(() => {
+    handleToolExecutionError.mockClear();
+  });
+
   it("auto-enables provider credentials before executing bash", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
-    const enableCredentialsForCommand = vi.fn(async () => {});
+    const enableCredentialsForTurn = vi.fn(async () => {});
     const capabilityRuntime = {
-      enableCredentialsForCommand,
+      enableCredentialsForTurn,
       getTurnHeaderTransforms: () => [
         {
           domain: "api.github.com",
@@ -66,9 +81,8 @@ describe("createAgentTools", () => {
       command: "gh issue view 123 --repo getsentry/junior",
     });
 
-    expect(enableCredentialsForCommand).toHaveBeenCalledWith({
+    expect(enableCredentialsForTurn).toHaveBeenCalledWith({
       activeSkill: githubSkill,
-      command: "gh issue view 123 --repo getsentry/junior",
       reason: "skill:github:bash:auto-enable",
     });
     expect(sandboxExecutor.execute).toHaveBeenCalledWith({
@@ -90,5 +104,57 @@ describe("createAgentTools", () => {
       ok: true,
       exit_code: 0,
     });
+  });
+
+  it("rethrows plugin auth pauses without reporting a tool failure", async () => {
+    const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
+    const capabilityRuntime = {
+      enableCredentialsForTurn: vi.fn(async () => undefined),
+      getTurnHeaderTransforms: () => undefined,
+      getTurnEnv: () => undefined,
+    } as any;
+    const pluginAuthOrchestration = {
+      handleCommandFailure: vi.fn(async () => {
+        throw new PluginAuthorizationPauseError("github");
+      }),
+    } as any;
+    const sandboxExecutor = {
+      canExecute: (toolName: string) => toolName === "bash",
+      execute: vi.fn(async () => ({
+        result: {
+          ok: false,
+          command: "gh issue view 123",
+          cwd: "/vercel/sandbox",
+          exit_code: 1,
+          signal: null,
+          timed_out: false,
+          stdout: "",
+          stderr: "bad credentials",
+          stdout_truncated: false,
+          stderr_truncated: false,
+        },
+      })),
+    } as any;
+
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      sandboxExecutor,
+      capabilityRuntime,
+      pluginAuthOrchestration,
+    );
+
+    await expect(
+      bashTool!.execute("tool-2", { command: "gh issue view 123" }),
+    ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
+    expect(handleToolExecutionError).not.toHaveBeenCalled();
   });
 });
