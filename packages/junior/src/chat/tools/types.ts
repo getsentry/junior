@@ -1,7 +1,6 @@
 import type { FileUpload } from "chat";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import type { SlackRenderIntent } from "@/chat/slack/render/intents";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
@@ -21,12 +20,6 @@ export interface ToolHooks {
   onSkillLoaded?: (
     skill: Skill,
   ) => void | LoadSkillMetadata | Promise<void | LoadSkillMetadata>;
-  /**
-   * Receives the validated render intent when the agent invokes the
-   * native `reply` tool. When set, the tool is registered; when absent,
-   * the tool is omitted from the agent's tool list.
-   */
-  captureReplyIntent?: (intent: SlackRenderIntent) => void;
   toolOverrides?: {
     imageGenerate?: ImageGenerateToolDeps;
   };
