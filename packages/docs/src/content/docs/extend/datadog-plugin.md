@@ -13,7 +13,7 @@ The Datadog plugin uses Datadog's hosted MCP server so Slack users can query the
 
 Junior intentionally keeps this plugin read-only. The packaged manifest exposes only search-, fetch-, and analytics-oriented Datadog MCP tools. It does not expose notebook, monitor, SLO, or incident mutations, even though Datadog's MCP server supports some of them.
 
-The packaged plugin pins Datadog's US1 endpoint and enables the `core`, `apm`, and `error-tracking` toolsets. Teams on other sites (US3, US5, EU, AP1, AP2) can copy this plugin into `app/plugins/datadog/` and override `mcp.url` to their regional endpoint.
+The packaged plugin defaults to Datadog's US1 endpoint and enables the `core`, `apm`, and `error-tracking` toolsets. A Junior deployment points at exactly one Datadog org (which is pinned to exactly one region), so the site is a deployment-level setting, not a per-user or per-channel one. Operators on other sites select their site with the `DATADOG_SITE` env var — see [Non-US1 sites](#non-us1-sites) below.
 
 ## Install
 
@@ -61,9 +61,28 @@ These defaults are optional fallbacks. If a user names a different env or servic
 - Query a metric by name and inspect its available tag dimensions before querying.
 - Disconnect their account later from Junior App Home with `Unlink`.
 
-## Running on a non-US1 site
+## Non-US1 sites
 
-If your Datadog account lives on US3, US5, EU, AP1, or AP2, copy the plugin into `app/plugins/datadog/plugin.yaml` and override `mcp.url` to your regional MCP endpoint (for example `https://mcp.datadoghq.eu/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking`). Keep the rest of the manifest as-is.
+Datadog customers are region-pinned. The packaged manifest's `mcp.url` is:
+
+```yaml
+mcp:
+  url: https://mcp.${DATADOG_SITE:-datadoghq.com}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
+```
+
+Set `DATADOG_SITE` in your Junior deployment env (e.g. Vercel project settings) to the hostname portion of your Datadog site:
+
+| Datadog site | `DATADOG_SITE` value                 |
+| ------------ | ------------------------------------ |
+| US1          | _unset_ (default) or `datadoghq.com` |
+| US3          | `us3.datadoghq.com`                  |
+| US5          | `us5.datadoghq.com`                  |
+| EU           | `datadoghq.eu`                       |
+| AP1          | `ap1.datadoghq.com`                  |
+| AP2          | `ap2.datadoghq.com`                  |
+| GovCloud     | `ddog-gov.com`                       |
+
+No code changes, no app-local plugin copy, no rebuild. Junior reads the variable at plugin-discovery time and hits the correct regional MCP endpoint.
 
 ## Verify
 
@@ -83,7 +102,7 @@ Confirm a real user can connect and query successfully:
 - Empty query results: env/service tag values are case-sensitive. Confirm the tag values exist and try a wider time window before widening the filter.
 - Truncated trace response: very large traces are reported as truncated; the displayed spans are not the full trace.
 - Mutation requests (create notebook, edit monitor, resolve incident): the plugin intentionally does not expose write tools. The skill will decline these.
-- Wrong Datadog site: the packaged manifest targets US1. Users on other sites must override `mcp.url` in an app-local plugin copy.
+- Wrong Datadog site: the packaged manifest defaults to US1. Operators on other sites must set `DATADOG_SITE` in the deployment env (see [Non-US1 sites](#non-us1-sites)).
 
 ## Next step
 

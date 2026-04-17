@@ -553,11 +553,53 @@ function normalizeRuntimePostinstall(
   return parsed.length > 0 ? parsed : undefined;
 }
 
+const ENV_PLACEHOLDER_RE = /\$\$|\$\{([A-Z_][A-Z0-9_]*)(?::-([^}]*))?\}/g;
+
+/**
+ * Expand docker-compose-style environment variable placeholders in a
+ * manifest string field.
+ *
+ * Supported syntax:
+ *   - ${NAME}           → process.env[NAME]; throws if unset/empty
+ *   - ${NAME:-default}  → process.env[NAME] or the literal `default`
+ *   - $$                → literal `$`
+ *
+ * NAME must match `[A-Z_][A-Z0-9_]*`. This is intentionally a narrow subset
+ * of POSIX parameter expansion — no nesting, no command substitution, no
+ * `${NAME:+value}`, `${NAME:?error}`, etc. We apply it only to fields that
+ * opt in (currently `mcp.url`) to keep the manifest contract simple.
+ */
+function expandEnvPlaceholders(template: string, context: string): string {
+  return template.replace(ENV_PLACEHOLDER_RE, (match, name, fallback) => {
+    if (match === "$$") {
+      return "$";
+    }
+    const value = process.env[name as string];
+    if (value !== undefined && value !== "") {
+      return value;
+    }
+    if (fallback !== undefined) {
+      return fallback as string;
+    }
+    throw new Error(
+      `${context} references undefined env var ${name} (no default provided)`,
+    );
+  });
+}
+
 function normalizeMcp(
   data: Record<string, unknown>,
   name: string,
 ): PluginMcpConfig {
-  const result = mcpSourceSchema.safeParse(data);
+  const prepared: Record<string, unknown> = { ...data };
+  if (typeof prepared.url === "string") {
+    prepared.url = expandEnvPlaceholders(
+      prepared.url,
+      `Plugin ${name} mcp.url`,
+    );
+  }
+
+  const result = mcpSourceSchema.safeParse(prepared);
   if (!result.success) {
     throw new Error(issueMessage(result.error, `Plugin ${name} mcp`));
   }

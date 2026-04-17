@@ -159,7 +159,25 @@ runtime-postinstall:
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
 - `mcp`: optional MCP server configuration for provider-scoped tool sources; `mcp.url` implies hosted HTTP transport, so `mcp.transport: http` is optional
+- `mcp.url`: supports docker-compose-style env-var expansion (`${VAR}` and `${VAR:-default}`) so plugins that are hosted behind region-pinned endpoints can select the right host at deploy time without a manifest fork; see [Env-var expansion in `mcp.url`](#env-var-expansion-in-mcpurl)
 - `mcp.allowed-tools`: optional raw MCP tool-name allowlist when a plugin should expose only part of a provider's tool surface
+
+### Env-var expansion in `mcp.url`
+
+Some providers (Datadog, Sentry self-hosted, GitHub Enterprise, Linear EU, ...) have different hostnames per region or deployment. The packaged plugin manifest keeps a single `mcp.url`, and the operator selects the right host via an env var at deploy time:
+
+```yaml
+mcp:
+  url: https://mcp.${DATADOG_SITE:-datadoghq.com}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
+```
+
+Supported syntax:
+
+- `${NAME}` — reads `process.env.NAME`; plugin discovery fails loudly at load time if it is unset or empty.
+- `${NAME:-default}` — reads `process.env.NAME`, falling back to the literal `default` string.
+- `$$` — escapes a literal `$`.
+
+`NAME` must match `[A-Z_][A-Z0-9_]*`. Expansion only runs on `mcp.url` — not on other manifest fields — to keep the contract narrow.
 
 ### Add skills to the plugin
 
