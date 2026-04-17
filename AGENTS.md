@@ -54,6 +54,12 @@ Co-Authored-By: (agent model name) <email>
 - Prefer domain language over mechanism language.
 - Every exported function must have a brief JSDoc comment explaining its intent (the _why_, not the _what_).
 
+## Policies
+
+- `policies/README.md` (when to add a policy doc and how policy docs should stay scoped)
+- `policies/code-comments.md` (repo default for code comments, docstrings, and exported-function JSDoc)
+- `policies/policy-template.md` (template for adding new policy docs)
+
 ## Investigation-First Development
 
 - Before implementing anything that depends on an external system (Vercel, Slack, bundler, framework), read the relevant documentation or source code first. State the constraint being relied on before writing code.
