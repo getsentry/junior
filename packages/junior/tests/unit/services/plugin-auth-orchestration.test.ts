@@ -43,24 +43,96 @@ const githubSkill: Skill = {
   usesConfig: ["github.repo"],
 };
 
+const sentrySkill: Skill = {
+  name: "sentry",
+  description: "Sentry helper",
+  skillPath: "/tmp/sentry",
+  body: "instructions",
+  pluginProvider: "sentry",
+  allowedTools: ["bash"],
+  usesConfig: ["sentry.org"],
+};
+
 describe("createPluginAuthOrchestration", () => {
   beforeEach(() => {
     formatProviderLabel.mockClear();
     getPluginDefinition.mockReset();
-    getPluginDefinition.mockReturnValue({
-      manifest: {
-        name: "github",
-        credentials: {
-          type: "github-app",
-          apiDomains: ["api.github.com"],
-          authTokenEnv: "GITHUB_TOKEN",
-        },
-      },
+    getPluginDefinition.mockImplementation((provider: string) => {
+      if (provider === "github") {
+        return {
+          manifest: {
+            name: "github",
+            credentials: {
+              type: "github-app",
+              apiDomains: ["api.github.com"],
+              authTokenEnv: "GITHUB_TOKEN",
+            },
+          },
+        };
+      }
+
+      if (provider === "sentry") {
+        return {
+          manifest: {
+            name: "sentry",
+            credentials: {
+              type: "oauth-bearer",
+              apiDomains: ["sentry.io"],
+              authTokenEnv: "SENTRY_AUTH_TOKEN",
+            },
+          },
+        };
+      }
+
+      return undefined;
     });
     getPluginOAuthConfig.mockReset();
-    getPluginOAuthConfig.mockReturnValue({ provider: "github" });
+    getPluginOAuthConfig.mockImplementation((provider: string) =>
+      provider === "github" || provider === "sentry" ? { provider } : undefined,
+    );
     startOAuthFlow.mockReset();
     unlinkProvider.mockReset();
+  });
+
+  it("starts oauth recovery for sentry bash commands through provider matching", async () => {
+    startOAuthFlow.mockResolvedValue({
+      ok: true,
+      delivery: { channelId: "D123" },
+    });
+
+    const userTokenStore = {} as any;
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "check Sentry",
+        userTokenStore,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: sentrySkill,
+        command: "sentry issues list",
+        details: {
+          exit_code: 1,
+          stderr: "401 unauthorized",
+        },
+      }),
+    ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
+
+    expect(startOAuthFlow).toHaveBeenCalledWith(
+      "sentry",
+      expect.objectContaining({
+        requesterId: "U123",
+        userMessage: "check Sentry",
+      }),
+    );
+    expect(unlinkProvider).toHaveBeenCalledWith(
+      "U123",
+      "sentry",
+      userTokenStore,
+    );
   });
 
   it("unlinks the stored token only after oauth restart is launched", async () => {

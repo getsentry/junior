@@ -98,10 +98,6 @@ function commandTargetsProvider(
     return true;
   }
 
-  if (provider === "sentry" && /\bsentry-cli\b/.test(normalizedCommand)) {
-    return true;
-  }
-
   const plugin = getPluginDefinition(provider);
   const candidates = new Set<string>([provider.toLowerCase()]);
   const credentials = plugin?.manifest.credentials;
