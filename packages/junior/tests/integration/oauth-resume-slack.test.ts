@@ -11,7 +11,10 @@ import {
   queueSlackApiError,
 } from "../msw/handlers/slack-api";
 
-function makeDiagnostics(outcome: "success" | "provider_error" = "success") {
+function makeDiagnostics(
+  outcome: "success" | "provider_error" = "success",
+  extras: Record<string, unknown> = {},
+) {
   return {
     assistantMessageCount: 1,
     modelId: "fake-agent-model",
@@ -20,6 +23,7 @@ function makeDiagnostics(outcome: "success" | "provider_error" = "success") {
     toolErrorCount: 0,
     toolResultCount: 0,
     usedPrimaryText: true,
+    ...extras,
   };
 }
 
@@ -51,7 +55,12 @@ describe("oauth resume slack integration", () => {
       generateReply: async () =>
         ({
           text: "The budget deadline you mentioned earlier was Friday.",
-          diagnostics: makeDiagnostics(),
+          diagnostics: makeDiagnostics("success", {
+            durationMs: 842,
+            usage: {
+              totalTokens: 1234,
+            },
+          }),
         }) as any,
     });
 
@@ -83,6 +92,34 @@ describe("oauth resume slack integration", () => {
       }),
       expect.objectContaining({
         params: expect.objectContaining({
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "The budget deadline you mentioned earlier was Friday.",
+              },
+            },
+            {
+              type: "context",
+              elements: expect.arrayContaining([
+                expect.objectContaining({
+                  type: "mrkdwn",
+                  text: expect.stringContaining(
+                    "*ID:* slack:C123:1700000000.001",
+                  ),
+                }),
+                expect.objectContaining({
+                  type: "mrkdwn",
+                  text: "*Tokens:* 1,234",
+                }),
+                expect.objectContaining({
+                  type: "mrkdwn",
+                  text: "*Time:* 842ms",
+                }),
+              ]),
+            },
+          ],
           channel: "C123",
           thread_ts: "1700000000.001",
           text: "The budget deadline you mentioned earlier was Friday.",

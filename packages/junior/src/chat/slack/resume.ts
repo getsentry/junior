@@ -1,5 +1,6 @@
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { getActiveTraceId } from "@/chat/logging";
 import {
   generateAssistantReply,
   type AssistantReply,
@@ -11,6 +12,7 @@ import {
   createSlackWebApiAssistantStatusSession,
   type AssistantStatusSession,
 } from "@/chat/slack/assistant-thread/status";
+import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import {
   planSlackReplyPosts,
   postSlackApiReplyPosts,
@@ -32,29 +34,17 @@ function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-/**
- * Post the final visible Slack thread reply and surface delivery failures so
- * callers can decide whether the turn actually succeeded.
- */
-export async function postSlackMessage(
-  channelId: string,
-  threadTs: string,
-  text: string,
-): Promise<void> {
-  await postSlackApiMessage({
-    channelId,
-    threadTs,
-    text,
-  });
-}
-
 async function postSlackMessageBestEffort(
   channelId: string,
   threadTs: string,
   text: string,
 ): Promise<void> {
   try {
-    await postSlackMessage(channelId, threadTs, text);
+    await postSlackApiMessage({
+      channelId,
+      threadTs,
+      text,
+    });
   } catch {
     // Best effort.
   }
@@ -233,11 +223,18 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
         : await replyPromise;
 
     await status.stop();
+    const footer = buildSlackReplyFooter({
+      conversationId: args.replyContext?.correlation?.conversationId ?? lockKey,
+      durationMs: reply.diagnostics.durationMs,
+      traceId: getActiveTraceId(),
+      usage: reply.diagnostics.usage,
+    });
     await postSlackApiReplyPosts({
       channelId: args.channelId,
       threadTs: args.threadTs,
       posts: planSlackReplyPosts({ reply }),
-      postMessage: postSlackMessage,
+      fileUploadFailureMode: "best_effort",
+      footer,
     });
     await args.onSuccess?.(reply);
   } catch (error) {

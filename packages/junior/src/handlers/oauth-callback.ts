@@ -7,7 +7,8 @@ import {
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
 import { buildConversationContext } from "@/chat/services/conversation-memory";
-import { resumeAuthorizedRequest, postSlackMessage } from "@/chat/slack/resume";
+import { postSlackMessage } from "@/chat/slack/outbound";
+import { resumeAuthorizedRequest } from "@/chat/slack/resume";
 import { logException, logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
@@ -260,11 +261,11 @@ export async function GET(
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
     waitUntil(() =>
-      postSlackMessage(
+      postSlackMessage({
         channelId,
         threadTs,
-        `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`,
-      ),
+        text: `Your ${providerLabel} account is now connected. You can start using ${providerLabel} commands.`,
+      }),
     );
   }
 

@@ -2,14 +2,12 @@ import { Agent, type AgentMessage } from "@mariozechner/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
-  extractGenAiUsageAttributes,
-  serializeGenAiAttribute,
-} from "@/chat/logging";
-import {
+  extractGenAiUsageSummary,
   getActiveTraceId,
   logException,
   logInfo,
   logWarn,
+  serializeGenAiAttribute,
   setSpanAttributes,
   setTags,
   withSpan,
@@ -75,6 +73,7 @@ import {
   type AssistantReply,
   type AgentTurnDiagnostics,
 } from "@/chat/services/turn-result";
+import type { AgentTurnUsage } from "@/chat/usage";
 import {
   loadTurnCheckpoint,
   persistCompletedCheckpoint,
@@ -185,6 +184,7 @@ export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {},
 ): Promise<AssistantReply> {
+  const replyStartedAtMs = Date.now();
   let timeoutResumeConversationId: string | undefined;
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
@@ -196,6 +196,7 @@ export async function generateAssistantReply(
   let mcpToolManager: McpToolManager | undefined;
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
+  let turnUsage: AgentTurnUsage | undefined;
 
   const getSandboxMetadata = () =>
     sandboxExecutor
@@ -816,16 +817,27 @@ export async function generateAssistantReply(
           const outputMessages = newMessages.filter(isAssistantMessage);
           const outputMessagesAttribute =
             serializeGenAiAttribute(outputMessages);
-          const usageAttributes = extractGenAiUsageAttributes(
+          const usageSummary = extractGenAiUsageSummary(
             promptResult,
             agent.state,
             ...outputMessages,
           );
+          turnUsage =
+            usageSummary.inputTokens !== undefined ||
+            usageSummary.outputTokens !== undefined ||
+            usageSummary.totalTokens !== undefined
+              ? usageSummary
+              : undefined;
           setSpanAttributes({
             ...(outputMessagesAttribute
               ? { "gen_ai.output.messages": outputMessagesAttribute }
               : {}),
-            ...usageAttributes,
+            ...(usageSummary.inputTokens !== undefined
+              ? { "gen_ai.usage.input_tokens": usageSummary.inputTokens }
+              : {}),
+            ...(usageSummary.outputTokens !== undefined
+              ? { "gen_ai.usage.output_tokens": usageSummary.outputTokens }
+              : {}),
           });
         },
         {
@@ -870,9 +882,11 @@ export async function generateAssistantReply(
       sandboxId: currentSandboxExecutor.getSandboxId(),
       sandboxDependencyProfileHash:
         currentSandboxExecutor.getDependencyProfileHash(),
+      durationMs: Date.now() - replyStartedAtMs,
       generatedFileCount: generatedFiles.length,
       shouldTrace,
       spanContext,
+      usage: turnUsage,
       correlation: context.correlation,
       assistantUserName: context.assistant?.userName,
     });
@@ -972,6 +986,7 @@ export async function generateAssistantReply(
         toolResultCount: 0,
         toolErrorCount: 0,
         usedPrimaryText: false,
+        durationMs: Date.now() - replyStartedAtMs,
         errorMessage: message,
         providerError: error,
       },

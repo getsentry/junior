@@ -148,6 +148,30 @@ describe("Slack contract: edited-message reply delivery", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: "Hello world",
+              },
+            },
+            {
+              type: "context",
+              elements: expect.arrayContaining([
+                expect.objectContaining({
+                  type: "mrkdwn",
+                  text: expect.stringContaining(
+                    "*ID:* slack:D12345:1700000100.000100",
+                  ),
+                }),
+                expect.objectContaining({
+                  type: "mrkdwn",
+                  text: expect.stringContaining("*Trace:* "),
+                }),
+              ]),
+            },
+          ],
           channel: "D12345",
           thread_ts: "1700000100.000100",
           text: "Hello world",
