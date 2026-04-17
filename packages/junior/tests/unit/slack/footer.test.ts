@@ -40,6 +40,42 @@ describe("buildSlackReplyFooter", () => {
   it("omits the footer when no items are available", () => {
     expect(buildSlackReplyFooter({})).toBeUndefined();
   });
+
+  it("sums individual token counters when rendering the Tokens item", () => {
+    expect(
+      buildSlackReplyFooter({
+        usage: {
+          inputTokens: 100,
+          outputTokens: 50,
+          cachedInputTokens: 200,
+          cacheCreationTokens: 10,
+          totalTokens: 9999,
+        },
+      }),
+    ).toEqual({
+      items: [
+        {
+          label: "Tokens",
+          value: "360",
+        },
+      ],
+    });
+  });
+
+  it("falls back to totalTokens when no component counters are reported", () => {
+    expect(
+      buildSlackReplyFooter({
+        usage: { totalTokens: 1234 },
+      }),
+    ).toEqual({
+      items: [
+        {
+          label: "Tokens",
+          value: "1,234",
+        },
+      ],
+    });
+  });
 });
 
 describe("buildSlackReplyBlocks", () => {

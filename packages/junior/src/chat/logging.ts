@@ -1780,110 +1780,54 @@ function toFiniteTokenCount(value: unknown): number | undefined {
   return rounded >= 0 ? rounded : undefined;
 }
 
-function readTokenCount(
-  root: Record<string, unknown>,
-  keys: string[],
-): number | undefined {
-  for (const key of keys) {
-    const value = toFiniteTokenCount(root[key]);
+// pi-ai `Usage` field name -> our camelCase equivalent. This is the only shape
+// that reaches the extractor today; pi-ai normalizes every provider response
+// into this canonical set before we ever see it.
+const PI_USAGE_FIELDS: ReadonlyArray<[string, keyof AgentTurnUsage]> = [
+  ["input", "inputTokens"],
+  ["output", "outputTokens"],
+  ["cacheRead", "cachedInputTokens"],
+  ["cacheWrite", "cacheCreationTokens"],
+  ["totalTokens", "totalTokens"],
+];
+
+function readPiUsage(source: unknown): AgentTurnUsage {
+  const record = asRecord(source);
+  if (!record) {
+    return {};
+  }
+  // Accept either a pi-ai AssistantMessage (has `.usage`) or a bare Usage record.
+  const usage = asRecord(record.usage) ?? record;
+  const summary: AgentTurnUsage = {};
+  for (const [piKey, ourKey] of PI_USAGE_FIELDS) {
+    const value = toFiniteTokenCount(usage[piKey]);
     if (value !== undefined) {
-      return value;
+      summary[ourKey] = value;
     }
   }
-  return undefined;
+  return summary;
 }
 
-function collectUsageRoots(source: unknown): Record<string, unknown>[] {
-  const sourceRecord = asRecord(source);
-  if (!sourceRecord) {
-    return [];
-  }
-
-  const roots: Record<string, unknown>[] = [sourceRecord];
-  const usage = asRecord(sourceRecord.usage);
-  if (usage) {
-    roots.push(usage);
-  }
-
-  const tokenUsage = asRecord(sourceRecord.tokenUsage);
-  if (tokenUsage) {
-    roots.push(tokenUsage);
-  }
-
-  const providerMetadata = asRecord(sourceRecord.providerMetadata);
-  if (providerMetadata) {
-    roots.push(providerMetadata);
-    const providerUsage = asRecord(providerMetadata.usage);
-    if (providerUsage) {
-      roots.push(providerUsage);
-    }
-  }
-
-  const response = asRecord(sourceRecord.response);
-  if (response) {
-    roots.push(response);
-    const responseUsage = asRecord(response.usage);
-    if (responseUsage) {
-      roots.push(responseUsage);
-    }
-  }
-
-  return roots;
-}
-
-/** Extract a structured token-usage summary from provider metadata roots. */
+/**
+ * Sum pi-ai `Usage` counters across every source into an `AgentTurnUsage`.
+ *
+ * Callers pass every assistant message produced during a turn so the result
+ * reflects the aggregate usage for the entire turn rather than a single model
+ * call. Sources without a recognized usage record contribute nothing.
+ */
 export function extractGenAiUsageSummary(
   ...sources: unknown[]
 ): AgentTurnUsage {
-  const roots = sources.flatMap((source) => collectUsageRoots(source));
-  if (roots.length === 0) {
-    return {};
+  const summary: AgentTurnUsage = {};
+  for (const source of sources) {
+    const single = readPiUsage(source);
+    for (const field of Object.keys(single) as (keyof AgentTurnUsage)[]) {
+      const value = single[field];
+      if (value === undefined) continue;
+      summary[field] = (summary[field] ?? 0) + value;
+    }
   }
-
-  const inputTokens =
-    roots
-      .map((root) =>
-        readTokenCount(root, [
-          "input_tokens",
-          "inputTokens",
-          "prompt_tokens",
-          "promptTokens",
-          "inputTokenCount",
-          "promptTokenCount",
-        ]),
-      )
-      .find((value) => value !== undefined) ?? undefined;
-
-  const outputTokens =
-    roots
-      .map((root) =>
-        readTokenCount(root, [
-          "output_tokens",
-          "outputTokens",
-          "completion_tokens",
-          "completionTokens",
-          "outputTokenCount",
-          "completionTokenCount",
-        ]),
-      )
-      .find((value) => value !== undefined) ?? undefined;
-
-  const totalTokens =
-    roots
-      .map((root) =>
-        readTokenCount(root, [
-          "total_tokens",
-          "totalTokens",
-          "totalTokenCount",
-        ]),
-      )
-      .find((value) => value !== undefined) ?? undefined;
-
-  return {
-    ...(inputTokens !== undefined ? { inputTokens } : {}),
-    ...(outputTokens !== undefined ? { outputTokens } : {}),
-    ...(totalTokens !== undefined ? { totalTokens } : {}),
-  };
+  return summary;
 }
 
 /** Extract input/output token counts from AI provider usage metadata for tracing. */

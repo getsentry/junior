@@ -864,12 +864,11 @@ export async function generateAssistantReply(
             agent.state,
             ...outputMessages,
           );
-          turnUsage =
-            usageSummary.inputTokens !== undefined ||
-            usageSummary.outputTokens !== undefined ||
-            usageSummary.totalTokens !== undefined
-              ? usageSummary
-              : undefined;
+          turnUsage = Object.values(usageSummary).some(
+            (value) => value !== undefined,
+          )
+            ? usageSummary
+            : undefined;
           setSpanAttributes({
             ...(outputMessagesAttribute
               ? { "gen_ai.output.messages": outputMessagesAttribute }

@@ -53,15 +53,26 @@ function formatSlackDuration(durationMs: number): string {
 function resolveTotalTokens(
   usage: AgentTurnUsage | undefined,
 ): number | undefined {
-  if (usage?.totalTokens !== undefined) {
-    return usage.totalTokens;
+  if (!usage) {
+    return undefined;
   }
 
-  if (usage?.inputTokens !== undefined && usage.outputTokens !== undefined) {
-    return usage.inputTokens + usage.outputTokens;
+  // Sum every individual counter the provider reported so cached + cache
+  // creation tokens are included in the displayed total. Provider `totalTokens`
+  // fields are inconsistent across vendors (some exclude cached tokens, some
+  // include them), so prefer the sum when component counts exist.
+  const components = [
+    usage.inputTokens,
+    usage.outputTokens,
+    usage.cachedInputTokens,
+    usage.cacheCreationTokens,
+  ].filter((value): value is number => value !== undefined);
+
+  if (components.length > 0) {
+    return components.reduce((sum, value) => sum + value, 0);
   }
 
-  return undefined;
+  return usage.totalTokens;
 }
 
 /** Build a compact Slack reply footer so operators can correlate visible replies with backend state. */
