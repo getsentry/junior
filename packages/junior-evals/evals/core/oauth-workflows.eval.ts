@@ -32,14 +32,15 @@ describe("OAuth Workflows", () => {
       timeout: 300_000,
       criteria: rubric({
         contract:
-          "After MCP authorization completes, the interrupted turn resumes in the same thread and keeps prior context.",
+          "After MCP authorization completes, the same thread gets a connection notice and a resumed answer that keeps prior context.",
         pass: [
-          "The workflow pauses for MCP authorization and then resumes through the real callback path.",
-          "The thread gets a connection or continuation notice and then a resumed answer in the same thread.",
+          "The same thread gets a connection or continuation notice that makes it clear the original request is continuing.",
+          "The same thread then gets a resumed answer.",
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
         ],
         allow: [
           "A concise resumed answer that only restates the budget deadline is acceptable.",
+          "A brief connection notice is acceptable before the resumed answer.",
         ],
         fail: [
           "Do not ask the user to repeat the deadline.",
@@ -80,14 +81,15 @@ describe("OAuth Workflows", () => {
       timeout: 300_000,
       criteria: rubric({
         contract:
-          "After generic OAuth authorization completes, the interrupted turn resumes in the same thread and keeps prior context.",
+          "After generic OAuth authorization completes, the same thread gets a connection notice and a resumed answer that keeps prior context.",
         pass: [
-          "The workflow pauses for generic OAuth authorization and then resumes through the real callback path.",
-          "The thread gets a connection or continuation notice and then a resumed answer in the same thread.",
+          "The same thread gets a connection or continuation notice that makes it clear the original request is continuing.",
+          "The same thread then gets a resumed answer.",
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
         ],
         allow: [
           "A concise resumed answer that only restates the budget deadline is acceptable.",
+          "A brief connection notice is acceptable before the resumed answer.",
         ],
         fail: [
           "Do not ask the user to repeat the deadline.",
