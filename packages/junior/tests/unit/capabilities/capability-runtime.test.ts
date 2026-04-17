@@ -38,6 +38,14 @@ const fakeSkill: Skill = {
   requiresCapabilities: ["github.issues.write"],
 };
 
+const otherSkill: Skill = {
+  name: "sentry",
+  description: "Sentry helper",
+  skillPath: "/tmp/sentry",
+  body: "instructions",
+  requiresCapabilities: ["sentry.api"],
+};
+
 describe("skill capability runtime", () => {
   it("issues turn-scoped transforms on first enable and reuses them within the turn", async () => {
     let issueCalls = 0;
@@ -186,6 +194,54 @@ describe("skill capability runtime", () => {
         reason: "test:unsupported-provider",
       }),
     ).rejects.toThrow("Unsupported capability");
+  });
+
+  it("requires an active skill before issuing credentials for the turn", async () => {
+    const broker: CredentialBroker = {
+      issue: async () => {
+        throw new Error("should not be called");
+      },
+    };
+
+    const runtime = new SkillCapabilityRuntime({
+      broker,
+      invocationArgs: "--repo getsentry/junior",
+      requesterId: "U123",
+    });
+
+    await expect(
+      runtime.enableCapabilityForTurn({
+        activeSkill: null,
+        capability: "github.issues.write",
+        reason: "test:missing-active-skill",
+      }),
+    ).rejects.toThrow(
+      "requires an active skill that declares github.issues.write",
+    );
+  });
+
+  it("blocks issue-credential when the active skill does not declare the capability", async () => {
+    const broker: CredentialBroker = {
+      issue: async () => {
+        throw new Error("should not be called");
+      },
+    };
+
+    const runtime = new SkillCapabilityRuntime({
+      broker,
+      invocationArgs: "--repo getsentry/junior",
+      requesterId: "U123",
+    });
+
+    await expect(
+      runtime.enableCapabilityForTurn({
+        activeSkill: otherSkill,
+        capability: "github.issues.write",
+        reason: "test:wrong-active-skill",
+      }),
+    ).rejects.toThrow(
+      "requires an active skill that declares github.issues.write",
+    );
   });
 
   it("forwards explicit targetRef through enableCapabilityForTurn", async () => {

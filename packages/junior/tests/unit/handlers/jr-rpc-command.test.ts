@@ -19,7 +19,13 @@ vi.mock("@/chat/capabilities/catalog", () => ({
             commandFlags: ["--repo", "-R"],
           },
         }
-      : undefined,
+      : capability === "sentry.api"
+        ? {
+            provider: "sentry",
+            capabilities: ["sentry.api"],
+            configKeys: ["sentry.org", "sentry.project"],
+          }
+        : undefined,
   listCapabilityProviders: () => [
     {
       provider: "github",
@@ -274,6 +280,36 @@ describe("jr-rpc custom command", () => {
     const handled = expectHandled(result);
     expect(handled.result.exit_code).toBe(1);
     expect(handled.result.stderr).toContain("credential broker unavailable");
+  });
+
+  it("requires a loaded domain skill before issue-credential", async () => {
+    const result = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential github.issues.write",
+      {
+        capabilityRuntime: makeRuntime(),
+        activeSkill: null,
+      },
+    );
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(1);
+    expect(handled.result.stderr).toContain(
+      "requires an active skill that declares github.issues.write",
+    );
+  });
+
+  it("blocks issue-credential when the active skill does not declare the capability", async () => {
+    const result = await maybeExecuteJrRpcCustomCommand(
+      "jr-rpc issue-credential sentry.api",
+      {
+        capabilityRuntime: makeRuntime(),
+        activeSkill,
+      },
+    );
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(1);
+    expect(handled.result.stderr).toContain(
+      "requires an active skill that declares sentry.api",
+    );
   });
 
   it("treats oauth initiation as a successful issue-credential outcome", async () => {

@@ -53,6 +53,97 @@ describe("GitHub Skill Workflows", () => {
     },
   );
 
+  slackEval(
+    "when a GitHub task mentions a Sentry product area, do not prompt for Sentry auth first",
+    {
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github", "@sentry/junior-sentry"],
+        reply_timeout_ms: 75_000,
+        test_credential_token: "eval-routing-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention(
+          "Create a GitHub issue in getsentry/junior about why the Metrics Beta wording can send a code-change request down the wrong auth path.",
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "A repository task that happens to mention a Sentry product area still follows the GitHub path instead of asking for unrelated Sentry auth.",
+        pass: [
+          "The reply reports a GitHub issue result or otherwise proceeds as GitHub issue work.",
+          "The reply does not ask the user to connect a Sentry account first.",
+        ],
+        fail: [
+          "Do not say you need to connect Sentry first.",
+          "Do not mention sending a Sentry authorization link.",
+          "Do not ask to inspect live Sentry data before doing the GitHub task.",
+        ],
+      }),
+    },
+  );
+
+  slackEval(
+    "when asked an implementation question about this repo, answer from repository evidence",
+    {
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 90_000,
+        test_credential_token: "eval-repo-evidence-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention(
+          "In this repo, where do we enforce that `jr-rpc issue-credential` must come from a skill that declares the capability? Keep it brief and cite the repo file or symbol you checked.",
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "An implementation question is answered from repository evidence rather than generic memory or product framing.",
+        pass: [
+          "The reply cites repository evidence such as a file path, symbol, or nearby contract reference.",
+          "The reply explains briefly that capability issuance is enforced against the active skill declaration.",
+        ],
+        fail: [
+          "Do not answer as if this were a product or UI question.",
+          "Do not answer purely from generic GitHub or OAuth knowledge without repo evidence.",
+        ],
+      }),
+    },
+  );
+
+  slackEval(
+    "when asked about PR auth sequencing, mention push auth before PR auth",
+    {
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 60_000,
+        test_credential_token: "eval-pr-auth-order-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention(
+          "Before you open a GitHub pull request from an existing branch, what credentials do you need and in what order? Keep it short.",
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "The assistant explains the GitHub PR credential order without omitting the push step.",
+        pass: [
+          "The answer says `github.contents.write` is needed before `git push`.",
+          "The answer says `github.pull-requests.write` is needed for `gh pr create` after the branch is pushed.",
+        ],
+        fail: [
+          "Do not imply that `github.pull-requests.write` alone is sufficient before the push.",
+          "Do not omit the explicit push-auth step.",
+        ],
+      }),
+    },
+  );
+
   const defaultRepoThread = {
     id: "thread-default-repo",
     channel_id: "C-default-repo",

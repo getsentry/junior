@@ -159,6 +159,14 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
       `    <description>${escapeXml(skill.description)}</description>`,
     );
     lines.push(`    <location>${escapeXml(skillLocation)}</location>`);
+    if (skill.pluginProvider) {
+      lines.push(`    <provider>${escapeXml(skill.pluginProvider)}</provider>`);
+    }
+    if (skill.requiresCapabilities && skill.requiresCapabilities.length > 0) {
+      lines.push(
+        `    <requires_capabilities>${escapeXml(skill.requiresCapabilities.join(" "))}</requires_capabilities>`,
+      );
+    }
     if (skill.usesConfig && skill.usesConfig.length > 0) {
       lines.push(
         `    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`,
@@ -494,9 +502,20 @@ export function buildSystemPrompt(params: {
     renderTag(
       "provider-capabilities",
       [
-        "Use this catalog to map provider intents to valid config keys and capability names.",
+        "Use this catalog to map already-chosen provider work to valid config keys and capability names.",
+        "Do not use this catalog by itself to decide which domain skill matches an operational task.",
         "When user intent is to set a provider default, choose a config key from this catalog and use jr-rpc config set.",
         formatProviderCatalogForPrompt(),
+      ].join("\n"),
+    ),
+    renderTag(
+      "skill-routing",
+      [
+        "- Choose the skill that matches the requested operation, not incidental nouns, product names, organization names, or channel context.",
+        "- When multiple skills seem adjacent, prefer the one whose description matches the user's requested action most directly.",
+        "- If the task needs evidence from a specialized external system or workflow, load the matching skill before drawing conclusions.",
+        "- The provider-capabilities catalog is for exact capability/config names after skill selection, or for explicit connect/disconnect/config tasks. It is not a shortcut for choosing a domain.",
+        "- Never start OAuth or issue provider credentials speculatively. First load the skill that owns the operation, then issue only capabilities declared by that skill.",
       ].join("\n"),
     ),
     renderTag(
@@ -528,7 +547,8 @@ export function buildSystemPrompt(params: {
         "- Use `slackMessageAddReaction` for rare lightweight acknowledgements. It reacts to the current inbound message via runtime context; never pick a target message yourself.",
         "- If the user explicitly asks for an emoji reaction instead of text, use `slackMessageAddReaction` with a Slack emoji alias name (for example `thumbsup`, `white_check_mark`, or `eyes`, not unicode emoji), and avoid redundant acknowledgment text.",
         "- Suggested acknowledgement reactions include `wave`, `white_check_mark`, `thumbsup`, and `eyes`, but choose what best fits the request.",
-        "- If a loaded skill or `loadSkill` result declares `requires_capabilities`, run `jr-rpc issue-credential <capability> [--target <value>]` as a bash command before authenticated bash/API work for that skill.",
+        "- Only after the matching skill is loaded, and only when that skill or its `loadSkill` result declares `requires_capabilities`, run `jr-rpc issue-credential <capability> [--target <value>]` as a bash command before authenticated bash/API work for that skill.",
+        "- If no loaded skill declares the needed capability, load the matching skill first instead of guessing from the provider catalog.",
         "- Use the minimum declared capability needed for the current operation.",
         "- If `jr-rpc issue-credential` returns `oauth_started`, relay its `message` to the user and stop. The runtime will resume after authorization.",
         "- For disconnect + reconnect requests, run `jr-rpc delete-token <provider>` first, then `jr-rpc issue-credential` — the system handles the reconnect without auto-resuming the reconnect message.",
@@ -553,6 +573,8 @@ export function buildSystemPrompt(params: {
         "- If an explicitly invoked skill is present in <loaded_skills>, never say the skill is unavailable, missing, or unsupported in this environment.",
         "- Otherwise, for an explicitly invoked skill, call `loadSkill` for that exact skill before applying skill-specific behavior.",
         "- For requests without an explicit trigger where a skill clearly matches, call `loadSkill` before applying skill-specific behavior.",
+        "- When multiple skills appear relevant, prefer the skill whose description best matches the requested action rather than incidental domain nouns in the prompt.",
+        "- For explicit connect/disconnect/config tasks, you may load the helper skill that owns credential/config commands, but do not use helper skills to choose the provider for unrelated operational work.",
         "- Do not claim to have used a skill unless it is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Never apply skill-specific behavior unless the skill is present in <loaded_skills> or `loadSkill` succeeded in this turn.",
         "- Load only the best matching skill first; do not load multiple skills upfront.",

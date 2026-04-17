@@ -1,6 +1,6 @@
 ---
 name: github
-description: Manage GitHub issue workflows, pull request operations, and repository checkout via GitHub CLI with concise, evidence-backed content. Use when users ask to open, edit, label, comment on, close/reopen, or inspect GitHub issues, view or create pull requests, or when they need `gh repo clone` guidance, especially shallow-clone defaults and exact CLI commands.
+description: Manage GitHub issue workflows, source-code investigation, pull request operations, repository checkout, and repo-scoped GitHub credentials via GitHub CLI with concise, evidence-backed content. Use when users ask to inspect implementation details in a repository, clone code, edit files, answer source-code questions from repo evidence, open/edit/view pull requests, or open/edit/inspect GitHub issues. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
 requires-capabilities: github.issues.read github.issues.write github.contents.read github.contents.write github.pull-requests.read github.pull-requests.write
 uses-config: github.repo
 allowed-tools: bash
@@ -18,6 +18,7 @@ Load references conditionally based on the operation:
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Any operation                        | [references/api-surface.md](references/api-surface.md)                                                                                                                                      |
 | `clone`, `pull request create`       | [references/common-use-cases.md](references/common-use-cases.md)                                                                                                                            |
+| `source-code investigation`          | [references/research-rules.md](references/research-rules.md)                                                                                                                                |
 | `issue create`, `issue body rewrite` | [references/issue-examples.md](references/issue-examples.md), the matching type-specific template and type-specific rules, and [references/research-rules.md](references/research-rules.md) |
 | On failure                           | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                      |
 
@@ -25,7 +26,7 @@ Load references conditionally based on the operation:
 
 ### 1. Resolve operation and target
 
-- Determine whether the task is `clone`, an issue operation (`create`, `update`, `comment`, `labels`, `state`, or read-only inspection), a pull request inspection (`view`, `list`, `diff`, or `checks`), or a pull request mutation (`create`, `update`, `close`, or `merge`).
+- Determine whether the task is `clone`, `source-code investigation`, an issue operation (`create`, `update`, `comment`, `labels`, `state`, or read-only inspection), a pull request inspection (`view`, `list`, `diff`, or `checks`), or a pull request mutation (`create`, `update`, `close`, or `merge`).
 - Resolve repository (`owner/repo`). If it is not explicit, query channel config with `jr-rpc config get github.repo`.
 - If config exists and is valid `owner/repo`, use it as the default.
 - If repository is still missing, ask the user for `owner/repo`.
@@ -36,6 +37,7 @@ Load references conditionally based on the operation:
 ### 2. Execute by operation type
 
 **Clone** → Follow the clone path below.
+**Source-code investigation** → Follow the source-code path below.
 **Issue operation** → Follow the issue path below.
 **Pull request inspection** → Follow the pull request inspection path below.
 **Pull request mutation** → Follow the pull request mutation path below.
@@ -51,6 +53,18 @@ Load references conditionally based on the operation:
 - Deepen incrementally only when the task needs repository history.
 - After cloning, check for `AGENTS.md` in the repo root (and `.github/AGENTS.md`) before making edits. Treat discovered instructions as hard constraints.
 - Report the local directory and whether the clone is shallow or full.
+
+---
+
+### Source-code investigation path
+
+- Use this path for questions like "where is this implemented?", "how does this workflow work in code?", "is there already logic for X?", or "verify this from the repo."
+- Resolve repository (`owner/repo`). If the current workspace already contains the target repository, inspect local files directly before cloning anything.
+- If you need repository access outside the current workspace, issue `github.contents.read --target owner/repo` before cloning or other authenticated repo reads.
+- Default to a shallow clone when you need a fresh checkout; deepen only if the question truly needs history.
+- Prefer the narrowest deterministic evidence that answers the question: local file search, exact file reads, targeted clone inspection, existing issues/PRs, and tests.
+- Cite repository evidence in the reply: file paths, symbols, issue/PR numbers, or commit references when known.
+- If the available evidence is incomplete, say what is unknown instead of guessing.
 
 ---
 
@@ -132,6 +146,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 - Issue the narrowest matching capability credential before executing, and pass `--target owner/repo` for repo-scoped work.
 - For PR creation, do not rely on `gh pr create` to push or fork implicitly.
 - For PR creation, if the head branch is not already on the remote, first issue `github.contents.write --target owner/repo` and run `git push`.
+- If `git push` returns 401, 403, or another auth/permission error, issue or reissue `github.contents.write --target owner/repo` and retry the same push once before reporting failure.
 - For PR creation, then issue `github.pull-requests.write --target owner/repo` and run `gh pr create --repo owner/repo --head BRANCH ...`.
 - For PR creation, use `--head` so `gh` skips its hidden push/fork flow.
 - Treat `gh pr merge` as a contents mutation: it requires `github.contents.write`, not just `github.pull-requests.write`.
@@ -153,6 +168,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 ### Quality
 
 - Never claim verification without citing sources.
+- Answer source-code and implementation questions from repository evidence, not product framing or generic memory.
 - For `bug` issues, do not present a fix as definitive unless root-cause evidence is explicit.
 - If no relevant duplicates are found, continue directly to draft and create the issue, then report the created issue.
 

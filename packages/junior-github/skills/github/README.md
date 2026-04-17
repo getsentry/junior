@@ -92,7 +92,7 @@ gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sa
 `gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
 Use `github.issues.read` for read-only issue commands, `github.issues.write` for issue edits, comments, and labels, `github.contents.write` for pushes and merge operations, and `github.pull-requests.write` for PR mutations after the branch is already on the remote.
 
-GitHub capability scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, but the host runtime still decides when to mint credentials and the agent can request broader GitHub capabilities when the task requires them.
+GitHub capability scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential issuance is also skill-scoped: load the active GitHub skill first, then issue only the GitHub capability required for the next command.
 
 Be careful with mixed-surface PR commands:
 

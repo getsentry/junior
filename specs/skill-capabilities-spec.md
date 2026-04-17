@@ -3,13 +3,14 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-03-20
+- Last Edited: 2026-04-16
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated repo-root file paths and aligned OAuth URL visibility contract with security policy.
 - 2026-03-20: Documented prompt exposure of declared capabilities and clarified Sentry OAuth initiation paths.
+- 2026-04-16: Changed `jr-rpc issue-credential` from soft to hard skill-declaration enforcement and clarified skill-first routing expectations.
 
 ## Status
 
@@ -57,7 +58,8 @@ Rules:
 
 - Resolve capabilities from active skill context for guidance and observability.
 - Expose declared capabilities to the agent through loaded-skill prompt context and `loadSkill` results.
-- Declarations are currently soft-enforced (warn-only) when missing/mismatched.
+- `jr-rpc issue-credential` requires an active domain skill that explicitly declares the requested capability.
+- Missing or mismatched capability declarations fail fast instead of issuing credentials speculatively.
 
 ### Credential issuance
 
@@ -105,7 +107,7 @@ Rules:
 
 - GitHub capabilities are a lightweight host-side safety rail, not a fine-grained policy engine.
 - The main goals are reducing accidental write scope and wrong-repository mutations while keeping the command model simple.
-- Provider target scoping is a host-side safety rail. GitHub uses `repo` targets to narrow installation tokens when `owner/repo` is known, but the agent can still request broader GitHub capabilities when the task requires them.
+- Provider target scoping is a host-side safety rail. GitHub uses `repo` targets to narrow installation tokens when `owner/repo` is known, and `jr-rpc issue-credential` is bound to the capabilities declared by the active skill.
 
 ## Sentry profile
 
@@ -144,7 +146,7 @@ Emit events without secret material:
 - `credential_issue_request`
 - `credential_issue_success`
 - `credential_issue_failed`
-- `capability_not_declared_for_skill` (warn-only)
+- `credential_issue_blocked_by_skill_contract`
 - `credential_inject_start`
 - `credential_inject_cleanup`
 
@@ -155,4 +157,4 @@ Emit events without secret material:
 
 ## Backward compatibility
 
-- Skills without `requires-capabilities` continue to work unchanged.
+- Skills without `requires-capabilities` continue to work for unauthenticated tasks, but they cannot issue credentials until they declare the required capabilities.

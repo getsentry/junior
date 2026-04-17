@@ -1,6 +1,6 @@
 ---
 name: sentry
-description: Query Sentry telemetry (issues, events, replays, traces) and generate deep links scoped to users or timeframes. This skill should be used when users ask to investigate bugs, search errors, find replays, or look up Sentry data.
+description: Query live Sentry telemetry (issues, events, replays, traces) and generate deep links scoped to users or timeframes. Use this skill when users ask to investigate live Sentry data, search errors, find replays, inspect traces, or look up Sentry issues/events. Do not use it for repository/source-code/PR tasks, even when the topic concerns Sentry products.
 requires-capabilities: sentry.api
 uses-config: sentry.org sentry.project
 allowed-tools: bash
@@ -47,3 +47,4 @@ Use this skill for Sentry investigation workflows in the harness.
 - Do not print credential values.
 - If org is missing and needed, ask the user.
 - Prefer deep links over raw data dumps when linking to Sentry web UI.
+- Do not use this skill for repository/source-code/commit/branch/pull-request work, even if the user mentions a Sentry feature or product area.
