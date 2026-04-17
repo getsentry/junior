@@ -14,6 +14,7 @@
 - 2026-03-21: Added canonical chat architecture spec.
 - 2026-04-15: Added canonical Slack agent delivery spec.
 - 2026-04-16: Added canonical Slack write contract spec.
+- 2026-04-17: Added draft Slack rendering spec for render intents, plugin renderer registry, and Work Object lanes.
 
 ## Status
 
@@ -48,6 +49,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/chat-architecture-spec.md`
 - `specs/slack-agent-delivery-spec.md`
 - `specs/slack-outbound-contract-spec.md`
+- `specs/slack-rendering-spec.md`
 - `specs/skill-capabilities-spec.md`
 - `specs/oauth-flows-spec.md`
 - `specs/harness-agent-spec.md`
