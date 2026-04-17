@@ -63,11 +63,15 @@ These defaults are optional fallbacks. If a user names a different env or servic
 
 ## Non-US1 sites
 
-Datadog customers are region-pinned. The packaged manifest's `mcp.url` is:
+Datadog customers are region-pinned. The packaged manifest declares `DATADOG_SITE` in its `env-vars` block with a default of `datadoghq.com` (US1) and references it from `mcp.url`:
 
 ```yaml
+env-vars:
+  DATADOG_SITE:
+    default: datadoghq.com
+
 mcp:
-  url: https://mcp.${DATADOG_SITE:-datadoghq.com}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
+  url: https://mcp.${DATADOG_SITE}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
 ```
 
 Set `DATADOG_SITE` in your Junior deployment env (e.g. Vercel project settings) to the hostname portion of your Datadog site:

@@ -73,11 +73,16 @@ export interface PluginMcpHttpConfig {
 
 export type PluginMcpConfig = PluginMcpHttpConfig;
 
+export interface PluginEnvVarDeclaration {
+  default?: string;
+}
+
 export interface PluginManifest {
   name: string;
   description: string;
   capabilities: string[];
   configKeys: string[];
+  envVars?: Record<string, PluginEnvVarDeclaration>;
   credentials?: PluginCredentials;
   runtimeDependencies?: PluginRuntimeDependency[];
   runtimePostinstall?: PluginRuntimePostinstallCommand[];

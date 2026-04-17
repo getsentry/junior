@@ -17,7 +17,7 @@
 - 2026-03-18: Replaced per-MCP-tool Pi registration with stable `searchTools`/`useTool` dispatch and plugin-level MCP allowlists.
 - 2026-04-05: Added INV-1 spec invariant: plugin discovery is explicit only.
 - 2026-04-13: Made `mcp.transport` optional when `mcp.url` is present; Junior infers hosted HTTP transport from the URL.
-- 2026-04-17: Added docker-compose-style env-var expansion (`${NAME}`, `${NAME:-default}`, `$$`) for `mcp.url`.
+- 2026-04-17: Added `env-vars` manifest block and declared-only `${NAME}` expansion for `mcp.url`; placeholders must be listed in `env-vars`, and defaults live in the declaration (no inline `${NAME:-default}` form).
 
 ## Status
 
@@ -147,83 +147,94 @@ mcp: # optional — MCP server config for tool sources
 
 ### Optional fields
 
-| Field                                | Type                     | Rules                                                                                                                                                                |
-| ------------------------------------ | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `capabilities`                       | `string[]`               | Short names (e.g. `issues.read`). Qualified to `<name>.issues.read` by the registry. No qualified capability may appear in more than one plugin.                     |
-| `config-keys`                        | `string[]`               | Short names (e.g. `org`). Qualified to `<name>.org` by the registry.                                                                                                 |
-| `credentials`                        | `object`                 | Credential delivery configuration.                                                                                                                                   |
-| `credentials.type`                   | `string`                 | `"oauth-bearer"` or `"github-app"`.                                                                                                                                  |
-| `credentials.api-domains`            | `string[]`               | Domains for `Authorization: Bearer` header transforms. At least one required.                                                                                        |
-| `credentials.api-headers`            | `Record<string, string>` | Optional headers applied to matching API domains alongside `Authorization`. `Authorization` itself is reserved.                                                      |
-| `credentials.auth-token-env`         | `string`                 | Env var name for static token fallback and sandbox placeholder.                                                                                                      |
-| `credentials.auth-token-placeholder` | `string`                 | Optional non-secret placeholder injected into sandbox env for CLI compatibility.                                                                                     |
-| `credentials.app-id-env`             | `string`                 | Env var name for GitHub App ID. Required when `credentials.type` is `"github-app"`.                                                                                  |
-| `credentials.private-key-env`        | `string`                 | Env var name for GitHub App private key (PEM). Required when `credentials.type` is `"github-app"`.                                                                   |
-| `credentials.installation-id-env`    | `string`                 | Env var name for GitHub App installation ID. Required when `credentials.type` is `"github-app"`.                                                                     |
-| `oauth`                              | `object`                 | OAuth provider configuration. Requires `credentials.type` = `"oauth-bearer"`.                                                                                        |
-| `oauth.client-id-env`                | `string`                 | Env var name for client ID.                                                                                                                                          |
-| `oauth.client-secret-env`            | `string`                 | Env var name for client secret.                                                                                                                                      |
-| `oauth.authorize-endpoint`           | `string`                 | Valid HTTPS URL.                                                                                                                                                     |
-| `oauth.token-endpoint`               | `string`                 | Valid HTTPS URL.                                                                                                                                                     |
-| `oauth.scope`                        | `string`                 | Optional OAuth scope string.                                                                                                                                         |
-| `oauth.authorize-params`             | `Record<string, string>` | Optional authorize URL params added alongside core params. Reserved OAuth param names may not be overridden.                                                         |
-| `oauth.token-auth-method`            | `string`                 | Optional token client auth method: `"body"` (default) or `"basic"`.                                                                                                  |
-| `oauth.token-extra-headers`          | `Record<string, string>` | Optional token request headers. `Authorization` is reserved; `Content-Type` controls token body serialization.                                                       |
-| `target`                             | `object`                 | Capability target for scoped credentials.                                                                                                                            |
-| `target.type`                        | `string`                 | Currently only `"repo"`.                                                                                                                                             |
-| `target.config-key`                  | `string`                 | Must appear in `config-keys`.                                                                                                                                        |
-| `runtime-dependencies`               | `object[]`               | Optional sandbox dependency declarations used to build reusable snapshots.                                                                                           |
-| `runtime-dependencies[].type`        | `string`                 | `"npm"` or `"system"`.                                                                                                                                               |
-| `runtime-dependencies[].package`     | `string`                 | Package identifier (npm package name or system package name). Required for `npm`; optional for `system` when `url` is used.                                          |
-| `runtime-dependencies[].version`     | `string`                 | Optional for `npm` dependencies. When omitted, runtime uses `latest`. Must be omitted for `system` dependencies.                                                     |
-| `runtime-dependencies[].url`         | `string`                 | HTTPS URL for direct system package install (RPM). Allowed only for `system` dependencies.                                                                           |
-| `runtime-dependencies[].sha256`      | `string`                 | Required with `url`. Lowercase or uppercase hex SHA-256 checksum used for integrity verification before install.                                                     |
-| `runtime-postinstall`                | `object[]`               | Optional post-install command declarations executed after dependency install and before snapshot capture.                                                            |
-| `runtime-postinstall[].cmd`          | `string`                 | Non-empty command name.                                                                                                                                              |
-| `runtime-postinstall[].args`         | `string[]`               | Optional command arguments.                                                                                                                                          |
-| `runtime-postinstall[].sudo`         | `boolean`                | Optional sudo flag for commands requiring elevated privileges.                                                                                                       |
-| `mcp`                                | `object`                 | Optional MCP server configuration for host-managed tool discovery.                                                                                                   |
-| `mcp.transport`                      | `string`                 | Optional. When omitted and `mcp.url` is present, Junior infers HTTP. If provided in v1, it must be `"http"`. Stdio/command transports are not supported.             |
-| `mcp.url`                            | `string`                 | HTTPS endpoint for the MCP server. Supports env-var expansion — see [MCP URL env-var expansion](#mcp-url-env-var-expansion). Expansion runs before HTTPS validation. |
-| `mcp.headers`                        | `Record<string, string>` | Optional static non-Authorization headers sent with MCP HTTP requests. `Authorization` is reserved for runtime-managed auth.                                         |
-| `mcp.allowed-tools`                  | `string[]`               | Optional non-empty allowlist of raw MCP tool names to expose for this provider. Activation fails if any listed tool is missing from discovery.                       |
+| Field                                | Type                     | Rules                                                                                                                                                                                            |
+| ------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `capabilities`                       | `string[]`               | Short names (e.g. `issues.read`). Qualified to `<name>.issues.read` by the registry. No qualified capability may appear in more than one plugin.                                                 |
+| `config-keys`                        | `string[]`               | Short names (e.g. `org`). Qualified to `<name>.org` by the registry.                                                                                                                             |
+| `credentials`                        | `object`                 | Credential delivery configuration.                                                                                                                                                               |
+| `credentials.type`                   | `string`                 | `"oauth-bearer"` or `"github-app"`.                                                                                                                                                              |
+| `credentials.api-domains`            | `string[]`               | Domains for `Authorization: Bearer` header transforms. At least one required.                                                                                                                    |
+| `credentials.api-headers`            | `Record<string, string>` | Optional headers applied to matching API domains alongside `Authorization`. `Authorization` itself is reserved.                                                                                  |
+| `credentials.auth-token-env`         | `string`                 | Env var name for static token fallback and sandbox placeholder.                                                                                                                                  |
+| `credentials.auth-token-placeholder` | `string`                 | Optional non-secret placeholder injected into sandbox env for CLI compatibility.                                                                                                                 |
+| `credentials.app-id-env`             | `string`                 | Env var name for GitHub App ID. Required when `credentials.type` is `"github-app"`.                                                                                                              |
+| `credentials.private-key-env`        | `string`                 | Env var name for GitHub App private key (PEM). Required when `credentials.type` is `"github-app"`.                                                                                               |
+| `credentials.installation-id-env`    | `string`                 | Env var name for GitHub App installation ID. Required when `credentials.type` is `"github-app"`.                                                                                                 |
+| `oauth`                              | `object`                 | OAuth provider configuration. Requires `credentials.type` = `"oauth-bearer"`.                                                                                                                    |
+| `oauth.client-id-env`                | `string`                 | Env var name for client ID.                                                                                                                                                                      |
+| `oauth.client-secret-env`            | `string`                 | Env var name for client secret.                                                                                                                                                                  |
+| `oauth.authorize-endpoint`           | `string`                 | Valid HTTPS URL.                                                                                                                                                                                 |
+| `oauth.token-endpoint`               | `string`                 | Valid HTTPS URL.                                                                                                                                                                                 |
+| `oauth.scope`                        | `string`                 | Optional OAuth scope string.                                                                                                                                                                     |
+| `oauth.authorize-params`             | `Record<string, string>` | Optional authorize URL params added alongside core params. Reserved OAuth param names may not be overridden.                                                                                     |
+| `oauth.token-auth-method`            | `string`                 | Optional token client auth method: `"body"` (default) or `"basic"`.                                                                                                                              |
+| `oauth.token-extra-headers`          | `Record<string, string>` | Optional token request headers. `Authorization` is reserved; `Content-Type` controls token body serialization.                                                                                   |
+| `target`                             | `object`                 | Capability target for scoped credentials.                                                                                                                                                        |
+| `target.type`                        | `string`                 | Currently only `"repo"`.                                                                                                                                                                         |
+| `target.config-key`                  | `string`                 | Must appear in `config-keys`.                                                                                                                                                                    |
+| `runtime-dependencies`               | `object[]`               | Optional sandbox dependency declarations used to build reusable snapshots.                                                                                                                       |
+| `runtime-dependencies[].type`        | `string`                 | `"npm"` or `"system"`.                                                                                                                                                                           |
+| `runtime-dependencies[].package`     | `string`                 | Package identifier (npm package name or system package name). Required for `npm`; optional for `system` when `url` is used.                                                                      |
+| `runtime-dependencies[].version`     | `string`                 | Optional for `npm` dependencies. When omitted, runtime uses `latest`. Must be omitted for `system` dependencies.                                                                                 |
+| `runtime-dependencies[].url`         | `string`                 | HTTPS URL for direct system package install (RPM). Allowed only for `system` dependencies.                                                                                                       |
+| `runtime-dependencies[].sha256`      | `string`                 | Required with `url`. Lowercase or uppercase hex SHA-256 checksum used for integrity verification before install.                                                                                 |
+| `runtime-postinstall`                | `object[]`               | Optional post-install command declarations executed after dependency install and before snapshot capture.                                                                                        |
+| `runtime-postinstall[].cmd`          | `string`                 | Non-empty command name.                                                                                                                                                                          |
+| `runtime-postinstall[].args`         | `string[]`               | Optional command arguments.                                                                                                                                                                      |
+| `runtime-postinstall[].sudo`         | `boolean`                | Optional sudo flag for commands requiring elevated privileges.                                                                                                                                   |
+| `env-vars`                           | `Record<string, object>` | Optional map declaring deployment env vars the manifest may reference from `mcp.url`. Keys must match `[A-Z_][A-Z0-9_]*`. See [MCP URL env-var expansion](#mcp-url-env-var-expansion).           |
+| `env-vars.<NAME>.default`            | `string`                 | Optional default value used when `process.env[NAME]` is unset or empty. Omit to require the operator to set it explicitly.                                                                       |
+| `mcp`                                | `object`                 | Optional MCP server configuration for host-managed tool discovery.                                                                                                                               |
+| `mcp.transport`                      | `string`                 | Optional. When omitted and `mcp.url` is present, Junior infers HTTP. If provided in v1, it must be `"http"`. Stdio/command transports are not supported.                                         |
+| `mcp.url`                            | `string`                 | HTTPS endpoint for the MCP server. Supports `${NAME}` placeholders declared in `env-vars` — see [MCP URL env-var expansion](#mcp-url-env-var-expansion). Expansion runs before HTTPS validation. |
+| `mcp.headers`                        | `Record<string, string>` | Optional static non-Authorization headers sent with MCP HTTP requests. `Authorization` is reserved for runtime-managed auth.                                                                     |
+| `mcp.allowed-tools`                  | `string[]`               | Optional non-empty allowlist of raw MCP tool names to expose for this provider. Activation fails if any listed tool is missing from discovery.                                                   |
 
 Snapshot build/reuse and invalidation behavior for `runtime-dependencies` is defined in [Sandbox Snapshots Spec](./sandbox-snapshots-spec.md).
 
 ### MCP URL env-var expansion
 
-`mcp.url` supports a small, opt-in subset of docker-compose-style environment
-variable expansion. Expansion runs once per manifest at load time, before the
-URL is parsed or validated, so the post-expansion value must still be a valid
-HTTPS URL.
+`mcp.url` supports `${NAME}` placeholders that are resolved from the
+plugin's declared `env-vars` block at manifest-load time. Expansion runs
+once per manifest, before the URL is parsed or validated, so the
+post-expansion value must still be a valid HTTPS URL.
 
 Supported syntax:
 
-| Form               | Behavior                                                                          |
-| ------------------ | --------------------------------------------------------------------------------- |
-| `${NAME}`          | Replaced with `process.env[NAME]`. Plugin load fails if `NAME` is unset or empty. |
-| `${NAME:-default}` | Replaced with `process.env[NAME]`, falling back to the literal `default` string.  |
-| `$$`               | Escapes a literal `$`.                                                            |
+| Form      | Behavior                                                                                                                                                                                                                          |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `${NAME}` | Replaced with `process.env[NAME]`, falling back to the `default` declared in `env-vars`. Plugin load fails if `NAME` is not listed in `env-vars`, or if it is listed without a default and `process.env[NAME]` is unset or empty. |
+| `$$`      | Escapes a literal `$`.                                                                                                                                                                                                            |
 
-`NAME` must match `[A-Z_][A-Z0-9_]*`. This is intentionally a narrow subset of
-POSIX parameter expansion — no nesting, no command substitution, no
-`${NAME:+value}` / `${NAME:?error}`. Expansion applies **only** to `mcp.url`.
-Other manifest fields (credentials envs, OAuth endpoints, api-domains, etc.)
-already have dedicated env-ref mechanisms (`auth-token-env`, `client-id-env`,
-…) or must remain literal for validation.
+`NAME` must match `[A-Z_][A-Z0-9_]*`. Placeholders that reference env vars
+not listed in `env-vars` are rejected at load time — this makes the set of
+env vars a manifest may read explicit and auditable, and prevents a
+manifest from opportunistically reading ambient host env vars (e.g.
+`SLACK_BOT_TOKEN`) via `mcp.url`. Expansion applies **only** to `mcp.url`.
+Other manifest fields (credentials envs, OAuth endpoints, api-domains,
+etc.) already have dedicated env-ref mechanisms (`auth-token-env`,
+`client-id-env`, …) or must remain literal for validation.
+
+Defaults live in the `env-vars` declaration, not inline in the
+placeholder. There is no `${NAME:-default}` form.
 
 The primary motivation is region-pinned providers (Datadog, Sentry
 self-hosted, GitHub Enterprise, Linear EU, …) where the hostname is the only
 thing that varies across deployments. Example:
 
 ```yaml
+env-vars:
+  DATADOG_SITE:
+    default: datadoghq.com
+
 mcp:
-  url: https://mcp.${DATADOG_SITE:-datadoghq.com}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
+  url: https://mcp.${DATADOG_SITE}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
 ```
 
-US1 operators leave `DATADOG_SITE` unset and get the default. Operators on
-US3/US5/EU/AP1/AP2/GovCloud set `DATADOG_SITE=us5.datadoghq.com` (etc.) in
-their Junior deployment env. No code changes, no app-local plugin copy.
+US1 operators leave `DATADOG_SITE` unset and get the declared default.
+Operators on US3/US5/EU/AP1/AP2/GovCloud set `DATADOG_SITE=us5.datadoghq.com`
+(etc.) in their Junior deployment env. No code changes, no app-local plugin
+copy.
 
 System runtime dependency execution environment:
 

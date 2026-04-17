@@ -9,8 +9,12 @@ config-keys:
 # Datadog site. Non-US1 operators set DATADOG_SITE to their site host (e.g.
 # `us5.datadoghq.com`, `datadoghq.eu`, `ap1.datadoghq.com`, `ddog-gov.com`).
 # US1 operators can leave DATADOG_SITE unset and the default applies.
+env-vars:
+  DATADOG_SITE:
+    default: datadoghq.com
+
 mcp:
-  url: https://mcp.${DATADOG_SITE:-datadoghq.com}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
+  url: https://mcp.${DATADOG_SITE}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
   allowed-tools:
     - analyze_datadog_logs
     - get_datadog_incident
