@@ -2,6 +2,7 @@ import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
+import type { AgentTurnUsage } from "@/chat/usage";
 import {
   buildReplyDeliveryPlan,
   type ReplyDeliveryPlan,
@@ -22,12 +23,6 @@ import {
   normalizeToolNameFromResult,
   summarizeMessageText,
 } from "@/chat/respond-helpers";
-
-export interface AgentTurnUsage {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-}
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;

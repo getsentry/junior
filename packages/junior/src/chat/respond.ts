@@ -72,8 +72,8 @@ import {
   buildTurnResult,
   type AssistantReply,
   type AgentTurnDiagnostics,
-  type AgentTurnUsage,
 } from "@/chat/services/turn-result";
+import type { AgentTurnUsage } from "@/chat/usage";
 import {
   loadTurnCheckpoint,
   persistCompletedCheckpoint,

@@ -16,6 +16,7 @@ import type {
 } from "chat";
 import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import * as Sentry from "@/chat/sentry";
+import type { AgentTurnUsage } from "@/chat/usage";
 
 type Primitive = string | number | boolean;
 type AttributeValue = Primitive | string[];
@@ -1765,12 +1766,6 @@ export function serializeGenAiAttribute(
   return truncateGenAiString(serialized, maxChars);
 }
 
-export interface GenAiUsageSummary {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-}
-
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -1839,7 +1834,7 @@ function collectUsageRoots(source: unknown): Record<string, unknown>[] {
 /** Extract a structured token-usage summary from provider metadata roots. */
 export function extractGenAiUsageSummary(
   ...sources: unknown[]
-): GenAiUsageSummary {
+): AgentTurnUsage {
   const roots = sources.flatMap((source) => collectUsageRoots(source));
   if (roots.length === 0) {
     return {};
