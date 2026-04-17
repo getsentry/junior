@@ -89,6 +89,9 @@ export function createPluginAuthOrchestration(
   const startAuthorizationPause = async (
     provider: string,
     activeSkill: Skill | null,
+    options?: {
+      unlinkExistingProvider?: boolean;
+    },
   ): Promise<never> => {
     if (pendingPause) {
       throw pendingPause;
@@ -116,6 +119,14 @@ export function createPluginAuthOrchestration(
       throw new Error(
         `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try again.`,
       );
+    }
+
+    if (
+      options?.unlinkExistingProvider &&
+      deps.requesterId &&
+      deps.userTokenStore
+    ) {
+      await unlinkProvider(deps.requesterId, provider, deps.userTokenStore);
     }
 
     pendingPause = new PluginAuthorizationPauseError(provider);
@@ -155,8 +166,9 @@ export function createPluginAuthOrchestration(
         return;
       }
 
-      await unlinkProvider(deps.requesterId, provider, deps.userTokenStore);
-      await startAuthorizationPause(provider, input.activeSkill);
+      await startAuthorizationPause(provider, input.activeSkill, {
+        unlinkExistingProvider: true,
+      });
     },
     getPendingPause: () => pendingPause,
   };
