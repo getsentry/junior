@@ -21,6 +21,7 @@ import {
 } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   discoverSkills,
@@ -479,6 +480,32 @@ export async function generateAssistantReply(
     const syncResumeState = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
     };
+    const enableSkillCredentials = async (
+      skill: Skill | null,
+      reason: string,
+    ): Promise<void> => {
+      if (!skill?.pluginProvider) {
+        return;
+      }
+
+      try {
+        await capabilityRuntime.enableCredentialsForTurn({
+          activeSkill: skill,
+          reason,
+        });
+      } catch (error) {
+        if (
+          error instanceof CredentialUnavailableError &&
+          context.requester?.userId
+        ) {
+          await pluginAuth.handleCredentialUnavailable({
+            activeSkill: skill,
+            error,
+          });
+        }
+        throw error;
+      }
+    };
 
     setTags({
       conversationId: spanContext.conversationId,
@@ -526,6 +553,10 @@ export async function generateAssistantReply(
             // aborted turn park cleanly.
             return undefined;
           }
+          await enableSkillCredentials(
+            effective,
+            `skill:${effective.name}:turn:load`,
+          );
           if (!effective.pluginProvider) {
             return undefined;
           }
@@ -563,6 +594,7 @@ export async function generateAssistantReply(
         timeoutResumeMessages = existingCheckpoint?.piMessages ?? [];
         throw mcpAuth.getPendingPause()!;
       }
+      await enableSkillCredentials(skill, `skill:${skill.name}:turn:resume`);
     }
     syncResumeState();
 

@@ -29,7 +29,7 @@ describe("createAgentTools", () => {
     handleToolExecutionError.mockClear();
   });
 
-  it("auto-enables provider credentials before executing bash", async () => {
+  it("injects already-enabled provider credentials into bash", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const enableCredentialsForTurn = vi.fn(async () => {});
     const capabilityRuntime = {
@@ -81,10 +81,7 @@ describe("createAgentTools", () => {
       command: "gh issue view 123 --repo getsentry/junior",
     });
 
-    expect(enableCredentialsForTurn).toHaveBeenCalledWith({
-      activeSkill: githubSkill,
-      reason: "skill:github:bash:auto-enable",
-    });
+    expect(enableCredentialsForTurn).not.toHaveBeenCalled();
     expect(sandboxExecutor.execute).toHaveBeenCalledWith({
       toolName: "bash",
       input: {

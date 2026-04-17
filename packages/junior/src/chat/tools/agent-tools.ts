@@ -3,7 +3,6 @@ import { serializeGenAiAttribute } from "@/chat/logging";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
   PluginAuthorizationPauseError,
   type PluginAuthOrchestration,
@@ -79,25 +78,6 @@ export function createAgentTools(
               toolName === "bash" && typeof parsed.command === "string"
                 ? parsed.command.trim()
                 : "";
-            if (bashCommand && capabilityRuntime) {
-              try {
-                await capabilityRuntime.enableCredentialsForTurn({
-                  activeSkill: sandbox.getActiveSkill(),
-                  reason: `skill:${sandbox.getActiveSkill()?.name ?? "unknown"}:bash:auto-enable`,
-                });
-              } catch (error) {
-                if (
-                  error instanceof CredentialUnavailableError &&
-                  pluginAuthOrchestration
-                ) {
-                  await pluginAuthOrchestration.handleCredentialUnavailable({
-                    activeSkill: sandbox.getActiveSkill(),
-                    error,
-                  });
-                }
-                throw error;
-              }
-            }
             const injection = resolveCredentialInjection(
               toolName,
               bashCommand,
