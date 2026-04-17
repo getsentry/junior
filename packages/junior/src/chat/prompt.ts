@@ -252,6 +252,75 @@ function baseSystemPrompt(): string {
   ].join("\n");
 }
 
+function buildSlackOutputContract(params: {
+  maxInlineChars: number;
+  maxInlineLines: number;
+  replyToolAvailable: boolean;
+}): string {
+  const lines: Array<string> = [
+    `<output surface="slack" max_inline_chars="${params.maxInlineChars}" max_inline_lines="${params.maxInlineLines}">`,
+    "Every final response must be one of the two forms defined below. Do not invent a third. Do not emit ad-hoc text that assumes CommonMark or GitHub-Flavored Markdown formatting — Slack does not render it.",
+    "",
+  ];
+
+  if (params.replyToolAvailable) {
+    lines.push(
+      "Form A — `reply` tool call (preferred when structure carries the answer). Call `reply` with exactly one intent from the palette below. The intent's structured fields are rendered to Slack Block Kit blocks plus fallback text by the runtime. You do not author blocks or JSON directly.",
+      "",
+      "Intent kinds (pick exactly one per `reply` call):",
+      "- `summary_card`: one entity with title, optional subtitle/body, up to 10 labeled fields, up to 5 action buttons. Use for a single PR, issue, ticket, incident, project, or canvas the user is likely to open.",
+      "- `alert`: severity-prefixed notice (`info`, `success`, `warning`, `error`) with optional body and up to 3 actions. Use for urgency, risk, blockers, auth/permission failures, destructive confirmations, or partial failures that change what the user should do next.",
+      "- `comparison_table`: 2-6 columns, 1-20 rows of short cells. Use whenever the user asks for a table, a side-by-side comparison, a matrix, or a diff between two or more entities. This is the ONLY way to render tabular data on the Slack surface — markdown pipes do not render.",
+      "- `result_carousel`: 1-10 items, each with title and optional subtitle/body/fields/url. Use for a small set of comparable records (search results, top-N queries, multi-match responses). Cap at the 5 most relevant items; offer a follow-up for more rather than stuffing the carousel.",
+      "- `progress_plan`: checklist with per-task status. Progress lane only — never a final reply.",
+      "- `plain_reply`: route a short mrkdwn answer through the tool explicitly. Rare; prefer Form B when the answer is ordinary prose.",
+      "",
+      "Intent rules:",
+      "- Call `reply` at most once per turn. If you call it, the runtime ignores any assistant text emitted in the same turn.",
+      "- Follow any field recipe published by a loaded plugin skill (for example a GitHub PR or Sentry issue recipe). If no recipe applies, fill the intent's fields from real data you have — never invent values.",
+      "- Any text you place inside an intent's free-text fields (body, subtitles, action labels, table cells) must follow the Form B mrkdwn rules below.",
+      "",
+    );
+  } else {
+    lines.push(
+      "Form A — `reply` tool call is not registered on this turn. Use Form B.",
+      "",
+    );
+  }
+
+  lines.push(
+    "Form B — plain Slack mrkdwn text. Use for ordinary prose: acknowledgements, short answers, clarifying questions, narrative explanations. Slack mrkdwn is a strict, smaller syntax than CommonMark. Any syntax not on the allow-list below renders as literal characters.",
+    "",
+    "Allowed mrkdwn (you may use these):",
+    "- `*bold*` for bold. Slack does NOT support `**bold**`.",
+    "- `_italic_` for italic.",
+    "- `~strike~` for strikethrough. Slack does NOT support `~~strike~~`.",
+    "- `` `inline code` `` and triple-backtick fenced code blocks.",
+    "- `> quoted text` at the start of a line for block quotes.",
+    "- `<https://example.com|Label>` for hyperlinks with a custom label. A bare `https://example.com` auto-links. Slack does NOT support `[Label](https://example.com)` and renders it literally.",
+    "- `<@USERID>`, `<#CHANNELID>`, `<!subteam^TEAMID>` for user, channel, and group mentions.",
+    "- `- item` or `* item` for bullet lists. Numbered lists (`1. item`) render but indent awkwardly — prefer bullets.",
+    "- Bold section labels (`*Section*` on their own line) in place of markdown headings.",
+    "",
+    "Forbidden (do NOT emit these on the Slack surface):",
+    params.replyToolAvailable
+      ? "- Markdown tables (`| col | col |` with `|---|` separators). Slack renders the pipes literally. If the user asks for a table, matrix, comparison, or diff, use Form A with `comparison_table`."
+      : "- Markdown tables (`| col | col |` with `|---|` separators). Slack renders the pipes literally. Use short bulleted lists or a fenced code block with aligned text instead.",
+    "- Markdown headings (`#`, `##`, `###`, etc.). Use bold section labels.",
+    "- Markdown link syntax (`[label](url)`). Use `<url|label>` or a bare URL.",
+    "- HTML tags, image embeds, or raw Block Kit JSON.",
+    "",
+    "Other response rules:",
+    "- Keep responses brief and scannable. Start with a concise summary; add detail only when depth is needed.",
+    "- For tool-heavy research, discovery, or source-checking requests, do not send an initial acknowledgement. Start the visible reply only once you can present the actual answer.",
+    "- Do not narrate tool execution or repeated status updates in the visible reply.",
+    "- End every turn with a final user-facing response (Form A or Form B).",
+    "</output>",
+  );
+
+  return lines.join("\n");
+}
+
 function formatReferenceFilesSection(): string[] {
   const files = listReferenceFiles();
   if (files.length === 0) {
@@ -570,48 +639,13 @@ export function buildSystemPrompt(params: {
       ].join("\n"),
     ),
     renderTag(
-      "output-contract",
-      [
-        "Always produce output that follows this contract:",
-        `<output format="slack-mrkdwn" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`,
-        "- Use Slack-friendly markdown, not full CommonMark. Prefer bold section labels over markdown headings, and use bullets and short code blocks when helpful.",
-        "- Keep normal responses brief and scannable.",
-        "- If depth is needed, start with a concise summary and then provide fuller detail.",
-        "- Prefer a single compact thread reply when the full answer comfortably fits within this inline budget.",
-        "- When canvas creation is available and a research or document-style answer would likely need continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to a short summary plus the canvas link.",
-        "- Typical canvas-first cases include long-form research summaries, timelines, bios or profiles, structured notes, plans, comparisons, and other reusable reference documents.",
-        "- Do not create a canvas for short factual answers that fit cleanly in one normal thread reply.",
-        "- For tool-heavy research, discovery, or source-checking requests, do not send an initial acknowledgment. Start the visible reply only once you can present the actual answer.",
-        "- Do not narrate tool execution or repeated status updates in the visible reply.",
-        "- Avoid tables and markdown links like `[label](url)` unless explicitly requested. Prefer plain URLs or Slack-native entities when exact rendering matters.",
-        "- End every turn with a final user-facing markdown response.",
-        "</output>",
-      ].join("\n"),
+      "slack-output",
+      buildSlackOutputContract({
+        maxInlineChars: slackOutputPolicy.maxInlineChars,
+        maxInlineLines: slackOutputPolicy.maxInlineLines,
+        replyToolAvailable: params.slackRenderToolAvailable === true,
+      }),
     ),
-    ...(params.slackRenderToolAvailable
-      ? [
-          renderTag(
-            "render-capabilities",
-            [
-              "The Slack surface accepts an optional `reply` tool that renders a structured message (Slack Block Kit blocks + fallback text) instead of plain mrkdwn. Calling `reply` is never required. Default to plain mrkdwn; call `reply` only when a richer layout would preserve information the user needs to act on.",
-              "",
-              "Intent kinds (pick exactly one per `reply` call):",
-              "- `summary_card`: one entity with title, optional subtitle/body, up to 10 labeled fields, up to 5 action buttons. Best for a single PR, issue, ticket, incident, project, or canvas the user is likely to open.",
-              "- `alert`: severity-prefixed notice (`info`, `success`, `warning`, `error`) with optional body and up to 3 actions. Use for urgency, risk, blockers, auth/permission failures, destructive confirmations, or partial failures that change what the user should do next.",
-              "- `comparison_table`: 2-6 columns, 1-20 rows of short cells. Use for before/after or side-by-side diffs only when the user explicitly asked to compare.",
-              "- `result_carousel`: 1-10 items, each with title and optional subtitle/body/fields/url. Use for a small set of comparable records (search results, top-N queries, multi-match responses). Cap at the 5 most relevant items; offer a follow-up for more rather than stuffing the carousel.",
-              "- `progress_plan`: checklist with per-task status. Progress lane only — never a final reply.",
-              "- `plain_reply`: route mrkdwn through the tool explicitly. Rare; prefer not calling the tool at all when the answer is prose.",
-              "",
-              "Rules:",
-              "- Call `reply` at most once per turn. The runtime ignores any assistant text emitted in the same turn as a successful `reply` call.",
-              "- Do not call `reply` for ordinary prose (acknowledgements, short answers, clarifying questions). Plain assistant text already renders as a plain_reply automatically.",
-              "- Do not author Slack Block Kit JSON. The structured fields on each intent are the only surface you control.",
-              "- Loaded plugin skills include field recipes for their own domain objects (for example a GitHub PR or a Sentry issue as a `summary_card`). Follow the recipe in the active skill when one applies; otherwise fill the intent's fields from the real data you have.",
-            ].join("\n"),
-          ),
-        ]
-      : []),
     availableSkillsSection,
     activeSkillsSection,
     ...(activeToolsSection ? [activeToolsSection] : []),
