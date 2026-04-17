@@ -3,7 +3,6 @@ lockfileVersion: "9.0"
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
-  injectWorkspacePackages: true
 
 importers:
   .:
@@ -28,10 +27,13 @@ importers:
     dependencies:
       "@sentry/junior":
         specifier: workspace:*
-        version: file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.27)(@sentry/node@10.48.0)
+        version: link:../../packages/junior
       "@sentry/junior-agent-browser":
         specifier: workspace:*
         version: link:../../packages/junior-agent-browser
+      "@sentry/junior-datadog":
+        specifier: workspace:*
+        version: link:../../packages/junior-datadog
       "@sentry/junior-github":
         specifier: workspace:*
         version: link:../../packages/junior-github
@@ -190,6 +192,8 @@ importers:
 
   packages/junior-agent-browser: {}
 
+  packages/junior-datadog: {}
+
   packages/junior-evals:
     devDependencies:
       "@ai-sdk/gateway":
@@ -197,7 +201,7 @@ importers:
         version: 3.0.99(zod@4.3.6)
       "@sentry/junior":
         specifier: workspace:*
-        version: file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.27)(@sentry/node@10.48.0)
+        version: link:../junior
       "@sentry/junior-github":
         specifier: workspace:*
         version: link:../junior-github
@@ -1598,7 +1602,6 @@ packages:
       }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-libvips-linux-arm@1.2.4":
     resolution:
@@ -1607,7 +1610,6 @@ packages:
       }
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-libvips-linux-ppc64@1.2.4":
     resolution:
@@ -1616,7 +1618,6 @@ packages:
       }
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-libvips-linux-riscv64@1.2.4":
     resolution:
@@ -1625,7 +1626,6 @@ packages:
       }
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-libvips-linux-s390x@1.2.4":
     resolution:
@@ -1634,7 +1634,6 @@ packages:
       }
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-libvips-linux-x64@1.2.4":
     resolution:
@@ -1643,7 +1642,6 @@ packages:
       }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-libvips-linuxmusl-arm64@1.2.4":
     resolution:
@@ -1652,7 +1650,6 @@ packages:
       }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   "@img/sharp-libvips-linuxmusl-x64@1.2.4":
     resolution:
@@ -1661,7 +1658,6 @@ packages:
       }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   "@img/sharp-linux-arm64@0.34.5":
     resolution:
@@ -1671,7 +1667,6 @@ packages:
     engines: { node: ^18.17.0 || ^20.3.0 || >=21.0.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-linux-arm@0.34.5":
     resolution:
@@ -1681,7 +1676,6 @@ packages:
     engines: { node: ^18.17.0 || ^20.3.0 || >=21.0.0 }
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-linux-ppc64@0.34.5":
     resolution:
@@ -1691,7 +1685,6 @@ packages:
     engines: { node: ^18.17.0 || ^20.3.0 || >=21.0.0 }
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-linux-riscv64@0.34.5":
     resolution:
@@ -1701,7 +1694,6 @@ packages:
     engines: { node: ^18.17.0 || ^20.3.0 || >=21.0.0 }
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-linux-s390x@0.34.5":
     resolution:
@@ -1711,7 +1703,6 @@ packages:
     engines: { node: ^18.17.0 || ^20.3.0 || >=21.0.0 }
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-linux-x64@0.34.5":
     resolution:
@@ -1721,7 +1712,6 @@ packages:
     engines: { node: ^18.17.0 || ^20.3.0 || >=21.0.0 }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   "@img/sharp-linuxmusl-arm64@0.34.5":
     resolution:
@@ -1731,7 +1721,6 @@ packages:
     engines: { node: ^18.17.0 || ^20.3.0 || >=21.0.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   "@img/sharp-linuxmusl-x64@0.34.5":
     resolution:
@@ -1741,7 +1730,6 @@ packages:
     engines: { node: ^18.17.0 || ^20.3.0 || >=21.0.0 }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   "@img/sharp-wasm32@0.34.5":
     resolution:
@@ -2446,7 +2434,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   "@oxc-transform/binding-linux-arm64-musl@0.111.0":
     resolution:
@@ -2456,7 +2443,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   "@oxc-transform/binding-linux-ppc64-gnu@0.111.0":
     resolution:
@@ -2466,7 +2452,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   "@oxc-transform/binding-linux-riscv64-gnu@0.111.0":
     resolution:
@@ -2476,7 +2461,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   "@oxc-transform/binding-linux-riscv64-musl@0.111.0":
     resolution:
@@ -2486,7 +2470,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
-    libc: [musl]
 
   "@oxc-transform/binding-linux-s390x-gnu@0.111.0":
     resolution:
@@ -2496,7 +2479,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   "@oxc-transform/binding-linux-x64-gnu@0.111.0":
     resolution:
@@ -2506,7 +2488,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   "@oxc-transform/binding-linux-x64-musl@0.111.0":
     resolution:
@@ -2516,7 +2497,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   "@oxc-transform/binding-openharmony-arm64@0.111.0":
     resolution:
@@ -2633,7 +2613,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   "@oxlint/binding-linux-arm64-musl@1.60.0":
     resolution:
@@ -2643,7 +2622,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   "@oxlint/binding-linux-ppc64-gnu@1.60.0":
     resolution:
@@ -2653,7 +2631,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   "@oxlint/binding-linux-riscv64-gnu@1.60.0":
     resolution:
@@ -2663,7 +2640,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   "@oxlint/binding-linux-riscv64-musl@1.60.0":
     resolution:
@@ -2673,7 +2649,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [riscv64]
     os: [linux]
-    libc: [musl]
 
   "@oxlint/binding-linux-s390x-gnu@1.60.0":
     resolution:
@@ -2683,7 +2658,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   "@oxlint/binding-linux-x64-gnu@1.60.0":
     resolution:
@@ -2693,7 +2667,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   "@oxlint/binding-linux-x64-musl@1.60.0":
     resolution:
@@ -2703,7 +2676,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   "@oxlint/binding-openharmony-arm64@1.60.0":
     resolution:
@@ -3061,7 +3033,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-arm64-gnu@1.0.0-rc.12":
     resolution:
@@ -3071,7 +3042,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-arm64-gnu@1.0.0-rc.15":
     resolution:
@@ -3081,7 +3051,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-arm64-musl@1.0.0-rc.1":
     resolution:
@@ -3091,7 +3060,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   "@rolldown/binding-linux-arm64-musl@1.0.0-rc.12":
     resolution:
@@ -3101,7 +3069,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   "@rolldown/binding-linux-arm64-musl@1.0.0-rc.15":
     resolution:
@@ -3111,7 +3078,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   "@rolldown/binding-linux-ppc64-gnu@1.0.0-rc.12":
     resolution:
@@ -3121,7 +3087,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-ppc64-gnu@1.0.0-rc.15":
     resolution:
@@ -3131,7 +3096,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-s390x-gnu@1.0.0-rc.12":
     resolution:
@@ -3141,7 +3105,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-s390x-gnu@1.0.0-rc.15":
     resolution:
@@ -3151,7 +3114,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-x64-gnu@1.0.0-rc.1":
     resolution:
@@ -3161,7 +3123,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-x64-gnu@1.0.0-rc.12":
     resolution:
@@ -3171,7 +3132,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-x64-gnu@1.0.0-rc.15":
     resolution:
@@ -3181,7 +3141,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   "@rolldown/binding-linux-x64-musl@1.0.0-rc.1":
     resolution:
@@ -3191,7 +3150,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   "@rolldown/binding-linux-x64-musl@1.0.0-rc.12":
     resolution:
@@ -3201,7 +3159,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   "@rolldown/binding-linux-x64-musl@1.0.0-rc.15":
     resolution:
@@ -3211,7 +3168,6 @@ packages:
     engines: { node: ^20.19.0 || >=22.12.0 }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   "@rolldown/binding-openharmony-arm64@1.0.0-rc.1":
     resolution:
@@ -3403,7 +3359,6 @@ packages:
       }
     cpu: [arm]
     os: [linux]
-    libc: [glibc]
 
   "@rollup/rollup-linux-arm-musleabihf@4.60.1":
     resolution:
@@ -3412,7 +3367,6 @@ packages:
       }
     cpu: [arm]
     os: [linux]
-    libc: [musl]
 
   "@rollup/rollup-linux-arm64-gnu@4.60.1":
     resolution:
@@ -3421,7 +3375,6 @@ packages:
       }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   "@rollup/rollup-linux-arm64-musl@4.60.1":
     resolution:
@@ -3430,7 +3383,6 @@ packages:
       }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   "@rollup/rollup-linux-loong64-gnu@4.60.1":
     resolution:
@@ -3439,7 +3391,6 @@ packages:
       }
     cpu: [loong64]
     os: [linux]
-    libc: [glibc]
 
   "@rollup/rollup-linux-loong64-musl@4.60.1":
     resolution:
@@ -3448,7 +3399,6 @@ packages:
       }
     cpu: [loong64]
     os: [linux]
-    libc: [musl]
 
   "@rollup/rollup-linux-ppc64-gnu@4.60.1":
     resolution:
@@ -3457,7 +3407,6 @@ packages:
       }
     cpu: [ppc64]
     os: [linux]
-    libc: [glibc]
 
   "@rollup/rollup-linux-ppc64-musl@4.60.1":
     resolution:
@@ -3466,7 +3415,6 @@ packages:
       }
     cpu: [ppc64]
     os: [linux]
-    libc: [musl]
 
   "@rollup/rollup-linux-riscv64-gnu@4.60.1":
     resolution:
@@ -3475,7 +3423,6 @@ packages:
       }
     cpu: [riscv64]
     os: [linux]
-    libc: [glibc]
 
   "@rollup/rollup-linux-riscv64-musl@4.60.1":
     resolution:
@@ -3484,7 +3431,6 @@ packages:
       }
     cpu: [riscv64]
     os: [linux]
-    libc: [musl]
 
   "@rollup/rollup-linux-s390x-gnu@4.60.1":
     resolution:
@@ -3493,7 +3439,6 @@ packages:
       }
     cpu: [s390x]
     os: [linux]
-    libc: [glibc]
 
   "@rollup/rollup-linux-x64-gnu@4.60.1":
     resolution:
@@ -3502,7 +3447,6 @@ packages:
       }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   "@rollup/rollup-linux-x64-musl@4.60.1":
     resolution:
@@ -3511,7 +3455,6 @@ packages:
       }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   "@rollup/rollup-openbsd-x64@4.60.1":
     resolution:
@@ -3567,12 +3510,6 @@ packages:
         integrity: sha512-h8F+fXVwYC9ro5ZaO8V+v3vqc0awlXHGblEAuVxSGgh4IV/oFX+QVzXeDTTrFOFS6v/Vn5vAyu240eJrJAS6/g==,
       }
     engines: { node: ">=18" }
-
-  "@sentry/junior@file:packages/junior":
-    resolution: { directory: packages/junior, type: directory }
-    hasBin: true
-    peerDependencies:
-      "@sentry/node": ">=10.0.0"
 
   "@sentry/node-core@10.48.0":
     resolution:
@@ -4072,7 +4009,6 @@ packages:
     engines: { node: ">=10" }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   "@swc/core-linux-arm64-musl@1.15.3":
     resolution:
@@ -4082,7 +4018,6 @@ packages:
     engines: { node: ">=10" }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   "@swc/core-linux-x64-gnu@1.15.3":
     resolution:
@@ -4092,7 +4027,6 @@ packages:
     engines: { node: ">=10" }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   "@swc/core-linux-x64-musl@1.15.3":
     resolution:
@@ -4102,7 +4036,6 @@ packages:
     engines: { node: ">=10" }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   "@swc/core-win32-arm64-msvc@1.15.3":
     resolution:
@@ -7296,7 +7229,6 @@ packages:
     engines: { node: ">= 12.0.0" }
     cpu: [arm64]
     os: [linux]
-    libc: [glibc]
 
   lightningcss-linux-arm64-musl@1.32.0:
     resolution:
@@ -7306,7 +7238,6 @@ packages:
     engines: { node: ">= 12.0.0" }
     cpu: [arm64]
     os: [linux]
-    libc: [musl]
 
   lightningcss-linux-x64-gnu@1.32.0:
     resolution:
@@ -7316,7 +7247,6 @@ packages:
     engines: { node: ">= 12.0.0" }
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   lightningcss-linux-x64-musl@1.32.0:
     resolution:
@@ -7326,7 +7256,6 @@ packages:
     engines: { node: ">= 12.0.0" }
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   lightningcss-win32-arm64-msvc@1.32.0:
     resolution:
@@ -12969,7 +12898,7 @@ snapshots:
 
   "@rolldown/binding-wasm32-wasi@1.0.0-rc.12(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)":
     dependencies:
-      "@napi-rs/wasm-runtime": 1.1.2(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
+      "@napi-rs/wasm-runtime": 1.1.4(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
     transitivePeerDependencies:
       - "@emnapi/core"
       - "@emnapi/runtime"
@@ -13090,42 +13019,6 @@ snapshots:
     optional: true
 
   "@sentry/core@10.48.0": {}
-
-  "@sentry/junior@file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.27)(@sentry/node@10.48.0)":
-    dependencies:
-      "@ai-sdk/gateway": 3.0.99(zod@4.3.6)
-      "@chat-adapter/slack": 4.26.0
-      "@chat-adapter/state-memory": 4.26.0
-      "@chat-adapter/state-redis": 4.26.0
-      "@logtape/logtape": 2.0.5
-      "@mariozechner/pi-agent-core": 0.59.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
-      "@mariozechner/pi-ai": 0.59.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
-      "@modelcontextprotocol/sdk": 1.29.0(zod@4.3.6)
-      "@sentry/node": 10.48.0
-      "@sinclair/typebox": 0.34.49
-      "@slack/web-api": 7.15.1
-      "@vercel/functions": 3.4.3(@aws-sdk/credential-provider-web-identity@3.972.27)
-      "@vercel/sandbox": 1.10.0
-      ai: 6.0.162(zod@4.3.6)
-      bash-tool: 1.3.16(@vercel/sandbox@1.10.0)(ai@6.0.162(zod@4.3.6))(just-bash@2.14.2)
-      chat: 4.26.0
-      hono: 4.12.14
-      just-bash: 2.14.2
-      node-html-markdown: 2.0.0
-      yaml: 2.8.3
-      zod: 4.3.6
-    transitivePeerDependencies:
-      - "@aws-sdk/credential-provider-web-identity"
-      - "@cfworker/json-schema"
-      - "@node-rs/xxhash"
-      - aws-crt
-      - bare-abort-controller
-      - bufferutil
-      - debug
-      - react-native-b4a
-      - supports-color
-      - utf-8-validate
-      - ws
 
   "@sentry/node-core@10.48.0(@opentelemetry/api@1.9.1)(@opentelemetry/context-async-hooks@2.6.1(@opentelemetry/api@1.9.1))(@opentelemetry/core@2.6.1(@opentelemetry/api@1.9.1))(@opentelemetry/instrumentation@0.214.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.6.1(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.6.1(@opentelemetry/api@1.9.1))(@opentelemetry/semantic-conventions@1.40.0)":
     dependencies:

@@ -11,6 +11,7 @@
   "dependencies": {
     "@sentry/junior": "workspace:*",
     "@sentry/junior-agent-browser": "workspace:*",
+    "@sentry/junior-datadog": "workspace:*",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-linear": "workspace:*",
     "@sentry/junior-notion": "workspace:*",

@@ -1,0 +1,28 @@
+name: datadog
+description: Query Datadog telemetry (logs, metrics, traces, monitors, incidents, dashboards) via Datadog's hosted MCP server
+
+config-keys:
+  - env
+  - service
+
+mcp:
+  url: https://mcp.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
+  allowed-tools:
+    - analyze_datadog_logs
+    - get_datadog_incident
+    - get_datadog_metric
+    - get_datadog_metric_context
+    - get_datadog_notebook
+    - get_datadog_trace
+    - search_datadog_dashboards
+    - search_datadog_events
+    - search_datadog_hosts
+    - search_datadog_incidents
+    - search_datadog_logs
+    - search_datadog_metrics
+    - search_datadog_monitors
+    - search_datadog_notebooks
+    - search_datadog_rum_events
+    - search_datadog_service_dependencies
+    - search_datadog_services
+    - search_datadog_spans

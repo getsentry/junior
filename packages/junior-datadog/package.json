@@ -1,0 +1,13 @@
+{
+  "name": "@sentry/junior-datadog",
+  "version": "0.24.1",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "files": [
+    "plugin.yaml",
+    "skills"
+  ]
+}
