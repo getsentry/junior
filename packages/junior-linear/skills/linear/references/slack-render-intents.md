@@ -1,34 +1,14 @@
-# Slack render intents for Linear replies
+# Slack render-intent recipes for Linear
 
-Junior's Slack runtime accepts an optional `reply` tool that renders a
-structured message. Use it only when a plain mrkdwn reply would lose
-information the user needs to act on. Plain-text replies without this
-tool keep working unchanged — do not wrap every response in `reply`.
+Field recipes for Linear domain objects. The core `<render-capabilities>`
+system prompt already defines the intent palette, when to pick each kind,
+and when to skip the `reply` tool entirely. This file only adds the
+Linear-specific recipes.
 
-Call `reply` at most once per turn and treat it as the final step. The
-model's ordinary assistant text is ignored when the call renders
-successfully.
+## Issue (`summary_card`)
 
-## When to prefer `summary_card`
-
-Use `summary_card` when the turn returns a single Linear entity the user
-is likely to open or take an action on:
-
-- The result of viewing, creating, updating, or commenting on a specific
-  Linear issue.
-- The result of viewing or updating a specific Linear project when it is
-  the sole entity in the reply.
-
-Do not use `summary_card` for:
-
-- Multi-issue search or backlog results — use `result_carousel`.
-- Failure or authorization states — use `alert` with the matching
-  severity.
-- Pure prose responses that do not resolve to a single entity.
-
-## Field recipes
-
-### Issue (`summary_card`)
+Use for a single Linear issue returned by a view, create, update, or
+comment action.
 
 ```json
 {
@@ -52,21 +32,15 @@ Do not use `summary_card` for:
 }
 ```
 
-Guidance:
+- Use the canonical Linear key (for example `ENG-1234`) in `title`, not a numeric ID or paraphrase.
+- `subtitle` is for team and project context. Omit project when the issue has none; never invent one.
+- Keep `fields` to the 3–5 most load-bearing attributes. Prefer `Status`, `Priority`, and `Assignee` over pure metadata like `Created` or `Updated` unless the user asked about timing.
+- Do not invent workflow state names. Use the team's actual state (for example `In Review`), not generic substitutes.
+- Always include a `View in Linear` action pointing at the canonical issue URL.
 
-- Use the canonical Linear key (for example `ENG-1234`) in `title`, not
-  a numeric ID or paraphrase.
-- `subtitle` is for team and project context. Omit project when the
-  issue has none; never invent one.
-- Keep `fields` to the 3–5 most load-bearing attributes. Prefer
-  `Status`, `Priority`, and `Assignee` over pure metadata like `Created`
-  or `Updated` unless the user asked about timing.
-- Do not invent workflow state names. Use the team's actual state (for
-  example `In Review`), not generic substitutes.
-- Always include a `View in Linear` action pointing at the canonical
-  issue URL.
+## Project (`summary_card`)
 
-### Project (`summary_card`)
+Use for a single Linear project when it is the sole entity in the reply.
 
 ```json
 {
@@ -89,24 +63,8 @@ Guidance:
 }
 ```
 
-## When to prefer other intents
+## Multi-entity and error responses
 
-- `result_carousel` when the turn returns a small list of issues
-  (backlog slice, assignee query, triage queue). Each item carries the
-  issue key, status, and a link to the issue. Cap at the 5 most relevant
-  items; ask a follow-up when the user clearly wants more.
-- `alert` when the turn reports that the Linear MCP is not authorized,
-  a write was rejected, or the requested issue cannot be found. Use the
-  matching `severity` (`error`, `warning`, `info`).
-- `comparison_table` only when the user explicitly asked for a
-  side-by-side comparison across issues or projects.
-
-Do not use `progress_plan`. Long-running work streams its progress
-through the runtime's plan channel already; it is not a final reply.
-
-## When not to call `reply` at all
-
-Skip the tool entirely for ordinary prose — acknowledgements, one-line
-answers, clarifying questions, or any response that naturally reads as
-a single mrkdwn paragraph. The runtime renders plain assistant text as a
-`plain_reply` automatically.
+- Backlog slices, assignee queries, triage queues → `result_carousel`, each item carrying the issue key, status, and a link to the issue. Cap at 5 items and offer a follow-up for more.
+- Linear MCP auth failures, rejected writes, missing-entity responses → `alert` with the matching severity (`error`, `warning`, `info`).
+- Explicit user-requested side-by-side comparisons across issues or projects → `comparison_table` with short cells.
