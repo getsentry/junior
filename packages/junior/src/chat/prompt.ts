@@ -302,6 +302,13 @@ export function buildSystemPrompt(params: {
     userName?: string;
     fullName?: string;
   }>;
+  /**
+   * When true, the native `reply` tool is registered on this turn and
+   * the prompt includes a `<render-capabilities>` section describing the
+   * render-intent palette. When false (or unset), the prompt leaves the
+   * existing mrkdwn output contract unchanged.
+   */
+  slackRenderToolAvailable?: boolean;
 }): string {
   const {
     availableSkills,
@@ -581,6 +588,30 @@ export function buildSystemPrompt(params: {
         "</output>",
       ].join("\n"),
     ),
+    ...(params.slackRenderToolAvailable
+      ? [
+          renderTag(
+            "render-capabilities",
+            [
+              "The Slack surface accepts an optional `reply` tool that renders a structured message (Slack Block Kit blocks + fallback text) instead of plain mrkdwn. Calling `reply` is never required. Default to plain mrkdwn; call `reply` only when a richer layout would preserve information the user needs to act on.",
+              "",
+              "Intent kinds (pick exactly one per `reply` call):",
+              "- `summary_card`: one entity with title, optional subtitle/body, up to 10 labeled fields, up to 5 action buttons. Best for a single PR, issue, ticket, incident, project, or canvas the user is likely to open.",
+              "- `alert`: severity-prefixed notice (`info`, `success`, `warning`, `error`) with optional body and up to 3 actions. Use for urgency, risk, blockers, auth/permission failures, destructive confirmations, or partial failures that change what the user should do next.",
+              "- `comparison_table`: 2-6 columns, 1-20 rows of short cells. Use for before/after or side-by-side diffs only when the user explicitly asked to compare.",
+              "- `result_carousel`: 1-10 items, each with title and optional subtitle/body/fields/url. Use for a small set of comparable records (search results, top-N queries, multi-match responses). Cap at the 5 most relevant items; offer a follow-up for more rather than stuffing the carousel.",
+              "- `progress_plan`: checklist with per-task status. Progress lane only — never a final reply.",
+              "- `plain_reply`: route mrkdwn through the tool explicitly. Rare; prefer not calling the tool at all when the answer is prose.",
+              "",
+              "Rules:",
+              "- Call `reply` at most once per turn. The runtime ignores any assistant text emitted in the same turn as a successful `reply` call.",
+              "- Do not call `reply` for ordinary prose (acknowledgements, short answers, clarifying questions). Plain assistant text already renders as a plain_reply automatically.",
+              "- Do not author Slack Block Kit JSON. The structured fields on each intent are the only surface you control.",
+              "- Loaded plugin skills include field recipes for their own domain objects (for example a GitHub PR or a Sentry issue as a `summary_card`). Follow the recipe in the active skill when one applies; otherwise fill the intent's fields from the real data you have.",
+            ].join("\n"),
+          ),
+        ]
+      : []),
     availableSkillsSection,
     activeSkillsSection,
     ...(activeToolsSection ? [activeToolsSection] : []),

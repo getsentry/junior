@@ -619,6 +619,7 @@ export async function generateAssistantReply(
       ),
       runtimeMetadata: getRuntimeMetadata(),
       threadParticipants: context.threadParticipants,
+      slackRenderToolAvailable: "reply" in tools,
     });
 
     const userContentParts: Array<
