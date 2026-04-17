@@ -1780,131 +1780,47 @@ function toFiniteTokenCount(value: unknown): number | undefined {
   return rounded >= 0 ? rounded : undefined;
 }
 
-function readTokenCount(
-  root: Record<string, unknown>,
-  keys: string[],
-): number | undefined {
-  for (const key of keys) {
-    const value = toFiniteTokenCount(root[key]);
-    if (value !== undefined) {
-      return value;
-    }
-  }
-  return undefined;
-}
+// pi-ai `Usage` field name -> our camelCase equivalent. This is the only shape
+// that reaches the extractor today; pi-ai normalizes every provider response
+// into this canonical set before we ever see it.
+const PI_USAGE_FIELDS: ReadonlyArray<[string, keyof AgentTurnUsage]> = [
+  ["input", "inputTokens"],
+  ["output", "outputTokens"],
+  ["cacheRead", "cachedInputTokens"],
+  ["cacheWrite", "cacheCreationTokens"],
+  ["totalTokens", "totalTokens"],
+];
 
-function collectUsageRoots(source: unknown): Record<string, unknown>[] {
-  const sourceRecord = asRecord(source);
-  if (!sourceRecord) {
-    return [];
-  }
-
-  const roots: Record<string, unknown>[] = [sourceRecord];
-  const usage = asRecord(sourceRecord.usage);
-  if (usage) {
-    roots.push(usage);
-  }
-
-  const tokenUsage = asRecord(sourceRecord.tokenUsage);
-  if (tokenUsage) {
-    roots.push(tokenUsage);
-  }
-
-  const providerMetadata = asRecord(sourceRecord.providerMetadata);
-  if (providerMetadata) {
-    roots.push(providerMetadata);
-    const providerUsage = asRecord(providerMetadata.usage);
-    if (providerUsage) {
-      roots.push(providerUsage);
-    }
-  }
-
-  const response = asRecord(sourceRecord.response);
-  if (response) {
-    roots.push(response);
-    const responseUsage = asRecord(response.usage);
-    if (responseUsage) {
-      roots.push(responseUsage);
-    }
-  }
-
-  return roots;
-}
-
-const USAGE_FIELD_ALIASES: Record<keyof AgentTurnUsage, string[]> = {
-  inputTokens: [
-    // pi-ai subtracts cached tokens from `input`; we count them separately below.
-    "input",
-    "input_tokens",
-    "inputTokens",
-    "prompt_tokens",
-    "promptTokens",
-    "inputTokenCount",
-    "promptTokenCount",
-  ],
-  outputTokens: [
-    "output",
-    "output_tokens",
-    "outputTokens",
-    "completion_tokens",
-    "completionTokens",
-    "outputTokenCount",
-    "completionTokenCount",
-  ],
-  cachedInputTokens: [
-    "cacheRead",
-    "cached_tokens",
-    "cachedTokens",
-    "cached_input_tokens",
-    "cachedInputTokens",
-    "cache_read_input_tokens",
-    "cacheReadInputTokens",
-  ],
-  cacheCreationTokens: [
-    "cacheWrite",
-    "cache_creation_input_tokens",
-    "cacheCreationInputTokens",
-    "cache_write_tokens",
-    "cacheWriteTokens",
-  ],
-  reasoningTokens: ["reasoning_tokens", "reasoningTokens"],
-  totalTokens: ["total_tokens", "totalTokens", "totalTokenCount"],
-};
-
-function extractUsageFromSource(source: unknown): AgentTurnUsage {
-  const roots = collectUsageRoots(source);
-  if (roots.length === 0) {
+function readPiUsage(source: unknown): AgentTurnUsage {
+  const record = asRecord(source);
+  if (!record) {
     return {};
   }
-
+  // Accept either a pi-ai AssistantMessage (has `.usage`) or a bare Usage record.
+  const usage = asRecord(record.usage) ?? record;
   const summary: AgentTurnUsage = {};
-  for (const [field, aliases] of Object.entries(USAGE_FIELD_ALIASES) as [
-    keyof AgentTurnUsage,
-    string[],
-  ][]) {
-    const value =
-      roots
-        .map((root) => readTokenCount(root, aliases))
-        .find((candidate) => candidate !== undefined) ?? undefined;
+  for (const [piKey, ourKey] of PI_USAGE_FIELDS) {
+    const value = toFiniteTokenCount(usage[piKey]);
     if (value !== undefined) {
-      summary[field] = value;
+      summary[ourKey] = value;
     }
   }
   return summary;
 }
 
 /**
- * Extract a structured token-usage summary from provider metadata roots.
+ * Sum pi-ai `Usage` counters across every source into an `AgentTurnUsage`.
  *
- * Values are summed across sources so callers can pass every assistant message
- * produced during a turn and get the aggregate usage for that turn.
+ * Callers pass every assistant message produced during a turn so the result
+ * reflects the aggregate usage for the entire turn rather than a single model
+ * call. Sources without a recognized usage record contribute nothing.
  */
 export function extractGenAiUsageSummary(
   ...sources: unknown[]
 ): AgentTurnUsage {
   const summary: AgentTurnUsage = {};
   for (const source of sources) {
-    const single = extractUsageFromSource(source);
+    const single = readPiUsage(source);
     for (const field of Object.keys(single) as (keyof AgentTurnUsage)[]) {
       const value = single[field];
       if (value === undefined) continue;

@@ -6,7 +6,7 @@ describe("extractGenAiUsageSummary", () => {
     expect(extractGenAiUsageSummary({}, undefined, null)).toEqual({});
   });
 
-  it("captures pi-ai AssistantMessage usage shape", () => {
+  it("captures the pi-ai AssistantMessage.usage shape", () => {
     const assistantMessage = {
       role: "assistant",
       usage: {
@@ -27,27 +27,21 @@ describe("extractGenAiUsageSummary", () => {
     });
   });
 
-  it("captures OpenAI-style prompt_tokens_details.cached_tokens", () => {
-    const providerResponse = {
-      usage: {
-        prompt_tokens: 500,
-        completion_tokens: 200,
-        total_tokens: 700,
-        prompt_tokens_details: {
-          cached_tokens: 300,
-        },
-        completion_tokens_details: {
-          reasoning_tokens: 50,
-        },
-      },
-    };
-
-    // The shared extractor only reads direct keys, not nested *_details
-    // records, but the top-level aliases still capture the primary counters.
-    expect(extractGenAiUsageSummary(providerResponse)).toEqual({
-      inputTokens: 500,
-      outputTokens: 200,
-      totalTokens: 700,
+  it("accepts a bare pi-ai Usage record as a source", () => {
+    expect(
+      extractGenAiUsageSummary({
+        input: 10,
+        output: 5,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 15,
+      }),
+    ).toEqual({
+      inputTokens: 10,
+      outputTokens: 5,
+      cachedInputTokens: 0,
+      cacheCreationTokens: 0,
+      totalTokens: 15,
     });
   });
 

@@ -1,24 +1,20 @@
 /**
  * Structured token usage captured for a single agent turn.
  *
- * Fields are stored individually so renderers can decide whether to display a
- * breakdown or a single aggregate. Providers only populate the counters they
- * report; missing fields mean "not reported" rather than zero.
+ * Mirrors the fields pi-ai emits on `AssistantMessage.usage` (see
+ * `@mariozechner/pi-ai` `Usage`) so diagnostics carry every counter the
+ * provider normalizes into the pi-ai shape as its own item. Renderers decide
+ * whether to display a breakdown or a single aggregate.
  */
 export interface AgentTurnUsage {
+  /** Non-cached input tokens (pi-ai subtracts cached tokens from this). */
   inputTokens?: number;
+  /** Output tokens; pi-ai folds reasoning tokens into this for providers that report them. */
   outputTokens?: number;
+  /** Cached input tokens read from the provider's prompt cache. */
   cachedInputTokens?: number;
+  /** Input tokens written into the provider's prompt cache. */
   cacheCreationTokens?: number;
-  reasoningTokens?: number;
+  /** Provider-reported total. May not equal the sum of individual counters across providers. */
   totalTokens?: number;
 }
-
-export const AGENT_TURN_USAGE_KEYS = [
-  "inputTokens",
-  "outputTokens",
-  "cachedInputTokens",
-  "cacheCreationTokens",
-  "reasoningTokens",
-  "totalTokens",
-] as const satisfies readonly (keyof AgentTurnUsage)[];

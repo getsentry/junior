@@ -49,7 +49,6 @@ describe("buildSlackReplyFooter", () => {
           outputTokens: 50,
           cachedInputTokens: 200,
           cacheCreationTokens: 10,
-          reasoningTokens: 5,
           totalTokens: 9999,
         },
       }),
@@ -57,7 +56,7 @@ describe("buildSlackReplyFooter", () => {
       items: [
         {
           label: "Tokens",
-          value: "365",
+          value: "360",
         },
       ],
     });

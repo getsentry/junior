@@ -58,15 +58,14 @@ function resolveTotalTokens(
   }
 
   // Sum every individual counter the provider reported so cached + cache
-  // creation + reasoning tokens are included in the displayed total. Provider
-  // `totalTokens` fields are inconsistent across vendors (some exclude cached
-  // tokens, some include them), so prefer the sum when component counts exist.
+  // creation tokens are included in the displayed total. Provider `totalTokens`
+  // fields are inconsistent across vendors (some exclude cached tokens, some
+  // include them), so prefer the sum when component counts exist.
   const components = [
     usage.inputTokens,
     usage.outputTokens,
     usage.cachedInputTokens,
     usage.cacheCreationTokens,
-    usage.reasoningTokens,
   ].filter((value): value is number => value !== undefined);
 
   if (components.length > 0) {
