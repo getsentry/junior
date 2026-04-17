@@ -7,7 +7,7 @@ import {
   withSpan,
   type LogContext,
 } from "@/chat/logging";
-import type { AssistantStatusSpec } from "@/chat/runtime/assistant-status";
+import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";

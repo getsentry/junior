@@ -5,6 +5,21 @@ import {
   createTestThread,
 } from "../../fixtures/slack-harness";
 
+function toPostedText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value && typeof value === "object") {
+    const markdown = (value as { markdown?: unknown }).markdown;
+    if (typeof markdown === "string") {
+      return markdown;
+    }
+  }
+
+  return String(value);
+}
+
 describe("Slack behavior: file delivery", () => {
   it("ignores file followup plans when the assistant reply has no files", async () => {
     const { slackRuntime } = createTestChatRuntime({
@@ -46,6 +61,6 @@ describe("Slack behavior: file delivery", () => {
 
     await slackRuntime.handleNewMention(thread, message);
 
-    expect(thread.posts).toEqual(["Preview is ready."]);
+    expect(thread.posts.map(toPostedText)).toEqual(["Preview is ready."]);
   });
 });

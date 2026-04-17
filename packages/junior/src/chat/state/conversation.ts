@@ -10,7 +10,9 @@ export interface ConversationAuthor {
 }
 
 export interface ConversationMessageMeta {
+  attachmentCount?: number;
   explicitMention?: boolean;
+  imageAttachmentCount?: number;
   imageFileIds?: string[];
   imagesHydrated?: boolean;
   replied?: boolean;
@@ -105,8 +107,16 @@ function coerceMessageMeta(
 ): ConversationMessageMeta | undefined {
   if (!isRecord(value)) return undefined;
   const meta: ConversationMessageMeta = {};
+  const attachmentCount = toOptionalNumber(value.attachmentCount);
+  if (typeof attachmentCount === "number" && attachmentCount > 0) {
+    meta.attachmentCount = attachmentCount;
+  }
   if (typeof value.explicitMention === "boolean") {
     meta.explicitMention = value.explicitMention;
+  }
+  const imageAttachmentCount = toOptionalNumber(value.imageAttachmentCount);
+  if (typeof imageAttachmentCount === "number" && imageAttachmentCount > 0) {
+    meta.imageAttachmentCount = imageAttachmentCount;
   }
   if (typeof value.replied === "boolean") {
     meta.replied = value.replied;
@@ -133,7 +143,9 @@ function coerceMessageMeta(
     meta.imagesHydrated = value.imagesHydrated;
   }
   if (
+    meta.attachmentCount === undefined &&
     meta.explicitMention === undefined &&
+    meta.imageAttachmentCount === undefined &&
     meta.replied === undefined &&
     meta.skippedReason === undefined &&
     meta.slackTs === undefined &&

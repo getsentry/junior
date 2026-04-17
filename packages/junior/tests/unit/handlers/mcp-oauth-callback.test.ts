@@ -71,18 +71,37 @@ vi.mock("@/chat/config", async (importOriginal) => {
   };
 });
 
-vi.mock("@/chat/slack/client", () => ({
-  getSlackClient: () => ({
-    chat: {
-      postMessage: postMessageMock,
+vi.mock("@/chat/slack/client", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/chat/slack/client")>();
+  return {
+    ...original,
+    SlackActionError: class SlackActionError extends Error {
+      code: string;
+
+      constructor(message: string, code: string) {
+        super(message);
+        this.name = "SlackActionError";
+        this.code = code;
+      }
     },
-    assistant: {
-      threads: {
-        setStatus: setStatusMock,
+    normalizeSlackConversationId: (value: string | undefined) => value,
+    withSlackRetries: async (task: () => Promise<unknown>) => await task(),
+    getSlackClient: () => ({
+      chat: {
+        postMessage: postMessageMock,
       },
-    },
-  }),
+      assistant: {
+        threads: {
+          setStatus: setStatusMock,
+        },
+      },
+    }),
+  };
+});
+
+vi.mock("@/chat/slack/outbound", () => ({
   uploadFilesToThread: uploadFilesToThreadMock,
+  postSlackMessage: vi.fn(),
 }));
 
 vi.mock("@/chat/logging", () => ({
@@ -188,7 +207,7 @@ describe("mcp oauth callback handler", () => {
         toolCalls: [],
       },
     });
-    postMessageMock.mockResolvedValue(undefined);
+    postMessageMock.mockResolvedValue({ ts: "1700000000.100" });
     setStatusMock.mockResolvedValue(undefined);
     uploadFilesToThreadMock.mockResolvedValue(undefined);
     getPersistedThreadStateMock.mockResolvedValue({
@@ -211,6 +230,11 @@ describe("mcp oauth callback handler", () => {
           role: "user",
           text: "/demo incidents",
           createdAtMs: 1,
+          meta: {
+            attachmentCount: 1,
+            imageAttachmentCount: 1,
+            imagesHydrated: false,
+          },
         },
       ],
       processing: {
@@ -291,5 +315,28 @@ describe("mcp oauth callback handler", () => {
       "Junior could not finish the authorization callback. Return to Slack and retry the original request.",
     );
     expect(body).not.toContain("<img src=x onerror=alert(1)>");
+  });
+
+  it("rebuilds omitted-image context for MCP resume turns", async () => {
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?code=auth-code&state=state-123",
+      ),
+      "demo",
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(200);
+    expect(waitUntilCallbacks).toHaveLength(1);
+
+    await waitUntilCallbacks[0]?.();
+
+    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+      "/demo incidents",
+      expect.objectContaining({
+        inboundAttachmentCount: 1,
+        omittedImageAttachmentCount: 1,
+      }),
+    );
   });
 });

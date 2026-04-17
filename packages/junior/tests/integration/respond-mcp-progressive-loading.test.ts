@@ -14,7 +14,10 @@ const {
   loadSkillAvailableToolNames,
   loadSkillExecutionErrorCount,
   loadSkillsByNameMock,
+  omitFinalAssistantAfterTool,
+  pushPreToolAssistantMessage,
   promptCallCount,
+  recordToolResultMessage,
 } = vi.hoisted(() => ({
   agentInitialToolNames: [] as string[][],
   callToolMock: vi.fn(),
@@ -28,7 +31,10 @@ const {
   loadSkillAvailableToolNames: [] as string[][],
   loadSkillExecutionErrorCount: { value: 0 },
   loadSkillsByNameMock: vi.fn(),
+  omitFinalAssistantAfterTool: { value: false },
   promptCallCount: { value: 0 },
+  pushPreToolAssistantMessage: { value: false },
+  recordToolResultMessage: { value: false },
 }));
 
 vi.mock("@mariozechner/pi-agent-core", () => {
@@ -137,6 +143,18 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         return {};
       }
 
+      if (pushPreToolAssistantMessage.value) {
+        this.state.messages.push({
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "Let me search for related articles and compare perspectives.",
+            },
+          ],
+        });
+      }
+
       // After loadSkill, MCP tools are registered as first-class tools
       // on the shared tools array via syncMcpAgentTools().
       const mcpPingTool = this.state.tools.find(
@@ -150,6 +168,17 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       }
 
       await mcpPingTool.execute("tool-call-2", { query: "hello" });
+      if (recordToolResultMessage.value) {
+        this.state.messages.push({
+          role: "toolResult",
+          toolName: "mcp__demo__ping",
+          isError: false,
+          content: [{ type: "text", text: "pong" }],
+        });
+      }
+      if (omitFinalAssistantAfterTool.value) {
+        return {};
+      }
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "resumed reply" }],
@@ -454,7 +483,10 @@ describe("generateAssistantReply progressive MCP loading", () => {
     loadSkillAvailableToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
     loadSkillsByNameMock.mockReset();
+    omitFinalAssistantAfterTool.value = false;
     promptCallCount.value = 0;
+    pushPreToolAssistantMessage.value = false;
+    recordToolResultMessage.value = false;
 
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
@@ -714,6 +746,41 @@ describe("generateAssistantReply progressive MCP loading", () => {
       state: "completed",
       loadedSkillNames: ["demo-skill"],
     });
+  });
+
+  it("does not leak provisional pre-tool assistant text as the final reply", async () => {
+    pushPreToolAssistantMessage.value = true;
+    recordToolResultMessage.value = true;
+    omitFinalAssistantAfterTool.value = true;
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue([
+      {
+        name: "ping",
+        title: "Ping",
+        description: "Ping the demo MCP server",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
+    ]);
+
+    const reply = await generateAssistantReply("help me", {
+      assistant: { userName: "junior" },
+      requester: { userId: "U123" },
+      correlation: {
+        conversationId: "conversation-5",
+        turnId: "turn-5",
+        channelId: "C123",
+        threadTs: "1712345.0005",
+      },
+    });
+
+    expect(reply.text).toBe(
+      "I couldn't complete this request in this turn due to an execution failure. I've logged the details for debugging.",
+    );
+    expect(reply.diagnostics.outcome).toBe("execution_failure");
+    expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
   it("still returns auth resume when auth checkpoint persistence fails", async () => {

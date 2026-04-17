@@ -14,7 +14,7 @@ import type {
   Logger as ChatSdkLogger,
   LogLevel as ChatSdkLogLevel,
 } from "chat";
-import { toOptionalString } from "@/chat/coerce";
+import { toOptionalNumber, toOptionalString } from "@/chat/coerce";
 import * as Sentry from "@/chat/sentry";
 
 type Primitive = string | number | boolean;
@@ -876,6 +876,21 @@ function getPrettyConsoleSummaryTokens(
       attributes["app.message.attachment_count"],
     ),
   );
+  const rawAttachmentCount = toOptionalNumber(
+    attributes["app.message.attachment_count"],
+  );
+  const promptAttachmentCount = toOptionalNumber(
+    attributes["app.message.prompt_attachment_count"],
+  );
+  if (
+    promptAttachmentCount !== undefined &&
+    promptAttachmentCount !== rawAttachmentCount
+  ) {
+    pushPrettyConsoleToken(
+      tokens,
+      numericConsoleToken("prompt_attachments", promptAttachmentCount),
+    );
+  }
 
   const filePath = toOptionalString(attributes["file.path"]);
   if (filePath && eventName.endsWith("_loaded")) {

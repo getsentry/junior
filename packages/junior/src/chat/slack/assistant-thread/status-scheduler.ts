@@ -1,40 +1,35 @@
 import {
-  buildAssistantStatusPresentation,
   makeAssistantStatus,
+  renderAssistantStatus,
   type AssistantStatusSpec,
-  type AssistantStatusTransport,
-} from "@/chat/runtime/assistant-status";
+} from "@/chat/slack/assistant-thread/status-render";
 
 const STATUS_UPDATE_DEBOUNCE_MS = 1000;
 const STATUS_MIN_VISIBLE_MS = 1200;
 const STATUS_ROTATION_INTERVAL_MS = 30_000;
 
-type TimerHandle = ReturnType<typeof setTimeout>;
+export type TimerHandle = ReturnType<typeof setTimeout>;
 
-export interface ProgressReporter {
-  start: () => Promise<void>;
+export interface AssistantStatusSession {
+  start: () => void;
   stop: () => Promise<void>;
-  setStatus: (status: AssistantStatusSpec) => Promise<void>;
+  update: (status: AssistantStatusSpec) => void;
 }
 
 /**
- * Create a debounced assistant-status reporter for long-running Slack turns.
+ * Pace assistant-status writes for a single turn.
  *
- * The runtime emits semantic hints such as tool or sandbox phases. This
- * reporter owns the Slack-specific lifecycle on top of those hints:
- * start with a non-empty status, debounce rapid phase changes, refresh the
- * status before Slack's `assistant.threads.setStatus` timeout window makes it
- * disappear, and clear the status explicitly with `""` when the turn stops.
+ * This layer owns only local scheduling policy: debounce, minimum visible
+ * duration, refresh cadence, and write ordering. It intentionally does not
+ * know about Slack channel IDs, tokens, or API clients.
  */
-export function createProgressReporter(args: {
-  channelId?: string;
-  threadTs?: string;
-  transport: AssistantStatusTransport;
+export function createAssistantStatusScheduler(args: {
+  sendStatus: (text: string, suggestions?: string[]) => Promise<void>;
   now?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => TimerHandle;
   clearTimer?: (timer: TimerHandle) => void;
   random?: () => number;
-}): ProgressReporter {
+}): AssistantStatusSession {
   const now = args.now ?? (() => Date.now());
   const setTimer =
     args.setTimer ??
@@ -54,6 +49,18 @@ export function createProgressReporter(args: {
   let rotationTimer: TimerHandle | null = null;
   let inflightStatusUpdate: Promise<void> = Promise.resolve();
 
+  const enqueueStatusUpdate = (task: () => Promise<void>): Promise<void> => {
+    // Status writes are best effort, but they still need strict ordering so a
+    // slow "thinking" write cannot land after stop() already cleared the UI.
+    const request = inflightStatusUpdate
+      .catch(() => undefined)
+      .then(async () => {
+        await task();
+      });
+    inflightStatusUpdate = request.catch(() => undefined);
+    return request;
+  };
+
   const scheduleRotation = () => {
     if (rotationTimer) {
       clearTimer(rotationTimer);
@@ -64,6 +71,8 @@ export function createProgressReporter(args: {
       return;
     }
 
+    // Slack removes assistant status automatically after about two minutes if
+    // no reply arrives, so long-running turns must refresh the current status.
     rotationTimer = setTimer(() => {
       rotationTimer = null;
       if (!active || !currentVisibleStatus) {
@@ -77,11 +86,6 @@ export function createProgressReporter(args: {
     text: string,
     suggestions?: string[],
   ): Promise<void> => {
-    const channelId = args.channelId;
-    const threadTs = args.threadTs;
-    if (!channelId || !threadTs) {
-      return;
-    }
     if (!text && !currentVisibleStatus) {
       return;
     }
@@ -89,19 +93,15 @@ export function createProgressReporter(args: {
     currentVisibleStatus = text;
     lastStatusAt = now();
     scheduleRotation();
-    const previous = inflightStatusUpdate;
-    const request = (async () => {
-      await previous;
-      await args.transport.setStatus(channelId, threadTs, text, suggestions);
-    })();
-    inflightStatusUpdate = request;
-    await request;
+    await enqueueStatusUpdate(async () => {
+      await args.sendStatus(text, suggestions);
+    });
   };
 
   const postRenderedStatus = async (
     status: AssistantStatusSpec,
   ): Promise<void> => {
-    const presentation = buildAssistantStatusPresentation({
+    const presentation = renderAssistantStatus({
       status,
       random,
     });
@@ -127,7 +127,7 @@ export function createProgressReporter(args: {
 
     const next = pendingStatus;
     clearPending();
-    const nextPresentation = buildAssistantStatusPresentation({
+    const nextPresentation = renderAssistantStatus({
       status: next,
       random,
     });
@@ -137,7 +137,7 @@ export function createProgressReporter(args: {
   };
 
   return {
-    async start() {
+    start() {
       active = true;
       clearPending();
       currentStatus = makeAssistantStatus("thinking");
@@ -154,11 +154,11 @@ export function createProgressReporter(args: {
       currentKey = "";
       await postStatus("");
     },
-    async setStatus(status: AssistantStatusSpec) {
+    update(status: AssistantStatusSpec) {
       if (!active) {
         return;
       }
-      const presentation = buildAssistantStatusPresentation({
+      const presentation = renderAssistantStatus({
         status,
         random,
       });
@@ -169,6 +169,8 @@ export function createProgressReporter(args: {
         return;
       }
 
+      // Coalesce tool chatter and keep each visible status on screen long
+      // enough to read before swapping to the next one.
       const elapsed = now() - lastStatusAt;
       const waitMs = Math.max(
         STATUS_UPDATE_DEBOUNCE_MS - elapsed,

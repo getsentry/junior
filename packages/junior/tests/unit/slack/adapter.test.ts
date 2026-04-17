@@ -15,48 +15,11 @@ describe("createJuniorSlackAdapter", () => {
     createSlackAdapterMock.mockReset();
   });
 
-  it("forces Junior's stream buffer size even if callers pass a different value", () => {
-    const originalChatStream = vi.fn((_params: Record<string, unknown>) => ({
-      append: vi.fn(),
-      stop: vi.fn(),
-    }));
-    const adapter = {
-      client: {
-        chatStream: originalChatStream,
-      },
-      decodeThreadId: vi.fn(),
-      getToken: vi.fn(),
-      logger: {
-        debug: vi.fn(),
-        warn: vi.fn(),
-      },
-      stream: vi.fn(),
-    };
+  it("delegates to the upstream adapter without patching private internals", () => {
+    const adapter = { id: "adapter" };
     createSlackAdapterMock.mockReturnValue(adapter);
 
-    createJuniorSlackAdapter();
-    adapter.client.chatStream({
-      buffer_size: 512,
-      channel: "C123",
-      thread_ts: "1700000000.001",
-    });
-
-    expect(originalChatStream).toHaveBeenCalledWith({
-      buffer_size: 64,
-      channel: "C123",
-      thread_ts: "1700000000.001",
-    });
-  });
-
-  it("fails fast when the upstream adapter no longer exposes the patched stream internals", () => {
-    createSlackAdapterMock.mockReturnValue({
-      client: {
-        chatStream: vi.fn(),
-      },
-    });
-
-    expect(() => createJuniorSlackAdapter()).toThrow(
-      "Slack adapter does not expose stream()",
-    );
+    expect(createJuniorSlackAdapter()).toBe(adapter);
+    expect(createSlackAdapterMock).toHaveBeenCalledOnce();
   });
 });

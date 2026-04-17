@@ -36,6 +36,7 @@ function createMockDeps(
     getThreadId: (_thread, message) => message.threadId,
     getRunId: () => undefined,
     initializeAssistantThread: vi.fn().mockResolvedValue(undefined),
+    refreshAssistantThreadContext: vi.fn().mockResolvedValue(undefined),
     logException: vi.fn(),
     logWarn: vi.fn(),
     onSubscribedMessageSkipped: vi.fn().mockResolvedValue(undefined),
@@ -566,7 +567,7 @@ describe("createSlackTurnRuntime", () => {
   });
 
   describe("handleAssistantContextChanged", () => {
-    it("calls initializeAssistantThread with correct fields", async () => {
+    it("calls refreshAssistantThreadContext with correct fields", async () => {
       const deps = createMockDeps();
       const runtime = createSlackTurnRuntime<TestState>(deps);
 
@@ -577,7 +578,7 @@ describe("createSlackTurnRuntime", () => {
         userId: "U-2",
       });
 
-      expect(deps.initializeAssistantThread).toHaveBeenCalledWith({
+      expect(deps.refreshAssistantThreadContext).toHaveBeenCalledWith({
         threadId: "T-2",
         channelId: "C-2",
         threadTs: "1700000000.100",
@@ -599,7 +600,7 @@ describe("createSlackTurnRuntime", () => {
         },
       });
 
-      expect(deps.initializeAssistantThread).toHaveBeenCalledWith({
+      expect(deps.refreshAssistantThreadContext).toHaveBeenCalledWith({
         threadId: "T-2",
         channelId: "D-assistant",
         threadTs: "1700000000.100",
@@ -610,7 +611,7 @@ describe("createSlackTurnRuntime", () => {
     it("on failure: calls logException without posting error", async () => {
       const err = new Error("context boom");
       const deps = createMockDeps({
-        initializeAssistantThread: vi.fn().mockRejectedValue(err),
+        refreshAssistantThreadContext: vi.fn().mockRejectedValue(err),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
 

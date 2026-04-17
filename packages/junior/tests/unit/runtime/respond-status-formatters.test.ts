@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
+import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { buildToolStatus } from "@/chat/runtime/tool-status";
 
 describe("tool status formatters", () => {

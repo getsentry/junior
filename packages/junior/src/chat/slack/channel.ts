@@ -3,7 +3,6 @@ import {
   normalizeSlackConversationId,
   withSlackRetries,
 } from "@/chat/slack/client";
-import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 
 export interface SlackChannelMessage {
   ts?: string;
@@ -33,118 +32,6 @@ export interface SlackThreadReply {
   bot_id?: string;
   type?: string;
   files?: SlackFileRef[];
-}
-
-export async function postMessageToChannel(input: {
-  channelId: string;
-  text: string;
-}): Promise<{ ts: string; permalink?: string }> {
-  const client = getSlackClient();
-  const channelId = normalizeSlackConversationId(input.channelId);
-  if (!channelId) {
-    throw new Error(
-      "Slack channel message posting requires a valid channel ID",
-    );
-  }
-  const response = await withSlackRetries(
-    () =>
-      client.chat.postMessage({
-        channel: channelId,
-        text: input.text,
-        mrkdwn: true,
-      }),
-    3,
-    { action: "chat.postMessage" },
-  );
-
-  if (!response.ts) {
-    throw new Error("Slack channel message posted without ts");
-  }
-
-  let permalink: string | undefined;
-  try {
-    const permalinkResponse = await withSlackRetries(
-      () =>
-        client.chat.getPermalink({
-          channel: channelId,
-          message_ts: response.ts as string,
-        }),
-      3,
-      { action: "chat.getPermalink" },
-    );
-    permalink = permalinkResponse.permalink;
-  } catch {
-    // Message creation succeeded; permalink lookup is best-effort.
-  }
-
-  return {
-    ts: response.ts,
-    permalink,
-  };
-}
-
-export async function addReactionToMessage(input: {
-  channelId: string;
-  timestamp: string;
-  emoji: string;
-}): Promise<{ ok: true }> {
-  const client = getSlackClient();
-  const channelId = normalizeSlackConversationId(input.channelId);
-  if (!channelId) {
-    throw new Error("Slack reaction requires a valid channel ID");
-  }
-  const timestamp = input.timestamp.trim();
-  if (!timestamp) {
-    throw new Error("Slack reaction requires a target message timestamp");
-  }
-  const emoji = normalizeSlackEmojiName(input.emoji);
-  if (!emoji) {
-    throw new Error("Slack reaction requires a valid emoji alias name");
-  }
-
-  await withSlackRetries(
-    () =>
-      client.reactions.add({
-        channel: channelId,
-        timestamp,
-        name: emoji,
-      }),
-    3,
-    { action: "reactions.add" },
-  );
-  return { ok: true };
-}
-
-export async function removeReactionFromMessage(input: {
-  channelId: string;
-  timestamp: string;
-  emoji: string;
-}): Promise<{ ok: true }> {
-  const client = getSlackClient();
-  const channelId = normalizeSlackConversationId(input.channelId);
-  if (!channelId) {
-    throw new Error("Slack reaction requires a valid channel ID");
-  }
-  const timestamp = input.timestamp.trim();
-  if (!timestamp) {
-    throw new Error("Slack reaction requires a target message timestamp");
-  }
-  const emoji = normalizeSlackEmojiName(input.emoji);
-  if (!emoji) {
-    throw new Error("Slack reaction requires a valid emoji alias name");
-  }
-
-  await withSlackRetries(
-    () =>
-      client.reactions.remove({
-        channel: channelId,
-        timestamp,
-        name: emoji,
-      }),
-    3,
-    { action: "reactions.remove" },
-  );
-  return { ok: true };
 }
 
 export async function listChannelMessages(input: {

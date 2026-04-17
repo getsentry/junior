@@ -43,33 +43,6 @@ export function chatPostMessageOk(
   });
 }
 
-export function chatStartStreamOk(
-  input: { ts?: string; channel?: string } = {},
-): { ok: true; ts: string; channel: string } {
-  return slackOk({
-    ts: input.ts ?? TEST_MESSAGE_TS,
-    channel: input.channel ?? TEST_CHANNEL_ID,
-  });
-}
-
-export function chatAppendStreamOk(
-  input: { ts?: string; channel?: string } = {},
-): { ok: true; ts: string; channel: string } {
-  return slackOk({
-    ts: input.ts ?? TEST_MESSAGE_TS,
-    channel: input.channel ?? TEST_CHANNEL_ID,
-  });
-}
-
-export function chatStopStreamOk(
-  input: { ts?: string; channel?: string } = {},
-): { ok: true; ts: string; channel: string } {
-  return slackOk({
-    ts: input.ts ?? TEST_MESSAGE_TS,
-    channel: input.channel ?? TEST_CHANNEL_ID,
-  });
-}
-
 export function chatPostEphemeralOk(input: { messageTs?: string } = {}): {
   ok: true;
   message_ts: string;

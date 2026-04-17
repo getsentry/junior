@@ -17,6 +17,7 @@ import {
 import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import {
   getTurnUserMessage,
+  getTurnUserReplyAttachmentContext,
   getTurnUserMessageId,
 } from "@/chat/runtime/turn-user-message";
 import {
@@ -220,6 +221,7 @@ async function resumeAuthorizedMcpTurn(args: {
       channelConfiguration,
       sandbox: getPersistedSandboxState(currentState),
       threadParticipants: buildThreadParticipants(conversation.messages),
+      ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {
       try {

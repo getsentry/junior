@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { postMessageToChannel } from "@/chat/slack/channel";
+import { postSlackMessage } from "@/chat/slack/outbound";
 import { tool } from "@/chat/tools/definition";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
@@ -44,9 +44,10 @@ export function createSlackChannelPostMessageTool(
         };
       }
 
-      const posted = await postMessageToChannel({
+      const posted = await postSlackMessage({
         channelId: targetChannelId,
         text,
+        includePermalink: true,
       });
       const response = {
         ok: true,

@@ -305,7 +305,7 @@ describe("Slack behavior: message_changed webhook ingress", () => {
     expect(imageData?.toString()).toBe("image-bytes");
   });
 
-  it("streams a reply back into the edited DM thread", async () => {
+  it("posts a finalized reply back into the edited DM thread", async () => {
     const state = createMemoryState();
     await state.connect();
     const bot = new JuniorChat<{ slack: SlackAdapter }>({
@@ -388,18 +388,15 @@ describe("Slack behavior: message_changed webhook ingress", () => {
     await flushWaitUntil(waitUntilTasks);
 
     expect(response.status).toBe(200);
-    const streamStarts = getCapturedSlackApiCalls("chat.startStream");
-    const streamStops = getCapturedSlackApiCalls("chat.stopStream");
+    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
 
-    expect(streamStarts).toHaveLength(1);
-    expect(streamStops).toHaveLength(1);
-    expect(streamStarts[0]).toEqual(
+    expect(postCalls).toHaveLength(1);
+    expect(postCalls[0]).toEqual(
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "D12345",
           thread_ts: "1700000100.000100",
-          recipient_user_id: "U123",
-          recipient_team_id: "T_TEST",
+          text: "Hello world",
         }),
       }),
     );

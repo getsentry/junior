@@ -2,6 +2,10 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import {
+  linkDirectory,
+  resolveInjectedPackageDir,
+} from "./lib/injected-package-sync.mjs";
 
 const workspaceRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -10,6 +14,7 @@ const workspaceRoot = path.resolve(
 const nodeEnv = process.env.NODE_ENV ?? "development";
 const devPort = process.env.PORT?.trim() || "3000";
 const juniorPackageDir = path.join(workspaceRoot, "packages", "junior");
+const exampleDir = path.join(workspaceRoot, "apps", "example");
 
 process.env.NODE_ENV = nodeEnv;
 process.env.PORT = devPort;
@@ -80,6 +85,33 @@ function runRequiredChild(command, args, options = {}) {
   }
 }
 
+function syncInjectedJuniorDist(options = {}) {
+  // `inject-workspace-packages=true` makes the example app resolve
+  // `@sentry/junior` from pnpm's injected package copy under
+  // `node_modules/.pnpm/...`, not directly from `packages/junior`.
+  // Point the injected package `dist` at the live workspace build output so
+  // `pnpm dev` executes the latest local build without recursive copy races.
+  const injectedPackageDir = resolveInjectedPackageDir(
+    "@sentry/junior",
+    exampleDir,
+  );
+  if (!injectedPackageDir) {
+    const error = new Error(
+      "Unable to resolve injected @sentry/junior package for apps/example dev runtime",
+    );
+    if (options.strict ?? false) {
+      throw error;
+    }
+    console.error(error.message);
+    return;
+  }
+
+  linkDirectory(
+    path.join(juniorPackageDir, "dist"),
+    path.join(injectedPackageDir, "dist"),
+  );
+}
+
 const tunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN?.trim();
 const tunnelUrl =
   process.env.CLOUDFLARE_TUNNEL_URL?.trim() || `http://localhost:${devPort}`;
@@ -87,6 +119,7 @@ const tunnelUrl =
 runRequiredChild("pnpm", ["build"], {
   cwd: juniorPackageDir,
 });
+syncInjectedJuniorDist({ strict: true });
 
 spawnChild("pnpm", ["exec", "tsup", "--watch", "--silent", "--no-clean"], {
   cwd: juniorPackageDir,
@@ -108,7 +141,6 @@ if (tunnelToken) {
   ]);
 }
 
-const exampleDir = path.join(workspaceRoot, "apps", "example");
 const child = spawnChild("pnpm", ["dev"], { cwd: exampleDir });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

@@ -13,6 +13,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   buildExecutionFailureMessage,
   extractAssistantText,
+  getTerminalAssistantMessages,
   isAssistantMessage,
   isExecutionEscapeResponse,
   isRawToolPayloadResponse,
@@ -55,7 +56,6 @@ export interface TurnResultInput {
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;
   generatedFileCount: number;
-  hasTextDeltaCallback: boolean;
   shouldTrace: boolean;
   spanContext: LogContext;
   correlation?: {
@@ -77,7 +77,6 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     toolCalls,
     sandboxId,
     sandboxDependencyProfileHash,
-    hasTextDeltaCallback,
     shouldTrace,
     spanContext,
     correlation,
@@ -86,8 +85,9 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
 
   const toolResults = newMessages.filter(isToolResultMessage);
   const assistantMessages = newMessages.filter(isAssistantMessage);
+  const terminalAssistantMessages = getTerminalAssistantMessages(newMessages);
 
-  const primaryText = assistantMessages
+  const primaryText = terminalAssistantMessages
     .map((message) => extractAssistantText(message))
     .join("\n\n")
     .trim();
@@ -109,7 +109,6 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     explicitChannelPostIntent,
     channelPostPerformed,
     hasFiles: replyFiles.length > 0,
-    streamingThreadReply: hasTextDeltaCallback,
   });
   const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
 
@@ -133,7 +132,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     );
   }
 
-  const lastAssistant = assistantMessages.at(-1) as
+  const lastAssistant = terminalAssistantMessages.at(-1) as
     | { stopReason?: unknown; errorMessage?: unknown }
     | undefined;
   const stopReason =

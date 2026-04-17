@@ -29,3 +29,22 @@ export function getTurnUserMessageId(
 ): string | undefined {
   return getTurnUserMessage(conversation, sessionId)?.id;
 }
+
+/** Rebuild attachment context for a resumed turn from the persisted user message. */
+export function getTurnUserReplyAttachmentContext(
+  message: ConversationMessage | undefined,
+): {
+  inboundAttachmentCount?: number;
+  omittedImageAttachmentCount?: number;
+} {
+  const inboundAttachmentCount = message?.meta?.attachmentCount ?? 0;
+  const imageAttachmentCount = message?.meta?.imageAttachmentCount ?? 0;
+  const imagesHydrated = message?.meta?.imagesHydrated === true;
+
+  return {
+    ...(inboundAttachmentCount > 0 ? { inboundAttachmentCount } : {}),
+    ...(!imagesHydrated && imageAttachmentCount > 0
+      ? { omittedImageAttachmentCount: imageAttachmentCount }
+      : {}),
+  };
+}

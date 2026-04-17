@@ -5,15 +5,17 @@ import {
   type AssistantReply,
   type ReplyRequestContext,
 } from "@/chat/respond";
-import { createSlackWebApiAssistantStatusTransport } from "@/chat/runtime/assistant-status";
-import { createProgressReporter } from "@/chat/runtime/progress-reporter";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import {
+  createSlackWebApiAssistantStatusSession,
+  type AssistantStatusSession,
+} from "@/chat/slack/assistant-thread/status";
 import {
   planSlackReplyPosts,
   postSlackApiReplyPosts,
 } from "@/chat/slack/reply";
-import { getSlackClient } from "@/chat/slack/client";
+import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
@@ -39,9 +41,9 @@ export async function postSlackMessage(
   threadTs: string,
   text: string,
 ): Promise<void> {
-  await getSlackClient().chat.postMessage({
-    channel: channelId,
-    thread_ts: threadTs,
+  await postSlackApiMessage({
+    channelId,
+    threadTs,
     text,
   });
 }
@@ -120,7 +122,7 @@ function getDefaultLockKey(channelId: string, threadTs: string): string {
 
 function createResumeReplyContext(
   args: ResumeSlackTurnArgs,
-  progress: ReturnType<typeof createProgressReporter>,
+  statusSession: AssistantStatusSession,
 ): ReplyRequestContext {
   const replyContext = args.replyContext ?? {};
   const threadId =
@@ -157,9 +159,9 @@ function createResumeReplyContext(
       await persistThreadStateById(threadId, { artifacts });
       await replyContext.onArtifactStateUpdated?.(artifacts);
     },
-    onStatus: async (status) => {
-      await progress.setStatus(status);
-      await replyContext.onStatus?.(status);
+    onStatus: async (nextStatus) => {
+      statusSession.update(nextStatus);
+      await replyContext.onStatus?.(nextStatus);
     },
   };
 }
@@ -190,10 +192,9 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     throw new ResumeTurnBusyError(lockKey);
   }
 
-  const progress = createProgressReporter({
+  const status = createSlackWebApiAssistantStatusSession({
     channelId: args.channelId,
     threadTs: args.threadTs,
-    transport: createSlackWebApiAssistantStatusTransport(),
   });
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
@@ -205,10 +206,10 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
         args.initialText,
       );
     }
-    await progress.start();
+    status.start();
 
     const generateReply = args.generateReply ?? generateAssistantReply;
-    const replyContext = createResumeReplyContext(args, progress);
+    const replyContext = createResumeReplyContext(args, status);
     const replyPromise = generateReply(args.messageText, {
       ...replyContext,
     });
@@ -231,19 +232,16 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
           ])
         : await replyPromise;
 
-    await progress.stop();
+    await status.stop();
     await postSlackApiReplyPosts({
       channelId: args.channelId,
       threadTs: args.threadTs,
-      posts: planSlackReplyPosts({
-        reply,
-        hasStreamedThreadReply: false,
-      }),
+      posts: planSlackReplyPosts({ reply }),
       postMessage: postSlackMessage,
     });
     await args.onSuccess?.(reply);
   } catch (error) {
-    await progress.stop();
+    await status.stop();
 
     if (isRetryableTurnError(error, "mcp_auth_resume") && args.onAuthPause) {
       deferredPauseHandler = async () => {

@@ -2,9 +2,7 @@ import type { Message, SentMessage, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
-import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
 import {
-  logError,
   logException,
   logInfo,
   logWarn,
@@ -13,25 +11,21 @@ import {
   withSpan,
 } from "@/chat/logging";
 import {
-  createSlackStreamAccumulator,
   planSlackReplyPosts,
   type PlannedSlackReplyStage,
 } from "@/chat/slack/reply";
+import { buildSlackOutputMessage } from "@/chat/slack/output";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
-import { createProgressReporter } from "@/chat/runtime/progress-reporter";
-import { createSlackAdapterAssistantStatusTransport } from "@/chat/runtime/assistant-status";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import { createTextStreamBridge } from "@/chat/runtime/streaming";
 import {
+  getAssistantThreadContext,
   getChannelId,
   getMessageTs,
-  getSlackApiErrorCode,
   getSlackErrorObservabilityAttributes,
   getThreadId,
   getThreadTs,
   getRunId,
-  isSlackTitlePermissionError,
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
 import {
@@ -48,7 +42,13 @@ import {
   generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
-import { isDmChannel } from "@/chat/slack/client";
+import {
+  countPotentialImageAttachments,
+  hasPotentialImageAttachment,
+  isVisionEnabled,
+} from "@/chat/services/vision-context";
+import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
+import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
@@ -57,12 +57,7 @@ import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
-import {
-  isRedundantReactionAckText,
-  isPotentialRedundantReactionAckText,
-} from "@/chat/services/reply-delivery-plan";
-
-type SlackReplyPostStage = "streaming_initial_post" | PlannedSlackReplyStage;
+import { isRedundantReactionAckText } from "@/chat/services/reply-delivery-plan";
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
@@ -91,18 +86,6 @@ function getExecutionFailureReason(reply: {
     return "assistant returned no text";
   }
   return "empty assistant turn";
-}
-
-function shouldAutoStartStreaming(args: {
-  text: string;
-  deltaCount: number;
-}): boolean {
-  const { text, deltaCount } = args;
-  const trimmed = text.trim();
-  if (!trimmed || isPotentialRedundantReactionAckText(trimmed)) {
-    return false;
-  }
-  return deltaCount >= 2;
 }
 
 interface ReplyExecutorDeps {
@@ -157,6 +140,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const threadId = getThreadId(thread, message);
     const channelId = getChannelId(thread, message);
     const threadTs = getThreadTs(threadId);
+    const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;
@@ -178,7 +162,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           stripLeadingSlackMentionToken:
             options.explicitMention || Boolean(message.isMention),
         });
-        const explicitChannelPostIntent = isExplicitChannelPostIntent(userText);
 
         const preparedState =
           options.preparedState ??
@@ -255,21 +238,17 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             messageTs: slackMessageTs,
           },
         );
+        const omittedImageAttachmentCount =
+          !isVisionEnabled() && hasPotentialImageAttachment(message.attachments)
+            ? countPotentialImageAttachments(message.attachments)
+            : 0;
 
-        const progress = createProgressReporter({
-          channelId,
-          threadTs,
-          transport: createSlackAdapterAssistantStatusTransport({
-            getSlackAdapter: deps.getSlackAdapter,
-          }),
+        const status = createSlackAdapterAssistantStatusSession({
+          channelId: assistantThreadContext?.channelId,
+          threadTs: assistantThreadContext?.threadTs,
+          getSlackAdapter: deps.getSlackAdapter,
         });
-        const textStream = createTextStreamBridge();
-        let streamedReplyPromise: Promise<SentMessage> | undefined;
-        let pendingStreamText = "";
-        let pendingStreamDeltaCount = 0;
-        let awaitingPostToolAssistantMessage = false;
         let beforeFirstResponsePostCalled = false;
-        let streamedReplyState = createSlackStreamAccumulator();
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
             return;
@@ -277,79 +256,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           beforeFirstResponsePostCalled = true;
           await options.beforeFirstResponsePost?.();
         };
-        const startStreamingReply = () => {
-          if (!streamedReplyPromise) {
-            const streamingReply = (async () => {
-              return await postThreadReply(
-                textStream.iterable,
-                "streaming_initial_post",
-              );
-            })();
-            streamedReplyPromise = streamingReply;
-          }
-        };
-        const flushPendingStreamText = () => {
-          if (!pendingStreamText) {
-            return;
-          }
-          startStreamingReply();
-          textStream.push(pendingStreamText);
-          pendingStreamText = "";
-          pendingStreamDeltaCount = 0;
-        };
-        const clearPendingStreamText = () => {
-          pendingStreamText = "";
-          pendingStreamDeltaCount = 0;
-        };
-        const discardPendingStreamPreview = () => {
-          clearPendingStreamText();
-          streamedReplyState = createSlackStreamAccumulator();
-        };
-        const finalizePendingStreamText = () => {
-          if (
-            !pendingStreamText ||
-            streamedReplyPromise ||
-            isPotentialRedundantReactionAckText(pendingStreamText)
-          ) {
-            return;
-          }
-          flushPendingStreamText();
-        };
-        const queueVisibleStreamText = (text: string) => {
-          if (!text) {
-            return;
-          }
-          if (awaitingPostToolAssistantMessage) {
-            return;
-          }
-          if (streamedReplyPromise) {
-            textStream.push(text);
-            return;
-          }
-          pendingStreamText += text;
-          pendingStreamDeltaCount += 1;
-          if (isPotentialRedundantReactionAckText(pendingStreamText)) {
-            return;
-          }
-          if (
-            !shouldAutoStartStreaming({
-              text: pendingStreamText,
-              deltaCount: pendingStreamDeltaCount,
-            })
-          ) {
-            return;
-          }
-          flushPendingStreamText();
-        };
-        const appendVisibleStreamDelta = (deltaText: string) => {
-          if (awaitingPostToolAssistantMessage && !streamedReplyPromise) {
-            return;
-          }
-          queueVisibleStreamText(streamedReplyState.append(deltaText));
-        };
         const postThreadReply = async (
           payload: Parameters<typeof thread.post>[0],
-          stage: SlackReplyPostStage,
+          stage: PlannedSlackReplyStage,
         ): Promise<SentMessage> => {
           await beforeFirstResponsePost();
           try {
@@ -369,7 +278,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             throw error;
           }
         };
-        await progress.start();
+        status.start();
+        const assistantTitleTask = maybeUpdateAssistantTitle({
+          assistantThreadContext,
+          assistantUserName: botConfig.userName,
+          artifacts: preparedState.artifacts,
+          channelId,
+          conversation: preparedState.conversation,
+          generateThreadTitle: deps.services.generateThreadTitle,
+          getSlackAdapter: deps.getSlackAdapter,
+          modelId: botConfig.fastModelId,
+          requesterId: message.author.userId,
+          runId,
+          threadId,
+        });
         let persistedAtLeastOnce = false;
         let shouldPersistFailureState = true;
 
@@ -393,6 +315,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             artifactState: preparedState.artifacts,
             configuration: preparedState.configuration,
             channelConfiguration: preparedState.channelConfiguration,
+            inboundAttachmentCount: message.attachments.length,
+            omittedImageAttachmentCount,
             userAttachments,
             correlation: {
               conversationId,
@@ -421,33 +345,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await persistThreadState(thread, { artifacts });
             },
             threadParticipants,
-            onStatus: (status) => progress.setStatus(status),
-            onTextDelta: (deltaText) => {
-              if (explicitChannelPostIntent) {
-                return;
-              }
-              appendVisibleStreamDelta(deltaText);
-            },
-            onAssistantMessageStart: () => {
-              if (!awaitingPostToolAssistantMessage) {
-                return;
-              }
-              awaitingPostToolAssistantMessage = false;
-              discardPendingStreamPreview();
-            },
-            onToolCall: () => {
-              if (!streamedReplyPromise) {
-                awaitingPostToolAssistantMessage = true;
-                discardPendingStreamPreview();
-              }
-            },
+            onStatus: (nextStatus) => status.update(nextStatus),
           });
-          if (streamedReplyPromise) {
-            flushPendingStreamText();
-          } else {
-            finalizePendingStreamText();
-          }
-          textStream.end();
           const diagnosticsContext = {
             slackThreadId: threadId,
             slackUserId: message.author.userId,
@@ -535,47 +434,38 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const reactionPerformed = reply.diagnostics.toolCalls.includes(
             "slackMessageAddReaction",
           );
-          const plannedPosts = planSlackReplyPosts({
-            reply,
-            hasStreamedThreadReply: Boolean(streamedReplyPromise),
-            streamedOverflowText: streamedReplyState.getOverflowText(),
-          });
+          const plannedPosts = planSlackReplyPosts({ reply });
 
           // Final Slack delivery is part of turn success. We only mark the turn
           // completed after the visible reply has been accepted by Slack.
-          if (streamedReplyPromise) {
-            await streamedReplyPromise;
-          }
           if (plannedPosts.length > 0) {
-            if (!streamedReplyPromise) {
-              let sent: SentMessage | undefined;
-              for (const post of plannedPosts) {
-                sent = await postThreadReply(post.message, post.stage);
-              }
-              const firstPlannedMessage = plannedPosts[0]?.message;
-              const firstPlannedMessageHasFiles =
-                typeof firstPlannedMessage === "object" &&
-                firstPlannedMessage !== null &&
-                "files" in firstPlannedMessage &&
-                Array.isArray(firstPlannedMessage.files) &&
-                firstPlannedMessage.files.length > 0;
-              // When a reaction already acknowledged the turn, delete the
-              // redundant thread reply. The post itself completes Slack's
-              // assistant response cycle (clearing the typing indicator).
-              if (
-                sent &&
-                reactionPerformed &&
-                plannedPosts.length === 1 &&
-                !firstPlannedMessageHasFiles &&
-                isRedundantReactionAckText(reply.text)
-              ) {
-                await sent.delete();
-              }
-            } else {
-              for (const post of plannedPosts) {
-                await postThreadReply(post.message, post.stage);
-              }
+            let sent: SentMessage | undefined;
+            for (const post of plannedPosts) {
+              sent = await postThreadReply(
+                buildSlackOutputMessage(post.text, post.files),
+                post.stage,
+              );
             }
+            const firstPlannedMessageHasFiles =
+              (plannedPosts[0]?.files?.length ?? 0) > 0;
+            // When a reaction already acknowledged the turn, delete the
+            // redundant thread reply. The post itself completes Slack's
+            // assistant response cycle (clearing the typing indicator).
+            if (
+              sent &&
+              reactionPerformed &&
+              plannedPosts.length === 1 &&
+              !firstPlannedMessageHasFiles &&
+              isRedundantReactionAckText(reply.text)
+            ) {
+              await sent.delete();
+            }
+          }
+
+          const titleUpdateResult = await assistantTitleTask;
+          if (titleUpdateResult) {
+            artifactStatePatch.assistantTitleSourceMessageId =
+              titleUpdateResult;
           }
 
           const shouldPersistArtifacts =
@@ -608,69 +498,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               "Agent turn completed",
             );
           }
-
-          const isFirstAssistantReply =
-            preparedState.conversation.stats.compactedMessageCount === 0 &&
-            preparedState.conversation.messages.filter(
-              (m) => m.role === "assistant",
-            ).length === 1;
-          if (
-            isFirstAssistantReply &&
-            channelId &&
-            isDmChannel(channelId) &&
-            threadTs
-          ) {
-            void deps.services
-              .generateThreadTitle(userText, reply.text)
-              .then((title) =>
-                deps
-                  .getSlackAdapter()
-                  .setAssistantTitle(channelId, threadTs, title),
-              )
-              .catch((error) => {
-                const slackErrorCode = getSlackApiErrorCode(error);
-                const assistantTitleErrorAttributes = {
-                  "app.slack.assistant_title.outcome": "permission_denied",
-                  ...(slackErrorCode
-                    ? { "app.slack.assistant_title.error_code": slackErrorCode }
-                    : {}),
-                };
-                if (isSlackTitlePermissionError(error)) {
-                  setSpanAttributes(assistantTitleErrorAttributes);
-                  logError(
-                    "thread_title_generation_permission_denied",
-                    {
-                      slackThreadId: threadId,
-                      slackUserId: message.author.userId,
-                      slackChannelId: channelId,
-                      runId,
-                      assistantUserName: botConfig.userName,
-                      modelId: botConfig.fastModelId,
-                    },
-                    assistantTitleErrorAttributes,
-                    "Skipping thread title update due to Slack permission error",
-                  );
-                  return;
-                }
-
-                logWarn(
-                  "thread_title_generation_failed",
-                  {
-                    slackThreadId: threadId,
-                    slackUserId: message.author.userId,
-                    slackChannelId: channelId,
-                    runId,
-                    assistantUserName: botConfig.userName,
-                    modelId: botConfig.fastModelId,
-                  },
-                  {
-                    "error.message":
-                      error instanceof Error ? error.message : String(error),
-                  },
-                  "Thread title generation failed",
-                );
-              });
-          }
         } catch (error) {
           if (isRetryableTurnError(error, "mcp_auth_resume")) {
             shouldPersistFailureState = false;
@@ -678,23 +505,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
 
           if (isRetryableTurnError(error, "turn_timeout_resume")) {
-            textStream.end();
-            const hasVisibleAssistantOutput = Boolean(streamedReplyPromise);
-            if (hasVisibleAssistantOutput) {
-              logWarn(
-                "agent_turn_timeout_resume_skipped_after_visible_output",
-                turnTraceContext,
-                messageTs ? { "messaging.message.id": messageTs } : {},
-                "Skipped automatic timeout resume because assistant text had already started streaming",
-              );
-            }
-
             const conversationIdForResume = error.metadata?.conversationId;
             const sessionIdForResume = error.metadata?.sessionId;
             const checkpointVersion = error.metadata?.checkpointVersion;
             const nextSliceId = error.metadata?.sliceId;
             if (
-              !hasVisibleAssistantOutput &&
               conversationIdForResume &&
               sessionIdForResume &&
               typeof checkpointVersion === "number" &&
@@ -721,7 +536,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 );
               }
             } else if (
-              !hasVisibleAssistantOutput &&
               conversationIdForResume &&
               sessionIdForResume &&
               typeof checkpointVersion === "number"
@@ -750,7 +564,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           shouldPersistFailureState = true;
           throw error;
         } finally {
-          textStream.end();
           if (!persistedAtLeastOnce && shouldPersistFailureState) {
             markTurnFailed({
               conversation: preparedState.conversation,
@@ -775,7 +588,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               );
             }
           }
-          await progress.stop();
+          await status.stop();
         }
       },
     );

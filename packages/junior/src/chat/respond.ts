@@ -54,7 +54,7 @@ import {
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import type { AssistantStatusSpec } from "@/chat/runtime/assistant-status";
+import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
@@ -121,6 +121,8 @@ export interface ReplyRequestContext {
     filename?: string;
     promptText?: string;
   }>;
+  inboundAttachmentCount?: number;
+  omittedImageAttachmentCount?: number;
   sandbox?: {
     sandboxId?: string;
     sandboxDependencyProfileHash?: string;
@@ -148,6 +150,17 @@ export interface ReplyRequestContext {
 }
 
 let startupDiscoveryLogged = false;
+
+function buildOmittedImageAttachmentNotice(count: number): string {
+  return [
+    "<omitted-image-attachments>",
+    `count: ${count}`,
+    "Slack included image attachments with this turn, but this runtime cannot analyze images because no vision model is configured.",
+    "Do not claim that no image was attached.",
+    "If the user asks about image contents, explain that image analysis is unavailable in this runtime and continue with any text or non-image files that are still available.",
+    "</omitted-image-attachments>",
+  ].join("\n");
+}
 
 /** Convert active MCP tools into ToolDefinition entries for first-class registration. */
 function mcpToolsToDefinitions(
@@ -242,6 +255,8 @@ export async function generateAssistantReply(
     let configurationValues: Record<string, unknown>;
     const userInput = messageText;
     if (shouldTrace) {
+      const inboundAttachmentCount = context.inboundAttachmentCount ?? 0;
+      const promptAttachmentCount = context.userAttachments?.length ?? 0;
       logInfo(
         "agent_message_in",
         spanContext,
@@ -249,7 +264,10 @@ export async function generateAssistantReply(
           "app.message.kind": "user_inbound",
           "app.message.length": userInput.length,
           "app.message.input": summarizeMessageText(userInput),
-          "app.message.attachment_count": context.userAttachments?.length ?? 0,
+          // Log both counts so image uploads filtered by vision/config do not
+          // look indistinguishable from Slack ingress dropping attachments.
+          "app.message.attachment_count": inboundAttachmentCount,
+          "app.message.prompt_attachment_count": promptAttachmentCount,
           "messaging.message.id": context.correlation?.messageTs ?? "",
         },
         "Agent message received",
@@ -565,6 +583,15 @@ export async function generateAssistantReply(
       | { type: "image"; data: string; mimeType: string }
     > = [{ type: "text", text: userTurnText }];
 
+    const omittedImageAttachmentCount =
+      context.omittedImageAttachmentCount ?? 0;
+    if (omittedImageAttachmentCount > 0) {
+      userContentParts.push({
+        type: "text",
+        text: buildOmittedImageAttachmentNotice(omittedImageAttachmentCount),
+      });
+    }
+
     for (const attachment of context.userAttachments ?? []) {
       if (attachment.promptText) {
         userContentParts.push({
@@ -726,7 +753,10 @@ export async function generateAssistantReply(
         async () => {
           let promptResult: unknown;
           const promptPromise = resumedFromCheckpoint
-            ? agent.continue()
+            ? // Checkpoint resumes continue from the persisted Pi message
+              // state. Any reconstructed replyContext only matters when the
+              // turn parked before the initial user prompt was recorded.
+              agent.continue()
             : agent.prompt({
                 role: "user",
                 content: userContentParts,
@@ -841,7 +871,6 @@ export async function generateAssistantReply(
       sandboxDependencyProfileHash:
         currentSandboxExecutor.getDependencyProfileHash(),
       generatedFileCount: generatedFiles.length,
-      hasTextDeltaCallback: Boolean(context.onTextDelta),
       shouldTrace,
       spanContext,
       correlation: context.correlation,

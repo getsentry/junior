@@ -24,6 +24,21 @@ async function createRuntime(
   return createTestChatRuntime(args);
 }
 
+function toPostedText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value && typeof value === "object") {
+    const markdown = (value as { markdown?: unknown }).markdown;
+    if (typeof markdown === "string") {
+      return markdown;
+    }
+  }
+
+  return String(value);
+}
+
 describe("Slack behavior: mixed attachment media", () => {
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
@@ -138,6 +153,7 @@ describe("Slack behavior: mixed attachment media", () => {
 
     const capturedAttachmentMediaTypes: string[][] = [];
     const capturedAttachmentNames: string[][] = [];
+    const capturedOmittedImageCounts: number[] = [];
 
     const { slackRuntime } = await createRuntime({
       services: {
@@ -149,6 +165,9 @@ describe("Slack behavior: mixed attachment media", () => {
             );
             capturedAttachmentNames.push(
               attachments.map((attachment) => attachment.filename ?? ""),
+            );
+            capturedOmittedImageCounts.push(
+              context?.omittedImageAttachmentCount ?? 0,
             );
             return {
               text: "Processed attachments.",
@@ -196,5 +215,68 @@ describe("Slack behavior: mixed attachment media", () => {
     expect(imageFetch).not.toHaveBeenCalled();
     expect(capturedAttachmentMediaTypes).toEqual([["application/pdf"]]);
     expect(capturedAttachmentNames).toEqual([["incident.pdf"]]);
+    expect(capturedOmittedImageCounts).toEqual([1]);
+  });
+
+  it("still runs the assistant when only images are attached and vision is disabled", async () => {
+    const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
+    const capturedOmittedImageCounts: number[] = [];
+    const generateAssistantReply = vi.fn(
+      async (_prompt?: string, _context?: unknown) => {
+        return {
+          text: "I can’t inspect the attached image in this runtime, but I do see that an image was included.",
+          diagnostics: {
+            assistantMessageCount: 1,
+            modelId: "fake-agent-model",
+            outcome: "success" as const,
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: true,
+          },
+        };
+      },
+    );
+
+    const { slackRuntime } = await createRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (prompt, context) => {
+            capturedOmittedImageCounts.push(
+              context?.omittedImageAttachmentCount ?? 0,
+            );
+            return generateAssistantReply(prompt, context);
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700004012.000" });
+    const message = createTestMessage({
+      id: "m-attachment-mixed-3",
+      text: "<@U_APP> what about this image?",
+      isMention: true,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+      attachments: [
+        {
+          type: "image",
+          mimeType: "image/png",
+          name: "chart.png",
+          url: "https://files.slack.com/private/chart.png",
+          fetchData: imageFetch,
+        },
+      ] as Message["attachments"],
+    });
+
+    await slackRuntime.handleNewMention(thread, message);
+
+    expect(imageFetch).not.toHaveBeenCalled();
+    expect(generateAssistantReply).toHaveBeenCalledTimes(1);
+    expect(capturedOmittedImageCounts).toEqual([1]);
+    expect(thread.posts).toHaveLength(1);
+    expect(toPostedText(thread.posts[0])).toContain(
+      "I can’t inspect the attached image",
+    );
   });
 });

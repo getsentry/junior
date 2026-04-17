@@ -67,6 +67,12 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     threadId: string;
     threadTs: string;
   }) => Promise<void>;
+  refreshAssistantThreadContext: (event: {
+    channelId: string;
+    sourceChannelId?: string;
+    threadId: string;
+    threadTs: string;
+  }) => Promise<void>;
   logException: (
     error: unknown,
     eventName: string,
@@ -517,7 +523,7 @@ export function createSlackTurnRuntime<
 
     async handleAssistantContextChanged(event: TAssistantEvent): Promise<void> {
       try {
-        await deps.initializeAssistantThread({
+        await deps.refreshAssistantThreadContext({
           threadId: event.threadId,
           channelId: event.channelId,
           threadTs: event.threadTs,

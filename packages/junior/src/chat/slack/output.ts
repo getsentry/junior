@@ -1,69 +1,11 @@
 import type { FileUpload, PostableMessage } from "chat";
 import { logWarn } from "@/chat/logging";
+import { renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
 
 const MAX_INLINE_CHARS = 2200;
 const MAX_INLINE_LINES = 45;
 const CONTINUED_MARKER = "\n\n[Continued below]";
 const INTERRUPTED_MARKER = "\n\n[Response interrupted before completion]";
-const STREAMING_FENCE_CLOSE_GUARD = "\n```";
-
-/** Insert blank lines between content blocks so Slack renders them with visual separation. */
-export function ensureBlockSpacing(text: string): string {
-  const codeBlockPattern = /^```/;
-  const listItemPattern = /^[-*•]\s|^\d+\.\s/;
-  const lines = text.split("\n");
-  const result: string[] = [];
-  let inCodeBlock = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const isCodeFence = codeBlockPattern.test(line.trimStart());
-
-    if (isCodeFence) {
-      // Insert blank line before code fence if needed (only outside code blocks)
-      if (!inCodeBlock) {
-        const prev = result.length > 0 ? result[result.length - 1] : undefined;
-        if (prev !== undefined && prev.trim() !== "") {
-          result.push("");
-        }
-      }
-      inCodeBlock = !inCodeBlock;
-      result.push(line);
-      continue;
-    }
-
-    if (inCodeBlock) {
-      result.push(line);
-      continue;
-    }
-
-    const prev = result.length > 0 ? result[result.length - 1] : undefined;
-
-    // Insert blank line if: prev is non-empty, current is non-empty,
-    // prev is not already a blank line, and they're not both list items
-    if (
-      prev !== undefined &&
-      prev.trim() !== "" &&
-      line.trim() !== "" &&
-      !(
-        listItemPattern.test(prev.trimStart()) &&
-        listItemPattern.test(line.trimStart())
-      )
-    ) {
-      result.push("");
-    }
-
-    result.push(line);
-  }
-
-  return result.join("\n");
-}
-
-function normalizeForSlack(text: string): string {
-  let normalized = text.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "");
-  normalized = ensureBlockSpacing(normalized);
-  return normalized.replace(/\n{3,}/g, "\n\n").trim();
-}
 
 function countSlackLines(text: string): number {
   if (!text) {
@@ -228,10 +170,7 @@ function takeSlackContinuationChunk(
   };
 }
 
-/**
- * Return the first continuation-safe chunk for streamed Slack output along
- * with any remaining text that should move to continuation messages.
- */
+/** Return the first continuation-safe chunk plus any remaining text. */
 export function takeSlackContinuationPrefix(
   text: string,
   options?: {
@@ -312,7 +251,7 @@ export function splitSlackReplyText(
     interrupted?: boolean;
   },
 ): string[] {
-  const normalized = normalizeForSlack(text);
+  const normalized = renderSlackMrkdwn(text);
   if (!normalized) {
     return [];
   }
@@ -359,7 +298,7 @@ export function getSlackInterruptionMarker(): string {
  * budget without needing continuation messages.
  */
 export function fitsSlackInlineBudget(text: string): boolean {
-  return fitsInlineBudget(normalizeForSlack(text));
+  return fitsInlineBudget(renderSlackMrkdwn(text));
 }
 
 /**
@@ -372,25 +311,12 @@ export function getSlackContinuationBudget(): {
   return reserveInlineBudgetForSuffix(CONTINUED_MARKER);
 }
 
-/**
- * Reserve enough inline budget for streamed continuations, including the
- * close fence we may need to append once overflow is detected mid-code block.
- */
-export function getSlackStreamingContinuationBudget(): {
-  maxChars: number;
-  maxLines: number;
-} {
-  return reserveInlineBudgetForSuffix(
-    `${STREAMING_FENCE_CLOSE_GUARD}${CONTINUED_MARKER}`,
-  );
-}
-
 /** Normalize text for Slack and wrap it as a PostableMessage with optional file attachments. */
 export function buildSlackOutputMessage(
   text: string,
   files?: FileUpload[],
 ): PostableMessage {
-  const normalized = normalizeForSlack(text);
+  const normalized = renderSlackMrkdwn(text);
   const fileCount = files?.length ?? 0;
 
   if (!normalized) {

@@ -127,15 +127,20 @@ export class JuniorChat<
       );
       return;
     }
-    const normalized = normalizeIncomingSlackThreadId(
-      threadId,
-      messageOrFactory,
+    enqueueBackgroundTask(
+      options,
+      (async (): Promise<void> => {
+        const normalized = normalizeIncomingSlackThreadId(
+          threadId,
+          messageOrFactory,
+        );
+        if (normalized !== threadId && "threadId" in messageOrFactory) {
+          (messageOrFactory as unknown as Record<string, unknown>).threadId =
+            normalized;
+        }
+        super.processMessage(adapter, normalized, messageOrFactory, options);
+      })(),
     );
-    if (normalized !== threadId && "threadId" in messageOrFactory) {
-      (messageOrFactory as unknown as Record<string, unknown>).threadId =
-        normalized;
-    }
-    super.processMessage(adapter, normalized, messageOrFactory, options);
   }
 
   override processReaction(

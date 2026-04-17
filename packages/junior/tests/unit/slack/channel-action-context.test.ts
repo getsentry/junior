@@ -1,9 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const withSlackRetries = vi.fn();
-const getSlackClient = vi.fn();
+const { SlackActionErrorMock, withSlackRetries, getSlackClient } = vi.hoisted(
+  () => ({
+    SlackActionErrorMock: class SlackActionError extends Error {
+      code: string;
+
+      constructor(message: string, code: string) {
+        super(message);
+        this.name = "SlackActionError";
+        this.code = code;
+      }
+    },
+    withSlackRetries: vi.fn(),
+    getSlackClient: vi.fn(),
+  }),
+);
 
 vi.mock("@/chat/slack/client", () => ({
+  SlackActionError: SlackActionErrorMock,
   getSlackClient: () => getSlackClient(),
   normalizeSlackConversationId: (value: string | undefined) => value,
   withSlackRetries: (...args: unknown[]) => withSlackRetries(...args),
@@ -11,10 +25,12 @@ vi.mock("@/chat/slack/client", () => ({
 
 import {
   addReactionToMessage,
+  postSlackMessage,
   removeReactionFromMessage,
-} from "@/chat/slack/channel";
+  slackOutboundPolicy,
+} from "@/chat/slack/outbound";
 
-describe("slack channel action context", () => {
+describe("slack outbound boundary", () => {
   beforeEach(() => {
     withSlackRetries.mockReset();
     getSlackClient.mockReset();
@@ -94,5 +110,83 @@ describe("slack channel action context", () => {
         name: "thumbsup::skin-tone-6",
       }),
     );
+  });
+
+  it("treats already_reacted as idempotent success", async () => {
+    withSlackRetries.mockRejectedValue(
+      new SlackActionErrorMock("already reacted", "already_reacted"),
+    );
+
+    await expect(
+      addReactionToMessage({
+        channelId: "C123",
+        timestamp: "1700000000.100",
+        emoji: "thumbsup",
+      }),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it("treats no_reaction as idempotent success", async () => {
+    withSlackRetries.mockRejectedValue(
+      new SlackActionErrorMock("no reaction", "no_reaction"),
+    );
+
+    await expect(
+      removeReactionFromMessage({
+        channelId: "C123",
+        timestamp: "1700000000.100",
+        emoji: "thumbsup",
+      }),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it("posts messages with mrkdwn and best-effort permalink lookup", async () => {
+    const postMessage = vi.fn(async () => ({ ts: "1700000000.200" }));
+    const getPermalink = vi.fn(async () => ({
+      permalink: "https://example.invalid/message",
+    }));
+    getSlackClient.mockReturnValue({
+      chat: {
+        postMessage,
+        getPermalink,
+      },
+    });
+
+    withSlackRetries.mockImplementation(
+      async (task: () => Promise<unknown>) => await task(),
+    );
+
+    await expect(
+      postSlackMessage({
+        channelId: "C123",
+        threadTs: "1700000000.100",
+        text: "Hello from Slack",
+        includePermalink: true,
+      }),
+    ).resolves.toEqual({
+      ts: "1700000000.200",
+      permalink: "https://example.invalid/message",
+    });
+
+    expect(postMessage).toHaveBeenCalledWith({
+      channel: "C123",
+      thread_ts: "1700000000.100",
+      text: "Hello from Slack",
+      mrkdwn: true,
+    });
+    expect(getPermalink).toHaveBeenCalledWith({
+      channel: "C123",
+      message_ts: "1700000000.200",
+    });
+  });
+
+  it("rejects message text above Slack's truncation limit before posting", async () => {
+    await expect(
+      postSlackMessage({
+        channelId: "C123",
+        text: "a".repeat(slackOutboundPolicy.maxMessageTextChars + 1),
+      }),
+    ).rejects.toThrow("40000 character truncation limit");
+    expect(withSlackRetries).not.toHaveBeenCalled();
   });
 });

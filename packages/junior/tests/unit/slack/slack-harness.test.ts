@@ -12,8 +12,8 @@ describe("slack harness fixture", () => {
   it("falls back to parsing channelId from slack thread id", () => {
     const thread = createTestThread({ id: "slack:C_TEST:1700000000.000" });
 
-    expect(thread.channelId).toBe("C_TEST");
-    expect(thread.channel.id).toBe("C_TEST");
+    expect(thread.channelId).toBe("slack:C_TEST");
+    expect(thread.channel.id).toBe("slack:C_TEST");
   });
 
   it("keeps posts and postKinds aligned when deleting a duplicate post", async () => {

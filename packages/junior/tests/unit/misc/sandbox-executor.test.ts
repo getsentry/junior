@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { makeAssistantStatus } from "@/chat/runtime/assistant-status";
+import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 

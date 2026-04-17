@@ -14,7 +14,10 @@ import {
   getChannelConfigurationServiceById,
 } from "@/chat/runtime/thread-state";
 import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
-import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
+import {
+  getTurnUserMessage,
+  getTurnUserReplyAttachmentContext,
+} from "@/chat/runtime/turn-user-message";
 import {
   buildConversationContext,
   generateConversationId,
@@ -179,6 +182,7 @@ async function resumeTimedOutTurn(
       channelConfiguration,
       sandbox,
       threadParticipants: buildThreadParticipants(conversation.messages),
+      ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {
       try {
