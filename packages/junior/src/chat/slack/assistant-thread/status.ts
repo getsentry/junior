@@ -20,9 +20,7 @@ export type { AssistantStatusSession } from "@/chat/slack/assistant-thread/statu
  * Create an assistant-status session for a single turn.
  *
  * `start()` and `update()` are intentionally fire-and-forget. Status is a
- * best-effort UX surface, not a turn-execution dependency. Callers may await
- * `flush()` immediately before the first visible reply to preserve Slack's
- * final status ordering without blocking model/tool execution.
+ * best-effort UX surface, not a turn-execution dependency.
  */
 export function createSlackAssistantStatusSession(args: {
   channelId?: string;

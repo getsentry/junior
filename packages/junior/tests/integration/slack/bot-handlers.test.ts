@@ -616,7 +616,7 @@ describe("bot handlers (integration)", () => {
     await turnPromise;
   });
 
-  it("waits for the initial assistant status write before posting the final reply", async () => {
+  it("posts the final reply even while the initial assistant status write is pending", async () => {
     const fakeAdapter = new FakeSlackAdapter();
     let releaseFirstStatus: (() => void) | undefined;
     let statusCallCount = 0;
@@ -680,20 +680,15 @@ describe("bot handlers (integration)", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(replyStarted).toBe(true);
-    expect(thread.posts).toEqual([]);
+    expect(thread.posts).toEqual([
+      expect.objectContaining({
+        markdown: "Reply lands after the pending status is drained.",
+      }),
+    ]);
     expect(settled).toBe(false);
 
     releaseFirstStatus!();
     await turnPromise;
-
-    expect(thread.posts.length).toBeGreaterThan(0);
-    expect(fakeAdapter.statusCalls[0]?.text).not.toBe("");
-    expect(fakeAdapter.statusCalls.at(-1)).toEqual({
-      channelId: "D_STATUSORDER",
-      threadTs: "1700000001.000",
-      text: "",
-      suggestions: undefined,
-    });
   });
 
   it("thread title: generates and sets title after first assistant reply", async () => {

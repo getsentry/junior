@@ -139,6 +139,11 @@ describe("turn resume handler", () => {
               userId: "U123",
               userName: "alice",
             },
+            meta: {
+              attachmentCount: 2,
+              imageAttachmentCount: 1,
+              imagesHydrated: false,
+            },
           },
         ],
         processing: {
@@ -172,6 +177,8 @@ describe("turn resume handler", () => {
       expect(args.lockKey).toBe(conversationId);
       expect(args.replyContext?.requester?.userId).toBe("U123");
       expect(args.replyContext?.toolChannelId).toBe("C999");
+      expect(args.replyContext?.inboundAttachmentCount).toBe(2);
+      expect(args.replyContext?.omittedImageAttachmentCount).toBe(1);
       expect(
         await args.replyContext?.channelConfiguration?.resolve("demo.org"),
       ).toBe("acme");

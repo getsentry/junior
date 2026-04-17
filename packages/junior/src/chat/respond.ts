@@ -753,7 +753,10 @@ export async function generateAssistantReply(
         async () => {
           let promptResult: unknown;
           const promptPromise = resumedFromCheckpoint
-            ? agent.continue()
+            ? // Checkpoint resumes continue from the persisted Pi message
+              // state. Any reconstructed replyContext only matters when the
+              // turn parked before the initial user prompt was recorded.
+              agent.continue()
             : agent.prompt({
                 role: "user",
                 content: userContentParts,

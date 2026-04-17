@@ -12,7 +12,6 @@ export type TimerHandle = ReturnType<typeof setTimeout>;
 
 export interface AssistantStatusSession {
   start: () => void;
-  flush: () => Promise<void>;
   stop: () => Promise<void>;
   update: (status: AssistantStatusSpec) => void;
 }
@@ -144,11 +143,6 @@ export function createAssistantStatusScheduler(args: {
       currentStatus = makeAssistantStatus("thinking");
       currentKey = "";
       void postRenderedStatus(currentStatus);
-    },
-    async flush() {
-      // Drain writes that already started without forcing debounced future
-      // updates to publish early.
-      await inflightStatusUpdate.catch(() => undefined);
     },
     async stop() {
       active = false;

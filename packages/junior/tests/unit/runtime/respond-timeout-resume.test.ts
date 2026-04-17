@@ -228,4 +228,42 @@ describe("generateAssistantReply timeout resume", () => {
       }),
     ]);
   });
+
+  it("persists omitted-image context in the checkpointed Pi user message", async () => {
+    const replyPromise = generateAssistantReply("what is in this image?", {
+      assistant: { userName: "junior" },
+      requester: { userId: "U123" },
+      omittedImageAttachmentCount: 1,
+      correlation: {
+        conversationId: "conversation-2",
+        turnId: "turn-2",
+        channelId: "C123",
+        threadTs: "1712345.0002",
+      },
+    }).catch((caught) => caught);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await replyPromise;
+
+    const checkpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-2",
+      "turn-2",
+    );
+    const userMessage = checkpoint?.piMessages[0] as
+      | {
+          role?: string;
+          content?: Array<{ type?: string; text?: string }>;
+        }
+      | undefined;
+
+    expect(userMessage?.role).toBe("user");
+    expect(userMessage?.content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "text",
+          text: expect.stringContaining("<omitted-image-attachments>"),
+        }),
+      ]),
+    );
+  });
 });

@@ -21,6 +21,7 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import {
+  countPotentialImageAttachments,
   hasPotentialImageAttachment,
   hydrateConversationVisionContext,
   isVisionEnabled,
@@ -91,6 +92,9 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
     const messageHasPotentialImageAttachment = hasPotentialImageAttachment(
       args.message.attachments,
     );
+    const imageAttachmentCount = messageHasPotentialImageAttachment
+      ? countPotentialImageAttachments(args.message.attachments)
+      : 0;
 
     const normalizedUserText =
       normalizeConversationText(args.userText) || "[non-text message]";
@@ -110,7 +114,10 @@ export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
             : undefined,
       },
       meta: {
+        attachmentCount: args.message.attachments.length,
         explicitMention: args.explicitMention,
+        imageAttachmentCount:
+          imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
         slackTs,
         imagesHydrated: !messageHasPotentialImageAttachment,
       },

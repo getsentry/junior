@@ -254,9 +254,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             return;
           }
           beforeFirstResponsePostCalled = true;
-          // Slack clears assistant status when the reply lands, so drain any
-          // already-started status write before the first visible post.
-          await status.flush();
           await options.beforeFirstResponsePost?.();
         };
         const postThreadReply = async (
