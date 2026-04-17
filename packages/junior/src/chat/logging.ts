@@ -1831,59 +1831,87 @@ function collectUsageRoots(source: unknown): Record<string, unknown>[] {
   return roots;
 }
 
-/** Extract a structured token-usage summary from provider metadata roots. */
-export function extractGenAiUsageSummary(
-  ...sources: unknown[]
-): AgentTurnUsage {
-  const roots = sources.flatMap((source) => collectUsageRoots(source));
+const USAGE_FIELD_ALIASES: Record<keyof AgentTurnUsage, string[]> = {
+  inputTokens: [
+    // pi-ai subtracts cached tokens from `input`; we count them separately below.
+    "input",
+    "input_tokens",
+    "inputTokens",
+    "prompt_tokens",
+    "promptTokens",
+    "inputTokenCount",
+    "promptTokenCount",
+  ],
+  outputTokens: [
+    "output",
+    "output_tokens",
+    "outputTokens",
+    "completion_tokens",
+    "completionTokens",
+    "outputTokenCount",
+    "completionTokenCount",
+  ],
+  cachedInputTokens: [
+    "cacheRead",
+    "cached_tokens",
+    "cachedTokens",
+    "cached_input_tokens",
+    "cachedInputTokens",
+    "cache_read_input_tokens",
+    "cacheReadInputTokens",
+  ],
+  cacheCreationTokens: [
+    "cacheWrite",
+    "cache_creation_input_tokens",
+    "cacheCreationInputTokens",
+    "cache_write_tokens",
+    "cacheWriteTokens",
+  ],
+  reasoningTokens: ["reasoning_tokens", "reasoningTokens"],
+  totalTokens: ["total_tokens", "totalTokens", "totalTokenCount"],
+};
+
+function extractUsageFromSource(source: unknown): AgentTurnUsage {
+  const roots = collectUsageRoots(source);
   if (roots.length === 0) {
     return {};
   }
 
-  const inputTokens =
-    roots
-      .map((root) =>
-        readTokenCount(root, [
-          "input_tokens",
-          "inputTokens",
-          "prompt_tokens",
-          "promptTokens",
-          "inputTokenCount",
-          "promptTokenCount",
-        ]),
-      )
-      .find((value) => value !== undefined) ?? undefined;
+  const summary: AgentTurnUsage = {};
+  for (const [field, aliases] of Object.entries(USAGE_FIELD_ALIASES) as [
+    keyof AgentTurnUsage,
+    string[],
+  ][]) {
+    const value =
+      roots
+        .map((root) => readTokenCount(root, aliases))
+        .find((candidate) => candidate !== undefined) ?? undefined;
+    if (value !== undefined) {
+      summary[field] = value;
+    }
+  }
+  return summary;
+}
 
-  const outputTokens =
-    roots
-      .map((root) =>
-        readTokenCount(root, [
-          "output_tokens",
-          "outputTokens",
-          "completion_tokens",
-          "completionTokens",
-          "outputTokenCount",
-          "completionTokenCount",
-        ]),
-      )
-      .find((value) => value !== undefined) ?? undefined;
-
-  const totalTokens =
-    roots
-      .map((root) =>
-        readTokenCount(root, [
-          "total_tokens",
-          "totalTokens",
-          "totalTokenCount",
-        ]),
-      )
-      .find((value) => value !== undefined) ?? undefined;
-
-  return {
-    ...(inputTokens !== undefined ? { inputTokens } : {}),
-    ...(outputTokens !== undefined ? { outputTokens } : {}),
-    ...(totalTokens !== undefined ? { totalTokens } : {}),
-  };
+/**
+ * Extract a structured token-usage summary from provider metadata roots.
+ *
+ * Values are summed across sources so callers can pass every assistant message
+ * produced during a turn and get the aggregate usage for that turn.
+ */
+export function extractGenAiUsageSummary(
+  ...sources: unknown[]
+): AgentTurnUsage {
+  const summary: AgentTurnUsage = {};
+  for (const source of sources) {
+    const single = extractUsageFromSource(source);
+    for (const field of Object.keys(single) as (keyof AgentTurnUsage)[]) {
+      const value = single[field];
+      if (value === undefined) continue;
+      summary[field] = (summary[field] ?? 0) + value;
+    }
+  }
+  return summary;
 }
 
 /** Extract input/output token counts from AI provider usage metadata for tracing. */
