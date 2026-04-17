@@ -199,12 +199,10 @@ plugin's declared `env-vars` block at manifest-load time. Expansion runs
 once per manifest, before the URL is parsed or validated, so the
 post-expansion value must still be a valid HTTPS URL.
 
-Supported syntax:
-
-| Form      | Behavior                                                                                                                                                                                                                          |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `${NAME}` | Replaced with `process.env[NAME]`, falling back to the `default` declared in `env-vars`. Plugin load fails if `NAME` is not listed in `env-vars`, or if it is listed without a default and `process.env[NAME]` is unset or empty. |
-| `$$`      | Escapes a literal `$`.                                                                                                                                                                                                            |
+The only supported placeholder form is `${NAME}`, which is replaced with
+`process.env[NAME]`, falling back to the `default` declared in `env-vars`.
+Plugin load fails if `NAME` is not listed in `env-vars`, or if it is listed
+without a default and `process.env[NAME]` is unset or empty.
 
 `NAME` must match `[A-Z_][A-Z0-9_]*`. Placeholders that reference env vars
 not listed in `env-vars` are rejected at load time — this makes the set of

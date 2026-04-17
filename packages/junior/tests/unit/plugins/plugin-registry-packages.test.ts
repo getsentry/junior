@@ -1145,41 +1145,6 @@ describe("plugin registry package discovery", () => {
     );
   });
 
-  it("escapes $$ to a literal $ in mcp.url", async () => {
-    const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-plugin-package-"),
-    );
-    await writePackagedPluginWithMcp(tempRoot, {
-      packageName: "junior-plugin-mcp-template",
-      url: "https://mcp.example.com/api?token=literal$$sign",
-    });
-    await fs.writeFile(
-      path.join(tempRoot, "package.json"),
-      JSON.stringify({
-        name: "temp-junior-app",
-        private: true,
-        dependencies: {
-          "@acme/junior-plugin-mcp-template": "1.0.0",
-        },
-      }),
-      "utf8",
-    );
-    process.chdir(tempRoot);
-
-    vi.resetModules();
-    vi.doMock("@/chat/discovery", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("@/chat/discovery")>()),
-      pluginRoots: () => [],
-    }));
-
-    await setPackages(["@acme/junior-plugin-mcp-template"]);
-    const registry = await import("@/chat/plugins/registry");
-    const provider = registry.getPluginProviders()[0];
-    expect(provider?.manifest.mcp?.url).toBe(
-      "https://mcp.example.com/api?token=literal$sign",
-    );
-  });
-
   it("rejects env-vars keys that do not match [A-Z_][A-Z0-9_]*", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-package-"),

@@ -176,10 +176,7 @@ mcp:
   url: https://mcp.${DATADOG_SITE}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
 ```
 
-Supported syntax:
-
-- `${NAME}` — replaced with `process.env[NAME]`, falling back to the declared `default`. Plugin discovery fails loudly at load time if `NAME` is not listed in `env-vars`, or if it is listed without a default and the env var is unset.
-- `$$` — escapes a literal `$`.
+The only supported placeholder form is `${NAME}` — replaced with `process.env[NAME]`, falling back to the declared `default`. Plugin discovery fails loudly at load time if `NAME` is not listed in `env-vars`, or if it is listed without a default and the env var is unset.
 
 `NAME` must match `[A-Z_][A-Z0-9_]*`. Expansion only runs on `mcp.url` — not on other manifest fields — to keep the contract narrow. Every env var a manifest references must be declared in `env-vars`; placeholders that escape the declared allowlist are rejected at load time, so a manifest cannot opportunistically read ambient secrets (e.g. `SLACK_BOT_TOKEN`) from the host process.
 

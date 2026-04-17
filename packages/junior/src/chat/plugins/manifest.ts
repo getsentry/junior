@@ -560,7 +560,7 @@ function normalizeRuntimePostinstall(
   return parsed.length > 0 ? parsed : undefined;
 }
 
-const ENV_PLACEHOLDER_RE = /\$\$|\$\{([A-Z_][A-Z0-9_]*)\}/g;
+const ENV_PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
 
 const envVarDeclarationSchema = z.preprocess(
   (value) => (value === null || value === undefined ? {} : value),
@@ -599,30 +599,20 @@ function normalizeEnvVars(
 }
 
 /**
- * Expand ${NAME} placeholders in a manifest string field using the plugin's
- * declared env-vars block.
- *
- * Supported syntax:
- *   - ${NAME} → process.env[NAME], falling back to the declared default.
- *               Fails if NAME is not declared in env-vars, or if NAME is
- *               declared without a default and process.env[NAME] is unset.
- *   - $$      → literal `$`.
- *
- * NAME must match `[A-Z_][A-Z0-9_]*`. Placeholders referencing env vars that
- * the plugin has not declared in its `env-vars` block are rejected at load
- * time — this keeps the manifest's env-var surface explicit and auditable,
- * and prevents a plugin manifest from opportunistically exfiltrating
- * ambient process env vars via the mcp.url.
+ * Expand `${NAME}` placeholders in a manifest string field using the plugin's
+ * declared env-vars block. `NAME` must match `[A-Z_][A-Z0-9_]*` and must be
+ * declared in the plugin's `env-vars` block — otherwise load fails. This
+ * keeps the manifest's env-var surface explicit and auditable, and prevents
+ * a plugin manifest from opportunistically exfiltrating ambient process env
+ * vars via `mcp.url`. If `NAME` is declared without a default and
+ * `process.env[NAME]` is unset, load also fails.
  */
 function expandEnvPlaceholders(
   template: string,
   envVars: Record<string, PluginEnvVarDeclaration>,
   context: string,
 ): string {
-  return template.replace(ENV_PLACEHOLDER_RE, (match, name) => {
-    if (match === "$$") {
-      return "$";
-    }
+  return template.replace(ENV_PLACEHOLDER_RE, (_match, name) => {
     const varName = name as string;
     if (!Object.prototype.hasOwnProperty.call(envVars, varName)) {
       throw new Error(
