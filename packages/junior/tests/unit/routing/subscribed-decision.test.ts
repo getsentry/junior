@@ -132,7 +132,7 @@ describe("decideSubscribedThreadReply", () => {
     expect(completeObject).toHaveBeenCalled();
   });
 
-  it("sends follow-up questions to the classifier instead of short-circuiting", async () => {
+  it("short-circuits immediate directed follow-ups after the assistant replied", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         should_reply: true,
@@ -155,10 +155,39 @@ describe("decideSubscribedThreadReply", () => {
 
     expect(decision).toEqual({
       shouldReply: true,
-      reason: SubscribedReplyReason.Classifier,
-      reasonDetail: "follow-up to assistant response",
+      reason: SubscribedReplyReason.DirectedFollowUp,
+      reasonDetail: "immediate directed follow-up cue",
     });
-    expect(completeObject).toHaveBeenCalled();
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
+  it("short-circuits immediate terse clarifications after the assistant replied", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        should_reply: false,
+        confidence: 0.95,
+        reason: "this should never be used",
+      },
+    }));
+    const decision = await decideSubscribedThreadReply({
+      botUserName: "junior",
+      modelId: "router-model",
+      input: makeInput({
+        text: "Which one?",
+        rawText: "Which one?",
+        conversationContext:
+          "<thread-transcript>\n[assistant] junior: The deploy changed billing, auth, and the API gateway.\n</thread-transcript>",
+      }),
+      completeObject,
+      logClassifierFailure: vi.fn(),
+    });
+
+    expect(decision).toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.DirectedFollowUp,
+      reasonDetail: "immediate terse clarification",
+    });
+    expect(completeObject).not.toHaveBeenCalled();
   });
 
   it("does not suppress acknowledgment text when it is an explicit mention", async () => {
@@ -288,8 +317,8 @@ describe("decideSubscribedThreadReply", () => {
 
     expect(decision).toEqual({
       shouldReply: true,
-      reason: SubscribedReplyReason.Classifier,
-      reasonDetail: "immediate clarification for assistant",
+      reason: SubscribedReplyReason.DirectedFollowUp,
+      reasonDetail: "immediate terse clarification",
     });
   });
 

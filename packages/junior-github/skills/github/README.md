@@ -61,9 +61,9 @@ Repeat for `preview` and `development` as needed. After env changes, redeploy so
 
 ## 3) Runtime behavior
 
-- Credentials are issued lazily when `jr-rpc issue-credential <capability>` is run.
-- Issued credentials are reused for the rest of the current turn.
-- Sandbox does not receive raw tokens via env; host applies scoped Authorization header transforms for GitHub API calls.
+- When the GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
+- Issued credentials are reused only within the current turn.
+- Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API calls.
 
 ## 4) CLI usage
 
@@ -82,17 +82,17 @@ git -C repo fetch --depth=50 origin
 git -C repo fetch --unshallow
 ```
 
-GitHub operations still require scoped credentials:
+GitHub operations still require the GitHub skill, but the runtime injects
+credentials automatically when the skill is active:
 
 ```bash
-jr-rpc issue-credential github.issues.write --target owner/repo
 gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sandbox/tmp/issue.md
 ```
 
 `gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
-Use `github.issues.read` for read-only issue commands, `github.issues.write` for issue edits, comments, and labels, `github.contents.write` for pushes and merge operations, and `github.pull-requests.write` for PR mutations after the branch is already on the remote.
+The runtime uses `github.issues.read` for read-only issue commands, `github.issues.write` for issue edits, comments, and labels, `github.contents.write` for pushes and merge operations, and `github.pull-requests.write` for PR mutations after the branch is already on the remote.
 
-GitHub capability scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential issuance is also skill-scoped: load the active GitHub skill first, then issue only the GitHub capability required for the next command.
+GitHub capability scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is skill-scoped: load the active GitHub skill first, keep repo context explicit, and let the runtime choose the required capability for the command.
 
 Be careful with mixed-surface PR commands:
 
@@ -105,9 +105,7 @@ Be careful with mixed-surface PR commands:
 For PR creation in automation, push explicitly and use `--head`:
 
 ```bash
-jr-rpc issue-credential github.contents.write --target owner/repo
 git -C repo push -u origin BRANCH
-jr-rpc issue-credential github.pull-requests.write --target owner/repo
 gh pr create --repo owner/repo --head BRANCH --base main --title "Example PR" --body-file /vercel/sandbox/tmp/pr.md
 ```
 

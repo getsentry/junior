@@ -1,49 +1,72 @@
 import { describe, expect, it, vi } from "vitest";
+import type { CredentialBroker } from "@/chat/credentials/broker";
+import type { Skill } from "@/chat/skills";
 
-vi.mock("@/chat/capabilities/catalog", () => ({
-  getCapabilityProvider: (capability: string) =>
-    capability === "github.issues.write"
+vi.mock("@/chat/plugins/registry", () => ({
+  getPluginDefinition: (provider: string) =>
+    provider === "github"
       ? {
-          provider: "github",
-          capabilities: ["github.issues.write"],
-          configKeys: ["github.repo"],
-          target: {
-            type: "repo" as const,
-            configKey: "github.repo",
-            commandFlags: ["--repo", "-R"],
+          manifest: {
+            name: "github",
+            description: "GitHub",
+            capabilities: [
+              "github.issues.read",
+              "github.issues.write",
+              "github.contents.read",
+              "github.contents.write",
+              "github.pull-requests.read",
+              "github.pull-requests.write",
+            ],
+            configKeys: ["github.repo"],
+            credentials: {
+              type: "github-app",
+              apiDomains: ["api.github.com"],
+              authTokenEnv: "GITHUB_TOKEN",
+              appIdEnv: "GITHUB_APP_ID",
+              privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+              installationIdEnv: "GITHUB_INSTALLATION_ID",
+            },
+            target: {
+              type: "repo",
+              configKey: "github.repo",
+              commandFlags: ["--repo", "-R"],
+            },
           },
         }
-      : capability === "demo.work.write"
+      : provider === "sentry"
         ? {
-            provider: "demo",
-            capabilities: ["demo.work.write"],
-            configKeys: ["demo.project"],
-            target: {
-              type: "project" as const,
-              configKey: "demo.project",
-              commandFlags: ["--project"],
+            manifest: {
+              name: "sentry",
+              description: "Sentry",
+              capabilities: ["sentry.api"],
+              configKeys: ["sentry.org", "sentry.project"],
+              credentials: {
+                type: "oauth-bearer",
+                apiDomains: ["sentry.io"],
+                authTokenEnv: "SENTRY_AUTH_TOKEN",
+              },
             },
           }
         : undefined,
 }));
-import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
-import type { CredentialBroker } from "@/chat/credentials/broker";
-import type { Skill } from "@/chat/skills";
 
-const fakeSkill: Skill = {
+import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
+
+const githubSkill: Skill = {
   name: "github",
   description: "Issue helper",
   skillPath: "/tmp/github",
   body: "instructions",
-  requiresCapabilities: ["github.issues.write"],
+  pluginProvider: "github",
+  usesConfig: ["github.repo"],
 };
 
-const otherSkill: Skill = {
+const sentrySkill: Skill = {
   name: "sentry",
   description: "Sentry helper",
   skillPath: "/tmp/sentry",
   body: "instructions",
-  requiresCapabilities: ["sentry.api"],
+  pluginProvider: "sentry",
 };
 
 describe("skill capability runtime", () => {
@@ -54,12 +77,11 @@ describe("skill capability runtime", () => {
         issueCalls += 1;
         return {
           id: "lease-1",
-          provider: "github",
-          capability: "github.issues.write",
-          env: { GITHUB_TOKEN: "token-1" },
+          provider: "sentry",
+          env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
           headerTransforms: [
             {
-              domain: "api.github.com",
+              domain: "sentry.io",
               headers: {
                 Authorization: "Bearer token-1",
               },
@@ -72,35 +94,37 @@ describe("skill capability runtime", () => {
 
     const runtime = new SkillCapabilityRuntime({
       broker,
-      invocationArgs: "--repo getsentry/junior",
       requesterId: "U123",
     });
+
     await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "github.issues.write",
+      runtime.enableCredentialsForTurn({
+        activeSkill: sentrySkill,
         reason: "test:first",
       }),
     ).resolves.toMatchObject({ reused: false });
     expect(runtime.getTurnHeaderTransforms()).toEqual([
       {
-        domain: "api.github.com",
+        domain: "sentry.io",
         headers: {
           Authorization: "Bearer token-1",
         },
       },
     ]);
+    expect(runtime.getTurnEnv()).toEqual({
+      SENTRY_AUTH_TOKEN: "host_managed_credential",
+    });
+
     await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "github.issues.write",
+      runtime.enableCredentialsForTurn({
+        activeSkill: sentrySkill,
         reason: "test:second",
       }),
     ).resolves.toMatchObject({ reused: true });
     expect(issueCalls).toBe(1);
   });
 
-  it("does not reuse cached credentials across different repository scopes", async () => {
+  it("reuses provider credentials within the same turn for GitHub", async () => {
     let issueCalls = 0;
     const broker: CredentialBroker = {
       issue: async () => {
@@ -108,8 +132,7 @@ describe("skill capability runtime", () => {
         return {
           id: `lease-${issueCalls}`,
           provider: "github",
-          capability: "github.issues.write",
-          env: { GITHUB_TOKEN: `token-${issueCalls}` },
+          env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
           headerTransforms: [
             {
               domain: "api.github.com",
@@ -125,140 +148,33 @@ describe("skill capability runtime", () => {
 
     const runtime = new SkillCapabilityRuntime({
       broker,
-      invocationArgs: "--repo getsentry/junior",
       requesterId: "U123",
     });
+
     await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "github.issues.write",
-        targetRef: "getsentry/junior",
-        reason: "test:repo-one",
+      runtime.enableCredentialsForTurn({
+        activeSkill: githubSkill,
+        reason: "test:first",
       }),
     ).resolves.toMatchObject({ reused: false });
     await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "github.issues.write",
-        targetRef: "getsentry/sentry",
-        reason: "test:repo-two",
+      runtime.enableCredentialsForTurn({
+        activeSkill: githubSkill,
+        reason: "test:second",
       }),
-    ).resolves.toMatchObject({ reused: false });
-    expect(issueCalls).toBe(2);
+    ).resolves.toMatchObject({ reused: true });
+    expect(issueCalls).toBe(1);
   });
 
-  it("allows explicit lease issuance without active skill", async () => {
-    const broker: CredentialBroker = {
-      issue: async () => ({
-        id: "lease-1",
-        provider: "github",
-        capability: "github.issues.write",
-        env: { GITHUB_TOKEN: "token-1" },
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      }),
-    };
-
-    const runtime = new SkillCapabilityRuntime({
-      broker,
-      invocationArgs: "--repo getsentry/junior",
-      requesterId: "U123",
-    });
-
-    await expect(
-      runtime.issueCapabilityLease({
-        activeSkill: null,
-        capability: "github.issues.write",
-        targetRef: "getsentry/junior",
-        reason: "test:explicit",
-      }),
-    ).resolves.toMatchObject({
-      provider: "github",
-      env: {
-        GITHUB_TOKEN: "token-1",
-      },
-    });
-  });
-
-  it("rejects unsupported capabilities for issue-credential", async () => {
-    const broker: CredentialBroker = {
-      issue: async () => {
-        throw new Error("should not be called");
-      },
-    };
-
-    const runtime = new SkillCapabilityRuntime({ broker, requesterId: "U123" });
-    await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "app.test.read",
-        reason: "test:unsupported-provider",
-      }),
-    ).rejects.toThrow("Unsupported capability");
-  });
-
-  it("requires an active skill before issuing credentials for the turn", async () => {
-    const broker: CredentialBroker = {
-      issue: async () => {
-        throw new Error("should not be called");
-      },
-    };
-
-    const runtime = new SkillCapabilityRuntime({
-      broker,
-      invocationArgs: "--repo getsentry/junior",
-      requesterId: "U123",
-    });
-
-    await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: null,
-        capability: "github.issues.write",
-        reason: "test:missing-active-skill",
-      }),
-    ).rejects.toThrow(
-      "requires an active skill that declares github.issues.write",
-    );
-  });
-
-  it("blocks issue-credential when the active skill does not declare the capability", async () => {
-    const broker: CredentialBroker = {
-      issue: async () => {
-        throw new Error("should not be called");
-      },
-    };
-
-    const runtime = new SkillCapabilityRuntime({
-      broker,
-      invocationArgs: "--repo getsentry/junior",
-      requesterId: "U123",
-    });
-
-    await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: otherSkill,
-        capability: "github.issues.write",
-        reason: "test:wrong-active-skill",
-      }),
-    ).rejects.toThrow(
-      "requires an active skill that declares github.issues.write",
-    );
-  });
-
-  it("forwards explicit targetRef through enableCapabilityForTurn", async () => {
-    let seenTarget:
-      | {
-          type: string;
-          value: string;
-        }
-      | undefined;
+  it("enables GitHub credentials without extra target plumbing", async () => {
+    let seenReason: string | undefined;
     const broker: CredentialBroker = {
       issue: async (input) => {
-        seenTarget = input.target;
+        seenReason = input.reason;
         return {
           id: "lease-1",
           provider: "github",
-          capability: "github.issues.write",
-          env: { GITHUB_TOKEN: "token-1" },
+          env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
           headerTransforms: [
             {
               domain: "api.github.com",
@@ -274,190 +190,16 @@ describe("skill capability runtime", () => {
 
     const runtime = new SkillCapabilityRuntime({
       broker,
-      invocationArgs: "--repo getsentry/ignored",
       requesterId: "U123",
-    });
-    await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "github.issues.write",
-        targetRef: "getsentry/junior",
-        reason: "test:repo-ref",
-      }),
-    ).resolves.toMatchObject({ reused: false });
-
-    expect(seenTarget).toEqual({ type: "repo", value: "getsentry/junior" });
-  });
-
-  it("requires a provider target when the capability declares one", async () => {
-    const broker: CredentialBroker = {
-      issue: async () => {
-        throw new Error("should not be called");
-      },
-    };
-
-    const runtime = new SkillCapabilityRuntime({
-      broker,
-      invocationArgs: "",
-      requesterId: "U123",
-    });
-    await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: fakeSkill,
-        capability: "github.issues.write",
-        reason: "test:missing-repo",
-      }),
-    ).rejects.toThrow("requires repo target context");
-  });
-
-  it("falls back to configured provider target when invocation args do not include command flags", async () => {
-    let seenTarget:
-      | {
-          type: string;
-          value: string;
-        }
-      | undefined;
-    const broker: CredentialBroker = {
-      issue: async (input) => {
-        seenTarget = input.target;
-        return {
-          id: "lease-1",
-          provider: "github",
-          capability: "github.issues.write",
-          env: { GITHUB_TOKEN: "token-1" },
-          headerTransforms: [
-            {
-              domain: "api.github.com",
-              headers: {
-                Authorization: "Bearer token-1",
-              },
-            },
-          ],
-          expiresAt: new Date(Date.now() + 60_000).toISOString(),
-        };
-      },
-    };
-
-    const runtime = new SkillCapabilityRuntime({
-      broker,
-      invocationArgs: "",
-      requesterId: "U123",
-      resolveConfiguration: async (key) =>
-        key === "github.repo" ? "getsentry/junior" : undefined,
     });
 
     await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: {
-          ...fakeSkill,
-          usesConfig: ["github.repo"],
-        },
-        capability: "github.issues.write",
-        reason: "test:configured-repo",
+      runtime.enableCredentialsForCommand({
+        activeSkill: githubSkill,
+        reason: "test:no-target",
       }),
-    ).resolves.toMatchObject({ reused: false });
+    ).resolves.toBeUndefined();
 
-    expect(seenTarget).toEqual({ type: "repo", value: "getsentry/junior" });
-  });
-
-  it("still uses explicit targetRef when config value exists", async () => {
-    let seenTarget:
-      | {
-          type: string;
-          value: string;
-        }
-      | undefined;
-    const broker: CredentialBroker = {
-      issue: async (input) => {
-        seenTarget = input.target;
-        return {
-          id: "lease-1",
-          provider: "github",
-          capability: "github.issues.write",
-          env: { GITHUB_TOKEN: "token-1" },
-          headerTransforms: [
-            {
-              domain: "api.github.com",
-              headers: {
-                Authorization: "Bearer token-1",
-              },
-            },
-          ],
-          expiresAt: new Date(Date.now() + 60_000).toISOString(),
-        };
-      },
-    };
-    const runtime = new SkillCapabilityRuntime({
-      broker,
-      invocationArgs: "",
-      requesterId: "U123",
-      resolveConfiguration: async () => "getsentry/junior",
-    });
-
-    await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: {
-          ...fakeSkill,
-          usesConfig: ["github.repo"],
-        },
-        capability: "github.issues.write",
-        targetRef: "getsentry/sentry",
-        reason: "test:explicit-overrides-config",
-      }),
-    ).resolves.toMatchObject({ reused: false });
-
-    expect(seenTarget).toEqual({ type: "repo", value: "getsentry/sentry" });
-  });
-
-  it("supports non-repo provider targets without core parsing rules", async () => {
-    let seenTarget:
-      | {
-          type: string;
-          value: string;
-        }
-      | undefined;
-    const broker: CredentialBroker = {
-      issue: async (input) => {
-        seenTarget = input.target;
-        return {
-          id: "lease-1",
-          provider: "demo",
-          capability: "demo.work.write",
-          env: { DEMO_TOKEN: "token-1" },
-          headerTransforms: [
-            {
-              domain: "api.demo.test",
-              headers: {
-                Authorization: "Bearer token-1",
-              },
-            },
-          ],
-          expiresAt: new Date(Date.now() + 60_000).toISOString(),
-        };
-      },
-    };
-
-    const runtime = new SkillCapabilityRuntime({
-      broker,
-      invocationArgs: "--project issue-platform",
-      requesterId: "U123",
-      resolveConfiguration: async (key) =>
-        key === "demo.project" ? "fallback-project" : undefined,
-    });
-
-    await expect(
-      runtime.enableCapabilityForTurn({
-        activeSkill: {
-          ...fakeSkill,
-          name: "demo",
-          requiresCapabilities: ["demo.work.write"],
-          usesConfig: ["demo.project"],
-        },
-        capability: "demo.work.write",
-        reason: "test:generic-target",
-      }),
-    ).resolves.toMatchObject({ reused: false });
-
-    expect(seenTarget).toEqual({ type: "project", value: "issue-platform" });
+    expect(seenReason).toBe("test:no-target");
   });
 });

@@ -11,18 +11,28 @@ related:
 
 ## Credential model
 
-- Credentials are short-lived and scoped by capability.
-- Issuance requires requester context.
-- Sandbox receives scoped header injection, not raw long-lived tokens.
+Junior does not preload provider access for an entire chat session. When an
+authenticated command runs under a loaded skill, the runtime infers the
+narrowest declared plugin capability for that command, fetches a lease for the
+requesting turn, and injects auth at the host boundary.
+
+- Credentials are short-lived and scoped by capability and target context.
+- User-owned provider access is only activated for the author of the current message.
+- Loaded skills, through their plugin declarations, determine which credentials can be injected.
+- Sandbox receives scoped header injection and placeholder env vars, not raw long-lived tokens.
 
 ## OAuth model
 
+OAuth-based plugins keep the visible user flow simple while preserving per-user
+authorization boundaries.
+
 - Auth links are delivered privately to the requesting user.
-- Token exchange occurs server-side.
-- OAuth completion can resume the original request path.
+- Token exchange occurs server-side and stores the grant per user and provider.
+- OAuth completion resumes the blocked request path instead of asking the user to rerun the whole workflow.
 
 ## Operational invariants
 
+- Normal plugin workflows rely on automatic credential injection, not manual credential commands.
 - Never log raw token values.
 - Never place secrets in skill files.
 - Credential failures must surface clear operator-visible errors.

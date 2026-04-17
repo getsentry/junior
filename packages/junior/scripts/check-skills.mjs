@@ -4,7 +4,6 @@ import { parse as parseYaml } from "yaml";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const SKILL_NAME_RE = /^[a-z0-9-]+$/;
-const CAPABILITY_TOKEN_RE = /^[a-z0-9]+(?:\.[a-z0-9-]+)+$/;
 const MAX_NAME_LENGTH = 64;
 const SKILL_DESCRIPTION_MAX = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
@@ -56,8 +55,12 @@ async function readInstalledDependencyNames(cwd) {
   }
 
   const dependencies = Object.keys(rootPackageJson.dependencies ?? {});
-  const optionalDependencies = Object.keys(rootPackageJson.optionalDependencies ?? {});
-  return unique([...dependencies, ...optionalDependencies]).sort((left, right) => left.localeCompare(right));
+  const optionalDependencies = Object.keys(
+    rootPackageJson.optionalDependencies ?? {},
+  );
+  return unique([...dependencies, ...optionalDependencies]).sort(
+    (left, right) => left.localeCompare(right),
+  );
 }
 
 function packageInstallDir(cwd, packageName) {
@@ -71,8 +74,12 @@ async function resolvePackagedPluginSkillRoots() {
 
   for (const dependency of dependencies) {
     const packageDir = packageInstallDir(cwd, dependency);
-    const hasRootPluginManifest = await pathIsFile(path.join(packageDir, "plugin.yaml"));
-    const hasPluginsDir = await pathIsDirectory(path.join(packageDir, "plugins"));
+    const hasRootPluginManifest = await pathIsFile(
+      path.join(packageDir, "plugin.yaml"),
+    );
+    const hasPluginsDir = await pathIsDirectory(
+      path.join(packageDir, "plugins"),
+    );
     const hasSkillsDir = await pathIsDirectory(path.join(packageDir, "skills"));
     if (!hasRootPluginManifest && !hasPluginsDir && !hasSkillsDir) {
       continue;
@@ -88,7 +95,9 @@ async function resolvePackagedPluginSkillRoots() {
 
     let pluginEntries;
     try {
-      pluginEntries = await fs.readdir(path.join(packageDir, "plugins"), { withFileTypes: true });
+      pluginEntries = await fs.readdir(path.join(packageDir, "plugins"), {
+        withFileTypes: true,
+      });
     } catch {
       continue;
     }
@@ -160,16 +169,19 @@ function parseFrontmatter(raw) {
   } catch (error) {
     return {
       error: `invalid YAML frontmatter: ${error instanceof Error ? error.message : String(error)}`,
-      data: null
+      data: null,
     };
   }
 }
 
 function validateSkillName(name) {
   if (!name) return "name must not be empty";
-  if (name.length > MAX_NAME_LENGTH) return `name must be <= ${MAX_NAME_LENGTH} characters`;
-  if (!SKILL_NAME_RE.test(name)) return "name must contain only lowercase letters, digits, and hyphens";
-  if (name.startsWith("-") || name.endsWith("-")) return "name must not start or end with a hyphen";
+  if (name.length > MAX_NAME_LENGTH)
+    return `name must be <= ${MAX_NAME_LENGTH} characters`;
+  if (!SKILL_NAME_RE.test(name))
+    return "name must contain only lowercase letters, digits, and hyphens";
+  if (name.startsWith("-") || name.endsWith("-"))
+    return "name must not start or end with a hyphen";
   if (name.includes("--")) return "name must not contain consecutive hyphens";
   return null;
 }
@@ -205,24 +217,32 @@ async function validateSkillDirectory(skillDir, duplicateNames) {
       errors.push(`${skillFile}: ${nameError}`);
     }
     if (name !== expectedName) {
-      errors.push(`${skillFile}: name "${name}" must match directory "${expectedName}"`);
+      errors.push(
+        `${skillFile}: name "${name}" must match directory "${expectedName}"`,
+      );
     }
     const firstSeen = duplicateNames.get(name);
     if (firstSeen) {
-      errors.push(`${skillFile}: duplicate skill name "${name}" (already defined in ${firstSeen})`);
+      errors.push(
+        `${skillFile}: duplicate skill name "${name}" (already defined in ${firstSeen})`,
+      );
     } else {
       duplicateNames.set(name, skillFile);
     }
   }
 
   if (typeof description !== "string") {
-    errors.push(`${skillFile}: frontmatter field "description" must be a string`);
+    errors.push(
+      `${skillFile}: frontmatter field "description" must be a string`,
+    );
   } else {
     if (!description.trim()) {
       errors.push(`${skillFile}: description must not be empty`);
     }
     if (description.length > SKILL_DESCRIPTION_MAX) {
-      errors.push(`${skillFile}: description exceeds ${SKILL_DESCRIPTION_MAX} characters`);
+      errors.push(
+        `${skillFile}: description exceeds ${SKILL_DESCRIPTION_MAX} characters`,
+      );
     }
     if (description.includes("<") || description.includes(">")) {
       errors.push(`${skillFile}: description must not contain "<" or ">"`);
@@ -232,40 +252,43 @@ async function validateSkillDirectory(skillDir, duplicateNames) {
   if ("metadata" in frontmatter.data) {
     const metadata = frontmatter.data.metadata;
     if (typeof metadata !== "object" || !metadata || Array.isArray(metadata)) {
-      errors.push(`${skillFile}: frontmatter field "metadata" must be an object when present`);
+      errors.push(
+        `${skillFile}: frontmatter field "metadata" must be an object when present`,
+      );
     }
   }
   if ("compatibility" in frontmatter.data) {
     const compatibility = frontmatter.data.compatibility;
     if (typeof compatibility !== "string") {
-      errors.push(`${skillFile}: frontmatter field "compatibility" must be a string when present`);
+      errors.push(
+        `${skillFile}: frontmatter field "compatibility" must be a string when present`,
+      );
     } else if (compatibility.length > MAX_COMPATIBILITY_LENGTH) {
-      errors.push(`${skillFile}: compatibility exceeds ${MAX_COMPATIBILITY_LENGTH} characters`);
+      errors.push(
+        `${skillFile}: compatibility exceeds ${MAX_COMPATIBILITY_LENGTH} characters`,
+      );
     }
   }
-  if ("license" in frontmatter.data && typeof frontmatter.data.license !== "string") {
-    errors.push(`${skillFile}: frontmatter field "license" must be a string when present`);
+  if (
+    "license" in frontmatter.data &&
+    typeof frontmatter.data.license !== "string"
+  ) {
+    errors.push(
+      `${skillFile}: frontmatter field "license" must be a string when present`,
+    );
   }
-  if ("allowed-tools" in frontmatter.data && typeof frontmatter.data["allowed-tools"] !== "string") {
-    errors.push(`${skillFile}: frontmatter field "allowed-tools" must be a string when present`);
+  if (
+    "allowed-tools" in frontmatter.data &&
+    typeof frontmatter.data["allowed-tools"] !== "string"
+  ) {
+    errors.push(
+      `${skillFile}: frontmatter field "allowed-tools" must be a string when present`,
+    );
   }
   if ("requires-capabilities" in frontmatter.data) {
-    const capabilities = frontmatter.data["requires-capabilities"];
-    if (typeof capabilities !== "string") {
-      errors.push(`${skillFile}: frontmatter field "requires-capabilities" must be a string when present`);
-    } else {
-      const tokens = capabilities
-        .split(/\s+/)
-        .map((token) => token.trim())
-        .filter(Boolean);
-      for (const token of tokens) {
-        if (!CAPABILITY_TOKEN_RE.test(token)) {
-          errors.push(
-            `${skillFile}: invalid requires-capabilities token "${token}" (expected dotted lowercase token such as github.issues.write)`
-          );
-        }
-      }
-    }
+    errors.push(
+      `${skillFile}: frontmatter field "requires-capabilities" is no longer supported; plugin-backed skills inherit credentials from their plugin`,
+    );
   }
 
   if (!raw.replace(FRONTMATTER_RE, "").trim()) {
@@ -309,11 +332,15 @@ async function main() {
     for (const error of errors) {
       console.error(`error: ${error}`);
     }
-    console.error(`\nSkill validation failed (${errors.length} error${errors.length === 1 ? "" : "s"}).`);
+    console.error(
+      `\nSkill validation failed (${errors.length} error${errors.length === 1 ? "" : "s"}).`,
+    );
     process.exit(1);
   }
 
-  console.log(`Skill validation passed (${checked} skill director${checked === 1 ? "y" : "ies"} checked).`);
+  console.log(
+    `Skill validation passed (${checked} skill director${checked === 1 ? "y" : "ies"} checked).`,
+  );
 }
 
 await main();

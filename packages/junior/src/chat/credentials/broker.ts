@@ -1,5 +1,3 @@
-import type { CapabilityTarget } from "@/chat/capabilities/types";
-
 export class CredentialUnavailableError extends Error {
   readonly provider: string;
 
@@ -18,7 +16,6 @@ export type CredentialHeaderTransform = {
 export interface CredentialLease {
   id: string;
   provider: string;
-  capability: string;
   env: Record<string, string>;
   headerTransforms?: CredentialHeaderTransform[];
   expiresAt: string;
@@ -27,8 +24,6 @@ export interface CredentialLease {
 
 export interface CredentialBroker {
   issue(input: {
-    capability: string;
-    target?: CapabilityTarget;
     reason: string;
     requesterId?: string;
   }): Promise<CredentialLease>;

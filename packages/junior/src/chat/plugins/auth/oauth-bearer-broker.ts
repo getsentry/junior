@@ -70,20 +70,17 @@ export function createOAuthBearerBroker(
   deps: { userTokenStore: UserTokenStore },
 ): CredentialBroker {
   const provider = manifest.name;
-  const supportedCapabilities = new Set(manifest.capabilities);
   const { apiDomains, apiHeaders, authTokenEnv } = credentials;
   const authTokenPlaceholder = resolveAuthTokenPlaceholder(credentials);
 
   function buildLease(
     token: string,
-    capability: string,
     expiresAtMs: number,
     reason: string,
   ): CredentialLease {
     return {
       id: randomUUID(),
       provider,
-      capability,
       env: { [authTokenEnv]: authTokenPlaceholder },
       headerTransforms: apiDomains.map((domain) => ({
         domain,
@@ -96,22 +93,11 @@ export function createOAuthBearerBroker(
 
   return {
     async issue(input) {
-      if (!supportedCapabilities.has(input.capability)) {
-        throw new Error(
-          `Unsupported ${provider} capability: ${input.capability}`,
-        );
-      }
-
       const envToken = process.env[authTokenEnv]?.trim();
       const oauth = manifest.oauth;
       if (!oauth) {
         if (envToken) {
-          return buildLease(
-            envToken,
-            input.capability,
-            Date.now() + MAX_LEASE_MS,
-            input.reason,
-          );
+          return buildLease(envToken, Date.now() + MAX_LEASE_MS, input.reason);
         }
 
         throw new CredentialUnavailableError(
@@ -157,7 +143,6 @@ export function createOAuthBearerBroker(
               );
               return buildLease(
                 refreshed.accessToken,
-                input.capability,
                 getLeaseExpiry(refreshed.expiresAt),
                 input.reason,
               );
@@ -168,7 +153,6 @@ export function createOAuthBearerBroker(
               if (stored.expiresAt > Date.now()) {
                 return buildLease(
                   stored.accessToken,
-                  input.capability,
                   getLeaseExpiry(stored.expiresAt),
                   input.reason,
                 );
@@ -183,7 +167,6 @@ export function createOAuthBearerBroker(
           if (stored.expiresAt === undefined || stored.expiresAt > Date.now()) {
             return buildLease(
               stored.accessToken,
-              input.capability,
               getLeaseExpiry(stored.expiresAt),
               input.reason,
             );
@@ -202,12 +185,7 @@ export function createOAuthBearerBroker(
       }
 
       if (envToken) {
-        return buildLease(
-          envToken,
-          input.capability,
-          getLeaseExpiry(),
-          input.reason,
-        );
+        return buildLease(envToken, getLeaseExpiry(), input.reason);
       }
 
       throw new CredentialUnavailableError(

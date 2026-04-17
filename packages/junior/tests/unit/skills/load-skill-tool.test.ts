@@ -30,7 +30,6 @@ describe("load_skill tool", () => {
       description: "A test skill with metadata",
       skillPath: skillRoot,
       allowedTools: ["bash"],
-      requiresCapabilities: ["test.api"],
     };
     const availableSkills = [firstSkill];
     const loaded: Skill[] = [];
@@ -51,9 +50,6 @@ describe("load_skill tool", () => {
     expect(result).toMatchObject({
       ok: true,
       skill_name: firstSkill.name,
-      ...(firstSkill.requiresCapabilities
-        ? { requires_capabilities: firstSkill.requiresCapabilities }
-        : {}),
     });
     expect((result as any).location).toBe(sandboxSkillFile(firstSkill.name));
     expect((result as any).skill_dir).toBe(sandboxSkillDir(firstSkill.name));
@@ -70,9 +66,6 @@ describe("load_skill tool", () => {
         : {}),
       ...(firstSkill.allowedTools
         ? { allowedTools: firstSkill.allowedTools }
-        : {}),
-      ...(firstSkill.requiresCapabilities
-        ? { requiresCapabilities: firstSkill.requiresCapabilities }
         : {}),
       ...(firstSkill.usesConfig ? { usesConfig: firstSkill.usesConfig } : {}),
     });

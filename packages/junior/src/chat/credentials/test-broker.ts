@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { CapabilityTarget } from "@/chat/capabilities/types";
 import type {
   CredentialBroker,
   CredentialLease,
@@ -20,11 +19,7 @@ export class TestCredentialBroker implements CredentialBroker {
     this.config = config;
   }
 
-  async issue(input: {
-    capability: string;
-    target?: CapabilityTarget;
-    reason: string;
-  }): Promise<CredentialLease> {
+  async issue(input: { reason: string }): Promise<CredentialLease> {
     const token =
       process.env.EVAL_TEST_CREDENTIAL_TOKEN?.trim() || "eval-test-token";
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
@@ -32,7 +27,6 @@ export class TestCredentialBroker implements CredentialBroker {
     return {
       id: randomUUID(),
       provider: this.config.provider,
-      capability: input.capability,
       env: {
         [this.config.envKey]: this.config.placeholder,
       },
@@ -46,9 +40,6 @@ export class TestCredentialBroker implements CredentialBroker {
       expiresAt,
       metadata: {
         reason: input.reason,
-        target: input.target
-          ? `${input.target.type}:${input.target.value}`
-          : "none",
       },
     };
   }

@@ -84,7 +84,9 @@ Then confirm:
 ## Security model
 
 - Junior mints GitHub App installation tokens on the host, not in the sandbox.
+- When the GitHub skill runs authenticated `gh` or `git` commands, the runtime automatically injects the narrowest repo-scoped credential it can infer for that command.
 - Repo-aware credential requests narrow tokens to the target repository when `owner/repo` is known.
+- The injected lease is turn-scoped; it is not exposed as reusable long-lived auth inside the sandbox.
 - Capability scoping is mainly an accident-prevention layer: it keeps routine issue, contents, and pull-request workflows from minting broader write access than they need.
 - It is not a full containment boundary. The agent can still request broader GitHub capabilities when a task genuinely needs them, so operators should treat GitHub App installation scope as the real trust boundary.
 
@@ -92,7 +94,7 @@ Then confirm:
 
 - `Access denied` from GitHub: the app is not installed on the target repository or organization. Install the app on that target, then retry.
 - `Bad credentials` or signing errors: `GITHUB_APP_PRIVATE_KEY` does not match the App ID. Upload the private key generated for the same app as `GITHUB_APP_ID`.
-- Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or pass `--target owner/repo` to `jr-rpc issue-credential`, and retry.
+- Missing repository context: Junior could not determine which repository to use. Include `owner/repo` directly in the GitHub request, or configure a default GitHub repository for that thread, and retry.
 - Permission-style failures during issue or pull request workflows: the GitHub App lacks the required permission or installation scope. Update the app permissions or install target, then retry.
 
 ## Next step

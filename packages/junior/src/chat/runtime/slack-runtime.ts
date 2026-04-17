@@ -313,7 +313,10 @@ export function createSlackTurnRuntime<
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
-        if (isRetryableTurnError(error, "mcp_auth_resume")) {
+        if (
+          isRetryableTurnError(error, "mcp_auth_resume") ||
+          isRetryableTurnError(error, "plugin_auth_resume")
+        ) {
           deps.logException(
             error,
             "mention_handler_auth_pause",
@@ -464,7 +467,10 @@ export function createSlackTurnRuntime<
           channelId: deps.getChannelId(thread, message),
           runId: deps.getRunId(thread, message),
         });
-        if (isRetryableTurnError(error, "mcp_auth_resume")) {
+        if (
+          isRetryableTurnError(error, "mcp_auth_resume") ||
+          isRetryableTurnError(error, "plugin_auth_resume")
+        ) {
           deps.logException(
             error,
             "subscribed_message_handler_auth_pause",

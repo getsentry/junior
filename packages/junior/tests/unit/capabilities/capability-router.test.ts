@@ -1,30 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { ProviderCredentialRouter } from "@/chat/capabilities/router";
 import type { CredentialBroker } from "@/chat/credentials/broker";
-import * as catalog from "@/chat/capabilities/catalog";
 
 describe("provider credential router", () => {
-  it("routes known capability issuance to provider broker", async () => {
-    const providerSpy = vi
-      .spyOn(catalog, "getCapabilityProvider")
-      .mockReturnValue({
-        provider: "github",
-        capabilities: ["github.issues.read"],
-        configKeys: ["github.repo"],
-        target: {
-          type: "repo",
-          configKey: "github.repo",
-          commandFlags: ["--repo", "-R"],
-        },
-      });
+  it("routes provider issuance to the matching broker", async () => {
     const broker: CredentialBroker = {
-      issue: async (input) => ({
+      issue: vi.fn(async () => ({
         id: "lease-1",
         provider: "github",
-        capability: input.capability,
-        env: { GITHUB_TOKEN: "token-1" },
+        env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      }),
+      })),
     };
     const router = new ProviderCredentialRouter({
       brokersByProvider: {
@@ -34,62 +20,54 @@ describe("provider credential router", () => {
 
     await expect(
       router.issue({
-        capability: "github.issues.read",
+        provider: "github",
         reason: "test",
       }),
     ).resolves.toMatchObject({
       provider: "github",
-      capability: "github.issues.read",
     });
-    providerSpy.mockRestore();
+    expect(broker.issue).toHaveBeenCalledWith({
+      reason: "test",
+    });
   });
 
-  it("rejects unsupported capabilities", async () => {
-    const providerSpy = vi
-      .spyOn(catalog, "getCapabilityProvider")
-      .mockReturnValue(undefined);
+  it("forwards requester context", async () => {
+    const broker: CredentialBroker = {
+      issue: vi.fn(async () => ({
+        id: "lease-1",
+        provider: "github",
+        env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })),
+    };
     const router = new ProviderCredentialRouter({
       brokersByProvider: {
-        github: {
-          issue: async () => {
-            throw new Error("should not be called");
-          },
-        },
+        github: broker,
       },
     });
 
-    await expect(
-      router.issue({
-        capability: "jira.issues.read",
-        reason: "test",
-      }),
-    ).rejects.toThrow("Unsupported capability");
-    providerSpy.mockRestore();
+    await router.issue({
+      provider: "github",
+      requesterId: "U123",
+      reason: "test",
+    });
+
+    expect(broker.issue).toHaveBeenCalledWith({
+      requesterId: "U123",
+      reason: "test",
+    });
   });
 
-  it("rejects when provider broker is not registered", async () => {
-    const providerSpy = vi
-      .spyOn(catalog, "getCapabilityProvider")
-      .mockReturnValue({
-        provider: "github",
-        capabilities: ["github.issues.read"],
-        configKeys: ["github.repo"],
-        target: {
-          type: "repo",
-          configKey: "github.repo",
-          commandFlags: ["--repo", "-R"],
-        },
-      });
+  it("rejects when the provider broker is not registered", async () => {
     const router = new ProviderCredentialRouter({
       brokersByProvider: {},
     });
 
     await expect(
       router.issue({
-        capability: "github.issues.read",
+        provider: "github",
         reason: "test",
       }),
     ).rejects.toThrow("No credential broker registered for provider: github");
-    providerSpy.mockRestore();
   });
 });

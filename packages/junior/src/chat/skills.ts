@@ -2,10 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
-import {
-  isKnownCapability,
-  isKnownConfigKey,
-} from "@/chat/capabilities/catalog";
+import { isKnownConfigKey } from "@/chat/capabilities/catalog";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
 import {
@@ -32,7 +29,6 @@ export interface ParsedSkillFile {
   compatibility?: string;
   license?: string;
   allowedTools?: string[];
-  requiresCapabilities?: string[];
   usesConfig?: string[];
 }
 
@@ -52,10 +48,7 @@ function validateSkillName(name: string): string | null {
   return null;
 }
 
-function createTokenFieldSchema(
-  fieldName: "requires-capabilities" | "uses-config",
-  example: string,
-) {
+function createTokenFieldSchema(fieldName: "uses-config", example: string) {
   return z
     .string({
       error: `Frontmatter field "${fieldName}" must be a string when present`,
@@ -158,10 +151,6 @@ const skillFrontmatterSchema = z
           'Frontmatter field "allowed-tools" must be a string when present',
       })
       .optional(),
-    "requires-capabilities": createTokenFieldSchema(
-      "requires-capabilities",
-      "provider.scope.write",
-    ).optional(),
     "uses-config": createTokenFieldSchema(
       "uses-config",
       "provider.repo",
@@ -197,6 +186,13 @@ export function parseSkillFile(
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     return { ok: false, error: "Frontmatter must be a YAML object" };
   }
+  if ("requires-capabilities" in parsed) {
+    return {
+      ok: false,
+      error:
+        'Frontmatter field "requires-capabilities" is no longer supported; plugin-backed skills inherit credentials from their plugin.',
+    };
+  }
 
   const result = skillFrontmatterSchema.safeParse(parsed);
   if (!result.success) {
@@ -214,9 +210,6 @@ export function parseSkillFile(
   }
 
   const allowedTools = parseTokenList(result.data["allowed-tools"]);
-  const requiresCapabilities = parseTokenList(
-    result.data["requires-capabilities"],
-  );
   const usesConfig = parseTokenList(result.data["uses-config"]);
 
   return {
@@ -233,7 +226,6 @@ export function parseSkillFile(
         ? { license: result.data.license }
         : {}),
       ...(allowedTools ? { allowedTools } : {}),
-      ...(requiresCapabilities ? { requiresCapabilities } : {}),
       ...(usesConfig ? { usesConfig } : {}),
     },
   };
@@ -251,7 +243,6 @@ export interface SkillMetadata {
   skillPath: string;
   pluginProvider?: string;
   allowedTools?: string[];
-  requiresCapabilities?: string[];
   usesConfig?: string[];
 }
 
@@ -305,16 +296,8 @@ function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
 }
 
 function validateSkillMetadata(input: {
-  requiresCapabilities?: string[];
   usesConfig?: string[];
 }): string | undefined {
-  const unknownCapabilities = (input.requiresCapabilities ?? []).filter(
-    (capability) => !isKnownCapability(capability),
-  );
-  if (unknownCapabilities.length > 0) {
-    return `Unknown requires-capabilities values: ${unknownCapabilities.join(", ")}`;
-  }
-
   const unknownConfigKeys = (input.usesConfig ?? []).filter(
     (configKey) => !isKnownConfigKey(configKey),
   );
@@ -346,18 +329,9 @@ async function readSkillDirectory(
       return null;
     }
 
-    const {
-      name,
-      description,
-      allowedTools,
-      requiresCapabilities,
-      usesConfig,
-    } = parsed.skill;
+    const { name, description, allowedTools, usesConfig } = parsed.skill;
     const plugin = getPluginForSkillPath(skillDir);
-    const metadataError = validateSkillMetadata({
-      requiresCapabilities,
-      usesConfig,
-    });
+    const metadataError = validateSkillMetadata({ usesConfig });
     if (metadataError) {
       logWarn(
         "skill_frontmatter_invalid",
@@ -377,7 +351,6 @@ async function readSkillDirectory(
       skillPath: skillDir,
       ...(plugin ? { pluginProvider: plugin.manifest.name } : {}),
       allowedTools,
-      requiresCapabilities,
       usesConfig,
     };
   } catch (error) {

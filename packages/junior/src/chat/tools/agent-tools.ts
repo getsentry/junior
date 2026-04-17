@@ -3,6 +3,8 @@ import { serializeGenAiAttribute } from "@/chat/logging";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import { buildToolStatus } from "@/chat/runtime/tool-status";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
@@ -22,6 +24,7 @@ export function createAgentTools(
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
   sandboxExecutor?: SandboxExecutor,
   capabilityRuntime?: SkillCapabilityRuntime,
+  pluginAuthOrchestration?: PluginAuthOrchestration,
   hooks?: {
     onToolCall?: (toolName: string) => void;
   },
@@ -73,6 +76,25 @@ export function createAgentTools(
               toolName === "bash" && typeof parsed.command === "string"
                 ? parsed.command.trim()
                 : "";
+            if (bashCommand && capabilityRuntime) {
+              try {
+                await capabilityRuntime.enableCredentialsForCommand({
+                  activeSkill: sandbox.getActiveSkill(),
+                  reason: `skill:${sandbox.getActiveSkill()?.name ?? "unknown"}:bash:auto-enable`,
+                });
+              } catch (error) {
+                if (
+                  error instanceof CredentialUnavailableError &&
+                  pluginAuthOrchestration
+                ) {
+                  await pluginAuthOrchestration.handleCredentialUnavailable({
+                    activeSkill: sandbox.getActiveSkill(),
+                    error,
+                  });
+                }
+                throw error;
+              }
+            }
             const injection = resolveCredentialInjection(
               toolName,
               bashCommand,
@@ -102,6 +124,12 @@ export function createAgentTools(
                 });
 
             const normalized = normalizeToolResult(result, isSandbox);
+            if (bashCommand && pluginAuthOrchestration) {
+              await pluginAuthOrchestration.handleCommandFailure({
+                activeSkill: sandbox.getActiveSkill(),
+                details: normalized.details,
+              });
+            }
             const toolResultAttribute = serializeGenAiAttribute(
               normalized.details,
             );

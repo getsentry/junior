@@ -1,5 +1,4 @@
 import { createPrivateKey, createSign, randomUUID } from "node:crypto";
-import type { CapabilityTarget } from "@/chat/capabilities/types";
 import type {
   CredentialBroker,
   CredentialLease,
@@ -14,36 +13,6 @@ type CachedInstallationToken = {
   token: string;
   expiresAt: number;
 };
-
-function parseRepoTarget(
-  value: string,
-): { owner: string; repo: string } | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  const [repoRef] = trimmed.split("#");
-  const [owner, repo, extra] = repoRef.split("/");
-  if (!owner || !repo || extra) {
-    return undefined;
-  }
-
-  return {
-    owner: owner.toLowerCase(),
-    repo: repo.toLowerCase(),
-  };
-}
-
-function getRepoTarget(
-  target?: CapabilityTarget,
-): { owner: string; repo: string } | undefined {
-  if (!target || target.type !== "repo") {
-    return undefined;
-  }
-
-  return parseRepoTarget(target.value);
-}
 
 function base64Url(input: string): string {
   return Buffer.from(input)
@@ -174,9 +143,9 @@ async function githubRequest<T>(
 }
 
 /**
- * GitHub App permission scopes that the broker can request.
- * Capabilities follow the convention `<plugin>.<scope>.<read|write>` where
- * the scope name uses dashes in capabilities and underscores in the GitHub API.
+ * GitHub App permission scopes that plugin manifests may request.
+ * Manifest capabilities follow `<plugin>.<scope>.<read|write>` where the
+ * scope name uses dashes in capabilities and underscores in the GitHub API.
  */
 const KNOWN_SCOPES = new Set([
   "actions",
@@ -201,33 +170,39 @@ const KNOWN_SCOPES = new Set([
   "workflows",
 ]);
 
-/** Map a capability string to the GitHub App permission it requires. */
-function capabilityToPermissions(
-  capability: string,
+function capabilitiesToPermissions(
+  capabilities: string[],
   pluginName: string,
 ): Record<string, "read" | "write"> {
+  const permissions: Record<string, "read" | "write"> = {};
   const prefix = `${pluginName}.`;
-  if (!capability.startsWith(prefix)) {
-    throw new Error(`Unsupported GitHub capability: ${capability}`);
-  }
-  const suffix = capability.slice(prefix.length);
+  for (const capability of capabilities) {
+    if (!capability.startsWith(prefix)) {
+      throw new Error(`Unsupported GitHub capability: ${capability}`);
+    }
+    const suffix = capability.slice(prefix.length);
 
-  const lastDot = suffix.lastIndexOf(".");
-  if (lastDot === -1) {
-    throw new Error(`Unsupported GitHub capability: ${capability}`);
-  }
-  const scopeRaw = suffix.slice(0, lastDot);
-  const level = suffix.slice(lastDot + 1);
-  if (level !== "read" && level !== "write") {
-    throw new Error(`Unsupported GitHub capability: ${capability}`);
+    const lastDot = suffix.lastIndexOf(".");
+    if (lastDot === -1) {
+      throw new Error(`Unsupported GitHub capability: ${capability}`);
+    }
+    const scopeRaw = suffix.slice(0, lastDot);
+    const level = suffix.slice(lastDot + 1);
+    if (level !== "read" && level !== "write") {
+      throw new Error(`Unsupported GitHub capability: ${capability}`);
+    }
+
+    const scope = scopeRaw.replace(/-/g, "_");
+    if (!KNOWN_SCOPES.has(scope)) {
+      throw new Error(`Unsupported GitHub capability: ${capability}`);
+    }
+
+    const existing = permissions[scope];
+    permissions[scope] =
+      existing === "write" || level === "write" ? "write" : "read";
   }
 
-  const scope = scopeRaw.replace(/-/g, "_");
-  if (!KNOWN_SCOPES.has(scope)) {
-    throw new Error(`Unsupported GitHub capability: ${capability}`);
-  }
-
-  return { [scope]: level };
+  return permissions;
 }
 
 export function createGitHubAppBroker(
@@ -258,11 +233,11 @@ export function createGitHubAppBroker(
     `${provider}.contents.read`,
     `${provider}.contents.write`,
   ]);
-  function leaseDomainsFor(capability: string): string[] {
-    return GIT_CAPABILITIES.has(capability)
-      ? [...apiDomains, GIT_DOMAIN]
-      : apiDomains;
-  }
+  const leaseDomains = manifest.capabilities.some((capability) =>
+    GIT_CAPABILITIES.has(capability),
+  )
+    ? [...apiDomains, GIT_DOMAIN]
+    : apiDomains;
 
   /**
    * Build the correct Authorization header for a domain.
@@ -279,7 +254,10 @@ export function createGitHubAppBroker(
     return `Bearer ${token}`;
   }
 
-  const supportedCapabilities = new Set(manifest.capabilities);
+  const permissions = capabilitiesToPermissions(
+    manifest.capabilities,
+    provider,
+  );
 
   function resolveInstallationId(): number {
     const installationIdRaw = process.env[installationIdEnv]?.trim();
@@ -294,46 +272,17 @@ export function createGitHubAppBroker(
   }
 
   return {
-    async issue(input: {
-      capability: string;
-      target?: CapabilityTarget;
-      reason: string;
-    }): Promise<CredentialLease> {
-      if (!supportedCapabilities.has(input.capability)) {
-        throw new Error(
-          `Unsupported ${provider} capability: ${input.capability}`,
-        );
-      }
-      const permissions = capabilityToPermissions(input.capability, provider);
+    async issue(input: { reason: string }): Promise<CredentialLease> {
       const installationId = resolveInstallationId();
-
-      let repoTarget: { owner: string; repo: string } | undefined;
-      if (input.target) {
-        if (input.target.type !== "repo") {
-          throw new Error(
-            `Unsupported github target type: ${input.target.type}`,
-          );
-        }
-        repoTarget = getRepoTarget(input.target);
-        if (!repoTarget) {
-          throw new Error("Invalid github repo target: expected owner/repo");
-        }
-      }
-
-      const targetScope = repoTarget
-        ? `${repoTarget.owner}/${repoTarget.repo}`
-        : "all";
-      const cacheKey = `${installationId}:${input.capability}:${targetScope}`;
+      const cacheKey = String(installationId);
       const cached = tokenCache.get(cacheKey);
       const now = Date.now();
       if (cached && cached.expiresAt - now > 2 * 60 * 1000) {
-        const domains = leaseDomainsFor(input.capability);
         return {
           id: randomUUID(),
           provider,
-          capability: input.capability,
           env: { [authTokenEnv]: placeholder },
-          headerTransforms: domains.map((domain) => ({
+          headerTransforms: leaseDomains.map((domain) => ({
             domain,
             headers: {
               ...(apiHeaders ?? {}),
@@ -343,7 +292,6 @@ export function createGitHubAppBroker(
           expiresAt: new Date(cached.expiresAt).toISOString(),
           metadata: {
             installationId: String(cached.installationId),
-            targetScope,
             reason: input.reason,
           },
         };
@@ -351,13 +299,9 @@ export function createGitHubAppBroker(
 
       const tokenRequestBody: {
         permissions: Record<string, "read" | "write">;
-        repositories?: string[];
       } = {
         permissions,
       };
-      if (repoTarget) {
-        tokenRequestBody.repositories = [repoTarget.repo];
-      }
 
       const appId = process.env[appIdEnv];
       if (!appId) {
@@ -385,13 +329,11 @@ export function createGitHubAppBroker(
         expiresAt: expiresAtMs,
       });
 
-      const domains = leaseDomainsFor(input.capability);
       return {
         id: randomUUID(),
         provider,
-        capability: input.capability,
         env: { [authTokenEnv]: placeholder },
-        headerTransforms: domains.map((domain) => ({
+        headerTransforms: leaseDomains.map((domain) => ({
           domain,
           headers: {
             ...(apiHeaders ?? {}),
@@ -401,7 +343,6 @@ export function createGitHubAppBroker(
         expiresAt: new Date(expiresAtMs).toISOString(),
         metadata: {
           installationId: String(installationId),
-          targetScope,
           reason: input.reason,
         },
       };

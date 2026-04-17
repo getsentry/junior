@@ -24,8 +24,8 @@ Co-Authored-By: (agent model name) <email>
 - Use `/commit` skill for any commit operation.
 - Use `/create-pr` skill for any PR creation operation.
 - Use `/skill-creator` skill when creating or updating skills.
-- Use evals for end-to-end behavior testing (excluding live Slack transport/integration). See `evals/README.md`.
-- Evals cannot be run reliably inside Codex due to sandbox/network limits; run eval commands outside Codex.
+- Use evals for end-to-end behavior testing (excluding live Slack transport/integration). See `packages/junior-evals/README.md`.
+- Run evals from Codex as escalated host commands when they need real Vercel Sandbox/network access; use `pnpm evals` for the full suite.
 - Use instrumentation conventions from `specs/logging/index.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
 - Keep release package lists aligned across `.craft.yml`, `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs; verify with `pnpm release:check`.

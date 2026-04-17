@@ -10,6 +10,8 @@ related:
 ---
 
 The Sentry plugin enables per-user OAuth so Slack users can run Sentry investigations with their own access.
+Junior stores the Sentry grant server-side and only activates it during that
+same user's turn when a Sentry command actually needs auth.
 
 ## Install
 
@@ -65,6 +67,12 @@ Run the auth flow and then make a real Sentry request:
 4. User runs a real Sentry query in Slack, naming the org and project explicitly if the workspace spans multiple targets.
 
 Confirm the auth flow completes, the query returns expected data, and re-auth works after token invalidation.
+
+## Security model
+
+- The real Sentry token stays in host-managed storage and is never printed back to the model.
+- Junior injects Sentry auth only for the requesting user's turn.
+- Missing or stale auth triggers a private reconnect flow and resumes the blocked request after consent.
 
 ## Failure modes
 

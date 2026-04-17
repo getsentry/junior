@@ -1,20 +1,16 @@
-# Capability guidance
+# Config guidance
 
-Use the exact capability and config-key names exposed by runtime context:
+Use the exact config-key names exposed by runtime context:
 
-- loaded skill `requires-capabilities`
 - loaded skill `uses-config`
-- provider-capabilities catalog in the prompt
+- provider-config catalog in the prompt
 
 Examples:
 
-- `jr-rpc issue-credential <capability>`
-- `jr-rpc issue-credential <capability> --target value`
 - `jr-rpc config set <config-key> <value>`
 
-Scoping rules:
+Rules:
 
-- Provider-targeted capabilities require `--target <value>` unless the provider already has a configured default target key.
-- Capabilities without provider targets do not use `--target`.
-- Declare capabilities in the consuming skill's `requires-capabilities` frontmatter. Currently soft-enforced (warn-only).
-- Do not guess capability or config-key names; choose them from the loaded skill or provider catalog.
+- For normal authenticated operations, run the real provider command under the loaded skill and let the runtime inject credentials automatically.
+- Declare config usage in the consuming skill's `uses-config` frontmatter.
+- Do not guess config-key names; choose them from the loaded skill or provider catalog.

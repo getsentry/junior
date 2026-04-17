@@ -560,7 +560,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             );
           }
         } catch (error) {
-          if (isRetryableTurnError(error, "mcp_auth_resume")) {
+          if (
+            isRetryableTurnError(error, "mcp_auth_resume") ||
+            isRetryableTurnError(error, "plugin_auth_resume")
+          ) {
             shouldPersistFailureState = false;
             throw error;
           }

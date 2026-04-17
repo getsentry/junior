@@ -9,7 +9,6 @@ import {
 } from "@/chat/services/reply-delivery-plan";
 import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
 import { enforceAttachmentClaimTruth } from "@/chat/services/attachment-claims";
-import { extractOAuthStartedMessageFromToolResults } from "@/chat/oauth-flow";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
   buildExecutionFailureMessage,
@@ -98,8 +97,6 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     .map((message) => extractAssistantText(message))
     .join("\n\n")
     .trim();
-  const oauthStartedMessage =
-    extractOAuthStartedMessageFromToolResults(toolResults);
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const explicitChannelPostIntent = isExplicitChannelPostIntent(userInput);
@@ -112,14 +109,22 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
   const channelPostPerformed = successfulToolNames.has(
     "slackChannelPostMessage",
   );
-  const deliveryPlan = buildReplyDeliveryPlan({
+  const reactionPerformed = successfulToolNames.has("slackMessageAddReaction");
+  const baseDeliveryPlan = buildReplyDeliveryPlan({
     explicitChannelPostIntent,
     channelPostPerformed,
     hasFiles: replyFiles.length > 0,
   });
+  const deliveryPlan =
+    reactionPerformed && replyFiles.length === 0 && !channelPostPerformed
+      ? {
+          ...baseDeliveryPlan,
+          postThreadText: false,
+        }
+      : baseDeliveryPlan;
   const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
 
-  if (!primaryText && !oauthStartedMessage) {
+  if (!primaryText) {
     logWarn(
       "ai_model_response_empty",
       {
@@ -151,15 +156,20 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
       ? lastAssistant.errorMessage
       : undefined;
   const usedPrimaryText = Boolean(primaryText);
-  const outcome: AgentTurnDiagnostics["outcome"] =
-    primaryText || oauthStartedMessage
-      ? stopReason === "error"
-        ? "provider_error"
-        : "success"
+  const sideEffectOnlySuccess =
+    !primaryText &&
+    toolErrorCount === 0 &&
+    (reactionPerformed || channelPostPerformed || replyFiles.length > 0);
+  const outcome: AgentTurnDiagnostics["outcome"] = primaryText
+    ? stopReason === "error"
+      ? "provider_error"
+      : "success"
+    : sideEffectOnlySuccess
+      ? "success"
       : "execution_failure";
-  const fallbackText =
-    oauthStartedMessage ?? buildExecutionFailureMessage(toolErrorCount);
-  const responseText = primaryText || fallbackText;
+  const fallbackText = buildExecutionFailureMessage(toolErrorCount);
+  const responseText =
+    primaryText || (sideEffectOnlySuccess ? "" : fallbackText);
   const escapedOrRawPayload =
     Boolean(primaryText) &&
     (isExecutionEscapeResponse(primaryText) ||
@@ -168,9 +178,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     ? fallbackText
     : enforceAttachmentClaimTruth(responseText, replyFiles.length > 0);
   const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
-    ? oauthStartedMessage
-      ? outcome
-      : "execution_failure"
+    ? "execution_failure"
     : outcome;
 
   if (shouldTrace) {

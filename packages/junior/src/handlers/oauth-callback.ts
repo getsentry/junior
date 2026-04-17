@@ -1,4 +1,5 @@
 import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { botConfig } from "@/chat/config";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
@@ -7,21 +8,54 @@ import {
   resolveBaseUrl,
 } from "@/chat/oauth-flow";
 import { buildConversationContext } from "@/chat/services/conversation-memory";
+import {
+  generateConversationId,
+  markConversationMessage,
+  normalizeConversationText,
+  updateConversationStats,
+  upsertConversationMessage,
+} from "@/chat/services/conversation-memory";
 import { postSlackMessage } from "@/chat/slack/outbound";
-import { resumeAuthorizedRequest } from "@/chat/slack/resume";
+import {
+  ResumeTurnBusyError,
+  resumeAuthorizedRequest,
+  resumeSlackTurn,
+} from "@/chat/slack/resume";
 import { logException, logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
-import { getPersistedThreadState } from "@/chat/runtime/thread-state";
+import {
+  getChannelConfigurationServiceById,
+  getPersistedSandboxState,
+  getPersistedThreadState,
+  mergeArtifactsState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
 } from "@/chat/plugins/auth/oauth-request";
+import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
+import {
+  getTurnUserMessage,
+  getTurnUserReplyAttachmentContext,
+} from "@/chat/runtime/turn-user-message";
+import {
+  isRetryableTurnError,
+  markTurnCompleted,
+  markTurnFailed,
+} from "@/chat/runtime/turn";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
+import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
+import {
+  canScheduleTurnTimeoutResume,
+  scheduleTurnTimeoutResume,
+} from "@/chat/services/timeout-resume";
 
 /**
  * OAuth callback contract for `@sentry/junior`.
@@ -51,6 +85,228 @@ async function buildResumeConversationContext(
   return buildConversationContext(conversation, {
     excludeMessageId: latestUserMessageId,
   });
+}
+
+async function buildCheckpointConversationContext(
+  conversationId: string,
+  sessionId: string,
+): Promise<string | undefined> {
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(conversationId),
+  );
+  const userMessage = getTurnUserMessage(conversation, sessionId);
+  return buildConversationContext(conversation, {
+    excludeMessageId: userMessage?.id,
+  });
+}
+
+async function persistCompletedOAuthReplyState(args: {
+  conversationId: string;
+  sessionId: string;
+  reply: {
+    text: string;
+    sandboxId?: string;
+    sandboxDependencyProfileHash?: string;
+    artifactStatePatch?: Record<string, unknown>;
+  };
+}): Promise<void> {
+  const currentState = await getPersistedThreadState(args.conversationId);
+  const conversation = coerceThreadConversationState(currentState);
+  const artifacts = coerceThreadArtifactsState(currentState);
+  const nextArtifacts = args.reply.artifactStatePatch
+    ? mergeArtifactsState(artifacts, args.reply.artifactStatePatch)
+    : undefined;
+  const userMessage = getTurnUserMessage(conversation, args.sessionId);
+
+  markConversationMessage(conversation, userMessage?.id, {
+    replied: true,
+    skippedReason: undefined,
+  });
+  upsertConversationMessage(conversation, {
+    id: generateConversationId("assistant"),
+    role: "assistant",
+    text: normalizeConversationText(args.reply.text) || "[empty response]",
+    createdAtMs: Date.now(),
+    author: {
+      userName: botConfig.userName,
+      isBot: true,
+    },
+    meta: {
+      replied: true,
+    },
+  });
+  markTurnCompleted({
+    conversation,
+    nowMs: Date.now(),
+    updateConversationStats,
+  });
+
+  await persistThreadStateById(args.conversationId, {
+    artifacts: nextArtifacts,
+    conversation,
+    sandboxId: args.reply.sandboxId,
+    sandboxDependencyProfileHash: args.reply.sandboxDependencyProfileHash,
+  });
+}
+
+async function persistFailedOAuthReplyState(args: {
+  conversationId: string;
+  sessionId: string;
+}): Promise<void> {
+  const currentState = await getPersistedThreadState(args.conversationId);
+  const conversation = coerceThreadConversationState(currentState);
+
+  markTurnFailed({
+    conversation,
+    nowMs: Date.now(),
+    userMessageId: getTurnUserMessage(conversation, args.sessionId)?.id,
+    markConversationMessage,
+    updateConversationStats,
+  });
+
+  await persistThreadStateById(args.conversationId, {
+    conversation,
+  });
+}
+
+async function resumeCheckpointedOAuthTurn(
+  stored: OAuthStatePayload,
+): Promise<boolean> {
+  if (
+    !stored.resumeConversationId ||
+    !stored.resumeSessionId ||
+    !stored.channelId ||
+    !stored.threadTs
+  ) {
+    return false;
+  }
+
+  const checkpoint = await getAgentTurnSessionCheckpoint(
+    stored.resumeConversationId,
+    stored.resumeSessionId,
+  );
+  if (
+    !checkpoint ||
+    checkpoint.state !== "awaiting_resume" ||
+    checkpoint.resumeReason !== "auth"
+  ) {
+    return false;
+  }
+
+  const currentState = await getPersistedThreadState(
+    stored.resumeConversationId,
+  );
+  const conversation = coerceThreadConversationState(currentState);
+  const artifacts = coerceThreadArtifactsState(currentState);
+  const userMessage = getTurnUserMessage(conversation, stored.resumeSessionId);
+  if (!userMessage?.author?.userId) {
+    return false;
+  }
+  if (conversation.processing.activeTurnId !== stored.resumeSessionId) {
+    return true;
+  }
+
+  const conversationContext = await buildCheckpointConversationContext(
+    stored.resumeConversationId,
+    stored.resumeSessionId,
+  );
+  const channelConfiguration = getChannelConfigurationServiceById(
+    stored.channelId,
+  );
+  const providerLabel = formatProviderLabel(stored.provider);
+
+  await resumeSlackTurn({
+    messageText: stored.pendingMessage ?? userMessage.text,
+    channelId: stored.channelId,
+    threadTs: stored.threadTs,
+    lockKey: stored.resumeConversationId,
+    initialText: `Your ${providerLabel} account is now connected. Processing your request...`,
+    failureText:
+      "I connected your account but hit an error processing your request. Please try the command again.",
+    replyContext: {
+      assistant: { userName: botConfig.userName },
+      requester: {
+        userId: userMessage.author.userId,
+        userName: userMessage.author.userName,
+        fullName: userMessage.author.fullName,
+      },
+      correlation: {
+        channelId: stored.channelId,
+        threadTs: stored.threadTs,
+        requesterId: userMessage.author.userId,
+      },
+      toolChannelId: artifacts.assistantContextChannelId ?? stored.channelId,
+      artifactState: artifacts,
+      conversationContext,
+      channelConfiguration,
+      sandbox: getPersistedSandboxState(currentState),
+      threadParticipants: buildThreadParticipants(conversation.messages),
+      ...getTurnUserReplyAttachmentContext(userMessage),
+    },
+    onSuccess: async (reply) => {
+      logInfo(
+        "oauth_callback_resume_complete",
+        {},
+        {
+          "app.credential.provider": stored.provider,
+          "app.ai.outcome": reply.diagnostics.outcome,
+          "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
+        },
+        "Auto-resumed checkpointed turn after OAuth callback",
+      );
+      await persistCompletedOAuthReplyState({
+        conversationId: stored.resumeConversationId!,
+        sessionId: stored.resumeSessionId!,
+        reply,
+      });
+    },
+    onFailure: async (error) => {
+      logException(
+        error,
+        "oauth_callback_resume_failed",
+        {},
+        { "app.credential.provider": stored.provider },
+        "Failed to auto-resume checkpointed turn after OAuth callback",
+      );
+      await persistFailedOAuthReplyState({
+        conversationId: stored.resumeConversationId!,
+        sessionId: stored.resumeSessionId!,
+      });
+    },
+    onAuthPause: async (error) => {
+      logException(
+        error,
+        "oauth_callback_resume_reparked_for_auth",
+        {},
+        { "app.credential.provider": stored.provider },
+        "Resumed OAuth turn requested another authorization flow",
+      );
+    },
+    onTimeoutPause: async (error) => {
+      if (!isRetryableTurnError(error, "turn_timeout_resume")) {
+        throw error;
+      }
+      const checkpointVersion = error.metadata?.checkpointVersion;
+      const nextSliceId = error.metadata?.sliceId;
+      if (typeof checkpointVersion !== "number") {
+        throw new Error(
+          "Timed-out OAuth resume did not include a checkpoint version",
+        );
+      }
+      if (!canScheduleTurnTimeoutResume(nextSliceId)) {
+        throw new Error(
+          "Timed-out turn exceeded the automatic resume slice limit",
+        );
+      }
+      await scheduleTurnTimeoutResume({
+        conversationId: stored.resumeConversationId!,
+        sessionId: stored.resumeSessionId!,
+        expectedCheckpointVersion: checkpointVersion,
+      });
+    },
+  });
+
+  return true;
 }
 
 async function resumePendingOAuthMessage(
@@ -257,7 +513,19 @@ export async function GET(
   });
 
   if (stored.pendingMessage && stored.channelId && stored.threadTs) {
-    waitUntil(() => resumePendingOAuthMessage(stored));
+    waitUntil(async () => {
+      try {
+        const resumed = await resumeCheckpointedOAuthTurn(stored);
+        if (!resumed) {
+          await resumePendingOAuthMessage(stored);
+        }
+      } catch (error) {
+        if (error instanceof ResumeTurnBusyError) {
+          return;
+        }
+        throw error;
+      }
+    });
   } else if (stored.channelId && stored.threadTs) {
     const { channelId, threadTs } = stored;
     waitUntil(() =>
