@@ -34,7 +34,6 @@ import {
   getPluginProviders,
 } from "@/chat/plugins/registry";
 import { McpToolManager, type ManagedMcpTool } from "@/chat/mcp/tool-manager";
-import type { SlackRenderIntent } from "@/chat/slack/render/intents";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import { createTools } from "@/chat/tools";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
@@ -542,9 +541,6 @@ export async function generateAssistantReply(
           );
         },
         toolOverrides: context.toolOverrides,
-        captureReplyIntent: (intent) => {
-          capturedReplyIntent = intent;
-        },
         onSkillLoaded: async (loadedSkill) => {
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
@@ -621,7 +617,6 @@ export async function generateAssistantReply(
       ),
       runtimeMetadata: getRuntimeMetadata(),
       threadParticipants: context.threadParticipants,
-      slackRenderToolAvailable: "reply" in tools,
     });
 
     const userContentParts: Array<
@@ -698,11 +693,6 @@ export async function generateAssistantReply(
         });
       },
     };
-    // Latest render intent captured from a `reply` tool call during this
-    // turn. The agent may invoke `reply` more than once on a messy turn;
-    // last-write-wins matches the assistant's visible behavior (only the
-    // last intent maps onto the final delivered message).
-    let capturedReplyIntent: SlackRenderIntent | undefined;
     const baseAgentTools = createAgentTools(
       tools as Record<string, ToolDefinition<any>>,
       skillSandbox,
@@ -931,7 +921,6 @@ export async function generateAssistantReply(
       replyFiles,
       artifactStatePatch,
       toolCalls,
-      replyIntent: capturedReplyIntent,
       sandboxId: currentSandboxExecutor.getSandboxId(),
       sandboxDependencyProfileHash:
         currentSandboxExecutor.getDependencyProfileHash(),

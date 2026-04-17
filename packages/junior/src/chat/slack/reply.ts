@@ -3,7 +3,6 @@ import type { FileUpload } from "chat";
 import type { AssistantReply } from "@/chat/respond";
 import type { ReplyFileDelivery } from "@/chat/services/reply-delivery-plan";
 import {
-  buildSlackFooterContextBlock,
   buildSlackReplyBlocks,
   type SlackReplyFooter,
 } from "@/chat/slack/footer";
@@ -12,8 +11,6 @@ import {
   buildSlackOutputMessage,
   splitSlackReplyText,
 } from "@/chat/slack/output";
-import type { SlackMessageBlock } from "@/chat/slack/render/blocks";
-import { renderSlackIntent } from "@/chat/slack/render/renderer";
 
 export type PlannedSlackReplyStage =
   | "thread_reply"
@@ -21,13 +18,6 @@ export type PlannedSlackReplyStage =
   | "thread_reply_files_followup";
 
 export interface PlannedSlackReplyPost {
-  /**
-   * Pre-rendered Slack Block Kit blocks (from a render intent). When
-   * present, the post is delivered as a blocks+fallback-text message and
-   * `text` is the fallback; when absent, `text` is the visible message
-   * body in mrkdwn.
-   */
-  blocks?: SlackMessageBlock[];
   files?: FileUpload[];
   stage: PlannedSlackReplyStage;
   text: string;
@@ -163,35 +153,6 @@ export function planSlackReplyPosts(args: {
   );
   const interrupted = isInterruptedVisibleReply(args.reply);
 
-  // Intent-rendered reply: a single blocks+fallback post replaces the
-  // chunked text path. We keep the existing file-followup behavior.
-  // `plain_reply` intents still flow through renderSlackIntent (which
-  // yields undefined blocks) so we fall back to the text path for them.
-  const intent = shouldPostThreadReply ? args.reply.intent : undefined;
-  if (intent) {
-    const rendered = renderSlackIntent(intent);
-    if (rendered.blocks && rendered.blocks.length > 0) {
-      const posts: PlannedSlackReplyPost[] = [
-        {
-          blocks: rendered.blocks,
-          files: attachFiles === "inline" ? replyFiles : undefined,
-          stage: "thread_reply",
-          text: rendered.text,
-        },
-      ];
-
-      if (attachFiles === "followup" && replyFiles) {
-        posts.push({
-          files: replyFiles,
-          stage: "thread_reply_files_followup",
-          text: "",
-        });
-      }
-
-      return posts;
-    }
-  }
-
   const posts: PlannedSlackReplyPost[] = [];
 
   const textPosts = shouldPostThreadReply
@@ -257,29 +218,13 @@ export async function postSlackApiReplyPosts(args: {
     let messageTs: string | undefined;
     try {
       if (post.text.trim().length > 0) {
-        const isLastTextPost = index === lastTextPostIndex;
-        const footerBlock =
-          isLastTextPost && args.footer
-            ? buildSlackFooterContextBlock(args.footer)
-            : undefined;
-        // Three rendering modes per post, in priority order:
-        //   1. Intent blocks (post.blocks): use them verbatim, appending
-        //      the footer context if this is the last text post.
-        //   2. Text + footer: wrap the mrkdwn text in a section block and
-        //      append the footer context (legacy plain-reply path).
-        //   3. Text only: let Slack render the top-level `text` directly.
-        const blocks: SlackMessageBlock[] | undefined = post.blocks
-          ? footerBlock
-            ? [...post.blocks, footerBlock]
-            : post.blocks
-          : isLastTextPost && args.footer
-            ? buildSlackReplyBlocks(post.text, args.footer)
-            : undefined;
         const response = await postSlackMessage({
           channelId: args.channelId,
           threadTs: args.threadTs,
           text: post.text,
-          ...(blocks ? { blocks } : {}),
+          ...(index === lastTextPostIndex && args.footer
+            ? { blocks: buildSlackReplyBlocks(post.text, args.footer) }
+            : {}),
         });
         messageTs = response.ts;
         lastPostedMessageTs = response.ts;
