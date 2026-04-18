@@ -1,4 +1,5 @@
 import { Type } from "@sinclair/typebox";
+import { SlackActionError } from "@/chat/slack/client";
 import { listChannelMessages } from "@/chat/slack/channel";
 import { tool } from "@/chat/tools/definition";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -67,15 +68,30 @@ export function createSlackChannelListMessagesTool(
         };
       }
 
-      const result = await listChannelMessages({
-        channelId: targetChannelId,
-        limit: limit ?? 100,
-        cursor,
-        oldest,
-        latest,
-        inclusive,
-        maxPages: max_pages,
-      });
+      let result;
+      try {
+        result = await listChannelMessages({
+          channelId: targetChannelId,
+          limit: limit ?? 100,
+          cursor,
+          oldest,
+          latest,
+          inclusive,
+          maxPages: max_pages,
+        });
+      } catch (error) {
+        if (
+          error instanceof SlackActionError &&
+          error.apiError === "invalid_cursor"
+        ) {
+          return {
+            ok: false,
+            error:
+              "The supplied Slack history cursor is no longer valid. Retry the lookup without `cursor` to start from the newest page again.",
+          };
+        }
+        throw error;
+      }
 
       return {
         ok: true,
