@@ -3,9 +3,13 @@ import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 
-vi.mock("ai", () => ({
-  generateText: vi.fn(),
-}));
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ai")>();
+  return {
+    ...actual,
+    generateText: vi.fn(),
+  };
+});
 
 vi.mock("@ai-sdk/gateway", () => ({
   createGatewayProvider: vi.fn(),
@@ -37,19 +41,23 @@ describe("createWebSearchTool", () => {
   it("uses AI Gateway parallel search and maps tool results", async () => {
     process.env.AI_WEB_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
     vi.mocked(generateText).mockResolvedValueOnce({
-      toolResults: [
+      steps: [
         {
-          type: "tool-result",
-          toolName: "parallelSearch",
-          output: {
-            results: [
-              {
-                title: "Vercel AI Gateway",
-                url: "https://vercel.com/docs/ai-gateway",
-                excerpt: "Gateway docs",
+          toolResults: [
+            {
+              type: "tool-result",
+              toolName: "parallelSearch",
+              output: {
+                results: [
+                  {
+                    title: "Vercel AI Gateway",
+                    url: "https://vercel.com/docs/ai-gateway",
+                    excerpt: "Gateway docs",
+                  },
+                ],
               },
-            ],
-          },
+            },
+          ],
         },
       ],
     } as never);
@@ -116,6 +124,7 @@ describe("createWebSearchTool", () => {
   });
 
   it("returns a retryable timeout error instead of throwing", async () => {
+    process.env.AI_WEB_SEARCH_TIMEOUT_MS = "10000";
     vi.useFakeTimers();
     vi.mocked(generateText).mockImplementation(
       () =>
@@ -141,6 +150,43 @@ describe("createWebSearchTool", () => {
       retryable: true,
     });
     vi.useRealTimers();
+    delete process.env.AI_WEB_SEARCH_TIMEOUT_MS;
+  });
+
+  it("maps gateway.parallel_search tool name and structured error output", async () => {
+    vi.mocked(generateText).mockResolvedValueOnce({
+      steps: [
+        {
+          toolResults: [
+            {
+              type: "tool-result",
+              toolName: "gateway.parallel_search",
+              output: {
+                error: "timeout",
+                message: "upstream search timed out",
+              },
+            },
+          ],
+        },
+      ],
+    } as never);
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    await expect(
+      tool.execute({ query: "test" }, {} as never),
+    ).resolves.toMatchObject({
+      ok: false,
+      query: "test",
+      result_count: 0,
+      results: [],
+      error: "web search failed: timeout: upstream search timed out",
+      timeout: false,
+      retryable: true,
+    });
   });
 
   it("marks authentication failures as non-retryable", async () => {
