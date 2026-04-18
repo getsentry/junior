@@ -133,6 +133,24 @@ describe("withSlackRetries", () => {
     expect(task).toHaveBeenCalledTimes(1);
   });
 
+  it("maps invalid_cursor as invalid_arguments while preserving the API error", async () => {
+    const task = vi.fn<() => Promise<string>>().mockRejectedValue({
+      data: {
+        error: "invalid_cursor",
+      },
+      message: "An API error occurred: invalid_cursor",
+    });
+
+    await expect(withSlackRetries(task, 3)).rejects.toEqual(
+      expect.objectContaining<Partial<SlackActionError>>({
+        name: "SlackActionError",
+        code: "invalid_arguments",
+        apiError: "invalid_cursor",
+      }),
+    );
+    expect(task).toHaveBeenCalledTimes(1);
+  });
+
   it("maps already_reacted as a dedicated Slack action error", async () => {
     const task = vi.fn<() => Promise<string>>().mockRejectedValue({
       data: {

@@ -236,6 +236,10 @@ function mapSlackError(error: unknown): SlackActionError {
     return new SlackActionError(message, "invalid_arguments", baseOptions);
   }
 
+  if (apiError === "invalid_cursor") {
+    return new SlackActionError(message, "invalid_arguments", baseOptions);
+  }
+
   if (apiError === "invalid_name") {
     return new SlackActionError(message, "invalid_arguments", baseOptions);
   }

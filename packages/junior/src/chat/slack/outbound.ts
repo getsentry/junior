@@ -93,6 +93,9 @@ export async function postSlackMessage(input: {
       getSlackClient().chat.postMessage({
         channel: channelId,
         text,
+        // Slack only auto-links bare channel names in top-level message text
+        // when link_names is enabled at publish time.
+        link_names: true,
         mrkdwn: true,
         ...(input.blocks?.length
           ? {

@@ -67,6 +67,7 @@ Current rules:
 7. When a caller supplies Slack blocks, outbound posting still includes the top-level `text` fallback for notifications and accessibility.
 8. Finalized reply footers that show correlation or diagnostic metadata are rendered as Slack `context` blocks attached through the shared outbound boundary, not assembled ad hoc by callers.
 9. Footer values such as token counts and turn duration are passed as structured reply diagnostics into delivery. Outbound rendering formats those values for Slack; it does not derive them from tracing/logging side effects.
+10. Top-level Slack message posts enable `link_names` so bare channel references in message text are auto-linked by Slack at publish time; block text that depends on Slack entity parsing must keep `mrkdwn` auto-parsing enabled.
 
 ### 4. Ephemeral Message Contract
 

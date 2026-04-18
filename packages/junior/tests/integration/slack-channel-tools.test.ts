@@ -127,6 +127,7 @@ describe("slack channel tools", () => {
     expect(postCalls).toHaveLength(1);
     expect(postCalls[0]?.params).toMatchObject({
       channel: "C123",
+      link_names: "true",
       text: "Incident resolved.",
     });
     expect(postCalls[0]?.params).toHaveProperty("mrkdwn");
@@ -241,6 +242,33 @@ describe("slack channel tools", () => {
       cursor: "cursor-next",
     });
     expect(String(historyCalls[1]?.params.limit)).toBe("1");
+  });
+
+  it("returns a recoverable tool error when Slack rejects a stale history cursor", async () => {
+    queueSlackApiError("conversations.history", {
+      error: "invalid_cursor",
+    });
+    const tool = createSlackChannelListMessagesTool(
+      createContext("list channel messages"),
+    );
+
+    const result = await executeTool(tool, {
+      cursor: "expired-cursor",
+      limit: 10,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        "The supplied Slack history cursor is no longer valid. Retry the lookup without `cursor` to start from the newest page again.",
+    });
+
+    const historyCalls = getCapturedSlackApiCalls("conversations.history");
+    expect(historyCalls).toHaveLength(1);
+    expect(historyCalls[0]?.params).toMatchObject({
+      channel: "C123",
+      cursor: "expired-cursor",
+    });
   });
 
   it("adds a reaction to the implicitly targeted inbound message", async () => {
