@@ -92,11 +92,11 @@ export function createWebSearchTool() {
     }),
     execute: async ({ query, max_results }) => {
       const maxResults = max_results ?? 3;
-      const model =
-        process.env.AI_WEB_SEARCH_MODEL ??
-        process.env.AI_FAST_MODEL ??
-        process.env.AI_MODEL ??
-        DEFAULT_SEARCH_MODEL;
+      // Pinned. General-purpose models (AI_MODEL / AI_FAST_MODEL) aren't
+      // reliable at forced provider-tool calls on AI Gateway; keep the
+      // search tool on a search-tuned model and only allow an explicit
+      // override.
+      const model = process.env.AI_WEB_SEARCH_MODEL ?? DEFAULT_SEARCH_MODEL;
 
       try {
         // AI SDK Gateway reads AI_GATEWAY_API_KEY or ambient Vercel OIDC

@@ -96,6 +96,24 @@ describe("createWebSearchTool", () => {
     });
   });
 
+  it("uses the default search model when AI_WEB_SEARCH_MODEL is unset, ignoring AI_MODEL/AI_FAST_MODEL", async () => {
+    delete process.env.AI_WEB_SEARCH_MODEL;
+    process.env.AI_FAST_MODEL = "openai/gpt-5.4";
+    process.env.AI_MODEL = "anthropic/claude-sonnet-4.6";
+    vi.mocked(generateText).mockResolvedValueOnce({ toolResults: [] } as never);
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    await tool.execute({ query: "anything" }, {} as never);
+
+    expect(gatewayProvider.chat).toHaveBeenCalledWith(
+      "xai/grok-4-fast-reasoning",
+    );
+  });
+
   it("wraps AI SDK errors in web search error message", async () => {
     vi.mocked(generateText).mockRejectedValueOnce(
       new Error('400 Invalid input: expected "function"'),
