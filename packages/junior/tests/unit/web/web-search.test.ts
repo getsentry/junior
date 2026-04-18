@@ -11,6 +11,10 @@ vi.mock("@ai-sdk/gateway", () => ({
   createGatewayProvider: vi.fn(),
 }));
 
+vi.mock("@/chat/logging", () => ({
+  logException: vi.fn(),
+}));
+
 describe("createWebSearchTool", () => {
   const parallelSearch = { id: "parallel-search-tool" };
   const gatewayProvider = {
@@ -37,10 +41,11 @@ describe("createWebSearchTool", () => {
   it("uses AI Gateway parallel search and maps tool results", async () => {
     process.env.AI_WEB_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
     vi.mocked(generateText).mockResolvedValueOnce({
+      content: [],
       toolResults: [
         {
           type: "tool-result",
-          toolName: "parallelSearch",
+          toolName: "parallel_search",
           output: {
             results: [
               {
@@ -73,7 +78,7 @@ describe("createWebSearchTool", () => {
       expect.objectContaining({
         model: { model: "xai/grok-4-fast-reasoning" },
         prompt: "vercel ai gateway",
-        toolChoice: { type: "tool", toolName: "parallelSearch" },
+        toolChoice: { type: "tool", toolName: "parallel_search" },
       }),
     );
     expect(result).toEqual({
@@ -88,6 +93,82 @@ describe("createWebSearchTool", () => {
           snippet: "Gateway docs",
         },
       ],
+    });
+  });
+
+  it("maps parallel_search results from step content when toolResults is empty", async () => {
+    process.env.AI_WEB_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
+    vi.mocked(generateText).mockResolvedValueOnce({
+      content: [
+        {
+          type: "tool-result",
+          toolName: "parallel_search",
+          output: {
+            results: [
+              {
+                title: "Docs",
+                url: "https://example.com",
+                excerpt: "Hi",
+              },
+            ],
+          },
+        },
+      ],
+      toolResults: [],
+    } as never);
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    const result = await tool.execute({ query: "q" }, {} as never);
+    expect(result).toEqual({
+      ok: true,
+      model: "xai/grok-4-fast-reasoning",
+      query: "q",
+      result_count: 1,
+      results: [
+        {
+          title: "Docs",
+          url: "https://example.com",
+          snippet: "Hi",
+        },
+      ],
+    });
+  });
+
+  it("returns failure when gateway embeds a Parallel Search error in the tool output", async () => {
+    process.env.AI_WEB_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
+    vi.mocked(generateText).mockResolvedValueOnce({
+      content: [
+        {
+          type: "tool-result",
+          toolName: "parallel_search",
+          output: {
+            error: "timeout",
+            message: "upstream deadline exceeded",
+          },
+        },
+      ],
+      toolResults: [],
+    } as never);
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    const result = await tool.execute({ query: "q" }, {} as never);
+    expect(result).toEqual({
+      ok: false,
+      model: "xai/grok-4-fast-reasoning",
+      query: "q",
+      result_count: 0,
+      results: [],
+      error: "web search failed: timeout: upstream deadline exceeded",
+      timeout: false,
+      retryable: true,
     });
   });
 
