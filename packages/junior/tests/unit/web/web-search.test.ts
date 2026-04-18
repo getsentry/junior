@@ -165,7 +165,7 @@ describe("createWebSearchTool", () => {
     vi.useRealTimers();
   });
 
-  it("marks authentication failures as non-retryable", async () => {
+  it("marks authentication failures as non-retryable and still reports them to Sentry", async () => {
     vi.mocked(generateText).mockRejectedValueOnce(
       new Error(
         "AI Gateway authentication failed: No authentication provided.",
@@ -189,6 +189,16 @@ describe("createWebSearchTool", () => {
         retryable: false,
       },
     );
-    expect(vi.mocked(logException)).not.toHaveBeenCalled();
+    expect(vi.mocked(logException)).toHaveBeenCalledWith(
+      expect.any(Error),
+      "web_search_failed",
+      {},
+      expect.objectContaining({
+        "gen_ai.tool.name": "webSearch",
+        "app.web_search.timeout": false,
+        "app.web_search.retryable": false,
+      }),
+      expect.stringContaining("authentication failed"),
+    );
   });
 });

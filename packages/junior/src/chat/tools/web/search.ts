@@ -130,22 +130,21 @@ export function createWebSearchTool() {
         const message = formatSearchFailure(error);
         const timeout = /timed out/i.test(message);
         const retryable = !isAuthFailure(message);
-        // Auth misconfig is an expected environment issue; everything else
-        // (timeouts, gateway errors) is a real runtime failure worth a Sentry
-        // exception so regressions in the search tool stay visible.
-        if (retryable) {
-          logException(
-            error,
-            "web_search_failed",
-            {},
-            {
-              "gen_ai.tool.name": "webSearch",
-              "app.web_search.timeout": timeout,
-              "app.web_search.query": query,
-            },
-            message,
-          );
-        }
+        // Every ok:false path surfaces to Sentry. The tool swallows the
+        // exception for the model, so without an explicit capture the
+        // failure is otherwise invisible to us.
+        logException(
+          error,
+          "web_search_failed",
+          {},
+          {
+            "gen_ai.tool.name": "webSearch",
+            "app.web_search.timeout": timeout,
+            "app.web_search.retryable": retryable,
+            "app.web_search.query": query,
+          },
+          message,
+        );
         return {
           ok: false,
           query,
