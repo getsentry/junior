@@ -41,98 +41,79 @@ function formatGatewayToolFailure(output: unknown): string | undefined {
   return undefined;
 }
 
-type GenerateTextStepContent = {
+type StepPart = {
   type: string;
   toolName?: string;
   output?: unknown;
   error?: unknown;
 };
 
-/**
- * Provider-executed Parallel Search can surface failures as `tool-error` parts or
- * error-shaped `tool-result` outputs; both must be handled explicitly.
- */
-function findParallelSearchGatewayFailure(
-  content: GenerateTextStepContent[],
+type SearchHit = { title: string; url: string; snippet: string };
+
+/** Failures often appear only on the step `content` array (not duplicated in `toolResults`). */
+function parallelSearchGatewayFailureFromContent(
+  content: StepPart[],
 ): string | undefined {
   for (const part of content) {
     if (part.toolName !== SEARCH_TOOL_NAME) {
       continue;
     }
     if (part.type === "tool-error") {
-      const message = formatGatewayToolFailure(part.error);
-      if (message) {
-        return message;
+      const detail = formatGatewayToolFailure(part.error);
+      if (detail) {
+        return detail;
       }
     }
-    if (part.type === "tool-result") {
-      const message = formatGatewayToolFailure(part.output);
-      if (message && isGatewayParallelSearchErrorOutput(part.output)) {
-        return message;
-      }
+    if (
+      part.type === "tool-result" &&
+      isGatewayParallelSearchErrorOutput(part.output)
+    ) {
+      const o = part.output;
+      return `${o.error}: ${o.message}`;
     }
   }
   return undefined;
 }
 
-function hadParallelSearchToolResult(response: {
-  content: GenerateTextStepContent[];
-  toolResults: GenerateTextStepContent[];
-}): boolean {
-  for (const part of [...response.content, ...response.toolResults]) {
-    if (part.type === "tool-result" && part.toolName === SEARCH_TOOL_NAME) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function parseSearchResults(
-  response: {
-    content: GenerateTextStepContent[];
-    toolResults: GenerateTextStepContent[];
-  },
+function collectParallelSearchHits(
+  content: StepPart[],
+  toolResults: StepPart[],
   maxResults: number,
-): Array<{ title: string; url: string; snippet: string }> {
-  const parsedResults: Array<{ title: string; url: string; snippet: string }> =
-    [];
-
-  const sources = [response.content, response.toolResults];
-  for (const typedResults of sources) {
-    for (const toolResult of typedResults) {
-      if (
-        toolResult.type !== "tool-result" ||
-        toolResult.toolName !== SEARCH_TOOL_NAME
-      ) {
+): { results: SearchHit[]; sawToolResult: boolean } {
+  const results: SearchHit[] = [];
+  let sawToolResult = false;
+  for (const part of [...content, ...toolResults]) {
+    if (part.type !== "tool-result" || part.toolName !== SEARCH_TOOL_NAME) {
+      continue;
+    }
+    sawToolResult = true;
+    const output = part.output;
+    if (isGatewayParallelSearchErrorOutput(output)) {
+      continue;
+    }
+    const rows = Array.isArray(
+      (output as { results?: unknown } | undefined)?.results,
+    )
+      ? ((output as { results: unknown[] }).results as Array<
+          Record<string, unknown>
+        >)
+      : [];
+    for (const row of rows) {
+      const url = asString(row.url);
+      if (!url) {
         continue;
       }
-
-      const output = toolResult.output as { results?: unknown } | undefined;
-      if (isGatewayParallelSearchErrorOutput(output)) {
-        continue;
-      }
-
-      const results = Array.isArray(output?.results)
-        ? (output.results as Array<Record<string, unknown>>)
-        : [];
-
-      for (const result of results) {
-        const url = asString(result.url);
-        if (!url) continue;
-        parsedResults.push({
-          title: asString(result.title) ?? url,
-          url,
-          snippet: asString(result.excerpt) ?? asString(result.snippet) ?? "",
-        });
-
-        if (parsedResults.length >= maxResults) {
-          return parsedResults;
-        }
+      results.push({
+        title: asString(row.title) ?? url,
+        url,
+        snippet: asString(row.excerpt) ?? asString(row.snippet) ?? "",
+      });
+      if (results.length >= maxResults) {
+        return { results, sawToolResult };
       }
     }
   }
-
-  return parsedResults;
+  return { results, sawToolResult };
 }
 
 function formatSearchFailure(error: unknown): string {
@@ -213,7 +194,7 @@ export function createWebSearchTool() {
           "webSearch",
         );
 
-        const gatewayFailureMessage = findParallelSearchGatewayFailure(
+        const gatewayFailureMessage = parallelSearchGatewayFailureFromContent(
           response.content,
         );
         if (gatewayFailureMessage) {
@@ -239,9 +220,13 @@ export function createWebSearchTool() {
           };
         }
 
-        const results = parseSearchResults(response, maxResults);
+        const { results, sawToolResult } = collectParallelSearchHits(
+          response.content,
+          response.toolResults,
+          maxResults,
+        );
 
-        if (results.length === 0 && !hadParallelSearchToolResult(response)) {
+        if (results.length === 0 && !sawToolResult) {
           const message =
             "web search failed: Parallel Search returned no tool result (possible tool name mismatch or gateway issue)";
           logException(
