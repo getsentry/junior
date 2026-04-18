@@ -3,7 +3,6 @@ import type { AgentTurnUsage } from "@/chat/usage";
 interface SlackMrkdwnTextObject {
   text: string;
   type: "mrkdwn";
-  verbatim?: boolean;
 }
 
 interface SlackSectionBlock {
@@ -135,7 +134,6 @@ export function buildSlackReplyBlocks(
       text: {
         type: "mrkdwn",
         text,
-        verbatim: false,
       },
     },
     {
@@ -143,7 +141,6 @@ export function buildSlackReplyBlocks(
       elements: footer.items.map((item) => ({
         type: "mrkdwn",
         text: `*${escapeSlackMrkdwn(item.label)}:* ${escapeSlackMrkdwn(item.value)}`,
-        verbatim: false,
       })),
     },
   ];

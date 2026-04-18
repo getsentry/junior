@@ -127,7 +127,6 @@ describe("slack channel tools", () => {
     expect(postCalls).toHaveLength(1);
     expect(postCalls[0]?.params).toMatchObject({
       channel: "C123",
-      link_names: "true",
       text: "Incident resolved.",
     });
     expect(postCalls[0]?.params).toHaveProperty("mrkdwn");

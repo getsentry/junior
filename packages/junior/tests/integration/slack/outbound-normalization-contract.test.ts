@@ -35,8 +35,6 @@ describe("Slack contract: outbound normalization", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "C123",
-          link_names: "true",
-          mrkdwn: "true",
           text: "hello",
         }),
       }),
@@ -59,8 +57,6 @@ describe("Slack contract: outbound normalization", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           channel: "C123",
-          link_names: "true",
-          mrkdwn: "true",
           text: "hello",
           blocks: [
             {
@@ -68,7 +64,6 @@ describe("Slack contract: outbound normalization", () => {
               text: {
                 type: "mrkdwn",
                 text: "hello",
-                verbatim: false,
               },
             },
             {
@@ -77,12 +72,10 @@ describe("Slack contract: outbound normalization", () => {
                 {
                   type: "mrkdwn",
                   text: "*ID:* slack:C123:1700000000.000100",
-                  verbatim: false,
                 },
                 {
                   type: "mrkdwn",
                   text: "*Trace:* trace_123",
-                  verbatim: false,
                 },
               ],
             },

@@ -96,7 +96,6 @@ describe("buildSlackReplyBlocks", () => {
         text: {
           type: "mrkdwn",
           text: "Hello world",
-          verbatim: false,
         },
       },
       {
@@ -105,22 +104,18 @@ describe("buildSlackReplyBlocks", () => {
           {
             type: "mrkdwn",
             text: "*ID:* slack:C123:1700000000.000100",
-            verbatim: false,
           },
           {
             type: "mrkdwn",
             text: "*Tokens:* 650",
-            verbatim: false,
           },
           {
             type: "mrkdwn",
             text: "*Time:* 1.3s",
-            verbatim: false,
           },
           {
             type: "mrkdwn",
             text: "*Trace:* trace_123",
-            verbatim: false,
           },
         ],
       },
