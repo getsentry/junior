@@ -3,8 +3,9 @@ import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/web/network";
+import { logException } from "@/chat/logging";
 
-const SEARCH_TIMEOUT_MS = 10_000;
+const SEARCH_TIMEOUT_MS = 30_000;
 const MAX_RESULTS = 5;
 const DEFAULT_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
 const SEARCH_TOOL_NAME = "parallelSearch";
@@ -147,14 +148,32 @@ export function createWebSearchTool() {
         };
       } catch (error) {
         const message = formatSearchFailure(error);
+        const timeout = isTimeoutSearchFailure(message);
+        const retryable = !isNonRetryableSearchFailure(message);
+        // Report real failures (timeouts, gateway errors) to Sentry so we can
+        // see when the search tool is broken. Auth misconfiguration is a known
+        // environment issue, not a runtime bug — skip it.
+        if (retryable) {
+          logException(
+            error,
+            "web_search_failed",
+            {},
+            {
+              "gen_ai.tool.name": "webSearch",
+              "app.web_search.timeout": timeout,
+              "app.web_search.query": query,
+            },
+            message,
+          );
+        }
         return {
           ok: false,
           query,
           result_count: 0,
           results: [],
           error: message,
-          timeout: isTimeoutSearchFailure(message),
-          retryable: !isNonRetryableSearchFailure(message),
+          timeout,
+          retryable,
         };
       }
     },

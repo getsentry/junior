@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
+import { logException } from "@/chat/logging";
 
 vi.mock("ai", () => ({
   generateText: vi.fn(),
@@ -9,6 +10,10 @@ vi.mock("ai", () => ({
 
 vi.mock("@ai-sdk/gateway", () => ({
   createGatewayProvider: vi.fn(),
+}));
+
+vi.mock("@/chat/logging", () => ({
+  logException: vi.fn(),
 }));
 
 describe("createWebSearchTool", () => {
@@ -130,7 +135,7 @@ describe("createWebSearchTool", () => {
     }
 
     const pending = tool.execute({ query: "test query" }, {} as never);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     await expect(pending).resolves.toEqual({
       ok: false,
       query: "test query",
@@ -167,5 +172,6 @@ describe("createWebSearchTool", () => {
         retryable: false,
       },
     );
+    expect(vi.mocked(logException)).not.toHaveBeenCalled();
   });
 });
