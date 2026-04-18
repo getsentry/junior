@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
+import { logException } from "@/chat/logging";
 
 vi.mock("ai", () => ({
   generateText: vi.fn(),
@@ -9,6 +10,10 @@ vi.mock("ai", () => ({
 
 vi.mock("@ai-sdk/gateway", () => ({
   createGatewayProvider: vi.fn(),
+}));
+
+vi.mock("@/chat/logging", () => ({
+  logException: vi.fn(),
 }));
 
 describe("createWebSearchTool", () => {
@@ -91,6 +96,24 @@ describe("createWebSearchTool", () => {
     });
   });
 
+  it("uses the default search model when AI_WEB_SEARCH_MODEL is unset, ignoring AI_MODEL/AI_FAST_MODEL", async () => {
+    delete process.env.AI_WEB_SEARCH_MODEL;
+    process.env.AI_FAST_MODEL = "openai/gpt-5.4";
+    process.env.AI_MODEL = "anthropic/claude-sonnet-4.6";
+    vi.mocked(generateText).mockResolvedValueOnce({ toolResults: [] } as never);
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    await tool.execute({ query: "anything" }, {} as never);
+
+    expect(gatewayProvider.chat).toHaveBeenCalledWith(
+      "xai/grok-4-fast-reasoning",
+    );
+  });
+
   it("wraps AI SDK errors in web search error message", async () => {
     vi.mocked(generateText).mockRejectedValueOnce(
       new Error('400 Invalid input: expected "function"'),
@@ -108,8 +131,7 @@ describe("createWebSearchTool", () => {
       query: "test query",
       result_count: 0,
       results: [],
-      error:
-        'web search failed: web search failed: 400 Invalid input: expected "function"',
+      error: 'web search failed: 400 Invalid input: expected "function"',
       timeout: false,
       retryable: true,
     });
@@ -130,7 +152,7 @@ describe("createWebSearchTool", () => {
     }
 
     const pending = tool.execute({ query: "test query" }, {} as never);
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     await expect(pending).resolves.toEqual({
       ok: false,
       query: "test query",
@@ -143,7 +165,7 @@ describe("createWebSearchTool", () => {
     vi.useRealTimers();
   });
 
-  it("marks authentication failures as non-retryable", async () => {
+  it("marks authentication failures as non-retryable and still reports them to Sentry", async () => {
     vi.mocked(generateText).mockRejectedValueOnce(
       new Error(
         "AI Gateway authentication failed: No authentication provided.",
@@ -162,10 +184,21 @@ describe("createWebSearchTool", () => {
         result_count: 0,
         results: [],
         error:
-          "web search failed: web search failed: AI Gateway authentication failed: No authentication provided.",
+          "web search failed: AI Gateway authentication failed: No authentication provided.",
         timeout: false,
         retryable: false,
       },
+    );
+    expect(vi.mocked(logException)).toHaveBeenCalledWith(
+      expect.any(Error),
+      "web_search_failed",
+      {},
+      expect.objectContaining({
+        "gen_ai.tool.name": "webSearch",
+        "app.web_search.timeout": false,
+        "app.web_search.retryable": false,
+      }),
+      expect.stringContaining("authentication failed"),
     );
   });
 });

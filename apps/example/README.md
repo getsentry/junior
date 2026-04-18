@@ -25,6 +25,8 @@ Copy `.env.example` and set:
 - `REDIS_URL`
 - `AI_MODEL` (optional)
 - `AI_FAST_MODEL` (optional)
+- `AI_VISION_MODEL` (optional, enables image-understanding; unset disables vision features)
+- `AI_WEB_SEARCH_MODEL` (optional, overrides the `webSearch` tool model; defaults to a search-tuned model)
 - `NOTION_TOKEN` (optional, enables the bundled Notion plugin)
 
 ## Wiring

@@ -174,6 +174,7 @@ Recommended:
 - `AI_MODEL`
 - `AI_FAST_MODEL`
 - `AI_VISION_MODEL`
+- `AI_WEB_SEARCH_MODEL`
 
 Optional:
 

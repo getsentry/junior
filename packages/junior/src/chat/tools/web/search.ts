@@ -3,8 +3,9 @@ import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/web/network";
+import { logException } from "@/chat/logging";
 
-const SEARCH_TIMEOUT_MS = 10_000;
+const SEARCH_TIMEOUT_MS = 60_000;
 const MAX_RESULTS = 5;
 const DEFAULT_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
 const SEARCH_TOOL_NAME = "parallelSearch";
@@ -59,26 +60,16 @@ function parseSearchResults(
 }
 
 function formatSearchFailure(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.trim();
-    if (message) {
-      return `web search failed: ${message}`;
-    }
-  }
-
-  return "web search failed";
+  const message = error instanceof Error ? error.message.trim() : "";
+  return message ? `web search failed: ${message}` : "web search failed";
 }
 
-function isNonRetryableSearchFailure(message: string): boolean {
+function isAuthFailure(message: string): boolean {
   const normalized = message.toLowerCase();
   return (
     normalized.includes("missing ai gateway credentials") ||
     normalized.includes("authentication failed")
   );
-}
-
-function isTimeoutSearchFailure(message: string): boolean {
-  return /timed out/i.test(message);
 }
 
 export function createWebSearchTool() {
@@ -101,43 +92,33 @@ export function createWebSearchTool() {
     }),
     execute: async ({ query, max_results }) => {
       const maxResults = max_results ?? 3;
-      try {
-        const model =
-          process.env.AI_WEB_SEARCH_MODEL ??
-          process.env.AI_FAST_MODEL ??
-          process.env.AI_MODEL ??
-          DEFAULT_SEARCH_MODEL;
+      // Pinned. General-purpose models (AI_MODEL / AI_FAST_MODEL) aren't
+      // reliable at forced provider-tool calls on AI Gateway; keep the
+      // search tool on a search-tuned model and only allow an explicit
+      // override.
+      const model = process.env.AI_WEB_SEARCH_MODEL ?? DEFAULT_SEARCH_MODEL;
 
-        // AI SDK Gateway already reads AI_GATEWAY_API_KEY or ambient Vercel
-        // OIDC itself, so this path should not pass auth explicitly.
+      try {
+        // AI SDK Gateway reads AI_GATEWAY_API_KEY or ambient Vercel OIDC
+        // itself; no explicit auth needed here.
         const provider = createGatewayProvider();
         const response = await withTimeout(
-          (async () => {
-            try {
-              return await generateText({
-                model: provider.chat(model),
-                prompt: query,
-                tools: {
-                  [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
-                    mode: "agentic",
-                    maxResults,
-                  }),
-                },
-                toolChoice: {
-                  type: "tool",
-                  toolName: SEARCH_TOOL_NAME,
-                },
-              });
-            } catch (error) {
-              throw new Error(formatSearchFailure(error));
-            }
-          })(),
+          generateText({
+            model: provider.chat(model),
+            prompt: query,
+            tools: {
+              [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+                mode: "agentic",
+                maxResults,
+              }),
+            },
+            toolChoice: { type: "tool", toolName: SEARCH_TOOL_NAME },
+          }),
           SEARCH_TIMEOUT_MS,
           "webSearch",
         );
 
         const results = parseSearchResults(response.toolResults, maxResults);
-
         return {
           ok: true,
           model,
@@ -147,14 +128,31 @@ export function createWebSearchTool() {
         };
       } catch (error) {
         const message = formatSearchFailure(error);
+        const timeout = /timed out/i.test(message);
+        const retryable = !isAuthFailure(message);
+        // Every ok:false path surfaces to Sentry. The tool swallows the
+        // exception for the model, so without an explicit capture the
+        // failure is otherwise invisible to us.
+        logException(
+          error,
+          "web_search_failed",
+          {},
+          {
+            "gen_ai.tool.name": "webSearch",
+            "app.web_search.timeout": timeout,
+            "app.web_search.retryable": retryable,
+            "app.web_search.query": query,
+          },
+          message,
+        );
         return {
           ok: false,
           query,
           result_count: 0,
           results: [],
           error: message,
-          timeout: isTimeoutSearchFailure(message),
-          retryable: !isNonRetryableSearchFailure(message),
+          timeout,
+          retryable,
         };
       }
     },
