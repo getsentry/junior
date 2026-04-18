@@ -60,26 +60,16 @@ function parseSearchResults(
 }
 
 function formatSearchFailure(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.trim();
-    if (message) {
-      return `web search failed: ${message}`;
-    }
-  }
-
-  return "web search failed";
+  const message = error instanceof Error ? error.message.trim() : "";
+  return message ? `web search failed: ${message}` : "web search failed";
 }
 
-function isNonRetryableSearchFailure(message: string): boolean {
+function isAuthFailure(message: string): boolean {
   const normalized = message.toLowerCase();
   return (
     normalized.includes("missing ai gateway credentials") ||
     normalized.includes("authentication failed")
   );
-}
-
-function isTimeoutSearchFailure(message: string): boolean {
-  return /timed out/i.test(message);
 }
 
 export function createWebSearchTool() {
@@ -102,43 +92,33 @@ export function createWebSearchTool() {
     }),
     execute: async ({ query, max_results }) => {
       const maxResults = max_results ?? 3;
-      try {
-        const model =
-          process.env.AI_WEB_SEARCH_MODEL ??
-          process.env.AI_FAST_MODEL ??
-          process.env.AI_MODEL ??
-          DEFAULT_SEARCH_MODEL;
+      const model =
+        process.env.AI_WEB_SEARCH_MODEL ??
+        process.env.AI_FAST_MODEL ??
+        process.env.AI_MODEL ??
+        DEFAULT_SEARCH_MODEL;
 
-        // AI SDK Gateway already reads AI_GATEWAY_API_KEY or ambient Vercel
-        // OIDC itself, so this path should not pass auth explicitly.
+      try {
+        // AI SDK Gateway reads AI_GATEWAY_API_KEY or ambient Vercel OIDC
+        // itself; no explicit auth needed here.
         const provider = createGatewayProvider();
         const response = await withTimeout(
-          (async () => {
-            try {
-              return await generateText({
-                model: provider.chat(model),
-                prompt: query,
-                tools: {
-                  [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
-                    mode: "agentic",
-                    maxResults,
-                  }),
-                },
-                toolChoice: {
-                  type: "tool",
-                  toolName: SEARCH_TOOL_NAME,
-                },
-              });
-            } catch (error) {
-              throw new Error(formatSearchFailure(error));
-            }
-          })(),
+          generateText({
+            model: provider.chat(model),
+            prompt: query,
+            tools: {
+              [SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+                mode: "agentic",
+                maxResults,
+              }),
+            },
+            toolChoice: { type: "tool", toolName: SEARCH_TOOL_NAME },
+          }),
           SEARCH_TIMEOUT_MS,
           "webSearch",
         );
 
         const results = parseSearchResults(response.toolResults, maxResults);
-
         return {
           ok: true,
           model,
@@ -148,11 +128,11 @@ export function createWebSearchTool() {
         };
       } catch (error) {
         const message = formatSearchFailure(error);
-        const timeout = isTimeoutSearchFailure(message);
-        const retryable = !isNonRetryableSearchFailure(message);
-        // Report real failures (timeouts, gateway errors) to Sentry so we can
-        // see when the search tool is broken. Auth misconfiguration is a known
-        // environment issue, not a runtime bug — skip it.
+        const timeout = /timed out/i.test(message);
+        const retryable = !isAuthFailure(message);
+        // Auth misconfig is an expected environment issue; everything else
+        // (timeouts, gateway errors) is a real runtime failure worth a Sentry
+        // exception so regressions in the search tool stay visible.
         if (retryable) {
           logException(
             error,

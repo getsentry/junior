@@ -113,8 +113,7 @@ describe("createWebSearchTool", () => {
       query: "test query",
       result_count: 0,
       results: [],
-      error:
-        'web search failed: web search failed: 400 Invalid input: expected "function"',
+      error: 'web search failed: 400 Invalid input: expected "function"',
       timeout: false,
       retryable: true,
     });
@@ -167,7 +166,7 @@ describe("createWebSearchTool", () => {
         result_count: 0,
         results: [],
         error:
-          "web search failed: web search failed: AI Gateway authentication failed: No authentication provided.",
+          "web search failed: AI Gateway authentication failed: No authentication provided.",
         timeout: false,
         retryable: false,
       },
