@@ -135,7 +135,7 @@ describe("createWebSearchTool", () => {
     }
 
     const pending = tool.execute({ query: "test query" }, {} as never);
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(60_000);
     await expect(pending).resolves.toEqual({
       ok: false,
       query: "test query",

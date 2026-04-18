@@ -5,7 +5,7 @@ import { Type } from "@sinclair/typebox";
 import { withTimeout } from "@/chat/tools/web/network";
 import { logException } from "@/chat/logging";
 
-const SEARCH_TIMEOUT_MS = 30_000;
+const SEARCH_TIMEOUT_MS = 60_000;
 const MAX_RESULTS = 5;
 const DEFAULT_SEARCH_MODEL = "xai/grok-4-fast-reasoning";
 const SEARCH_TOOL_NAME = "parallelSearch";
