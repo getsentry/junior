@@ -152,6 +152,13 @@ export function markConversationMessage(
   updateConversationStats(conversation);
 }
 
+/**
+ * Render thread background as structured XML for the model prompt.
+ *
+ * Per-compaction and per-message wrappers carry index/ts metadata so the
+ * model can reference prior items explicitly, matching Anthropic's
+ * per-document tag pattern and OpenAI's GPT-5 structured-spec guidance.
+ */
 export function buildConversationContext(
   conversation: ThreadConversationState,
   options: {
@@ -169,25 +176,50 @@ export function buildConversationContext(
   if (conversation.compactions.length > 0) {
     lines.push("<thread-compactions>");
     for (const [index, compaction] of conversation.compactions.entries()) {
-      lines.push(
-        [
-          `summary_${index + 1}:`,
-          compaction.summary,
-          `covered_messages: ${compaction.coveredMessageIds.length}`,
-          `created_at: ${new Date(compaction.createdAtMs).toISOString()}`,
-        ].join(" "),
-      );
+      const attrs = [
+        `index="${index + 1}"`,
+        `covered_messages="${compaction.coveredMessageIds.length}"`,
+        `created_at="${new Date(compaction.createdAtMs).toISOString()}"`,
+      ].join(" ");
+      lines.push(`  <compaction ${attrs}>`);
+      lines.push(compaction.summary);
+      lines.push("  </compaction>");
     }
     lines.push("</thread-compactions>");
     lines.push("");
   }
 
   lines.push("<thread-transcript>");
-  for (const message of messages) {
+  for (const [index, message] of messages.entries()) {
+    const attrs = buildMessageAttrs(message, index);
+    lines.push(`  <message ${attrs}>`);
     lines.push(renderConversationMessageLine(message, conversation));
+    lines.push("  </message>");
   }
   lines.push("</thread-transcript>");
   return lines.join("\n");
+}
+
+function buildMessageAttrs(
+  message: ConversationMessage,
+  index: number,
+): string {
+  const ts = new Date(message.createdAtMs).toISOString();
+  const author = message.author?.userName ?? message.role;
+  const parts = [
+    `index="${index + 1}"`,
+    `ts="${ts}"`,
+    `role="${message.role}"`,
+    `author="${escapeAttr(author)}"`,
+  ];
+  if (message.meta?.slackTs) {
+    parts.push(`slack_ts="${escapeAttr(message.meta.slackTs)}"`);
+  }
+  return parts.join(" ");
+}
+
+function escapeAttr(value: string): string {
+  return value.replace(/"/g, "&quot;");
 }
 
 function pruneCompactions(
@@ -240,9 +272,14 @@ async function summarizeConversationChunk(
           role: "user",
           content: [
             "Summarize the following older Slack thread transcript segment for future assistant turns.",
-            "Keep the summary factual and concise.",
-            "Preserve decisions, commitments, constraints, locations, hiring criteria, and unresolved asks.",
-            "Do not invent details.",
+            "Keep the summary factual and concise. Do not invent details.",
+            "",
+            "Output exactly three XML sections in this order:",
+            "<active-asks> one bullet per outstanding user ask that has not been narrowed, answered, or superseded by a later turn. Omit the section body if none. </active-asks>",
+            "<superseded-or-completed-asks> one bullet per ask that has been rescoped, narrowed, answered, or already acted on in this segment. Include the replacement/outcome inline. Omit the section body if none. </superseded-or-completed-asks>",
+            "<facts> one bullet per durable fact useful regardless of scope: names, ids, URLs, decisions, locations, preferences, constraints that remain true. Omit the section body if none. </facts>",
+            "",
+            "Do not output any text outside the three sections.",
             "",
             transcript,
           ].join("\n"),
