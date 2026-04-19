@@ -143,7 +143,11 @@ export function summarizeMessageText(text: string): string {
     : normalized;
 }
 
-/** Wrap user input with conversation context and observability metadata XML tags. */
+/**
+ * Wrap the current user turn with self-describing marker blocks: background
+ * first, current instruction last. Ordering matches long-context attention
+ * guidance for Sonnet and GPT-5.
+ */
 export function buildUserTurnText(
   userInput: string,
   conversationContext?: string,
@@ -153,46 +157,47 @@ export function buildUserTurnText(
   },
 ): string {
   const trimmedContext = conversationContext?.trim();
-  const hasSessionContext = Boolean(metadata?.sessionContext?.conversationId);
-  const hasTurnContext = Boolean(metadata?.turnContext?.traceId);
+  const conversationId = metadata?.sessionContext?.conversationId;
+  const traceId = metadata?.turnContext?.traceId;
 
-  if (!trimmedContext && !hasSessionContext && !hasTurnContext) {
+  if (!trimmedContext && !conversationId && !traceId) {
     return userInput;
   }
 
-  const sections: string[] = [
-    "<current-message>",
-    userInput,
-    "</current-message>",
-  ];
+  const sections: string[] = [];
 
   if (trimmedContext) {
     sections.push(
-      "",
-      "<thread-conversation-context>",
-      "Use this context for continuity across prior thread turns.",
+      "<thread-background>",
       trimmedContext,
-      "</thread-conversation-context>",
+      "</thread-background>",
+      "",
     );
   }
 
-  if (metadata?.sessionContext?.conversationId) {
+  if (conversationId) {
     sections.push(
-      "",
       "<session-context>",
-      `- gen_ai.conversation.id: ${metadata.sessionContext.conversationId}`,
+      `- gen_ai.conversation.id: ${conversationId}`,
       "</session-context>",
+      "",
     );
   }
 
-  if (metadata?.turnContext?.traceId) {
+  if (traceId) {
     sections.push(
-      "",
       "<turn-context>",
-      `- trace_id: ${metadata.turnContext.traceId}`,
+      `- trace_id: ${traceId}`,
       "</turn-context>",
+      "",
     );
   }
+
+  sections.push(
+    '<current-instruction priority="highest">',
+    userInput,
+    "</current-instruction>",
+  );
 
   return sections.join("\n");
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getThreadTitleSourceMessage } from "@/chat/services/conversation-memory";
+import {
+  buildConversationContext,
+  getThreadTitleSourceMessage,
+} from "@/chat/services/conversation-memory";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 
 describe("conversation memory title source", () => {
@@ -56,5 +59,12 @@ describe("conversation memory title source", () => {
     expect(getThreadTitleSourceMessage(conversation)?.text).toBe(
       "Real user request",
     );
+  });
+});
+
+describe("buildConversationContext", () => {
+  it("returns undefined for an empty conversation", () => {
+    const conversation = coerceThreadConversationState({});
+    expect(buildConversationContext(conversation)).toBeUndefined();
   });
 });

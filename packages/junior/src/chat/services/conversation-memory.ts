@@ -9,6 +9,7 @@ import type {
 } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
+import { escapeXml } from "@/chat/xml";
 
 const CONTEXT_COMPACTION_TRIGGER_TOKENS = 9000;
 const CONTEXT_COMPACTION_TARGET_TOKENS = 7000;
@@ -152,6 +153,11 @@ export function markConversationMessage(
   updateConversationStats(conversation);
 }
 
+/**
+ * Render thread history as structured XML. Each compaction and message is
+ * wrapped with index/ts metadata so the model can reference prior items
+ * individually instead of treating the whole block as one flat narrative.
+ */
 export function buildConversationContext(
   conversation: ThreadConversationState,
   options: {
@@ -166,25 +172,31 @@ export function buildConversationContext(
   }
 
   const lines: string[] = [];
+
   if (conversation.compactions.length > 0) {
     lines.push("<thread-compactions>");
     for (const [index, compaction] of conversation.compactions.entries()) {
       lines.push(
-        [
-          `summary_${index + 1}:`,
-          compaction.summary,
-          `covered_messages: ${compaction.coveredMessageIds.length}`,
-          `created_at: ${new Date(compaction.createdAtMs).toISOString()}`,
-        ].join(" "),
+        `  <compaction index="${index + 1}" covered_messages="${compaction.coveredMessageIds.length}" created_at="${new Date(compaction.createdAtMs).toISOString()}">`,
+        compaction.summary,
+        "  </compaction>",
       );
     }
-    lines.push("</thread-compactions>");
-    lines.push("");
+    lines.push("</thread-compactions>", "");
   }
 
   lines.push("<thread-transcript>");
-  for (const message of messages) {
-    lines.push(renderConversationMessageLine(message, conversation));
+  for (const [index, message] of messages.entries()) {
+    const author = escapeXml(message.author?.userName ?? message.role);
+    const ts = new Date(message.createdAtMs).toISOString();
+    const slackTsAttr = message.meta?.slackTs
+      ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
+      : "";
+    lines.push(
+      `  <message index="${index + 1}" ts="${ts}" role="${message.role}" author="${author}"${slackTsAttr}>`,
+      renderConversationMessageLine(message, conversation),
+      "  </message>",
+    );
   }
   lines.push("</thread-transcript>");
   return lines.join("\n");
@@ -240,9 +252,14 @@ async function summarizeConversationChunk(
           role: "user",
           content: [
             "Summarize the following older Slack thread transcript segment for future assistant turns.",
-            "Keep the summary factual and concise.",
-            "Preserve decisions, commitments, constraints, locations, hiring criteria, and unresolved asks.",
-            "Do not invent details.",
+            "Keep the summary factual and concise. Do not invent details.",
+            "",
+            "Output exactly three XML sections in this order:",
+            "<active-asks> one bullet per outstanding user ask that has not been narrowed, answered, or superseded by a later turn. Omit the section body if none. </active-asks>",
+            "<superseded-or-completed-asks> one bullet per ask that has been rescoped, narrowed, answered, or already acted on in this segment. Include the replacement/outcome inline. Omit the section body if none. </superseded-or-completed-asks>",
+            "<facts> one bullet per durable fact useful regardless of scope: names, ids, URLs, decisions, locations, preferences, constraints that remain true. Omit the section body if none. </facts>",
+            "",
+            "Do not output any text outside the three sections.",
             "",
             transcript,
           ].join("\n"),
