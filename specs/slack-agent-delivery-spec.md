@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-04-16
+- Last Edited: 2026-04-19
 
 ## Changelog
 
@@ -14,6 +14,7 @@
 - 2026-04-16: Corrected the assistant-thread context rule to match Slack adapter behavior: non-DM message events use `channel + (thread_ts ?? ts)`, `message.im` uses `channel + thread_ts`, lifecycle events use `assistant_thread.channel_id + assistant_thread.thread_ts`, and runtime code does not synthesize DM roots from persisted state or generic message `ts`.
 - 2026-04-16: Labeled long-running assistant status behavior as Slack-required behavior versus Junior runtime policy versus product policy.
 - 2026-04-16: Added an optional finalized-reply footer contract for Slack context-block metadata.
+- 2026-04-19: Standardized finalized Slack reply delivery on the shared raw-Web-API reply planner whenever a concrete Slack thread target exists.
 
 ## Status
 
@@ -139,6 +140,7 @@ Current rules:
 6. Reply text must be rendered through the shared Slack output translator before delivery; raw Slack API writers do not own markdown translation rules.
 7. When Junior adds reply footer metadata, it attaches that metadata as a Slack `context` block on the final text chunk only, while keeping the main reply text as the top-level fallback.
 8. Footer metadata is derived from structured reply diagnostics and correlation state. Conversation ID, trace ID, token totals, and turn duration may be shown when available; footer rendering must not scrape logs or spans after the fact.
+9. When Junior has a concrete Slack `channelId` plus `thread_ts` for the finalized reply, both live turns and resume-style handlers use the shared raw-Web-API reply planner for the visible reply posts. That planner owns the reply envelope and file-delivery shape so finalized Slack rendering is not split across competing delivery paths.
 
 This is intentional. Slack-native text streaming may still exist as an adapter capability, but it is not part of Junior's correctness contract.
 

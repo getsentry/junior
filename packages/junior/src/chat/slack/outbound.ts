@@ -1,5 +1,5 @@
 import { SlackActionError } from "@/chat/slack/client";
-import type { SlackMessageBlock } from "@/chat/slack/footer";
+import type { SlackMessageBlock } from "@/chat/slack/reply-blocks";
 import {
   getSlackClient,
   normalizeSlackConversationId,

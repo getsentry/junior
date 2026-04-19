@@ -92,9 +92,10 @@ describe("oauth resume slack integration", () => {
       }),
       expect.objectContaining({
         params: expect.objectContaining({
-          blocks: [
+          blocks: expect.arrayContaining([
             {
               type: "section",
+              expand: true,
               text: {
                 type: "mrkdwn",
                 text: "The budget deadline you mentioned earlier was Friday.",
@@ -119,7 +120,7 @@ describe("oauth resume slack integration", () => {
                 }),
               ]),
             },
-          ],
+          ]),
           channel: "C123",
           thread_ts: "1700000000.001",
           text: "The budget deadline you mentioned earlier was Friday.",
