@@ -534,7 +534,6 @@ export function buildSystemPrompt(params: {
         "- `imageGenerate` returns generated image metadata, including `attachment_path` values you can pass to `attachFile` when the user should receive the image.",
         "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
         "- `slackCanvasUpdate` targets the active artifact-context canvas automatically; do not ask the user for `canvas_id`.",
-        "- When the user shares a Slack canvas/docs link (for example `https://*.slack.com/docs/...` or `https://*.slack.com/canvas/...`) or a canvas/file ID (`F...`), call `slackCanvasRead` to fetch its contents instead of `webFetch`. Do not claim the link is inaccessible without first trying `slackCanvasRead`.",
         "- When you create or update a Slack artifact in this turn (for example a canvas, list, posted message, or attached file), mention it explicitly in the final reply and include its link when the tool returned one.",
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- `slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` target the active artifact-context list automatically; do not ask the user for `list_id`.",
