@@ -1,68 +1,19 @@
 import { truncateStatusText } from "@/chat/runtime/status-format";
 import { normalizeSlackStatusText } from "@/chat/slack/mrkdwn";
 
-const STATUS_PATTERNS = {
-  thinking: {
-    defaultContext: "…",
-    variants: ["Thinking", "Reasoning", "Considering", "Working through"],
-  },
-  searching: {
-    defaultContext: "sources",
-    variants: ["Searching", "Scanning", "Probing", "Trawling"],
-  },
-  reading: {
-    defaultContext: "task",
-    variants: ["Reading", "Inspecting", "Parsing", "Skimming"],
-  },
-  reviewing: {
-    defaultContext: "results",
-    variants: ["Reviewing", "Checking", "Inspecting", "Auditing"],
-  },
-  drafting: {
-    defaultContext: "reply",
-    variants: ["Drafting", "Writing", "Composing", "Shaping"],
-  },
-  loading: {
-    defaultContext: "task",
-    variants: ["Loading", "Priming", "Booting", "Spinning up"],
-  },
-  updating: {
-    defaultContext: "state",
-    variants: ["Updating", "Patching", "Refreshing", "Adjusting"],
-  },
-  fetching: {
-    defaultContext: "sources",
-    variants: ["Fetching", "Pulling", "Retrieving", "Loading"],
-  },
-  creating: {
-    defaultContext: "draft",
-    variants: ["Creating", "Building", "Assembling", "Generating"],
-  },
-  listing: {
-    defaultContext: "items",
-    variants: ["Listing", "Gathering", "Collecting", "Enumerating"],
-  },
-  posting: {
-    defaultContext: "reply",
-    variants: ["Posting", "Sending", "Delivering", "Dispatching"],
-  },
-  adding: {
-    defaultContext: "details",
-    variants: ["Adding", "Applying", "Attaching", "Dropping in"],
-  },
-  running: {
-    defaultContext: "tasks",
-    variants: ["Running", "Executing", "Launching", "Processing"],
-  },
+const DEFAULT_STATUS_CONTEXTS = {
+  thinking: "…",
+  searching: "sources",
+  reading: "task",
+  reviewing: "results",
+  drafting: "reply",
+  running: "tasks",
 } as const;
 
-export type AssistantStatusKind = keyof typeof STATUS_PATTERNS;
-export type AssistantStatusSource = "fallback" | "major";
+type AssistantStatusVerb = keyof typeof DEFAULT_STATUS_CONTEXTS;
 
 export interface AssistantStatusSpec {
-  kind: AssistantStatusKind;
-  context?: string;
-  source?: AssistantStatusSource;
+  text: string;
 }
 
 interface AssistantStatusPresentation {
@@ -70,41 +21,45 @@ interface AssistantStatusPresentation {
   visible: string;
 }
 
-/** Build a typed assistant status from a stable kind and optional context. */
+function formatAssistantStatusText(verb: string, context?: string): string {
+  const normalizedVerb = normalizeSlackStatusText(verb).trim().toLowerCase();
+  const normalizedContext =
+    normalizeSlackStatusText(context ?? "") ||
+    DEFAULT_STATUS_CONTEXTS[
+      normalizedVerb as keyof typeof DEFAULT_STATUS_CONTEXTS
+    ] ||
+    "";
+
+  if (!normalizedVerb) {
+    return truncateStatusText(normalizedContext || "Working");
+  }
+
+  const displayVerb = `${normalizedVerb[0]?.toUpperCase() ?? ""}${normalizedVerb.slice(1)}`;
+  return truncateStatusText(
+    normalizedContext ? `${displayVerb} ${normalizedContext}` : displayVerb,
+  );
+}
+
+/** Build assistant progress text from a verb and optional context. */
 export function makeAssistantStatus(
-  kind: AssistantStatusKind,
+  verb: AssistantStatusVerb,
   context?: string,
-  options?: { source?: AssistantStatusSource },
 ): AssistantStatusSpec {
   return {
-    kind,
-    ...(context ? { context } : {}),
-    ...(options?.source ? { source: options.source } : {}),
+    text: formatAssistantStatusText(verb, context),
   };
 }
 
-/**
- * Render a typed status into Slack-facing strings.
- *
- * Randomized phrasing is product policy, not transport behavior, so keep it
- * separate from pacing and API-call concerns.
- */
+/** Normalize a progress update into the visible Slack loading copy. */
 export function renderAssistantStatus(args: {
   status: AssistantStatusSpec;
-  random?: () => number;
 }): AssistantStatusPresentation {
-  const random = args.random ?? Math.random;
-  const pattern = STATUS_PATTERNS[args.status.kind];
-  const source = args.status.source ?? "fallback";
-  const context =
-    normalizeSlackStatusText(args.status.context ?? "") ||
-    pattern.defaultContext;
-  const index = Math.floor(random() * pattern.variants.length);
-  const verb = pattern.variants[index] ?? pattern.variants[0];
-  const visible = truncateStatusText(`${verb} ${context}`);
+  const visible = truncateStatusText(
+    normalizeSlackStatusText(args.status.text),
+  );
 
   return {
-    key: `${source}:${args.status.kind}:${context}`,
+    key: visible,
     visible,
   };
 }

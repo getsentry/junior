@@ -7,8 +7,8 @@ import {
   PluginAuthorizationPauseError,
   type PluginAuthOrchestration,
 } from "@/chat/services/plugin-auth-orchestration";
+import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
-import { buildToolStatus } from "@/chat/runtime/tool-status";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -50,7 +50,12 @@ export function createAgentTools(
         turnId: spanContext.turnId,
         agentId: spanContext.agentId,
       };
-      await onStatus?.(buildToolStatus(toolName, params));
+      if (toolName === "reportProgress") {
+        const status = buildReportedProgressStatus(params);
+        if (status) {
+          await onStatus?.(status);
+        }
+      }
       return withSpan(
         `execute_tool ${toolName}`,
         "gen_ai.execute_tool",

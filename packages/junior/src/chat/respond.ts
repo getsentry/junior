@@ -316,7 +316,6 @@ export async function generateAssistantReply(
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
-      onStatus: context.onStatus,
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =

@@ -7,7 +7,6 @@ import {
   withSpan,
   type LogContext,
 } from "@/chat/logging";
-import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
@@ -124,7 +123,6 @@ export function createSandboxExecutor(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,
@@ -138,7 +136,6 @@ export function createSandboxExecutor(options?: {
     sandboxDependencyProfileHash: options?.sandboxDependencyProfileHash,
     timeoutMs: options?.timeoutMs,
     traceContext,
-    onStatus: options?.onStatus,
     onSandboxAcquired: options?.onSandboxAcquired,
   });
 

@@ -61,7 +61,7 @@ export function renderSlackMrkdwn(text: string): string {
   return normalized.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-/** Normalize a typed assistant status context before handing it to Slack. */
+/** Normalize assistant status text before handing it to Slack. */
 export function normalizeSlackStatusText(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) {

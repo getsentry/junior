@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-04-16
+- Last Edited: 2026-04-19
 
 ## Changelog
 
@@ -14,6 +14,7 @@
 - 2026-04-16: Corrected the assistant-thread context rule to match Slack adapter behavior: non-DM message events use `channel + (thread_ts ?? ts)`, `message.im` uses `channel + thread_ts`, lifecycle events use `assistant_thread.channel_id + assistant_thread.thread_ts`, and runtime code does not synthesize DM roots from persisted state or generic message `ts`.
 - 2026-04-16: Labeled long-running assistant status behavior as Slack-required behavior versus Junior runtime policy versus product policy.
 - 2026-04-16: Added an optional finalized-reply footer contract for Slack context-block metadata.
+- 2026-04-19: Removed stale references to typed status kinds and documented explicit progress as free-form rendered text.
 
 ## Status
 
@@ -105,10 +106,9 @@ Current contract:
 7. Slack `assistant.threads.*` calls must use the current inbound event's live assistant-thread key. For non-DM message events, the first reply may target `thread_ts ?? ts` from the live event. For `message.im`, an explicit `thread_ts` is still required; when Slack omits it, Junior skips assistant status/title updates instead of substituting the message `ts` or a stored root.
 8. Status transports that debounce, rotate, or otherwise defer updates must bind the active Slack bot token when the turn starts instead of relying on later ambient request context. Delayed status updates must keep targeting the same workspace installation as the turn's final reply.
 9. Assistant status is best effort and must not sit on the critical path for model/tool execution. Starting a turn or updating mid-turn status may queue Slack writes, but must not wait for Slack round-trips before assistant work continues.
-10. When Junior has an explicit major-phase progress update, that major-phase status must take precedence over generic tool-derived fallback statuses until another major-phase update arrives or the turn ends.
-11. When Junior shows an explicit major-phase progress update, it must not also send the generic `loading_messages` rotation for that same status update. Major-phase progress owns the loading surface until the turn ends or another status update replaces it.
-12. While a turn is active, Junior uses a stable generic `status` string for Slack's assistant loading state and changes the user-visible progress copy through `loading_messages`.
-13. Final reply footer metadata is not part of the in-flight loading contract. Footer blocks, when present, belong only to the finalized reply artifact.
+10. When Junior has an explicit progress update, it must replace the generic `loading_messages` rotation for that status update. Explicit progress owns the loading surface until another status update replaces it or the turn ends.
+11. While a turn is active, Junior uses a stable generic `status` string for Slack's assistant loading state and changes the user-visible progress copy through `loading_messages`.
+12. Final reply footer metadata is not part of the in-flight loading contract. Footer blocks, when present, belong only to the finalized reply artifact.
 
 Status is the only in-flight progress surface required by the contract. Visible assistant reply text is posted only after the turn result is finalized and delivery has been planned.
 
@@ -126,11 +126,10 @@ Design note:
    - Delayed callbacks bind the active installation token when the turn starts.
 3. Product policy:
    - Junior keeps Slack's `status` text stable and generic while a turn is active.
-   - Junior may randomize phrasing for statuses derived from the same stable status kind.
    - Junior may debounce and minimum-display-time status transitions to avoid unreadable flicker.
    - Junior may supply generic `loading_messages` from core bot configuration and randomize their order per turn.
    - Junior suppresses the generic `loading_messages` rotation while an explicit progress update is active and uses the current progress message as the loading surface instead.
-   - Junior may expose an internal progress-reporting tool for sparse major-phase updates while keeping tool-derived statuses as fallback behavior.
+   - Junior may expose an internal progress-reporting tool for sparse explicit progress messages.
    - Footer metadata, when enabled, is a separate finalized-reply affordance and must not be treated as assistant progress.
 
 ### 5. Primary Reply Contract

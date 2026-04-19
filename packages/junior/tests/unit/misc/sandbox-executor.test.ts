@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
@@ -1037,43 +1036,5 @@ describe("createSandboxExecutor", () => {
       "sandbox setup failed",
     );
     expect(sandboxCreateMock).not.toHaveBeenCalled();
-  });
-
-  it("emits sandbox phase status updates before booting", async () => {
-    const sandbox = makeSandbox("sbx_status");
-    sandboxCreateMock.mockResolvedValue(sandbox);
-    const statuses: ReturnType<typeof makeAssistantStatus>[] = [];
-    resolveRuntimeDependencySnapshotMock.mockImplementationOnce(
-      async (params: { onProgress?: (phase: string) => Promise<void> }) => {
-        await params.onProgress?.("resolve_start");
-        await params.onProgress?.("waiting_for_lock");
-        await params.onProgress?.("building_snapshot");
-        await params.onProgress?.("cache_hit");
-        await params.onProgress?.("build_complete");
-        return {
-          snapshotId: "snap_status",
-          profileHash: "hash_status",
-          dependencyCount: 2,
-          cacheHit: false,
-          resolveOutcome: "rebuilt",
-        };
-      },
-    );
-
-    const executor = createSandboxExecutor({
-      onStatus: async (status) => {
-        statuses.push(status);
-      },
-    });
-    executor.configureSkills([]);
-
-    await executor.createSandbox();
-
-    expect(statuses).toEqual([
-      makeAssistantStatus("loading", "sandbox runtime"),
-      makeAssistantStatus("loading", "sandbox snapshot cache"),
-      makeAssistantStatus("loading", "sandbox snapshot build"),
-      makeAssistantStatus("creating", "sandbox snapshot"),
-    ]);
   });
 });

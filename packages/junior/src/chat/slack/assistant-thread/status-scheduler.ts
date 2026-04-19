@@ -48,7 +48,6 @@ export function createAssistantStatusScheduler(args: {
 
   let active = false;
   let currentKey = "";
-  let currentStatus: AssistantStatusSpec = defaultStatus;
   let currentVisibleStatus = "";
   let currentLoadingMessages: string[] | undefined;
   let lastStatusAt = 0;
@@ -92,27 +91,16 @@ export function createAssistantStatusScheduler(args: {
     }, STATUS_ROTATION_INTERVAL_MS);
   };
 
-  const getLoadingMessagesForStatus = (
-    _status: AssistantStatusSpec,
+  const getLoadingMessagesForVisibleStatus = (
     visible: string,
-  ): string[] | undefined => {
-    if (!visible) {
-      return undefined;
-    }
-
-    // Once we have concrete progress copy, use it as the loading surface.
-    return [visible];
-  };
+  ): string[] | undefined => (visible ? [visible] : undefined);
 
   const getInitialStatusText = (): string => {
     if (loadingMessages?.length) {
       return loadingMessages[0];
     }
 
-    return renderAssistantStatus({
-      status: defaultStatus,
-      random,
-    }).visible;
+    return defaultStatus.text;
   };
 
   const haveSameLoadingMessages = (
@@ -150,13 +138,10 @@ export function createAssistantStatusScheduler(args: {
   ): Promise<void> => {
     const presentation = renderAssistantStatus({
       status,
-      random,
     });
-    const nextLoadingMessages = getLoadingMessagesForStatus(
-      status,
+    const nextLoadingMessages = getLoadingMessagesForVisibleStatus(
       presentation.visible,
     );
-    currentStatus = status;
     currentKey = presentation.key;
     await postStatus(presentation.visible, nextLoadingMessages);
   };
@@ -180,7 +165,6 @@ export function createAssistantStatusScheduler(args: {
     clearPending();
     const nextPresentation = renderAssistantStatus({
       status: next,
-      random,
     });
     if (nextPresentation.key !== currentKey) {
       await postRenderedStatus(next);
@@ -191,7 +175,6 @@ export function createAssistantStatusScheduler(args: {
     start() {
       active = true;
       clearPending();
-      currentStatus = defaultStatus;
       currentKey = "initial";
       void postStatus(getInitialStatusText(), loadingMessages);
     },
@@ -211,15 +194,8 @@ export function createAssistantStatusScheduler(args: {
       }
       const presentation = renderAssistantStatus({
         status,
-        random,
       });
       if (!presentation.visible) {
-        return;
-      }
-      if (
-        status.source !== "major" &&
-        (currentStatus.source === "major" || pendingStatus?.source === "major")
-      ) {
         return;
       }
       if (presentation.key === currentKey || presentation.key === pendingKey) {
@@ -227,10 +203,8 @@ export function createAssistantStatusScheduler(args: {
       }
       if (presentation.visible === currentVisibleStatus) {
         clearPending();
-        currentStatus = status;
         currentKey = presentation.key;
-        const nextLoadingMessages = getLoadingMessagesForStatus(
-          status,
+        const nextLoadingMessages = getLoadingMessagesForVisibleStatus(
           presentation.visible,
         );
         if (

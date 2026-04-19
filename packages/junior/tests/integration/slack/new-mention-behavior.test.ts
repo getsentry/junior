@@ -129,9 +129,7 @@ describe("Slack behavior: new mention", () => {
       services: {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
-            await context?.onStatus?.(
-              makeAssistantStatus("adding", "reaction"),
-            );
+            await context?.onStatus?.(makeAssistantStatus("drafting", "reply"));
             return {
               text: "Done!",
               deliveryMode: "thread",
