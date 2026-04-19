@@ -1,16 +1,11 @@
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
 import {
-  logInfo,
   logWarn,
   setSpanAttributes,
   withSpan,
   type LogContext,
 } from "@/chat/logging";
-import {
-  makeAssistantStatus,
-  type AssistantStatusSpec,
-} from "@/chat/slack/assistant-thread/status";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import {
   isAlreadyExistsError,
@@ -25,7 +20,6 @@ import {
   isSnapshotMissingError,
   resolveRuntimeDependencySnapshot,
   type RuntimeDependencySnapshot,
-  type RuntimeDependencySnapshotProgressPhase,
 } from "@/chat/sandbox/runtime-dependency-snapshots";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import type { SandboxCommandResult } from "@/chat/sandbox/workspace";
@@ -78,25 +72,6 @@ interface SandboxSessionManager {
   ensureToolExecutors(): Promise<SandboxToolExecutors>;
   dispose(): Promise<void>;
 }
-
-interface StatusEmitter {
-  emit(status: AssistantStatusSpec): Promise<void>;
-  reportSnapshotPhase(
-    phase: RuntimeDependencySnapshotProgressPhase,
-  ): Promise<void>;
-}
-
-const SNAPSHOT_PHASE_STATUS: Partial<
-  Record<
-    RuntimeDependencySnapshotProgressPhase,
-    { kind: AssistantStatusSpec["kind"]; context: string }
-  >
-> = {
-  resolve_start: { kind: "loading", context: "sandbox snapshot cache" },
-  waiting_for_lock: { kind: "loading", context: "sandbox snapshot build" },
-  building_snapshot: { kind: "creating", context: "sandbox snapshot" },
-  cache_hit: { kind: "loading", context: "sandbox snapshot" },
-};
 
 function mergeNetworkPolicyWithHeaderTransforms(
   networkPolicy: unknown,
@@ -166,37 +141,6 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function createStatusEmitter(
-  emitStatus:
-    | ((status: AssistantStatusSpec) => void | Promise<void>)
-    | undefined,
-): StatusEmitter {
-  let statusCount = 0;
-  const sentStatuses = new Set<string>();
-
-  const emit = async (status: AssistantStatusSpec): Promise<void> => {
-    const statusKey = `${status.kind}:${status.context ?? ""}`;
-    if (!emitStatus || statusCount >= 4 || sentStatuses.has(statusKey)) {
-      return;
-    }
-
-    sentStatuses.add(statusKey);
-    statusCount += 1;
-    await emitStatus(status);
-  };
-
-  const reportSnapshotPhase = async (
-    phase: RuntimeDependencySnapshotProgressPhase,
-  ): Promise<void> => {
-    const status = SNAPSHOT_PHASE_STATUS[phase];
-    if (status) {
-      await emit(makeAssistantStatus(status.kind, status.context));
-    }
-  };
-
-  return { emit, reportSnapshotPhase };
-}
-
 function parseKeepAliveMs(): number {
   const parsed = Number.parseInt(
     process.env.VERCEL_SANDBOX_KEEPALIVE_MS ?? "0",
@@ -211,7 +155,6 @@ export function createSandboxSessionManager(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
     sandboxDependencyProfileHash?: string;
@@ -234,34 +177,6 @@ export function createSandboxSessionManager(options?: {
     attributes: Record<string, unknown>,
     callback: () => Promise<T>,
   ): Promise<T> => withSpan(name, op, traceContext, callback, attributes);
-
-  const emitSandboxStatus = async (
-    source: string,
-    statusEmitter:
-      | StatusEmitter
-      | ((status: AssistantStatusSpec) => Promise<void>),
-    status: AssistantStatusSpec,
-  ): Promise<void> => {
-    logInfo(
-      "sandbox_status_emitted",
-      traceContext,
-      {
-        "app.sandbox.status.source": source,
-        "app.sandbox.status.kind": status.kind,
-        ...(status.context
-          ? { "app.sandbox.status.context": status.context }
-          : {}),
-      },
-      "Sandbox status emitted",
-    );
-
-    if (typeof statusEmitter === "function") {
-      await statusEmitter(status);
-      return;
-    }
-
-    await statusEmitter.emit(status);
-  };
 
   const clearSession = (): void => {
     sandbox = null;
@@ -360,17 +275,9 @@ export function createSandboxSessionManager(options?: {
   const createSandboxFromSnapshot = async (
     snapshotId: string,
     sandboxCredentials: SandboxCredentials | undefined,
-    emitStatus?: (status: AssistantStatusSpec) => Promise<void>,
   ): Promise<Sandbox> => {
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       try {
-        if (emitStatus) {
-          await emitSandboxStatus(
-            "snapshot_boot",
-            emitStatus,
-            makeAssistantStatus("loading", "sandbox"),
-          );
-        }
         return await Sandbox.create({
           timeout: timeoutMs,
           source: {
@@ -416,16 +323,10 @@ export function createSandboxSessionManager(options?: {
     runtime: string;
     snapshot: RuntimeDependencySnapshot;
     sandboxCredentials: SandboxCredentials | undefined;
-    status: StatusEmitter;
   }): Promise<Sandbox> => {
-    const { runtime, snapshot, sandboxCredentials, status } = params;
+    const { runtime, snapshot, sandboxCredentials } = params;
 
     if (!snapshot.snapshotId) {
-      await emitSandboxStatus(
-        "fresh_runtime_boot",
-        status,
-        makeAssistantStatus("loading", "sandbox"),
-      );
       return await Sandbox.create({
         timeout: timeoutMs,
         runtime,
@@ -437,7 +338,6 @@ export function createSandboxSessionManager(options?: {
       return await createSandboxFromSnapshot(
         snapshot.snapshotId,
         sandboxCredentials,
-        status.emit,
       );
     } catch (error) {
       if (!isSnapshotMissingError(error)) {
@@ -452,7 +352,6 @@ export function createSandboxSessionManager(options?: {
         timeoutMs,
         forceRebuild: true,
         staleSnapshotId: snapshot.snapshotId,
-        onProgress: status.reportSnapshotPhase,
       });
       if (!rebuiltSnapshot.snapshotId) {
         throw error;
@@ -461,7 +360,6 @@ export function createSandboxSessionManager(options?: {
       return await createSandboxFromSnapshot(
         rebuiltSnapshot.snapshotId,
         sandboxCredentials,
-        status.emit,
       );
     }
   };
@@ -469,7 +367,6 @@ export function createSandboxSessionManager(options?: {
   const createFreshSandbox = async (): Promise<Sandbox> => {
     const runtime = SANDBOX_RUNTIME;
     const sandboxCredentials = getVercelSandboxCredentials();
-    const status = createStatusEmitter(options?.onStatus);
 
     let createdSandbox: Sandbox;
     try {
@@ -482,22 +379,15 @@ export function createSandboxSessionManager(options?: {
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          await emitSandboxStatus(
-            "runtime_dependency_resolve",
-            status,
-            makeAssistantStatus("loading", "sandbox runtime"),
-          );
           const snapshot = await resolveRuntimeDependencySnapshot({
             runtime,
             timeoutMs,
-            onProgress: status.reportSnapshotPhase,
           });
           setSnapshotAttributes(snapshot);
           return await createSandboxFromResolvedSnapshot({
             runtime,
             snapshot,
             sandboxCredentials,
-            status,
           });
         },
       );

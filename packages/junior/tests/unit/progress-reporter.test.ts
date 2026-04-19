@@ -366,37 +366,7 @@ describe("createAssistantStatusScheduler", () => {
     expect(statuses).toEqual([firstGenericStatus, firstGenericStatus]);
   });
 
-  it("does not let fallback tool statuses replace a major progress phase", async () => {
-    const scheduler = createFakeScheduler();
-    const statuses: string[] = [];
-    const reporter = createAssistantStatusScheduler({
-      sendStatus: async (text) => {
-        statuses.push(text);
-      },
-      loadingMessages: ["Consulting the orb"],
-      now: scheduler.now,
-      setTimer: scheduler.setTimer,
-      clearTimer: scheduler.clearTimer,
-      random: () => 0,
-    });
-
-    reporter.start();
-    await flushAsyncWork();
-
-    scheduler.advance(1200);
-    reporter.update(
-      makeAssistantStatus("reviewing", "results", { source: "major" }),
-    );
-    await flushAsyncWork();
-
-    reporter.update(makeAssistantStatus("running", "pnpm"));
-    scheduler.advance(1200);
-    await flushAsyncWork();
-
-    expect(statuses).toEqual([firstGenericStatus, secondReviewingStatus]);
-  });
-
-  it("omits generic loading messages for major progress updates", async () => {
+  it("uses explicit progress text as the loading message", async () => {
     const scheduler = createFakeScheduler();
     const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
     const reporter = createAssistantStatusScheduler({
@@ -414,9 +384,7 @@ describe("createAssistantStatusScheduler", () => {
     await flushAsyncWork();
 
     scheduler.advance(1200);
-    reporter.update(
-      makeAssistantStatus("reviewing", "results", { source: "major" }),
-    );
+    reporter.update(makeAssistantStatus("reviewing", "results"));
     await flushAsyncWork();
 
     expect(calls).toEqual([
@@ -431,38 +399,30 @@ describe("createAssistantStatusScheduler", () => {
     ]);
   });
 
-  it("lets a major progress phase clear generic loading messages without changing the visible text", async () => {
+  it("replaces generic loading messages when explicit progress matches the visible text", async () => {
     const scheduler = createFakeScheduler();
     const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
     const reporter = createAssistantStatusScheduler({
       sendStatus: async (text, loadingMessages) => {
         calls.push({ text, loadingMessages });
       },
-      loadingMessages: ["Consulting the orb"],
+      loadingMessages: [secondReviewingStatus, "Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
-      random: () => 0,
+      random: () => 0.9,
     });
 
     reporter.start();
     await flushAsyncWork();
 
-    scheduler.advance(1200);
     reporter.update(makeAssistantStatus("reviewing"));
-    await flushAsyncWork();
-
-    reporter.update(
-      makeAssistantStatus("reviewing", "results", { source: "major" }),
-    );
-    reporter.update(makeAssistantStatus("running", "pnpm"));
-    await flushAsyncWork();
     await flushAsyncWork();
 
     expect(calls).toEqual([
       {
-        text: firstGenericStatus,
-        loadingMessages: ["Consulting the orb"],
+        text: secondReviewingStatus,
+        loadingMessages: [secondReviewingStatus, "Consulting the orb"],
       },
       {
         text: secondReviewingStatus,

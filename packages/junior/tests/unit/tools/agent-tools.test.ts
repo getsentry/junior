@@ -29,6 +29,35 @@ describe("createAgentTools", () => {
     handleToolExecutionError.mockClear();
   });
 
+  it("emits assistant status only for reportProgress", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const onStatus = vi.fn(async () => undefined);
+    const [reportProgressTool, bashTool] = createAgentTools(
+      {
+        reportProgress: {
+          description: "report progress",
+          inputSchema: {} as any,
+        },
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      onStatus,
+    );
+
+    await reportProgressTool!.execute("tool-progress", {
+      message: "  Reviewing results  ",
+    });
+    await bashTool!.execute("tool-bash", { command: "pwd" });
+
+    expect(onStatus).toHaveBeenCalledTimes(1);
+    expect(onStatus).toHaveBeenCalledWith({ text: "Reviewing results" });
+  });
+
   it("injects already-enabled provider credentials into bash", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const enableCredentialsForTurn = vi.fn(async () => {});

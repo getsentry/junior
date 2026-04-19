@@ -558,7 +558,7 @@ describe("bot handlers (integration)", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             await context?.onStatus?.(
-              makeAssistantStatus("listing", "channel messages"),
+              makeAssistantStatus("reading", "channel messages"),
             );
             return {
               text: "Done.",
