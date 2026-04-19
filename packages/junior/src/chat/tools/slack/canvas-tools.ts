@@ -2,7 +2,9 @@ import { tool } from "@/chat/tools/definition";
 import { Type } from "@sinclair/typebox";
 import {
   createCanvas,
+  extractCanvasId,
   lookupCanvasSection,
+  readCanvas,
   updateCanvas,
 } from "@/chat/tools/slack/canvases";
 import { isConversationScopedChannel } from "@/chat/slack/client";
@@ -10,6 +12,8 @@ import { createOperationKey } from "@/chat/tools/idempotency";
 import { logError, logWarn } from "@/chat/logging";
 import type { CanvasArtifactSummary } from "@/chat/state/artifacts";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
+
+const MAX_CANVAS_READ_CHARS = 40_000;
 
 const MAX_RECENT_CANVASES = 5;
 
@@ -220,6 +224,72 @@ export function createSlackCanvasUpdateTool(
       };
       state.setOperationResult(operationKey, response);
       return response;
+    },
+  });
+}
+
+/**
+ * Create a tool that reads a Slack canvas the bot has access to. Accepts
+ * either a canvas/file ID (`F...`) or a Slack canvas/docs URL and returns the
+ * canvas body downloaded via the bot's file access.
+ */
+export function createSlackCanvasReadTool() {
+  return tool({
+    description:
+      "Read a Slack canvas the bot has access to (including canvases the bot created) by canvas ID or Slack canvas/docs URL. Use when the user shares a Slack canvas link (https://*.slack.com/docs/... or /canvas/...) or references a canvas ID and you need its contents. Do not use for generic web pages — use webFetch for those.",
+    inputSchema: Type.Object({
+      canvas: Type.String({
+        minLength: 1,
+        description:
+          "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL (e.g. `https://team.slack.com/docs/T.../F...`).",
+      }),
+    }),
+    execute: async ({ canvas }) => {
+      const canvasId = extractCanvasId(canvas);
+      if (!canvasId) {
+        return {
+          ok: false,
+          error:
+            "Could not parse a Slack canvas/file ID from input. Provide an F-prefixed ID or a Slack canvas/docs URL.",
+        };
+      }
+
+      try {
+        const result = await readCanvas(canvas);
+        const truncated = result.content.length > MAX_CANVAS_READ_CHARS;
+        const content = truncated
+          ? result.content.slice(0, MAX_CANVAS_READ_CHARS)
+          : result.content;
+
+        return {
+          ok: true,
+          canvas_id: result.canvasId,
+          title: result.title,
+          permalink: result.permalink,
+          mimetype: result.mimetype,
+          filetype: result.filetype,
+          byte_length: result.byteLength,
+          truncated,
+          content,
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "canvas read failed";
+        logWarn(
+          "slack_canvas_read_failed",
+          {},
+          {
+            "gen_ai.tool.name": "slackCanvasRead",
+            "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),
+          },
+          message,
+        );
+        return {
+          ok: false,
+          canvas_id: canvasId,
+          error: message,
+        };
+      }
     },
   });
 }

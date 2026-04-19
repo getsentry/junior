@@ -5,7 +5,8 @@ import { createSlackListAddItemsTool } from "@/chat/tools/slack/list-tools";
 import { SlackActionError } from "@/chat/slack/client";
 import type { ToolState } from "@/chat/tools/types";
 import {
-  conversationsCanvasesCreateOk,
+  canvasesAccessSetOk,
+  canvasesCreateOk,
   filesInfoOk,
   slackListsItemsCreateOk,
 } from "../fixtures/slack/factories/api";
@@ -78,8 +79,11 @@ describe("tool idempotency", () => {
   });
 
   it("deduplicates repeated slack_canvas_create operations in one turn", async () => {
-    queueSlackApiResponse("conversations.canvases.create", {
-      body: conversationsCanvasesCreateOk({ canvasId: "canvas-1" }),
+    queueSlackApiResponse("canvases.create", {
+      body: canvasesCreateOk({ canvasId: "canvas-1" }),
+    });
+    queueSlackApiResponse("canvases.access.set", {
+      body: canvasesAccessSetOk(),
     });
     queueSlackApiResponse("files.info", {
       body: filesInfoOk({
@@ -110,9 +114,8 @@ describe("tool idempotency", () => {
       markdown: "- item one",
     });
 
-    expect(
-      getCapturedSlackApiCalls("conversations.canvases.create"),
-    ).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("canvases.access.set")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("files.info")).toHaveLength(1);
     expect(first).toMatchObject({
       ok: true,
@@ -131,9 +134,9 @@ describe("tool idempotency", () => {
     });
   });
 
-  it("creates a canvas from DM context using the bound channel", async () => {
-    queueSlackApiResponse("conversations.canvases.create", {
-      body: conversationsCanvasesCreateOk({ canvasId: "canvas-dm-1" }),
+  it("creates a canvas from DM context using canvases.create without access grant", async () => {
+    queueSlackApiResponse("canvases.create", {
+      body: canvasesCreateOk({ canvasId: "canvas-dm-1" }),
     });
     queueSlackApiResponse("files.info", {
       body: filesInfoOk({
@@ -165,10 +168,11 @@ describe("tool idempotency", () => {
       ok: true,
       canvas_id: "canvas-dm-1",
     });
+    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("canvases.access.set")).toHaveLength(0);
     expect(
       getCapturedSlackApiCalls("conversations.canvases.create"),
-    ).toHaveLength(1);
-    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
+    ).toHaveLength(0);
   });
 
   it("throws when creating a canvas without assistant channel context", async () => {
@@ -194,10 +198,10 @@ describe("tool idempotency", () => {
       "Cannot create a canvas without an active assistant channel context (C/G/D).",
     );
 
+    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
     expect(
       getCapturedSlackApiCalls("conversations.canvases.create"),
     ).toHaveLength(0);
-    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
   });
 
   it("deduplicates repeated slack_list_add_items operations in one turn", async () => {
@@ -243,7 +247,7 @@ describe("tool idempotency", () => {
   });
 
   it("throws operational errors for slack_canvas_create execution failures", async () => {
-    queueSlackApiError("conversations.canvases.create", {
+    queueSlackApiError("canvases.create", {
       error: "internal_error",
     });
     const state = createToolState();

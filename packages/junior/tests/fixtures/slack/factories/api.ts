@@ -161,6 +161,10 @@ export function canvasesEditOk(): { ok: true } {
   return slackOk();
 }
 
+export function canvasesAccessSetOk(): { ok: true } {
+  return slackOk();
+}
+
 export function slackListsCreateOk(
   input: {
     listId?: string;
@@ -250,17 +254,43 @@ export function slackListsItemsUpdateOk(): { ok: true } {
 }
 
 export function filesInfoOk(
-  input: { fileId?: string; permalink?: string } = {},
+  input: {
+    fileId?: string;
+    permalink?: string;
+    urlPrivate?: string;
+    title?: string;
+    name?: string;
+    filetype?: string;
+    mimetype?: string;
+  } = {},
 ): {
   ok: true;
-  file: { id: string; permalink: string };
+  file: {
+    id: string;
+    permalink: string;
+    url_private?: string;
+    url_private_download?: string;
+    title?: string;
+    name?: string;
+    filetype?: string;
+    mimetype?: string;
+  };
 } {
+  const fileId = input.fileId ?? TEST_FILE_ID;
   return slackOk({
     file: {
-      id: input.fileId ?? TEST_FILE_ID,
-      permalink:
-        input.permalink ??
-        `https://example.invalid/files/${input.fileId ?? TEST_FILE_ID}`,
+      id: fileId,
+      permalink: input.permalink ?? `https://example.invalid/files/${fileId}`,
+      ...(input.urlPrivate
+        ? {
+            url_private: input.urlPrivate,
+            url_private_download: input.urlPrivate,
+          }
+        : {}),
+      ...(input.title ? { title: input.title } : {}),
+      ...(input.name ? { name: input.name } : {}),
+      ...(input.filetype ? { filetype: input.filetype } : {}),
+      ...(input.mimetype ? { mimetype: input.mimetype } : {}),
     },
   });
 }

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCanvas } from "@/chat/tools/slack/canvases";
 import {
-  conversationsCanvasesCreateOk,
+  canvasesAccessSetOk,
+  canvasesCreateOk,
   filesInfoOk,
 } from "../../fixtures/slack/factories/api";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
@@ -22,9 +23,12 @@ describe("Slack behavior: assistant context canvas routing", () => {
 
   afterEach(() => {});
 
-  it("uses shared assistant context channel for canvas creation when mention arrives in a DM", async () => {
-    queueSlackApiResponse("conversations.canvases.create", {
-      body: conversationsCanvasesCreateOk({ canvasId: "F_SHARED_CANVAS" }),
+  it("uses shared assistant context channel for canvas access grant when mention arrives in a DM", async () => {
+    queueSlackApiResponse("canvases.create", {
+      body: canvasesCreateOk({ canvasId: "F_SHARED_CANVAS" }),
+    });
+    queueSlackApiResponse("canvases.access.set", {
+      body: canvasesAccessSetOk(),
     });
     queueSlackApiResponse("files.info", {
       body: filesInfoOk({
@@ -77,18 +81,27 @@ describe("Slack behavior: assistant context canvas routing", () => {
 
     await slackRuntime.handleNewMention(thread, message);
 
-    const conversationScopedCalls = getCapturedSlackApiCalls(
-      "conversations.canvases.create",
-    );
-    expect(conversationScopedCalls).toHaveLength(1);
-    expect(conversationScopedCalls[0]?.params).toMatchObject({
-      channel_id: "C_SHARED_CONTEXT",
+    const canvasCreateCalls = getCapturedSlackApiCalls("canvases.create");
+    expect(canvasCreateCalls).toHaveLength(1);
+    expect(canvasCreateCalls[0]?.params).toMatchObject({
       title: "Shared update",
       document_content: {
         type: "markdown",
         markdown: "Context-aware update",
       },
     });
-    expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(0);
+    expect(canvasCreateCalls[0]?.params).not.toHaveProperty("channel_id");
+
+    const accessCalls = getCapturedSlackApiCalls("canvases.access.set");
+    expect(accessCalls).toHaveLength(1);
+    expect(accessCalls[0]?.params).toMatchObject({
+      canvas_id: "F_SHARED_CANVAS",
+      access_level: "write",
+      channel_ids: ["C_SHARED_CONTEXT"],
+    });
+
+    expect(
+      getCapturedSlackApiCalls("conversations.canvases.create"),
+    ).toHaveLength(0);
   });
 });
