@@ -152,7 +152,6 @@ export function planSlackReplyPosts(args: {
     args.reply,
   );
   const interrupted = isInterruptedVisibleReply(args.reply);
-
   const posts: PlannedSlackReplyPost[] = [];
 
   const textPosts = shouldPostThreadReply
