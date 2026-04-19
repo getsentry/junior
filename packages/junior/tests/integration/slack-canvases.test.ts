@@ -18,9 +18,12 @@ describe("createCanvas", () => {
       process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
   });
 
-  it("uses canvases.create without access.set for DMs", async () => {
+  it("grants DM access after canvases.create so the DM participant can see the canvas", async () => {
     queueSlackApiResponse("canvases.create", {
       body: canvasesCreateOk({ canvasId: "F_DM" }),
+    });
+    queueSlackApiResponse("canvases.access.set", {
+      body: canvasesAccessSetOk(),
     });
     queueSlackApiResponse("files.info", {
       body: filesInfoOk({
@@ -40,7 +43,15 @@ describe("createCanvas", () => {
       permalink: "https://example.invalid/files/F_DM",
     });
     expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(1);
-    expect(getCapturedSlackApiCalls("canvases.access.set")).toHaveLength(0);
+
+    const accessCalls = getCapturedSlackApiCalls("canvases.access.set");
+    expect(accessCalls).toHaveLength(1);
+    expect(accessCalls[0]?.params).toMatchObject({
+      canvas_id: "F_DM",
+      access_level: "write",
+      channel_ids: ["D12345"],
+    });
+
     expect(
       getCapturedSlackApiCalls("conversations.canvases.create"),
     ).toHaveLength(0);

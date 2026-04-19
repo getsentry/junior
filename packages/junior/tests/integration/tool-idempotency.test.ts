@@ -134,9 +134,12 @@ describe("tool idempotency", () => {
     });
   });
 
-  it("creates a canvas from DM context using canvases.create without access grant", async () => {
+  it("creates a canvas from DM context using canvases.create and grants DM access", async () => {
     queueSlackApiResponse("canvases.create", {
       body: canvasesCreateOk({ canvasId: "canvas-dm-1" }),
+    });
+    queueSlackApiResponse("canvases.access.set", {
+      body: canvasesAccessSetOk(),
     });
     queueSlackApiResponse("files.info", {
       body: filesInfoOk({
@@ -169,7 +172,14 @@ describe("tool idempotency", () => {
       canvas_id: "canvas-dm-1",
     });
     expect(getCapturedSlackApiCalls("canvases.create")).toHaveLength(1);
-    expect(getCapturedSlackApiCalls("canvases.access.set")).toHaveLength(0);
+
+    const accessCalls = getCapturedSlackApiCalls("canvases.access.set");
+    expect(accessCalls).toHaveLength(1);
+    expect(accessCalls[0]?.params).toMatchObject({
+      canvas_id: "canvas-dm-1",
+      access_level: "write",
+      channel_ids: ["D123"],
+    });
     expect(
       getCapturedSlackApiCalls("conversations.canvases.create"),
     ).toHaveLength(0);

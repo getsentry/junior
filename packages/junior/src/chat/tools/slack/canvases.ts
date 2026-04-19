@@ -7,7 +7,7 @@ import {
   downloadPrivateSlackFile,
   getFilePermalink,
   getSlackClient,
-  isConversationChannel,
+  isConversationScopedChannel,
   normalizeSlackConversationId,
   withSlackRetries,
 } from "@/chat/slack/client";
@@ -101,10 +101,11 @@ export async function createCanvas(
     throw new Error("Slack canvas was created without canvas_id");
   }
 
-  // Grant channel members write access when we're in a regular channel. For
-  // DMs the bot-owned canvas is already accessible to the DM participant via
-  // the shared permalink, and `canvases.access.set` with a DM id is rejected.
-  if (normalizedChannelId && isConversationChannel(normalizedChannelId)) {
+  // Standalone canvases are bot-owned and not visible to anyone else until
+  // explicit access is granted. Best-effort grant write access to the active
+  // conversation (C/G/D) so the humans in the channel or DM can actually see
+  // and edit the canvas the bot just produced.
+  if (normalizedChannelId && isConversationScopedChannel(normalizedChannelId)) {
     await grantChannelCanvasAccess(result.canvas_id, normalizedChannelId);
   }
 
