@@ -4,6 +4,7 @@ import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
+import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createSearchToolsTool } from "@/chat/tools/skill/search-tools";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
@@ -83,6 +84,7 @@ export function createTools(
     loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
     }),
+    reportProgress: createReportProgressTool(),
     systemTime: createSystemTimeTool(),
     bash: createBashTool(),
     attachFile: createAttachFileTool(context.sandbox, hooks),

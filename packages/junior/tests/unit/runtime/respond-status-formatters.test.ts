@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
 import { buildToolStatus } from "@/chat/runtime/tool-status";
+import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status-render";
 
 describe("tool status formatters", () => {
   it("avoids infrastructure language in shell statuses", () => {
@@ -49,5 +49,20 @@ describe("tool status formatters", () => {
     expect(
       buildToolStatus("webSearch", { query: "hottest news story today 2025" }),
     ).toEqual(makeAssistantStatus("searching", "sources"));
+  });
+
+  it("treats reportProgress as a major phase update", () => {
+    expect(
+      buildToolStatus("reportProgress", {
+        phase: "drafting",
+        detail: "reply",
+      }),
+    ).toEqual(makeAssistantStatus("drafting", "reply", { source: "major" }));
+    expect(
+      buildToolStatus("reportProgress", {
+        phase: "reviewing",
+        detail: "results",
+      }),
+    ).toEqual(makeAssistantStatus("reviewing", "results", { source: "major" }));
   });
 });

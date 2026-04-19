@@ -75,7 +75,11 @@ function resolveTotalTokens(
   return usage.totalTokens;
 }
 
-/** Build a compact Slack reply footer so operators can correlate visible replies with backend state. */
+/**
+ * Build a compact footer for the finalized Slack reply.
+ *
+ * This is reply metadata, not part of the in-flight assistant loading state.
+ */
 export function buildSlackReplyFooter(args: {
   conversationId?: string;
   durationMs?: number;
@@ -119,7 +123,7 @@ export function buildSlackReplyFooter(args: {
   return items.length > 0 ? { items } : undefined;
 }
 
-/** Build Slack blocks for a finalized reply plus its optional footer context block. */
+/** Build Slack blocks for a finalized reply plus its optional metadata footer. */
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,

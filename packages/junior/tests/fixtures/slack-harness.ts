@@ -75,7 +75,7 @@ export class FakeSlackAdapter {
     channelId: string;
     threadTs: string;
     text: string;
-    suggestions?: string[];
+    loadingMessages?: string[];
   }> = [];
   readonly promptCalls: Array<{
     channelId: string;
@@ -108,9 +108,9 @@ export class FakeSlackAdapter {
     channelId: string,
     threadTs: string,
     text: string,
-    suggestions?: string[],
+    loadingMessages?: string[],
   ): Promise<void> {
-    this.statusCalls.push({ channelId, threadTs, text, suggestions });
+    this.statusCalls.push({ channelId, threadTs, text, loadingMessages });
   }
 }
 

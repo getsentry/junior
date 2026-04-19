@@ -6,9 +6,24 @@ const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 800;
 /** Buffer between the Vercel function timeout and the agent turn timeout,
  *  so the agent can abort and post a failure reply before Vercel kills it. */
 const FUNCTION_TIMEOUT_BUFFER_SECONDS = 20;
+const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
+  "Consulting the orb",
+  "Bribing the gremlins",
+  "Shuffling the papers dramatically",
+  "Summoning the right stack trace",
+  "Negotiating with the mutex",
+  "Poking the internet with a stick",
+  "Asking the docs nicely",
+  "Searching for the least cursed path",
+  "Pretending this was obvious",
+  "Waking up the test suite",
+  "Untangling the spaghetti carefully",
+  "Rattling the command line",
+] as const;
 
 export interface BotConfig {
   fastModelId: string;
+  loadingMessages: string[];
   modelId: string;
   visionModelId?: string;
   turnTimeoutMs: number;
@@ -61,6 +76,31 @@ function resolveMaxTurnTimeoutMs(functionMaxDurationSeconds: number): number {
   return Math.max(MIN_AGENT_TURN_TIMEOUT_MS, budgetSeconds * 1000);
 }
 
+function parseLoadingMessages(rawValue: string | undefined): string[] {
+  const trimmed = rawValue?.trim();
+  if (!trimmed) {
+    return [...DEFAULT_ASSISTANT_LOADING_MESSAGES];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    throw new Error("JUNIOR_LOADING_MESSAGES must be a JSON array of strings");
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("JUNIOR_LOADING_MESSAGES must be a JSON array of strings");
+  }
+
+  return parsed.map((value, index) => {
+    if (typeof value !== "string") {
+      throw new Error(`JUNIOR_LOADING_MESSAGES[${index}] must be a string`);
+    }
+    return value.trim();
+  });
+}
+
 function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   const functionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
@@ -70,6 +110,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
     modelId: env.AI_MODEL ?? "anthropic/claude-sonnet-4.6",
     fastModelId:
       env.AI_FAST_MODEL ?? env.AI_MODEL ?? "anthropic/claude-haiku-4.5",
+    loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId: toOptionalTrimmed(env.AI_VISION_MODEL),
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,

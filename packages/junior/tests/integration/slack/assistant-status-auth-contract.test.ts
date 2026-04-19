@@ -4,6 +4,7 @@ import {
   createSlackAdapterAssistantStatusSession,
   makeAssistantStatus,
 } from "@/chat/slack/assistant-thread/status";
+import { SLACK_ASSISTANT_ACTIVE_STATUS } from "@/chat/slack/assistant-thread/status-send";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import {
   getCapturedSlackApiCalls,
@@ -16,6 +17,7 @@ const TEAM_BOT_TOKEN = "xoxb-team";
 const BOT_USER_ID = "U_BOT";
 const DM_CHANNEL_ID = "D12345";
 const THREAD_TS = "1700000000.000001";
+const INITIAL_LOADING_MESSAGE = "Consulting the orb";
 
 interface FakeTimer {
   id: number;
@@ -108,6 +110,7 @@ describe("Slack contract: assistant status auth", () => {
         channelId: DM_CHANNEL_ID,
         threadTs: THREAD_TS,
         getSlackAdapter: () => adapter,
+        loadingMessages: [INITIAL_LOADING_MESSAGE],
         random: () => 0,
       }),
     );
@@ -123,7 +126,8 @@ describe("Slack contract: assistant status auth", () => {
         params: expect.objectContaining({
           channel_id: DM_CHANNEL_ID,
           thread_ts: THREAD_TS,
-          status: "Thinking …",
+          status: SLACK_ASSISTANT_ACTIVE_STATUS,
+          loading_messages: [INITIAL_LOADING_MESSAGE],
         }),
       }),
     ]);
@@ -137,6 +141,7 @@ describe("Slack contract: assistant status auth", () => {
         channelId: DM_CHANNEL_ID,
         threadTs: THREAD_TS,
         getSlackAdapter: () => adapter,
+        loadingMessages: [INITIAL_LOADING_MESSAGE],
         now: scheduler.now,
         setTimer: scheduler.setTimer,
         clearTimer: scheduler.clearTimer,
@@ -160,7 +165,8 @@ describe("Slack contract: assistant status auth", () => {
           params: expect.objectContaining({
             channel_id: DM_CHANNEL_ID,
             thread_ts: THREAD_TS,
-            status: "Thinking …",
+            status: SLACK_ASSISTANT_ACTIVE_STATUS,
+            loading_messages: [INITIAL_LOADING_MESSAGE],
           }),
         }),
         expect.objectContaining({
@@ -170,7 +176,8 @@ describe("Slack contract: assistant status auth", () => {
           params: expect.objectContaining({
             channel_id: DM_CHANNEL_ID,
             thread_ts: THREAD_TS,
-            status: "Searching sources",
+            status: SLACK_ASSISTANT_ACTIVE_STATUS,
+            loading_messages: ["Searching sources"],
           }),
         }),
       ]),

@@ -118,7 +118,7 @@ describe("Slack behavior: new mention", () => {
       channelId: "C_STATUS",
       threadTs: "1700002000.000",
       text: "",
-      suggestions: undefined,
+      loadingMessages: undefined,
     });
   });
 
@@ -171,7 +171,7 @@ describe("Slack behavior: new mention", () => {
       channelId: "C_STATUS",
       threadTs: "1700004000.000",
       text: "",
-      suggestions: undefined,
+      loadingMessages: undefined,
     });
   });
 
@@ -206,7 +206,7 @@ describe("Slack behavior: new mention", () => {
       channelId: "C_STATUS",
       threadTs: "1700003000.000",
       text: "",
-      suggestions: undefined,
+      loadingMessages: undefined,
     });
   });
 

@@ -18,6 +18,10 @@ const STATUS_PATTERNS = {
     defaultContext: "results",
     variants: ["Reviewing", "Checking", "Inspecting", "Auditing"],
   },
+  drafting: {
+    defaultContext: "reply",
+    variants: ["Drafting", "Writing", "Composing", "Shaping"],
+  },
   loading: {
     defaultContext: "task",
     variants: ["Loading", "Priming", "Booting", "Spinning up"],
@@ -53,25 +57,30 @@ const STATUS_PATTERNS = {
 } as const;
 
 export type AssistantStatusKind = keyof typeof STATUS_PATTERNS;
+export type AssistantStatusSource = "fallback" | "major";
 
 export interface AssistantStatusSpec {
   kind: AssistantStatusKind;
   context?: string;
+  source?: AssistantStatusSource;
 }
 
-export interface AssistantStatusPresentation {
+interface AssistantStatusPresentation {
   key: string;
-  hint: string;
   visible: string;
-  suggestions?: string[];
 }
 
 /** Build a typed assistant status from a stable kind and optional context. */
 export function makeAssistantStatus(
   kind: AssistantStatusKind,
   context?: string,
+  options?: { source?: AssistantStatusSource },
 ): AssistantStatusSpec {
-  return { kind, ...(context ? { context } : {}) };
+  return {
+    kind,
+    ...(context ? { context } : {}),
+    ...(options?.source ? { source: options.source } : {}),
+  };
 }
 
 /**
@@ -86,18 +95,46 @@ export function renderAssistantStatus(args: {
 }): AssistantStatusPresentation {
   const random = args.random ?? Math.random;
   const pattern = STATUS_PATTERNS[args.status.kind];
+  const source = args.status.source ?? "fallback";
   const context =
     normalizeSlackStatusText(args.status.context ?? "") ||
     pattern.defaultContext;
   const index = Math.floor(random() * pattern.variants.length);
   const verb = pattern.variants[index] ?? pattern.variants[0];
   const visible = truncateStatusText(`${verb} ${context}`);
-  const hint = truncateStatusText(`${pattern.variants[0]} ${context}`);
 
   return {
-    key: `${args.status.kind}:${context}`,
-    hint,
+    key: `${source}:${args.status.kind}:${context}`,
     visible,
-    suggestions: Array.from(new Set([visible, hint])),
   };
+}
+
+/** Select and normalize the loading messages used for Slack status rotation. */
+export function selectAssistantLoadingMessages(args: {
+  messages: string[];
+  random?: () => number;
+}): string[] | undefined {
+  const random = args.random ?? Math.random;
+  const normalized = Array.from(
+    new Set(
+      args.messages
+        .map((message) => truncateStatusText(normalizeSlackStatusText(message)))
+        .filter((message) => message.length > 0),
+    ),
+  );
+
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  const shuffled = [...normalized];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const otherIndex = Math.floor(random() * (index + 1));
+    [shuffled[index], shuffled[otherIndex]] = [
+      shuffled[otherIndex] as string,
+      shuffled[index] as string,
+    ];
+  }
+
+  return shuffled.slice(0, 10);
 }

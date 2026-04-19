@@ -1,5 +1,4 @@
-import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
-import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status";
+import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import {
   compactStatusCommand,
   compactStatusFilename,
@@ -7,8 +6,17 @@ import {
   compactStatusText,
   extractStatusUrlDomain,
 } from "@/chat/runtime/status-format";
+import {
+  makeAssistantStatus,
+  type AssistantStatusSpec,
+} from "@/chat/slack/assistant-thread/status-render";
 
-/** Build a typed assistant status for a tool call. */
+/**
+ * Build internal progress copy for a tool call.
+ *
+ * For Slack, this ultimately feeds the assistant loading surface rather than
+ * the fixed generic `status` string itself.
+ */
 export function buildToolStatus(
   toolName: string,
   input: unknown,
@@ -26,6 +34,11 @@ export function buildToolStatus(
     ? compactStatusText(obj.skill_name ?? obj.skillName, 40)
     : undefined;
   const provider = obj ? compactStatusText(obj.provider, 20) : undefined;
+  const reportedProgress = buildReportedProgressStatus(obj);
+
+  if (toolName === "reportProgress" && reportedProgress) {
+    return reportedProgress;
+  }
 
   if (command && toolName === "bash") {
     return makeAssistantStatus("running", command);

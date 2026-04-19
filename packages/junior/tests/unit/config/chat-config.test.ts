@@ -64,6 +64,33 @@ describe("chat config", () => {
     expect(botConfig.visionModelId).toBe("openai/gpt-5.4");
   });
 
+  it("uses the default assistant loading messages when unset", async () => {
+    delete process.env.JUNIOR_LOADING_MESSAGES;
+    const { botConfig } = await loadConfig();
+    expect(botConfig.loadingMessages.length).toBeGreaterThan(0);
+  });
+
+  it("uses JUNIOR_LOADING_MESSAGES when configured", async () => {
+    process.env.JUNIOR_LOADING_MESSAGES = JSON.stringify([
+      "Consulting the orb",
+      "Bribing the gremlins",
+    ]);
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.loadingMessages).toEqual([
+      "Consulting the orb",
+      "Bribing the gremlins",
+    ]);
+  });
+
+  it("throws when JUNIOR_LOADING_MESSAGES is not a JSON string array", async () => {
+    process.env.JUNIOR_LOADING_MESSAGES = '{"nope":true}';
+
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_LOADING_MESSAGES must be a JSON array of strings",
+    );
+  });
+
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {
     delete process.env.AGENT_TURN_TIMEOUT_MS;
     const { botConfig } = await loadConfig();

@@ -600,7 +600,7 @@ describe("bot handlers (integration)", () => {
       channelId: "C_STATUS",
       threadTs: "1700000000.000",
       text: "",
-      suggestions: undefined,
+      loadingMessages: undefined,
     });
   });
 
@@ -674,7 +674,7 @@ describe("bot handlers (integration)", () => {
       channelId,
       threadTs,
       text,
-      suggestions,
+      loadingMessages,
     ) => {
       statusCallCount += 1;
       if (statusCallCount === 1) {
@@ -682,7 +682,12 @@ describe("bot handlers (integration)", () => {
           releaseFirstStatus = resolve;
         });
       }
-      fakeAdapter.statusCalls.push({ channelId, threadTs, text, suggestions });
+      fakeAdapter.statusCalls.push({
+        channelId,
+        threadTs,
+        text,
+        loadingMessages,
+      });
     };
 
     let replyStarted = false;
