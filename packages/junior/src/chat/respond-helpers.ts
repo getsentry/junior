@@ -145,7 +145,7 @@ export function summarizeMessageText(text: string): string {
 
 /**
  * Wrap the current user turn with self-describing marker blocks: background
- * first, latest instruction last. Ordering matches long-context attention
+ * first, current instruction last. Ordering matches long-context attention
  * guidance for Sonnet and GPT-5.
  */
 export function buildUserTurnText(
@@ -194,9 +194,9 @@ export function buildUserTurnText(
   }
 
   sections.push(
-    '<latest-user-instruction priority="highest">',
+    '<current-instruction priority="highest">',
     userInput,
-    "</latest-user-instruction>",
+    "</current-instruction>",
   );
 
   return sections.join("\n");

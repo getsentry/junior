@@ -6,7 +6,7 @@ describe("buildUserTurnText marker ordering", () => {
     expect(buildUserTurnText("hello")).toBe("hello");
   });
 
-  it("places thread background before the latest user instruction", () => {
+  it("places thread background before the current instruction", () => {
     const result = buildUserTurnText(
       "current ask",
       "<thread-transcript>\n[user] alice: earlier\n</thread-transcript>",
@@ -14,14 +14,14 @@ describe("buildUserTurnText marker ordering", () => {
 
     const backgroundIndex = result.indexOf("<thread-background>");
     const instructionIndex = result.indexOf(
-      '<latest-user-instruction priority="highest">',
+      '<current-instruction priority="highest">',
     );
 
     expect(backgroundIndex).toBeGreaterThanOrEqual(0);
     expect(instructionIndex).toBeGreaterThan(backgroundIndex);
   });
 
-  it("emits the latest user instruction as the final section", () => {
+  it("emits the current instruction as the final section", () => {
     const result = buildUserTurnText(
       "current ask",
       "<thread-transcript>\n[user] alice: earlier\n</thread-transcript>",
@@ -31,7 +31,7 @@ describe("buildUserTurnText marker ordering", () => {
       },
     );
 
-    expect(result.trimEnd().endsWith("</latest-user-instruction>")).toBe(true);
+    expect(result.trimEnd().endsWith("</current-instruction>")).toBe(true);
   });
 
   it("starts with <thread-background> when conversation context is provided", () => {
@@ -48,13 +48,13 @@ describe("buildUserTurnText marker ordering", () => {
     expect(result).not.toContain("<instruction-precedence>");
   });
 
-  it("tags the latest user instruction with the highest priority", () => {
+  it("tags the current instruction with the highest priority", () => {
     const result = buildUserTurnText(
       "current ask",
       "<thread-transcript>\n[user] alice: earlier\n</thread-transcript>",
     );
 
-    expect(result).toContain('<latest-user-instruction priority="highest">');
+    expect(result).toContain('<current-instruction priority="highest">');
   });
 
   it("includes session and turn observability metadata when provided", () => {
@@ -77,5 +77,6 @@ describe("buildUserTurnText marker ordering", () => {
 
     expect(result).not.toContain("<current-message>");
     expect(result).not.toContain("<thread-conversation-context>");
+    expect(result).not.toContain("<latest-user-instruction");
   });
 });
