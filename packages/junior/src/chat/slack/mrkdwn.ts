@@ -68,12 +68,85 @@ function formatSlackLink(url: string, label?: string): string {
   return `<${normalizedUrl}|${normalizedLabel}>`;
 }
 
+function parseMarkdownLinkUrl(
+  text: string,
+  startIndex: number,
+): { endIndex: number; url: string } | null {
+  if (
+    !text.startsWith("https://", startIndex) &&
+    !text.startsWith("http://", startIndex)
+  ) {
+    return null;
+  }
+
+  let depth = 0;
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "\n" || /\s/.test(char)) {
+      return null;
+    }
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+    if (char !== ")") {
+      continue;
+    }
+    if (depth > 0) {
+      depth -= 1;
+      continue;
+    }
+
+    const url = text.slice(startIndex, index);
+    return url ? { endIndex: index + 1, url } : null;
+  }
+
+  return null;
+}
+
 function normalizeMarkdownLinks(text: string): string {
-  return text.replace(
-    /(^|[^!])\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
-    (_match, prefix, label, url) =>
-      `${prefix}${formatSlackLink(String(url), String(label))}`,
-  );
+  let out = "";
+  let index = 0;
+
+  while (index < text.length) {
+    const linkStart = text.indexOf("[", index);
+    if (linkStart === -1) {
+      out += text.slice(index);
+      break;
+    }
+
+    out += text.slice(index, linkStart);
+    if (text[linkStart - 1] === "!") {
+      out += "[";
+      index = linkStart + 1;
+      continue;
+    }
+
+    const labelEnd = text.indexOf("](", linkStart + 1);
+    if (labelEnd === -1) {
+      out += text.slice(linkStart);
+      break;
+    }
+
+    const label = text.slice(linkStart + 1, labelEnd);
+    if (!label || label.includes("\n")) {
+      out += "[";
+      index = linkStart + 1;
+      continue;
+    }
+
+    const parsed = parseMarkdownLinkUrl(text, labelEnd + 2);
+    if (!parsed) {
+      out += "[";
+      index = linkStart + 1;
+      continue;
+    }
+
+    out += formatSlackLink(parsed.url, label);
+    index = parsed.endIndex;
+  }
+
+  return out;
 }
 
 function splitSlackUrlSuffix(text: string): { suffix: string; url: string } {
@@ -122,7 +195,30 @@ function parseMarkdownTableRow(line: string): string[] | null {
   }
 
   const normalized = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-  const cells = normalized.split("|").map((cell) => cell.trim());
+  const cells: string[] = [];
+  let current = "";
+  let insideSlackLink = false;
+
+  for (const char of normalized) {
+    if (char === "<") {
+      insideSlackLink = true;
+      current += char;
+      continue;
+    }
+    if (char === ">") {
+      insideSlackLink = false;
+      current += char;
+      continue;
+    }
+    if (char === "|" && !insideSlackLink) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+
+  cells.push(current.trim());
   return cells.length >= 2 ? cells : null;
 }
 

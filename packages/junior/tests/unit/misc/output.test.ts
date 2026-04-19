@@ -22,6 +22,14 @@ describe("renderSlackMrkdwn", () => {
     ).toBe("*ready* ~draft~ <https://docs.slack.dev/|docs>");
   });
 
+  it("preserves balanced parentheses in markdown link urls", () => {
+    expect(
+      renderSlackMrkdwn(
+        "[docs](https://en.wikipedia.org/wiki/Function_(mathematics))",
+      ),
+    ).toBe("<https://en.wikipedia.org/wiki/Function_(mathematics)|docs>");
+  });
+
   it("rewrites markdown headings into bold section labels", () => {
     expect(renderSlackMrkdwn("## Summary\nA short answer.")).toBe(
       "*Summary*\n\nA short answer.",
@@ -45,6 +53,26 @@ describe("renderSlackMrkdwn", () => {
         "----- | -----",
         "Alpha | 10",
         "Beta  | 7",
+        "```",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps link cells intact when rewriting markdown tables", () => {
+    expect(
+      renderSlackMrkdwn(
+        [
+          "| Service | Docs |",
+          "| --- | --- |",
+          "| Slack | [Slack](https://docs.slack.dev/) |",
+        ].join("\n"),
+      ),
+    ).toBe(
+      [
+        "```",
+        "Service | Docs",
+        "------- | -------------------------------",
+        "Slack   | <https://docs.slack.dev/|Slack>",
         "```",
       ].join("\n"),
     );
