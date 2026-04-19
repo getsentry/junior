@@ -120,6 +120,26 @@ describe("renderSlackMrkdwn", () => {
     ).toBe("<https://docs.slack.dev/|docs> <@U123> *ready*");
   });
 
+  it("escapes literal Slack control characters in prose", () => {
+    expect(renderSlackMrkdwn("1 < 2 & 3 > 2")).toBe("1 &lt; 2 &amp; 3 &gt; 2");
+  });
+
+  it("preserves block quotes and special Slack tokens while escaping prose", () => {
+    expect(
+      renderSlackMrkdwn(
+        "> quoted\n<!date^1713494400^{date_short}|Apr 19, 2026>\n<#C123>\n3 < 4",
+      ),
+    ).toBe(
+      "> quoted\n\n<!date^1713494400^{date_short}|Apr 19, 2026>\n\n<#C123>\n\n3 &lt; 4",
+    );
+  });
+
+  it("does not double-escape existing Slack entities", () => {
+    expect(renderSlackMrkdwn("Fish &amp; Chips &lt;3")).toBe(
+      "Fish &amp; Chips &lt;3",
+    );
+  });
+
   it("does not rewrite markdown syntax inside code fences", () => {
     const input = [
       "```",

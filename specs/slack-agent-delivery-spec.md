@@ -15,6 +15,7 @@
 - 2026-04-16: Labeled long-running assistant status behavior as Slack-required behavior versus Junior runtime policy versus product policy.
 - 2026-04-16: Added an optional finalized-reply footer contract for Slack context-block metadata.
 - 2026-04-19: Removed stale references to typed status kinds and documented explicit progress as free-form rendered text.
+- 2026-04-19: Standardized finalized Slack reply delivery on the shared raw-Web-API reply planner whenever a concrete Slack thread target exists.
 - 2026-04-20: Strengthened the tool-backed progress policy to require early explicit progress for non-trivial turns and documented concrete phase-label guidance.
 - 2026-04-20: Clarified that only explicit `reportProgress` updates replace generic loading messages; ordinary tool calls must not synthesize progress phases.
 
@@ -153,6 +154,7 @@ Current rules:
 7. When Junior adds reply footer metadata, it attaches that metadata as a Slack `context` block on the final text chunk only, while keeping the main reply text as the top-level fallback.
 8. Footer metadata is derived from structured reply diagnostics and correlation state. Conversation ID, trace ID, token totals, and turn duration may be shown when available; footer rendering must not scrape logs or spans after the fact.
 9. Footer metadata is not an assistant-status surface and must not be used to convey in-flight progress.
+10. When Junior has a concrete Slack `channelId` plus `thread_ts` for the finalized reply, both live turns and resume-style handlers use the shared raw-Web-API reply planner for the visible reply posts. That planner owns the reply envelope and file-delivery shape so finalized Slack rendering is not split across competing delivery paths.
 
 This is intentional. Slack-native text streaming may still exist as an adapter capability, but it is not part of Junior's correctness contract.
 

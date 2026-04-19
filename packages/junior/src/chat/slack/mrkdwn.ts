@@ -1,4 +1,9 @@
 import { truncateStatusText } from "@/chat/runtime/status-format";
+import {
+  isMarkdownTableSeparator,
+  parseMarkdownTableRow,
+  renderMarkdownTableCodeBlock,
+} from "@/chat/slack/markdown-table";
 
 const PROTECTED_SLACK_SEGMENT_PATTERN =
   /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`)/g;
@@ -9,7 +14,8 @@ function normalizeSlackMarkdownSegment(text: string): string {
   normalized = normalizeCommonMarkEmphasis(normalized);
   normalized = normalizeMarkdownLinks(normalized);
   normalized = normalizeWrappedRawUrls(normalized);
-  return normalizeMarkdownTables(normalized);
+  normalized = normalizeMarkdownTables(normalized);
+  return escapeSlackControlChars(normalized);
 }
 
 function normalizeUnprotectedSlackMarkdown(text: string): string {
@@ -382,72 +388,6 @@ function normalizeWrappedRawUrls(text: string): string {
   return `${out}${text.slice(lastIndex)}`;
 }
 
-function parseMarkdownTableRow(line: string): string[] | null {
-  if (!line.includes("|")) {
-    return null;
-  }
-
-  const normalized = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-  const cells: string[] = [];
-  let current = "";
-  let insideSlackLink = false;
-
-  for (const char of normalized) {
-    if (char === "<") {
-      insideSlackLink = true;
-      current += char;
-      continue;
-    }
-    if (char === ">") {
-      insideSlackLink = false;
-      current += char;
-      continue;
-    }
-    if (char === "|" && !insideSlackLink) {
-      cells.push(current.trim());
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-
-  cells.push(current.trim());
-  return cells.length >= 2 ? cells : null;
-}
-
-function isMarkdownTableSeparator(line: string): boolean {
-  const cells = parseMarkdownTableRow(line);
-  return (
-    cells !== null &&
-    cells.length >= 2 &&
-    cells.every((cell) => /^:?-{3,}:?$/.test(cell))
-  );
-}
-
-function renderMarkdownTableCodeBlock(rows: string[][]): string {
-  const columnCount = Math.max(...rows.map((row) => row.length));
-  const normalizedRows = rows.map((row) =>
-    Array.from({ length: columnCount }, (_unused, index) => row[index] ?? ""),
-  );
-  const widths = Array.from({ length: columnCount }, (_unused, index) =>
-    Math.max(3, ...normalizedRows.map((row) => (row[index] ?? "").length)),
-  );
-
-  const formatRow = (row: string[]) =>
-    row
-      .map((cell, index) => cell.padEnd(widths[index] ?? 3))
-      .join(" | ")
-      .trimEnd();
-
-  const header = formatRow(normalizedRows[0] ?? []);
-  const separator = widths
-    .map((width) => "-".repeat(Math.max(3, width)))
-    .join(" | ");
-  const body = normalizedRows.slice(1).map(formatRow);
-
-  return ["```", header, separator, ...body, "```"].join("\n");
-}
-
 function normalizeMarkdownTables(text: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
@@ -475,6 +415,103 @@ function normalizeMarkdownTables(text: string): string {
   }
 
   return out.join("\n");
+}
+
+function isPreservedSlackEntity(text: string, index: number): number {
+  if (text.startsWith("&amp;", index)) {
+    return 5;
+  }
+  if (text.startsWith("&lt;", index) || text.startsWith("&gt;", index)) {
+    return 4;
+  }
+  return 0;
+}
+
+function isSlackBlockQuoteMarker(text: string, index: number): boolean {
+  if (text[index] !== ">") {
+    return false;
+  }
+
+  let cursor = index - 1;
+  while (cursor >= 0 && text[cursor] !== "\n") {
+    if (!/\s/.test(text[cursor] ?? "")) {
+      return false;
+    }
+    cursor -= 1;
+  }
+  return true;
+}
+
+function isPreservedSlackToken(token: string): boolean {
+  return (
+    /^<https?:\/\/[^>\s]+(?:\|[^>]+)?>$/.test(token) ||
+    /^<mailto:[^>\s]+(?:\|[^>]+)?>$/.test(token) ||
+    /^<@[^>|]+(?:\|[^>]+)?>$/.test(token) ||
+    /^<#[^>|]+(?:\|[^>]+)?>$/.test(token) ||
+    /^<!(?!-)[^>]+>$/.test(token)
+  );
+}
+
+function escapeSlackControlCharsSegment(text: string): string {
+  let out = "";
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "&") {
+      const entityLength = isPreservedSlackEntity(text, index);
+      if (entityLength > 0) {
+        out += text.slice(index, index + entityLength);
+        index += entityLength - 1;
+        continue;
+      }
+      out += "&amp;";
+      continue;
+    }
+
+    if (char === "<") {
+      const closeIndex = text.indexOf(">", index + 1);
+      if (closeIndex !== -1) {
+        const token = text.slice(index, closeIndex + 1);
+        if (isPreservedSlackToken(token)) {
+          out += token;
+          index = closeIndex;
+          continue;
+        }
+      }
+
+      out += "&lt;";
+      continue;
+    }
+
+    if (char === ">") {
+      out += isSlackBlockQuoteMarker(text, index) ? ">" : "&gt;";
+      continue;
+    }
+
+    out += char;
+  }
+
+  return out;
+}
+
+function escapeSlackControlChars(text: string): string {
+  let out = "";
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(PROTECTED_SLACK_SEGMENT_PATTERN)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) {
+      out += escapeSlackControlCharsSegment(text.slice(lastIndex, index));
+    }
+    out += match[0];
+    lastIndex = index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    out += escapeSlackControlCharsSegment(text.slice(lastIndex));
+  }
+
+  return out;
 }
 
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */

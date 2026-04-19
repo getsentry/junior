@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-17
-- Last Edited: 2026-04-18
+- Last Edited: 2026-04-19
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-04-17: Added the Intent Delivery Mechanism section (ToolStrategy via the native `reply` tool, Renderer pattern).
 - 2026-04-17: Removed the render-intent palette, the `reply` tool, and the plugin recipe layer. The spec now documents a single output contract: the final assistant reply is plain Slack `mrkdwn` text, and the prompt's job is to teach the model which `mrkdwn` features Slack actually renders. A structured-layout palette may return later if there is a concrete product reason to spend model tool-budget on presentation.
 - 2026-04-18: Added deterministic output normalization for the most common CommonMark/GFM failure modes (`**bold**`, `~~strike~~`, markdown links, headings, simple pipe tables, wrapped raw URLs) in `chat/slack/mrkdwn.ts`, and moved verification away from prompt-string assertions toward formatter unit coverage plus behavior evals.
+- 2026-04-19: Added control-character escaping for literal Slack text (`&`, `<`, `>`), standardized the raw-Web-API reply envelope on section/context blocks with `expand`, and allowed the raw-Web-API reply path to upgrade a single simple markdown table into a native Slack table block while keeping top-level text fallbacks.
 
 ## Status
 
@@ -44,7 +45,13 @@ This spec sits in front of `slack-agent-delivery-spec.md` (reply delivery semant
 
 ### 1. Output form
 
-Every final assistant reply is delivered to Slack as plain `mrkdwn` text. The outbound boundary continues to wrap that text in the shared reply envelope (section block for the body, optional context block for the diagnostic footer). The model never authors blocks and never emits raw JSON.
+Every final assistant reply still has a plain-text Slack fallback. The model never authors blocks and never emits raw JSON.
+
+When Junior has a concrete Slack thread target, the shared raw-Web-API reply planner attaches a shared reply envelope around that fallback text:
+
+- a `section` block for each visible text post, with `expand: true`
+- an optional `context` block for diagnostic footer metadata on the final text post
+- when the finalized reply fits in one post and the original source text contains one simple markdown pipe table, a native Slack `table` block may replace the ASCII-table body rendering while the top-level fallback text remains the normalized `mrkdwn` string
 
 ### 2. Allowed Slack `mrkdwn`
 
@@ -86,6 +93,7 @@ The output boundary applies a targeted normalization pass in `packages/junior/sr
 - Markdown headings (`## Summary`) are rewritten to bold section labels (`*Summary*`).
 - Simple markdown pipe tables are rewritten as fenced code blocks with aligned columns so Slack renders them safely.
 - Raw URLs that are directly wrapped in formatting delimiters are rewritten to Slack link syntax so formatting characters do not bleed into the URL.
+- Literal `&`, `<`, and `>` characters in prose are escaped unless they are part of preserved Slack tokens (`<@U...>`, `<#C...>`, `<!...>`, links) or a block-quote marker.
 
 Code spans and fenced code blocks are preserved verbatim. The normalizer does not promise full CommonMark-to-Slack conversion; unsupported complex structures are still a prompt-quality issue.
 
@@ -101,7 +109,8 @@ Code spans and fenced code blocks are preserved verbatim. The normalizer does no
 Required verification coverage for this contract:
 
 1. Unit: the deterministic formatter in `chat/slack/mrkdwn.ts` repairs the known high-frequency CommonMark/GFM failure modes and preserves code spans / code fences.
-2. Evals: realistic Slack conversations confirm the final visible reply does not contain unsupported constructs (raw pipe tables, `**bold**`, `[label](url)`, `##` headings) even when the user asks for a comparison, a heading, or a link.
+2. Unit/integration: the raw-Web-API reply path emits section/context blocks with top-level text fallbacks and upgrades a single simple markdown table to a native Slack table block when source text is available.
+3. Evals: realistic Slack conversations confirm the final visible reply does not contain unsupported constructs (raw pipe tables, `**bold**`, `[label](url)`, `##` headings) even when the user asks for a comparison, a heading, or a link.
 
 ## Related Specs
 

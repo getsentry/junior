@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
@@ -10,6 +10,10 @@ import {
   createTestMessage,
   createTestThread,
 } from "../../fixtures/slack-harness";
+import {
+  getCapturedSlackApiCalls,
+  resetSlackApiMockState,
+} from "../../msw/handlers/slack-api";
 
 function toPostedText(value: unknown): string {
   if (typeof value === "string") {
@@ -64,6 +68,12 @@ function makeDiagnostics(
 }
 
 describe("Slack behavior: finalized thread replies", () => {
+  beforeEach(() => {
+    process.env.SLACK_BOT_TOKEN =
+      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    resetSlackApiMockState();
+  });
+
   it("posts only the finalized assistant reply even when deltas were emitted", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -331,5 +341,91 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(toPostedText(thread.posts.at(-1))).toContain(
       getSlackInterruptionMarker().trim(),
     );
+  });
+
+  it("uses raw Slack reply delivery when a finalized Slack reply has a concrete thread target", async () => {
+    const replyText = [
+      "| Service | Docs |",
+      "| --- | --- |",
+      "| Slack | [Slack](https://docs.slack.dev/) |",
+    ].join("\n");
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async () => ({
+            text: replyText,
+            diagnostics: makeDiagnostics(),
+          }),
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_FINAL:1700006008.000" });
+    (thread.adapter as { name?: string }).name = "slack";
+
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-final-9",
+        text: "<@U_APP> compare the docs",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(thread.posts).toEqual([]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C_FINAL",
+          thread_ts: "1700006008.000",
+          text: [
+            "```",
+            "Service | Docs",
+            "------- | -------------------------------",
+            "Slack   | <https://docs.slack.dev/|Slack>",
+            "```",
+          ].join("\n"),
+          blocks: expect.arrayContaining([
+            {
+              type: "table",
+              rows: [
+                [
+                  { type: "raw_text", text: "Service" },
+                  { type: "raw_text", text: "Docs" },
+                ],
+                [
+                  { type: "raw_text", text: "Slack" },
+                  {
+                    type: "rich_text",
+                    elements: [
+                      {
+                        type: "rich_text_section",
+                        elements: [
+                          {
+                            type: "link",
+                            url: "https://docs.slack.dev/",
+                            text: "Slack",
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              ],
+            },
+            expect.objectContaining({
+              type: "context",
+              elements: expect.arrayContaining([
+                {
+                  type: "mrkdwn",
+                  text: "*ID:* slack:C_FINAL:1700006008.000",
+                },
+              ]),
+            }),
+          ]),
+        }),
+      }),
+    ]);
   });
 });
