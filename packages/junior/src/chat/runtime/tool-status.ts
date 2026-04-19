@@ -68,6 +68,7 @@ export function buildToolStatus(
     slackChannelListMessages: makeAssistantStatus("listing", "messages"),
     slackCanvasCreate: makeAssistantStatus("creating", "brief"),
     slackCanvasUpdate: makeAssistantStatus("updating", "brief"),
+    slackCanvasRead: makeAssistantStatus("reading", "brief"),
     slackListCreate: makeAssistantStatus("creating", "tracking list"),
     slackListAddItems: makeAssistantStatus("updating", "tracking list"),
     slackListUpdateItem: makeAssistantStatus("updating", "tracking list"),

@@ -83,6 +83,34 @@ describe("createSlackCanvasReadTool", () => {
     });
   });
 
+  it("truncates long canvas content and exposes original_byte_length", async () => {
+    const body = "x".repeat(40_100);
+    queueSlackApiResponse("files.info", {
+      body: filesInfoOk({
+        fileId: "F0LONG",
+        urlPrivate: "https://files.slack.com/files-pri/T000-F0LONG/canvas.md",
+      }),
+    });
+    queueSlackPrivateFileDownload({ status: 200, body });
+
+    const tool = createSlackCanvasReadTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("slackCanvasRead execute function missing");
+    }
+
+    const result = (await tool.execute({ canvas: "F0LONG" }, {} as never)) as {
+      ok: true;
+      truncated: boolean;
+      content: string;
+      original_byte_length: number;
+    };
+
+    expect(result.ok).toBe(true);
+    expect(result.truncated).toBe(true);
+    expect(result.content).toHaveLength(40_000);
+    expect(result.original_byte_length).toBe(body.length);
+  });
+
   it("returns an error when canvas input is unparseable", async () => {
     const tool = createSlackCanvasReadTool();
     if (typeof tool.execute !== "function") {

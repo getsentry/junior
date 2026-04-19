@@ -268,7 +268,7 @@ export function createSlackCanvasReadTool() {
           permalink: result.permalink,
           mimetype: result.mimetype,
           filetype: result.filetype,
-          byte_length: result.byteLength,
+          original_byte_length: result.byteLength,
           truncated,
           content,
         };
