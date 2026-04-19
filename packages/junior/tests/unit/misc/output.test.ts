@@ -30,6 +30,18 @@ describe("renderSlackMrkdwn", () => {
     ).toBe("<https://en.wikipedia.org/wiki/Function_(mathematics)|docs>");
   });
 
+  it("rewrites reference-style markdown links and removes definitions", () => {
+    expect(
+      renderSlackMrkdwn(
+        [
+          "See [docs][slack].",
+          "",
+          '[slack]: https://docs.slack.dev/ "Slack Docs"',
+        ].join("\n"),
+      ),
+    ).toBe("See <https://docs.slack.dev/|docs>.");
+  });
+
   it("rewrites markdown headings into bold section labels", () => {
     expect(renderSlackMrkdwn("## Summary\nA short answer.")).toBe(
       "*Summary*\n\nA short answer.",
@@ -84,12 +96,25 @@ describe("renderSlackMrkdwn", () => {
     );
   });
 
+  it("strips html comments outside code fences", () => {
+    expect(
+      renderSlackMrkdwn("Intro\n<!-- internal note -->\n## Summary\nDone"),
+    ).toBe("Intro\n\n*Summary*\n\nDone");
+  });
+
+  it("preserves already-valid Slack links, mentions, and formatting", () => {
+    expect(
+      renderSlackMrkdwn("<https://docs.slack.dev/|docs> <@U123> *ready*"),
+    ).toBe("<https://docs.slack.dev/|docs> <@U123> *ready*");
+  });
+
   it("does not rewrite markdown syntax inside code fences", () => {
     const input = [
       "```",
       "## Summary",
       "**ready**",
       "[docs](https://docs.slack.dev/)",
+      "<!-- comment -->",
       "| Name | Score |",
       "| --- | --- |",
       "```",
