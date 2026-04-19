@@ -5,12 +5,24 @@ import {
   normalizeSlackConversationId,
 } from "@/chat/slack/client";
 
-export type AssistantStatusSender = (
+/**
+ * Slack's assistant loading UI accepts both `status` and `loading_messages`,
+ * but product policy keeps `status` stable and generic. User-visible progress
+ * copy belongs in `loading_messages`.
+ */
+export const SLACK_ASSISTANT_ACTIVE_STATUS = "is working on your request...";
+
+type AssistantStatusSender = (
   text: string,
-  suggestions?: string[],
+  loadingMessages?: string[],
 ) => Promise<void>;
 
-/** Build a best-effort status sender on top of the Slack adapter surface. */
+/**
+ * Build a best-effort sender for Slack's assistant loading state.
+ *
+ * The `text` argument is internal progress copy. This transport maps it onto
+ * Slack's loading surface and keeps the raw Slack `status` field fixed.
+ */
 export function createSlackAdapterStatusSender(args: {
   channelId?: string;
   threadTs?: string;
@@ -28,7 +40,7 @@ export function createSlackAdapterStatusSender(args: {
   // context is gone, so bind the active installation token up front.
   const boundToken = getSlackAdapterRequestToken(adapter);
 
-  return async (text, suggestions) => {
+  return async (text, loadingMessages) => {
     const channelId = args.channelId;
     const threadTs = args.threadTs;
     if (!channelId || !threadTs) {
@@ -40,13 +52,15 @@ export function createSlackAdapterStatusSender(args: {
       return;
     }
 
+    const nextLoadingMessages = text ? (loadingMessages ?? [text]) : undefined;
+
     try {
       await runWithBoundSlackToken(adapter, boundToken, () =>
         adapter.setAssistantStatus(
           normalizedChannelId,
           threadTs,
-          text,
-          suggestions,
+          text ? SLACK_ASSISTANT_ACTIVE_STATUS : "",
+          nextLoadingMessages,
         ),
       );
     } catch (error) {
@@ -61,7 +75,11 @@ export function createSlackAdapterStatusSender(args: {
   };
 }
 
-/** Build a best-effort status sender on top of direct Slack Web API calls. */
+/**
+ * Build a best-effort sender for Slack's assistant loading state over raw Web
+ * API calls. As with the adapter-backed path, the dynamic copy goes to
+ * `loading_messages` while `status` stays fixed and generic.
+ */
 export function createSlackWebApiStatusSender(args: {
   channelId?: string;
   threadTs?: string;
@@ -69,7 +87,7 @@ export function createSlackWebApiStatusSender(args: {
 }): AssistantStatusSender {
   const getClient = args.getSlackClient ?? getSlackClient;
 
-  return async (text, suggestions) => {
+  return async (text, loadingMessages) => {
     const channelId = args.channelId;
     const threadTs = args.threadTs;
     if (!channelId || !threadTs) {
@@ -81,12 +99,16 @@ export function createSlackWebApiStatusSender(args: {
       return;
     }
 
+    const nextLoadingMessages = text ? (loadingMessages ?? [text]) : undefined;
+
     try {
       await getClient().assistant.threads.setStatus({
         channel_id: normalizedChannelId,
         thread_ts: threadTs,
-        status: text,
-        ...(suggestions ? { loading_messages: suggestions } : {}),
+        status: text ? SLACK_ASSISTANT_ACTIVE_STATUS : "",
+        ...(nextLoadingMessages
+          ? { loading_messages: nextLoadingMessages }
+          : {}),
       });
     } catch (error) {
       logAssistantStatusFailure({

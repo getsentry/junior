@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  createSlackAssistantStatusSession,
-  makeAssistantStatus,
-} from "@/chat/slack/assistant-thread/status";
+import { createAssistantStatusScheduler } from "@/chat/slack/assistant-thread/status-scheduler";
+import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status-render";
 
 interface FakeTimer {
   id: number;
@@ -63,7 +61,7 @@ function createFakeScheduler() {
   };
 }
 
-const firstPlayfulStatus = "Thinking …";
+const firstGenericStatus = "Consulting the orb";
 const secondSearchingStatus = "Searching sources";
 const secondReadingStatus = "Reading source files";
 const secondReviewingStatus = "Reviewing results";
@@ -74,16 +72,15 @@ async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
 }
 
-describe("createSlackAssistantStatusSession", () => {
-  it("posts an initial playful status on start", async () => {
+describe("createAssistantStatusScheduler", () => {
+  it("posts the first generic loading message on start", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
         statuses.push(text);
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -93,18 +90,17 @@ describe("createSlackAssistantStatusSession", () => {
     reporter.start();
     await flushAsyncWork();
 
-    expect(statuses).toEqual([firstPlayfulStatus]);
+    expect(statuses).toEqual([firstGenericStatus]);
   });
 
   it("clears the assistant status when stopped", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
         statuses.push(text);
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -116,23 +112,22 @@ describe("createSlackAssistantStatusSession", () => {
 
     await reporter.stop();
 
-    expect(statuses).toEqual([firstPlayfulStatus, ""]);
+    expect(statuses).toEqual([firstGenericStatus, ""]);
   });
 
   it("does not wait for the initial status request before start() returns", async () => {
     const scheduler = createFakeScheduler();
     let resolveThinking: (() => void) | undefined;
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
-        if (text !== firstPlayfulStatus) {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
+        if (text !== firstGenericStatus) {
           return;
         }
         await new Promise<void>((resolve) => {
           resolveThinking = resolve;
         });
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -150,10 +145,8 @@ describe("createSlackAssistantStatusSession", () => {
   it("does not wait for an immediate replacement status before update() returns", async () => {
     const scheduler = createFakeScheduler();
     let resolveReviewing: (() => void) | undefined;
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
         if (text !== secondReviewingStatus) {
           return;
         }
@@ -161,6 +154,7 @@ describe("createSlackAssistantStatusSession", () => {
           resolveReviewing = resolve;
         });
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -179,15 +173,14 @@ describe("createSlackAssistantStatusSession", () => {
     await flushAsyncWork();
   });
 
-  it("omits loading suggestions when clearing the assistant status", async () => {
+  it("omits loading messages when clearing the assistant status", async () => {
     const scheduler = createFakeScheduler();
-    const calls: Array<{ text: string; suggestions?: string[] }> = [];
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text, suggestions) => {
-        calls.push({ text, suggestions });
+    const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text, loadingMessages) => {
+        calls.push({ text, loadingMessages });
       },
+      loadingMessages: ["Consulting the orb", "Bribing the gremlins"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -201,22 +194,24 @@ describe("createSlackAssistantStatusSession", () => {
 
     expect(calls).toEqual([
       {
-        text: firstPlayfulStatus,
-        suggestions: [firstPlayfulStatus],
+        text: expect.any(String),
+        loadingMessages: expect.arrayContaining([
+          "Consulting the orb",
+          "Bribing the gremlins",
+        ]),
       },
-      { text: "", suggestions: undefined },
+      { text: "", loadingMessages: undefined },
     ]);
   });
 
   it("suppresses duplicate pending statuses", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
         statuses.push(text);
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -231,18 +226,17 @@ describe("createSlackAssistantStatusSession", () => {
     scheduler.advance(1200);
     await flushAsyncWork();
 
-    expect(statuses).toEqual([firstPlayfulStatus, secondSearchingStatus]);
+    expect(statuses).toEqual([firstGenericStatus, secondSearchingStatus]);
   });
 
   it("enforces minimum visible duration before replacement", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
         statuses.push(text);
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -255,22 +249,21 @@ describe("createSlackAssistantStatusSession", () => {
     reporter.update(makeAssistantStatus("reading", "source files"));
     scheduler.advance(1000);
     await flushAsyncWork();
-    expect(statuses).toEqual([firstPlayfulStatus]);
+    expect(statuses).toEqual([firstGenericStatus]);
 
     scheduler.advance(200);
     await flushAsyncWork();
-    expect(statuses).toEqual([firstPlayfulStatus, secondReadingStatus]);
+    expect(statuses).toEqual([firstGenericStatus, secondReadingStatus]);
   });
 
   it("keeps the latest status when multiple updates arrive before flush", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
         statuses.push(text);
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -286,24 +279,23 @@ describe("createSlackAssistantStatusSession", () => {
     scheduler.advance(1200);
     await flushAsyncWork();
 
-    expect(statuses).toEqual([firstPlayfulStatus, secondReviewingStatus]);
+    expect(statuses).toEqual([firstGenericStatus, secondReviewingStatus]);
   });
 
   it("serializes status updates so a slow request cannot reorder with the clear", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
     let resolveThinking: (() => void) | undefined;
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
-        if (text === firstPlayfulStatus) {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
+        if (text === firstGenericStatus) {
           await new Promise<void>((resolve) => {
             resolveThinking = resolve;
           });
         }
         statuses.push(text);
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -322,18 +314,17 @@ describe("createSlackAssistantStatusSession", () => {
     await endPromise;
 
     // The clear must always be the last status sent to Slack
-    expect(statuses).toEqual([firstPlayfulStatus, ""]);
+    expect(statuses).toEqual([firstGenericStatus, ""]);
   });
 
   it("clears after the latest visible status when stopping", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
         statuses.push(text);
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -349,18 +340,17 @@ describe("createSlackAssistantStatusSession", () => {
 
     await reporter.stop();
 
-    expect(statuses).toEqual([firstPlayfulStatus, secondReviewingStatus, ""]);
+    expect(statuses).toEqual([firstGenericStatus, secondReviewingStatus, ""]);
   });
 
   it("refreshes the current status during long-running work", async () => {
     const scheduler = createFakeScheduler();
     const statuses: string[] = [];
-    const reporter = createSlackAssistantStatusSession({
-      channelId: "C1",
-      threadTs: "123.45",
-      setStatus: async (_channelId, _threadTs, text) => {
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
         statuses.push(text);
       },
+      loadingMessages: ["Consulting the orb"],
       now: scheduler.now,
       setTimer: scheduler.setTimer,
       clearTimer: scheduler.clearTimer,
@@ -373,6 +363,111 @@ describe("createSlackAssistantStatusSession", () => {
     scheduler.advance(30_000);
     await flushAsyncWork();
 
-    expect(statuses).toEqual([firstPlayfulStatus, firstPlayfulStatus]);
+    expect(statuses).toEqual([firstGenericStatus, firstGenericStatus]);
+  });
+
+  it("does not let fallback tool statuses replace a major progress phase", async () => {
+    const scheduler = createFakeScheduler();
+    const statuses: string[] = [];
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text) => {
+        statuses.push(text);
+      },
+      loadingMessages: ["Consulting the orb"],
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    reporter.start();
+    await flushAsyncWork();
+
+    scheduler.advance(1200);
+    reporter.update(
+      makeAssistantStatus("reviewing", "results", { source: "major" }),
+    );
+    await flushAsyncWork();
+
+    reporter.update(makeAssistantStatus("running", "pnpm"));
+    scheduler.advance(1200);
+    await flushAsyncWork();
+
+    expect(statuses).toEqual([firstGenericStatus, secondReviewingStatus]);
+  });
+
+  it("omits generic loading messages for major progress updates", async () => {
+    const scheduler = createFakeScheduler();
+    const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text, loadingMessages) => {
+        calls.push({ text, loadingMessages });
+      },
+      loadingMessages: ["Consulting the orb"],
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    reporter.start();
+    await flushAsyncWork();
+
+    scheduler.advance(1200);
+    reporter.update(
+      makeAssistantStatus("reviewing", "results", { source: "major" }),
+    );
+    await flushAsyncWork();
+
+    expect(calls).toEqual([
+      {
+        text: firstGenericStatus,
+        loadingMessages: ["Consulting the orb"],
+      },
+      {
+        text: secondReviewingStatus,
+        loadingMessages: [secondReviewingStatus],
+      },
+    ]);
+  });
+
+  it("lets a major progress phase clear generic loading messages without changing the visible text", async () => {
+    const scheduler = createFakeScheduler();
+    const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
+    const reporter = createAssistantStatusScheduler({
+      sendStatus: async (text, loadingMessages) => {
+        calls.push({ text, loadingMessages });
+      },
+      loadingMessages: ["Consulting the orb"],
+      now: scheduler.now,
+      setTimer: scheduler.setTimer,
+      clearTimer: scheduler.clearTimer,
+      random: () => 0,
+    });
+
+    reporter.start();
+    await flushAsyncWork();
+
+    scheduler.advance(1200);
+    reporter.update(makeAssistantStatus("reviewing"));
+    await flushAsyncWork();
+
+    reporter.update(
+      makeAssistantStatus("reviewing", "results", { source: "major" }),
+    );
+    reporter.update(makeAssistantStatus("running", "pnpm"));
+    await flushAsyncWork();
+    await flushAsyncWork();
+
+    expect(calls).toEqual([
+      {
+        text: firstGenericStatus,
+        loadingMessages: ["Consulting the orb"],
+      },
+      {
+        text: secondReviewingStatus,
+        loadingMessages: [secondReviewingStatus],
+      },
+    ]);
   });
 });

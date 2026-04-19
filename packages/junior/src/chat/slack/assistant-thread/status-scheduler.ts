@@ -1,6 +1,7 @@
 import {
   makeAssistantStatus,
   renderAssistantStatus,
+  selectAssistantLoadingMessages,
   type AssistantStatusSpec,
 } from "@/chat/slack/assistant-thread/status-render";
 
@@ -17,14 +18,16 @@ export interface AssistantStatusSession {
 }
 
 /**
- * Pace assistant-status writes for a single turn.
+ * Pace assistant loading-state writes for a single turn.
  *
  * This layer owns only local scheduling policy: debounce, minimum visible
- * duration, refresh cadence, and write ordering. It intentionally does not
- * know about Slack channel IDs, tokens, or API clients.
+ * duration, refresh cadence, and write ordering. It deals in user-visible
+ * progress copy; the transport decides how that maps onto Slack's `status`
+ * versus `loading_messages` fields.
  */
 export function createAssistantStatusScheduler(args: {
-  sendStatus: (text: string, suggestions?: string[]) => Promise<void>;
+  sendStatus: (text: string, loadingMessages?: string[]) => Promise<void>;
+  loadingMessages?: string[];
   now?: () => number;
   setTimer?: (callback: () => void, delayMs: number) => TimerHandle;
   clearTimer?: (timer: TimerHandle) => void;
@@ -37,11 +40,17 @@ export function createAssistantStatusScheduler(args: {
   const clearTimer =
     args.clearTimer ?? ((timer: TimerHandle) => clearTimeout(timer));
   const random = args.random ?? Math.random;
+  const loadingMessages = selectAssistantLoadingMessages({
+    messages: args.loadingMessages ?? [],
+    random,
+  });
+  const defaultStatus = makeAssistantStatus("thinking");
 
   let active = false;
   let currentKey = "";
-  let currentStatus: AssistantStatusSpec = makeAssistantStatus("thinking");
+  let currentStatus: AssistantStatusSpec = defaultStatus;
   let currentVisibleStatus = "";
+  let currentLoadingMessages: string[] | undefined;
   let lastStatusAt = 0;
   let pendingStatus: AssistantStatusSpec | null = null;
   let pendingKey = "";
@@ -71,30 +80,68 @@ export function createAssistantStatusScheduler(args: {
       return;
     }
 
-    // Slack removes assistant status automatically after about two minutes if
-    // no reply arrives, so long-running turns must refresh the current status.
+    // Slack removes assistant loading state automatically after about two
+    // minutes if no reply arrives, so long-running turns must refresh the
+    // current visible loading copy.
     rotationTimer = setTimer(() => {
       rotationTimer = null;
       if (!active || !currentVisibleStatus) {
         return;
       }
-      void postRenderedStatus(currentStatus);
+      void postStatus(currentVisibleStatus, currentLoadingMessages);
     }, STATUS_ROTATION_INTERVAL_MS);
+  };
+
+  const getLoadingMessagesForStatus = (
+    _status: AssistantStatusSpec,
+    visible: string,
+  ): string[] | undefined => {
+    if (!visible) {
+      return undefined;
+    }
+
+    // Once we have concrete progress copy, use it as the loading surface.
+    return [visible];
+  };
+
+  const getInitialStatusText = (): string => {
+    if (loadingMessages?.length) {
+      return loadingMessages[0];
+    }
+
+    return renderAssistantStatus({
+      status: defaultStatus,
+      random,
+    }).visible;
+  };
+
+  const haveSameLoadingMessages = (
+    left: string[] | undefined,
+    right: string[] | undefined,
+  ): boolean => {
+    if (left === right) {
+      return true;
+    }
+    if (!left || !right || left.length !== right.length) {
+      return false;
+    }
+    return left.every((message, index) => message === right[index]);
   };
 
   const postStatus = async (
     text: string,
-    suggestions?: string[],
+    nextLoadingMessages?: string[],
   ): Promise<void> => {
     if (!text && !currentVisibleStatus) {
       return;
     }
 
     currentVisibleStatus = text;
+    currentLoadingMessages = nextLoadingMessages;
     lastStatusAt = now();
     scheduleRotation();
     await enqueueStatusUpdate(async () => {
-      await args.sendStatus(text, suggestions);
+      await args.sendStatus(text, nextLoadingMessages);
     });
   };
 
@@ -105,9 +152,13 @@ export function createAssistantStatusScheduler(args: {
       status,
       random,
     });
+    const nextLoadingMessages = getLoadingMessagesForStatus(
+      status,
+      presentation.visible,
+    );
     currentStatus = status;
     currentKey = presentation.key;
-    await postStatus(presentation.visible, presentation.suggestions);
+    await postStatus(presentation.visible, nextLoadingMessages);
   };
 
   const clearPending = () => {
@@ -140,9 +191,9 @@ export function createAssistantStatusScheduler(args: {
     start() {
       active = true;
       clearPending();
-      currentStatus = makeAssistantStatus("thinking");
-      currentKey = "";
-      void postRenderedStatus(currentStatus);
+      currentStatus = defaultStatus;
+      currentKey = "initial";
+      void postStatus(getInitialStatusText(), loadingMessages);
     },
     async stop() {
       active = false;
@@ -165,7 +216,28 @@ export function createAssistantStatusScheduler(args: {
       if (!presentation.visible) {
         return;
       }
+      if (
+        status.source !== "major" &&
+        (currentStatus.source === "major" || pendingStatus?.source === "major")
+      ) {
+        return;
+      }
       if (presentation.key === currentKey || presentation.key === pendingKey) {
+        return;
+      }
+      if (presentation.visible === currentVisibleStatus) {
+        clearPending();
+        currentStatus = status;
+        currentKey = presentation.key;
+        const nextLoadingMessages = getLoadingMessagesForStatus(
+          status,
+          presentation.visible,
+        );
+        if (
+          !haveSameLoadingMessages(currentLoadingMessages, nextLoadingMessages)
+        ) {
+          void postStatus(presentation.visible, nextLoadingMessages);
+        }
         return;
       }
 
