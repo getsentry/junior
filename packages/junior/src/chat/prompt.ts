@@ -532,8 +532,6 @@ export function buildSystemPrompt(params: {
         "- If `attachFile` fails, explain the failure and do not say the file was shared.",
         "- Use `imageGenerate` when the user asks for image creation.",
         "- `imageGenerate` returns generated image metadata, including `attachment_path` values you can pass to `attachFile` when the user should receive the image.",
-        "- Use `slackCanvasCreate` for long-form docs/specs and `slackCanvasUpdate` for doc follow-ups.",
-        "- `slackCanvasUpdate` targets the active artifact-context canvas automatically; do not ask the user for `canvas_id`.",
         "- When you create or update a Slack artifact in this turn (for example a canvas, list, posted message, or attached file), mention it explicitly in the final reply and include its link when the tool returned one.",
         "- Use `slackListCreate`, `slackListAddItems`, and `slackListUpdateItem` for actionable task tracking.",
         "- `slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` target the active artifact-context list automatically; do not ask the user for `list_id`.",
