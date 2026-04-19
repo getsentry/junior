@@ -4,7 +4,8 @@ const PROTECTED_SLACK_SEGMENT_PATTERN =
   /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`)/g;
 
 function normalizeSlackMarkdownSegment(text: string): string {
-  let normalized = normalizeMarkdownHeadings(text);
+  let normalized = stripMarkdownHtmlComments(text);
+  normalized = normalizeMarkdownHeadings(normalized);
   normalized = normalizeCommonMarkEmphasis(normalized);
   normalized = normalizeMarkdownLinks(normalized);
   normalized = normalizeWrappedRawUrls(normalized);
@@ -47,6 +48,10 @@ function normalizeCommonMarkEmphasis(text: string): string {
     .replace(/~~([^\s~](?:[^\n]*?[^\s~])?)~~/g, "~$1~");
 }
 
+function stripMarkdownHtmlComments(text: string): string {
+  return text.replace(/<!--[\s\S]*?-->/g, "");
+}
+
 function escapeSlackLinkLabel(text: string): string {
   return text
     .replaceAll("&", "&amp;")
@@ -68,43 +73,151 @@ function formatSlackLink(url: string, label?: string): string {
   return `<${normalizedUrl}|${normalizedLabel}>`;
 }
 
-function parseMarkdownLinkUrl(
+type ParsedMarkdownUrl = {
+  endIndex: number;
+  url: string;
+};
+
+type MarkdownLinkDefinitionMap = Map<string, string>;
+
+function normalizeMarkdownLinkIdentifier(text: string): string {
+  return text.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function isMarkdownLinkTitle(text: string): boolean {
+  return /^"[^"\n]*"$|^'[^'\n]*'$|^\([^()\n]*\)$/.test(text);
+}
+
+function isSupportedMarkdownUrl(text: string, startIndex: number): boolean {
+  return (
+    text.startsWith("https://", startIndex) ||
+    text.startsWith("http://", startIndex)
+  );
+}
+
+function parseMarkdownUrl(
   text: string,
   startIndex: number,
-): { endIndex: number; url: string } | null {
-  if (
-    !text.startsWith("https://", startIndex) &&
-    !text.startsWith("http://", startIndex)
-  ) {
+  options?: {
+    stopAtClosingParen?: boolean;
+  },
+): ParsedMarkdownUrl | null {
+  if (!isSupportedMarkdownUrl(text, startIndex)) {
     return null;
   }
 
   let depth = 0;
   for (let index = startIndex; index < text.length; index += 1) {
     const char = text[index];
-    if (char === "\n" || /\s/.test(char)) {
+    if (char === "\n") {
       return null;
     }
     if (char === "(") {
       depth += 1;
       continue;
     }
-    if (char !== ")") {
-      continue;
+    if (char === ")") {
+      if (depth > 0) {
+        depth -= 1;
+        continue;
+      }
+      if (options?.stopAtClosingParen) {
+        const url = text.slice(startIndex, index);
+        return url ? { endIndex: index + 1, url } : null;
+      }
+      const url = text.slice(startIndex, index);
+      return url ? { endIndex: index, url } : null;
     }
-    if (depth > 0) {
-      depth -= 1;
+    if (!/\s/.test(char)) {
       continue;
     }
 
     const url = text.slice(startIndex, index);
-    return url ? { endIndex: index + 1, url } : null;
+    return url ? { endIndex: index, url } : null;
   }
 
-  return null;
+  const url = text.slice(startIndex);
+  return url ? { endIndex: text.length, url } : null;
 }
 
-function normalizeMarkdownLinks(text: string): string {
+function parseInlineMarkdownLinkUrl(
+  text: string,
+  startIndex: number,
+): ParsedMarkdownUrl | null {
+  return parseMarkdownUrl(text, startIndex, {
+    stopAtClosingParen: true,
+  });
+}
+
+function parseMarkdownDefinitionUrl(text: string): ParsedMarkdownUrl | null {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("<")) {
+    const closeIndex = trimmed.indexOf(">");
+    if (closeIndex <= 1) {
+      return null;
+    }
+    const url = trimmed.slice(1, closeIndex);
+    if (!isSupportedMarkdownUrl(url, 0)) {
+      return null;
+    }
+    const trailing = trimmed.slice(closeIndex + 1).trim();
+    if (trailing && !isMarkdownLinkTitle(trailing)) {
+      return null;
+    }
+    return {
+      endIndex: trimmed.length,
+      url,
+    };
+  }
+
+  const parsed = parseMarkdownUrl(trimmed, 0);
+  if (!parsed) {
+    return null;
+  }
+  const trailing = trimmed.slice(parsed.endIndex).trim();
+  if (trailing && !isMarkdownLinkTitle(trailing)) {
+    return null;
+  }
+  return parsed;
+}
+
+function extractMarkdownLinkDefinitions(text: string): {
+  definitions: MarkdownLinkDefinitionMap;
+  textWithoutDefinitions: string;
+} {
+  const definitions: MarkdownLinkDefinitionMap = new Map();
+  const out: string[] = [];
+
+  for (const line of text.split("\n")) {
+    const match = line.match(/^\s*\[([^\]\n]+)\]:\s*(.*)$/);
+    if (!match) {
+      out.push(line);
+      continue;
+    }
+
+    const identifier = normalizeMarkdownLinkIdentifier(match[1] ?? "");
+    const rawRest = (match[2] ?? "").trim();
+    if (!identifier || !rawRest) {
+      out.push(line);
+      continue;
+    }
+
+    const parsed = parseMarkdownDefinitionUrl(rawRest);
+    if (!parsed) {
+      out.push(line);
+      continue;
+    }
+
+    definitions.set(identifier, parsed.url);
+  }
+
+  return {
+    definitions,
+    textWithoutDefinitions: out.join("\n"),
+  };
+}
+
+function normalizeInlineMarkdownLinks(text: string): string {
   let out = "";
   let index = 0;
 
@@ -135,7 +248,7 @@ function normalizeMarkdownLinks(text: string): string {
       continue;
     }
 
-    const parsed = parseMarkdownLinkUrl(text, labelEnd + 2);
+    const parsed = parseInlineMarkdownLinkUrl(text, labelEnd + 2);
     if (!parsed) {
       out += "[";
       index = linkStart + 1;
@@ -147,6 +260,35 @@ function normalizeMarkdownLinks(text: string): string {
   }
 
   return out;
+}
+
+function normalizeReferenceMarkdownLinks(
+  text: string,
+  definitions: MarkdownLinkDefinitionMap,
+): string {
+  return text.replace(
+    /(^|[^!])\[([^\]\n]+)\]\[([^\]\n]*)\]/g,
+    (_match, prefix, label, rawIdentifier) => {
+      const identifier = normalizeMarkdownLinkIdentifier(
+        rawIdentifier ? String(rawIdentifier) : String(label),
+      );
+      const url = definitions.get(identifier);
+      if (!url) {
+        return `${prefix}[${label}][${rawIdentifier}]`;
+      }
+      return `${prefix}${formatSlackLink(String(url), String(label))}`;
+    },
+  );
+}
+
+function normalizeMarkdownLinks(text: string): string {
+  const { definitions, textWithoutDefinitions } =
+    extractMarkdownLinkDefinitions(text);
+  const inlineNormalized = normalizeInlineMarkdownLinks(textWithoutDefinitions);
+  if (definitions.size === 0) {
+    return inlineNormalized;
+  }
+  return normalizeReferenceMarkdownLinks(inlineNormalized, definitions);
 }
 
 function splitSlackUrlSuffix(text: string): { suffix: string; url: string } {
