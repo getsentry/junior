@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import {
   slackOk,
+  canvasesAccessSetOk,
   canvasesCreateOk,
   canvasesEditOk,
   canvasesSectionsLookupOk,
@@ -23,6 +24,7 @@ import {
 } from "../../fixtures/slack/factories/api";
 
 const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
+const PRIVATE_FILE_DOWNLOAD_KEY = "__files.download.private__";
 
 export const SUPPORTED_SLACK_API_METHODS = [
   "assistant.threads.setStatus",
@@ -37,6 +39,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "reactions.remove",
   "conversations.history",
   "conversations.replies",
+  "canvases.access.set",
   "canvases.create",
   "conversations.canvases.create",
   "canvases.sections.lookup",
@@ -196,6 +199,8 @@ function defaultSlackApiResponse(
       return { body: conversationsHistoryPage() };
     case "conversations.replies":
       return { body: conversationsRepliesPage() };
+    case "canvases.access.set":
+      return { body: canvasesAccessSetOk() };
     case "canvases.create":
       return { body: canvasesCreateOk() };
     case "conversations.canvases.create":
@@ -347,6 +352,14 @@ export function queueSlackExternalUploadResponse(
   queuedResponses.set(EXTERNAL_UPLOAD_KEY, queue);
 }
 
+export function queueSlackPrivateFileDownload(
+  response: SlackMockHttpResponse,
+): void {
+  const queue = queuedResponses.get(PRIVATE_FILE_DOWNLOAD_KEY) ?? [];
+  queue.push(response);
+  queuedResponses.set(PRIVATE_FILE_DOWNLOAD_KEY, queue);
+}
+
 export function getCapturedSlackApiCalls(
   method?: SlackApiMethod,
 ): CapturedSlackApiCall[] {
@@ -428,6 +441,14 @@ export const slackApiHandlers = [
       body: "ok",
     };
 
+    return toHttpResponse(response);
+  }),
+
+  http.get("https://files.slack.com/:path*", async () => {
+    const response = dequeueResponse(PRIVATE_FILE_DOWNLOAD_KEY) ?? {
+      status: 200,
+      body: "",
+    };
     return toHttpResponse(response);
   }),
 ];

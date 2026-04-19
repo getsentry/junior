@@ -10,6 +10,7 @@ import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-po
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import {
   createSlackCanvasCreateTool,
+  createSlackCanvasReadTool,
   createSlackCanvasUpdateTool,
 } from "@/chat/tools/slack/canvas-tools";
 import {
@@ -93,6 +94,7 @@ export function createTools(
       hooks,
       hooks.toolOverrides?.imageGenerate,
     ),
+    slackCanvasRead: createSlackCanvasReadTool(),
     slackCanvasUpdate: createSlackCanvasUpdateTool(state, context),
     slackListCreate: createSlackListCreateTool(state),
     slackListAddItems: createSlackListAddItemsTool(state),
