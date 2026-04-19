@@ -153,11 +153,9 @@ export function markConversationMessage(
 }
 
 /**
- * Render thread background as structured XML for the model prompt.
- *
- * Per-compaction and per-message wrappers carry index/ts metadata so the
- * model can reference prior items explicitly, matching Anthropic's
- * per-document tag pattern and OpenAI's GPT-5 structured-spec guidance.
+ * Render thread history as structured XML. Each compaction and message is
+ * wrapped with index/ts metadata so the model can reference prior items
+ * individually instead of treating the whole block as one flat narrative.
  */
 export function buildConversationContext(
   conversation: ThreadConversationState,
@@ -172,54 +170,36 @@ export function buildConversationContext(
     return undefined;
   }
 
+  const escapeAttr = (value: string) => value.replace(/"/g, "&quot;");
   const lines: string[] = [];
+
   if (conversation.compactions.length > 0) {
     lines.push("<thread-compactions>");
     for (const [index, compaction] of conversation.compactions.entries()) {
-      const attrs = [
-        `index="${index + 1}"`,
-        `covered_messages="${compaction.coveredMessageIds.length}"`,
-        `created_at="${new Date(compaction.createdAtMs).toISOString()}"`,
-      ].join(" ");
-      lines.push(`  <compaction ${attrs}>`);
-      lines.push(compaction.summary);
-      lines.push("  </compaction>");
+      lines.push(
+        `  <compaction index="${index + 1}" covered_messages="${compaction.coveredMessageIds.length}" created_at="${new Date(compaction.createdAtMs).toISOString()}">`,
+        compaction.summary,
+        "  </compaction>",
+      );
     }
-    lines.push("</thread-compactions>");
-    lines.push("");
+    lines.push("</thread-compactions>", "");
   }
 
   lines.push("<thread-transcript>");
   for (const [index, message] of messages.entries()) {
-    const attrs = buildMessageAttrs(message, index);
-    lines.push(`  <message ${attrs}>`);
-    lines.push(renderConversationMessageLine(message, conversation));
-    lines.push("  </message>");
+    const author = escapeAttr(message.author?.userName ?? message.role);
+    const ts = new Date(message.createdAtMs).toISOString();
+    const slackTsAttr = message.meta?.slackTs
+      ? ` slack_ts="${escapeAttr(message.meta.slackTs)}"`
+      : "";
+    lines.push(
+      `  <message index="${index + 1}" ts="${ts}" role="${message.role}" author="${author}"${slackTsAttr}>`,
+      renderConversationMessageLine(message, conversation),
+      "  </message>",
+    );
   }
   lines.push("</thread-transcript>");
   return lines.join("\n");
-}
-
-function buildMessageAttrs(
-  message: ConversationMessage,
-  index: number,
-): string {
-  const ts = new Date(message.createdAtMs).toISOString();
-  const author = message.author?.userName ?? message.role;
-  const parts = [
-    `index="${index + 1}"`,
-    `ts="${ts}"`,
-    `role="${message.role}"`,
-    `author="${escapeAttr(author)}"`,
-  ];
-  if (message.meta?.slackTs) {
-    parts.push(`slack_ts="${escapeAttr(message.meta.slackTs)}"`);
-  }
-  return parts.join(" ");
-}
-
-function escapeAttr(value: string): string {
-  return value.replace(/"/g, "&quot;");
 }
 
 function pruneCompactions(
