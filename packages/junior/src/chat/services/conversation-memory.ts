@@ -174,11 +174,7 @@ export function buildConversationContext(
   const lines: string[] = [];
 
   if (conversation.compactions.length > 0) {
-    lines.push(
-      "<thread-compactions>",
-      "Summaries of older thread segments that have been compacted out of the live transcript. Each <compaction> covers a contiguous range of prior messages.",
-      "",
-    );
+    lines.push("<thread-compactions>");
     for (const [index, compaction] of conversation.compactions.entries()) {
       lines.push(
         `  <compaction index="${index + 1}" covered_messages="${compaction.coveredMessageIds.length}" created_at="${new Date(compaction.createdAtMs).toISOString()}">`,
@@ -189,11 +185,7 @@ export function buildConversationContext(
     lines.push("</thread-compactions>", "");
   }
 
-  lines.push(
-    "<thread-transcript>",
-    "The most recent messages in this thread, oldest first. Each <message> is an individually addressable prior turn with role/author/timestamp metadata.",
-    "",
-  );
+  lines.push("<thread-transcript>");
   for (const [index, message] of messages.entries()) {
     const author = escapeAttr(message.author?.userName ?? message.role);
     const ts = new Date(message.createdAtMs).toISOString();

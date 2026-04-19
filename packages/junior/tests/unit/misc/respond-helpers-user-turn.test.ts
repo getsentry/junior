@@ -34,7 +34,7 @@ describe("buildUserTurnText marker ordering", () => {
     expect(result.trimEnd().endsWith("</latest-user-instruction>")).toBe(true);
   });
 
-  it("emits the instruction precedence block before the context blocks", () => {
+  it("starts with <thread-background> when conversation context is provided", () => {
     const result = buildUserTurnText(
       "current ask",
       "<thread-transcript>\n[user] alice: earlier\n</thread-transcript>",
@@ -44,15 +44,8 @@ describe("buildUserTurnText marker ordering", () => {
       },
     );
 
-    const precedenceIndex = result.indexOf("<instruction-precedence>");
-    const backgroundIndex = result.indexOf("<thread-background>");
-    const instructionIndex = result.indexOf(
-      '<latest-user-instruction priority="highest">',
-    );
-
-    expect(precedenceIndex).toBe(0);
-    expect(backgroundIndex).toBeGreaterThan(precedenceIndex);
-    expect(instructionIndex).toBeGreaterThan(backgroundIndex);
+    expect(result.startsWith("<thread-background>")).toBe(true);
+    expect(result).not.toContain("<instruction-precedence>");
   });
 
   it("tags the latest user instruction with the highest priority", () => {
