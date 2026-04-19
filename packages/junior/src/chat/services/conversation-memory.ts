@@ -9,6 +9,7 @@ import type {
 } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
+import { escapeXml } from "@/chat/xml";
 
 const CONTEXT_COMPACTION_TRIGGER_TOKENS = 9000;
 const CONTEXT_COMPACTION_TARGET_TOKENS = 7000;
@@ -170,7 +171,6 @@ export function buildConversationContext(
     return undefined;
   }
 
-  const escapeAttr = (value: string) => value.replace(/"/g, "&quot;");
   const lines: string[] = [];
 
   if (conversation.compactions.length > 0) {
@@ -187,10 +187,10 @@ export function buildConversationContext(
 
   lines.push("<thread-transcript>");
   for (const [index, message] of messages.entries()) {
-    const author = escapeAttr(message.author?.userName ?? message.role);
+    const author = escapeXml(message.author?.userName ?? message.role);
     const ts = new Date(message.createdAtMs).toISOString();
     const slackTsAttr = message.meta?.slackTs
-      ? ` slack_ts="${escapeAttr(message.meta.slackTs)}"`
+      ? ` slack_ts="${escapeXml(message.meta.slackTs)}"`
       : "";
     lines.push(
       `  <message index="${index + 1}" ts="${ts}" role="${message.role}" author="${author}"${slackTsAttr}>`,
