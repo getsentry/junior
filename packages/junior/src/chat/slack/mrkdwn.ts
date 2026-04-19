@@ -48,8 +48,26 @@ function normalizeCommonMarkEmphasis(text: string): string {
     .replace(/~~([^\s~](?:[^\n]*?[^\s~])?)~~/g, "~$1~");
 }
 
+function removeMarkdownHtmlComments(text: string): string {
+  let normalized = text;
+
+  while (true) {
+    const start = normalized.indexOf("<!--");
+    if (start === -1) {
+      return normalized;
+    }
+
+    const end = normalized.indexOf("-->", start + 4);
+    if (end === -1) {
+      return normalized;
+    }
+
+    normalized = `${normalized.slice(0, start)}${normalized.slice(end + 3)}`;
+  }
+}
+
 function stripMarkdownHtmlComments(text: string): string {
-  return text.replace(/<!--[\s\S]*?-->/g, "");
+  return removeMarkdownHtmlComments(text).replaceAll("<!--", "&lt;!--");
 }
 
 function escapeSlackLinkLabel(text: string): string {
@@ -317,18 +335,51 @@ function splitSlackUrlSuffix(text: string): { suffix: string; url: string } {
   return { suffix, url };
 }
 
-function normalizeWrappedRawUrls(text: string): string {
-  return text.replace(
-    /([*_~`]+)?(https?:\/\/[^\s<]+)([*_~`]+)?/g,
-    (match, leading, rawUrl, trailing) => {
-      if (!leading && !trailing) {
-        return match;
-      }
+function splitWrappedRawUrlToken(token: string): {
+  after: string;
+  before: string;
+  core: string;
+} {
+  let start = 0;
+  while (/[([{'"']/.test(token[start] ?? "")) {
+    start += 1;
+  }
 
-      const { suffix, url } = splitSlackUrlSuffix(String(rawUrl));
-      return `${formatSlackLink(url)}${suffix}`;
-    },
-  );
+  let end = token.length;
+  while (end > start && /[)\]}"',.!?;:]/.test(token[end - 1] ?? "")) {
+    end -= 1;
+  }
+
+  return {
+    after: token.slice(end),
+    before: token.slice(0, start),
+    core: token.slice(start, end),
+  };
+}
+
+function normalizeWrappedRawUrlToken(token: string): string {
+  const { after, before, core } = splitWrappedRawUrlToken(token);
+  const match = core.match(/^([*_~`]+)(https?:\/\/[^\s<]+?)([*_~`]+)$/);
+  if (!match) {
+    return token;
+  }
+
+  const { suffix, url } = splitSlackUrlSuffix(match[2] ?? "");
+  return `${before}${formatSlackLink(url)}${suffix}${after}`;
+}
+
+function normalizeWrappedRawUrls(text: string): string {
+  let out = "";
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(/\S+/g)) {
+    const index = match.index ?? 0;
+    out += text.slice(lastIndex, index);
+    out += normalizeWrappedRawUrlToken(match[0]);
+    lastIndex = index + match[0].length;
+  }
+
+  return `${out}${text.slice(lastIndex)}`;
 }
 
 function parseMarkdownTableRow(line: string): string[] | null {

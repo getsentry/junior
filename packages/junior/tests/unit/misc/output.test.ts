@@ -96,10 +96,22 @@ describe("renderSlackMrkdwn", () => {
     );
   });
 
+  it("leaves raw urls inside larger formatted prose untouched", () => {
+    expect(renderSlackMrkdwn("*https://docs.slack.dev/ more context*")).toBe(
+      "*https://docs.slack.dev/ more context*",
+    );
+  });
+
   it("strips html comments outside code fences", () => {
     expect(
       renderSlackMrkdwn("Intro\n<!-- internal note -->\n## Summary\nDone"),
     ).toBe("Intro\n\n*Summary*\n\nDone");
+  });
+
+  it("escapes dangling html comment openers after stripping comments", () => {
+    expect(renderSlackMrkdwn("Intro <!<!-- internal note -->-- outro")).toBe(
+      "Intro &lt;!-- outro",
+    );
   });
 
   it("preserves already-valid Slack links, mentions, and formatting", () => {
