@@ -2,6 +2,32 @@ import { describe } from "vitest";
 import { mention, rubric, slackEval } from "../helpers";
 
 describe("Slack mrkdwn hygiene", () => {
+  slackEval("rewrites markdown tables into Slack-safe output", {
+    events: [
+      mention(
+        "Give me a short comparison table of Sentry, Bugsnag, and Rollbar focused on deployment model and tracing.",
+      ),
+    ],
+    overrides: {
+      reply_timeout_ms: 120_000,
+    },
+    requireSandboxReady: false,
+    taskTimeout: 150_000,
+    timeout: 210_000,
+    criteria: rubric({
+      contract:
+        "Comparison output is Slack-safe: it may use bullets or a fenced code block, but it must not leave a raw markdown pipe table as the visible reply.",
+      pass: [
+        "assistant_posts contains a single reply that compares Sentry, Bugsnag, and Rollbar.",
+        "If the reply uses a table-like layout, it is fenced as code or otherwise reformatted for Slack-safe rendering.",
+      ],
+      fail: [
+        "Do not emit an unfenced markdown table with a separator row such as `| --- | --- |`.",
+        "Do not leave a raw pipe-table as the final visible reply.",
+      ],
+    }),
+  });
+
   slackEval(
     "uses single-asterisk bold, single-tilde strike, and Slack link syntax",
     {

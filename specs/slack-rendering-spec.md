@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-17
-- Last Edited: 2026-04-17
+- Last Edited: 2026-04-18
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-04-17: Dropped Work Objects. Replaced the declarative plugin-template registry with a native-intent palette the model selects from; plugins now teach intent usage through SKILL.md rather than YAML templates.
 - 2026-04-17: Added the Intent Delivery Mechanism section (ToolStrategy via the native `reply` tool, Renderer pattern).
 - 2026-04-17: Removed the render-intent palette, the `reply` tool, and the plugin recipe layer. The spec now documents a single output contract: the final assistant reply is plain Slack `mrkdwn` text, and the prompt's job is to teach the model which `mrkdwn` features Slack actually renders. A structured-layout palette may return later if there is a concrete product reason to spend model tool-budget on presentation.
+- 2026-04-18: Added deterministic output normalization for the most common CommonMark/GFM failure modes (`**bold**`, `~~strike~~`, markdown links, headings, simple pipe tables, wrapped raw URLs) in `chat/slack/mrkdwn.ts`, and moved verification away from prompt-string assertions toward formatter unit coverage plus behavior evals.
 
 ## Status
 
@@ -20,7 +21,7 @@ Draft
 
 Define the canonical output contract between Junior's assistant turns and Slack delivery so every visible reply is well-formed Slack `mrkdwn` that Slack actually renders.
 
-Slack's `mrkdwn` is a strict, smaller syntax than CommonMark or GitHub-Flavored Markdown. CommonMark features that Slack silently ignores — pipe tables, `**bold**`, `[label](url)`, `##` headings — render as literal characters and degrade the reply. The output contract names the allow-list the model may use and forbids the CommonMark/GFM constructs that Slack does not support.
+Slack's `mrkdwn` is a strict, smaller syntax than CommonMark or GitHub-Flavored Markdown. CommonMark features that Slack silently ignores — pipe tables, `**bold**`, `[label](url)`, `##` headings — render as literal characters and degrade the reply. The output contract names the allow-list the model may use, forbids the CommonMark/GFM constructs that Slack does not support, and applies a small deterministic repair layer for the highest-frequency failure modes before the final reply is delivered.
 
 This spec sits in front of `slack-agent-delivery-spec.md` (reply delivery semantics) and `slack-outbound-contract-spec.md` (outbound Slack API safety). It does not change either of those contracts.
 
@@ -29,6 +30,7 @@ This spec sits in front of `slack-agent-delivery-spec.md` (reply delivery semant
 - The Slack `mrkdwn` syntax the model is allowed to emit in a final reply.
 - The CommonMark/GFM constructs the model must not emit because Slack does not render them.
 - How the prompt teaches these rules (a single `<output surface="slack" ...>` section).
+- The targeted deterministic repairs that the Slack output boundary applies before delivery.
 
 ## Non-Goals
 
@@ -74,18 +76,32 @@ These rules live in one place: the `<output surface="slack" ...>` section built 
 
 The section also carries the other per-reply guidance this surface requires: brevity, no initial-acknowledgement for tool-heavy research, no progress narration, one final reply per turn.
 
+### 5. Deterministic normalization
+
+The output boundary applies a targeted normalization pass in `packages/junior/src/chat/slack/mrkdwn.ts` before reply chunking and delivery. This pass is intentionally narrow and conservative:
+
+- `**bold**` is rewritten to `*bold*`.
+- `~~strike~~` is rewritten to `~strike~`.
+- `[label](url)` is rewritten to `<url|label>`.
+- Markdown headings (`## Summary`) are rewritten to bold section labels (`*Summary*`).
+- Simple markdown pipe tables are rewritten as fenced code blocks with aligned columns so Slack renders them safely.
+- Raw URLs that are directly wrapped in formatting delimiters are rewritten to Slack link syntax so formatting characters do not bleed into the URL.
+
+Code spans and fenced code blocks are preserved verbatim. The normalizer does not promise full CommonMark-to-Slack conversion; unsupported complex structures are still a prompt-quality issue.
+
 ## Failure Model
 
-1. The model emits a forbidden construct (table, `##` heading, `[label](url)`, `**bold**`). Slack renders it as literal characters. This is a prompt-adherence failure; the fix lives in the `<output>` section and in any eval scenario that exercises the specific construct.
-2. The model emits a correct `mrkdwn` construct that exceeds the envelope's length cap. The outbound boundary truncates or chunks per `slack-outbound-contract-spec.md`. No change here.
-3. The model tries to author blocks or JSON directly. The prompt forbids it; if it slips through, the outbound boundary treats the raw string as text and the visible output degrades.
+1. The model emits a common forbidden construct (`**bold**`, `~~strike~~`, `[label](url)`, `##` heading, simple pipe table). The deterministic normalizer repairs it before delivery.
+2. The model emits a more complex unsupported structure that the normalizer does not recognize. Slack may still render it poorly; that is a prompt-quality failure, and the fix usually lives in the `<output>` section plus a behavior eval.
+3. The model emits a correct `mrkdwn` construct that exceeds the envelope's length cap. The outbound boundary truncates or chunks per `slack-outbound-contract-spec.md`. No change here.
+4. The model tries to author blocks or JSON directly. The prompt forbids it; if it slips through, the outbound boundary treats the raw string as text and the visible output degrades.
 
 ## Verification
 
 Required verification coverage for this contract:
 
-1. Unit: prompt assembly emits the `<output>` section with the expected allow-list and forbid-list.
-2. Evals: realistic Slack conversations confirm the model does not emit forbidden constructs (pipe tables, `**bold**`, `[label](url)`, `##` headings) even when the user asks for a comparison, a heading, or a link.
+1. Unit: the deterministic formatter in `chat/slack/mrkdwn.ts` repairs the known high-frequency CommonMark/GFM failure modes and preserves code spans / code fences.
+2. Evals: realistic Slack conversations confirm the final visible reply does not contain unsupported constructs (raw pipe tables, `**bold**`, `[label](url)`, `##` headings) even when the user asks for a comparison, a heading, or a link.
 
 ## Related Specs
 

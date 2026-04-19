@@ -9,7 +9,7 @@ import {
   runEvalScenario,
 } from "./behavior-harness";
 
-configure({ model: gateway("openai/gpt-5.4") });
+configure({ model: gateway("openai/gpt-5.2") });
 
 // ── Eval output schema ─────────────────────────────────────
 

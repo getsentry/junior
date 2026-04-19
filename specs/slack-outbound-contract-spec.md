@@ -50,9 +50,10 @@ Slack outbound behavior is split into two explicit boundaries:
 Current rules:
 
 1. Prompting should target Slack-friendly markdown, not generic full CommonMark.
-2. `slack/output.ts` is the only canonical place to normalize line endings, block spacing, and reply chunk boundaries for Slack replies.
-3. Continuation markers and interruption markers are delivery-time annotations owned by `slack/output.ts`, not model-authored text.
-4. If future markdown-to-`mrkdwn` adaptations are needed, they must be added in `slack/output.ts` rather than scattered across delivery callers.
+2. `slack/output.ts` plus `slack/mrkdwn.ts` are the only canonical place to normalize line endings, block spacing, known CommonMark/GFM formatting failures, and reply chunk boundaries for Slack replies.
+3. The output boundary may apply targeted deterministic repairs for high-frequency Slack-incompatible constructs such as `**bold**`, `~~strike~~`, `[label](url)`, markdown headings, simple pipe tables, and raw URLs wrapped in formatting delimiters.
+4. Continuation markers and interruption markers are delivery-time annotations owned by `slack/output.ts`, not model-authored text.
+5. If future markdown-to-`mrkdwn` adaptations are needed, they must be added in the Slack output boundary rather than scattered across delivery callers.
 
 ### 3. Message Posting Contract
 
