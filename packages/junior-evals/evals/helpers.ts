@@ -120,6 +120,78 @@ function hasAssistantStatusPending(result: EvalResult): boolean {
   return false;
 }
 
+function collectExplicitProgressMessages(result: EvalResult): string[] {
+  const explicitMessages: string[] = [];
+  const initialStatusByThread = new Map<string, string>();
+
+  for (const call of result.slackAdapter.statusCalls) {
+    const threadKey = `${call.channelId}:${call.threadTs}`;
+    const text = call.text.trim();
+    const loadingMessages =
+      call.loadingMessages
+        ?.map((message) => message.trim())
+        .filter((message) => message.length > 0) ?? [];
+    if (!text) {
+      continue;
+    }
+    if (!initialStatusByThread.has(threadKey)) {
+      initialStatusByThread.set(threadKey, text);
+      continue;
+    }
+    if (initialStatusByThread.get(threadKey) === text) {
+      continue;
+    }
+    if (loadingMessages.length !== 1 || loadingMessages[0] !== text) {
+      continue;
+    }
+    if (!explicitMessages.includes(text)) {
+      explicitMessages.push(text);
+    }
+  }
+
+  return explicitMessages;
+}
+
+const GENERIC_PROGRESS_MESSAGES = new Set([
+  "checking",
+  "loading",
+  "processing",
+  "thinking",
+  "working",
+]);
+
+const MEANINGFUL_PROGRESS_PHASE =
+  /\b(analy|check|compare|draft|fetch|inspect|look|query|read|research|review|run|search|summari|verify|write)\w*\b/i;
+
+function isMeaningfulProgressMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized || GENERIC_PROGRESS_MESSAGES.has(normalized)) {
+    return false;
+  }
+  return /\s/.test(normalized) || MEANINGFUL_PROGRESS_PHASE.test(normalized);
+}
+
+/** Assert that a turn emitted at least one specific non-generic progress phase. */
+export function assertMeaningfulExplicitProgress(
+  name: string,
+  result: EvalResult,
+): void {
+  const messages = collectExplicitProgressMessages(result);
+  if (messages.length === 0) {
+    throw new Error(
+      `Eval "${name}" never emitted an explicit progress update beyond the generic loading rotation.`,
+    );
+  }
+
+  if (messages.some(isMeaningfulProgressMessage)) {
+    return;
+  }
+
+  throw new Error(
+    `Eval "${name}" only emitted generic explicit progress messages: ${messages.join(", ")}.`,
+  );
+}
+
 function serializeEvalResult(result: EvalResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
@@ -148,6 +220,7 @@ interface SlackEvalOptions {
   events: EvalEvent[];
   overrides?: EvalOverrides;
   criteria: EvalRubric;
+  assertResult?: (name: string, result: EvalResult) => void;
   requireGatewayReady?: boolean;
   taskTimeout?: number;
   threshold?: number;
@@ -292,6 +365,7 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
           assertSandboxReady(name, result);
         }
         assertStatusCleared(name, result);
+        opts.assertResult?.(name, result);
         return serializeEvalResult(result);
       } finally {
         unregisterLogSink();

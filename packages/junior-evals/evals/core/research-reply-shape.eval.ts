@@ -1,9 +1,14 @@
 import { describe } from "vitest";
-import { mention, rubric, slackEval } from "../helpers";
+import {
+  assertMeaningfulExplicitProgress,
+  mention,
+  rubric,
+  slackEval,
+} from "../helpers";
 
 describe("Research Reply Shape", () => {
   slackEval(
-    "when summarizing multiple sources, return a concise answer without process chatter",
+    "when summarizing multiple sources, show progress and return a concise answer without process chatter",
     {
       events: [
         mention(
@@ -13,6 +18,7 @@ describe("Research Reply Shape", () => {
       overrides: {
         reply_timeout_ms: 120_000,
       },
+      assertResult: assertMeaningfulExplicitProgress,
       requireSandboxReady: false,
       taskTimeout: 150_000,
       timeout: 210_000,

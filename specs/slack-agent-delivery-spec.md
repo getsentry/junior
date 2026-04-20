@@ -129,7 +129,9 @@ Design note:
    - Junior may debounce and minimum-display-time status transitions to avoid unreadable flicker.
    - Junior may supply generic `loading_messages` from core bot configuration and randomize their order per turn.
    - Junior suppresses the generic `loading_messages` rotation while an explicit progress update is active and uses the current progress message as the loading surface instead.
-   - Junior may expose an internal progress-reporting tool for sparse explicit progress messages.
+   - Junior exposes an internal progress-reporting tool for sparse explicit progress messages.
+   - For non-trivial tool-backed turns, the assistant should emit an explicit progress update at the start of the first major work phase and again only when the major phase meaningfully changes.
+   - Explicit progress messages should use concrete phase labels such as searching, reading, reviewing, or running checks rather than generic filler.
    - Footer metadata, when enabled, is a separate finalized-reply affordance and must not be treated as assistant progress.
 
 ### 5. Primary Reply Contract
