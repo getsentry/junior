@@ -53,10 +53,22 @@ const assistantPostSchema = z.object({
   text: z.string().describe("Visible text the assistant posted in the thread"),
 });
 
+const canvasSchema = z.object({
+  title: z.string().describe("Title of a Slack canvas created during the turn"),
+  markdown: z
+    .string()
+    .describe(
+      "Initial markdown body written into the created Slack canvas during the turn",
+    ),
+});
+
 const evalOutputSchema = z.object({
   assistant_posts: z
     .array(assistantPostSchema)
     .describe("Assistant posts sent to the thread, including attached files"),
+  canvases: z
+    .array(canvasSchema)
+    .describe("Slack canvases created during the turn"),
   channel_posts: z
     .array(
       z.object({
@@ -111,6 +123,7 @@ function hasAssistantStatusPending(result: EvalResult): boolean {
 function serializeEvalResult(result: EvalResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
+    canvases: result.canvases,
     channel_posts: result.channelPosts,
     reactions: result.reactions,
     slack_metadata: {
