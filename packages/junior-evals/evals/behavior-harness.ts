@@ -142,6 +142,7 @@ interface EvalScenarioRunOptions {
 }
 
 export interface EvalResult {
+  canvases: EvalCanvasArtifact[];
   channelPosts: Array<{
     channel: string;
     text: string;
@@ -167,6 +168,11 @@ export interface EvalAttachedFile {
 export interface EvalAssistantPost {
   files: EvalAttachedFile[];
   text: string;
+}
+
+export interface EvalCanvasArtifact {
+  markdown: string;
+  title: string;
 }
 
 interface EvalSlackThreadReply {
@@ -401,11 +407,32 @@ function toEvalFiles(value: unknown): EvalAttachedFile[] {
 
 export function collectSlackArtifactsFromCapturedCalls(
   calls: CapturedSlackApiCall[],
-): Pick<EvalResult, "channelPosts" | "reactions"> {
+): Pick<EvalResult, "canvases" | "channelPosts" | "reactions"> {
+  const canvases: EvalResult["canvases"] = [];
   const channelPosts: EvalResult["channelPosts"] = [];
   const reactions = new Map<string, EvalResult["reactions"][number]>();
 
   for (const call of calls) {
+    if (call.method === "canvases.create") {
+      const title = toFirstString(call.params.title) ?? "";
+      const documentContent =
+        call.params.document_content &&
+        typeof call.params.document_content === "object"
+          ? (call.params.document_content as Record<string, unknown>)
+          : undefined;
+      const markdown = documentContent
+        ? (toFirstString(documentContent.markdown) ?? "")
+        : "";
+      if (!title && markdown.length === 0) {
+        continue;
+      }
+      canvases.push({
+        title,
+        markdown,
+      });
+      continue;
+    }
+
     if (call.method === "chat.postMessage") {
       const channel = toFirstString(call.params.channel);
       const text = toFirstString(call.params.text);
@@ -455,6 +482,7 @@ export function collectSlackArtifactsFromCapturedCalls(
   }
 
   return {
+    canvases,
     channelPosts,
     reactions: [...reactions.values()],
   };
@@ -1086,11 +1114,11 @@ function collectResults(
   const posts = [...threadRecordsById.values()].flatMap((record) =>
     record.thread.posts.map(toEvalAssistantPost),
   );
-  const { channelPosts, reactions } = collectSlackArtifactsFromCapturedCalls(
-    readCapturedSlackApiCalls(),
-  );
+  const { canvases, channelPosts, reactions } =
+    collectSlackArtifactsFromCapturedCalls(readCapturedSlackApiCalls());
 
   return {
+    canvases,
     channelPosts,
     logRecords,
     reactions,

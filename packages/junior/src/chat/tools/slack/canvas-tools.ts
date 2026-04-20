@@ -39,7 +39,7 @@ export function createSlackCanvasCreateTool(
 ) {
   return tool({
     description:
-      "Create a Slack canvas for long-form output in the active assistant context channel. Use when content is too long for a thread reply or needs a persistent document. Do not use for short answers that fit in-thread.",
+      "Create a Slack canvas for long-form output in the active assistant context channel. Use when the answer is better as a reusable document than a thread reply: long-form research, timelines, bios/profiles, structured notes, plans, comparisons, or anything likely to exceed one compact Slack reply. After creating it, keep the thread reply brief and include the canvas link. Do not use for short answers that fit cleanly in one normal thread reply.",
     inputSchema: Type.Object({
       title: Type.String({
         minLength: 1,

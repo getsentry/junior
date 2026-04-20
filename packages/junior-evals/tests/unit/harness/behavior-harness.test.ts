@@ -50,7 +50,10 @@ vi.mock("@/chat/app/factory", () => ({
   })),
 }));
 
-import { runEvalScenario } from "../../../evals/behavior-harness";
+import {
+  collectSlackArtifactsFromCapturedCalls,
+  runEvalScenario,
+} from "../../../evals/behavior-harness";
 
 describe("behavior harness", () => {
   afterAll(() => {
@@ -191,6 +194,45 @@ describe("behavior harness", () => {
             sizeBytes: 3,
           },
         ],
+      },
+    ]);
+  });
+
+  it("collects created canvas metadata from captured Slack API calls", () => {
+    const artifacts = collectSlackArtifactsFromCapturedCalls([
+      {
+        method: "canvases.create",
+        url: "https://slack.test/api/canvases.create",
+        headers: {},
+        params: {
+          title: "Slack Streaming Timeline",
+          document_content: {
+            type: "markdown",
+            markdown: "## Timeline\n- `chat.startStream`\n- `chat.stopStream`",
+          },
+        },
+      },
+      {
+        method: "chat.postMessage",
+        url: "https://slack.test/api/chat.postMessage",
+        headers: {},
+        params: {
+          channel: "C_TEST",
+          text: "Created a canvas with the full notes.",
+        },
+      },
+    ]);
+
+    expect(artifacts.canvases).toEqual([
+      {
+        title: "Slack Streaming Timeline",
+        markdown: "## Timeline\n- `chat.startStream`\n- `chat.stopStream`",
+      },
+    ]);
+    expect(artifacts.channelPosts).toEqual([
+      {
+        channel: "C_TEST",
+        text: "Created a canvas with the full notes.",
       },
     ]);
   });
