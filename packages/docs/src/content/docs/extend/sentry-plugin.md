@@ -42,7 +42,7 @@ Set these values in the host environment:
 
 ## Create the Sentry OAuth application
 
-Create an OAuth application in Sentry and set its redirect URL to:
+Create an OAuth application in Sentry by opening https://sentry.io/settings/account/api/applications/ and set its redirect URL to:
 
 ```text
 <base-url>/api/oauth/callback/sentry
