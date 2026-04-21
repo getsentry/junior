@@ -218,13 +218,42 @@ vi.mock("@/chat/config", () => ({
 
 vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "test-provider",
-  completeObject: async () => ({
-    object: {
-      reasoning_effort: "medium",
-      confidence: 1,
-      reason: "test-router",
-    },
-  }),
+  completeObject: async ({ prompt }: { prompt: string }) => {
+    if (prompt.includes("Latest user request:\nhello")) {
+      return {
+        object: {
+          reasoning_effort: "none",
+          confidence: 1,
+          reason: "ack",
+        },
+      };
+    }
+    if (prompt.includes("Latest user request:\nattach the report")) {
+      return {
+        object: {
+          reasoning_effort: "low",
+          confidence: 1,
+          reason: "simple attachment request",
+        },
+      };
+    }
+    if (prompt.includes("Latest user request:\nfix the failing test in chat")) {
+      return {
+        object: {
+          reasoning_effort: "high",
+          confidence: 1,
+          reason: "code change request",
+        },
+      };
+    }
+    return {
+      object: {
+        reasoning_effort: "medium",
+        confidence: 1,
+        reason: "test-router",
+      },
+    };
+  },
   getPiGatewayApiKeyOverride: () => undefined,
   resolveGatewayModel: (modelId: string) => modelId,
 }));

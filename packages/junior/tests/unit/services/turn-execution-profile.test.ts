@@ -5,8 +5,14 @@ import {
 } from "@/chat/services/turn-execution-profile";
 
 describe("selectTurnExecutionProfile", () => {
-  it("keeps acknowledgments at none without calling the classifier", async () => {
-    const completeObject = vi.fn();
+  it("classifies even simple acknowledgment turns with the fast model", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        reasoning_effort: "none",
+        confidence: 0.99,
+        reason: "acknowledgment only",
+      },
+    }));
 
     const profile = await selectTurnExecutionProfile({
       completeObject,
@@ -17,15 +23,26 @@ describe("selectTurnExecutionProfile", () => {
 
     expect(profile).toMatchObject({
       reasoningEffort: "none",
-      reason: "acknowledgment_only",
-      source: "heuristic",
+      reason: "acknowledgment only",
+      source: "classifier",
     });
-    expect(completeObject).not.toHaveBeenCalled();
+    expect(completeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: "openai/gpt-5.4-mini",
+        reasoningEffort: "low",
+      }),
+    );
     expect(toAgentThinkingLevel(profile.reasoningEffort)).toBe("off");
   });
 
-  it("routes code-change asks to high without a classifier call", async () => {
-    const completeObject = vi.fn();
+  it("classifies code-change asks with the fast model", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        reasoning_effort: "high",
+        confidence: 0.93,
+        reason: "code change request",
+      },
+    }));
 
     const profile = await selectTurnExecutionProfile({
       completeObject,
@@ -37,32 +54,13 @@ describe("selectTurnExecutionProfile", () => {
 
     expect(profile).toMatchObject({
       reasoningEffort: "high",
-      reason: "code_change_request",
-      source: "heuristic",
+      reason: "code change request",
+      source: "classifier",
     });
-    expect(completeObject).not.toHaveBeenCalled();
+    expect(completeObject).toHaveBeenCalledOnce();
   });
 
-  it("routes repo investigations to medium without a classifier call", async () => {
-    const completeObject = vi.fn();
-
-    const profile = await selectTurnExecutionProfile({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
-      messageText:
-        "let's dig into https://github.com/getsentry/junior/issues/233",
-      modelId: "openai/gpt-5.4",
-    });
-
-    expect(profile).toMatchObject({
-      reasoningEffort: "medium",
-      reason: "repo_investigation_request",
-      source: "heuristic",
-    });
-    expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("uses the fast-model classifier for ambiguous higher-risk asks", async () => {
+  it("includes turn context in the classifier prompt", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         reasoning_effort: "medium",
@@ -71,8 +69,9 @@ describe("selectTurnExecutionProfile", () => {
       },
     }));
 
-    const profile = await selectTurnExecutionProfile({
-      activeSkillNames: ["github"],
+    await selectTurnExecutionProfile({
+      activeSkillNames: ["github", "github"],
+      attachmentCount: 2,
       completeObject,
       conversationContext:
         "[user] dcramer: can you check this?\n[assistant] junior: maybe",
@@ -81,15 +80,27 @@ describe("selectTurnExecutionProfile", () => {
       modelId: "openai/gpt-5.4",
     });
 
-    expect(profile).toMatchObject({
-      reasoningEffort: "medium",
-      source: "classifier",
-      reason: "repo context plus ambiguity",
-    });
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: "openai/gpt-5.4-mini",
-        reasoningEffort: "low",
+        prompt: expect.stringContaining(
+          "Latest user request:\ncan you confirm this approach?",
+        ),
+      }),
+    );
+    expect(completeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("- active_skills: github"),
+      }),
+    );
+    expect(completeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("- attachment_count: 2"),
+      }),
+    );
+    expect(completeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("Recent conversation context:"),
       }),
     );
   });
@@ -104,7 +115,6 @@ describe("selectTurnExecutionProfile", () => {
     }));
 
     const profile = await selectTurnExecutionProfile({
-      activeSkillNames: ["github"],
       completeObject,
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "can you confirm this repo plan?",
@@ -124,7 +134,6 @@ describe("selectTurnExecutionProfile", () => {
     });
 
     const profile = await selectTurnExecutionProfile({
-      activeSkillNames: ["github"],
       completeObject,
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "can you confirm this repo plan?",
