@@ -103,7 +103,7 @@ describe("Slack behavior: finalized thread replies", () => {
         replyExecutor: {
           generateAssistantReply: async (_prompt, context) => {
             await context?.onTextDelta?.("Fetching sources now...");
-            await context?.onToolCall?.("webSearch");
+            await context?.onToolCall?.("webSearch", {});
             await context?.onAssistantMessageStart?.();
             await context?.onTextDelta?.(finalReply);
             return {

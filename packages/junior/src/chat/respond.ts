@@ -140,7 +140,7 @@ export interface ReplyRequestContext {
   };
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
-  onToolCall?: (toolName: string, params?: unknown) => void | Promise<void>;
+  onToolCall?: (toolName: string, params: unknown) => void | Promise<void>;
   onAssistantMessageStart?: () => void | Promise<void>;
   /**
    * Known thread participants. Injected into the system prompt so the LLM can

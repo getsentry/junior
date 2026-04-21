@@ -173,7 +173,7 @@ function isMeaningfulProgressMessage(message: string): boolean {
 }
 
 /** Assert that a turn emitted a specific non-generic explicit progress phase. */
-export function assertMeaningfulExplicitProgress(
+function assertMeaningfulExplicitProgress(
   name: string,
   result: EvalResult,
 ): void {
@@ -221,7 +221,7 @@ interface SlackEvalOptions {
   events: EvalEvent[];
   overrides?: EvalOverrides;
   criteria: EvalRubric;
-  assertResult?: (name: string, result: EvalResult) => void;
+  requireMeaningfulExplicitProgress?: boolean;
   requireGatewayReady?: boolean;
   taskTimeout?: number;
   threshold?: number;
@@ -366,7 +366,9 @@ export function slackEval(name: string, opts: SlackEvalOptions) {
           assertSandboxReady(name, result);
         }
         assertStatusCleared(name, result);
-        opts.assertResult?.(name, result);
+        if (opts.requireMeaningfulExplicitProgress) {
+          assertMeaningfulExplicitProgress(name, result);
+        }
         return serializeEvalResult(result);
       } finally {
         unregisterLogSink();

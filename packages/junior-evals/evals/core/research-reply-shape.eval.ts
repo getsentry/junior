@@ -1,10 +1,5 @@
 import { describe } from "vitest";
-import {
-  assertMeaningfulExplicitProgress,
-  mention,
-  rubric,
-  slackEval,
-} from "../helpers";
+import { mention, rubric, slackEval } from "../helpers";
 
 describe("Research Reply Shape", () => {
   slackEval(
@@ -18,7 +13,7 @@ describe("Research Reply Shape", () => {
       overrides: {
         reply_timeout_ms: 120_000,
       },
-      assertResult: assertMeaningfulExplicitProgress,
+      requireMeaningfulExplicitProgress: true,
       requireSandboxReady: false,
       taskTimeout: 150_000,
       timeout: 210_000,
