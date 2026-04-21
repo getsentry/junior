@@ -142,7 +142,7 @@ export async function completeText(params: {
   modelId: string;
   system?: string;
   messages: Message[];
-  reasoningEffort?: ThinkingLevel;
+  thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
@@ -165,8 +165,8 @@ export async function completeText(params: {
       ? { "gen_ai.input.messages": requestMessagesAttribute }
       : {}),
     "app.ai.auth_mode": apiKey ? "oidc" : "api_key",
-    ...(params.reasoningEffort
-      ? { "app.ai.reasoning_effort": params.reasoningEffort }
+    ...(params.thinkingLevel
+      ? { "app.ai.reasoning_effort": params.thinkingLevel }
       : {}),
   };
   setSpanAttributes(startAttributes);
@@ -180,7 +180,7 @@ export async function completeText(params: {
       ...(apiKey ? { apiKey } : {}),
       temperature: params.temperature,
       maxTokens: params.maxTokens,
-      reasoning: params.reasoningEffort,
+      reasoning: params.thinkingLevel,
       signal: params.signal,
       metadata: params.metadata,
     },
@@ -204,8 +204,8 @@ export async function completeText(params: {
     ...(message.stopReason
       ? { "gen_ai.response.finish_reasons": [message.stopReason] }
       : {}),
-    ...(params.reasoningEffort
-      ? { "app.ai.reasoning_effort": params.reasoningEffort }
+    ...(params.thinkingLevel
+      ? { "app.ai.reasoning_effort": params.thinkingLevel }
       : {}),
   };
   setSpanAttributes(endAttributes);
@@ -237,7 +237,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   schema: TSchema;
   system?: string;
   prompt: string;
-  reasoningEffort?: ThinkingLevel;
+  thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
@@ -249,7 +249,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     ({ text } = await completeText({
       modelId: params.modelId,
       system: params.system,
-      reasoningEffort: params.reasoningEffort,
+      thinkingLevel: params.thinkingLevel,
       temperature: params.temperature,
       maxTokens: params.maxTokens,
       signal: params.signal,

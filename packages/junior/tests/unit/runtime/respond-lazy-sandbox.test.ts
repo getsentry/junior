@@ -219,28 +219,42 @@ vi.mock("@/chat/config", () => ({
 vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "test-provider",
   completeObject: async ({ prompt }: { prompt: string }) => {
-    if (prompt.includes("Latest user request:\nhello")) {
+    const instructionMatch = prompt.match(
+      /<current-instruction priority="highest">\n([\s\S]*?)\n<\/current-instruction>/,
+    );
+    const instruction = instructionMatch?.[1] ?? "";
+
+    if (prompt.includes("TypeError: x is undefined")) {
       return {
         object: {
-          reasoning_effort: "none",
+          thinking_level: "high",
+          confidence: 1,
+          reason: "attachment stack trace",
+        },
+      };
+    }
+    if (instruction === "hello") {
+      return {
+        object: {
+          thinking_level: "none",
           confidence: 1,
           reason: "ack",
         },
       };
     }
-    if (prompt.includes("Latest user request:\nattach the report")) {
+    if (instruction === "attach the report") {
       return {
         object: {
-          reasoning_effort: "low",
+          thinking_level: "low",
           confidence: 1,
           reason: "simple attachment request",
         },
       };
     }
-    if (prompt.includes("Latest user request:\nfix the failing test in chat")) {
+    if (instruction === "fix the failing test in chat") {
       return {
         object: {
-          reasoning_effort: "high",
+          thinking_level: "high",
           confidence: 1,
           reason: "code change request",
         },
@@ -248,7 +262,7 @@ vi.mock("@/chat/pi/client", () => ({
     }
     return {
       object: {
-        reasoning_effort: "medium",
+        thinking_level: "medium",
         confidence: 1,
         reason: "test-router",
       },
@@ -555,8 +569,23 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(selectedThinkingLevels.value).toEqual(["low"]);
   });
 
-  it("uses a high reasoning budget for explicit code-change asks", async () => {
+  it("uses a high thinking level for explicit code-change asks", async () => {
     const reply = await generateAssistantReply("fix the failing test in chat");
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(selectedThinkingLevels.value).toEqual(["high"]);
+  });
+
+  it("uses attachment text when routing the turn thinking level", async () => {
+    const reply = await generateAssistantReply("can you fix this?", {
+      userAttachments: [
+        {
+          data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
+          filename: "error.txt",
+          mediaType: "text/plain",
+        },
+      ],
+    });
 
     expect(reply.text).toBe("Plain reply.");
     expect(selectedThinkingLevels.value).toEqual(["high"]);

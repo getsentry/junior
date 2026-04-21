@@ -4,24 +4,23 @@ import { z } from "zod";
 
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.75;
 const MAX_ROUTER_CONTEXT_CHARS = 1_200;
-const TURN_REASONING_EFFORTS = ["none", "low", "medium", "high"] as const;
+const TURN_THINKING_LEVELS = ["none", "low", "medium", "high"] as const;
 
 const turnExecutionProfileSchema = z.object({
-  reasoning_effort: z.enum(TURN_REASONING_EFFORTS),
+  thinking_level: z.enum(TURN_THINKING_LEVELS),
   confidence: z.number().min(0).max(1),
   reason: z.string().min(1),
 });
 
-type TurnReasoningEffort = (typeof TURN_REASONING_EFFORTS)[number];
+type TurnThinkingLevel = (typeof TURN_THINKING_LEVELS)[number];
 
-export interface TurnExecutionProfile {
+export interface TurnThinkingSelection {
   confidence?: number;
-  modelId: string;
-  reasoningEffort: TurnReasoningEffort;
+  thinkingLevel: TurnThinkingLevel;
   reason: string;
 }
 
-const DEFAULT_REASONING_EFFORT: TurnExecutionProfile["reasoningEffort"] = "low";
+const DEFAULT_THINKING_LEVEL: TurnThinkingSelection["thinkingLevel"] = "low";
 
 function trimContextForRouter(text: string | undefined): string | undefined {
   const trimmed = text?.trim();
@@ -35,7 +34,7 @@ function trimContextForRouter(text: string | undefined): string | undefined {
 
 function buildClassifierSystemPrompt(): string {
   return [
-    "You route assistant turns to the cheapest reasoning effort that is still likely to succeed.",
+    "You route assistant turns to the cheapest thinking level that is still likely to succeed.",
     "Choose exactly one bucket: none, low, medium, or high.",
     "",
     "Use none for greetings, acknowledgments, and trivial single-step asks.",
@@ -43,7 +42,7 @@ function buildClassifierSystemPrompt(): string {
     "Use medium for investigations, ambiguous asks, multi-step analysis, or likely multi-tool work.",
     "Use high for code changes, debugging/root-cause analysis, research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
     "",
-    "Return JSON only with reasoning_effort, confidence, and reason.",
+    "Return JSON only with thinking_level, confidence, and reason.",
   ].join("\n");
 }
 
@@ -51,6 +50,7 @@ function buildClassifierPrompt(args: {
   activeSkillNames: string[];
   attachmentCount: number;
   conversationContext?: string;
+  currentTurnBlocks?: string[];
   messageText: string;
 }): string {
   const sections: string[] = [];
@@ -71,11 +71,19 @@ function buildClassifierPrompt(args: {
     "</current-instruction>",
   );
 
+  for (const block of args.currentTurnBlocks ?? []) {
+    const trimmed = block.trim();
+    if (!trimmed) {
+      continue;
+    }
+    sections.push("", trimmed);
+  }
+
   return sections.join("\n");
 }
 
-/** Choose the model and reasoning budget for the upcoming assistant turn. */
-export async function selectTurnExecutionProfile(args: {
+/** Choose the thinking level for the upcoming assistant turn. */
+export async function selectTurnThinkingLevel(args: {
   activeSkillNames?: string[];
   attachmentCount?: number;
   completeObject: (args: {
@@ -84,7 +92,7 @@ export async function selectTurnExecutionProfile(args: {
     maxTokens: number;
     metadata: Record<string, string>;
     prompt: string;
-    reasoningEffort?: ProviderThinkingLevel;
+    thinkingLevel?: ProviderThinkingLevel;
     system: string;
     temperature: number;
   }) => Promise<{ object: unknown }>;
@@ -95,10 +103,10 @@ export async function selectTurnExecutionProfile(args: {
     runId?: string;
     threadId?: string;
   };
+  currentTurnBlocks?: string[];
   fastModelId: string;
   messageText: string;
-  modelId: string;
-}): Promise<TurnExecutionProfile> {
+}): Promise<TurnThinkingSelection> {
   const activeSkillNames = [...new Set(args.activeSkillNames ?? [])].sort();
 
   try {
@@ -117,9 +125,10 @@ export async function selectTurnExecutionProfile(args: {
         activeSkillNames,
         attachmentCount: args.attachmentCount ?? 0,
         conversationContext: args.conversationContext,
+        currentTurnBlocks: args.currentTurnBlocks,
         messageText: args.messageText,
       }),
-      reasoningEffort: "low",
+      thinkingLevel: "low",
       system: buildClassifierSystemPrompt(),
       temperature: 0,
     });
@@ -128,32 +137,29 @@ export async function selectTurnExecutionProfile(args: {
     if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
       return {
         confidence: parsed.confidence,
-        modelId: args.modelId,
-        reasoningEffort: DEFAULT_REASONING_EFFORT,
+        thinkingLevel: DEFAULT_THINKING_LEVEL,
         reason: `low_confidence_default:${parsed.reason.trim()}`,
       };
     }
 
     return {
       confidence: parsed.confidence,
-      modelId: args.modelId,
-      reasoningEffort: parsed.reasoning_effort,
+      thinkingLevel: parsed.thinking_level,
       reason: parsed.reason.trim(),
     };
   } catch {
     return {
-      modelId: args.modelId,
-      reasoningEffort: DEFAULT_REASONING_EFFORT,
+      thinkingLevel: DEFAULT_THINKING_LEVEL,
       reason: "classifier_error_default",
     };
   }
 }
 
-/** Convert a routing effort bucket into the Pi Agent thinking level for a main turn. */
+/** Convert a routing bucket into the Pi Agent thinking level for a main turn. */
 export function toAgentThinkingLevel(
-  effort: TurnExecutionProfile["reasoningEffort"],
+  level: TurnThinkingSelection["thinkingLevel"],
 ): AgentThinkingLevel | "off" {
-  switch (effort) {
+  switch (level) {
     case "none":
       return "off";
     case "low":

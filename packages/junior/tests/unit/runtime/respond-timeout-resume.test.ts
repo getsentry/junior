@@ -120,7 +120,7 @@ vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "vercel-ai-gateway",
   completeObject: async () => ({
     object: {
-      reasoning_effort: "medium",
+      thinking_level: "medium",
       confidence: 1,
       reason: "test-router",
     },

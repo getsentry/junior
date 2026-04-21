@@ -1,7 +1,8 @@
 import type { FileUpload } from "chat";
+import { botConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
-import type { TurnExecutionProfile } from "@/chat/services/turn-execution-profile";
+import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
   buildReplyDeliveryPlan,
@@ -30,7 +31,7 @@ export interface AgentTurnDiagnostics {
   providerError?: unknown;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
-  reasoningEffort?: TurnExecutionProfile["reasoningEffort"];
+  thinkingLevel?: TurnThinkingSelection["thinkingLevel"];
   stopReason?: string;
   toolCalls: string[];
   toolErrorCount: number;
@@ -63,7 +64,7 @@ export interface TurnResultInput {
   shouldTrace: boolean;
   spanContext: LogContext;
   usage?: AgentTurnUsage;
-  executionProfile: TurnExecutionProfile;
+  thinkingSelection: TurnThinkingSelection;
   correlation?: {
     threadId?: string;
     requesterId?: string;
@@ -87,7 +88,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     shouldTrace,
     spanContext,
     usage,
-    executionProfile,
+    thinkingSelection,
     correlation,
     assistantUserName,
   } = input;
@@ -132,7 +133,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
         slackChannelId: correlation?.channelId,
         runId: correlation?.runId,
         assistantUserName,
-        modelId: executionProfile.modelId,
+        modelId: botConfig.modelId,
       },
       {
         "app.ai.tool_results": toolResults.length,
@@ -207,9 +208,9 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
 
   const resolvedDiagnostics: AgentTurnDiagnostics = {
     outcome: resolvedOutcome,
-    modelId: executionProfile.modelId,
+    modelId: botConfig.modelId,
     assistantMessageCount: assistantMessages.length,
-    reasoningEffort: executionProfile.reasoningEffort,
+    thinkingLevel: thinkingSelection.thinkingLevel,
     toolCalls,
     toolResultCount: toolResults.length,
     toolErrorCount,

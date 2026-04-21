@@ -369,9 +369,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
             "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
             "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
-            ...(reply.diagnostics.reasoningEffort
+            ...(reply.diagnostics.thinkingLevel
               ? {
-                  "app.ai.reasoning_effort": reply.diagnostics.reasoningEffort,
+                  "app.ai.reasoning_effort": reply.diagnostics.thinkingLevel,
                 }
               : {}),
             ...(reply.diagnostics.stopReason

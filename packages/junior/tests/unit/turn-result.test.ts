@@ -10,9 +10,8 @@ vi.mock("@/chat/logging", async (importOriginal) => ({
 
 import { buildTurnResult } from "@/chat/services/turn-result";
 
-const executionProfile = {
-  modelId: "openai/gpt-5.4",
-  reasoningEffort: "medium" as const,
+const thinkingSelection = {
+  thinkingLevel: "medium" as const,
   reason: "test",
 };
 
@@ -48,7 +47,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
-      executionProfile,
+      thinkingSelection,
     });
 
     expect(reply.text).toBe(
@@ -83,7 +82,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
-      executionProfile,
+      thinkingSelection,
     });
 
     expect(reply.text).toBe(
@@ -119,7 +118,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
-      executionProfile,
+      thinkingSelection,
     });
 
     expect(reply.text).toBe("Here is the actual summary.");
@@ -144,7 +143,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
-      executionProfile,
+      thinkingSelection,
     });
 
     expect(reply.text).toBe("");
@@ -178,7 +177,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
-      executionProfile,
+      thinkingSelection,
     });
 
     expect(reply.text).toBe("Handled it.");
@@ -207,7 +206,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
-      executionProfile,
+      thinkingSelection,
       usage: {
         inputTokens: 321,
         outputTokens: 144,
