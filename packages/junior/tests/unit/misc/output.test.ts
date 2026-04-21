@@ -22,6 +22,10 @@ describe("renderSlackMrkdwn", () => {
     ).toBe("*ready* ~draft~ <https://docs.slack.dev/|docs>");
   });
 
+  it("collapses triple-asterisk emphasis into Slack-safe bold", () => {
+    expect(renderSlackMrkdwn("***Summary***")).toBe("*Summary*");
+  });
+
   it("preserves balanced parentheses in markdown link urls", () => {
     expect(
       renderSlackMrkdwn(
@@ -44,6 +48,12 @@ describe("renderSlackMrkdwn", () => {
 
   it("rewrites markdown headings into bold section labels", () => {
     expect(renderSlackMrkdwn("## Summary\nA short answer.")).toBe(
+      "*Summary*\n\nA short answer.",
+    );
+  });
+
+  it("keeps heading normalization from reintroducing double-asterisk bold", () => {
+    expect(renderSlackMrkdwn("## **Summary**\nA short answer.")).toBe(
       "*Summary*\n\nA short answer.",
     );
   });

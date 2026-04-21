@@ -50,6 +50,7 @@ function normalizeMarkdownHeadings(text: string): string {
 
 function normalizeCommonMarkEmphasis(text: string): string {
   return text
+    .replace(/\*\*\*([^\s*](?:[^\n]*?[^\s*])?)\*\*\*/g, "*$1*")
     .replace(/\*\*([^\s*](?:[^\n]*?[^\s*])?)\*\*/g, "*$1*")
     .replace(/~~([^\s~](?:[^\n]*?[^\s~])?)~~/g, "~$1~");
 }
