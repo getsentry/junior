@@ -19,7 +19,7 @@ describe("buildSlackReplyFooter", () => {
       items: [
         {
           label: "ID",
-          value: "slack:C123:1700000000.000100",
+          value: "`slack:C123:1700000000.000100`",
         },
         {
           label: "Tokens",
@@ -31,7 +31,8 @@ describe("buildSlackReplyFooter", () => {
         },
         {
           label: "Trace",
-          value: "0123456789abcdef0123456789abcdef",
+          url: "https://sentry.sentry.io/performance/trace/0123456789abcdef0123456789abcdef/",
+          value: "`0123456789abcdef0123456789abcdef`",
         },
       ],
     });
@@ -103,7 +104,7 @@ describe("buildSlackReplyBlocks", () => {
         elements: [
           {
             type: "mrkdwn",
-            text: "*ID:* slack:C123:1700000000.000100",
+            text: "*ID:* `slack:C123:1700000000.000100`",
           },
           {
             type: "mrkdwn",
@@ -115,7 +116,7 @@ describe("buildSlackReplyBlocks", () => {
           },
           {
             type: "mrkdwn",
-            text: "*Trace:* trace_123",
+            text: "*Trace:* <https://sentry.sentry.io/performance/trace/trace_123/|`trace_123`>",
           },
         ],
       },

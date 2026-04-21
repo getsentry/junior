@@ -19,6 +19,7 @@ export type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
 
 export interface SlackReplyFooterItem {
   label: string;
+  url?: string;
   value: string;
 }
 
@@ -48,6 +49,14 @@ function formatSlackDuration(durationMs: number): string {
   }
 
   return `${Math.round(durationSeconds)}s`;
+}
+
+function formatSlackCode(text: string): string {
+  return `\`${escapeSlackMrkdwn(text)}\``;
+}
+
+function buildSentryTraceUrl(traceId: string): string {
+  return `https://sentry.sentry.io/performance/trace/${encodeURIComponent(traceId)}/`;
 }
 
 function resolveTotalTokens(
@@ -92,7 +101,7 @@ export function buildSlackReplyFooter(args: {
   if (conversationId) {
     items.push({
       label: "ID",
-      value: conversationId,
+      value: formatSlackCode(conversationId),
     });
   }
 
@@ -116,7 +125,8 @@ export function buildSlackReplyFooter(args: {
   if (traceId) {
     items.push({
       label: "Trace",
-      value: traceId,
+      url: buildSentryTraceUrl(traceId),
+      value: formatSlackCode(traceId),
     });
   }
 
@@ -144,7 +154,9 @@ export function buildSlackReplyBlocks(
       type: "context",
       elements: footer.items.map((item) => ({
         type: "mrkdwn",
-        text: `*${escapeSlackMrkdwn(item.label)}:* ${escapeSlackMrkdwn(item.value)}`,
+        text: item.url
+          ? `*${escapeSlackMrkdwn(item.label)}:* <${item.url}|${item.value}>`
+          : `*${escapeSlackMrkdwn(item.label)}:* ${item.value}`,
       })),
     },
   ];
