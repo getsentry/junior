@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-04-19
+- Last Edited: 2026-04-20
 
 ## Changelog
 
@@ -15,6 +15,7 @@
 - 2026-04-16: Labeled long-running assistant status behavior as Slack-required behavior versus Junior runtime policy versus product policy.
 - 2026-04-16: Added an optional finalized-reply footer contract for Slack context-block metadata.
 - 2026-04-19: Removed stale references to typed status kinds and documented explicit progress as free-form rendered text.
+- 2026-04-20: Strengthened the tool-backed progress policy to require early explicit progress for non-trivial turns and documented concrete phase-label guidance.
 
 ## Status
 
