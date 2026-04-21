@@ -107,9 +107,8 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
 
   return {
     userName: env.JUNIOR_BOT_NAME ?? "junior",
-    modelId: env.AI_MODEL ?? "anthropic/claude-sonnet-4.6",
-    fastModelId:
-      env.AI_FAST_MODEL ?? env.AI_MODEL ?? "anthropic/claude-haiku-4.5",
+    modelId: env.AI_MODEL ?? "openai/gpt-5.4",
+    fastModelId: env.AI_FAST_MODEL ?? env.AI_MODEL ?? "openai/gpt-5.4-mini",
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId: toOptionalTrimmed(env.AI_VISION_MODEL),
     turnTimeoutMs: parseAgentTurnTimeoutMs(

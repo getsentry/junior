@@ -118,6 +118,13 @@ vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
 
 vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "vercel-ai-gateway",
+  completeObject: async () => ({
+    object: {
+      thinking_level: "medium",
+      confidence: 1,
+      reason: "test-router",
+    },
+  }),
   getPiGatewayApiKeyOverride: () => "test-gateway-key",
   resolveGatewayModel: (modelId: string) => modelId,
 }));

@@ -2,6 +2,7 @@ import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
+import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
   buildReplyDeliveryPlan,
@@ -30,6 +31,7 @@ export interface AgentTurnDiagnostics {
   providerError?: unknown;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
+  thinkingLevel?: TurnThinkingSelection["thinkingLevel"];
   stopReason?: string;
   toolCalls: string[];
   toolErrorCount: number;
@@ -62,6 +64,7 @@ export interface TurnResultInput {
   shouldTrace: boolean;
   spanContext: LogContext;
   usage?: AgentTurnUsage;
+  thinkingSelection: TurnThinkingSelection;
   correlation?: {
     threadId?: string;
     requesterId?: string;
@@ -85,6 +88,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     shouldTrace,
     spanContext,
     usage,
+    thinkingSelection,
     correlation,
     assistantUserName,
   } = input;
@@ -206,6 +210,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     outcome: resolvedOutcome,
     modelId: botConfig.modelId,
     assistantMessageCount: assistantMessages.length,
+    thinkingLevel: thinkingSelection.thinkingLevel,
     toolCalls,
     toolResultCount: toolResults.length,
     toolErrorCount,

@@ -42,6 +42,7 @@ import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
+  completeObject,
   getPiGatewayApiKeyOverride,
   resolveGatewayModel,
 } from "@/chat/pi/client";
@@ -74,6 +75,11 @@ import {
   type AssistantReply,
   type AgentTurnDiagnostics,
 } from "@/chat/services/turn-result";
+import {
+  selectTurnThinkingLevel,
+  toAgentThinkingLevel,
+  type TurnThinkingSelection,
+} from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
   loadTurnCheckpoint,
@@ -153,6 +159,15 @@ export interface ReplyRequestContext {
 }
 
 let startupDiscoveryLogged = false;
+const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
+
+type UserTurnContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
+type UserTurnAttachment = NonNullable<
+  ReplyRequestContext["userAttachments"]
+>[number];
 
 function buildOmittedImageAttachmentNotice(count: number): string {
   return [
@@ -163,6 +178,119 @@ function buildOmittedImageAttachmentNotice(count: number): string {
     "If the user asks about image contents, explain that image analysis is unavailable in this runtime and continue with any text or non-image files that are still available.",
     "</omitted-image-attachments>",
   ].join("\n");
+}
+
+function trimRouterAttachmentText(text: string): string {
+  const normalized = text.replaceAll("\0", " ").trim();
+  if (!normalized) {
+    return "";
+  }
+  return normalized.length <= MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS
+    ? normalized
+    : `${normalized.slice(0, MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS)}...`;
+}
+
+function supportsRouterTextPreview(mediaType: string): boolean {
+  const baseMediaType = mediaType.split(";", 1)[0]?.trim().toLowerCase();
+  if (!baseMediaType) {
+    return false;
+  }
+  return (
+    baseMediaType.startsWith("text/") ||
+    baseMediaType === "application/json" ||
+    baseMediaType === "application/xml" ||
+    baseMediaType === "application/x-www-form-urlencoded" ||
+    baseMediaType.endsWith("+json") ||
+    baseMediaType.endsWith("+xml")
+  );
+}
+
+function buildRouterAttachmentBlock(attachment: UserTurnAttachment): string {
+  if (attachment.promptText) {
+    return trimRouterAttachmentText(attachment.promptText);
+  }
+
+  const header = [
+    "<attachment>",
+    `filename: ${attachment.filename ?? "unnamed"}`,
+    `media_type: ${attachment.mediaType}`,
+  ];
+
+  if (attachment.data && supportsRouterTextPreview(attachment.mediaType)) {
+    const preview = trimRouterAttachmentText(attachment.data.toString("utf8"));
+    if (preview) {
+      return [
+        ...header,
+        "<text-preview>",
+        preview,
+        "</text-preview>",
+        "</attachment>",
+      ].join("\n");
+    }
+  }
+
+  return [...header, "</attachment>"].join("\n");
+}
+
+function buildUserTurnInput(args: {
+  omittedImageAttachmentCount: number;
+  userAttachments?: ReplyRequestContext["userAttachments"];
+  userTurnText: string;
+}): {
+  routerBlocks: string[];
+  userContentParts: UserTurnContentPart[];
+} {
+  const routerBlocks: string[] = [];
+  const userContentParts: UserTurnContentPart[] = [
+    { type: "text", text: args.userTurnText },
+  ];
+
+  if (args.omittedImageAttachmentCount > 0) {
+    const omittedImagesNotice = buildOmittedImageAttachmentNotice(
+      args.omittedImageAttachmentCount,
+    );
+    userContentParts.push({ type: "text", text: omittedImagesNotice });
+    routerBlocks.push(omittedImagesNotice);
+  }
+
+  for (const attachment of args.userAttachments ?? []) {
+    routerBlocks.push(buildRouterAttachmentBlock(attachment));
+
+    if (attachment.promptText) {
+      userContentParts.push({
+        type: "text",
+        text: attachment.promptText,
+      });
+      continue;
+    }
+
+    if (attachment.mediaType.startsWith("image/")) {
+      if (!attachment.data) {
+        throw new Error("Image attachment is missing image data");
+      }
+      userContentParts.push({
+        type: "image",
+        data: attachment.data.toString("base64"),
+        mimeType: attachment.mediaType,
+      });
+      continue;
+    }
+
+    if (!attachment.data) {
+      throw new Error("Attachment is missing attachment data");
+    }
+
+    userContentParts.push({
+      type: "text",
+      text: encodeNonImageAttachmentForPrompt({
+        data: attachment.data,
+        mediaType: attachment.mediaType,
+        filename: attachment.filename,
+      }),
+    });
+  }
+
+  return { routerBlocks, userContentParts };
 }
 
 /** Convert active MCP tools into ToolDefinition entries for first-class registration. */
@@ -201,6 +329,7 @@ export async function generateAssistantReply(
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
   let turnUsage: AgentTurnUsage | undefined;
+  let thinkingSelection: TurnThinkingSelection | undefined;
 
   const getSandboxMetadata = () =>
     sandboxExecutor
@@ -428,6 +557,37 @@ export async function generateAssistantReply(
         turnContext: { traceId: getActiveTraceId() },
       },
     );
+    const { routerBlocks, userContentParts } = buildUserTurnInput({
+      omittedImageAttachmentCount: context.omittedImageAttachmentCount ?? 0,
+      userAttachments: context.userAttachments,
+      userTurnText,
+    });
+
+    thinkingSelection = await selectTurnThinkingLevel({
+      activeSkillNames: activeSkills.map((skill) => skill.name),
+      attachmentCount: context.userAttachments?.length,
+      completeObject,
+      conversationContext: context.conversationContext,
+      context: {
+        threadId: context.correlation?.threadId,
+        channelId: context.correlation?.channelId,
+        requesterId: context.correlation?.requesterId,
+        runId: context.correlation?.runId,
+      },
+      currentTurnBlocks: routerBlocks,
+      fastModelId: botConfig.fastModelId,
+      messageText: userInput,
+    });
+    setSpanAttributes({
+      "gen_ai.request.model": botConfig.modelId,
+      "app.ai.reasoning_effort": thinkingSelection.thinkingLevel,
+      "app.ai.thinking_level_reason": thinkingSelection.reason,
+      ...(thinkingSelection.confidence !== undefined
+        ? {
+            "app.ai.thinking_level_confidence": thinkingSelection.confidence,
+          }
+        : {}),
+    });
 
     // ── Mutable turn state ───────────────────────────────────────────
     timeoutResumeMessages = [];
@@ -617,51 +777,6 @@ export async function generateAssistantReply(
       threadParticipants: context.threadParticipants,
     });
 
-    const userContentParts: Array<
-      | { type: "text"; text: string }
-      | { type: "image"; data: string; mimeType: string }
-    > = [{ type: "text", text: userTurnText }];
-
-    const omittedImageAttachmentCount =
-      context.omittedImageAttachmentCount ?? 0;
-    if (omittedImageAttachmentCount > 0) {
-      userContentParts.push({
-        type: "text",
-        text: buildOmittedImageAttachmentNotice(omittedImageAttachmentCount),
-      });
-    }
-
-    for (const attachment of context.userAttachments ?? []) {
-      if (attachment.promptText) {
-        userContentParts.push({
-          type: "text",
-          text: attachment.promptText,
-        });
-      } else if (attachment.mediaType.startsWith("image/")) {
-        if (!attachment.data) {
-          throw new Error("Image attachment is missing image data");
-        }
-        userContentParts.push({
-          type: "image",
-          data: attachment.data.toString("base64"),
-          mimeType: attachment.mediaType,
-        });
-      } else {
-        if (!attachment.data) {
-          throw new Error("Attachment is missing attachment data");
-        }
-        const promptAttachment = {
-          data: attachment.data,
-          mediaType: attachment.mediaType,
-          filename: attachment.filename,
-        };
-        userContentParts.push({
-          type: "text",
-          text: encodeNonImageAttachmentForPrompt(promptAttachment),
-        });
-      }
-    }
-
     const inputMessagesAttribute = serializeGenAiAttribute([
       {
         role: "system",
@@ -717,6 +832,7 @@ export async function generateAssistantReply(
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),
+        thinkingLevel: toAgentThinkingLevel(thinkingSelection.thinkingLevel),
         tools: agentTools,
       },
     });
@@ -814,6 +930,12 @@ export async function generateAssistantReply(
                   "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                   "gen_ai.operation.name": "invoke_agent",
                   "gen_ai.request.model": botConfig.modelId,
+                  ...(thinkingSelection
+                    ? {
+                        "app.ai.reasoning_effort":
+                          thinkingSelection.thinkingLevel,
+                      }
+                    : {}),
                   "app.ai.turn_timeout_ms": botConfig.turnTimeoutMs,
                 },
                 "Agent turn timed out and was aborted",
@@ -869,6 +991,7 @@ export async function generateAssistantReply(
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "invoke_agent",
           "gen_ai.request.model": botConfig.modelId,
+          "app.ai.reasoning_effort": thinkingSelection.thinkingLevel,
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }
             : {}),
@@ -912,6 +1035,7 @@ export async function generateAssistantReply(
       shouldTrace,
       spanContext,
       usage: turnUsage,
+      thinkingSelection,
       correlation: context.correlation,
       assistantUserName: context.assistant?.userName,
     });
@@ -1010,6 +1134,11 @@ export async function generateAssistantReply(
         outcome: "provider_error",
         modelId: botConfig.modelId,
         assistantMessageCount: 0,
+        ...(thinkingSelection
+          ? {
+              thinkingLevel: thinkingSelection.thinkingLevel,
+            }
+          : {}),
         toolCalls: [],
         toolResultCount: 0,
         toolErrorCount: 0,

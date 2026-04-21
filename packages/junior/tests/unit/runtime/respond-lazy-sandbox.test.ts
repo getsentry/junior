@@ -8,6 +8,7 @@ const {
   enabledCredentialSkillNames,
   checkpointLoadedSkillNames,
   pendingWorkspaceRelease,
+  selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
     value: "plain" as
@@ -37,6 +38,9 @@ const {
   pendingWorkspaceRelease: {
     value: undefined as (() => void) | undefined,
   },
+  selectedThinkingLevels: {
+    value: [] as unknown[],
+  },
 }));
 
 vi.mock("@mariozechner/pi-agent-core", () => {
@@ -54,6 +58,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
     constructor(input: {
       initialState: {
         model: unknown;
+        thinkingLevel?: unknown;
         systemPrompt: string;
         tools: Array<{
           name: string;
@@ -67,6 +72,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
+      selectedThinkingLevels.value.push(input.initialState.thinkingLevel);
     }
 
     subscribe() {
@@ -203,6 +209,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
 
 vi.mock("@/chat/config", () => ({
   botConfig: {
+    fastModelId: "test-fast-model",
     modelId: "test-model",
     turnTimeoutMs: 1000,
   },
@@ -211,6 +218,56 @@ vi.mock("@/chat/config", () => ({
 
 vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "test-provider",
+  completeObject: async ({ prompt }: { prompt: string }) => {
+    const instructionMatch = prompt.match(
+      /<current-instruction priority="highest">\n([\s\S]*?)\n<\/current-instruction>/,
+    );
+    const instruction = instructionMatch?.[1] ?? "";
+
+    if (prompt.includes("TypeError: x is undefined")) {
+      return {
+        object: {
+          thinking_level: "high",
+          confidence: 1,
+          reason: "attachment stack trace",
+        },
+      };
+    }
+    if (instruction === "hello") {
+      return {
+        object: {
+          thinking_level: "none",
+          confidence: 1,
+          reason: "ack",
+        },
+      };
+    }
+    if (instruction === "attach the report") {
+      return {
+        object: {
+          thinking_level: "low",
+          confidence: 1,
+          reason: "simple attachment request",
+        },
+      };
+    }
+    if (instruction === "fix the failing test in chat") {
+      return {
+        object: {
+          thinking_level: "high",
+          confidence: 1,
+          reason: "code change request",
+        },
+      };
+    }
+    return {
+      object: {
+        thinking_level: "medium",
+        confidence: 1,
+        reason: "test-router",
+      },
+    };
+  },
   getPiGatewayApiKeyOverride: () => undefined,
   resolveGatewayModel: (modelId: string) => modelId,
 }));
@@ -465,6 +522,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     enabledCredentialSkillNames.value = [];
     checkpointLoadedSkillNames.value = [];
     pendingWorkspaceRelease.value = undefined;
+    selectedThinkingLevels.value = [];
   });
 
   it("does not create a sandbox for turns that never touch sandbox-backed tools", async () => {
@@ -474,6 +532,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(createSandboxCallCount.value).toBe(0);
     expect(reply.sandboxId).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual([]);
+    expect(selectedThinkingLevels.value).toEqual(["off"]);
   });
 
   it("does not create a sandbox when loadSkill only reads host-side skill data", async () => {
@@ -507,6 +566,44 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(reply.text).toBe("Attached report.");
     expect(createSandboxCallCount.value).toBe(1);
     expect(reply.diagnostics.toolCalls).toEqual(["attachFile"]);
+    expect(selectedThinkingLevels.value).toEqual(["low"]);
+  });
+
+  it("uses a high thinking level for explicit code-change asks", async () => {
+    const reply = await generateAssistantReply("fix the failing test in chat");
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(selectedThinkingLevels.value).toEqual(["high"]);
+  });
+
+  it("uses attachment text when routing the turn thinking level", async () => {
+    const reply = await generateAssistantReply("can you fix this?", {
+      userAttachments: [
+        {
+          data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
+          filename: "error.txt",
+          mediaType: "text/plain",
+        },
+      ],
+    });
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(selectedThinkingLevels.value).toEqual(["high"]);
+  });
+
+  it("uses structured-suffix attachment text when the media type has parameters", async () => {
+    const reply = await generateAssistantReply("can you fix this?", {
+      userAttachments: [
+        {
+          data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
+          filename: "error.json",
+          mediaType: "application/vnd.api+json; charset=utf-8",
+        },
+      ],
+    });
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(selectedThinkingLevels.value).toEqual(["high"]);
   });
 
   it("retains sandbox reuse metadata after lazy boot on error turns", async () => {

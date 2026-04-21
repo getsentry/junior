@@ -5,6 +5,7 @@ import {
   registerApiProvider,
   type Message,
   type Model,
+  type ThinkingLevel,
 } from "@mariozechner/pi-ai";
 import {
   streamAnthropic,
@@ -141,6 +142,7 @@ export async function completeText(params: {
   modelId: string;
   system?: string;
   messages: Message[];
+  thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
@@ -163,6 +165,9 @@ export async function completeText(params: {
       ? { "gen_ai.input.messages": requestMessagesAttribute }
       : {}),
     "app.ai.auth_mode": apiKey ? "oidc" : "api_key",
+    ...(params.thinkingLevel
+      ? { "app.ai.reasoning_effort": params.thinkingLevel }
+      : {}),
   };
   setSpanAttributes(startAttributes);
   const message = await completeSimple(
@@ -175,6 +180,7 @@ export async function completeText(params: {
       ...(apiKey ? { apiKey } : {}),
       temperature: params.temperature,
       maxTokens: params.maxTokens,
+      reasoning: params.thinkingLevel,
       signal: params.signal,
       metadata: params.metadata,
     },
@@ -197,6 +203,9 @@ export async function completeText(params: {
     ...usageAttributes,
     ...(message.stopReason
       ? { "gen_ai.response.finish_reasons": [message.stopReason] }
+      : {}),
+    ...(params.thinkingLevel
+      ? { "app.ai.reasoning_effort": params.thinkingLevel }
       : {}),
   };
   setSpanAttributes(endAttributes);
@@ -228,6 +237,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   schema: TSchema;
   system?: string;
   prompt: string;
+  thinkingLevel?: ThinkingLevel;
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
@@ -239,6 +249,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
     ({ text } = await completeText({
       modelId: params.modelId,
       system: params.system,
+      thinkingLevel: params.thinkingLevel,
       temperature: params.temperature,
       maxTokens: params.maxTokens,
       signal: params.signal,
