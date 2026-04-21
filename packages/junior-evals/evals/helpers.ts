@@ -172,7 +172,7 @@ function isMeaningfulProgressMessage(message: string): boolean {
   return /\s/.test(normalized) || MEANINGFUL_PROGRESS_PHASE.test(normalized);
 }
 
-/** Assert that a turn emitted at least one specific non-generic progress phase. */
+/** Assert that a turn emitted a specific non-generic explicit progress phase. */
 export function assertMeaningfulExplicitProgress(
   name: string,
   result: EvalResult,
@@ -180,7 +180,7 @@ export function assertMeaningfulExplicitProgress(
   const messages = collectExplicitProgressMessages(result);
   if (messages.length === 0) {
     throw new Error(
-      `Eval "${name}" never emitted an explicit progress update beyond the generic loading rotation.`,
+      `Eval "${name}" never emitted an explicit progress phase beyond the generic loading state.`,
     );
   }
 
