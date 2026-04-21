@@ -10,7 +10,7 @@ export function createSlackChannelPostMessageTool(
 ) {
   return tool({
     description:
-      "Post a message in the active Slack channel context (outside the thread). Use this when the user explicitly asks to post/send/share/say something in the channel. Do not use for normal thread replies or speculative broadcasts. Do not claim a channel message was posted unless this tool succeeds in this turn.",
+      "Post a message in the active Slack channel context (outside the thread). Use this only when the user explicitly asks to post/send/share/say something in the current channel. Do not use it for normal thread replies, speculative broadcasts, or requests targeting another named channel; explain that limitation instead. Do not claim a channel message was posted unless this tool succeeds in this turn.",
     inputSchema: Type.Object({
       text: Type.String({
         minLength: 1,

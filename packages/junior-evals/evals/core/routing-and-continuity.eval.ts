@@ -37,6 +37,30 @@ describe("Routing and Continuity", () => {
   );
 
   slackEval(
+    "when asked to post in another named channel, explain the limitation instead",
+    {
+      events: [
+        mention(
+          "@bot post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "A request for another named channel does not get silently redirected to the current channel.",
+        pass: [
+          "channel_posts is empty.",
+          "assistant_posts contains exactly one reply.",
+          "That reply clearly says the assistant can only post to the current channel or cannot post to #discuss-design-engineering from here.",
+        ],
+        fail: [
+          "Do not send a direct channel post to the current channel.",
+          "Do not claim the message was posted to #discuss-design-engineering.",
+        ],
+      }),
+    },
+  );
+
+  slackEval(
     "when the request is reaction-only, add a reaction without reply clutter",
     {
       events: [mention("react to this")],
