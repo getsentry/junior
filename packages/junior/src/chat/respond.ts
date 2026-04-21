@@ -140,7 +140,6 @@ export interface ReplyRequestContext {
   };
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
-  onToolCall?: (toolName: string, params: unknown) => void | Promise<void>;
   onAssistantMessageStart?: () => void | Promise<void>;
   /**
    * Known thread participants. Injected into the system prompt so the LLM can
@@ -675,24 +674,8 @@ export async function generateAssistantReply(
     ]);
 
     // ── Agent tools ──────────────────────────────────────────────────
-    const agentToolHooks = {
-      onToolCall: (toolName: string, params: unknown) => {
-        toolCalls.push(toolName);
-        Promise.resolve(context.onToolCall?.(toolName, params)).catch(
-          (error) => {
-            logWarn(
-              "streaming_tool_call_error",
-              {},
-              {
-                "error.message":
-                  error instanceof Error ? error.message : String(error),
-                "gen_ai.tool.name": toolName,
-              },
-              "Failed to deliver tool call event to stream coordinator",
-            );
-          },
-        );
-      },
+    const onToolCall = (toolName: string) => {
+      toolCalls.push(toolName);
     };
     const baseAgentTools = createAgentTools(
       tools as Record<string, ToolDefinition<any>>,
@@ -702,7 +685,7 @@ export async function generateAssistantReply(
       sandboxExecutor,
       capabilityRuntime,
       pluginAuth,
-      agentToolHooks,
+      onToolCall,
     );
 
     // Mutable tools array shared with the agent. Pi-agent-core does not clone
@@ -720,7 +703,7 @@ export async function generateAssistantReply(
         sandboxExecutor,
         capabilityRuntime,
         pluginAuth,
-        agentToolHooks,
+        onToolCall,
       );
       agentTools.length = 0;
       agentTools.push(...baseAgentTools, ...mcpAgentTools);

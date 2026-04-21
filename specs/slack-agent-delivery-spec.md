@@ -16,6 +16,7 @@
 - 2026-04-16: Added an optional finalized-reply footer contract for Slack context-block metadata.
 - 2026-04-19: Removed stale references to typed status kinds and documented explicit progress as free-form rendered text.
 - 2026-04-20: Strengthened the tool-backed progress policy to require early explicit progress for non-trivial turns and documented concrete phase-label guidance.
+- 2026-04-20: Clarified that only explicit `reportProgress` updates replace generic loading messages; ordinary tool calls must not synthesize progress phases.
 
 ## Status
 
@@ -107,7 +108,7 @@ Current contract:
 7. Slack `assistant.threads.*` calls must use the current inbound event's live assistant-thread key. For non-DM message events, the first reply may target `thread_ts ?? ts` from the live event. For `message.im`, an explicit `thread_ts` is still required; when Slack omits it, Junior skips assistant status/title updates instead of substituting the message `ts` or a stored root.
 8. Status transports that debounce, rotate, or otherwise defer updates must bind the active Slack bot token when the turn starts instead of relying on later ambient request context. Delayed status updates must keep targeting the same workspace installation as the turn's final reply.
 9. Assistant status is best effort and must not sit on the critical path for model/tool execution. Starting a turn or updating mid-turn status may queue Slack writes, but must not wait for Slack round-trips before assistant work continues.
-10. When Junior has an explicit progress update, it must replace the generic `loading_messages` rotation for that status update. Explicit progress owns the loading surface until another status update replaces it or the turn ends.
+10. When Junior has an explicit `reportProgress` update, it must replace the generic `loading_messages` rotation for that status update. Explicit progress owns the loading surface until another status update replaces it or the turn ends.
 11. While a turn is active, Junior uses a stable generic `status` string for Slack's assistant loading state and changes the user-visible progress copy through `loading_messages`.
 12. Final reply footer metadata is not part of the in-flight loading contract. Footer blocks, when present, belong only to the finalized reply artifact.
 
@@ -129,11 +130,12 @@ Design note:
    - Junior keeps Slack's `status` text stable and generic while a turn is active.
    - Junior may debounce and minimum-display-time status transitions to avoid unreadable flicker.
    - Junior may supply generic `loading_messages` from core bot configuration and randomize their order per turn.
-   - Junior suppresses the generic `loading_messages` rotation while an explicit progress update is active and uses the current progress message as the loading surface instead.
-   - Junior exposes an internal progress-reporting tool for sparse explicit progress messages.
-   - For every non-trivial turn, the assistant should emit an explicit progress update early with the initial major work phase and again only when the major phase meaningfully changes.
+   - Junior suppresses the generic `loading_messages` rotation while an explicit `reportProgress` update is active and uses the current progress message as the loading surface instead.
+   - Junior exposes an internal `reportProgress` tool for sparse explicit progress messages.
+   - For every non-trivial turn, the assistant should call `reportProgress` early with the initial major work phase and again only when the major phase meaningfully changes.
    - Trivial turns may rely on the generic loading state and do not need explicit progress.
    - Explicit progress messages should use concrete phase labels such as searching, reading, reviewing, or running checks rather than generic filler.
+   - Ordinary tool calls must not synthesize progress phases or override the generic loading-message rotation.
    - Footer metadata, when enabled, is a separate finalized-reply affordance and must not be treated as assistant progress.
 
 ### 5. Primary Reply Contract

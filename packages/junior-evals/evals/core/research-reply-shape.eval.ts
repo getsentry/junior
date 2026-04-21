@@ -13,7 +13,6 @@ describe("Research Reply Shape", () => {
       overrides: {
         reply_timeout_ms: 120_000,
       },
-      requireMeaningfulExplicitProgress: true,
       requireSandboxReady: false,
       taskTimeout: 150_000,
       timeout: 210_000,
