@@ -82,8 +82,13 @@ describe("selectTurnExecutionProfile", () => {
       expect.objectContaining({
         modelId: "openai/gpt-5.4-mini",
         prompt: expect.stringContaining(
-          "Latest user request:\ncan you confirm this approach?",
+          '<current-instruction priority="highest">\ncan you confirm this approach?\n</current-instruction>',
         ),
+      }),
+    );
+    expect(completeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("<turn-context>"),
       }),
     );
     expect(completeObject).toHaveBeenCalledWith(
@@ -98,7 +103,7 @@ describe("selectTurnExecutionProfile", () => {
     );
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: expect.stringContaining("Recent conversation context:"),
+        prompt: expect.stringContaining("<thread-background>"),
       }),
     );
   });

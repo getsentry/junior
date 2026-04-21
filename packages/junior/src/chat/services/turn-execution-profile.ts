@@ -1,19 +1,23 @@
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { ThinkingLevel as AgentThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { ThinkingLevel as ProviderThinkingLevel } from "@mariozechner/pi-ai";
 import { z } from "zod";
 
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.75;
 const MAX_ROUTER_CONTEXT_CHARS = 1_200;
+const TURN_REASONING_EFFORTS = ["none", "low", "medium", "high"] as const;
 
 const turnExecutionProfileSchema = z.object({
-  reasoning_effort: z.enum(["none", "low", "medium", "high"]),
+  reasoning_effort: z.enum(TURN_REASONING_EFFORTS),
   confidence: z.number().min(0).max(1),
   reason: z.string().min(1),
 });
 
+type TurnReasoningEffort = (typeof TURN_REASONING_EFFORTS)[number];
+
 export interface TurnExecutionProfile {
   confidence?: number;
   modelId: string;
-  reasoningEffort: "none" | "low" | "medium" | "high";
+  reasoningEffort: TurnReasoningEffort;
   reason: string;
 }
 
@@ -31,12 +35,12 @@ function trimContextForRouter(text: string | undefined): string | undefined {
 
 function buildClassifierSystemPrompt(): string {
   return [
-    "You route coding-assistant turns to the cheapest reasoning effort that is still likely to succeed.",
+    "You route assistant turns to the cheapest reasoning effort that is still likely to succeed.",
     "Choose exactly one bucket: none, low, medium, or high.",
     "",
     "Use none for greetings, acknowledgments, and trivial single-step asks.",
     "Use low for straightforward explanations or simple one-step work.",
-    "Use medium for repo investigation, multi-file analysis, ambiguous asks, or likely multi-tool work.",
+    "Use medium for investigations, ambiguous asks, multi-step analysis, or likely multi-tool work.",
     "Use high for code changes, debugging/root-cause analysis, research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
     "",
     "Return JSON only with reasoning_effort, confidence, and reason.",
@@ -49,19 +53,23 @@ function buildClassifierPrompt(args: {
   conversationContext?: string;
   messageText: string;
 }): string {
-  const sections = [
-    "Latest user request:",
-    args.messageText.trim() || "[empty]",
-    "",
-    "Turn context:",
-    `- active_skills: ${args.activeSkillNames.join(", ") || "none"}`,
-    `- attachment_count: ${args.attachmentCount}`,
-  ];
+  const sections: string[] = [];
 
   const context = trimContextForRouter(args.conversationContext);
   if (context) {
-    sections.push("", "Recent conversation context:", context);
+    sections.push("<thread-background>", context, "</thread-background>", "");
   }
+
+  sections.push(
+    "<turn-context>",
+    `- active_skills: ${args.activeSkillNames.join(", ") || "none"}`,
+    `- attachment_count: ${args.attachmentCount}`,
+    "</turn-context>",
+    "",
+    '<current-instruction priority="highest">',
+    args.messageText.trim() || "[empty]",
+    "</current-instruction>",
+  );
 
   return sections.join("\n");
 }
@@ -76,7 +84,7 @@ export async function selectTurnExecutionProfile(args: {
     maxTokens: number;
     metadata: Record<string, string>;
     prompt: string;
-    reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
+    reasoningEffort?: ProviderThinkingLevel;
     system: string;
     temperature: number;
   }) => Promise<{ object: unknown }>;
@@ -144,7 +152,7 @@ export async function selectTurnExecutionProfile(args: {
 /** Convert a routing effort bucket into the Pi Agent thinking level for a main turn. */
 export function toAgentThinkingLevel(
   effort: TurnExecutionProfile["reasoningEffort"],
-): ThinkingLevel | "off" {
+): AgentThinkingLevel | "off" {
   switch (effort) {
     case "none":
       return "off";
