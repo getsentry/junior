@@ -3,7 +3,7 @@ import { mention, rubric, slackEval } from "../helpers";
 
 describe("Research Reply Shape", () => {
   slackEval(
-    "when summarizing multiple sources, return a concise answer without process chatter",
+    "when summarizing multiple sources, show initial progress and return a concise answer without process chatter",
     {
       events: [
         mention(

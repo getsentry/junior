@@ -215,8 +215,8 @@ export function createAssistantStatusScheduler(args: {
         return;
       }
 
-      // Coalesce tool chatter and keep each visible status on screen long
-      // enough to read before swapping to the next one.
+      // Coalesce rapid progress updates and keep each visible status on screen
+      // long enough to read before swapping to the next one.
       const elapsed = now() - lastStatusAt;
       const waitMs = Math.max(
         STATUS_UPDATE_DEBOUNCE_MS - elapsed,

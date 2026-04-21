@@ -5,7 +5,7 @@ import { tool } from "@/chat/tools/definition";
 export function createReportProgressTool() {
   return tool({
     description:
-      "Update assistant status with a short user-facing progress message. Use this sparingly for meaningful progress changes, not for every tool call or minor substep.",
+      "Update the user-visible assistant loading message with a short progress phase. For every non-trivial turn, call this early with the initial major work phase, then call it again only when the major phase meaningfully changes. Use concrete labels like Searching docs, Reviewing results, or Running checks. Skip trivial direct answers, generic filler, and minor substeps.",
     inputSchema: Type.Object({
       message: Type.String({
         minLength: 1,

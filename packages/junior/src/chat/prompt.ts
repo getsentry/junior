@@ -516,7 +516,6 @@ export function buildSystemPrompt(params: {
       [
         "- For factual or external questions, run tools/skills first, then answer from evidence.",
         "- Use tool descriptions as the source of truth for when each tool should or should not be called.",
-        "- Use `reportProgress` only for sparse, meaningful progress updates. Pass a short user-facing status message, and do not call it for every tool or small substep.",
         "- When using CLI tools through `bash`, prefer deterministic non-interactive flags and avoid commands that wait for prompts or editors.",
         "- Keep routine setup and research steps silent in user-facing replies. Do not narrate duplicate checks, credential issuance, file writes, or similar internal progress unless the result is user-relevant.",
         "- If a routine prerequisite check finds nothing notable, omit it entirely from the final reply and report only the user-relevant outcome.",
