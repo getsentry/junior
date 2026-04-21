@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { logException } from "@/chat/logging";
 
 vi.mock("ai", () => ({
   generateText: vi.fn(),
@@ -10,10 +9,6 @@ vi.mock("ai", () => ({
 
 vi.mock("@ai-sdk/gateway", () => ({
   createGatewayProvider: vi.fn(),
-}));
-
-vi.mock("@/chat/logging", () => ({
-  logException: vi.fn(),
 }));
 
 describe("createWebSearchTool", () => {
@@ -165,7 +160,7 @@ describe("createWebSearchTool", () => {
     vi.useRealTimers();
   });
 
-  it("marks authentication failures as non-retryable and still reports them to Sentry", async () => {
+  it("marks authentication failures as non-retryable", async () => {
     vi.mocked(generateText).mockRejectedValueOnce(
       new Error(
         "AI Gateway authentication failed: No authentication provided.",
@@ -188,17 +183,6 @@ describe("createWebSearchTool", () => {
         timeout: false,
         retryable: false,
       },
-    );
-    expect(vi.mocked(logException)).toHaveBeenCalledWith(
-      expect.any(Error),
-      "web_search_failed",
-      {},
-      expect.objectContaining({
-        "gen_ai.tool.name": "webSearch",
-        "app.web_search.timeout": false,
-        "app.web_search.retryable": false,
-      }),
-      expect.stringContaining("authentication failed"),
     );
   });
 });

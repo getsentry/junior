@@ -13,11 +13,6 @@ vi.mock("@/chat/prompt", () => ({
   JUNIOR_PERSONALITY: "test persona",
 }));
 
-vi.mock("@/chat/logging", () => ({
-  logInfo: vi.fn(),
-  logWarn: vi.fn(),
-}));
-
 import { completeText } from "@/chat/pi/client";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 

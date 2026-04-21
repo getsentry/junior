@@ -3,10 +3,11 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-04-15
+- Last Edited: 2026-04-21
 
 ## Changelog
 
+- 2026-04-21: Replaced the old layer ordering with a simpler decision rule: integration by default for product/runtime changes, evals as the integration-style layer for agent behavior, unit only for local deterministic logic.
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated test fixture path references to repo-root paths under `packages/junior/`.
 - 2026-03-04: Clarified layering: baseline behavior coverage belongs in integration tests; unit tests are for local regressions and edge cases.
@@ -21,23 +22,23 @@
 This index defines the project testing taxonomy and the contract between test layers.
 Use this file as the source of truth for where a test belongs and what it is allowed to mock.
 
-## Default Preference Order
+## Default Decision Rule
 
-Choose the highest-fidelity layer that matches the contract:
+Start from the real product contract, not the easiest seam to mock.
 
-1. Use evals for end-to-end product behavior when model behavior, continuity, or natural-language interpretation is part of the contract.
-2. Use integration tests when you need real runtime wiring and Slack-facing behavior but do not need the LLM in the loop.
-3. Use unit tests only for small local invariants, parsing/normalization, retry/state logic, and regression edges that do not need real runtime wiring.
+1. Use integration tests for most product/runtime changes: real wiring, handler behavior, Slack-facing contracts, persistence, routing, auth resumes, and other user-visible behavior that does not depend on the model interpreting language correctly.
+2. Use evals when the contract is agent-facing behavior. Treat evals as the integration-style layer for prompt behavior, natural-language routing, continuity, reply quality, and other outcomes where model interpretation is the contract.
+3. Use unit tests only for tightly local deterministic logic: parsing, scoring, routing heuristics, retry math, pure transforms, normalization, and similar algorithmic invariants.
 
 Do not default to unit tests for runtime behavior just because they are easier to write.
 
 ## Test Layers
 
-| Layer               | Primary Goal                                           | Scope                                                                    | Allowed Substitutions                                         | Disallowed                                                                                                |
-| ------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Unit                | Validate local regressions/edge-case invariants        | Single module/function and tight collaborators                           | Local stubs/mocks (`vi.mock`, fakes)                          | Baseline behavior coverage, Slack HTTP contract assertions, and end-to-end conversational quality scoring |
-| Integration         | Validate baseline runtime behavior and Slack contracts | Real app wiring + Slack-facing behavior + persistence/routing boundaries | Deterministic fake agent at the agent boundary only           | Runtime module/function mocks for behavior paths                                                          |
-| Eval (E2E Behavior) | Validate conversational outcomes                       | End-to-end harnessed conversation flows scored by judge criteria         | Case-level behavior fixtures and controlled environment flags | Low-level HTTP payload-shape assertions and internals-only checks                                         |
+| Layer                 | Primary Goal                                             | Scope                                                                    | Allowed Substitutions                                         | Disallowed                                                                                            |
+| --------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Unit                  | Validate local deterministic invariants                  | Single module/function and tight collaborators                           | Local stubs/mocks (`vi.mock`, fakes)                          | Baseline product/runtime behavior, Slack HTTP contract assertions, and conversational quality scoring |
+| Integration           | Validate runtime/product behavior and external contracts | Real app wiring + Slack-facing behavior + persistence/routing boundaries | Deterministic fake agent at the agent boundary only           | Runtime module/function mocks for behavior paths                                                      |
+| Eval (Agent Behavior) | Validate agent-facing conversational outcomes end-to-end | End-to-end harnessed conversation flows scored by judge criteria         | Case-level behavior fixtures and controlled environment flags | Low-level HTTP payload-shape assertions and internals-only checks                                     |
 
 ## Canonical Specs
 
@@ -62,6 +63,7 @@ Layer selection is mandatory: classify the test contract first and choose `unit`
 9. Do not assert internal observability emission (`logInfo`, `logWarn`, spans, trace attributes) in behavior tests unless instrumentation output is itself the contract under test.
 10. Do not assert prompt prose by checking that a string is present in a generated prompt. Prompt wording is not a stable contract; validate the resulting behavior in evals or integration tests instead.
 11. If Slack API call shape or ordering is the external contract under test, keep those assertions in dedicated transport-contract integration suites; general behavior files should stay scenario-readable.
+12. Prefer real in-memory adapters, fixtures, and harnesses over bespoke fake stores when the contract crosses module boundaries.
 
 ## Coverage Budget (Avoid Over-Testing)
 
@@ -81,32 +83,45 @@ If a proposed test does not add a new contract guarantee, do not add it.
 
 This section is mandatory policy, not guidance.
 
-Default order:
+Ask these questions in order:
 
-1. Eval
-2. Integration
-3. Unit
+1. Does the contract depend on the model choosing the right behavior or producing the right reply quality?
+   Use `eval`.
+   Examples: natural-language routing, passive participation, multi-turn continuity, prompt/skill behavior, research-answer shape.
+2. Otherwise, is this a product/runtime change with real wiring, Slack-visible behavior, persistence, auth resume, or API contract effects?
+   Use `integration`.
+   This is the default answer for most non-trivial product changes.
+3. Otherwise, is the contract tightly local deterministic logic or an algorithmic invariant?
+   Use `unit`.
+   Examples: retry math, pure transforms, normalization, local scoring, parser behavior, deterministic state transitions.
 
-Use unit tests when:
+If a test needs to mock large parts of the runtime just to prove a user-visible flow, that is usually evidence the test belongs in integration or eval instead.
 
-- You are validating retry math, parsing/normalization logic, pure state transitions, and regression/edge-case handling in local logic.
-- The contract is not baseline runtime behavior.
-- Running the real runtime path would add indirection without increasing confidence.
+## Mock Confidence Rules
 
-Use integration tests when:
+These rules are mandatory whenever mocks or fakes appear in a test.
 
-- You need baseline confidence in Slack event handling, routing, runtime orchestration, and emitted Slack-side effects.
-- You can keep runtime wiring real and only control the agent output deterministically.
-- The contract does not depend on the model making the right conversational choice.
+1. Mock one boundary, not a whole workflow.
+2. The mocked boundary must be the thing the layer is explicitly allowed to replace.
+3. If a test needs to fake persisted state, Slack delivery, and reply execution together to prove one user-visible outcome, move it to integration or eval.
+4. If the same user-visible contract is already covered by a higher-fidelity integration or eval test, narrow the mocked test to a local invariant or delete it.
+5. Prefer real memory-backed state and the shared Slack/MSW harness over ad-hoc `Map` stores when the behavior crosses handler/runtime boundaries.
 
-Use evals when:
+## Current Audit Checklist
 
-- You need conversation-quality validation over multi-turn flows and outcome scoring.
-- The contract depends on model interpretation, continuity, routing by natural language, or other user-visible LLM behavior.
+Use this list when touching adjacent suites. It records the main consolidation targets behind the policy update.
+
+1. `packages/junior/tests/unit/handlers/oauth-callback.test.ts` and `packages/junior/tests/integration/oauth-callback-slack.test.ts`: keep HTML sanitization, token-exchange parameter shaping, and invalid-state branches in unit; keep app-home publication and thread-resume behavior in integration; remove duplicated resume-path assertions from the unit suite when those flows are touched next.
+2. `packages/junior/tests/unit/handlers/mcp-oauth-callback.test.ts` and `packages/junior/tests/integration/mcp-oauth-callback-slack.test.ts`: keep callback sanitization and local omitted-image/state reconstruction invariants in unit; keep resumed-thread delivery, file uploads, and Slack-side continuation behavior in integration.
+3. `packages/junior/tests/unit/handlers/turn-resume.test.ts` and `packages/junior/tests/integration/turn-resume-slack.test.ts`: keep auth rejection, timeout re-enqueue, and persistence-failure edge handling in unit; keep successful resumed delivery, exhausted-depth user messaging, and shared file-delivery path coverage in integration.
+4. `packages/junior/tests/unit/slack/slack-runtime.test.ts` together with `packages/junior/tests/integration/slack/new-mention-behavior.test.ts` and `packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts`: keep ordering, formatting, and local orchestration invariants in unit; keep scenario-level mention/subscribed-thread behavior in integration; split the unit file if scenario tests continue to grow.
+5. `packages/junior/tests/integration/slack/subscribed-message-behavior.test.ts`, `packages/junior/tests/integration/slack/thread-continuity-behavior.test.ts`, `packages/junior-evals/evals/core/passive-behavior.eval.ts`, and `packages/junior-evals/evals/core/routing-and-continuity.eval.ts`: let integration own deterministic routing gates, subscription state, and Slack delivery contracts; let evals own ambiguous natural-language direction, passive-participation quality, and continuity recall; avoid duplicating the same human-language scenario in both layers.
+6. `packages/junior/tests/integration/oauth-callback-slack.test.ts`, `packages/junior/tests/integration/mcp-oauth-callback-slack.test.ts`, and `packages/junior-evals/evals/core/oauth-workflows.eval.ts`: keep callback routing and Slack API effects in integration; keep user-visible continuation quality and context retention in evals; do not duplicate resume wiring assertions in evals.
+7. `packages/junior/tests/unit/runtime/respond-mcp-progressive-loading.test.ts`: keep mocked `generateAssistantReply(...)` progressive-loading coverage in unit until a higher-fidelity runtime fixture exists; it does not satisfy the integration-layer mock rules.
 
 ## Enforcement
 
-`pnpm run test:slack-boundary` enforces major boundary rules:
+`pnpm --filter @sentry/junior run test:slack-boundary` enforces major boundary rules:
 
 - Eval files cannot import Slack contract internals.
 - Integration behavior tests cannot use runtime module mocks.

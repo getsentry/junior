@@ -1,73 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { waitUntilCallbacks, generateAssistantReplyMock, resumeSlackTurnMock } =
-  vi.hoisted(() => ({
-    waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
-    generateAssistantReplyMock: vi.fn(async (..._args: unknown[]) => ({
-      text: "test reply",
-      diagnostics: { outcome: "success", toolCalls: [] },
-    })),
-    resumeSlackTurnMock: vi.fn(),
-  }));
-
-// Mock state adapter
-const mockStateStore = new Map<string, unknown>();
-vi.mock("@/chat/state/adapter", () => ({
-  getStateAdapter: () => ({
-    connect: async () => {},
-    disconnect: async () => {},
-    acquireLock: async () => ({ key: "lock", lockId: "lock-id" }),
-    releaseLock: async () => {},
-    get: async <T>(key: string): Promise<T | null> =>
-      (mockStateStore.get(key) as T) ?? null,
-    set: async (key: string, value: unknown) => {
-      mockStateStore.set(key, value);
-    },
-    delete: async (key: string) => {
-      mockStateStore.delete(key);
-    },
-  }),
+const {
+  BASE_URL,
+  EXAMPLE_OAUTH_CONFIG,
+  SENTRY_OAUTH_CONFIG,
+  waitUntilCallbacks,
+} = vi.hoisted(() => ({
+  BASE_URL: "https://example.com",
+  SENTRY_OAUTH_CONFIG: {
+    clientIdEnv: "SENTRY_CLIENT_ID",
+    clientSecretEnv: "SENTRY_CLIENT_SECRET",
+    authorizeEndpoint: "https://sentry.io/oauth/authorize/",
+    tokenEndpoint: "https://sentry.io/oauth/token/",
+    scope: "event:read org:read project:read team:read",
+    callbackPath: "/api/oauth/callback/sentry",
+  },
+  EXAMPLE_OAUTH_CONFIG: {
+    clientIdEnv: "EXAMPLE_CLIENT_ID",
+    clientSecretEnv: "EXAMPLE_CLIENT_SECRET",
+    authorizeEndpoint: "https://api.example.com/v1/oauth/authorize",
+    tokenEndpoint: "https://api.example.com/v1/oauth/token",
+    authorizeParams: { audience: "workspace" },
+    tokenAuthMethod: "basic",
+    tokenExtraHeaders: { "Content-Type": "application/json" },
+    callbackPath: "/api/oauth/callback/example",
+  },
+  waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
 
-// Mock user token store
-const mockTokenStore = new Map<string, unknown>();
-vi.mock("@/chat/capabilities/factory", () => ({
-  createUserTokenStore: () => ({
-    get: async (userId: string, provider: string) =>
-      mockTokenStore.get(`${userId}:${provider}`),
-    set: async (userId: string, provider: string, tokens: unknown) => {
-      mockTokenStore.set(`${userId}:${provider}`, tokens);
-    },
-    delete: async (userId: string, provider: string) => {
-      mockTokenStore.delete(`${userId}:${provider}`);
-    },
-  }),
-}));
-
-// Mock plugin registry — provide sentry OAuth config
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginOAuthConfig: (provider: string) => {
     if (provider === "sentry") {
-      return {
-        clientIdEnv: "SENTRY_CLIENT_ID",
-        clientSecretEnv: "SENTRY_CLIENT_SECRET",
-        authorizeEndpoint: "https://sentry.io/oauth/authorize/",
-        tokenEndpoint: "https://sentry.io/oauth/token/",
-        scope: "event:read org:read project:read team:read",
-        callbackPath: "/api/oauth/callback/sentry",
-      };
+      return SENTRY_OAUTH_CONFIG;
     }
     if (provider === "example") {
-      return {
-        clientIdEnv: "EXAMPLE_CLIENT_ID",
-        clientSecretEnv: "EXAMPLE_CLIENT_SECRET",
-        authorizeEndpoint: "https://api.example.com/v1/oauth/authorize",
-        tokenEndpoint: "https://api.example.com/v1/oauth/token",
-        authorizeParams: { audience: "workspace" },
-        tokenAuthMethod: "basic",
-        tokenExtraHeaders: { "Content-Type": "application/json" },
-        callbackPath: "/api/oauth/callback/example",
-      };
+      return EXAMPLE_OAUTH_CONFIG;
     }
     return undefined;
   },
@@ -83,28 +50,24 @@ vi.mock("@/chat/plugins/registry", () => ({
   },
 }));
 
-// Mock generateAssistantReply
-vi.mock("@/chat/respond", () => ({
-  generateAssistantReply: generateAssistantReplyMock,
-}));
+vi.mock("@/chat/config", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/chat/config")>();
+  const memoryConfig = original.readChatConfig({
+    ...process.env,
+    JUNIOR_STATE_ADAPTER: "memory",
+  });
+  return {
+    ...original,
+    botConfig: {
+      ...memoryConfig.bot,
+      userName: "junior",
+    },
+    getChatConfig: () => memoryConfig,
+  };
+});
 
-vi.mock("@/chat/slack/resume", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/slack/resume")>()),
-  resumeSlackTurn: resumeSlackTurnMock,
-}));
-
-// Mock botConfig
-vi.mock("@/chat/config", () => ({
-  botConfig: { userName: "junior" },
-}));
-
-// Mock observability
-vi.mock("@/chat/logging", () => ({
-  logException: vi.fn(),
-  logInfo: vi.fn(),
-  logWarn: vi.fn(),
-}));
-
+import { createUserTokenStore } from "@/chat/capabilities/factory";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET } from "@/handlers/oauth-callback";
 import type { WaitUntilFn } from "@/handlers/types";
 
@@ -115,22 +78,64 @@ const testWaitUntil: WaitUntilFn = (task) => {
   waitUntilCallbacks.push(typeof task === "function" ? task : () => task);
 };
 
-beforeEach(() => {
-  mockStateStore.clear();
-  mockTokenStore.clear();
+beforeEach(async () => {
+  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  await disconnectStateAdapter();
+  await getStateAdapter().connect();
   waitUntilCallbacks.length = 0;
-  generateAssistantReplyMock.mockClear();
-  resumeSlackTurnMock.mockReset();
 });
 
-afterEach(() => {
+afterEach(async () => {
   process.env = { ...ORIGINAL_ENV };
   globalThis.fetch = ORIGINAL_FETCH;
   vi.restoreAllMocks();
+  await disconnectStateAdapter();
 });
 
 function makeRequest(url: string): Request {
   return new Request(url, { method: "GET" });
+}
+
+async function putStoredState(key: string, value: unknown): Promise<void> {
+  await getStateAdapter().set(key, value);
+}
+
+async function getStoredState<T>(key: string): Promise<T | null> {
+  return await getStateAdapter().get<T>(key);
+}
+
+async function getStoredTokens(userId: string, provider: string) {
+  return await createUserTokenStore().get(userId, provider);
+}
+
+function configureSentryOAuthEnv() {
+  process.env.SENTRY_CLIENT_ID = "client-id";
+  process.env.SENTRY_CLIENT_SECRET = "client-secret";
+  process.env.JUNIOR_BASE_URL = BASE_URL;
+}
+
+function configureExampleOAuthEnv() {
+  process.env.EXAMPLE_CLIENT_ID = "example-client-id";
+  process.env.EXAMPLE_CLIENT_SECRET = "example-client-secret";
+  process.env.JUNIOR_BASE_URL = BASE_URL;
+}
+
+function mockJsonFetch(payload: unknown) {
+  const fetchMock = vi.fn(async () => ({
+    ok: true,
+    json: async () => payload,
+  }));
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
+}
+
+function mockFailedFetch(status: number) {
+  const fetchMock = vi.fn(async () => ({
+    ok: false,
+    status,
+  }));
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
 }
 
 describe("oauth callback handler", () => {
@@ -182,7 +187,7 @@ describe("oauth callback handler", () => {
 
   it("returns styled HTML 400 for provider mismatch", async () => {
     const stateKey = "oauth-state:test-state-123";
-    mockStateStore.set(stateKey, {
+    await putStoredState(stateKey, {
       userId: "U123",
       provider: "github", // mismatch with sentry
     });
@@ -203,23 +208,17 @@ describe("oauth callback handler", () => {
 
   it("deletes state key after reading (one-time use)", async () => {
     const stateKey = "oauth-state:test-state-456";
-    mockStateStore.set(stateKey, {
+    await putStoredState(stateKey, {
       userId: "U123",
       provider: "sentry",
     });
 
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
-    process.env.JUNIOR_BASE_URL = "https://example.com";
-
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        access_token: "new-access",
-        refresh_token: "new-refresh",
-        expires_in: 3600,
-      }),
-    })) as unknown as typeof fetch;
+    configureSentryOAuthEnv();
+    mockJsonFetch({
+      access_token: "new-access",
+      refresh_token: "new-refresh",
+      expires_in: 3600,
+    });
 
     await GET(
       makeRequest(
@@ -229,12 +228,12 @@ describe("oauth callback handler", () => {
       testWaitUntil,
     );
 
-    expect(mockStateStore.has(stateKey)).toBe(false);
+    expect(await getStoredState(stateKey)).toBeFalsy();
   });
 
   it("returns styled HTML 500 when client credentials are missing", async () => {
     const stateKey = "oauth-state:test-state-789";
-    mockStateStore.set(stateKey, {
+    await putStoredState(stateKey, {
       userId: "U123",
       provider: "sentry",
     });
@@ -257,25 +256,19 @@ describe("oauth callback handler", () => {
 
   it("exchanges code for tokens and stores them", async () => {
     const stateKey = "oauth-state:exchange-test";
-    mockStateStore.set(stateKey, {
+    await putStoredState(stateKey, {
       userId: "U456",
       provider: "sentry",
       channelId: "C123",
       threadTs: "123.456",
     });
 
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
-    process.env.JUNIOR_BASE_URL = "https://example.com";
-
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        access_token: "new-access-token",
-        refresh_token: "new-refresh-token",
-        expires_in: 7200,
-      }),
-    })) as unknown as typeof fetch;
+    configureSentryOAuthEnv();
+    mockJsonFetch({
+      access_token: "new-access-token",
+      refresh_token: "new-refresh-token",
+      expires_in: 7200,
+    });
 
     const response = await GET(
       makeRequest(
@@ -290,7 +283,7 @@ describe("oauth callback handler", () => {
     expect(body).toContain("<!DOCTYPE html>");
     expect(body).toContain("Sentry account connected");
 
-    const stored = mockTokenStore.get("U456:sentry") as {
+    const stored = (await getStoredTokens("U456", "sentry")) as {
       accessToken: string;
       refreshToken: string;
       scope?: string;
@@ -303,23 +296,16 @@ describe("oauth callback handler", () => {
 
   it("uses basic auth and json body for token exchange without expires_in", async () => {
     const stateKey = "oauth-state:example-exchange";
-    mockStateStore.set(stateKey, {
+    await putStoredState(stateKey, {
       userId: "U999",
       provider: "example",
     });
 
-    process.env.EXAMPLE_CLIENT_ID = "example-client-id";
-    process.env.EXAMPLE_CLIENT_SECRET = "example-client-secret";
-    process.env.JUNIOR_BASE_URL = "https://example.com";
-
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        access_token: "example-access-token",
-        refresh_token: "example-refresh-token",
-      }),
-    }));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    configureExampleOAuthEnv();
+    const fetchMock = mockJsonFetch({
+      access_token: "example-access-token",
+      refresh_token: "example-refresh-token",
+    });
 
     const response = await GET(
       makeRequest(
@@ -342,12 +328,12 @@ describe("oauth callback handler", () => {
         body: JSON.stringify({
           grant_type: "authorization_code",
           code: "valid-code",
-          redirect_uri: "https://example.com/api/oauth/callback/example",
+          redirect_uri: `${BASE_URL}/api/oauth/callback/example`,
         }),
       }),
     );
 
-    const stored = mockTokenStore.get("U999:example") as {
+    const stored = (await getStoredTokens("U999", "example")) as {
       accessToken: string;
       refreshToken: string;
       expiresAt?: number;
@@ -361,26 +347,20 @@ describe("oauth callback handler", () => {
 
   it("rejects callback grants whose explicit scope is missing required access", async () => {
     const stateKey = "oauth-state:missing-scope";
-    mockStateStore.set(stateKey, {
+    await putStoredState(stateKey, {
       userId: "U456",
       provider: "sentry",
       channelId: "C123",
       threadTs: "123.456",
     });
 
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
-    process.env.JUNIOR_BASE_URL = "https://example.com";
-
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        access_token: "new-access-token",
-        refresh_token: "new-refresh-token",
-        expires_in: 7200,
-        scope: "event:read org:read project:read",
-      }),
-    })) as unknown as typeof fetch;
+    configureSentryOAuthEnv();
+    mockJsonFetch({
+      access_token: "new-access-token",
+      refresh_token: "new-refresh-token",
+      expires_in: 7200,
+      scope: "event:read org:read project:read",
+    });
 
     const response = await GET(
       makeRequest(
@@ -393,25 +373,19 @@ describe("oauth callback handler", () => {
     expect(response.status).toBe(400);
     const body = await response.text();
     expect(body).toContain("did not grant the access Junior requires");
-    expect(mockTokenStore.get("U456:sentry")).toBeUndefined();
+    expect(await getStoredTokens("U456", "sentry")).toBeUndefined();
     expect(waitUntilCallbacks).toHaveLength(0);
   });
 
   it("returns styled HTML 500 when token exchange fails", async () => {
     const stateKey = "oauth-state:fail-exchange";
-    mockStateStore.set(stateKey, {
+    await putStoredState(stateKey, {
       userId: "U789",
       provider: "sentry",
     });
 
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
-    process.env.JUNIOR_BASE_URL = "https://example.com";
-
-    globalThis.fetch = vi.fn(async () => ({
-      ok: false,
-      status: 400,
-    })) as unknown as typeof fetch;
+    configureSentryOAuthEnv();
+    mockFailedFetch(400);
 
     const response = await GET(
       makeRequest(
@@ -429,7 +403,7 @@ describe("oauth callback handler", () => {
 
   it("returns styled HTML 400 when user denies authorization", async () => {
     const stateKey = "oauth-state:deny-test";
-    mockStateStore.set(stateKey, {
+    await putStoredState(stateKey, {
       userId: "U999",
       provider: "sentry",
     });
@@ -450,8 +424,7 @@ describe("oauth callback handler", () => {
       "ask Junior to connect your Sentry account again if you change your mind",
     );
     expect(body).not.toContain("auth command");
-    // State should be cleaned up
-    expect(mockStateStore.has(stateKey)).toBe(false);
+    expect(await getStoredState(stateKey)).toBeFalsy();
   });
 
   it("returns styled HTML 400 for provider-returned errors", async () => {
@@ -501,7 +474,7 @@ describe("oauth callback handler", () => {
 
   it("shows pending-message status in success page", async () => {
     const stateKey = "oauth-state:pending-test";
-    mockStateStore.set(stateKey, {
+    await putStoredState(stateKey, {
       userId: "U111",
       provider: "sentry",
       channelId: "C123",
@@ -509,18 +482,12 @@ describe("oauth callback handler", () => {
       pendingMessage: "list my sentry issues",
     });
 
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
-    process.env.JUNIOR_BASE_URL = "https://example.com";
-
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        access_token: "token",
-        refresh_token: "refresh",
-        expires_in: 3600,
-      }),
-    })) as unknown as typeof fetch;
+    configureSentryOAuthEnv();
+    mockJsonFetch({
+      access_token: "token",
+      refresh_token: "refresh",
+      expires_in: 3600,
+    });
 
     const response = await GET(
       makeRequest(
@@ -533,116 +500,5 @@ describe("oauth callback handler", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("being processed in Slack");
-  });
-
-  it("resumes a checkpointed turn when OAuth state includes turn session context", async () => {
-    mockStateStore.set("oauth-state:checkpointed-resume", {
-      userId: "U111",
-      provider: "sentry",
-      channelId: "C123",
-      threadTs: "123.789",
-      pendingMessage: "list my sentry issues",
-      resumeConversationId: "slack:C123:123.789",
-      resumeSessionId: "turn_msg_1",
-    });
-    mockStateStore.set(
-      "junior:agent_turn_session:slack:C123:123.789:turn_msg_1",
-      JSON.stringify({
-        checkpointVersion: 2,
-        conversationId: "slack:C123:123.789",
-        sessionId: "turn_msg_1",
-        sliceId: 2,
-        state: "awaiting_resume",
-        updatedAtMs: 1,
-        piMessages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "list my sentry issues" }],
-            timestamp: 1,
-          },
-        ],
-        loadedSkillNames: ["sentry"],
-        resumeReason: "auth",
-        resumedFromSliceId: 1,
-      }),
-    );
-    mockStateStore.set("thread-state:slack:C123:123.789", {
-      conversation: {
-        schemaVersion: 1,
-        backfill: {},
-        compactions: [],
-        messages: [
-          {
-            id: "msg.1",
-            role: "user",
-            text: "list my sentry issues",
-            createdAtMs: 1,
-            author: {
-              userId: "U111",
-              userName: "alice",
-            },
-          },
-        ],
-        processing: {
-          activeTurnId: "turn_msg_1",
-        },
-        stats: {
-          compactedMessageCount: 0,
-          estimatedContextTokens: 0,
-          totalMessageCount: 1,
-          updatedAtMs: 1,
-        },
-        vision: {
-          byFileId: {},
-        },
-      },
-      artifacts: {
-        assistantContextChannelId: "C999",
-        listColumnMap: {},
-      },
-    });
-
-    process.env.SENTRY_CLIENT_ID = "client-id";
-    process.env.SENTRY_CLIENT_SECRET = "client-secret";
-    process.env.JUNIOR_BASE_URL = "https://example.com";
-
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        access_token: "token",
-        refresh_token: "refresh",
-        expires_in: 3600,
-      }),
-    })) as unknown as typeof fetch;
-
-    const response = await GET(
-      makeRequest(
-        "https://example.com/api/oauth/callback/sentry?code=code&state=checkpointed-resume",
-      ),
-      "sentry",
-      testWaitUntil,
-    );
-
-    expect(response.status).toBe(200);
-    expect(waitUntilCallbacks).toHaveLength(2);
-
-    await waitUntilCallbacks[1]?.();
-
-    expect(resumeSlackTurnMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channelId: "C123",
-        threadTs: "123.789",
-        lockKey: "slack:C123:123.789",
-        replyContext: expect.objectContaining({
-          correlation: expect.objectContaining({
-            channelId: "C123",
-            threadTs: "123.789",
-            requesterId: "U111",
-          }),
-          toolChannelId: "C999",
-        }),
-      }),
-    );
-    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
   });
 });

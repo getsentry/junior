@@ -2,7 +2,7 @@
 
 ## Intent
 
-Evals are end-to-end Slack conversation evaluations.
+Evals are end-to-end Slack conversation evaluations. They are the integration-style test layer for agent-facing behavior when model interpretation is part of the contract.
 
 - We define conversation cases inline in TypeScript using `slackEval()`.
 - We run the real runtime/harness against those fixtures.
@@ -19,10 +19,10 @@ Testing taxonomy and layer contracts are defined in:
 Quick mapping:
 
 - `tests/integration/*`: Slack/runtime integration and HTTP contract tests.
-- `evals/*`: Conversation-level behavior and quality scoring through the runtime harness.
+- `evals/*`: Integration-style coverage for conversation-level agent behavior and quality scoring through the runtime harness.
 - `tests/unit/*` (or non-integration tests): isolated logic/invariant tests.
 
-This separation is enforced by `pnpm run test:slack-boundary`.
+This separation is enforced by `pnpm --filter @sentry/junior run test:slack-boundary`.
 
 ## What Is In Scope
 

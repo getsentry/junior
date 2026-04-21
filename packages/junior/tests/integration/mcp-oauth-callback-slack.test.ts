@@ -145,6 +145,11 @@ describe("mcp oauth callback slack integration", () => {
               userId: "U123",
               userName: "dcramer",
             },
+            meta: {
+              attachmentCount: 1,
+              imageAttachmentCount: 1,
+              imagesHydrated: false,
+            },
           },
         ],
         processing: {
@@ -255,6 +260,8 @@ describe("mcp oauth callback slack integration", () => {
       expect.objectContaining({
         requester: expect.objectContaining({ userId: "U123" }),
         toolChannelId: "C999",
+        inboundAttachmentCount: 1,
+        omittedImageAttachmentCount: 1,
         artifactState: expect.objectContaining({
           assistantContextChannelId: "C999",
           lastCanvasId: "F123",

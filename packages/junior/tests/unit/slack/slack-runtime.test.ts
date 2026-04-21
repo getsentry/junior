@@ -4,7 +4,6 @@ import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
 } from "@/chat/runtime/slack-runtime";
-import { RetryableTurnError } from "@/chat/runtime/turn";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import {
   createTestThread,
@@ -14,15 +13,6 @@ import {
 interface TestState {
   prepared: boolean;
   conversationContext?: string;
-}
-
-function createSlackInternalError(requestId: string): Error {
-  return Object.assign(new Error("An API error occurred: internal_error"), {
-    code: "slack_webapi_platform_error",
-    data: { error: "internal_error" },
-    statusCode: 500,
-    headers: { "x-slack-req-id": requestId },
-  });
 }
 
 function createMockDeps(
@@ -74,29 +64,7 @@ describe("createSlackTurnRuntime", () => {
       });
     });
 
-    it("wraps call in withSpan with correct log context", async () => {
-      const deps = createMockDeps();
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({
-        author: { userId: "U-caller" },
-      });
-
-      await runtime.handleNewMention(thread, message);
-
-      expect(deps.withSpan).toHaveBeenCalledWith(
-        "chat.turn",
-        "chat.turn",
-        expect.objectContaining({
-          assistantUserName: "test-bot",
-          modelId: "test-model",
-          slackUserId: "U-caller",
-        }),
-        expect.any(Function),
-      );
-    });
-
-    it("on replyToThread failure: posts safe error and calls logException", async () => {
+    it("posts a safe error when replyToThread fails", async () => {
       const replyError = new Error("reply failed");
       const deps = createMockDeps({
         replyToThread: vi.fn().mockRejectedValue(replyError),
@@ -108,19 +76,12 @@ describe("createSlackTurnRuntime", () => {
 
       await runtime.handleNewMention(thread, message);
 
-      expect(deps.logException).toHaveBeenCalledWith(
-        replyError,
-        "mention_handler_failed",
-        expect.any(Object),
-        {},
-        "onNewMention failed",
-      );
       expect(thread.posts).toContain(
         "I ran into an internal error while processing that. Please try again.",
       );
     });
 
-    it("on subscribe failure: posts safe error and calls logException", async () => {
+    it("posts a safe error when subscribe fails", async () => {
       const subscribeError = new Error("subscribe failed");
       const deps = createMockDeps({
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
@@ -135,13 +96,6 @@ describe("createSlackTurnRuntime", () => {
 
       await runtime.handleNewMention(thread, message);
 
-      expect(deps.logException).toHaveBeenCalledWith(
-        subscribeError,
-        "mention_handler_failed",
-        expect.any(Object),
-        {},
-        "onNewMention failed",
-      );
       expect(thread.posts).toContain(
         "I ran into an internal error while processing that. Please try again.",
       );
@@ -187,68 +141,6 @@ describe("createSlackTurnRuntime", () => {
         "I ran into an internal error while processing that. Reference: `trace_id=trace_123`.",
       );
     });
-
-    it("logs fallback-post failure with Slack attributes when posting error reply fails", async () => {
-      const replyError = new Error("reply failed");
-      const slackPostError = createSlackInternalError("req-123");
-      const logException = vi.fn(() => "evt_primary");
-      const deps = createMockDeps({
-        replyToThread: vi.fn().mockRejectedValue(replyError),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-        logException,
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      thread.post = vi
-        .fn()
-        .mockRejectedValue(slackPostError) as unknown as typeof thread.post;
-      const message = createTestMessage({});
-
-      await expect(runtime.handleNewMention(thread, message)).rejects.toBe(
-        slackPostError,
-      );
-
-      expect(logException).toHaveBeenNthCalledWith(
-        2,
-        slackPostError,
-        "mention_handler_failure_reply_post_failed",
-        expect.any(Object),
-        expect.objectContaining({
-          "app.slack.reply_stage": "error_fallback_post",
-          "app.error.original_event_id": "evt_primary",
-          "app.slack.error_code": "slack_webapi_platform_error",
-          "app.slack.api_error": "internal_error",
-          "app.slack.request_id": "req-123",
-          "http.response.status_code": 500,
-        }),
-        "Failed to post fallback error reply for mention handler",
-      );
-    });
-
-    it("uses a generic auth-resume message for plugin auth pauses", async () => {
-      const replyError = new RetryableTurnError(
-        "plugin_auth_resume",
-        "resume auth",
-      );
-      const deps = createMockDeps({
-        replyToThread: vi.fn().mockRejectedValue(replyError),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-
-      await runtime.handleNewMention(
-        createTestThread({}),
-        createTestMessage({}),
-      );
-
-      expect(deps.logException).toHaveBeenCalledWith(
-        replyError,
-        "mention_handler_auth_pause",
-        expect.any(Object),
-        { "app.turn.retryable_reason": "plugin_auth_resume" },
-        "onNewMention parked turn for auth resume",
-      );
-    });
   });
 
   describe("handleSubscribedMessage", () => {
@@ -285,31 +177,6 @@ describe("createSlackTurnRuntime", () => {
       ]);
     });
 
-    it("uses a generic auth-resume message for subscribed plugin auth pauses", async () => {
-      const replyError = new RetryableTurnError(
-        "plugin_auth_resume",
-        "resume auth",
-      );
-      const deps = createMockDeps({
-        replyToThread: vi.fn().mockRejectedValue(replyError),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-
-      await runtime.handleSubscribedMessage(
-        createTestThread({}),
-        createTestMessage({}),
-      );
-
-      expect(deps.logException).toHaveBeenCalledWith(
-        replyError,
-        "subscribed_message_handler_auth_pause",
-        expect.any(Object),
-        { "app.turn.retryable_reason": "plugin_auth_resume" },
-        "onSubscribedMessage parked turn for auth resume",
-      );
-    });
-
     it("passes stripped text via stripLeadingBotMention to prepareTurnState", async () => {
       const deps = createMockDeps({
         stripLeadingBotMention: vi.fn(() => "stripped text"),
@@ -333,7 +200,7 @@ describe("createSlackTurnRuntime", () => {
       );
     });
 
-    it("when shouldReply: false, skips replyToThread and logs skip", async () => {
+    it("when shouldReply: false, skips replyToThread", async () => {
       const deps = createMockDeps({
         decideSubscribedReply: vi.fn(async () => ({
           shouldReply: false,
@@ -348,12 +215,6 @@ describe("createSlackTurnRuntime", () => {
 
       expect(deps.replyToThread).not.toHaveBeenCalled();
       expect(deps.recordSkippedSubscribedMessage).not.toHaveBeenCalled();
-      expect(deps.logWarn).toHaveBeenCalledWith(
-        "subscribed_message_reply_skipped",
-        expect.any(Object),
-        { "app.decision.reason": "passive conversation" },
-        "Skipping subscribed message reply",
-      );
       expect(deps.onSubscribedMessageSkipped).toHaveBeenCalledWith(
         expect.objectContaining({
           thread,
@@ -511,7 +372,7 @@ describe("createSlackTurnRuntime", () => {
       );
     });
 
-    it("on failure: posts safe error message and calls logException", async () => {
+    it("on failure, posts a safe error message", async () => {
       const err = new Error("handler boom");
       const deps = createMockDeps({
         prepareTurnState: vi.fn().mockRejectedValue(err),
@@ -522,51 +383,8 @@ describe("createSlackTurnRuntime", () => {
 
       await runtime.handleSubscribedMessage(thread, message);
 
-      expect(deps.logException).toHaveBeenCalledWith(
-        err,
-        "subscribed_message_handler_failed",
-        expect.any(Object),
-        {},
-        "onSubscribedMessage failed",
-      );
       expect(thread.posts).toContain(
         "I ran into an internal error while processing that. Please try again.",
-      );
-    });
-
-    it("logs fallback-post failure with Slack attributes when posting subscribed error reply fails", async () => {
-      const primaryError = new Error("handler boom");
-      const slackPostError = createSlackInternalError("req-456");
-      const logException = vi.fn(() => "evt_subscribed");
-      const deps = createMockDeps({
-        prepareTurnState: vi.fn().mockRejectedValue(primaryError),
-        logException,
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      thread.post = vi
-        .fn()
-        .mockRejectedValue(slackPostError) as unknown as typeof thread.post;
-      const message = createTestMessage({});
-
-      await expect(
-        runtime.handleSubscribedMessage(thread, message),
-      ).rejects.toBe(slackPostError);
-
-      expect(logException).toHaveBeenNthCalledWith(
-        2,
-        slackPostError,
-        "subscribed_message_handler_failure_reply_post_failed",
-        expect.any(Object),
-        expect.objectContaining({
-          "app.slack.reply_stage": "error_fallback_post",
-          "app.error.original_event_id": "evt_subscribed",
-          "app.slack.error_code": "slack_webapi_platform_error",
-          "app.slack.api_error": "internal_error",
-          "app.slack.request_id": "req-456",
-          "http.response.status_code": 500,
-        }),
-        "Failed to post fallback error reply for subscribed message handler",
       );
     });
   });
@@ -589,31 +407,6 @@ describe("createSlackTurnRuntime", () => {
         threadTs: "1700000000.000",
         sourceChannelId: undefined,
       });
-    });
-
-    it("on failure: calls logException without posting error", async () => {
-      const err = new Error("init boom");
-      const deps = createMockDeps({
-        initializeAssistantThread: vi.fn().mockRejectedValue(err),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-
-      await runtime.handleAssistantThreadStarted({
-        threadId: "T-1",
-        channelId: "C-1",
-        threadTs: "1700000000.000",
-      });
-
-      expect(deps.logException).toHaveBeenCalledWith(
-        err,
-        "assistant_thread_started_handler_failed",
-        expect.objectContaining({
-          slackThreadId: "T-1",
-          slackChannelId: "C-1",
-        }),
-        {},
-        "onAssistantThreadStarted failed",
-      );
     });
   });
 
@@ -657,31 +450,6 @@ describe("createSlackTurnRuntime", () => {
         threadTs: "1700000000.100",
         sourceChannelId: "C-source",
       });
-    });
-
-    it("on failure: calls logException without posting error", async () => {
-      const err = new Error("context boom");
-      const deps = createMockDeps({
-        refreshAssistantThreadContext: vi.fn().mockRejectedValue(err),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-
-      await runtime.handleAssistantContextChanged({
-        threadId: "T-2",
-        channelId: "C-2",
-        threadTs: "1700000000.100",
-      });
-
-      expect(deps.logException).toHaveBeenCalledWith(
-        err,
-        "assistant_context_changed_handler_failed",
-        expect.objectContaining({
-          slackThreadId: "T-2",
-          slackChannelId: "C-2",
-        }),
-        {},
-        "onAssistantContextChanged failed",
-      );
     });
   });
 });

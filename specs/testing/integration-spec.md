@@ -3,10 +3,11 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-04-15
+- Last Edited: 2026-04-21
 
 ## Changelog
 
+- 2026-04-21: Made integration the default layer for most product/runtime changes and clarified that evals take this role only when the contract is agent-facing/model-dependent.
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Updated integration fixture and MSW path references to repo-root paths under `packages/junior/`.
 - 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
@@ -16,7 +17,7 @@
 
 ## Intent
 
-Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary. This is the default behavior-test layer when the contract does not require real LLM behavior.
+Integration tests validate real runtime wiring and Slack-facing behavior, with deterministic control only at the agent boundary. This is the default test layer for most product/runtime changes. Evals take this role only when the contract is agent-facing behavior that depends on model interpretation.
 
 ## Scope
 
@@ -25,6 +26,7 @@ In scope:
 - Slack event ingestion and routing behavior.
 - Runtime orchestration and state interactions.
 - Slack HTTP contracts (request shape, retries, error mapping) through MSW.
+- Auth callback and resume flows, persisted thread recovery, and other user-visible product wiring.
 - Behavior outcomes from real runtime flow using deterministic fake-agent outputs.
 
 ## Non-Goals
@@ -49,6 +51,7 @@ Disallowed in integration behavior tests:
 - Mutable runtime-global behavior seams or singleton patching for core chat behavior.
 - `vi.mock` for runtime behavior modules (`@/chat/state/*`, workflow router/runtime handlers, ingress binding/router paths, etc.).
 - Ad-hoc stubbing of Slack HTTP fetch/webclient internals in test files.
+- Ad-hoc fake persistence or fake Slack delivery layers when the shared memory adapter + MSW harness can prove the same contract.
 
 ## Fixture and Harness Rules
 
@@ -75,6 +78,10 @@ Do not let low-level stream ordering or request-shape assertions dominate genera
 If a test relies on runtime module mocks to drive control-flow branches, classify it as unit (not integration).
 
 If the behavior under test depends on natural-language interpretation, continuity, or model choice, classify it as eval instead of integration.
+
+If a product/runtime change can be proven with real wiring plus a deterministic fake agent, integration is the default answer.
+
+Do not keep a scenario in integration solely because a fake classifier fixture is easier than writing the corresponding eval. When the real contract is ambiguous natural-language behavior or reply quality, promote it to eval.
 
 ## Core Scenarios to Cover
 
@@ -120,4 +127,4 @@ Avoid:
 
 ## Enforcement
 
-`pnpm run test:slack-boundary` enforces integration boundary policy for designated behavior integration tests.
+`pnpm --filter @sentry/junior run test:slack-boundary` enforces integration boundary policy for designated behavior integration tests.
