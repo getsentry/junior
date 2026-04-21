@@ -591,6 +591,21 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(selectedThinkingLevels.value).toEqual(["high"]);
   });
 
+  it("uses structured-suffix attachment text when the media type has parameters", async () => {
+    const reply = await generateAssistantReply("can you fix this?", {
+      userAttachments: [
+        {
+          data: Buffer.from("TypeError: x is undefined\nat respond.ts:42"),
+          filename: "error.json",
+          mediaType: "application/vnd.api+json; charset=utf-8",
+        },
+      ],
+    });
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(selectedThinkingLevels.value).toEqual(["high"]);
+  });
+
   it("retains sandbox reuse metadata after lazy boot on error turns", async () => {
     agentMode.value = "attachFileThenError";
 

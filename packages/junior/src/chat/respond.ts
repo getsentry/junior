@@ -160,8 +160,6 @@ export interface ReplyRequestContext {
 
 let startupDiscoveryLogged = false;
 const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
-const TEXT_ATTACHMENT_MEDIA_TYPE_PATTERN =
-  /^(text\/|application\/(?:json|xml|x-www-form-urlencoded)|[^;]+\+(?:json|xml)$)/i;
 
 type UserTurnContentPart =
   | { type: "text"; text: string }
@@ -192,6 +190,21 @@ function trimRouterAttachmentText(text: string): string {
     : `${normalized.slice(0, MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS)}...`;
 }
 
+function supportsRouterTextPreview(mediaType: string): boolean {
+  const baseMediaType = mediaType.split(";", 1)[0]?.trim().toLowerCase();
+  if (!baseMediaType) {
+    return false;
+  }
+  return (
+    baseMediaType.startsWith("text/") ||
+    baseMediaType === "application/json" ||
+    baseMediaType === "application/xml" ||
+    baseMediaType === "application/x-www-form-urlencoded" ||
+    baseMediaType.endsWith("+json") ||
+    baseMediaType.endsWith("+xml")
+  );
+}
+
 function buildRouterAttachmentBlock(attachment: UserTurnAttachment): string {
   if (attachment.promptText) {
     return trimRouterAttachmentText(attachment.promptText);
@@ -203,10 +216,7 @@ function buildRouterAttachmentBlock(attachment: UserTurnAttachment): string {
     `media_type: ${attachment.mediaType}`,
   ];
 
-  if (
-    attachment.data &&
-    TEXT_ATTACHMENT_MEDIA_TYPE_PATTERN.test(attachment.mediaType)
-  ) {
+  if (attachment.data && supportsRouterTextPreview(attachment.mediaType)) {
     const preview = trimRouterAttachmentText(attachment.data.toString("utf8"));
     if (preview) {
       return [
