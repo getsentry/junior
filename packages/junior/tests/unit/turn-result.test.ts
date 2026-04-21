@@ -14,7 +14,6 @@ const executionProfile = {
   modelId: "openai/gpt-5.4",
   reasoningEffort: "medium" as const,
   reason: "test",
-  source: "classifier" as const,
 };
 
 describe("buildTurnResult", () => {

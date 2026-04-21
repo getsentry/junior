@@ -374,12 +374,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   "app.ai.reasoning_effort": reply.diagnostics.reasoningEffort,
                 }
               : {}),
-            ...(reply.diagnostics.executionProfileSource
-              ? {
-                  "app.ai.execution_profile_source":
-                    reply.diagnostics.executionProfileSource,
-                }
-              : {}),
             ...(reply.diagnostics.stopReason
               ? {
                   "gen_ai.response.finish_reasons": [

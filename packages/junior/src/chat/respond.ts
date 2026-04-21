@@ -446,7 +446,6 @@ export async function generateAssistantReply(
     setSpanAttributes({
       "gen_ai.request.model": executionProfile.modelId,
       "app.ai.reasoning_effort": executionProfile.reasoningEffort,
-      "app.ai.execution_profile_source": executionProfile.source,
       "app.ai.execution_profile_reason": executionProfile.reason,
       ...(executionProfile.confidence !== undefined
         ? {
@@ -1057,7 +1056,6 @@ export async function generateAssistantReply(
         assistantMessageCount: 0,
         ...(executionProfile
           ? {
-              executionProfileSource: executionProfile.source,
               reasoningEffort: executionProfile.reasoningEffort,
             }
           : {}),

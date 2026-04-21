@@ -27,7 +27,6 @@ export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
   durationMs?: number;
   errorMessage?: string;
-  executionProfileSource?: TurnExecutionProfile["source"];
   providerError?: unknown;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
@@ -210,7 +209,6 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     outcome: resolvedOutcome,
     modelId: executionProfile.modelId,
     assistantMessageCount: assistantMessages.length,
-    executionProfileSource: executionProfile.source,
     reasoningEffort: executionProfile.reasoningEffort,
     toolCalls,
     toolResultCount: toolResults.length,

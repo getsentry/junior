@@ -24,7 +24,6 @@ describe("selectTurnExecutionProfile", () => {
     expect(profile).toMatchObject({
       reasoningEffort: "none",
       reason: "acknowledgment only",
-      source: "classifier",
     });
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -55,7 +54,6 @@ describe("selectTurnExecutionProfile", () => {
     expect(profile).toMatchObject({
       reasoningEffort: "high",
       reason: "code change request",
-      source: "classifier",
     });
     expect(completeObject).toHaveBeenCalledOnce();
   });
@@ -124,7 +122,6 @@ describe("selectTurnExecutionProfile", () => {
     expect(profile).toMatchObject({
       reasoningEffort: "low",
       reason: "low_confidence_default:not confident",
-      source: "classifier",
     });
   });
 
@@ -143,7 +140,6 @@ describe("selectTurnExecutionProfile", () => {
     expect(profile).toMatchObject({
       reasoningEffort: "low",
       reason: "classifier_error_default",
-      source: "classifier",
     });
   });
 });

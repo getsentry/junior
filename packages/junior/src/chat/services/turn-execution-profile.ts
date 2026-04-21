@@ -15,7 +15,6 @@ export interface TurnExecutionProfile {
   modelId: string;
   reasoningEffort: "none" | "low" | "medium" | "high";
   reason: string;
-  source: "classifier";
 }
 
 const DEFAULT_REASONING_EFFORT: TurnExecutionProfile["reasoningEffort"] = "low";
@@ -124,7 +123,6 @@ export async function selectTurnExecutionProfile(args: {
         modelId: args.modelId,
         reasoningEffort: DEFAULT_REASONING_EFFORT,
         reason: `low_confidence_default:${parsed.reason.trim()}`,
-        source: "classifier",
       };
     }
 
@@ -133,14 +131,12 @@ export async function selectTurnExecutionProfile(args: {
       modelId: args.modelId,
       reasoningEffort: parsed.reasoning_effort,
       reason: parsed.reason.trim(),
-      source: "classifier",
     };
   } catch {
     return {
       modelId: args.modelId,
       reasoningEffort: DEFAULT_REASONING_EFFORT,
       reason: "classifier_error_default",
-      source: "classifier",
     };
   }
 }
