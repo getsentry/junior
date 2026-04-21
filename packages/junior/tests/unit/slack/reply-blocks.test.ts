@@ -66,6 +66,27 @@ describe("buildSlackReplyBlocks", () => {
     ]);
   });
 
+  it("does not upgrade fenced code blocks that only look like markdown tables", () => {
+    const fencedTable = ["```", "| Col | Value |", "| --- | --- |", "```"].join(
+      "\n",
+    );
+
+    expect(
+      buildSlackReplyBlocks(fencedTable, undefined, {
+        richSourceText: fencedTable,
+      }),
+    ).toEqual([
+      {
+        type: "section",
+        expand: true,
+        text: {
+          type: "mrkdwn",
+          text: fencedTable,
+        },
+      },
+    ]);
+  });
+
   it("renders the reply body plus a Slack context footer block", () => {
     const footer = buildSlackReplyFooter({
       conversationId: "slack:C123:1700000000.000100",

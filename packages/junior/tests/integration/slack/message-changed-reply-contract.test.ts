@@ -149,14 +149,15 @@ describe("Slack contract: edited-message reply delivery", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           blocks: [
-            {
+            expect.objectContaining({
               type: "section",
+              expand: true,
               text: {
                 type: "mrkdwn",
                 text: "Hello world",
               },
-            },
-            {
+            }),
+            expect.objectContaining({
               type: "context",
               elements: expect.arrayContaining([
                 expect.objectContaining({
@@ -170,7 +171,7 @@ describe("Slack contract: edited-message reply delivery", () => {
                   text: expect.stringContaining("*Trace:* "),
                 }),
               ]),
-            },
+            }),
           ],
           channel: "D12345",
           thread_ts: "1700000100.000100",

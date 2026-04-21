@@ -309,6 +309,7 @@ function formatReferenceFilesSection(): string[] {
   ];
 }
 
+/** Build the canonical system prompt from repo policy, runtime context, and active skill state. */
 export function buildSystemPrompt(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];

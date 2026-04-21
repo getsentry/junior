@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { cpSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -36,15 +36,13 @@ function buildJuniorPackage(): void {
     stdio: "pipe",
   });
 
-  // Re-sync pnpm store so the example app's node_modules/@sentry/junior
-  // points to the freshly built dist, not a stale hardlink. The relink does
-  // not need workspace prepare hooks, which would rebuild @sentry/junior and
-  // make the full suite timeout-prone.
-  execFileSync("pnpm", ["install", "--ignore-scripts"], {
-    cwd: repoRoot,
-    env,
-    stdio: "pipe",
-  });
+  const sourceDist = path.join(repoRoot, "packages/junior/dist");
+  const installedDist = path.join(
+    exampleRoot,
+    "node_modules/@sentry/junior/dist",
+  );
+  rmSync(installedDist, { recursive: true, force: true });
+  cpSync(sourceDist, installedDist, { recursive: true });
 }
 
 async function importExampleApp() {

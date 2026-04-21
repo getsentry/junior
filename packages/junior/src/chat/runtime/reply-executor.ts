@@ -127,6 +127,7 @@ interface ReplyExecutorDeps {
   services: ReplyExecutorServices;
 }
 
+/** Create the main turn executor that prepares context, runs the agent, and delivers the reply. */
 export function createReplyToThread(deps: ReplyExecutorDeps) {
   return async function replyToThread(
     thread: Thread,

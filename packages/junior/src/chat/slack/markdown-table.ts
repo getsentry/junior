@@ -4,6 +4,17 @@ export interface MarkdownTableMatch {
   rows: string[][];
 }
 
+function getMarkdownFenceDelimiter(line: string): "```" | "~~~" | null {
+  const trimmed = line.trimStart();
+  if (trimmed.startsWith("```")) {
+    return "```";
+  }
+  if (trimmed.startsWith("~~~")) {
+    return "~~~";
+  }
+  return null;
+}
+
 /** Parse a single markdown table row while preserving Slack link cells. */
 export function parseMarkdownTableRow(line: string): string[] | null {
   if (!line.includes("|")) {
@@ -78,8 +89,19 @@ export function extractFirstMarkdownTable(
   text: string,
 ): MarkdownTableMatch | null {
   const lines = text.split("\n");
+  let activeFence: "```" | "~~~" | null = null;
 
   for (let index = 0; index < lines.length; index += 1) {
+    const fenceDelimiter = getMarkdownFenceDelimiter(lines[index] ?? "");
+    if (fenceDelimiter) {
+      activeFence =
+        activeFence === fenceDelimiter ? null : (activeFence ?? fenceDelimiter);
+      continue;
+    }
+    if (activeFence) {
+      continue;
+    }
+
     const header = parseMarkdownTableRow(lines[index] ?? "");
     if (!header || !isMarkdownTableSeparator(lines[index + 1] ?? "")) {
       continue;
