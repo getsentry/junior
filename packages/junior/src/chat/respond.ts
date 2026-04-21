@@ -140,7 +140,7 @@ export interface ReplyRequestContext {
   };
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
-  onToolCall?: (toolName: string) => void | Promise<void>;
+  onToolCall?: (toolName: string, params?: unknown) => void | Promise<void>;
   onAssistantMessageStart?: () => void | Promise<void>;
   /**
    * Known thread participants. Injected into the system prompt so the LLM can
@@ -676,20 +676,22 @@ export async function generateAssistantReply(
 
     // ── Agent tools ──────────────────────────────────────────────────
     const agentToolHooks = {
-      onToolCall: (toolName: string) => {
+      onToolCall: (toolName: string, params: unknown) => {
         toolCalls.push(toolName);
-        Promise.resolve(context.onToolCall?.(toolName)).catch((error) => {
-          logWarn(
-            "streaming_tool_call_error",
-            {},
-            {
-              "error.message":
-                error instanceof Error ? error.message : String(error),
-              "gen_ai.tool.name": toolName,
-            },
-            "Failed to deliver tool call event to stream coordinator",
-          );
-        });
+        Promise.resolve(context.onToolCall?.(toolName, params)).catch(
+          (error) => {
+            logWarn(
+              "streaming_tool_call_error",
+              {},
+              {
+                "error.message":
+                  error instanceof Error ? error.message : String(error),
+                "gen_ai.tool.name": toolName,
+              },
+              "Failed to deliver tool call event to stream coordinator",
+            );
+          },
+        );
       },
     };
     const baseAgentTools = createAgentTools(

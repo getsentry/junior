@@ -28,7 +28,7 @@ export function createAgentTools(
   capabilityRuntime?: SkillCapabilityRuntime,
   pluginAuthOrchestration?: PluginAuthOrchestration,
   hooks?: {
-    onToolCall?: (toolName: string) => void;
+    onToolCall?: (toolName: string, params: unknown) => void;
   },
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
@@ -43,7 +43,7 @@ export function createAgentTools(
           ? toolCallId
           : undefined;
       const toolArgumentsAttribute = serializeGenAiAttribute(params);
-      hooks?.onToolCall?.(toolName);
+      hooks?.onToolCall?.(toolName, params);
       const traceToolContext = {
         ...spanContext,
         conversationId: spanContext.conversationId,

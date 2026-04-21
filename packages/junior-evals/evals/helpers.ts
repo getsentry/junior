@@ -122,7 +122,7 @@ function hasAssistantStatusPending(result: EvalResult): boolean {
 
 function collectExplicitProgressMessages(result: EvalResult): string[] {
   const explicitMessages: string[] = [];
-  const initialStatusByThread = new Map<string, string>();
+  const sawInitialStatusByThread = new Set<string>();
 
   for (const call of result.slackAdapter.statusCalls) {
     const threadKey = `${call.channelId}:${call.threadTs}`;
@@ -134,18 +134,19 @@ function collectExplicitProgressMessages(result: EvalResult): string[] {
     if (!text) {
       continue;
     }
-    if (!initialStatusByThread.has(threadKey)) {
-      initialStatusByThread.set(threadKey, text);
+    if (!sawInitialStatusByThread.has(threadKey)) {
+      sawInitialStatusByThread.add(threadKey);
       continue;
     }
-    if (initialStatusByThread.get(threadKey) === text) {
+    if (loadingMessages.length !== 1) {
       continue;
     }
-    if (loadingMessages.length !== 1 || loadingMessages[0] !== text) {
+    const message = loadingMessages[0];
+    if (!message) {
       continue;
     }
-    if (!explicitMessages.includes(text)) {
-      explicitMessages.push(text);
+    if (!explicitMessages.includes(message)) {
+      explicitMessages.push(message);
     }
   }
 

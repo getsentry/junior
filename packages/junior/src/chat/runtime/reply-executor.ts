@@ -50,6 +50,7 @@ import {
   isVisionEnabled,
 } from "@/chat/services/vision-context";
 import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
+import { buildToolProgressStatus } from "@/chat/runtime/tool-progress";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
@@ -252,6 +253,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           threadTs: assistantThreadContext?.threadTs,
           getSlackAdapter: deps.getSlackAdapter,
         });
+        let hasExplicitProgress = false;
         let beforeFirstResponsePostCalled = false;
         const beforeFirstResponsePost = async (): Promise<void> => {
           if (beforeFirstResponsePostCalled) {
@@ -349,7 +351,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await persistThreadState(thread, { artifacts });
             },
             threadParticipants,
-            onStatus: (nextStatus) => status.update(nextStatus),
+            onStatus: (nextStatus) => {
+              hasExplicitProgress = true;
+              status.update(nextStatus);
+            },
+            onToolCall: (toolName, params) => {
+              if (hasExplicitProgress || toolName === "reportProgress") {
+                return;
+              }
+              const nextStatus = buildToolProgressStatus(toolName, params);
+              if (!nextStatus) {
+                return;
+              }
+              status.update(nextStatus);
+            },
           });
           const diagnosticsContext = {
             slackThreadId: threadId,

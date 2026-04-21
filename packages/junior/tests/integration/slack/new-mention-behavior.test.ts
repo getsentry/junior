@@ -122,6 +122,65 @@ describe("Slack behavior: new mention", () => {
     });
   });
 
+  it("derives a concrete progress phase from tool calls before the final reply", async () => {
+    const slackAdapter = new FakeSlackAdapter();
+    const { slackRuntime } = createTestChatRuntime({
+      slackAdapter,
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (_prompt, context) => {
+            await context?.onToolCall?.("webFetch", {
+              url: "https://docs.slack.dev/ai/developing-agents/",
+            });
+            await new Promise((resolve) => setTimeout(resolve, 1300));
+            return {
+              text: "Across the provided Slack docs, agents use assistant status while work is in flight and post only finalized thread replies.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: ["webFetch"],
+                toolErrorCount: 0,
+                toolResultCount: 1,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_STATUS:1700002500.000",
+    });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-status-tool-progress",
+        text: "<@U_APP> summarize these docs",
+        isMention: true,
+        threadId: thread.id,
+      }),
+    );
+
+    expect(slackAdapter.statusCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channelId: "C_STATUS",
+          threadTs: "1700002500.000",
+          text: "is working on your request...",
+          loadingMessages: ["Reading docs.slack.dev"],
+        }),
+      ]),
+    );
+    expect(slackAdapter.statusCalls.at(-1)).toEqual({
+      channelId: "C_STATUS",
+      threadTs: "1700002500.000",
+      text: "",
+      loadingMessages: undefined,
+    });
+  });
+
   it("deletes redundant reply and clears status for reaction-only turn", async () => {
     const slackAdapter = new FakeSlackAdapter();
     const { slackRuntime } = createTestChatRuntime({
