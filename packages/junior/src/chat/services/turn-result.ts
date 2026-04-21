@@ -1,7 +1,7 @@
 import type { FileUpload } from "chat";
-import { botConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
 import type { LogContext } from "@/chat/logging";
+import type { TurnExecutionProfile } from "@/chat/services/turn-execution-profile";
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
   buildReplyDeliveryPlan,
@@ -27,9 +27,11 @@ export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
   durationMs?: number;
   errorMessage?: string;
+  executionProfileSource?: TurnExecutionProfile["source"];
   providerError?: unknown;
   modelId: string;
   outcome: "success" | "execution_failure" | "provider_error";
+  reasoningEffort?: TurnExecutionProfile["reasoningEffort"];
   stopReason?: string;
   toolCalls: string[];
   toolErrorCount: number;
@@ -62,6 +64,7 @@ export interface TurnResultInput {
   shouldTrace: boolean;
   spanContext: LogContext;
   usage?: AgentTurnUsage;
+  executionProfile: TurnExecutionProfile;
   correlation?: {
     threadId?: string;
     requesterId?: string;
@@ -85,6 +88,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     shouldTrace,
     spanContext,
     usage,
+    executionProfile,
     correlation,
     assistantUserName,
   } = input;
@@ -129,7 +133,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
         slackChannelId: correlation?.channelId,
         runId: correlation?.runId,
         assistantUserName,
-        modelId: botConfig.modelId,
+        modelId: executionProfile.modelId,
       },
       {
         "app.ai.tool_results": toolResults.length,
@@ -204,8 +208,10 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
 
   const resolvedDiagnostics: AgentTurnDiagnostics = {
     outcome: resolvedOutcome,
-    modelId: botConfig.modelId,
+    modelId: executionProfile.modelId,
     assistantMessageCount: assistantMessages.length,
+    executionProfileSource: executionProfile.source,
+    reasoningEffort: executionProfile.reasoningEffort,
     toolCalls,
     toolResultCount: toolResults.length,
     toolErrorCount,

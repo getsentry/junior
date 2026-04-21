@@ -357,7 +357,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             slackChannelId: channelId,
             runId,
             assistantUserName: botConfig.userName,
-            modelId: botConfig.modelId,
+            modelId: reply.diagnostics.modelId,
           };
           const diagnosticsAttributes = {
             "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
@@ -369,6 +369,17 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
             "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
             "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
+            ...(reply.diagnostics.reasoningEffort
+              ? {
+                  "app.ai.reasoning_effort": reply.diagnostics.reasoningEffort,
+                }
+              : {}),
+            ...(reply.diagnostics.executionProfileSource
+              ? {
+                  "app.ai.execution_profile_source":
+                    reply.diagnostics.executionProfileSource,
+                }
+              : {}),
             ...(reply.diagnostics.stopReason
               ? {
                   "gen_ai.response.finish_reasons": [

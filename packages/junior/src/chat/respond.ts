@@ -42,6 +42,7 @@ import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
+  completeObject,
   getPiGatewayApiKeyOverride,
   resolveGatewayModel,
 } from "@/chat/pi/client";
@@ -74,6 +75,11 @@ import {
   type AssistantReply,
   type AgentTurnDiagnostics,
 } from "@/chat/services/turn-result";
+import {
+  selectTurnExecutionProfile,
+  toAgentThinkingLevel,
+  type TurnExecutionProfile,
+} from "@/chat/services/turn-execution-profile";
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
   loadTurnCheckpoint,
@@ -201,6 +207,7 @@ export async function generateAssistantReply(
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
   let turnUsage: AgentTurnUsage | undefined;
+  let executionProfile: TurnExecutionProfile | undefined;
 
   const getSandboxMetadata = () =>
     sandboxExecutor
@@ -420,6 +427,34 @@ export async function generateAssistantReply(
       }
     }
 
+    executionProfile = await selectTurnExecutionProfile({
+      activeSkillNames: activeSkills.map((skill) => skill.name),
+      attachmentCount: context.userAttachments?.length,
+      completeObject,
+      conversationContext: context.conversationContext,
+      context: {
+        threadId: context.correlation?.threadId,
+        channelId: context.correlation?.channelId,
+        requesterId: context.correlation?.requesterId,
+        runId: context.correlation?.runId,
+      },
+      fastModelId: botConfig.fastModelId,
+      messageText: userInput,
+      modelId: botConfig.modelId,
+    });
+    spanContext.modelId = executionProfile.modelId;
+    setSpanAttributes({
+      "gen_ai.request.model": executionProfile.modelId,
+      "app.ai.reasoning_effort": executionProfile.reasoningEffort,
+      "app.ai.execution_profile_source": executionProfile.source,
+      "app.ai.execution_profile_reason": executionProfile.reason,
+      ...(executionProfile.confidence !== undefined
+        ? {
+            "app.ai.execution_profile_confidence": executionProfile.confidence,
+          }
+        : {}),
+    });
+
     const userTurnText = buildUserTurnText(
       userInput,
       context.conversationContext,
@@ -514,7 +549,7 @@ export async function generateAssistantReply(
       slackChannelId: context.correlation?.channelId,
       runId: context.correlation?.runId,
       assistantUserName: context.assistant?.userName,
-      modelId: botConfig.modelId,
+      modelId: executionProfile.modelId,
     });
 
     // ── Tool creation ────────────────────────────────────────────────
@@ -716,7 +751,8 @@ export async function generateAssistantReply(
       getApiKey: () => getPiGatewayApiKeyOverride(),
       initialState: {
         systemPrompt: baseInstructions,
-        model: resolveGatewayModel(botConfig.modelId),
+        model: resolveGatewayModel(executionProfile.modelId),
+        thinkingLevel: toAgentThinkingLevel(executionProfile.reasoningEffort),
         tools: agentTools,
       },
     });
@@ -813,7 +849,14 @@ export async function generateAssistantReply(
                 {
                   "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
                   "gen_ai.operation.name": "invoke_agent",
-                  "gen_ai.request.model": botConfig.modelId,
+                  "gen_ai.request.model":
+                    executionProfile?.modelId ?? botConfig.modelId,
+                  ...(executionProfile
+                    ? {
+                        "app.ai.reasoning_effort":
+                          executionProfile.reasoningEffort,
+                      }
+                    : {}),
                   "app.ai.turn_timeout_ms": botConfig.turnTimeoutMs,
                 },
                 "Agent turn timed out and was aborted",
@@ -868,7 +911,8 @@ export async function generateAssistantReply(
         {
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
           "gen_ai.operation.name": "invoke_agent",
-          "gen_ai.request.model": botConfig.modelId,
+          "gen_ai.request.model": executionProfile.modelId,
+          "app.ai.reasoning_effort": executionProfile.reasoningEffort,
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }
             : {}),
@@ -912,6 +956,7 @@ export async function generateAssistantReply(
       shouldTrace,
       spanContext,
       usage: turnUsage,
+      executionProfile,
       correlation: context.correlation,
       assistantUserName: context.assistant?.userName,
     });
@@ -930,7 +975,7 @@ export async function generateAssistantReply(
           channelId: context.correlation?.channelId,
           runId: context.correlation?.runId,
           assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId,
+          modelId: executionProfile?.modelId ?? botConfig.modelId,
         },
       });
       if (checkpoint) {
@@ -967,7 +1012,7 @@ export async function generateAssistantReply(
           channelId: context.correlation?.channelId,
           runId: context.correlation?.runId,
           assistantUserName: context.assistant?.userName,
-          modelId: botConfig.modelId,
+          modelId: executionProfile?.modelId ?? botConfig.modelId,
         },
       });
       throw new RetryableTurnError(
@@ -996,7 +1041,7 @@ export async function generateAssistantReply(
         slackChannelId: context.correlation?.channelId,
         runId: context.correlation?.runId,
         assistantUserName: context.assistant?.userName,
-        modelId: botConfig.modelId,
+        modelId: executionProfile?.modelId ?? botConfig.modelId,
       },
       {},
       "generateAssistantReply failed",
@@ -1008,8 +1053,14 @@ export async function generateAssistantReply(
       ...getSandboxMetadata(),
       diagnostics: {
         outcome: "provider_error",
-        modelId: botConfig.modelId,
+        modelId: executionProfile?.modelId ?? botConfig.modelId,
         assistantMessageCount: 0,
+        ...(executionProfile
+          ? {
+              executionProfileSource: executionProfile.source,
+              reasoningEffort: executionProfile.reasoningEffort,
+            }
+          : {}),
         toolCalls: [],
         toolResultCount: 0,
         toolErrorCount: 0,

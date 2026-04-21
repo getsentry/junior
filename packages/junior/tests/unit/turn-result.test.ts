@@ -10,6 +10,13 @@ vi.mock("@/chat/logging", async (importOriginal) => ({
 
 import { buildTurnResult } from "@/chat/services/turn-result";
 
+const executionProfile = {
+  modelId: "openai/gpt-5.4",
+  reasoningEffort: "medium" as const,
+  reason: "test",
+  source: "heuristic" as const,
+};
+
 describe("buildTurnResult", () => {
   beforeEach(() => {
     logWarn.mockClear();
@@ -42,6 +49,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      executionProfile,
     });
 
     expect(reply.text).toBe(
@@ -76,6 +84,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      executionProfile,
     });
 
     expect(reply.text).toBe(
@@ -111,6 +120,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      executionProfile,
     });
 
     expect(reply.text).toBe("Here is the actual summary.");
@@ -135,6 +145,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      executionProfile,
     });
 
     expect(reply.text).toBe("");
@@ -168,6 +179,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      executionProfile,
     });
 
     expect(reply.text).toBe("Handled it.");
@@ -196,6 +208,7 @@ describe("buildTurnResult", () => {
       generatedFileCount: 0,
       shouldTrace: false,
       spanContext: {},
+      executionProfile,
       usage: {
         inputTokens: 321,
         outputTokens: 144,
