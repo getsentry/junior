@@ -73,7 +73,7 @@ After scaffolding:
 1. Run `cd my-bot && pnpm install`.
 2. Fill in the required values from `.env.example`.
 3. Run `pnpm dev`.
-4. Check `http://localhost:3000/api/health`.
+4. Check `http://localhost:3000/health`.
 
 For the complete setup flow, continue with [Quickstart](/start-here/quickstart/).
 

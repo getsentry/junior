@@ -11,16 +11,19 @@ related:
 
 ## `@sentry/junior` (via `createApp()`)
 
-The Hono app created by `createApp()` mounts all routes under `/api`.
+The Hono app created by `createApp()` mounts a mix of root-level and `/api` routes.
 
 Handled `GET` routes:
 
-- `/api/health`
+- `/`
+- `/health`
+- `/api/info`
 - `/api/oauth/callback/:provider`
 - `/api/oauth/callback/mcp/:provider`
 
 Handled `POST` routes:
 
+- `/api/internal/turn-resume`
 - `/api/webhooks/:platform` (Slack path is `/api/webhooks/slack`)
 
 ## Expected behavior
