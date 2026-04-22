@@ -10,7 +10,7 @@ describe("buildSlackReplyFooter", () => {
       buildSlackReplyFooter({
         conversationId: "slack:C123:1700000000.000100",
         durationMs: 842,
-        traceId: "0123456789abcdef0123456789abcdef",
+        thinkingLevel: "medium",
         usage: {
           totalTokens: 1234,
         },
@@ -30,8 +30,8 @@ describe("buildSlackReplyFooter", () => {
           value: "842ms",
         },
         {
-          label: "Trace",
-          value: "0123456789abcdef0123456789abcdef",
+          label: "Thinking",
+          value: "medium",
         },
       ],
     });
@@ -83,7 +83,7 @@ describe("buildSlackReplyBlocks", () => {
     const footer = buildSlackReplyFooter({
       conversationId: "slack:C123:1700000000.000100",
       durationMs: 1250,
-      traceId: "trace_123",
+      thinkingLevel: "high",
       usage: {
         inputTokens: 400,
         outputTokens: 250,
@@ -115,7 +115,7 @@ describe("buildSlackReplyBlocks", () => {
           },
           {
             type: "mrkdwn",
-            text: "*Trace:* trace_123",
+            text: "*Thinking:* high",
           },
         ],
       },

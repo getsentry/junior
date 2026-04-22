@@ -15,6 +15,7 @@ async function createRuntime(
 ) {
   process.env = {
     ...ORIGINAL_ENV,
+    AI_VISION_MODEL: "",
     SLACK_BOT_TOKEN: "",
     SLACK_BOT_USER_TOKEN: "",
     ...env,

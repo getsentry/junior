@@ -165,10 +165,6 @@ describe("Slack contract: edited-message reply delivery", () => {
                     "*ID:* slack:D12345:1700000100.000100",
                   ),
                 }),
-                expect.objectContaining({
-                  type: "mrkdwn",
-                  text: expect.stringContaining("*Trace:* "),
-                }),
               ]),
             },
           ],

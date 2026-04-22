@@ -3,7 +3,6 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
-  getActiveTraceId,
   logException,
   logInfo,
   logWarn,
@@ -447,7 +446,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const replyFooter = buildSlackReplyFooter({
             conversationId,
             durationMs: reply.diagnostics.durationMs,
-            traceId: getActiveTraceId(),
+            thinkingLevel: reply.diagnostics.thinkingLevel,
             usage: reply.diagnostics.usage,
           });
           const shouldUseSlackFooter =

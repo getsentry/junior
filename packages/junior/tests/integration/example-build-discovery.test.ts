@@ -25,6 +25,7 @@ function getExamplePluginPackages(): string[] {
 function buildJuniorPackage(): void {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
+    CI: "true",
     JUNIOR_SKIP_SNAPSHOT: "1",
   };
   delete env.JUNIOR_EXTRA_PLUGIN_ROOTS;

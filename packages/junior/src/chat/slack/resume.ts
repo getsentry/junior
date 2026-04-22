@@ -1,6 +1,5 @@
 import { botConfig } from "@/chat/config";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { getActiveTraceId } from "@/chat/logging";
 import {
   generateAssistantReply,
   type AssistantReply,
@@ -226,7 +225,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     const footer = buildSlackReplyFooter({
       conversationId: args.replyContext?.correlation?.conversationId ?? lockKey,
       durationMs: reply.diagnostics.durationMs,
-      traceId: getActiveTraceId(),
+      thinkingLevel: reply.diagnostics.thinkingLevel,
       usage: reply.diagnostics.usage,
     });
     await postSlackApiReplyPosts({
