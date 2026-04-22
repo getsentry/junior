@@ -16,7 +16,7 @@ interface SlackContextBlock {
   type: "context";
 }
 
-type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
+export type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
 
 interface SlackReplyFooterItem {
   label: string;
