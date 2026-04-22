@@ -83,7 +83,7 @@ function resolveTotalTokens(
 export function buildSlackReplyFooter(args: {
   conversationId?: string;
   durationMs?: number;
-  traceId?: string;
+  thinkingLevel?: string;
   usage?: AgentTurnUsage;
 }): SlackReplyFooter | undefined {
   const items: SlackReplyFooterItem[] = [];
@@ -112,11 +112,11 @@ export function buildSlackReplyFooter(args: {
     });
   }
 
-  const traceId = args.traceId?.trim();
-  if (traceId) {
+  const thinkingLevel = args.thinkingLevel?.trim();
+  if (thinkingLevel) {
     items.push({
-      label: "Trace",
-      value: traceId,
+      label: "Thinking",
+      value: thinkingLevel,
     });
   }
 
