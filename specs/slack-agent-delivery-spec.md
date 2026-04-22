@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-04-20
+- Last Edited: 2026-04-22
 
 ## Changelog
 
@@ -17,6 +17,7 @@
 - 2026-04-19: Removed stale references to typed status kinds and documented explicit progress as free-form rendered text.
 - 2026-04-20: Strengthened the tool-backed progress policy to require early explicit progress for non-trivial turns and documented concrete phase-label guidance.
 - 2026-04-20: Clarified that only explicit `reportProgress` updates replace generic loading messages; ordinary tool calls must not synthesize progress phases.
+- 2026-04-22: Updated finalized reply footer metadata examples to reflect the displayed thinking-level bucket instead of the active trace ID.
 
 ## Status
 
@@ -151,7 +152,7 @@ Current rules:
 5. Persisted assistant conversation state must reflect the same finalized reply content the user saw, not provisional pre-tool text.
 6. Reply text must be rendered through the shared Slack output translator before delivery; raw Slack API writers do not own markdown translation rules.
 7. When Junior adds reply footer metadata, it attaches that metadata as a Slack `context` block on the final text chunk only, while keeping the main reply text as the top-level fallback.
-8. Footer metadata is derived from structured reply diagnostics and correlation state. Conversation ID, trace ID, token totals, and turn duration may be shown when available; footer rendering must not scrape logs or spans after the fact.
+8. Footer metadata is derived from structured reply diagnostics and correlation state. Conversation ID, selected thinking level, token totals, and turn duration may be shown when available; footer rendering must not scrape logs or spans after the fact.
 9. Footer metadata is not an assistant-status surface and must not be used to convey in-flight progress.
 
 This is intentional. Slack-native text streaming may still exist as an adapter capability, but it is not part of Junior's correctness contract.

@@ -1,24 +1,32 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { persistAuthPauseCheckpoint } from "@/chat/services/turn-checkpoint";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
-import {
-  getAgentTurnSessionCheckpoint,
-  upsertAgentTurnSessionCheckpoint,
-} from "@/chat/state/turn-session-store";
+
+const ORIGINAL_ENV = { ...process.env };
 
 describe("persistAuthPauseCheckpoint", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env = {
+      ...ORIGINAL_ENV,
+      JUNIOR_STATE_ADAPTER: "memory",
+    };
+    vi.resetModules();
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
   });
 
   afterEach(async () => {
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_STATE_ADAPTER;
+    vi.resetModules();
+    process.env = { ...ORIGINAL_ENV };
   });
 
   it("reuses the latest stored transcript when the auth pause captured no messages", async () => {
+    const { persistAuthPauseCheckpoint } =
+      await import("@/chat/services/turn-checkpoint");
+    const { getAgentTurnSessionCheckpoint, upsertAgentTurnSessionCheckpoint } =
+      await import("@/chat/state/turn-session-store");
+
     const priorMessages: AgentMessage[] = [
       {
         role: "user",

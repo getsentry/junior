@@ -1,3 +1,4 @@
+import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 
 interface SlackMrkdwnTextObject {
@@ -15,9 +16,9 @@ interface SlackContextBlock {
   type: "context";
 }
 
-export type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
+type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
 
-export interface SlackReplyFooterItem {
+interface SlackReplyFooterItem {
   label: string;
   value: string;
 }
@@ -83,7 +84,7 @@ function resolveTotalTokens(
 export function buildSlackReplyFooter(args: {
   conversationId?: string;
   durationMs?: number;
-  thinkingLevel?: string;
+  thinkingLevel?: TurnThinkingSelection["thinkingLevel"];
   usage?: AgentTurnUsage;
 }): SlackReplyFooter | undefined {
   const items: SlackReplyFooterItem[] = [];
@@ -112,11 +113,10 @@ export function buildSlackReplyFooter(args: {
     });
   }
 
-  const thinkingLevel = args.thinkingLevel?.trim();
-  if (thinkingLevel) {
+  if (args.thinkingLevel) {
     items.push({
       label: "Thinking",
-      value: thinkingLevel,
+      value: args.thinkingLevel,
     });
   }
 

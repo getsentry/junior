@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-04-16
-- Last Edited: 2026-04-16
+- Last Edited: 2026-04-22
 
 ## Changelog
 
 - 2026-04-16: Initial canonical contract for Slack outbound operations and reply-text translation ownership.
 - 2026-04-16: Added support for finalized reply footers rendered as Slack context blocks with top-level text fallbacks.
+- 2026-04-22: Clarified that finalized reply footers may include the selected thinking-level bucket as structured reply metadata.
 
 ## Status
 
@@ -66,7 +67,7 @@ Current rules:
 6. Slack message posts use `text` with `mrkdwn` enabled; callers do not switch between competing text fields ad hoc.
 7. When a caller supplies Slack blocks, outbound posting still includes the top-level `text` fallback for notifications and accessibility.
 8. Finalized reply footers that show correlation or diagnostic metadata are rendered as Slack `context` blocks attached through the shared outbound boundary, not assembled ad hoc by callers.
-9. Footer values such as token counts and turn duration are passed as structured reply diagnostics into delivery. Outbound rendering formats those values for Slack; it does not derive them from tracing/logging side effects.
+9. Footer values such as token counts, turn duration, and the selected thinking-level bucket are passed as structured reply diagnostics into delivery. Outbound rendering formats those values for Slack; it does not derive them from tracing/logging side effects.
 
 ### 4. Ephemeral Message Contract
 
