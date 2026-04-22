@@ -1,4 +1,6 @@
+import { getModel } from "@mariozechner/pi-ai";
 import { toOptionalTrimmed } from "@/chat/optional-string";
+import { toGatewayModelId } from "@/chat/pi/client";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
@@ -101,16 +103,41 @@ function parseLoadingMessages(rawValue: string | undefined): string[] {
   });
 }
 
+const DEFAULT_MODEL_ID = "openai/gpt-5.4" as const;
+const DEFAULT_FAST_MODEL_ID = "openai/gpt-5.4-mini" as const;
+
+// Compile-time assertions: `getModel`'s second generic is constrained to
+// `keyof (typeof MODELS)[TProvider]`, so passing a stale literal here becomes
+// a TypeScript error the same day pi-ai's catalog falls behind a hard-coded
+// default. These are also cheap registry lookups at module load, but the
+// value is the type check — runtime validation of env overrides happens in
+// `resolveModelId` below via `toGatewayModelId`.
+getModel("vercel-ai-gateway", DEFAULT_MODEL_ID);
+getModel("vercel-ai-gateway", DEFAULT_FAST_MODEL_ID);
+
+function resolveModelId(raw: string | undefined, fallback: string): string {
+  const trimmed = raw?.trim();
+  return trimmed ? toGatewayModelId(trimmed) : fallback;
+}
+
+function resolveOptionalModelId(raw: string | undefined): string | undefined {
+  const trimmed = toOptionalTrimmed(raw);
+  return trimmed === undefined ? undefined : toGatewayModelId(trimmed);
+}
+
 function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   const functionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
 
   return {
     userName: env.JUNIOR_BOT_NAME ?? "junior",
-    modelId: env.AI_MODEL ?? "openai/gpt-5.4",
-    fastModelId: env.AI_FAST_MODEL ?? env.AI_MODEL ?? "openai/gpt-5.4-mini",
+    modelId: resolveModelId(env.AI_MODEL, DEFAULT_MODEL_ID),
+    fastModelId: resolveModelId(
+      env.AI_FAST_MODEL ?? env.AI_MODEL,
+      DEFAULT_FAST_MODEL_ID,
+    ),
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
-    visionModelId: toOptionalTrimmed(env.AI_VISION_MODEL),
+    visionModelId: resolveOptionalModelId(env.AI_VISION_MODEL),
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,

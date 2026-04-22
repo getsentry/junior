@@ -129,6 +129,19 @@ function parseJsonCandidate(text: string): unknown {
   }
 }
 
+/**
+ * Narrow an arbitrary runtime string (typically from an env var) to a
+ * registered gateway model id. Throws fast at the config boundary so stale
+ * env overrides fail at startup instead of deep inside a turn.
+ */
+export function toGatewayModelId(modelId: string): string {
+  const models = getModels(GATEWAY_PROVIDER);
+  if (!models.some((model: Model<any>) => model.id === modelId)) {
+    throw new Error(`Unknown AI Gateway model id: ${modelId}`);
+  }
+  return modelId;
+}
+
 export function resolveGatewayModel(modelId: string): Model<any> {
   const models = getModels(GATEWAY_PROVIDER);
   const matched = models.find((model: Model<any>) => model.id === modelId);
