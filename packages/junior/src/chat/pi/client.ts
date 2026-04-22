@@ -129,9 +129,15 @@ function parseJsonCandidate(text: string): unknown {
   }
 }
 
+/**
+ * Look up a gateway model by id. Throws `Unknown AI Gateway model id: …` if
+ * the id is not in pi-ai's registry — callers at the config boundary can use
+ * this to fail fast at startup instead of mid-turn.
+ */
 export function resolveGatewayModel(modelId: string): Model<any> {
-  const models = getModels(GATEWAY_PROVIDER);
-  const matched = models.find((model: Model<any>) => model.id === modelId);
+  const matched = getModels(GATEWAY_PROVIDER).find(
+    (model: Model<any>) => model.id === modelId,
+  );
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
   }

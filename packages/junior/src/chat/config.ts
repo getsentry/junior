@@ -1,4 +1,6 @@
+import { getModel } from "@mariozechner/pi-ai";
 import { toOptionalTrimmed } from "@/chat/optional-string";
+import { resolveGatewayModel } from "@/chat/pi/client";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
@@ -101,16 +103,33 @@ function parseLoadingMessages(rawValue: string | undefined): string[] {
   });
 }
 
+// Compile-time assertion: `getModel`'s second generic is constrained to
+// `keyof (typeof MODELS)[TProvider]`, so a stale default becomes a tsc error.
+const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "openai/gpt-5.4").id;
+const DEFAULT_FAST_MODEL_ID = getModel(
+  "vercel-ai-gateway",
+  "openai/gpt-5.4-mini",
+).id;
+
+function validateGatewayModelId(raw: string | undefined): string | undefined {
+  const trimmed = toOptionalTrimmed(raw);
+  if (trimmed === undefined) return undefined;
+  resolveGatewayModel(trimmed);
+  return trimmed;
+}
+
 function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
   const functionMaxDurationSeconds = resolveFunctionMaxDurationSeconds(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
 
   return {
     userName: env.JUNIOR_BOT_NAME ?? "junior",
-    modelId: env.AI_MODEL ?? "openai/gpt-5.4",
-    fastModelId: env.AI_FAST_MODEL ?? env.AI_MODEL ?? "openai/gpt-5.4-mini",
+    modelId: validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID,
+    fastModelId:
+      validateGatewayModelId(env.AI_FAST_MODEL ?? env.AI_MODEL) ??
+      DEFAULT_FAST_MODEL_ID,
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
-    visionModelId: toOptionalTrimmed(env.AI_VISION_MODEL),
+    visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
