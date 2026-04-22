@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-04-16
-- Last Edited: 2026-04-16
+- Last Edited: 2026-04-19
 
 ## Changelog
 
 - 2026-04-16: Initial canonical contract for Slack outbound operations and reply-text translation ownership.
 - 2026-04-16: Added support for finalized reply footers rendered as Slack context blocks with top-level text fallbacks.
+- 2026-04-19: Documented control-character escaping and standardized the shared raw-Web-API finalized-reply envelope on section/context blocks with native table upgrades for simple single-post tables.
 
 ## Status
 
@@ -50,9 +51,11 @@ Slack outbound behavior is split into two explicit boundaries:
 Current rules:
 
 1. Prompting should target Slack-friendly markdown, not generic full CommonMark.
-2. `slack/output.ts` is the only canonical place to normalize line endings, block spacing, and reply chunk boundaries for Slack replies.
-3. Continuation markers and interruption markers are delivery-time annotations owned by `slack/output.ts`, not model-authored text.
-4. If future markdown-to-`mrkdwn` adaptations are needed, they must be added in `slack/output.ts` rather than scattered across delivery callers.
+2. `slack/output.ts` plus `slack/mrkdwn.ts` are the only canonical place to normalize line endings, block spacing, known CommonMark/GFM formatting failures, and reply chunk boundaries for Slack replies.
+3. The output boundary may apply targeted deterministic repairs for high-frequency Slack-incompatible constructs such as `**bold**`, `~~strike~~`, `[label](url)`, markdown headings, simple pipe tables, and raw URLs wrapped in formatting delimiters.
+4. The output boundary must escape literal Slack control characters (`&`, `<`, `>`) in visible prose unless they are part of preserved Slack tokens or block-quote markers.
+5. Continuation markers and interruption markers are delivery-time annotations owned by `slack/output.ts`, not model-authored text.
+6. If future markdown-to-`mrkdwn` adaptations are needed, they must be added in the Slack output boundary rather than scattered across delivery callers.
 
 ### 3. Message Posting Contract
 
@@ -67,6 +70,7 @@ Current rules:
 7. When a caller supplies Slack blocks, outbound posting still includes the top-level `text` fallback for notifications and accessibility.
 8. Finalized reply footers that show correlation or diagnostic metadata are rendered as Slack `context` blocks attached through the shared outbound boundary, not assembled ad hoc by callers.
 9. Footer values such as token counts and turn duration are passed as structured reply diagnostics into delivery. Outbound rendering formats those values for Slack; it does not derive them from tracing/logging side effects.
+10. The shared raw-Web-API reply planner wraps each finalized text post in a `section` block with `expand: true`. The final text post may also attach a `context` footer block, and a one-post reply with one simple markdown table source may upgrade the body to a native Slack `table` block. In all cases, the top-level `text` fallback remains required.
 
 ### 4. Ephemeral Message Contract
 

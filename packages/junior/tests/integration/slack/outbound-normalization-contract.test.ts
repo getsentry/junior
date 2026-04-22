@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  buildSlackReplyBlocks,
-  buildSlackReplyFooter,
-} from "@/chat/slack/footer";
+import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import {
   addReactionToMessage,
   postSlackMessage,
   uploadFilesToThread,
 } from "@/chat/slack/outbound";
+import { buildSlackReplyBlocks } from "@/chat/slack/reply-blocks";
+import { postSlackApiReplyPosts } from "@/chat/slack/reply";
 import {
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
@@ -61,6 +60,7 @@ describe("Slack contract: outbound normalization", () => {
           blocks: [
             {
               type: "section",
+              expand: true,
               text: {
                 type: "mrkdwn",
                 text: "hello",
@@ -76,6 +76,140 @@ describe("Slack contract: outbound normalization", () => {
                 {
                   type: "mrkdwn",
                   text: "*Trace:* trace_123",
+                },
+              ],
+            },
+          ],
+        }),
+      }),
+    ]);
+  });
+
+  it("uses a native table block when raw API reply delivery includes a markdown table source", async () => {
+    await postSlackApiReplyPosts({
+      channelId: "slack:C123",
+      threadTs: "1700000000.000100",
+      posts: [
+        {
+          stage: "thread_reply",
+          text: [
+            "```",
+            "Service | Docs",
+            "------- | -------------------------------",
+            "Slack   | <https://docs.slack.dev/|Slack>",
+            "```",
+          ].join("\n"),
+          richSourceText: [
+            "| Service | Docs |",
+            "| --- | --- |",
+            "| Slack | [Slack](https://docs.slack.dev/) |",
+          ].join("\n"),
+        },
+      ],
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          text: [
+            "```",
+            "Service | Docs",
+            "------- | -------------------------------",
+            "Slack   | <https://docs.slack.dev/|Slack>",
+            "```",
+          ].join("\n"),
+          blocks: [
+            {
+              type: "table",
+              rows: [
+                [
+                  { type: "raw_text", text: "Service" },
+                  { type: "raw_text", text: "Docs" },
+                ],
+                [
+                  { type: "raw_text", text: "Slack" },
+                  {
+                    type: "rich_text",
+                    elements: [
+                      {
+                        type: "rich_text_section",
+                        elements: [
+                          {
+                            type: "link",
+                            url: "https://docs.slack.dev/",
+                            text: "Slack",
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              ],
+            },
+          ],
+        }),
+      }),
+    ]);
+  });
+
+  it("wraps each raw API text chunk in a section block and keeps the footer on the final chunk", async () => {
+    const footer = buildSlackReplyFooter({
+      conversationId: "slack:C123:1700000000.000100",
+    });
+
+    await postSlackApiReplyPosts({
+      channelId: "slack:C123",
+      threadTs: "1700000000.000100",
+      footer,
+      posts: [
+        {
+          stage: "thread_reply",
+          text: "first chunk",
+        },
+        {
+          stage: "thread_reply_continuation",
+          text: "second chunk",
+        },
+      ],
+    });
+
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          text: "first chunk",
+          blocks: [
+            {
+              type: "section",
+              expand: true,
+              text: {
+                type: "mrkdwn",
+                text: "first chunk",
+              },
+            },
+          ],
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          text: "second chunk",
+          blocks: [
+            {
+              type: "section",
+              expand: true,
+              text: {
+                type: "mrkdwn",
+                text: "second chunk",
+              },
+            },
+            {
+              type: "context",
+              elements: [
+                {
+                  type: "mrkdwn",
+                  text: "*ID:* slack:C123:1700000000.000100",
                 },
               ],
             },

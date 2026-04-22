@@ -1,36 +1,12 @@
 import type { AgentTurnUsage } from "@/chat/usage";
 
-interface SlackMrkdwnTextObject {
-  text: string;
-  type: "mrkdwn";
-}
-
-interface SlackSectionBlock {
-  text: SlackMrkdwnTextObject;
-  type: "section";
-}
-
-interface SlackContextBlock {
-  elements: SlackMrkdwnTextObject[];
-  type: "context";
-}
-
-export type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
-
-export interface SlackReplyFooterItem {
+interface SlackReplyFooterItem {
   label: string;
   value: string;
 }
 
 export interface SlackReplyFooter {
   items: SlackReplyFooterItem[];
-}
-
-function escapeSlackMrkdwn(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
 }
 
 function formatSlackTokenCount(value: number): string {
@@ -121,31 +97,4 @@ export function buildSlackReplyFooter(args: {
   }
 
   return items.length > 0 ? { items } : undefined;
-}
-
-/** Build Slack blocks for a finalized reply plus its optional metadata footer. */
-export function buildSlackReplyBlocks(
-  text: string,
-  footer: SlackReplyFooter | undefined,
-): SlackMessageBlock[] | undefined {
-  if (!text.trim() || !footer?.items.length) {
-    return undefined;
-  }
-
-  return [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text,
-      },
-    },
-    {
-      type: "context",
-      elements: footer.items.map((item) => ({
-        type: "mrkdwn",
-        text: `*${escapeSlackMrkdwn(item.label)}:* ${escapeSlackMrkdwn(item.value)}`,
-      })),
-    },
-  ];
 }

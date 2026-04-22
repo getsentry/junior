@@ -13,10 +13,14 @@ async function createRuntime(
   >[0],
   env: NodeJS.ProcessEnv = {},
 ) {
-  process.env = {
+  const nextEnv: NodeJS.ProcessEnv = {
     ...ORIGINAL_ENV,
     SLACK_BOT_TOKEN: "",
     SLACK_BOT_USER_TOKEN: "",
+  };
+  delete nextEnv.AI_VISION_MODEL;
+  process.env = {
+    ...nextEnv,
     ...env,
   };
   vi.resetModules();

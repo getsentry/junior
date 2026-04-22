@@ -7,13 +7,162 @@ import {
   slackOutputPolicy,
   splitSlackReplyText,
 } from "@/chat/slack/output";
-import { ensureBlockSpacing, renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
+import { renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
 
 describe("renderSlackMrkdwn", () => {
   it("normalizes line endings and block spacing for Slack replies", () => {
     expect(renderSlackMrkdwn("one\r\n- item a\n- item b\r\n\r\ntwo   ")).toBe(
       "one\n\n- item a\n- item b\n\ntwo",
     );
+  });
+
+  it("rewrites common CommonMark emphasis and links into Slack mrkdwn", () => {
+    expect(
+      renderSlackMrkdwn("**ready** ~~draft~~ [docs](https://docs.slack.dev/)"),
+    ).toBe("*ready* ~draft~ <https://docs.slack.dev/|docs>");
+  });
+
+  it("collapses triple-asterisk emphasis into Slack-safe bold", () => {
+    expect(renderSlackMrkdwn("***Summary***")).toBe("*Summary*");
+  });
+
+  it("preserves balanced parentheses in markdown link urls", () => {
+    expect(
+      renderSlackMrkdwn(
+        "[docs](https://en.wikipedia.org/wiki/Function_(mathematics))",
+      ),
+    ).toBe("<https://en.wikipedia.org/wiki/Function_(mathematics)|docs>");
+  });
+
+  it("rewrites reference-style markdown links and removes definitions", () => {
+    expect(
+      renderSlackMrkdwn(
+        [
+          "See [docs][slack].",
+          "",
+          '[slack]: https://docs.slack.dev/ "Slack Docs"',
+        ].join("\n"),
+      ),
+    ).toBe("See <https://docs.slack.dev/|docs>.");
+  });
+
+  it("rewrites markdown headings into bold section labels", () => {
+    expect(renderSlackMrkdwn("## Summary\nA short answer.")).toBe(
+      "*Summary*\n\nA short answer.",
+    );
+  });
+
+  it("keeps heading normalization from reintroducing double-asterisk bold", () => {
+    expect(renderSlackMrkdwn("## **Summary**\nA short answer.")).toBe(
+      "*Summary*\n\nA short answer.",
+    );
+  });
+
+  it("rewrites simple markdown tables as fenced code blocks", () => {
+    expect(
+      renderSlackMrkdwn(
+        [
+          "| Name | Score |",
+          "| --- | --- |",
+          "| Alpha | 10 |",
+          "| Beta | 7 |",
+        ].join("\n"),
+      ),
+    ).toBe(
+      [
+        "```",
+        "Name  | Score",
+        "----- | -----",
+        "Alpha | 10",
+        "Beta  | 7",
+        "```",
+      ].join("\n"),
+    );
+  });
+
+  it("keeps link cells intact when rewriting markdown tables", () => {
+    expect(
+      renderSlackMrkdwn(
+        [
+          "| Service | Docs |",
+          "| --- | --- |",
+          "| Slack | [Slack](https://docs.slack.dev/) |",
+        ].join("\n"),
+      ),
+    ).toBe(
+      [
+        "```",
+        "Service | Docs",
+        "------- | -------------------------------",
+        "Slack   | <https://docs.slack.dev/|Slack>",
+        "```",
+      ].join("\n"),
+    );
+  });
+
+  it("rewrites raw urls that are wrapped in formatting delimiters", () => {
+    expect(renderSlackMrkdwn("*https://docs.slack.dev/*")).toBe(
+      "<https://docs.slack.dev/|docs.slack.dev>",
+    );
+  });
+
+  it("leaves raw urls inside larger formatted prose untouched", () => {
+    expect(renderSlackMrkdwn("*https://docs.slack.dev/ more context*")).toBe(
+      "*https://docs.slack.dev/ more context*",
+    );
+  });
+
+  it("strips html comments outside code fences", () => {
+    expect(
+      renderSlackMrkdwn("Intro\n<!-- internal note -->\n## Summary\nDone"),
+    ).toBe("Intro\n\n*Summary*\n\nDone");
+  });
+
+  it("escapes dangling html comment openers after stripping comments", () => {
+    expect(renderSlackMrkdwn("Intro <!<!-- internal note -->-- outro")).toBe(
+      "Intro &lt;!-- outro",
+    );
+  });
+
+  it("preserves already-valid Slack links, mentions, and formatting", () => {
+    expect(
+      renderSlackMrkdwn("<https://docs.slack.dev/|docs> <@U123> *ready*"),
+    ).toBe("<https://docs.slack.dev/|docs> <@U123> *ready*");
+  });
+
+  it("escapes literal Slack control characters in prose", () => {
+    expect(renderSlackMrkdwn("1 < 2 & 3 > 2")).toBe("1 &lt; 2 &amp; 3 &gt; 2");
+  });
+
+  it("preserves block quotes and special Slack tokens while escaping prose", () => {
+    expect(
+      renderSlackMrkdwn(
+        "> quoted\n<!date^1713494400^{date_short}|Apr 19, 2026>\n<#C123>\n3 < 4",
+      ),
+    ).toBe(
+      "> quoted\n\n<!date^1713494400^{date_short}|Apr 19, 2026>\n\n<#C123>\n\n3 &lt; 4",
+    );
+  });
+
+  it("does not double-escape existing Slack entities", () => {
+    expect(renderSlackMrkdwn("Fish &amp; Chips &lt;3")).toBe(
+      "Fish &amp; Chips &lt;3",
+    );
+  });
+
+  it("does not rewrite markdown syntax inside code fences", () => {
+    const input = [
+      "```",
+      "## Summary",
+      "**ready**",
+      "[docs](https://docs.slack.dev/)",
+      "<!-- comment -->",
+      "| Name | Score |",
+      "| --- | --- |",
+      "```",
+    ].join("\n");
+
+    expect(renderSlackMrkdwn(input)).toBe(input);
   });
 });
 
@@ -183,52 +332,52 @@ describe("splitSlackReplyText", () => {
   });
 });
 
-describe("ensureBlockSpacing", () => {
+describe("renderSlackMrkdwn spacing", () => {
   it("inserts blank line between prose and list", () => {
-    expect(ensureBlockSpacing("done.\n- #37\n- #38")).toBe(
+    expect(renderSlackMrkdwn("done.\n- #37\n- #38")).toBe(
       "done.\n\n- #37\n- #38",
     );
   });
 
   it("preserves existing blank line between prose and list", () => {
-    expect(ensureBlockSpacing("done.\n\n- #37\n- #38")).toBe(
+    expect(renderSlackMrkdwn("done.\n\n- #37\n- #38")).toBe(
       "done.\n\n- #37\n- #38",
     );
   });
 
   it("keeps consecutive list items compact", () => {
-    expect(ensureBlockSpacing("- #37\n- #38")).toBe("- #37\n- #38");
+    expect(renderSlackMrkdwn("- #37\n- #38")).toBe("- #37\n- #38");
   });
 
   it("inserts blank line between prose lines", () => {
-    expect(ensureBlockSpacing("sentence one.\nsentence two.")).toBe(
+    expect(renderSlackMrkdwn("sentence one.\nsentence two.")).toBe(
       "sentence one.\n\nsentence two.",
     );
   });
 
   it("preserves code block contents", () => {
     const input = "text\n```\ncode\ncode\n```\ntext";
-    const result = ensureBlockSpacing(input);
+    const result = renderSlackMrkdwn(input);
     expect(result).toBe("text\n\n```\ncode\ncode\n```\n\ntext");
   });
 
   it("preserves already-spaced blocks", () => {
-    expect(ensureBlockSpacing("a\n\nb")).toBe("a\n\nb");
+    expect(renderSlackMrkdwn("a\n\nb")).toBe("a\n\nb");
   });
 
   it("inserts blank lines around list block within prose", () => {
-    expect(ensureBlockSpacing("done:\n* a\n* b\nfin.")).toBe(
+    expect(renderSlackMrkdwn("done:\n* a\n* b\nfin.")).toBe(
       "done:\n\n* a\n* b\n\nfin.",
     );
   });
 
   it("handles ordered list items", () => {
-    expect(ensureBlockSpacing("intro\n1. first\n2. second\nend")).toBe(
+    expect(renderSlackMrkdwn("intro\n1. first\n2. second\nend")).toBe(
       "intro\n\n1. first\n2. second\n\nend",
     );
   });
 
   it("handles bullet list with •", () => {
-    expect(ensureBlockSpacing("intro\n• a\n• b")).toBe("intro\n\n• a\n• b");
+    expect(renderSlackMrkdwn("intro\n• a\n• b")).toBe("intro\n\n• a\n• b");
   });
 });

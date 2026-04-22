@@ -127,6 +127,7 @@ interface ReplyExecutorDeps {
   services: ReplyExecutorServices;
 }
 
+/** Create the main turn executor that prepares context, runs the agent, and delivers the reply. */
 export function createReplyToThread(deps: ReplyExecutorDeps) {
   return async function replyToThread(
     thread: Thread,
@@ -450,8 +451,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             traceId: getActiveTraceId(),
             usage: reply.diagnostics.usage,
           });
-          const shouldUseSlackFooter =
-            Boolean(replyFooter) &&
+          const shouldUseSlackApiReplyDelivery =
             Boolean(channelId && threadTs) &&
             (thread.adapter as { name?: string } | undefined)?.name === "slack";
 
@@ -459,12 +459,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // completed after the visible reply has been accepted by Slack.
           if (plannedPosts.length > 0) {
             let sent: SentMessage | undefined;
-            if (shouldUseSlackFooter) {
+            if (shouldUseSlackApiReplyDelivery) {
               const slackChannelId = channelId;
               const slackThreadTs = threadTs;
               if (!slackChannelId || !slackThreadTs) {
                 throw new Error(
-                  "Slack footer delivery requires a concrete channel and thread timestamp",
+                  "Slack reply delivery requires a concrete channel and thread timestamp",
                 );
               }
 

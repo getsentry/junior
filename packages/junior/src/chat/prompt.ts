@@ -252,6 +252,45 @@ function baseSystemPrompt(): string {
   ].join("\n");
 }
 
+function buildSlackOutputContract(params: {
+  maxInlineChars: number;
+  maxInlineLines: number;
+}): string {
+  return [
+    `<output surface="slack" max_inline_chars="${params.maxInlineChars}" max_inline_lines="${params.maxInlineLines}">`,
+    "Your reply is delivered as plain Slack `mrkdwn` text. Slack `mrkdwn` is a strict, smaller syntax than CommonMark or GitHub-Flavored Markdown — anything outside the allow-list below renders as literal characters.",
+    "",
+    "Allowed mrkdwn (you may use these):",
+    "- `*bold*` — surround with single asterisks. Slack does NOT support `**bold**`; it renders the asterisks literally.",
+    "- `_italic_` — surround with single underscores.",
+    "- `~strike~` — surround with single tildes. Slack does NOT support `~~strike~~`.",
+    "- `` `inline code` `` and triple-backtick fenced code blocks for code, commands, and monospaced snippets.",
+    "- `> quoted text` at the start of a line for block quotes. A blank line ends the quote.",
+    "- `<https://example.com|Label>` for hyperlinks with a label. A bare `https://example.com` auto-links without a label. Slack does NOT support `[Label](https://example.com)` — it renders literally.",
+    "- `<@USERID>`, `<#CHANNELID>`, `<!subteam^TEAMID>` for user, channel, and group mentions. Use the raw IDs exposed elsewhere in this prompt.",
+    "- `- item` or `* item` at the start of a line for bullet lists. Numbered lists (`1. item`) render but indent awkwardly — prefer bullets.",
+    "- A bold label on its own line (`*Section*`) in place of markdown headings.",
+    "",
+    "Forbidden (do NOT emit these — they render as literal characters or broken formatting):",
+    "- Markdown tables using pipes and dashes (`| col | col |` / `|---|---|`). Slack renders the pipes verbatim. When you need tabular data, use short bulleted lists grouped by row, or a fenced code block with manually aligned columns.",
+    "- Markdown headings (`#`, `##`, `###`, and so on). Use a bold label on its own line instead.",
+    "- Markdown link syntax (`[label](url)`). Rewrite as `<url|label>` or a bare URL.",
+    "- CommonMark bold/strike doubles (`**bold**`, `~~strike~~`). Use the single-delimiter forms above.",
+    "- HTML tags, image embeds, and raw Slack Block Kit JSON.",
+    "",
+    "Other response rules:",
+    "- Keep responses brief and scannable. Lead with the answer; add detail only when depth is warranted.",
+    `- Prefer a single compact thread reply when the full answer comfortably fits within this inline budget (${params.maxInlineChars} chars / ${params.maxInlineLines} lines).`,
+    "- When canvas creation is available and a research or document-style answer would likely need continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to a short summary plus the canvas link.",
+    "- Typical canvas-first cases include long-form research summaries, timelines, bios or profiles, structured notes, plans, comparisons, and other reusable reference documents.",
+    "- Do not create a canvas for short factual answers that fit cleanly in one normal thread reply.",
+    "- For tool-heavy research, discovery, or source-checking requests, do not send an initial acknowledgement. Start the visible reply only once you can present the actual answer.",
+    "- Do not narrate tool execution or emit repeated status updates in the visible reply.",
+    "- End every turn with a single final user-facing response in the format above.",
+    "</output>",
+  ].join("\n");
+}
+
 function formatReferenceFilesSection(): string[] {
   const files = listReferenceFiles();
   if (files.length === 0) {
@@ -274,6 +313,7 @@ function formatReferenceFilesSection(): string[] {
   ];
 }
 
+/** Build the canonical system prompt from repo policy, runtime context, and active skill state. */
 export function buildSystemPrompt(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
@@ -562,25 +602,10 @@ export function buildSystemPrompt(params: {
         "- If no skill is a clear fit, continue with normal tool usage.",
       ].join("\n"),
     ),
-    renderTag(
-      "output-contract",
-      [
-        "Always produce output that follows this contract:",
-        `<output format="slack-mrkdwn" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`,
-        "- Use Slack-friendly markdown, not full CommonMark. Prefer bold section labels over markdown headings, and use bullets and short code blocks when helpful.",
-        "- Keep normal responses brief and scannable.",
-        "- If depth is needed, start with a concise summary and then provide fuller detail.",
-        "- Prefer a single compact thread reply when the full answer comfortably fits within this inline budget.",
-        "- When canvas creation is available and a research or document-style answer would likely need continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to a short summary plus the canvas link.",
-        "- Typical canvas-first cases include long-form research summaries, timelines, bios or profiles, structured notes, plans, comparisons, and other reusable reference documents.",
-        "- Do not create a canvas for short factual answers that fit cleanly in one normal thread reply.",
-        "- For tool-heavy research, discovery, or source-checking requests, do not send an initial acknowledgment. Start the visible reply only once you can present the actual answer.",
-        "- Do not narrate tool execution or repeated status updates in the visible reply.",
-        "- Avoid tables and markdown links like `[label](url)` unless explicitly requested. Prefer plain URLs or Slack-native entities when exact rendering matters.",
-        "- End every turn with a final user-facing markdown response.",
-        "</output>",
-      ].join("\n"),
-    ),
+    buildSlackOutputContract({
+      maxInlineChars: slackOutputPolicy.maxInlineChars,
+      maxInlineLines: slackOutputPolicy.maxInlineLines,
+    }),
     availableSkillsSection,
     activeSkillsSection,
     ...(activeToolsSection ? [activeToolsSection] : []),

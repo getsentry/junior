@@ -2,10 +2,8 @@ import { Buffer } from "node:buffer";
 import type { FileUpload } from "chat";
 import type { AssistantReply } from "@/chat/respond";
 import type { ReplyFileDelivery } from "@/chat/services/reply-delivery-plan";
-import {
-  buildSlackReplyBlocks,
-  type SlackReplyFooter,
-} from "@/chat/slack/footer";
+import type { SlackReplyFooter } from "@/chat/slack/footer";
+import { buildSlackReplyBlocks } from "@/chat/slack/reply-blocks";
 import { postSlackMessage, uploadFilesToThread } from "@/chat/slack/outbound";
 import {
   buildSlackOutputMessage,
@@ -19,6 +17,7 @@ export type PlannedSlackReplyStage =
 
 export interface PlannedSlackReplyPost {
   files?: FileUpload[];
+  richSourceText?: string;
   stage: PlannedSlackReplyStage;
   text: string;
 }
@@ -75,9 +74,12 @@ function buildTextPosts(args: {
   const chunks = splitSlackReplyText(args.text, {
     interrupted: args.interrupted,
   });
+  const richSourceText =
+    !args.interrupted && chunks.length === 1 ? args.text : undefined;
   return chunks.map((chunk, index) => ({
     text: chunk,
     ...(index === 0 && args.firstFiles ? { files: args.firstFiles } : {}),
+    ...(index === 0 && richSourceText ? { richSourceText } : {}),
     stage:
       index === 0
         ? (args.firstStage ?? "thread_reply")
@@ -217,13 +219,18 @@ export async function postSlackApiReplyPosts(args: {
     let messageTs: string | undefined;
     try {
       if (post.text.trim().length > 0) {
+        const blocks = buildSlackReplyBlocks(
+          post.text,
+          index === lastTextPostIndex ? args.footer : undefined,
+          {
+            richSourceText: post.richSourceText,
+          },
+        );
         const response = await postSlackMessage({
           channelId: args.channelId,
           threadTs: args.threadTs,
           text: post.text,
-          ...(index === lastTextPostIndex && args.footer
-            ? { blocks: buildSlackReplyBlocks(post.text, args.footer) }
-            : {}),
+          ...(blocks ? { blocks } : {}),
         });
         messageTs = response.ts;
         lastPostedMessageTs = response.ts;

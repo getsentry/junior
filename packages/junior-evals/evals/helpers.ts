@@ -61,7 +61,6 @@ const canvasSchema = z.object({
       "Initial markdown body written into the created Slack canvas during the turn",
     ),
 });
-
 const evalOutputSchema = z.object({
   assistant_posts: z
     .array(assistantPostSchema)
