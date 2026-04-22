@@ -18,6 +18,7 @@
 - 2026-04-20: Strengthened the tool-backed progress policy to require early explicit progress for non-trivial turns and documented concrete phase-label guidance.
 - 2026-04-20: Clarified that only explicit `reportProgress` updates replace generic loading messages; ordinary tool calls must not synthesize progress phases.
 - 2026-04-22: Updated finalized reply footer metadata examples to reflect the displayed thinking-level bucket instead of the active trace ID.
+- 2026-04-22: Required explicit progress messages to be written as proper sentence fragments (capitalized first letter, present-participle verb).
 
 ## Status
 
@@ -135,7 +136,7 @@ Design note:
    - Junior exposes an internal `reportProgress` tool for sparse explicit progress messages.
    - For every non-trivial turn, the assistant should call `reportProgress` early with the initial major work phase and again only when the major phase meaningfully changes.
    - Trivial turns may rely on the generic loading state and do not need explicit progress.
-   - Explicit progress messages should use concrete phase labels such as searching, reading, reviewing, or running checks rather than generic filler.
+   - Explicit progress messages should use concrete phase labels such as searching, reading, reviewing, or running checks rather than generic filler, and must be written as proper sentence fragments with a capitalized first letter and a present-participle verb (e.g. "Researching foo bar", not "researching foo bar").
    - Ordinary tool calls must not synthesize progress phases or override the generic loading-message rotation.
    - Footer metadata, when enabled, is a separate finalized-reply affordance and must not be treated as assistant progress.
 
