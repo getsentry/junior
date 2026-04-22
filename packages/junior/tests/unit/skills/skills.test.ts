@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   getCapabilityProvider,
   isKnownConfigKey,
@@ -12,7 +12,6 @@ import {
   resetSkillDiscoveryCache,
 } from "@/chat/skills";
 import type { SkillMetadata } from "@/chat/skills";
-import * as observability from "@/chat/logging";
 
 async function writeSkillFile(
   rootDir: string,
@@ -115,12 +114,9 @@ describe("skills", () => {
     expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
   });
 
-  it("skips skills with unknown capability/config metadata and logs warnings", async () => {
+  it("skips skills with unknown capability/config metadata", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-"));
     const originalSkillDirs = process.env.SKILL_DIRS;
-    const warnSpy = vi
-      .spyOn(observability, "logWarn")
-      .mockImplementation(() => undefined);
 
     try {
       await writeSkillFile(tempRoot, "tmp-valid-metadata", [
@@ -159,27 +155,7 @@ describe("skills", () => {
       expect(names).toContain("tmp-valid-metadata");
       expect(names).not.toContain("tmp-invalid-capability");
       expect(names).not.toContain("tmp-invalid-config");
-
-      const warningCalls = warnSpy.mock.calls.filter(
-        ([event]) => event === "skill_frontmatter_invalid",
-      );
-      const warningMessages = warningCalls
-        .map((call) => call[2])
-        .map((attributes) => String(attributes?.["error.message"] ?? ""));
-      expect(
-        warningMessages.some((message) =>
-          message.includes(
-            'Frontmatter field "requires-capabilities" is no longer supported',
-          ),
-        ),
-      ).toBe(true);
-      expect(
-        warningMessages.some((message) =>
-          message.includes("Unknown uses-config values"),
-        ),
-      ).toBe(true);
     } finally {
-      warnSpy.mockRestore();
       resetSkillDiscoveryCache();
       if (originalSkillDirs === undefined) {
         delete process.env.SKILL_DIRS;

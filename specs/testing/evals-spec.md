@@ -3,10 +3,11 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-04-16
+- Last Edited: 2026-04-21
 
 ## Changelog
 
+- 2026-04-21: Described evals as the integration-style layer for agent-facing behavior and clarified the boundary against ordinary runtime/product integration tests.
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
 - 2026-03-20: Added natural-prompt authoring rule and explicit ban on scripting internal commands/tools into eval prompts.
@@ -15,7 +16,7 @@
 
 ## Intent
 
-Evals validate end-to-end conversational behavior outcomes through the runtime harness and LLM-judged criteria. They are the preferred test layer for user-visible product behavior when the model is part of the contract.
+Evals validate end-to-end conversational behavior outcomes through the runtime harness and LLM-judged criteria. Treat them as the integration-style layer for agent-facing behavior: use them when the contract depends on natural-language interpretation, continuity, prompt behavior, or reply quality.
 
 ## Scope
 
@@ -59,10 +60,20 @@ Do not in eval files:
 
 ## Relationship to Other Layers
 
-- Integration tests own Slack HTTP contract assertions.
-- Integration tests own real runtime behavior when a deterministic fake agent is sufficient.
-- Unit tests own isolated logic invariants.
-- Evals own conversational outcome quality across realistic flows.
+- Integration tests own Slack HTTP contract assertions and most runtime/product wiring.
+- Integration tests own real runtime behavior when a deterministic fake agent is sufficient and the contract is not model interpretation itself.
+- Unit tests own isolated deterministic logic invariants.
+- Evals own agent-facing conversational outcomes across realistic flows and replace ordinary integration tests for that surface.
+
+## When To Choose Evals
+
+Use evals when:
+
+1. The behavior depends on the model interpreting user language correctly.
+2. The behavior is about reply quality, continuity, passive participation, or natural-language routing rather than transport wiring.
+3. Lower-fidelity integration coverage would only prove a mocked version of the real contract.
+
+Do not choose evals for ordinary Slack payload-shape assertions, deterministic resume wiring, or handler contracts that integration tests can prove directly.
 
 ## Execution
 

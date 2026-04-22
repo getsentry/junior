@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
 const {
+  DEMO_SKILL,
   agentInitialToolNames,
   callToolMock,
   clientOptions,
@@ -19,6 +20,12 @@ const {
   promptCallCount,
   recordToolResultMessage,
 } = vi.hoisted(() => ({
+  DEMO_SKILL: {
+    name: "demo-skill",
+    description: "Demo skill",
+    skillPath: "/tmp/skills/demo-skill",
+    pluginProvider: "demo",
+  } as const,
   agentInitialToolNames: [] as string[][],
   callToolMock: vi.fn(),
   clientOptions: [] as Array<Record<string, unknown>>,
@@ -36,6 +43,49 @@ const {
   pushPreToolAssistantMessage: { value: false },
   recordToolResultMessage: { value: false },
 }));
+
+function makeDemoLoadedSkill() {
+  return {
+    ...DEMO_SKILL,
+    body: "Skill instructions",
+  };
+}
+
+function makeDemoMcpTool(name: "ping" | "mutate") {
+  return {
+    name,
+    title: name === "ping" ? "Ping" : "Mutate",
+    description:
+      name === "ping"
+        ? "Ping the demo MCP server"
+        : "Write through the demo MCP server",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  };
+}
+
+function makeDemoMcpTools() {
+  return [makeDemoMcpTool("ping"), makeDemoMcpTool("mutate")];
+}
+
+function makeReplyContext(args: {
+  conversationId: string;
+  threadTs: string;
+  turnId: string;
+}) {
+  return {
+    assistant: { userName: "junior" },
+    requester: { userId: "U123" },
+    correlation: {
+      channelId: "C123",
+      conversationId: args.conversationId,
+      threadTs: args.threadTs,
+      turnId: args.turnId,
+    },
+  };
+}
 
 vi.mock("@mariozechner/pi-agent-core", () => {
   class MockAgent {
@@ -107,7 +157,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       };
       try {
         loadSkillResult = (await loadSkillTool.execute("tool-call-1", {
-          skill_name: "demo-skill",
+          skill_name: DEMO_SKILL.name,
         })) as {
           details?: {
             available_tools?: Array<{ tool_name: string }>;
@@ -155,8 +205,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         });
       }
 
-      // After loadSkill, MCP tools are registered as first-class tools
-      // on the shared tools array via syncMcpAgentTools().
+      // syncMcpAgentTools() mutates the shared tools array in place.
       const mcpPingTool = this.state.tools.find(
         (tool) => tool.name === "mcp__demo__ping",
       );
@@ -216,22 +265,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
 
   return { Agent: MockAgent };
 });
-
-vi.mock("@/chat/logging", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/logging")>()),
-  logException: vi.fn(),
-  logInfo: vi.fn(),
-  logWarn: vi.fn(),
-  setSpanAttributes: vi.fn(),
-  setSpanStatus: vi.fn(),
-  setTags: vi.fn(),
-  withSpan: async (
-    _name: string,
-    _op: string,
-    _context: unknown,
-    callback: () => Promise<unknown>,
-  ) => await callback(),
-}));
 
 vi.mock("@/chat/oauth-flow", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/oauth-flow")>()),
@@ -415,16 +448,10 @@ vi.mock("@/chat/plugins/registry", async (importOriginal) => {
 
 vi.mock("@/chat/skills", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/skills")>();
-  const metadata = {
-    name: "demo-skill",
-    description: "Demo skill",
-    skillPath: "/tmp/skills/demo-skill",
-    pluginProvider: "demo",
-  };
 
   return {
     ...actual,
-    discoverSkills: async () => [metadata],
+    discoverSkills: async () => [DEMO_SKILL],
     findSkillByName: () => null,
     loadSkillsByName: loadSkillsByNameMock,
     parseSkillInvocation: () => null,
@@ -479,6 +506,8 @@ import {
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 
+// This suite validates local progressive-loading logic through a mocked
+// agent/runtime seam; it is not integration coverage.
 describe("generateAssistantReply progressive MCP loading", () => {
   beforeEach(async () => {
     agentInitialToolNames.length = 0;
@@ -509,15 +538,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       content: [{ type: "text", text: "pong" }],
       isError: false,
     });
-    loadSkillsByNameMock.mockResolvedValue([
-      {
-        name: "demo-skill",
-        description: "Demo skill",
-        skillPath: "/tmp/skills/demo-skill",
-        pluginProvider: "demo",
-        body: "Skill instructions",
-      },
-    ]);
+    loadSkillsByNameMock.mockResolvedValue([makeDemoLoadedSkill()]);
     listToolsMock
       .mockImplementationOnce(
         async (
@@ -541,26 +562,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
           );
         },
       )
-      .mockResolvedValue([
-        {
-          name: "ping",
-          title: "Ping",
-          description: "Ping the demo MCP server",
-          inputSchema: {
-            type: "object",
-            properties: {},
-          },
-        },
-        {
-          name: "mutate",
-          title: "Mutate",
-          description: "Write through the demo MCP server",
-          inputSchema: {
-            type: "object",
-            properties: {},
-          },
-        },
-      ]);
+      .mockResolvedValue(makeDemoMcpTools());
 
     await disconnectStateAdapter();
   });
@@ -573,16 +575,11 @@ describe("generateAssistantReply progressive MCP loading", () => {
   });
 
   it("persists loaded plugin skills across auth pause and resume", async () => {
-    const context = {
-      assistant: { userName: "junior" },
-      requester: { userId: "U123" },
-      correlation: {
-        conversationId: "conversation-1",
-        turnId: "turn-1",
-        channelId: "C123",
-        threadTs: "1712345.0001",
-      },
-    };
+    const context = makeReplyContext({
+      conversationId: "conversation-1",
+      threadTs: "1712345.0001",
+      turnId: "turn-1",
+    });
 
     const firstError = await generateAssistantReply("help me", context).catch(
       (error) => error,
@@ -599,7 +596,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(pausedCheckpoint).toMatchObject({
       state: "awaiting_resume",
-      loadedSkillNames: ["demo-skill"],
+      loadedSkillNames: [DEMO_SKILL.name],
       resumeReason: "auth",
     });
     expect(pausedCheckpoint?.piMessages.at(-1)).toMatchObject({
@@ -635,43 +632,22 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(resumedCheckpoint).toMatchObject({
       state: "completed",
-      loadedSkillNames: ["demo-skill"],
+      loadedSkillNames: [DEMO_SKILL.name],
     });
   });
 
   it("uses loadSkill-disclosed MCP tools in the same turn without replay", async () => {
     listToolsMock.mockReset();
-    listToolsMock.mockResolvedValue([
-      {
-        name: "ping",
-        title: "Ping",
-        description: "Ping the demo MCP server",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "mutate",
-        title: "Mutate",
-        description: "Write through the demo MCP server",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-    ]);
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
 
-    const reply = await generateAssistantReply("help me", {
-      assistant: { userName: "junior" },
-      requester: { userId: "U123" },
-      correlation: {
+    const reply = await generateAssistantReply(
+      "help me",
+      makeReplyContext({
         conversationId: "conversation-2",
-        turnId: "turn-2",
-        channelId: "C123",
         threadTs: "1712345.0002",
-      },
-    });
+        turnId: "turn-2",
+      }),
+    );
 
     expect(reply.text).toBe("resumed reply");
     expect(promptCallCount.value).toBe(1);
@@ -694,7 +670,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(checkpoint).toMatchObject({
       state: "completed",
-      loadedSkillNames: ["demo-skill"],
+      loadedSkillNames: [DEMO_SKILL.name],
     });
   });
 
@@ -712,17 +688,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
         await options.authProvider?.redirectToAuthorization?.(
           new URL(`https://auth.example.com/${plugin.manifest.name}`),
         );
-        return [
-          {
-            name: "ping",
-            title: "Ping",
-            description: "Ping the demo MCP server",
-            inputSchema: {
-              type: "object",
-              properties: {},
-            },
-          },
-        ];
+        return [makeDemoMcpTool("ping")];
       },
     );
     callToolMock.mockImplementationOnce(async (plugin) => {
@@ -734,16 +700,14 @@ describe("generateAssistantReply progressive MCP loading", () => {
       );
     });
 
-    const reply = await generateAssistantReply("help me", {
-      assistant: { userName: "junior" },
-      requester: { userId: "U123" },
-      correlation: {
+    const reply = await generateAssistantReply(
+      "help me",
+      makeReplyContext({
         conversationId: "conversation-4",
-        turnId: "turn-4",
-        channelId: "C123",
         threadTs: "1712345.0004",
-      },
-    });
+        turnId: "turn-4",
+      }),
+    );
 
     expect(reply.text).toBe("resumed reply");
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
@@ -754,7 +718,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(checkpoint).toMatchObject({
       state: "completed",
-      loadedSkillNames: ["demo-skill"],
+      loadedSkillNames: [DEMO_SKILL.name],
     });
   });
 
@@ -763,28 +727,16 @@ describe("generateAssistantReply progressive MCP loading", () => {
     recordToolResultMessage.value = true;
     omitFinalAssistantAfterTool.value = true;
     listToolsMock.mockReset();
-    listToolsMock.mockResolvedValue([
-      {
-        name: "ping",
-        title: "Ping",
-        description: "Ping the demo MCP server",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-    ]);
+    listToolsMock.mockResolvedValue([makeDemoMcpTool("ping")]);
 
-    const reply = await generateAssistantReply("help me", {
-      assistant: { userName: "junior" },
-      requester: { userId: "U123" },
-      correlation: {
+    const reply = await generateAssistantReply(
+      "help me",
+      makeReplyContext({
         conversationId: "conversation-5",
-        turnId: "turn-5",
-        channelId: "C123",
         threadTs: "1712345.0005",
-      },
-    });
+        turnId: "turn-5",
+      }),
+    );
 
     expect(reply.text).toBe(
       "I couldn't complete this request in this turn due to an execution failure. I've logged the details for debugging.",

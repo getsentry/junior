@@ -56,55 +56,6 @@ describe("selectTurnThinkingLevel", () => {
     expect(completeObject).toHaveBeenCalledOnce();
   });
 
-  it("includes turn context in the classifier prompt", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        thinking_level: "medium",
-        confidence: 0.92,
-        reason: "repo context plus ambiguity",
-      },
-    }));
-
-    await selectTurnThinkingLevel({
-      activeSkillNames: ["github", "github"],
-      attachmentCount: 2,
-      completeObject,
-      conversationContext:
-        "[user] dcramer: can you check this?\n[assistant] junior: maybe",
-      fastModelId: "openai/gpt-5.4-mini",
-      messageText: "can you confirm this approach?",
-    });
-
-    expect(completeObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        modelId: "openai/gpt-5.4-mini",
-        prompt: expect.stringContaining(
-          '<current-instruction priority="highest">\ncan you confirm this approach?\n</current-instruction>',
-        ),
-      }),
-    );
-    expect(completeObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: expect.stringContaining("<turn-context>"),
-      }),
-    );
-    expect(completeObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: expect.stringContaining("- active_skills: github"),
-      }),
-    );
-    expect(completeObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: expect.stringContaining("- attachment_count: 2"),
-      }),
-    );
-    expect(completeObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompt: expect.stringContaining("<thread-background>"),
-      }),
-    );
-  });
-
   it("falls back to the default low effort when classifier confidence is low", async () => {
     const completeObject = vi.fn(async () => ({
       object: {

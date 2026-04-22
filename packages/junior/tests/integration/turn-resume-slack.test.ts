@@ -141,6 +141,11 @@ describe("turn resume slack integration", () => {
               userId: "U123",
               userName: "alice",
             },
+            meta: {
+              attachmentCount: 2,
+              imageAttachmentCount: 1,
+              imagesHydrated: false,
+            },
           },
         ],
         processing: {
@@ -176,6 +181,31 @@ describe("turn resume slack integration", () => {
     expect(waitUntilCallbacks).toHaveLength(1);
 
     await waitUntilCallbacks[0]?.();
+
+    expect(generateAssistantReplyMock).toHaveBeenCalledWith(
+      "resume this request",
+      expect.objectContaining({
+        requester: expect.objectContaining({
+          userId: "U123",
+          userName: "alice",
+        }),
+        toolChannelId: "C999",
+        inboundAttachmentCount: 2,
+        omittedImageAttachmentCount: 1,
+        sandbox: expect.objectContaining({
+          sandboxId: undefined,
+          sandboxDependencyProfileHash: undefined,
+        }),
+      }),
+    );
+    const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
+      channelConfiguration?: {
+        resolve: (key: string) => Promise<unknown>;
+      };
+    };
+    expect(await resumeContext.channelConfiguration?.resolve("demo.org")).toBe(
+      "acme",
+    );
 
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual(
       expect.arrayContaining([

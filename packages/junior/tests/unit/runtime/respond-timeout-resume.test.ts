@@ -68,21 +68,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
   return { Agent: MockAgent };
 });
 
-vi.mock("@/chat/logging", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/logging")>()),
-  logException: vi.fn(),
-  logInfo: vi.fn(),
-  logWarn: vi.fn(),
-  setSpanAttributes: vi.fn(),
-  setTags: vi.fn(),
-  withSpan: async (
-    _name: string,
-    _op: string,
-    _context: unknown,
-    callback: () => Promise<unknown>,
-  ) => await callback(),
-}));
-
 vi.mock("@/chat/config", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/chat/config")>();
   const memoryConfig = original.readChatConfig({
@@ -193,7 +178,6 @@ describe("generateAssistantReply timeout resume", () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
-    vi.restoreAllMocks();
   });
 
   it("checkpoints the last safe boundary and throws a retryable timeout error", async () => {
