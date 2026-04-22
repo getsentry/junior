@@ -885,7 +885,7 @@ export async function generateAssistantReply(
 
     try {
       if (resumedFromCheckpoint) {
-        agent.replaceMessages(existingCheckpoint!.piMessages);
+        agent.state.messages = existingCheckpoint!.piMessages;
       }
       beforeMessageCount = agent.state.messages.length;
 
