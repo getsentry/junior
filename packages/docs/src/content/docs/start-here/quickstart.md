@@ -70,7 +70,7 @@ This starts the local app on `http://localhost:3000` by default.
 
 Check the health route first, then verify a real Slack thread.
 
-- `GET http://localhost:3000/api/health` returns JSON with `status: "ok"`.
+- `GET http://localhost:3000/health` returns JSON with `status: "ok"`.
 - Set your Slack Event Subscriptions and Interactivity URLs to `http://<your-tunnel-or-dev-host>/api/webhooks/slack`.
 - Mention the bot in Slack and confirm it replies in the same thread.
 
@@ -104,7 +104,7 @@ export default defineConfig({
     }),
   ],
   routes: {
-    "/api/**": { handler: "./server.ts" },
+    "/**": { handler: "./server.ts" },
   },
 });
 ```
@@ -191,7 +191,7 @@ https://<your-domain>/api/webhooks/slack
 
 ### Verify in production
 
-- `GET https://<your-domain>/api/health` succeeds.
+- `GET https://<your-domain>/health` succeeds.
 - A Slack mention produces a thread reply.
 - Queue callback logs show successful processing.
 

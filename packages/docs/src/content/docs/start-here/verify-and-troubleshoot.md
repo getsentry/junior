@@ -12,7 +12,7 @@ related:
 
 ## Verification sequence
 
-1. Health endpoint: `GET /api/health` returns `status: "ok"`.
+1. Health endpoint: `GET /health` returns `status: "ok"`.
 2. Slack ingress: mention bot and confirm thread reply appears.
 3. Queue callback: verify callback route logs include successful processing.
 4. Plugin auth (if enabled): run one real command and confirm expected result.
