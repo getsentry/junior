@@ -21,7 +21,7 @@ import {
   resumeAuthorizedRequest,
   resumeSlackTurn,
 } from "@/chat/slack/resume";
-import { deliverAuthPauseReply } from "@/chat/services/auth-pause-reply";
+import { deliverAuthPauseReply } from "@/chat/runtime/auth-pause-reply";
 import { logException, logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import {

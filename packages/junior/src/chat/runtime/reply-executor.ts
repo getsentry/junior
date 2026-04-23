@@ -33,7 +33,7 @@ import {
   persistThreadState,
   mergeArtifactsState,
 } from "@/chat/runtime/thread-state";
-import { completeAuthPauseTurn } from "@/chat/services/auth-pause-reply";
+import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-reply";
 import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import {

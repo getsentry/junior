@@ -40,7 +40,7 @@ import {
 } from "@/chat/services/timeout-resume";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AssistantReply } from "@/chat/respond";
-import { deliverAuthPauseReply } from "@/chat/services/auth-pause-reply";
+import { deliverAuthPauseReply } from "@/chat/runtime/auth-pause-reply";
 import {
   applyPendingAuthUpdate,
   clearPendingAuth,

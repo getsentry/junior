@@ -1,5 +1,4 @@
 import { formatProviderLabel } from "@/chat/oauth-flow";
-import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import type {
   AuthorizationPauseDisposition,
   AuthorizationPauseKind,
@@ -8,6 +7,7 @@ import type {
   ConversationPendingAuthState,
   ThreadConversationState,
 } from "@/chat/state/conversation";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 
 // A fresh private auth link is worth reissuing after ~10 minutes: long enough

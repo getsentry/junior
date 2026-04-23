@@ -6,15 +6,7 @@ import type {
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 
-// ---------------------------------------------------------------------------
-// Turn ID
-// ---------------------------------------------------------------------------
-
-/** Build a stable turn identifier from a message ID. */
-export function buildDeterministicTurnId(messageId: string): string {
-  const sanitized = messageId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return `turn_${sanitized}`;
-}
+export { buildDeterministicTurnId } from "@/chat/state/turn-id";
 
 // ---------------------------------------------------------------------------
 // Turn errors
