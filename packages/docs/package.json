@@ -14,7 +14,7 @@
     "@astrojs/starlight": "^0.37.7",
     "@fontsource-variable/space-grotesk": "^5.2.10",
     "@fontsource/ibm-plex-mono": "^5.2.7",
-    "astro": "^5.18.1",
+    "astro": "^6.1.6",
     "starlight-typedoc": "^0.21.5",
     "typedoc": "^0.28.19",
     "typedoc-plugin-markdown": "^4.11.0",
