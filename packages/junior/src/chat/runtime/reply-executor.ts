@@ -554,6 +554,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const nextArtifacts = shouldPersistArtifacts
             ? mergeArtifactsState(preparedState.artifacts, artifactStatePatch)
             : undefined;
+          // Live turn owns the in-memory conversation; `sessionId` is omitted
+          // so `activeTurnId` clears unconditionally. Callback paths that
+          // reload thread state fresh must pass `sessionId` to avoid wiping a
+          // concurrent turn's active id.
           markTurnCompleted({
             conversation: preparedState.conversation,
             nowMs: Date.now(),

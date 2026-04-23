@@ -10,6 +10,11 @@ import type {
 } from "@/chat/state/conversation";
 import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 
+// A fresh private auth link is worth reissuing after ~10 minutes: long enough
+// to cover normal back-and-forth (read the prompt, check a password manager),
+// short enough that a link the user has clearly abandoned doesn't keep
+// re-advertising itself. Most provider `state` TTLs sit above this window,
+// so the old link is usually still honorable when we reuse it.
 const AUTH_LINK_REUSE_WINDOW_MS = 10 * 60 * 1000;
 
 export function canReusePendingAuthLink(args: {

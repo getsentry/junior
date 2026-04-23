@@ -83,6 +83,21 @@ function toPostedText(value: unknown): string {
   return String(value);
 }
 
+vi.mock("@/chat/services/turn-thinking-level", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/chat/services/turn-thinking-level")
+  >("@/chat/services/turn-thinking-level");
+  return {
+    ...actual,
+    // Bypass the classifier to keep this an agent-boundary test with no
+    // model traffic.
+    selectTurnThinkingLevel: async () => ({
+      thinkingLevel: "medium" as const,
+      reason: "test_default",
+    }),
+  };
+});
+
 vi.mock("@mariozechner/pi-agent-core", () => {
   class FakeAgent {
     state: {
@@ -232,9 +247,6 @@ describe("mcp auth runtime slack integration", () => {
     resetSlackApiMockState();
     process.env = {
       ...ORIGINAL_ENV,
-      // Keep the thinking-level classifier on its built-in fallback path so
-      // this stays an agent-boundary integration test with no model traffic.
-      AI_FAST_MODEL: "invalid-fast-model-for-tests",
       JUNIOR_BASE_URL: "https://junior.example.com",
       JUNIOR_EXTRA_PLUGIN_ROOTS: JSON.stringify([EVAL_MCP_PLUGIN_ROOT]),
       JUNIOR_STATE_ADAPTER: "memory",
