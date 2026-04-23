@@ -1,4 +1,10 @@
 import type { ThreadConversationState } from "@/chat/state/conversation";
+import type {
+  AuthorizationPauseDisposition,
+  AuthorizationPauseKind,
+} from "@/chat/services/auth-pause";
+import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
+import type { AgentTurnUsage } from "@/chat/usage";
 
 // ---------------------------------------------------------------------------
 // Turn ID
@@ -20,6 +26,12 @@ export type RetryableTurnReason =
   | "turn_timeout_resume";
 
 export interface RetryableTurnMetadata {
+  authDisposition?: AuthorizationPauseDisposition;
+  authDurationMs?: number;
+  authKind?: AuthorizationPauseKind;
+  authProvider?: string;
+  authThinkingLevel?: TurnThinkingSelection["thinkingLevel"];
+  authUsage?: AgentTurnUsage;
   checkpointVersion?: number;
   conversationId?: string;
   sessionId?: string;

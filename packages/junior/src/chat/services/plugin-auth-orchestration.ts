@@ -3,19 +3,21 @@ import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
+import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
+import { AuthorizationPauseError } from "@/chat/services/auth-pause";
+import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import {
   getPluginDefinition,
   getPluginOAuthConfig,
 } from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
 
-export class PluginAuthorizationPauseError extends Error {
-  readonly provider: string;
-
-  constructor(provider: string) {
-    super(`Plugin authorization started for ${provider}`);
-    this.name = "PluginAuthorizationPauseError";
-    this.provider = provider;
+export class PluginAuthorizationPauseError extends AuthorizationPauseError {
+  constructor(
+    provider: string,
+    disposition: "link_already_sent" | "link_sent",
+  ) {
+    super("plugin", provider, disposition);
   }
 }
 
@@ -27,6 +29,10 @@ export interface PluginAuthOrchestrationDeps {
   threadTs?: string;
   userMessage: string;
   channelConfiguration?: ChannelConfigurationService;
+  currentPendingAuth?: ConversationPendingAuthState;
+  onPendingAuth?: (
+    pendingAuth: ConversationPendingAuthState,
+  ) => void | Promise<void>;
   userTokenStore?: UserTokenStore;
 }
 
@@ -134,26 +140,38 @@ export function createPluginAuthOrchestration(
     if (!deps.requesterId || !getPluginOAuthConfig(provider)) {
       throw new Error(`Cannot start plugin authorization for ${provider}`);
     }
+    if (!deps.sessionId) {
+      throw new Error(`Cannot start plugin authorization for ${provider}`);
+    }
 
     const providerLabel = formatProviderLabel(provider);
-    const oauthResult = await startOAuthFlow(provider, {
+    const reusingPendingLink = canReusePendingAuthLink({
+      pendingAuth: deps.currentPendingAuth,
+      kind: "plugin",
+      provider,
       requesterId: deps.requesterId,
-      channelId: deps.channelId,
-      threadTs: deps.threadTs,
-      userMessage: deps.userMessage,
-      channelConfiguration: deps.channelConfiguration,
-      activeSkillName: activeSkill?.name ?? undefined,
-      resumeConversationId: deps.conversationId,
-      resumeSessionId: deps.sessionId,
     });
 
-    if (!oauthResult.ok) {
-      throw new Error(oauthResult.error);
-    }
-    if (!oauthResult.delivery) {
-      throw new Error(
-        `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try again.`,
-      );
+    if (!reusingPendingLink) {
+      const oauthResult = await startOAuthFlow(provider, {
+        requesterId: deps.requesterId,
+        channelId: deps.channelId,
+        threadTs: deps.threadTs,
+        userMessage: deps.userMessage,
+        channelConfiguration: deps.channelConfiguration,
+        activeSkillName: activeSkill?.name ?? undefined,
+        resumeConversationId: deps.conversationId,
+        resumeSessionId: deps.sessionId,
+      });
+
+      if (!oauthResult.ok) {
+        throw new Error(oauthResult.error);
+      }
+      if (!oauthResult.delivery) {
+        throw new Error(
+          `I need to connect your ${providerLabel} account first, but I wasn't able to send you a private authorization link. Please send me a direct message and try again.`,
+        );
+      }
     }
 
     if (
@@ -164,7 +182,19 @@ export function createPluginAuthOrchestration(
       await unlinkProvider(deps.requesterId, provider, deps.userTokenStore);
     }
 
-    pendingPause = new PluginAuthorizationPauseError(provider);
+    await deps.onPendingAuth?.({
+      kind: "plugin",
+      provider,
+      requesterId: deps.requesterId,
+      sessionId: deps.sessionId,
+      linkSentAtMs: reusingPendingLink
+        ? deps.currentPendingAuth!.linkSentAtMs
+        : Date.now(),
+    });
+    pendingPause = new PluginAuthorizationPauseError(
+      provider,
+      reusingPendingLink ? "link_already_sent" : "link_sent",
+    );
     abortAgent();
     throw pendingPause;
   };

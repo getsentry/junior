@@ -674,7 +674,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
   });
 
-  it("keeps a completed turn when MCP auth is requested during a tool call", async () => {
+  it("parks for auth when MCP auth is requested during a tool call", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockImplementation(
       async (
@@ -700,23 +700,38 @@ describe("generateAssistantReply progressive MCP loading", () => {
       );
     });
 
-    const reply = await generateAssistantReply(
-      "help me",
-      makeReplyContext({
-        conversationId: "conversation-4",
-        threadTs: "1712345.0004",
-        turnId: "turn-4",
-      }),
+    const context = makeReplyContext({
+      conversationId: "conversation-4",
+      threadTs: "1712345.0004",
+      turnId: "turn-4",
+    });
+
+    const firstError = await generateAssistantReply("help me", context).catch(
+      (error) => error,
     );
 
-    expect(reply.text).toBe("resumed reply");
+    expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
     expect(deliverPrivateMessageMock).toHaveBeenCalledTimes(1);
 
-    const checkpoint = await getAgentTurnSessionCheckpoint(
+    const pausedCheckpoint = await getAgentTurnSessionCheckpoint(
       "conversation-4",
       "turn-4",
     );
-    expect(checkpoint).toMatchObject({
+    expect(pausedCheckpoint).toMatchObject({
+      state: "awaiting_resume",
+      loadedSkillNames: [DEMO_SKILL.name],
+      resumeReason: "auth",
+    });
+
+    const reply = await generateAssistantReply("help me", context);
+
+    expect(reply.text).toBe("resumed reply");
+
+    const resumedCheckpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-4",
+      "turn-4",
+    );
+    expect(resumedCheckpoint).toMatchObject({
       state: "completed",
       loadedSkillNames: [DEMO_SKILL.name],
     });

@@ -1,10 +1,12 @@
 import { botConfig } from "@/chat/config";
 import { logException, logWarn } from "@/chat/logging";
 import { ResumeTurnBusyError, resumeSlackTurn } from "@/chat/slack/resume";
+import { postSlackMessage } from "@/chat/slack/outbound";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   getAgentTurnSessionCheckpoint,
   type AgentTurnSessionCheckpoint,
+  supersedeAgentTurnSessionCheckpoint,
 } from "@/chat/state/turn-session-store";
 import {
   getPersistedThreadState,
@@ -40,6 +42,14 @@ import {
 } from "@/chat/services/timeout-resume";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AssistantReply } from "@/chat/respond";
+import {
+  buildAuthPauseSlackMessage,
+  completeAuthPauseTurn,
+} from "@/chat/services/auth-pause-reply";
+import {
+  buildAuthPauseReplyText,
+  clearPendingAuth,
+} from "@/chat/services/pending-auth";
 import type { WaitUntilFn } from "@/handlers/types";
 
 async function persistCompletedReplyState(args: {
@@ -60,6 +70,7 @@ async function persistCompletedReplyState(args: {
     conversation,
     args.checkpoint.sessionId,
   );
+  clearPendingAuth(conversation, args.checkpoint.sessionId);
 
   markConversationMessage(conversation, userMessage?.id, {
     replied: true,
@@ -97,6 +108,7 @@ async function persistFailedReplyState(
 ): Promise<void> {
   const currentState = await getPersistedThreadState(checkpoint.conversationId);
   const conversation = coerceThreadConversationState(currentState);
+  clearPendingAuth(conversation, checkpoint.sessionId);
 
   markTurnFailed({
     conversation,
@@ -109,6 +121,21 @@ async function persistFailedReplyState(
   await persistThreadStateById(checkpoint.conversationId, {
     conversation,
   });
+}
+
+async function persistAuthPauseReplyState(args: {
+  conversationId: string;
+  sessionId: string;
+  text: string;
+}): Promise<void> {
+  const currentState = await getPersistedThreadState(args.conversationId);
+  const conversation = coerceThreadConversationState(currentState);
+  completeAuthPauseTurn({
+    conversation,
+    sessionId: args.sessionId,
+    text: args.text,
+  });
+  await persistThreadStateById(args.conversationId, { conversation });
 }
 
 async function resumeTimedOutTurn(
@@ -178,10 +205,29 @@ async function resumeTimedOutTurn(
       },
       toolChannelId: artifacts.assistantContextChannelId ?? thread.channelId,
       artifactState: artifacts,
+      pendingAuth: conversation.processing.pendingAuth,
       conversationContext,
       channelConfiguration,
       sandbox,
       threadParticipants: buildThreadParticipants(conversation.messages),
+      onAuthPending: async (pendingAuth) => {
+        const previousPendingAuth = conversation.processing.pendingAuth;
+        conversation.processing.pendingAuth = pendingAuth;
+        if (
+          previousPendingAuth &&
+          previousPendingAuth.sessionId !== pendingAuth.sessionId
+        ) {
+          await supersedeAgentTurnSessionCheckpoint({
+            conversationId: payload.conversationId,
+            sessionId: previousPendingAuth.sessionId,
+            errorMessage:
+              "Superseded by a newer auth-blocked request in the same conversation.",
+          });
+        }
+        await persistThreadStateById(payload.conversationId, {
+          conversation,
+        });
+      },
       ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {
@@ -213,7 +259,37 @@ async function resumeTimedOutTurn(
       );
       await persistFailedReplyState(checkpoint);
     },
-    onAuthPause: async () => {
+    onAuthPause: async (error) => {
+      const authPauseText = isRetryableTurnError(error)
+        ? buildAuthPauseReplyText({
+            disposition: error.metadata?.authDisposition,
+            provider: error.metadata?.authProvider,
+          })
+        : buildAuthPauseReplyText({});
+      const authPauseMessage = buildAuthPauseSlackMessage({
+        conversationId: payload.conversationId,
+        durationMs: isRetryableTurnError(error)
+          ? error.metadata?.authDurationMs
+          : undefined,
+        text: authPauseText,
+        thinkingLevel: isRetryableTurnError(error)
+          ? error.metadata?.authThinkingLevel
+          : undefined,
+        usage: isRetryableTurnError(error)
+          ? error.metadata?.authUsage
+          : undefined,
+      });
+      await postSlackMessage({
+        channelId: thread.channelId,
+        threadTs: thread.threadTs,
+        text: authPauseMessage.text,
+        ...(authPauseMessage.blocks ? { blocks: authPauseMessage.blocks } : {}),
+      });
+      await persistAuthPauseReplyState({
+        conversationId: payload.conversationId,
+        sessionId: payload.sessionId,
+        text: authPauseText,
+      });
       logWarn(
         "timeout_resume_reparked_for_auth",
         {},

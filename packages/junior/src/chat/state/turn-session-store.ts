@@ -9,7 +9,8 @@ export type AgentTurnSessionStatus =
   | "running"
   | "awaiting_resume"
   | "completed"
-  | "failed";
+  | "failed"
+  | "superseded";
 
 export type AgentTurnResumeReason = "timeout" | "auth";
 
@@ -52,7 +53,8 @@ function parseAgentTurnSessionCheckpoint(
       status !== "running" &&
       status !== "awaiting_resume" &&
       status !== "completed" &&
-      status !== "failed"
+      status !== "failed" &&
+      status !== "superseded"
     ) {
       return undefined;
     }
@@ -164,4 +166,35 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
     ttlMs,
   );
   return checkpoint;
+}
+
+export async function supersedeAgentTurnSessionCheckpoint(args: {
+  conversationId: string;
+  sessionId: string;
+  errorMessage?: string;
+}): Promise<AgentTurnSessionCheckpoint | undefined> {
+  const existing = await getAgentTurnSessionCheckpoint(
+    args.conversationId,
+    args.sessionId,
+  );
+  if (
+    !existing ||
+    existing.state === "completed" ||
+    existing.state === "failed" ||
+    existing.state === "superseded"
+  ) {
+    return undefined;
+  }
+
+  return await upsertAgentTurnSessionCheckpoint({
+    conversationId: existing.conversationId,
+    sessionId: existing.sessionId,
+    sliceId: existing.sliceId,
+    state: "superseded",
+    piMessages: existing.piMessages,
+    loadedSkillNames: existing.loadedSkillNames,
+    resumeReason: existing.resumeReason,
+    resumedFromSliceId: existing.resumedFromSliceId,
+    errorMessage: args.errorMessage ?? existing.errorMessage,
+  });
 }

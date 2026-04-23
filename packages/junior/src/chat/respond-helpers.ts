@@ -315,21 +315,6 @@ export function getTerminalAssistantMessages(
   return messages.slice(lastToolResultIndex + 1).filter(isAssistantMessage);
 }
 
-/** True when messages end with a completed, text-bearing assistant turn. */
-export function hasCompletedAssistantTurn(messages: AgentMessage[]): boolean {
-  const message = getTerminalAssistantMessages(messages).at(-1);
-  if (!message) {
-    return false;
-  }
-
-  const stopReason = (message as { stopReason?: unknown }).stopReason;
-  return (
-    typeof stopReason === "string" &&
-    stopReason !== "error" &&
-    extractAssistantText(message).trim().length > 0
-  );
-}
-
 /** Upsert a skill into the active skills list by name. */
 export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
   const existing = activeSkills.find((skill) => skill.name === next.name);

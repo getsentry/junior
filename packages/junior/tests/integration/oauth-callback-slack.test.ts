@@ -153,13 +153,6 @@ describe("oauth callback slack integration", () => {
           params: expect.objectContaining({
             channel: "C123",
             thread_ts: "1700000000.001",
-            text: "Your Eval-oauth account is now connected. Processing your request...",
-          }),
-        }),
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel: "C123",
-            thread_ts: "1700000000.001",
             text: "Here are your Sentry issues.",
           }),
         }),
@@ -226,7 +219,14 @@ describe("oauth callback slack integration", () => {
             },
           ],
           processing: {
-            activeTurnId: sessionId,
+            activeTurnId: undefined,
+            pendingAuth: {
+              kind: "plugin",
+              provider: "eval-oauth",
+              requesterId: "U123",
+              sessionId,
+              linkSentAtMs: 1,
+            },
           },
         },
         artifacts: {
@@ -280,13 +280,6 @@ describe("oauth callback slack integration", () => {
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel: "C123",
-            thread_ts: "1700000000.009",
-            text: "Your Eval-oauth account is now connected. Processing your request...",
-          }),
-        }),
         expect.objectContaining({
           params: expect.objectContaining({
             channel: "C123",

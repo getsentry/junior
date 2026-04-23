@@ -29,7 +29,19 @@ import {
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
+import { postSlackMessage } from "@/chat/slack/outbound";
 import { resumeAuthorizedRequest } from "@/chat/slack/resume";
+import {
+  buildAuthPauseSlackMessage,
+  completeAuthPauseTurn,
+} from "@/chat/services/auth-pause-reply";
+import {
+  buildAuthPauseReplyText,
+  clearPendingAuth,
+  getConversationPendingAuth,
+  isPendingAuthLatestRequest,
+} from "@/chat/services/pending-auth";
+import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import {
   isRetryableTurnError,
   markTurnCompleted,
@@ -108,6 +120,7 @@ async function persistCompletedReplyState(
     ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
     : undefined;
   const userMessageId = getTurnUserMessageId(conversation, sessionId);
+  clearPendingAuth(conversation, sessionId);
 
   markConversationMessage(conversation, userMessageId, {
     replied: true,
@@ -148,6 +161,7 @@ async function persistFailedReplyState(
   const threadId = `slack:${channelId}:${threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
+  clearPendingAuth(conversation, sessionId);
 
   markTurnFailed({
     conversation,
@@ -160,6 +174,23 @@ async function persistFailedReplyState(
   await persistThreadStateById(threadId, {
     conversation,
   });
+}
+
+async function persistAuthPauseReplyState(args: {
+  channelId: string;
+  threadTs: string;
+  sessionId: string;
+  text: string;
+}): Promise<void> {
+  const threadId = `slack:${args.channelId}:${args.threadTs}`;
+  const currentState = await getPersistedThreadState(threadId);
+  const conversation = coerceThreadConversationState(currentState);
+  completeAuthPauseTurn({
+    conversation,
+    sessionId: args.sessionId,
+    text: args.text,
+  });
+  await persistThreadStateById(threadId, { conversation });
 }
 
 async function resumeAuthorizedMcpTurn(args: {
@@ -175,8 +206,30 @@ async function resumeAuthorizedMcpTurn(args: {
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
   const artifacts = coerceThreadArtifactsState(currentState);
-  const userMessage = getTurnUserMessage(conversation, authSession.sessionId);
-  if (conversation.processing.activeTurnId !== authSession.sessionId) {
+  const pendingAuth = getConversationPendingAuth({
+    conversation,
+    kind: "mcp",
+    provider,
+    requesterId: authSession.userId,
+  });
+  const resolvedSessionId = pendingAuth?.sessionId ?? authSession.sessionId;
+  const userMessage = getTurnUserMessage(conversation, resolvedSessionId);
+  if (pendingAuth) {
+    if (!isPendingAuthLatestRequest(conversation, pendingAuth)) {
+      clearPendingAuth(conversation, pendingAuth.sessionId);
+      await persistThreadStateById(threadId, { conversation });
+      await supersedeAgentTurnSessionCheckpoint({
+        conversationId: authSession.conversationId,
+        sessionId: pendingAuth.sessionId,
+        errorMessage:
+          "Auth completed after a newer thread message superseded this blocked request.",
+      });
+      return;
+    }
+  } else if (conversation.processing.activeTurnId !== authSession.sessionId) {
+    return;
+  }
+  if (!userMessage) {
     return;
   }
 
@@ -186,15 +239,15 @@ async function resumeAuthorizedMcpTurn(args: {
   const conversationContext = await buildResumeConversationContext(
     authSession.channelId,
     authSession.threadTs,
-    authSession.sessionId,
+    resolvedSessionId,
   );
 
   await resumeAuthorizedRequest({
-    messageText: authSession.userMessage,
+    messageText: userMessage.text,
     channelId: authSession.channelId,
     threadTs: authSession.threadTs,
     lockKey: authSession.conversationId,
-    connectedText: `Your ${provider} MCP access is now connected. Continuing the original request...`,
+    connectedText: "",
     failureText:
       "MCP authorization completed, but resuming the request failed. Please retry the original command.",
     replyContext: {
@@ -206,21 +259,38 @@ async function resumeAuthorizedMcpTurn(args: {
       },
       correlation: {
         conversationId: authSession.conversationId,
-        turnId: authSession.sessionId,
+        turnId: resolvedSessionId,
         channelId: authSession.channelId,
         threadTs: authSession.threadTs,
         requesterId: authSession.userId,
       },
       toolChannelId:
-        authSession.toolChannelId ??
         artifacts.assistantContextChannelId ??
+        authSession.toolChannelId ??
         authSession.channelId,
       conversationContext,
       artifactState: artifacts,
       configuration: authSession.configuration,
+      pendingAuth,
       channelConfiguration,
       sandbox: getPersistedSandboxState(currentState),
       threadParticipants: buildThreadParticipants(conversation.messages),
+      onAuthPending: async (nextPendingAuth) => {
+        const previousPendingAuth = conversation.processing.pendingAuth;
+        conversation.processing.pendingAuth = nextPendingAuth;
+        if (
+          previousPendingAuth &&
+          previousPendingAuth.sessionId !== nextPendingAuth.sessionId
+        ) {
+          await supersedeAgentTurnSessionCheckpoint({
+            conversationId: authSession.conversationId,
+            sessionId: previousPendingAuth.sessionId,
+            errorMessage:
+              "Superseded by a newer auth-blocked request in the same conversation.",
+          });
+        }
+        await persistThreadStateById(threadId, { conversation });
+      },
       ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {
@@ -228,7 +298,7 @@ async function resumeAuthorizedMcpTurn(args: {
         await persistCompletedReplyState(
           authSession.channelId!,
           authSession.threadTs!,
-          authSession.sessionId,
+          resolvedSessionId,
           reply,
         );
       } catch (persistError) {
@@ -253,7 +323,7 @@ async function resumeAuthorizedMcpTurn(args: {
         await persistFailedReplyState(
           authSession.channelId!,
           authSession.threadTs!,
-          authSession.sessionId,
+          resolvedSessionId,
         );
       } catch (persistError) {
         logException(
@@ -265,7 +335,38 @@ async function resumeAuthorizedMcpTurn(args: {
         );
       }
     },
-    onAuthPause: async () => {
+    onAuthPause: async (error) => {
+      const authPauseText = isRetryableTurnError(error)
+        ? buildAuthPauseReplyText({
+            disposition: error.metadata?.authDisposition,
+            provider: error.metadata?.authProvider,
+          })
+        : buildAuthPauseReplyText({ provider });
+      const authPauseMessage = buildAuthPauseSlackMessage({
+        conversationId: authSession.conversationId,
+        durationMs: isRetryableTurnError(error)
+          ? error.metadata?.authDurationMs
+          : undefined,
+        text: authPauseText,
+        thinkingLevel: isRetryableTurnError(error)
+          ? error.metadata?.authThinkingLevel
+          : undefined,
+        usage: isRetryableTurnError(error)
+          ? error.metadata?.authUsage
+          : undefined,
+      });
+      await postSlackMessage({
+        channelId: authSession.channelId!,
+        threadTs: authSession.threadTs!,
+        text: authPauseMessage.text,
+        ...(authPauseMessage.blocks ? { blocks: authPauseMessage.blocks } : {}),
+      });
+      await persistAuthPauseReplyState({
+        channelId: authSession.channelId!,
+        threadTs: authSession.threadTs!,
+        sessionId: resolvedSessionId,
+        text: authPauseText,
+      });
       logWarn(
         "mcp_oauth_callback_resume_reparked_for_auth",
         {},
@@ -302,7 +403,7 @@ async function resumeAuthorizedMcpTurn(args: {
       }
       await scheduleTurnTimeoutResume({
         conversationId: authSession.conversationId,
-        sessionId: authSession.sessionId,
+        sessionId: resolvedSessionId,
         expectedCheckpointVersion: checkpointVersion,
       });
     },

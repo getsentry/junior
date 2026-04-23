@@ -30,6 +30,19 @@ function createRuntime(
   });
 }
 
+function toPostedText(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object") {
+    const markdown = (value as { markdown?: unknown }).markdown;
+    if (typeof markdown === "string") {
+      return markdown;
+    }
+  }
+  return String(value);
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("bot handlers (integration)", () => {
@@ -416,6 +429,11 @@ describe("bot handlers (integration)", () => {
             throw new RetryableTurnError(
               "mcp_auth_resume",
               "simulated auth pause",
+              {
+                authDisposition: "link_sent",
+                authKind: "mcp",
+                authProvider: "notion",
+              },
             );
           },
         },
@@ -435,23 +453,24 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(thread.posts).toHaveLength(0);
+    expect(thread.posts).toHaveLength(1);
+    expect(toPostedText(thread.posts[0])).toContain(
+      "I need your Notion access to continue. I sent you a private link.",
+    );
     const state = thread.getState();
     const conversation = (
       state as {
         conversation?: {
           processing?: { activeTurnId?: string };
-          messages?: Array<{
-            meta?: { replied?: boolean; skippedReason?: string };
-          }>;
+          messages?: Array<{ role?: string; text?: string }>;
         };
       }
     ).conversation;
-    expect(conversation?.processing?.activeTurnId).toBe("turn_msg-auth-pause");
-    const lastMessage =
-      conversation?.messages?.[conversation.messages.length - 1];
-    expect(lastMessage?.meta?.replied).toBeUndefined();
-    expect(lastMessage?.meta?.skippedReason).toBeUndefined();
+    expect(conversation?.processing?.activeTurnId).toBeUndefined();
+    expect(conversation?.messages?.at(-1)).toMatchObject({
+      role: "assistant",
+      text: "I need your Notion access to continue. I sent you a private link.",
+    });
   });
 
   it("parks plugin auth resume turns without rethrowing to the queue", async () => {
@@ -462,6 +481,11 @@ describe("bot handlers (integration)", () => {
             throw new RetryableTurnError(
               "plugin_auth_resume",
               "simulated plugin auth pause",
+              {
+                authDisposition: "link_sent",
+                authKind: "plugin",
+                authProvider: "github",
+              },
             );
           },
         },
@@ -483,25 +507,24 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(thread.posts).toHaveLength(0);
+    expect(thread.posts).toHaveLength(1);
+    expect(toPostedText(thread.posts[0])).toContain(
+      "I need your Github access to continue. I sent you a private link.",
+    );
     const state = thread.getState();
     const conversation = (
       state as {
         conversation?: {
           processing?: { activeTurnId?: string };
-          messages?: Array<{
-            meta?: { replied?: boolean; skippedReason?: string };
-          }>;
+          messages?: Array<{ role?: string; text?: string }>;
         };
       }
     ).conversation;
-    expect(conversation?.processing?.activeTurnId).toBe(
-      "turn_msg-plugin-auth-pause",
-    );
-    const lastMessage =
-      conversation?.messages?.[conversation.messages.length - 1];
-    expect(lastMessage?.meta?.replied).toBeUndefined();
-    expect(lastMessage?.meta?.skippedReason).toBeUndefined();
+    expect(conversation?.processing?.activeTurnId).toBeUndefined();
+    expect(conversation?.messages?.at(-1)).toMatchObject({
+      role: "assistant",
+      text: "I need your Github access to continue. I sent you a private link.",
+    });
   });
 
   it("posts an interruption marker on the finalized provider-error reply", async () => {
@@ -622,6 +645,9 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
+        conversationMemory: {
+          completeText: async () => ({ text: "Status thread" }) as never,
+        },
         replyExecutor: {
           generateAssistantReply: async () => {
             replyStarted = true;
@@ -697,6 +723,9 @@ describe("bot handlers (integration)", () => {
     const { slackRuntime } = createRuntime({
       slackAdapter: fakeAdapter,
       services: {
+        conversationMemory: {
+          completeText: async () => ({ text: "Status thread" }) as never,
+        },
         replyExecutor: {
           generateAssistantReply: async () => {
             replyStarted = true;
@@ -1194,6 +1223,9 @@ describe("bot handlers (integration)", () => {
     const capturedContexts: Array<string | undefined> = [];
     const { slackRuntime } = createRuntime({
       services: {
+        conversationMemory: {
+          completeText: async () => ({ text: "Context thread" }) as never,
+        },
         subscribedReplyPolicy: {
           completeObject: async () =>
             ({

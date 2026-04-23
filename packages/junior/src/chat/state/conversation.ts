@@ -1,4 +1,5 @@
 import { isRecord, toOptionalNumber, toOptionalString } from "@/chat/coerce";
+import type { AuthorizationPauseKind } from "@/chat/services/auth-pause";
 
 type ConversationRole = "assistant" | "system" | "user";
 
@@ -44,6 +45,15 @@ export interface ConversationBackfillState {
 export interface ConversationProcessingState {
   activeTurnId?: string;
   lastCompletedAtMs?: number;
+  pendingAuth?: ConversationPendingAuthState;
+}
+
+export interface ConversationPendingAuthState {
+  kind: AuthorizationPauseKind;
+  linkSentAtMs: number;
+  provider: string;
+  requesterId: string;
+  sessionId: string;
 }
 
 export interface ConversationStats {
@@ -177,6 +187,37 @@ function defaultConversationState(): ThreadConversationState {
   };
 }
 
+function coercePendingAuthState(
+  value: unknown,
+): ConversationPendingAuthState | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const kind = value.kind;
+  const provider = toOptionalString(value.provider);
+  const requesterId = toOptionalString(value.requesterId);
+  const sessionId = toOptionalString(value.sessionId);
+  const linkSentAtMs = toOptionalNumber(value.linkSentAtMs);
+  if (
+    (kind !== "mcp" && kind !== "plugin") ||
+    !provider ||
+    !requesterId ||
+    !sessionId ||
+    typeof linkSentAtMs !== "number"
+  ) {
+    return undefined;
+  }
+
+  return {
+    kind,
+    provider,
+    requesterId,
+    sessionId,
+    linkSentAtMs,
+  };
+}
+
 /** Safely coerce an unknown persisted value into a ThreadConversationState. */
 export function coerceThreadConversationState(
   value: unknown,
@@ -253,6 +294,7 @@ export function coerceThreadConversationState(
   const processing: ConversationProcessingState = {
     activeTurnId: toOptionalString(rawProcessing.activeTurnId),
     lastCompletedAtMs: toOptionalNumber(rawProcessing.lastCompletedAtMs),
+    pendingAuth: coercePendingAuthState(rawProcessing.pendingAuth),
   };
 
   const rawStats = isRecord(rawConversation.stats) ? rawConversation.stats : {};

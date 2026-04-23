@@ -21,6 +21,10 @@ import {
   resumeAuthorizedRequest,
   resumeSlackTurn,
 } from "@/chat/slack/resume";
+import {
+  buildAuthPauseSlackMessage,
+  completeAuthPauseTurn,
+} from "@/chat/services/auth-pause-reply";
 import { logException, logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import {
@@ -50,6 +54,13 @@ import { getSlackClient } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import {
+  buildAuthPauseReplyText,
+  clearPendingAuth,
+  getConversationPendingAuth,
+  isPendingAuthLatestRequest,
+} from "@/chat/services/pending-auth";
 import { escapeXml } from "@/chat/xml";
 import type { WaitUntilFn } from "@/handlers/types";
 import {
@@ -117,6 +128,7 @@ async function persistCompletedOAuthReplyState(args: {
     ? mergeArtifactsState(artifacts, args.reply.artifactStatePatch)
     : undefined;
   const userMessage = getTurnUserMessage(conversation, args.sessionId);
+  clearPendingAuth(conversation, args.sessionId);
 
   markConversationMessage(conversation, userMessage?.id, {
     replied: true,
@@ -155,6 +167,7 @@ async function persistFailedOAuthReplyState(args: {
 }): Promise<void> {
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
+  clearPendingAuth(conversation, args.sessionId);
 
   markTurnFailed({
     conversation,
@@ -167,6 +180,21 @@ async function persistFailedOAuthReplyState(args: {
   await persistThreadStateById(args.conversationId, {
     conversation,
   });
+}
+
+async function persistAuthPauseOAuthReplyState(args: {
+  conversationId: string;
+  sessionId: string;
+  text: string;
+}): Promise<void> {
+  const currentState = await getPersistedThreadState(args.conversationId);
+  const conversation = coerceThreadConversationState(currentState);
+  completeAuthPauseTurn({
+    conversation,
+    sessionId: args.sessionId,
+    text: args.text,
+  });
+  await persistThreadStateById(args.conversationId, { conversation });
 }
 
 async function resumeCheckpointedOAuthTurn(
@@ -198,29 +226,57 @@ async function resumeCheckpointedOAuthTurn(
   );
   const conversation = coerceThreadConversationState(currentState);
   const artifacts = coerceThreadArtifactsState(currentState);
-  const userMessage = getTurnUserMessage(conversation, stored.resumeSessionId);
-  if (!userMessage?.author?.userId) {
-    return false;
+  const pendingAuth = getConversationPendingAuth({
+    conversation,
+    kind: "plugin",
+    provider: stored.provider,
+    requesterId: stored.userId,
+  });
+
+  const resolvedSessionId = pendingAuth?.sessionId ?? stored.resumeSessionId;
+  const userMessage = resolvedSessionId
+    ? getTurnUserMessage(conversation, resolvedSessionId)
+    : undefined;
+  if (pendingAuth) {
+    if (!isPendingAuthLatestRequest(conversation, pendingAuth)) {
+      clearPendingAuth(conversation, pendingAuth.sessionId);
+      await persistThreadStateById(stored.resumeConversationId, {
+        conversation,
+      });
+      await supersedeAgentTurnSessionCheckpoint({
+        conversationId: stored.resumeConversationId,
+        sessionId: pendingAuth.sessionId,
+        errorMessage:
+          "Auth completed after a newer thread message superseded this blocked request.",
+      });
+      return true;
+    }
+  } else {
+    if (!userMessage?.author?.userId) {
+      return false;
+    }
+    if (conversation.processing.activeTurnId !== stored.resumeSessionId) {
+      return true;
+    }
   }
-  if (conversation.processing.activeTurnId !== stored.resumeSessionId) {
-    return true;
+  if (!userMessage?.author?.userId || !resolvedSessionId) {
+    return false;
   }
 
   const conversationContext = await buildCheckpointConversationContext(
     stored.resumeConversationId,
-    stored.resumeSessionId,
+    resolvedSessionId,
   );
   const channelConfiguration = getChannelConfigurationServiceById(
     stored.channelId,
   );
-  const providerLabel = formatProviderLabel(stored.provider);
 
   await resumeSlackTurn({
     messageText: stored.pendingMessage ?? userMessage.text,
     channelId: stored.channelId,
     threadTs: stored.threadTs,
     lockKey: stored.resumeConversationId,
-    initialText: `Your ${providerLabel} account is now connected. Processing your request...`,
+    initialText: "",
     failureText:
       "I connected your account but hit an error processing your request. Please try the command again.",
     replyContext: {
@@ -237,10 +293,29 @@ async function resumeCheckpointedOAuthTurn(
       },
       toolChannelId: artifacts.assistantContextChannelId ?? stored.channelId,
       artifactState: artifacts,
+      pendingAuth,
       conversationContext,
       channelConfiguration,
       sandbox: getPersistedSandboxState(currentState),
       threadParticipants: buildThreadParticipants(conversation.messages),
+      onAuthPending: async (nextPendingAuth) => {
+        const previousPendingAuth = conversation.processing.pendingAuth;
+        conversation.processing.pendingAuth = nextPendingAuth;
+        if (
+          previousPendingAuth &&
+          previousPendingAuth.sessionId !== nextPendingAuth.sessionId
+        ) {
+          await supersedeAgentTurnSessionCheckpoint({
+            conversationId: stored.resumeConversationId!,
+            sessionId: previousPendingAuth.sessionId,
+            errorMessage:
+              "Superseded by a newer auth-blocked request in the same conversation.",
+          });
+        }
+        await persistThreadStateById(stored.resumeConversationId!, {
+          conversation,
+        });
+      },
       ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {
@@ -252,11 +327,11 @@ async function resumeCheckpointedOAuthTurn(
           "app.ai.outcome": reply.diagnostics.outcome,
           "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
         },
-        "Auto-resumed checkpointed turn after OAuth callback",
+        "OAuth callback auto-resumed checkpoint finished replying",
       );
       await persistCompletedOAuthReplyState({
         conversationId: stored.resumeConversationId!,
-        sessionId: stored.resumeSessionId!,
+        sessionId: resolvedSessionId,
         reply,
       });
     },
@@ -270,17 +345,42 @@ async function resumeCheckpointedOAuthTurn(
       );
       await persistFailedOAuthReplyState({
         conversationId: stored.resumeConversationId!,
-        sessionId: stored.resumeSessionId!,
+        sessionId: resolvedSessionId,
       });
     },
     onAuthPause: async (error) => {
-      logException(
-        error,
-        "oauth_callback_resume_reparked_for_auth",
-        {},
-        { "app.credential.provider": stored.provider },
-        "Resumed OAuth turn requested another authorization flow",
-      );
+      const authPauseText = isRetryableTurnError(error)
+        ? buildAuthPauseReplyText({
+            disposition: error.metadata?.authDisposition,
+            provider: error.metadata?.authProvider,
+          })
+        : buildAuthPauseReplyText({
+            provider: stored.provider,
+          });
+      const authPauseMessage = buildAuthPauseSlackMessage({
+        conversationId: stored.resumeConversationId,
+        durationMs: isRetryableTurnError(error)
+          ? error.metadata?.authDurationMs
+          : undefined,
+        text: authPauseText,
+        thinkingLevel: isRetryableTurnError(error)
+          ? error.metadata?.authThinkingLevel
+          : undefined,
+        usage: isRetryableTurnError(error)
+          ? error.metadata?.authUsage
+          : undefined,
+      });
+      await postSlackMessage({
+        channelId: stored.channelId!,
+        threadTs: stored.threadTs!,
+        text: authPauseMessage.text,
+        ...(authPauseMessage.blocks ? { blocks: authPauseMessage.blocks } : {}),
+      });
+      await persistAuthPauseOAuthReplyState({
+        conversationId: stored.resumeConversationId!,
+        sessionId: resolvedSessionId,
+        text: authPauseText,
+      });
     },
     onTimeoutPause: async (error) => {
       if (!isRetryableTurnError(error, "turn_timeout_resume")) {
@@ -300,7 +400,7 @@ async function resumeCheckpointedOAuthTurn(
       }
       await scheduleTurnTimeoutResume({
         conversationId: stored.resumeConversationId!,
-        sessionId: stored.resumeSessionId!,
+        sessionId: resolvedSessionId,
         expectedCheckpointVersion: checkpointVersion,
       });
     },
@@ -314,7 +414,6 @@ async function resumePendingOAuthMessage(
 ): Promise<void> {
   if (!stored.pendingMessage || !stored.channelId || !stored.threadTs) return;
 
-  const providerLabel = formatProviderLabel(stored.provider);
   const conversationContext = await buildResumeConversationContext(
     stored.channelId,
     stored.threadTs,
@@ -323,7 +422,7 @@ async function resumePendingOAuthMessage(
     messageText: stored.pendingMessage,
     channelId: stored.channelId,
     threadTs: stored.threadTs,
-    connectedText: `Your ${providerLabel} account is now connected. Processing your request...`,
+    connectedText: "",
     failureText: `I connected your account but hit an error processing your request. Please try \`${stored.pendingMessage}\` again.`,
     replyContext: {
       requester: { userId: stored.userId },
@@ -339,7 +438,7 @@ async function resumePendingOAuthMessage(
           "app.ai.outcome": reply.diagnostics.outcome,
           "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
         },
-        "Auto-resumed pending message after OAuth callback",
+        "OAuth callback auto-resumed pending message finished replying",
       );
     },
     onFailure: async (error) => {
