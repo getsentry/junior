@@ -320,6 +320,7 @@ export async function generateAssistantReply(
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
   let timeoutResumeMessages: AgentMessage[] = [];
+  let beforeMessageCount = 0;
   let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
@@ -882,8 +883,8 @@ export async function generateAssistantReply(
       });
     });
 
-    let beforeMessageCount = agent.state.messages.length;
     let newMessages: AgentMessage[] = [];
+    beforeMessageCount = agent.state.messages.length;
     try {
       if (resumedFromCheckpoint) {
         agent.state.messages = existingCheckpoint!.piMessages;
@@ -1074,8 +1075,14 @@ export async function generateAssistantReply(
       timeoutResumeSessionId
     ) {
       if (!turnUsage && timeoutResumeMessages.length > 0) {
+        // Match the canonical slice-scoped extraction: sum usage from new
+        // assistant messages produced during this slice, not the full
+        // message history (which may include prior slices whose usage was
+        // already reported in earlier footers).
         const fallbackUsage = extractGenAiUsageSummary(
-          ...timeoutResumeMessages.filter(isAssistantMessage),
+          ...timeoutResumeMessages
+            .slice(beforeMessageCount)
+            .filter(isAssistantMessage),
         );
         turnUsage = Object.values(fallbackUsage).some(
           (value) => value !== undefined,
