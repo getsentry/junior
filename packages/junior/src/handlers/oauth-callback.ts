@@ -21,10 +21,7 @@ import {
   resumeAuthorizedRequest,
   resumeSlackTurn,
 } from "@/chat/slack/resume";
-import {
-  buildAuthPauseSlackMessage,
-  persistAuthPauseReplyState,
-} from "@/chat/services/auth-pause-reply";
+import { deliverAuthPauseReply } from "@/chat/services/auth-pause-reply";
 import { logException, logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import {
@@ -56,7 +53,6 @@ import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import {
-  buildAuthPauseReplyText,
   clearPendingAuth,
   getConversationPendingAuth,
   isPendingAuthLatestRequest,
@@ -345,37 +341,14 @@ async function resumeCheckpointedOAuthTurn(
       });
     },
     onAuthPause: async (error) => {
-      const authPauseText = isRetryableTurnError(error)
-        ? buildAuthPauseReplyText({
-            disposition: error.metadata?.authDisposition,
-            provider: error.metadata?.authProvider,
-          })
-        : buildAuthPauseReplyText({
-            provider: stored.provider,
-          });
-      const authPauseMessage = buildAuthPauseSlackMessage({
-        conversationId: stored.resumeConversationId,
-        durationMs: isRetryableTurnError(error)
-          ? error.metadata?.authDurationMs
-          : undefined,
-        text: authPauseText,
-        thinkingLevel: isRetryableTurnError(error)
-          ? error.metadata?.authThinkingLevel
-          : undefined,
-        usage: isRetryableTurnError(error)
-          ? error.metadata?.authUsage
-          : undefined,
-      });
-      await postSlackMessage({
+      await deliverAuthPauseReply({
         channelId: stored.channelId!,
-        threadTs: stored.threadTs!,
-        text: authPauseMessage.text,
-        ...(authPauseMessage.blocks ? { blocks: authPauseMessage.blocks } : {}),
-      });
-      await persistAuthPauseReplyState({
-        threadStateId: stored.resumeConversationId!,
+        conversationId: stored.resumeConversationId,
+        error,
+        fallbackProvider: stored.provider,
         sessionId: resolvedSessionId,
-        text: authPauseText,
+        threadStateId: stored.resumeConversationId!,
+        threadTs: stored.threadTs!,
       });
     },
     onTimeoutPause: async (error) => {

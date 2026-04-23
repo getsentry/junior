@@ -29,14 +29,9 @@ import {
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import { postSlackMessage } from "@/chat/slack/outbound";
 import { resumeAuthorizedRequest } from "@/chat/slack/resume";
+import { deliverAuthPauseReply } from "@/chat/services/auth-pause-reply";
 import {
-  buildAuthPauseSlackMessage,
-  persistAuthPauseReplyState,
-} from "@/chat/services/auth-pause-reply";
-import {
-  buildAuthPauseReplyText,
   clearPendingAuth,
   getConversationPendingAuth,
   isPendingAuthLatestRequest,
@@ -319,35 +314,14 @@ async function resumeAuthorizedMcpTurn(args: {
       }
     },
     onAuthPause: async (error) => {
-      const authPauseText = isRetryableTurnError(error)
-        ? buildAuthPauseReplyText({
-            disposition: error.metadata?.authDisposition,
-            provider: error.metadata?.authProvider,
-          })
-        : buildAuthPauseReplyText({ provider });
-      const authPauseMessage = buildAuthPauseSlackMessage({
-        conversationId: authSession.conversationId,
-        durationMs: isRetryableTurnError(error)
-          ? error.metadata?.authDurationMs
-          : undefined,
-        text: authPauseText,
-        thinkingLevel: isRetryableTurnError(error)
-          ? error.metadata?.authThinkingLevel
-          : undefined,
-        usage: isRetryableTurnError(error)
-          ? error.metadata?.authUsage
-          : undefined,
-      });
-      await postSlackMessage({
+      await deliverAuthPauseReply({
         channelId: authSession.channelId!,
-        threadTs: authSession.threadTs!,
-        text: authPauseMessage.text,
-        ...(authPauseMessage.blocks ? { blocks: authPauseMessage.blocks } : {}),
-      });
-      await persistAuthPauseReplyState({
-        threadStateId: `slack:${authSession.channelId!}:${authSession.threadTs!}`,
+        conversationId: authSession.conversationId,
+        error,
+        fallbackProvider: provider,
         sessionId: resolvedSessionId,
-        text: authPauseText,
+        threadStateId: `slack:${authSession.channelId!}:${authSession.threadTs!}`,
+        threadTs: authSession.threadTs!,
       });
       logWarn(
         "mcp_oauth_callback_resume_reparked_for_auth",

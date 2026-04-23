@@ -3,7 +3,7 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { markTurnCompleted } from "@/chat/runtime/turn";
+import { isRetryableTurnError, markTurnCompleted } from "@/chat/runtime/turn";
 import {
   generateConversationId,
   markConversationMessage,
@@ -11,12 +11,14 @@ import {
   updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
+import { buildAuthPauseReplyText } from "@/chat/services/pending-auth";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
   type SlackMessageBlock,
 } from "@/chat/slack/footer";
+import { postSlackMessage } from "@/chat/slack/outbound";
 import {
   coerceThreadConversationState,
   type ThreadConversationState,
@@ -90,4 +92,48 @@ export async function persistAuthPauseReplyState(args: {
     text: args.text,
   });
   await persistThreadStateById(args.threadStateId, { conversation });
+}
+
+/**
+ * Deliver the visible "I sent you a private link" reply for an auth-pause
+ * resume and mark the turn as completed in persisted state.
+ *
+ * Used by every resume/callback path that surfaces an `onAuthPause` error.
+ * Text and footer metadata come from the retryable error when available;
+ * `fallbackProvider` only applies when a non-retryable error is surfaced.
+ */
+export async function deliverAuthPauseReply(args: {
+  channelId: string;
+  conversationId?: string;
+  error: unknown;
+  fallbackProvider?: string;
+  sessionId: string;
+  threadStateId: string;
+  threadTs: string;
+}): Promise<void> {
+  const retryable = isRetryableTurnError(args.error) ? args.error : undefined;
+  const text = retryable
+    ? buildAuthPauseReplyText({
+        disposition: retryable.metadata?.authDisposition,
+        provider: retryable.metadata?.authProvider,
+      })
+    : buildAuthPauseReplyText({ provider: args.fallbackProvider });
+  const message = buildAuthPauseSlackMessage({
+    conversationId: args.conversationId,
+    durationMs: retryable?.metadata?.authDurationMs,
+    text,
+    thinkingLevel: retryable?.metadata?.authThinkingLevel,
+    usage: retryable?.metadata?.authUsage,
+  });
+  await postSlackMessage({
+    channelId: args.channelId,
+    threadTs: args.threadTs,
+    text: message.text,
+    ...(message.blocks ? { blocks: message.blocks } : {}),
+  });
+  await persistAuthPauseReplyState({
+    sessionId: args.sessionId,
+    text,
+    threadStateId: args.threadStateId,
+  });
 }

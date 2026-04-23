@@ -1,7 +1,6 @@
 import { botConfig } from "@/chat/config";
 import { logException, logWarn } from "@/chat/logging";
 import { ResumeTurnBusyError, resumeSlackTurn } from "@/chat/slack/resume";
-import { postSlackMessage } from "@/chat/slack/outbound";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   getAgentTurnSessionCheckpoint,
@@ -42,14 +41,8 @@ import {
 } from "@/chat/services/timeout-resume";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AssistantReply } from "@/chat/respond";
-import {
-  buildAuthPauseSlackMessage,
-  persistAuthPauseReplyState,
-} from "@/chat/services/auth-pause-reply";
-import {
-  buildAuthPauseReplyText,
-  clearPendingAuth,
-} from "@/chat/services/pending-auth";
+import { deliverAuthPauseReply } from "@/chat/services/auth-pause-reply";
+import { clearPendingAuth } from "@/chat/services/pending-auth";
 import type { WaitUntilFn } from "@/handlers/types";
 
 async function persistCompletedReplyState(args: {
@@ -245,35 +238,13 @@ async function resumeTimedOutTurn(
       await persistFailedReplyState(checkpoint);
     },
     onAuthPause: async (error) => {
-      const authPauseText = isRetryableTurnError(error)
-        ? buildAuthPauseReplyText({
-            disposition: error.metadata?.authDisposition,
-            provider: error.metadata?.authProvider,
-          })
-        : buildAuthPauseReplyText({});
-      const authPauseMessage = buildAuthPauseSlackMessage({
-        conversationId: payload.conversationId,
-        durationMs: isRetryableTurnError(error)
-          ? error.metadata?.authDurationMs
-          : undefined,
-        text: authPauseText,
-        thinkingLevel: isRetryableTurnError(error)
-          ? error.metadata?.authThinkingLevel
-          : undefined,
-        usage: isRetryableTurnError(error)
-          ? error.metadata?.authUsage
-          : undefined,
-      });
-      await postSlackMessage({
+      await deliverAuthPauseReply({
         channelId: thread.channelId,
-        threadTs: thread.threadTs,
-        text: authPauseMessage.text,
-        ...(authPauseMessage.blocks ? { blocks: authPauseMessage.blocks } : {}),
-      });
-      await persistAuthPauseReplyState({
-        threadStateId: payload.conversationId,
+        conversationId: payload.conversationId,
+        error,
         sessionId: payload.sessionId,
-        text: authPauseText,
+        threadStateId: payload.conversationId,
+        threadTs: thread.threadTs,
       });
       logWarn(
         "timeout_resume_reparked_for_auth",
