@@ -1001,11 +1001,6 @@ export async function generateAssistantReply(
       unsubscribe();
     }
 
-    if (getPendingAuthPause()) {
-      timeoutResumeMessages = [...agent.state.messages];
-      throw getPendingAuthPause()!;
-    }
-
     // ── Persist completed checkpoint ─────────────────────────────────
     if (
       checkpointState.canUseTurnSession &&
