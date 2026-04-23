@@ -27,7 +27,7 @@ import { getTurnUserMessageId } from "@/chat/runtime/turn-user-message";
 import type { AgentTurnUsage } from "@/chat/usage";
 
 /** Build the Slack text + footer blocks for an auth-pause reply. */
-export function buildAuthPauseSlackMessage(args: {
+function buildAuthPauseSlackMessage(args: {
   conversationId?: string;
   durationMs?: number;
   text: string;

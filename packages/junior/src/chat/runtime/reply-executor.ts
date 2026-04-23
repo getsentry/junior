@@ -44,7 +44,10 @@ import {
   generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
-import { buildAuthPauseReplyText } from "@/chat/services/pending-auth";
+import {
+  applyPendingAuthUpdate,
+  buildAuthPauseReplyText,
+} from "@/chat/services/pending-auth";
 import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
@@ -54,7 +57,6 @@ import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
-import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
 import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
@@ -352,21 +354,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await persistThreadState(thread, { artifacts });
             },
             onAuthPending: async (pendingAuth) => {
-              const previousPendingAuth =
-                preparedState.conversation.processing.pendingAuth;
-              preparedState.conversation.processing.pendingAuth = pendingAuth;
-              if (
-                previousPendingAuth &&
-                previousPendingAuth.sessionId !== pendingAuth.sessionId &&
-                conversationId
-              ) {
-                await supersedeAgentTurnSessionCheckpoint({
-                  conversationId,
-                  sessionId: previousPendingAuth.sessionId,
-                  errorMessage:
-                    "Superseded by a newer auth-blocked request in the same conversation.",
-                });
-              }
+              await applyPendingAuthUpdate({
+                conversation: preparedState.conversation,
+                conversationId,
+                nextPendingAuth: pendingAuth,
+              });
               await persistThreadState(thread, {
                 conversation: preparedState.conversation,
               });

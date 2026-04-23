@@ -5,7 +5,6 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   getAgentTurnSessionCheckpoint,
   type AgentTurnSessionCheckpoint,
-  supersedeAgentTurnSessionCheckpoint,
 } from "@/chat/state/turn-session-store";
 import {
   getPersistedThreadState,
@@ -42,7 +41,10 @@ import {
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AssistantReply } from "@/chat/respond";
 import { deliverAuthPauseReply } from "@/chat/services/auth-pause-reply";
-import { clearPendingAuth } from "@/chat/services/pending-auth";
+import {
+  applyPendingAuthUpdate,
+  clearPendingAuth,
+} from "@/chat/services/pending-auth";
 import type { WaitUntilFn } from "@/handlers/types";
 
 async function persistCompletedReplyState(args: {
@@ -190,20 +192,12 @@ async function resumeTimedOutTurn(
       channelConfiguration,
       sandbox,
       threadParticipants: buildThreadParticipants(conversation.messages),
-      onAuthPending: async (pendingAuth) => {
-        const previousPendingAuth = conversation.processing.pendingAuth;
-        conversation.processing.pendingAuth = pendingAuth;
-        if (
-          previousPendingAuth &&
-          previousPendingAuth.sessionId !== pendingAuth.sessionId
-        ) {
-          await supersedeAgentTurnSessionCheckpoint({
-            conversationId: payload.conversationId,
-            sessionId: previousPendingAuth.sessionId,
-            errorMessage:
-              "Superseded by a newer auth-blocked request in the same conversation.",
-          });
-        }
+      onAuthPending: async (nextPendingAuth) => {
+        await applyPendingAuthUpdate({
+          conversation,
+          conversationId: payload.conversationId,
+          nextPendingAuth,
+        });
         await persistThreadStateById(payload.conversationId, {
           conversation,
         });

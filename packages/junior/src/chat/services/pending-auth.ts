@@ -8,6 +8,7 @@ import type {
   ConversationPendingAuthState,
   ThreadConversationState,
 } from "@/chat/state/conversation";
+import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 
 const AUTH_LINK_REUSE_WINDOW_MS = 10 * 60 * 1000;
 
@@ -82,6 +83,32 @@ export function clearPendingAuth(
     return;
   }
   conversation.processing.pendingAuth = undefined;
+}
+
+/**
+ * Apply a new pending-auth record to the conversation and, when replacing a
+ * different session's pending-auth, mark the prior checkpoint as superseded.
+ * Callers are responsible for persisting the mutated conversation afterwards.
+ */
+export async function applyPendingAuthUpdate(args: {
+  conversation: ThreadConversationState;
+  conversationId: string | undefined;
+  nextPendingAuth: ConversationPendingAuthState;
+}): Promise<void> {
+  const previousPendingAuth = args.conversation.processing.pendingAuth;
+  args.conversation.processing.pendingAuth = args.nextPendingAuth;
+  if (
+    previousPendingAuth &&
+    previousPendingAuth.sessionId !== args.nextPendingAuth.sessionId &&
+    args.conversationId
+  ) {
+    await supersedeAgentTurnSessionCheckpoint({
+      conversationId: args.conversationId,
+      sessionId: previousPendingAuth.sessionId,
+      errorMessage:
+        "Superseded by a newer auth-blocked request in the same conversation.",
+    });
+  }
 }
 
 export function isPendingAuthLatestRequest(

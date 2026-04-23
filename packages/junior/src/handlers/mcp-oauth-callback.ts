@@ -32,6 +32,7 @@ import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { resumeAuthorizedRequest } from "@/chat/slack/resume";
 import { deliverAuthPauseReply } from "@/chat/services/auth-pause-reply";
 import {
+  applyPendingAuthUpdate,
   clearPendingAuth,
   getConversationPendingAuth,
   isPendingAuthLatestRequest,
@@ -245,8 +246,8 @@ async function resumeAuthorizedMcpTurn(args: {
         requesterId: authSession.userId,
       },
       toolChannelId:
-        artifacts.assistantContextChannelId ??
         authSession.toolChannelId ??
+        artifacts.assistantContextChannelId ??
         authSession.channelId,
       conversationContext,
       artifactState: artifacts,
@@ -256,19 +257,11 @@ async function resumeAuthorizedMcpTurn(args: {
       sandbox: getPersistedSandboxState(currentState),
       threadParticipants: buildThreadParticipants(conversation.messages),
       onAuthPending: async (nextPendingAuth) => {
-        const previousPendingAuth = conversation.processing.pendingAuth;
-        conversation.processing.pendingAuth = nextPendingAuth;
-        if (
-          previousPendingAuth &&
-          previousPendingAuth.sessionId !== nextPendingAuth.sessionId
-        ) {
-          await supersedeAgentTurnSessionCheckpoint({
-            conversationId: authSession.conversationId,
-            sessionId: previousPendingAuth.sessionId,
-            errorMessage:
-              "Superseded by a newer auth-blocked request in the same conversation.",
-          });
-        }
+        await applyPendingAuthUpdate({
+          conversation,
+          conversationId: authSession.conversationId,
+          nextPendingAuth,
+        });
         await persistThreadStateById(threadId, { conversation });
       },
       ...getTurnUserReplyAttachmentContext(userMessage),

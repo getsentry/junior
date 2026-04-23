@@ -53,6 +53,7 @@ import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import {
+  applyPendingAuthUpdate,
   clearPendingAuth,
   getConversationPendingAuth,
   isPendingAuthLatestRequest,
@@ -293,19 +294,11 @@ async function resumeCheckpointedOAuthTurn(
       sandbox: getPersistedSandboxState(currentState),
       threadParticipants: buildThreadParticipants(conversation.messages),
       onAuthPending: async (nextPendingAuth) => {
-        const previousPendingAuth = conversation.processing.pendingAuth;
-        conversation.processing.pendingAuth = nextPendingAuth;
-        if (
-          previousPendingAuth &&
-          previousPendingAuth.sessionId !== nextPendingAuth.sessionId
-        ) {
-          await supersedeAgentTurnSessionCheckpoint({
-            conversationId: stored.resumeConversationId!,
-            sessionId: previousPendingAuth.sessionId,
-            errorMessage:
-              "Superseded by a newer auth-blocked request in the same conversation.",
-          });
-        }
+        await applyPendingAuthUpdate({
+          conversation,
+          conversationId: stored.resumeConversationId,
+          nextPendingAuth,
+        });
         await persistThreadStateById(stored.resumeConversationId!, {
           conversation,
         });
