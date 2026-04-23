@@ -33,7 +33,7 @@ import { postSlackMessage } from "@/chat/slack/outbound";
 import { resumeAuthorizedRequest } from "@/chat/slack/resume";
 import {
   buildAuthPauseSlackMessage,
-  completeAuthPauseTurn,
+  persistAuthPauseReplyState,
 } from "@/chat/services/auth-pause-reply";
 import {
   buildAuthPauseReplyText,
@@ -174,23 +174,6 @@ async function persistFailedReplyState(
   await persistThreadStateById(threadId, {
     conversation,
   });
-}
-
-async function persistAuthPauseReplyState(args: {
-  channelId: string;
-  threadTs: string;
-  sessionId: string;
-  text: string;
-}): Promise<void> {
-  const threadId = `slack:${args.channelId}:${args.threadTs}`;
-  const currentState = await getPersistedThreadState(threadId);
-  const conversation = coerceThreadConversationState(currentState);
-  completeAuthPauseTurn({
-    conversation,
-    sessionId: args.sessionId,
-    text: args.text,
-  });
-  await persistThreadStateById(threadId, { conversation });
 }
 
 async function resumeAuthorizedMcpTurn(args: {
@@ -362,8 +345,7 @@ async function resumeAuthorizedMcpTurn(args: {
         ...(authPauseMessage.blocks ? { blocks: authPauseMessage.blocks } : {}),
       });
       await persistAuthPauseReplyState({
-        channelId: authSession.channelId!,
-        threadTs: authSession.threadTs!,
+        threadStateId: `slack:${authSession.channelId!}:${authSession.threadTs!}`,
         sessionId: resolvedSessionId,
         text: authPauseText,
       });

@@ -23,7 +23,7 @@ import {
 } from "@/chat/slack/resume";
 import {
   buildAuthPauseSlackMessage,
-  completeAuthPauseTurn,
+  persistAuthPauseReplyState,
 } from "@/chat/services/auth-pause-reply";
 import { logException, logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
@@ -182,21 +182,6 @@ async function persistFailedOAuthReplyState(args: {
   });
 }
 
-async function persistAuthPauseOAuthReplyState(args: {
-  conversationId: string;
-  sessionId: string;
-  text: string;
-}): Promise<void> {
-  const currentState = await getPersistedThreadState(args.conversationId);
-  const conversation = coerceThreadConversationState(currentState);
-  completeAuthPauseTurn({
-    conversation,
-    sessionId: args.sessionId,
-    text: args.text,
-  });
-  await persistThreadStateById(args.conversationId, { conversation });
-}
-
 async function resumeCheckpointedOAuthTurn(
   stored: OAuthStatePayload,
 ): Promise<boolean> {
@@ -213,12 +198,23 @@ async function resumeCheckpointedOAuthTurn(
     stored.resumeConversationId,
     stored.resumeSessionId,
   );
+  if (!checkpoint) {
+    return false;
+  }
+  // Terminal checkpoint states are already handled — do not fall through to
+  // the pending-message resume which would re-post the original request.
   if (
-    !checkpoint ||
+    checkpoint.state === "completed" ||
+    checkpoint.state === "failed" ||
+    checkpoint.state === "superseded"
+  ) {
+    return true;
+  }
+  if (
     checkpoint.state !== "awaiting_resume" ||
     checkpoint.resumeReason !== "auth"
   ) {
-    return false;
+    return true;
   }
 
   const currentState = await getPersistedThreadState(
@@ -376,8 +372,8 @@ async function resumeCheckpointedOAuthTurn(
         text: authPauseMessage.text,
         ...(authPauseMessage.blocks ? { blocks: authPauseMessage.blocks } : {}),
       });
-      await persistAuthPauseOAuthReplyState({
-        conversationId: stored.resumeConversationId!,
+      await persistAuthPauseReplyState({
+        threadStateId: stored.resumeConversationId!,
         sessionId: resolvedSessionId,
         text: authPauseText,
       });

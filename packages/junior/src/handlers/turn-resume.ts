@@ -44,7 +44,7 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AssistantReply } from "@/chat/respond";
 import {
   buildAuthPauseSlackMessage,
-  completeAuthPauseTurn,
+  persistAuthPauseReplyState,
 } from "@/chat/services/auth-pause-reply";
 import {
   buildAuthPauseReplyText,
@@ -121,21 +121,6 @@ async function persistFailedReplyState(
   await persistThreadStateById(checkpoint.conversationId, {
     conversation,
   });
-}
-
-async function persistAuthPauseReplyState(args: {
-  conversationId: string;
-  sessionId: string;
-  text: string;
-}): Promise<void> {
-  const currentState = await getPersistedThreadState(args.conversationId);
-  const conversation = coerceThreadConversationState(currentState);
-  completeAuthPauseTurn({
-    conversation,
-    sessionId: args.sessionId,
-    text: args.text,
-  });
-  await persistThreadStateById(args.conversationId, { conversation });
 }
 
 async function resumeTimedOutTurn(
@@ -286,7 +271,7 @@ async function resumeTimedOutTurn(
         ...(authPauseMessage.blocks ? { blocks: authPauseMessage.blocks } : {}),
       });
       await persistAuthPauseReplyState({
-        conversationId: payload.conversationId,
+        threadStateId: payload.conversationId,
         sessionId: payload.sessionId,
         text: authPauseText,
       });

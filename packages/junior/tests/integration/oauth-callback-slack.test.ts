@@ -290,4 +290,42 @@ describe("oauth callback slack integration", () => {
       ]),
     );
   });
+
+  it("does not re-post the pending message when the checkpoint is already superseded", async () => {
+    const conversationId = "slack:C123:1700000000.010";
+    const sessionId = "turn_msg_10";
+
+    await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "superseded",
+      piMessages: [],
+      loadedSkillNames: ["eval-oauth"],
+      resumeReason: "auth",
+      resumedFromSliceId: 1,
+    });
+
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("oauth-state:eval-oauth-superseded-state", {
+        userId: "U123",
+        provider: "eval-oauth",
+        channelId: "C123",
+        threadTs: "1700000000.010",
+        pendingMessage: "list my sentry issues",
+        resumeConversationId: conversationId,
+        resumeSessionId: sessionId,
+      });
+
+    const response = await oauthCallbackHarnessModule.runOauthCallbackRoute({
+      provider: "eval-oauth",
+      state: "eval-oauth-superseded-state",
+      code: "eval-oauth-code",
+    });
+
+    expect(response.status).toBe(200);
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
+  });
 });

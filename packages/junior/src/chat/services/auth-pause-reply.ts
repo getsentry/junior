@@ -1,4 +1,8 @@
 import { botConfig } from "@/chat/config";
+import {
+  getPersistedThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import { markTurnCompleted } from "@/chat/runtime/turn";
 import {
   generateConversationId,
@@ -13,7 +17,10 @@ import {
   buildSlackReplyFooter,
   type SlackMessageBlock,
 } from "@/chat/slack/footer";
-import type { ThreadConversationState } from "@/chat/state/conversation";
+import {
+  coerceThreadConversationState,
+  type ThreadConversationState,
+} from "@/chat/state/conversation";
 import { getTurnUserMessageId } from "@/chat/runtime/turn-user-message";
 import type { AgentTurnUsage } from "@/chat/usage";
 
@@ -67,4 +74,20 @@ export function completeAuthPauseTurn(args: {
     nowMs: Date.now(),
     updateConversationStats,
   });
+}
+
+/** Reload thread state, mark the auth-pause note as the turn's reply, and persist. */
+export async function persistAuthPauseReplyState(args: {
+  sessionId: string;
+  text: string;
+  threadStateId: string;
+}): Promise<void> {
+  const currentState = await getPersistedThreadState(args.threadStateId);
+  const conversation = coerceThreadConversationState(currentState);
+  completeAuthPauseTurn({
+    conversation,
+    sessionId: args.sessionId,
+    text: args.text,
+  });
+  await persistThreadStateById(args.threadStateId, { conversation });
 }
