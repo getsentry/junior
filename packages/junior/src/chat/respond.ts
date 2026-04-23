@@ -958,10 +958,6 @@ export async function generateAssistantReply(
           }
 
           newMessages = agent.state.messages.slice(beforeMessageCount);
-          if (getPendingAuthPause()) {
-            timeoutResumeMessages = [...agent.state.messages];
-            throw getPendingAuthPause()!;
-          }
           const outputMessages = newMessages.filter(isAssistantMessage);
           const outputMessagesAttribute =
             serializeGenAiAttribute(outputMessages);
@@ -986,6 +982,10 @@ export async function generateAssistantReply(
               ? { "gen_ai.usage.output_tokens": usageSummary.outputTokens }
               : {}),
           });
+          if (getPendingAuthPause()) {
+            timeoutResumeMessages = [...agent.state.messages];
+            throw getPendingAuthPause()!;
+          }
         },
         {
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
@@ -1078,6 +1078,16 @@ export async function generateAssistantReply(
       timeoutResumeConversationId &&
       timeoutResumeSessionId
     ) {
+      if (!turnUsage && timeoutResumeMessages.length > 0) {
+        const fallbackUsage = extractGenAiUsageSummary(
+          ...timeoutResumeMessages.filter(isAssistantMessage),
+        );
+        turnUsage = Object.values(fallbackUsage).some(
+          (value) => value !== undefined,
+        )
+          ? fallbackUsage
+          : undefined;
+      }
       const nextSliceId = await persistAuthPauseCheckpoint({
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
