@@ -137,6 +137,7 @@ async function persistCompletedReplyState(
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),
+    sessionId,
     updateConversationStats,
   });
 
@@ -161,6 +162,7 @@ async function persistFailedReplyState(
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
+    sessionId,
     userMessageId: getTurnUserMessageId(conversation, sessionId),
     markConversationMessage,
     updateConversationStats,

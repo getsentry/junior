@@ -85,6 +85,7 @@ async function persistCompletedReplyState(args: {
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),
+    sessionId: args.checkpoint.sessionId,
     updateConversationStats,
   });
 
@@ -106,6 +107,7 @@ async function persistFailedReplyState(
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
+    sessionId: checkpoint.sessionId,
     userMessageId: getTurnUserMessage(conversation, checkpoint.sessionId)?.id,
     markConversationMessage,
     updateConversationStats,

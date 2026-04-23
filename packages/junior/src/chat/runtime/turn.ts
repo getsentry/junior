@@ -85,25 +85,36 @@ export function startActiveTurn(args: {
 
 /**
  * Mark a turn as completed after the runtime has durably accepted the final
- * user-visible reply for delivery.
+ * user-visible reply for delivery. If `sessionId` is provided, `activeTurnId`
+ * is only cleared when it still matches the completing turn — this prevents
+ * late callback paths (which reload thread state fresh) from accidentally
+ * clearing a newer concurrent turn's active id.
  */
 export function markTurnCompleted(args: {
   conversation: ThreadConversationState;
   nowMs: number;
+  sessionId?: string;
   updateConversationStats: (conversation: ThreadConversationState) => void;
 }): void {
-  args.conversation.processing.activeTurnId = undefined;
+  if (
+    !args.sessionId ||
+    args.conversation.processing.activeTurnId === args.sessionId
+  ) {
+    args.conversation.processing.activeTurnId = undefined;
+  }
   args.conversation.processing.lastCompletedAtMs = args.nowMs;
   args.updateConversationStats(args.conversation);
 }
 
 /**
  * Mark a turn as failed when execution or final user-visible reply delivery
- * cannot be completed.
+ * cannot be completed. If `sessionId` is provided, `activeTurnId` is only
+ * cleared when it still matches the failing turn.
  */
 export function markTurnFailed(args: {
   conversation: ThreadConversationState;
   nowMs: number;
+  sessionId?: string;
   userMessageId?: string;
   markConversationMessage: (
     conversation: ThreadConversationState,
@@ -112,7 +123,12 @@ export function markTurnFailed(args: {
   ) => void;
   updateConversationStats: (conversation: ThreadConversationState) => void;
 }): void {
-  args.conversation.processing.activeTurnId = undefined;
+  if (
+    !args.sessionId ||
+    args.conversation.processing.activeTurnId === args.sessionId
+  ) {
+    args.conversation.processing.activeTurnId = undefined;
+  }
   args.conversation.processing.lastCompletedAtMs = args.nowMs;
   args.markConversationMessage(args.conversation, args.userMessageId, {
     replied: false,

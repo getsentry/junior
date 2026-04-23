@@ -74,6 +74,7 @@ export function completeAuthPauseTurn(args: {
   markTurnCompleted({
     conversation: args.conversation,
     nowMs: Date.now(),
+    sessionId: args.sessionId,
     updateConversationStats,
   });
 }

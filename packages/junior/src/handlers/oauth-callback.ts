@@ -146,6 +146,7 @@ async function persistCompletedOAuthReplyState(args: {
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),
+    sessionId: args.sessionId,
     updateConversationStats,
   });
 
@@ -168,6 +169,7 @@ async function persistFailedOAuthReplyState(args: {
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
+    sessionId: args.sessionId,
     userMessageId: getTurnUserMessage(conversation, args.sessionId)?.id,
     markConversationMessage,
     updateConversationStats,
