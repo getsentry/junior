@@ -94,50 +94,6 @@ describe("selectTurnThinkingLevel", () => {
     });
   });
 
-  it("promotes 'none' to 'low' for a short follow-up in a thread with prior context", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        thinking_level: "none",
-        confidence: 0.95,
-        reason: "short message",
-      },
-    }));
-
-    const profile = await selectTurnThinkingLevel({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
-      messageText: "go",
-      conversationContext:
-        "user: investigate the signup 500s and draft a github issue\nbot: want me to start now?",
-    });
-
-    expect(profile).toMatchObject({
-      thinkingLevel: "low",
-      reason: "short_followup_no_none:short message",
-    });
-  });
-
-  it("leaves 'none' in place for a short message with no thread context", async () => {
-    const completeObject = vi.fn(async () => ({
-      object: {
-        thinking_level: "none",
-        confidence: 0.95,
-        reason: "greeting",
-      },
-    }));
-
-    const profile = await selectTurnThinkingLevel({
-      completeObject,
-      fastModelId: "openai/gpt-5.4-mini",
-      messageText: "hello",
-    });
-
-    expect(profile).toMatchObject({
-      thinkingLevel: "none",
-      reason: "greeting",
-    });
-  });
-
   it("truncates very long thread context with head + tail slices", async () => {
     let capturedPrompt = "";
     const completeObject = async ({ prompt }: { prompt: string }) => {

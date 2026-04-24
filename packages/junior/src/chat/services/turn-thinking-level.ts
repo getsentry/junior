@@ -7,7 +7,6 @@ const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.75;
 const MAX_ROUTER_CONTEXT_CHARS = 8_000;
 const ROUTER_CONTEXT_HEAD_CHARS = 3_000;
 const ROUTER_CONTEXT_TAIL_CHARS = 5_000;
-const SHORT_INSTRUCTION_CHAR_THRESHOLD = 30;
 const TRUNCATION_MARKER = "\n…[truncated]…\n";
 const TURN_THINKING_LEVELS = ["none", "low", "medium", "high"] as const;
 
@@ -165,8 +164,6 @@ export async function selectTurnThinkingLevel(args: {
       const selection = await classifyTurn({
         completeObject: args.completeObject,
         fastModelId: args.fastModelId,
-        hasThreadBackground: trimmedContext !== null,
-        instructionLength,
         metadata: {
           modelId: args.fastModelId,
           threadId: args.context?.threadId ?? "",
@@ -195,8 +192,6 @@ async function classifyTurn(args: {
     typeof selectTurnThinkingLevel
   >[0]["completeObject"];
   fastModelId: string;
-  hasThreadBackground: boolean;
-  instructionLength: number;
   metadata: Record<string, string>;
   prompt: string;
 }): Promise<TurnThinkingSelection> {
@@ -220,21 +215,6 @@ async function classifyTurn(args: {
         confidence: parsed.confidence,
         thinkingLevel: DEFAULT_THINKING_LEVEL,
         reason: `low_confidence_default:${reason}`,
-      };
-    }
-
-    // Short follow-ups like "go" or "yes please" in a thread with prior
-    // context are authorizations of the pending task — never standalone
-    // trivial asks. If the classifier still picked "none", promote to "low".
-    if (
-      parsed.thinking_level === "none" &&
-      args.hasThreadBackground &&
-      args.instructionLength < SHORT_INSTRUCTION_CHAR_THRESHOLD
-    ) {
-      return {
-        confidence: parsed.confidence,
-        thinkingLevel: "low",
-        reason: `short_followup_no_none:${reason}`,
       };
     }
 
