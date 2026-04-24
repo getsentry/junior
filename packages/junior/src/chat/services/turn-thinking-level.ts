@@ -1,9 +1,14 @@
 import type { ThinkingLevel as AgentThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { ThinkingLevel as ProviderThinkingLevel } from "@mariozechner/pi-ai";
 import { z } from "zod";
+import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.75;
-const MAX_ROUTER_CONTEXT_CHARS = 1_200;
+const MAX_ROUTER_CONTEXT_CHARS = 8_000;
+const ROUTER_CONTEXT_HEAD_CHARS = 3_000;
+const ROUTER_CONTEXT_TAIL_CHARS = 5_000;
+const SHORT_INSTRUCTION_CHAR_THRESHOLD = 30;
+const TRUNCATION_MARKER = "\n…[truncated]…\n";
 const TURN_THINKING_LEVELS = ["none", "low", "medium", "high"] as const;
 
 const turnExecutionProfileSchema = z.object({
@@ -22,14 +27,34 @@ export interface TurnThinkingSelection {
 
 const DEFAULT_THINKING_LEVEL: TurnThinkingSelection["thinkingLevel"] = "low";
 
-function trimContextForRouter(text: string | undefined): string | undefined {
+interface TrimmedContext {
+  text: string;
+  truncated: boolean;
+  originalCharCount: number;
+}
+
+function trimContextForRouter(text: string | undefined): TrimmedContext | null {
   const trimmed = text?.trim();
   if (!trimmed) {
-    return undefined;
+    return null;
   }
-  return trimmed.length <= MAX_ROUTER_CONTEXT_CHARS
-    ? trimmed
-    : trimmed.slice(-MAX_ROUTER_CONTEXT_CHARS);
+  if (trimmed.length <= MAX_ROUTER_CONTEXT_CHARS) {
+    return {
+      text: trimmed,
+      truncated: false,
+      originalCharCount: trimmed.length,
+    };
+  }
+  // Keep both ends of the thread: head preserves the original task framing,
+  // tail preserves the most recent turn. Short follow-ups like "go" are often
+  // preceded by the bot's clarifying question, so tail alone is misleading.
+  const head = trimmed.slice(0, ROUTER_CONTEXT_HEAD_CHARS).trimEnd();
+  const tail = trimmed.slice(-ROUTER_CONTEXT_TAIL_CHARS).trimStart();
+  return {
+    text: `${head}${TRUNCATION_MARKER}${tail}`,
+    truncated: true,
+    originalCharCount: trimmed.length,
+  };
 }
 
 function buildClassifierSystemPrompt(): string {
@@ -42,20 +67,26 @@ function buildClassifierSystemPrompt(): string {
     "Use medium for investigations, ambiguous asks, multi-step analysis, or likely multi-tool work.",
     "Use high for code changes, debugging/root-cause analysis, research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
     "",
+    "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and the thread-background contains a pending task, classify the pending task — not the affirmation.",
+    "",
     "Return JSON only with thinking_level, confidence, and reason.",
   ].join("\n");
 }
 
 function buildClassifierPrompt(args: {
-  conversationContext?: string;
+  conversationContext?: TrimmedContext | null;
   currentTurnBlocks?: string[];
   messageText: string;
 }): string {
   const sections: string[] = [];
 
-  const context = trimContextForRouter(args.conversationContext);
-  if (context) {
-    sections.push("<thread-background>", context, "</thread-background>", "");
+  if (args.conversationContext) {
+    sections.push(
+      "<thread-background>",
+      args.conversationContext.text,
+      "</thread-background>",
+      "",
+    );
   }
 
   sections.push(
@@ -98,41 +129,119 @@ export async function selectTurnThinkingLevel(args: {
   fastModelId: string;
   messageText: string;
 }): Promise<TurnThinkingSelection> {
+  const trimmedContext = trimContextForRouter(args.conversationContext);
+  const instructionLength = args.messageText.trim().length;
+  const turnBlockCount = (args.currentTurnBlocks ?? []).filter(
+    (block) => block.trim().length > 0,
+  ).length;
+  const prompt = buildClassifierPrompt({
+    conversationContext: trimmedContext,
+    currentTurnBlocks: args.currentTurnBlocks,
+    messageText: args.messageText,
+  });
+
+  const logContext: LogContext = {
+    slackThreadId: args.context?.threadId,
+    slackChannelId: args.context?.channelId,
+    slackUserId: args.context?.requesterId,
+    runId: args.context?.runId,
+    modelId: args.fastModelId,
+  };
+
+  return withSpan(
+    "chat.route_thinking",
+    "chat.route_thinking",
+    logContext,
+    async () => {
+      setSpanAttributes({
+        "app.ai.router.prompt_char_count": prompt.length,
+        "app.ai.router.instruction_char_count": instructionLength,
+        "app.ai.router.context_char_count":
+          trimmedContext?.originalCharCount ?? 0,
+        "app.ai.router.context_trimmed": trimmedContext?.truncated ?? false,
+        "app.ai.router.turn_block_count": turnBlockCount,
+      });
+
+      const selection = await classifyTurn({
+        completeObject: args.completeObject,
+        fastModelId: args.fastModelId,
+        hasThreadBackground: trimmedContext !== null,
+        instructionLength,
+        metadata: {
+          modelId: args.fastModelId,
+          threadId: args.context?.threadId ?? "",
+          channelId: args.context?.channelId ?? "",
+          requesterId: args.context?.requesterId ?? "",
+          runId: args.context?.runId ?? "",
+        },
+        prompt,
+      });
+
+      setSpanAttributes({
+        "app.ai.thinking_level": selection.thinkingLevel,
+        "app.ai.thinking_level_reason": selection.reason,
+        ...(selection.confidence !== undefined
+          ? { "app.ai.thinking_level_confidence": selection.confidence }
+          : {}),
+      });
+
+      return selection;
+    },
+  );
+}
+
+async function classifyTurn(args: {
+  completeObject: Parameters<
+    typeof selectTurnThinkingLevel
+  >[0]["completeObject"];
+  fastModelId: string;
+  hasThreadBackground: boolean;
+  instructionLength: number;
+  metadata: Record<string, string>;
+  prompt: string;
+}): Promise<TurnThinkingSelection> {
   try {
     const result = await args.completeObject({
       modelId: args.fastModelId,
       schema: turnExecutionProfileSchema,
       maxTokens: 120,
-      metadata: {
-        modelId: args.fastModelId,
-        threadId: args.context?.threadId ?? "",
-        channelId: args.context?.channelId ?? "",
-        requesterId: args.context?.requesterId ?? "",
-        runId: args.context?.runId ?? "",
-      },
-      prompt: buildClassifierPrompt({
-        conversationContext: args.conversationContext,
-        currentTurnBlocks: args.currentTurnBlocks,
-        messageText: args.messageText,
-      }),
+      metadata: args.metadata,
+      prompt: args.prompt,
       thinkingLevel: "low",
       system: buildClassifierSystemPrompt(),
       temperature: 0,
     });
 
     const parsed = turnExecutionProfileSchema.parse(result.object);
+    const reason = parsed.reason.trim();
+
     if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
       return {
         confidence: parsed.confidence,
         thinkingLevel: DEFAULT_THINKING_LEVEL,
-        reason: `low_confidence_default:${parsed.reason.trim()}`,
+        reason: `low_confidence_default:${reason}`,
+      };
+    }
+
+    // Short follow-ups like "go" or "yes please" in a thread with prior
+    // context are authorizations of the pending task — never standalone
+    // trivial asks. If the classifier still picked "none", promote to "low".
+    if (
+      parsed.thinking_level === "none" &&
+      args.hasThreadBackground &&
+      args.instructionLength < SHORT_INSTRUCTION_CHAR_THRESHOLD
+    ) {
+      return {
+        confidence: parsed.confidence,
+        thinkingLevel: "low",
+        reason: `short_followup_no_none:${reason}`,
       };
     }
 
     return {
       confidence: parsed.confidence,
       thinkingLevel: parsed.thinking_level,
-      reason: parsed.reason.trim(),
+      reason,
     };
   } catch {
     return {
