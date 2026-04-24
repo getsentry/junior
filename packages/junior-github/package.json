@@ -8,6 +8,7 @@
   "type": "module",
   "files": [
     "plugin.yaml",
-    "skills"
+    "skills",
+    "SETUP.md"
   ]
 }

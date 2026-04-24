@@ -1,10 +1,10 @@
 # Research and Verification Rules
 
-Use this file for cross-type rules. Then apply the matching type-specific file:
+Cross-type research standards. Apply alongside the matching type-specific guide:
 
-- `bug`: [issue-type-bug.md](issue-type-bug.md)
-- `feature`: [issue-type-feature.md](issue-type-feature.md)
-- `task`: [issue-type-task.md](issue-type-task.md)
+- `bug`: [issue-bug.md](issue-bug.md)
+- `feature`: [issue-feature.md](issue-feature.md)
+- `task`: [issue-task.md](issue-task.md)
 
 ## Source Priority
 
