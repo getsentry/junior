@@ -47,8 +47,6 @@ function buildClassifierSystemPrompt(): string {
 }
 
 function buildClassifierPrompt(args: {
-  activeSkillNames: string[];
-  attachmentCount: number;
   conversationContext?: string;
   currentTurnBlocks?: string[];
   messageText: string;
@@ -61,12 +59,7 @@ function buildClassifierPrompt(args: {
   }
 
   sections.push(
-    "<turn-context>",
-    `- active_skills: ${args.activeSkillNames.join(", ") || "none"}`,
-    `- attachment_count: ${args.attachmentCount}`,
-    "</turn-context>",
-    "",
-    '<current-instruction priority="highest">',
+    "<current-instruction>",
     args.messageText.trim() || "[empty]",
     "</current-instruction>",
   );
@@ -84,8 +77,6 @@ function buildClassifierPrompt(args: {
 
 /** Choose the thinking level for the upcoming assistant turn. */
 export async function selectTurnThinkingLevel(args: {
-  activeSkillNames?: string[];
-  attachmentCount?: number;
   completeObject: (args: {
     modelId: string;
     schema: typeof turnExecutionProfileSchema;
@@ -107,8 +98,6 @@ export async function selectTurnThinkingLevel(args: {
   fastModelId: string;
   messageText: string;
 }): Promise<TurnThinkingSelection> {
-  const activeSkillNames = [...new Set(args.activeSkillNames ?? [])].sort();
-
   try {
     const result = await args.completeObject({
       modelId: args.fastModelId,
@@ -122,8 +111,6 @@ export async function selectTurnThinkingLevel(args: {
         runId: args.context?.runId ?? "",
       },
       prompt: buildClassifierPrompt({
-        activeSkillNames,
-        attachmentCount: args.attachmentCount ?? 0,
         conversationContext: args.conversationContext,
         currentTurnBlocks: args.currentTurnBlocks,
         messageText: args.messageText,
