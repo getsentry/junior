@@ -29,15 +29,16 @@ export function resolveCredentialInjection(
     const headerDomains = (headerTransforms ?? []).map(
       (transform) => transform.domain,
     );
+    const skillName = sandbox.getActiveSkill()?.name;
     logInfo(
       "credential_inject_start",
       {},
       {
-        "app.skill.name": sandbox.getActiveSkill()?.name,
+        "app.skill.name": skillName,
         "app.credential.delivery": "header_transform",
         "app.credential.header_domains": headerDomains,
       },
-      "Injecting scoped credential headers for sandbox command",
+      `Injecting scoped credential headers for sandbox command (${skillName ?? "unknown skill"} → ${headerDomains.join(", ")})`,
     );
   }
 

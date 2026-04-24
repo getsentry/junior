@@ -40,6 +40,11 @@ import {
 } from "@/chat/services/timeout-resume";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AssistantReply } from "@/chat/respond";
+import { deliverAuthPauseReply } from "@/chat/runtime/auth-pause-reply";
+import {
+  applyPendingAuthUpdate,
+  clearPendingAuth,
+} from "@/chat/services/pending-auth";
 import type { WaitUntilFn } from "@/handlers/types";
 
 async function persistCompletedReplyState(args: {
@@ -60,6 +65,7 @@ async function persistCompletedReplyState(args: {
     conversation,
     args.checkpoint.sessionId,
   );
+  clearPendingAuth(conversation, args.checkpoint.sessionId);
 
   markConversationMessage(conversation, userMessage?.id, {
     replied: true,
@@ -81,6 +87,7 @@ async function persistCompletedReplyState(args: {
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),
+    sessionId: args.checkpoint.sessionId,
     updateConversationStats,
   });
 
@@ -97,10 +104,12 @@ async function persistFailedReplyState(
 ): Promise<void> {
   const currentState = await getPersistedThreadState(checkpoint.conversationId);
   const conversation = coerceThreadConversationState(currentState);
+  clearPendingAuth(conversation, checkpoint.sessionId);
 
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
+    sessionId: checkpoint.sessionId,
     userMessageId: getTurnUserMessage(conversation, checkpoint.sessionId)?.id,
     markConversationMessage,
     updateConversationStats,
@@ -178,10 +187,21 @@ async function resumeTimedOutTurn(
       },
       toolChannelId: artifacts.assistantContextChannelId ?? thread.channelId,
       artifactState: artifacts,
+      pendingAuth: conversation.processing.pendingAuth,
       conversationContext,
       channelConfiguration,
       sandbox,
       threadParticipants: buildThreadParticipants(conversation.messages),
+      onAuthPending: async (nextPendingAuth) => {
+        await applyPendingAuthUpdate({
+          conversation,
+          conversationId: payload.conversationId,
+          nextPendingAuth,
+        });
+        await persistThreadStateById(payload.conversationId, {
+          conversation,
+        });
+      },
       ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {
@@ -213,7 +233,15 @@ async function resumeTimedOutTurn(
       );
       await persistFailedReplyState(checkpoint);
     },
-    onAuthPause: async () => {
+    onAuthPause: async (error) => {
+      await deliverAuthPauseReply({
+        channelId: thread.channelId,
+        conversationId: payload.conversationId,
+        error,
+        sessionId: payload.sessionId,
+        threadStateId: payload.conversationId,
+        threadTs: thread.threadTs,
+      });
       logWarn(
         "timeout_resume_reparked_for_auth",
         {},

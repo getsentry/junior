@@ -141,7 +141,7 @@ describe("createAgentTools", () => {
     } as any;
     const pluginAuthOrchestration = {
       handleCommandFailure: vi.fn(async () => {
-        throw new PluginAuthorizationPauseError("github");
+        throw new PluginAuthorizationPauseError("github", "link_sent");
       }),
     } as any;
     const sandboxExecutor = {

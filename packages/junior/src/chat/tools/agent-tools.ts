@@ -3,10 +3,8 @@ import { serializeGenAiAttribute } from "@/chat/logging";
 import { setSpanAttributes, withSpan, type LogContext } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
-import {
-  PluginAuthorizationPauseError,
-  type PluginAuthOrchestration,
-} from "@/chat/services/plugin-auth-orchestration";
+import { AuthorizationPauseError } from "@/chat/services/auth-pause";
+import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
@@ -127,7 +125,7 @@ export function createAgentTools(
             }
             return normalized;
           } catch (error) {
-            if (error instanceof PluginAuthorizationPauseError) {
+            if (error instanceof AuthorizationPauseError) {
               throw error;
             }
             handleToolExecutionError(

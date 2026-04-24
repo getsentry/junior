@@ -30,6 +30,14 @@ import {
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { resumeAuthorizedRequest } from "@/chat/slack/resume";
+import { deliverAuthPauseReply } from "@/chat/runtime/auth-pause-reply";
+import {
+  applyPendingAuthUpdate,
+  clearPendingAuth,
+  getConversationPendingAuth,
+  isPendingAuthLatestRequest,
+} from "@/chat/services/pending-auth";
+import { supersedeAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 import {
   isRetryableTurnError,
   markTurnCompleted,
@@ -108,6 +116,7 @@ async function persistCompletedReplyState(
     ? mergeArtifactsState(artifacts, reply.artifactStatePatch)
     : undefined;
   const userMessageId = getTurnUserMessageId(conversation, sessionId);
+  clearPendingAuth(conversation, sessionId);
 
   markConversationMessage(conversation, userMessageId, {
     replied: true,
@@ -129,6 +138,7 @@ async function persistCompletedReplyState(
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),
+    sessionId,
     updateConversationStats,
   });
 
@@ -148,10 +158,12 @@ async function persistFailedReplyState(
   const threadId = `slack:${channelId}:${threadTs}`;
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
+  clearPendingAuth(conversation, sessionId);
 
   markTurnFailed({
     conversation,
     nowMs: Date.now(),
+    sessionId,
     userMessageId: getTurnUserMessageId(conversation, sessionId),
     markConversationMessage,
     updateConversationStats,
@@ -175,8 +187,30 @@ async function resumeAuthorizedMcpTurn(args: {
   const currentState = await getPersistedThreadState(threadId);
   const conversation = coerceThreadConversationState(currentState);
   const artifacts = coerceThreadArtifactsState(currentState);
-  const userMessage = getTurnUserMessage(conversation, authSession.sessionId);
-  if (conversation.processing.activeTurnId !== authSession.sessionId) {
+  const pendingAuth = getConversationPendingAuth({
+    conversation,
+    kind: "mcp",
+    provider,
+    requesterId: authSession.userId,
+  });
+  const resolvedSessionId = pendingAuth?.sessionId ?? authSession.sessionId;
+  const userMessage = getTurnUserMessage(conversation, resolvedSessionId);
+  if (pendingAuth) {
+    if (!isPendingAuthLatestRequest(conversation, pendingAuth)) {
+      clearPendingAuth(conversation, pendingAuth.sessionId);
+      await persistThreadStateById(threadId, { conversation });
+      await supersedeAgentTurnSessionCheckpoint({
+        conversationId: authSession.conversationId,
+        sessionId: pendingAuth.sessionId,
+        errorMessage:
+          "Auth completed after a newer thread message superseded this blocked request.",
+      });
+      return;
+    }
+  } else if (conversation.processing.activeTurnId !== authSession.sessionId) {
+    return;
+  }
+  if (!userMessage) {
     return;
   }
 
@@ -186,15 +220,15 @@ async function resumeAuthorizedMcpTurn(args: {
   const conversationContext = await buildResumeConversationContext(
     authSession.channelId,
     authSession.threadTs,
-    authSession.sessionId,
+    resolvedSessionId,
   );
 
   await resumeAuthorizedRequest({
-    messageText: authSession.userMessage,
+    messageText: userMessage.text,
     channelId: authSession.channelId,
     threadTs: authSession.threadTs,
     lockKey: authSession.conversationId,
-    connectedText: `Your ${provider} MCP access is now connected. Continuing the original request...`,
+    connectedText: "",
     failureText:
       "MCP authorization completed, but resuming the request failed. Please retry the original command.",
     replyContext: {
@@ -206,7 +240,7 @@ async function resumeAuthorizedMcpTurn(args: {
       },
       correlation: {
         conversationId: authSession.conversationId,
-        turnId: authSession.sessionId,
+        turnId: resolvedSessionId,
         channelId: authSession.channelId,
         threadTs: authSession.threadTs,
         requesterId: authSession.userId,
@@ -218,9 +252,18 @@ async function resumeAuthorizedMcpTurn(args: {
       conversationContext,
       artifactState: artifacts,
       configuration: authSession.configuration,
+      pendingAuth,
       channelConfiguration,
       sandbox: getPersistedSandboxState(currentState),
       threadParticipants: buildThreadParticipants(conversation.messages),
+      onAuthPending: async (nextPendingAuth) => {
+        await applyPendingAuthUpdate({
+          conversation,
+          conversationId: authSession.conversationId,
+          nextPendingAuth,
+        });
+        await persistThreadStateById(threadId, { conversation });
+      },
       ...getTurnUserReplyAttachmentContext(userMessage),
     },
     onSuccess: async (reply) => {
@@ -228,7 +271,7 @@ async function resumeAuthorizedMcpTurn(args: {
         await persistCompletedReplyState(
           authSession.channelId!,
           authSession.threadTs!,
-          authSession.sessionId,
+          resolvedSessionId,
           reply,
         );
       } catch (persistError) {
@@ -253,7 +296,7 @@ async function resumeAuthorizedMcpTurn(args: {
         await persistFailedReplyState(
           authSession.channelId!,
           authSession.threadTs!,
-          authSession.sessionId,
+          resolvedSessionId,
         );
       } catch (persistError) {
         logException(
@@ -265,7 +308,16 @@ async function resumeAuthorizedMcpTurn(args: {
         );
       }
     },
-    onAuthPause: async () => {
+    onAuthPause: async (error) => {
+      await deliverAuthPauseReply({
+        channelId: authSession.channelId!,
+        conversationId: authSession.conversationId,
+        error,
+        fallbackProvider: provider,
+        sessionId: resolvedSessionId,
+        threadStateId: `slack:${authSession.channelId!}:${authSession.threadTs!}`,
+        threadTs: authSession.threadTs!,
+      });
       logWarn(
         "mcp_oauth_callback_resume_reparked_for_auth",
         {},
@@ -302,7 +354,7 @@ async function resumeAuthorizedMcpTurn(args: {
       }
       await scheduleTurnTimeoutResume({
         conversationId: authSession.conversationId,
-        sessionId: authSession.sessionId,
+        sessionId: resolvedSessionId,
         expectedCheckpointVersion: checkpointVersion,
       });
     },

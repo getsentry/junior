@@ -1,17 +1,23 @@
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
-import { getMcpAuthSession, patchMcpAuthSession } from "@/chat/mcp/auth-store";
+import {
+  deleteMcpAuthSession,
+  getMcpAuthSession,
+  patchMcpAuthSession,
+} from "@/chat/mcp/auth-store";
 import { deliverPrivateMessage, formatProviderLabel } from "@/chat/oauth-flow";
+import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
+import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
+import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
-export class McpAuthorizationPauseError extends Error {
-  readonly provider: string;
-
-  constructor(provider: string) {
-    super(`MCP authorization started for ${provider}`);
-    this.name = "McpAuthorizationPauseError";
-    this.provider = provider;
+export class McpAuthorizationPauseError extends AuthorizationPauseError {
+  constructor(
+    provider: string,
+    disposition: "link_already_sent" | "link_sent",
+  ) {
+    super("mcp", provider, disposition);
   }
 }
 
@@ -23,9 +29,13 @@ export interface McpAuthOrchestrationDeps {
   threadTs?: string;
   toolChannelId?: string;
   userMessage: string;
+  currentPendingAuth?: ConversationPendingAuthState;
   getConfiguration: () => Record<string, unknown>;
   getArtifactState: () => ThreadArtifactsState | undefined;
   getMergedArtifactState: () => ThreadArtifactsState;
+  onPendingAuth?: (
+    pendingAuth: ConversationPendingAuthState,
+  ) => void | Promise<void>;
 }
 
 export interface McpAuthOrchestration {
@@ -96,19 +106,47 @@ export function createMcpAuthOrchestration(
       throw new Error(`Missing MCP authorization URL for plugin "${provider}"`);
     }
 
-    const delivery = await deliverPrivateMessage({
-      channelId: authSession.channelId,
-      threadTs: authSession.threadTs,
-      userId: authSession.userId,
-      text: `<${authSession.authorizationUrl}|Click here to link your ${formatProviderLabel(provider)} MCP access>. Once you've authorized, this thread will continue automatically.`,
+    const reusingPendingLink = canReusePendingAuthLink({
+      pendingAuth: deps.currentPendingAuth,
+      kind: "mcp",
+      provider,
+      requesterId: deps.requesterId,
     });
-    if (!delivery) {
-      throw new Error(
-        `Unable to deliver MCP authorization link for plugin "${provider}"`,
-      );
+
+    if (!reusingPendingLink) {
+      const delivery = await deliverPrivateMessage({
+        channelId: authSession.channelId,
+        threadTs: authSession.threadTs,
+        userId: authSession.userId,
+        text: `<${authSession.authorizationUrl}|Click here to link your ${formatProviderLabel(provider)} MCP access>. Once you've authorized, this thread will continue automatically.`,
+      });
+      if (!delivery) {
+        throw new Error(
+          `Unable to deliver MCP authorization link for plugin "${provider}"`,
+        );
+      }
+    } else {
+      await deleteMcpAuthSession(authSessionId);
     }
 
-    pendingPause = new McpAuthorizationPauseError(provider);
+    // `sessionId`/`requesterId` are guaranteed here: `onAuthorizationRequired`
+    // only fires for an MCP provider we actually created, and the provider
+    // factory returns undefined unless both are set.
+    if (deps.sessionId && deps.requesterId) {
+      await deps.onPendingAuth?.({
+        kind: "mcp",
+        provider,
+        requesterId: deps.requesterId,
+        sessionId: deps.sessionId,
+        linkSentAtMs: reusingPendingLink
+          ? deps.currentPendingAuth!.linkSentAtMs
+          : Date.now(),
+      });
+    }
+    pendingPause = new McpAuthorizationPauseError(
+      provider,
+      reusingPendingLink ? "link_already_sent" : "link_sent",
+    );
     abortAgent();
     return true;
   };

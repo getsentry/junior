@@ -12,6 +12,7 @@
 - 2026-03-19: Simplified auth resume contract so resumed slices always use `continue()` after trimming trailing uncommitted assistant messages at the auth pause boundary.
 - 2026-04-13: Aligned the spec with the current implementation: signed internal timeout-resume callbacks, eager thread-state persistence for sandbox/artifact state, and no automatic resume after visible assistant output has started.
 - 2026-04-16: Clarified that Slack delivery now waits for finalized replies, so timeout continuation remains eligible until final visible reply posting begins.
+- 2026-04-22: Added `superseded` checkpoint state and clarified that auth checkpoints do not keep `activeTurnId` alive; thread-local pending-auth state decides whether an auth-blocked request is still resumable.
 
 ## Status
 
@@ -63,17 +64,20 @@ A conversation can have multiple sessions over time. Each checkpoint version ide
 
 ### Session States
 
-- The checkpoint schema supports `running | awaiting_resume | completed | failed`.
+- The checkpoint schema supports `running | awaiting_resume | completed | failed | superseded`.
 - The current runtime writes:
   - `awaiting_resume` for timeout/auth safe-boundary checkpoints
   - `completed` when a turn finishes successfully
+  - `superseded` when a newer thread request replaces an older auth-blocked checkpoint
 - Terminal user-visible failure is currently reflected in conversation/thread state. The timeout-resume implementation does not rely on a `failed` checkpoint write.
 
 Valid transitions:
 
 1. `awaiting_resume -> completed`
 2. `awaiting_resume -> awaiting_resume` (another timeout/auth boundary after a resumed slice)
-3. `completed` is terminal
+3. `awaiting_resume -> superseded`
+4. `completed` is terminal
+5. `superseded` is terminal
 
 The implementation does not currently persist a `running` lease state between slices.
 
@@ -99,7 +103,7 @@ Each checkpoint must include:
 - `slice_id`
 - `checkpoint_version`
 - `pi_messages`: Canonical message list to replay into Pi.
-- `state`: one of `running|awaiting_resume|completed|failed`.
+- `state`: one of `running|awaiting_resume|completed|failed|superseded`.
 - `updated_at_ms`
 
 Optional checkpoint fields:
@@ -191,7 +195,7 @@ The callback must:
 1. User message starts a new `session_id` under `conversation_id`.
 2. Slice `1` runs and eagerly persists sandbox/artifact state as those values change.
 3. If the turn finishes, commit `completed` and persist final thread state/output.
-4. If MCP auth pauses at a safe boundary, commit `awaiting_resume` with `resume_reason=auth`; the OAuth callback path later restores Pi state and resumes.
+4. If MCP auth pauses at a safe boundary, commit `awaiting_resume` with `resume_reason=auth`; the live Slack turn still ends with a visible "private link sent" note, and the OAuth callback later consults thread-local pending-auth state before resuming.
 5. If timeout is reached before any assistant text is visible, commit `awaiting_resume` with `resume_reason=timeout` and schedule the signed internal timeout-resume callback.
 6. The timeout-resume handler validates `expected_checkpoint_version`, rebuilds durable runtime state, restores Pi messages, and calls `continue()`.
 7. If timeout happens after visible assistant output begins, keep the timeout checkpoint but do not auto-schedule continuation.

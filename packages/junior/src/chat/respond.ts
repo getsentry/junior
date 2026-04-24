@@ -35,6 +35,7 @@ import {
 } from "@/chat/plugins/registry";
 import { McpToolManager, type ManagedMcpTool } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
+import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { createTools } from "@/chat/tools";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
@@ -64,7 +65,6 @@ import {
   collectRelevantConfigurationKeys,
   encodeNonImageAttachmentForPrompt,
   getSessionIdentifiers,
-  hasCompletedAssistantTurn,
   isAssistantMessage,
   summarizeMessageText,
   toObservablePromptPart,
@@ -87,14 +87,9 @@ import {
   persistAuthPauseCheckpoint,
   persistTimeoutCheckpoint,
 } from "@/chat/services/turn-checkpoint";
-import {
-  createMcpAuthOrchestration,
-  McpAuthorizationPauseError,
-} from "@/chat/services/mcp-auth-orchestration";
-import {
-  createPluginAuthOrchestration,
-  PluginAuthorizationPauseError,
-} from "@/chat/services/plugin-auth-orchestration";
+import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
+import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
+import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 
 // Re-export types for backward compatibility with existing consumers.
 export type { AssistantReply, AgentTurnDiagnostics };
@@ -123,6 +118,7 @@ export interface ReplyRequestContext {
   toolChannelId?: string;
   conversationContext?: string;
   artifactState?: ThreadArtifactsState;
+  pendingAuth?: ConversationPendingAuthState;
   configuration?: Record<string, unknown>;
   channelConfiguration?: ChannelConfigurationService;
   userAttachments?: Array<{
@@ -145,6 +141,9 @@ export interface ReplyRequestContext {
     imageGenerate?: ImageGenerateToolDeps;
   };
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+  onAuthPending?: (
+    pendingAuth: ConversationPendingAuthState,
+  ) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
   onAssistantMessageStart?: () => void | Promise<void>;
   /**
@@ -321,6 +320,7 @@ export async function generateAssistantReply(
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
   let timeoutResumeMessages: AgentMessage[] = [];
+  let beforeMessageCount = 0;
   let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
@@ -607,10 +607,12 @@ export async function generateAssistantReply(
         threadTs: context.correlation?.threadTs,
         toolChannelId: context.toolChannelId,
         userMessage: userInput,
+        currentPendingAuth: context.pendingAuth,
         getConfiguration: () => configurationValues,
         getArtifactState: () => context.artifactState,
         getMergedArtifactState: () =>
           mergeArtifactsState(context.artifactState ?? {}, artifactStatePatch),
+        onPendingAuth: context.onAuthPending,
       },
       () => agent?.abort(),
     );
@@ -623,6 +625,8 @@ export async function generateAssistantReply(
         threadTs: context.correlation?.threadTs,
         userMessage: userInput,
         channelConfiguration: context.channelConfiguration,
+        currentPendingAuth: context.pendingAuth,
+        onPendingAuth: context.onAuthPending,
         userTokenStore,
       },
       () => agent?.abort(),
@@ -879,10 +883,8 @@ export async function generateAssistantReply(
       });
     });
 
-    let beforeMessageCount = agent.state.messages.length;
     let newMessages: AgentMessage[] = [];
-    let completedAssistantTurn = false;
-
+    beforeMessageCount = agent.state.messages.length;
     try {
       if (resumedFromCheckpoint) {
         agent.state.messages = existingCheckpoint!.piMessages;
@@ -957,11 +959,6 @@ export async function generateAssistantReply(
           }
 
           newMessages = agent.state.messages.slice(beforeMessageCount);
-          completedAssistantTurn = hasCompletedAssistantTurn(newMessages);
-          if (getPendingAuthPause() && !completedAssistantTurn) {
-            timeoutResumeMessages = [...agent.state.messages];
-            throw getPendingAuthPause()!;
-          }
           const outputMessages = newMessages.filter(isAssistantMessage);
           const outputMessagesAttribute =
             serializeGenAiAttribute(outputMessages);
@@ -986,6 +983,10 @@ export async function generateAssistantReply(
               ? { "gen_ai.usage.output_tokens": usageSummary.outputTokens }
               : {}),
           });
+          if (getPendingAuthPause()) {
+            timeoutResumeMessages = [...agent.state.messages];
+            throw getPendingAuthPause()!;
+          }
         },
         {
           "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
@@ -999,10 +1000,6 @@ export async function generateAssistantReply(
       );
     } finally {
       unsubscribe();
-    }
-
-    if (getPendingAuthPause() && !completedAssistantTurn) {
-      throw getPendingAuthPause()!;
     }
 
     // ── Persist completed checkpoint ─────────────────────────────────
@@ -1073,11 +1070,26 @@ export async function generateAssistantReply(
 
     // ── MCP auth pause → checkpoint and retry ────────────────────────
     if (
-      (error instanceof McpAuthorizationPauseError ||
-        error instanceof PluginAuthorizationPauseError) &&
+      error instanceof AuthorizationPauseError &&
       timeoutResumeConversationId &&
       timeoutResumeSessionId
     ) {
+      if (!turnUsage && timeoutResumeMessages.length > 0) {
+        // Match the canonical slice-scoped extraction: sum usage from new
+        // assistant messages produced during this slice, not the full
+        // message history (which may include prior slices whose usage was
+        // already reported in earlier footers).
+        const fallbackUsage = extractGenAiUsageSummary(
+          ...timeoutResumeMessages
+            .slice(beforeMessageCount)
+            .filter(isAssistantMessage),
+        );
+        turnUsage = Object.values(fallbackUsage).some(
+          (value) => value !== undefined,
+        )
+          ? fallbackUsage
+          : undefined;
+      }
       const nextSliceId = await persistAuthPauseCheckpoint({
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
@@ -1095,11 +1107,15 @@ export async function generateAssistantReply(
         },
       });
       throw new RetryableTurnError(
-        error instanceof PluginAuthorizationPauseError
-          ? "plugin_auth_resume"
-          : "mcp_auth_resume",
+        error.kind === "plugin" ? "plugin_auth_resume" : "mcp_auth_resume",
         `conversation=${timeoutResumeConversationId} session=${timeoutResumeSessionId} slice=${nextSliceId}`,
         {
+          authDisposition: error.disposition,
+          authDurationMs: Date.now() - replyStartedAtMs,
+          authKind: error.kind,
+          authProvider: error.provider,
+          authThinkingLevel: thinkingSelection?.thinkingLevel,
+          authUsage: turnUsage,
           conversationId: timeoutResumeConversationId,
           sessionId: timeoutResumeSessionId,
           sliceId: nextSliceId,

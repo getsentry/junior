@@ -33,6 +33,7 @@ type McpOauthCallbackHarnessModule =
   typeof import("../fixtures/mcp-oauth-callback-harness");
 type PluginRegistryModule = typeof import("@/chat/plugins/registry");
 type StateAdapterModule = typeof import("@/chat/state/adapter");
+type TurnSessionStoreModule = typeof import("@/chat/state/turn-session-store");
 
 let artifactStateModule: ArtifactStateModule;
 let conversationStateModule: ConversationStateModule;
@@ -42,6 +43,7 @@ let mcpOauthModule: McpOauthModule;
 let mcpOauthCallbackHarnessModule: McpOauthCallbackHarnessModule;
 let pluginRegistryModule: PluginRegistryModule;
 let stateAdapterModule: StateAdapterModule;
+let turnSessionStoreModule: TurnSessionStoreModule;
 
 async function createPendingAuthSession(args: {
   conversationId: string;
@@ -109,6 +111,7 @@ describe("mcp oauth callback slack integration", () => {
       await import("../fixtures/mcp-oauth-callback-harness");
     pluginRegistryModule = await import("@/chat/plugins/registry");
     stateAdapterModule = await import("@/chat/state/adapter");
+    turnSessionStoreModule = await import("@/chat/state/turn-session-store");
 
     await stateAdapterModule.disconnectStateAdapter();
     await stateAdapterModule.getStateAdapter().connect();
@@ -153,7 +156,14 @@ describe("mcp oauth callback slack integration", () => {
           },
         ],
         processing: {
-          activeTurnId: sessionId,
+          activeTurnId: undefined,
+          pendingAuth: {
+            kind: "mcp",
+            provider: EVAL_MCP_AUTH_PROVIDER,
+            requesterId: "U123",
+            sessionId,
+            linkSentAtMs: 1,
+          },
         },
       },
       artifacts: {
@@ -275,9 +285,6 @@ describe("mcp oauth callback slack integration", () => {
     const resumeContext = generateAssistantReplyMock.mock.calls[0]?.[1] as {
       conversationContext?: string;
       configuration?: Record<string, unknown>;
-      channelConfiguration?: {
-        resolve: (key: string) => Promise<unknown>;
-      };
     };
     expect(resumeContext.conversationContext).not.toContain(
       "what did i say about the budget?",
@@ -299,6 +306,7 @@ describe("mcp oauth callback slack integration", () => {
         replied: true,
       },
     });
+    expect(conversation.processing.pendingAuth).toBeUndefined();
     expect(conversation.messages.at(-1)).toMatchObject({
       role: "assistant",
       text: "The budget deadline you mentioned earlier was Friday.",
@@ -334,13 +342,6 @@ describe("mcp oauth callback slack integration", () => {
           params: expect.objectContaining({
             channel: "C123",
             thread_ts: "1700000000.001",
-            text: "Your eval-auth MCP access is now connected. Continuing the original request...",
-          }),
-        }),
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel: "C123",
-            thread_ts: "1700000000.001",
             text: "The budget deadline you mentioned earlier was Friday.",
           }),
         }),
@@ -357,6 +358,90 @@ describe("mcp oauth callback slack integration", () => {
         }),
       ]),
     );
+  });
+
+  it("does not resume a stale MCP-blocked request after a newer thread message", async () => {
+    const sessionId = "turn_user-4";
+    await turnSessionStoreModule.upsertAgentTurnSessionCheckpoint({
+      conversationId: "conversation-4",
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: [],
+      resumeReason: "auth",
+      resumedFromSliceId: 1,
+    });
+    await stateAdapterModule
+      .getStateAdapter()
+      .set("thread-state:slack:C123:1700000000.004", {
+        conversation: {
+          messages: [
+            {
+              id: "user-4",
+              role: "user",
+              text: "what did i say about the budget?",
+              createdAtMs: 1,
+              author: {
+                userId: "U123",
+                userName: "dcramer",
+              },
+            },
+            {
+              id: "user-5",
+              role: "user",
+              text: "never mind, I'll handle it",
+              createdAtMs: 2,
+              author: {
+                userId: "U123",
+                userName: "dcramer",
+              },
+            },
+          ],
+          processing: {
+            activeTurnId: undefined,
+            pendingAuth: {
+              kind: "mcp",
+              provider: EVAL_MCP_AUTH_PROVIDER,
+              requesterId: "U123",
+              sessionId,
+              linkSentAtMs: 1,
+            },
+          },
+        },
+      });
+
+    const authProvider = await createPendingAuthSession({
+      conversationId: "conversation-4",
+      sessionId,
+      userMessage: "what did i say about the budget?",
+      channelId: "C123",
+      threadTs: "1700000000.004",
+    });
+
+    const response =
+      await mcpOauthCallbackHarnessModule.runMcpOauthCallbackRoute({
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        state: authProvider.authSessionId,
+        code: EVAL_MCP_AUTH_CODE,
+      });
+
+    expect(response.status).toBe(200);
+    expect(generateAssistantReplyMock).not.toHaveBeenCalled();
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+
+    const persistedState = await stateAdapterModule
+      .getStateAdapter()
+      .get<Record<string, unknown>>("thread-state:slack:C123:1700000000.004");
+    const conversation =
+      conversationStateModule.coerceThreadConversationState(persistedState);
+    expect(conversation.processing.pendingAuth).toBeUndefined();
+
+    const checkpoint =
+      await turnSessionStoreModule.getAgentTurnSessionCheckpoint(
+        "conversation-4",
+        sessionId,
+      );
+    expect(checkpoint?.state).toBe("superseded");
   });
 
   it("uploads resumed reply files without posting an extra thread message for empty inline text", async () => {
@@ -395,7 +480,14 @@ describe("mcp oauth callback slack integration", () => {
             },
           ],
           processing: {
-            activeTurnId: "turn_msg_2",
+            activeTurnId: undefined,
+            pendingAuth: {
+              kind: "mcp",
+              provider: EVAL_MCP_AUTH_PROVIDER,
+              requesterId: "U123",
+              sessionId: "turn_msg_2",
+              linkSentAtMs: 1,
+            },
           },
         },
       });
@@ -416,15 +508,7 @@ describe("mcp oauth callback slack integration", () => {
       });
 
     expect(response.status).toBe(200);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1700000000.002",
-          text: "Your eval-auth MCP access is now connected. Continuing the original request...",
-        }),
-      }),
-    ]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
       1,
     );
@@ -475,7 +559,14 @@ describe("mcp oauth callback slack integration", () => {
             },
           ],
           processing: {
-            activeTurnId: "turn_msg_3",
+            activeTurnId: undefined,
+            pendingAuth: {
+              kind: "mcp",
+              provider: EVAL_MCP_AUTH_PROVIDER,
+              requesterId: "U123",
+              sessionId: "turn_msg_3",
+              linkSentAtMs: 1,
+            },
           },
         },
       });
@@ -496,15 +587,7 @@ describe("mcp oauth callback slack integration", () => {
       });
 
     expect(response.status).toBe(200);
-    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
-      expect.objectContaining({
-        params: expect.objectContaining({
-          channel: "C123",
-          thread_ts: "1700000000.003",
-          text: "Your eval-auth MCP access is now connected. Continuing the original request...",
-        }),
-      }),
-    ]);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
     expect(getCapturedSlackApiCalls("files.getUploadURLExternal")).toHaveLength(
       1,
     );
