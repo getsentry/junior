@@ -14,11 +14,11 @@ Co-Authored-By: (agent model name) <email>
 
 ## File-Scoped Commands
 
-| Task                  | Command                                                                                             |
-| --------------------- | --------------------------------------------------------------------------------------------------- |
-| Unit test file        | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                                 |
-| Integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                                 |
-| Eval file             | `pnpm --filter @sentry/junior-evals exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts` |
+| Task                  | Command                                                             |
+| --------------------- | ------------------------------------------------------------------- |
+| Unit test file        | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts` |
+| Integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts` |
+| Eval file             | `pnpm --filter @sentry/junior-evals evals path/to/eval.test.ts`     |
 
 ## Key Conventions
 
