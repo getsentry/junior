@@ -140,9 +140,6 @@ export function createPluginAuthOrchestration(
     if (!deps.requesterId || !getPluginOAuthConfig(provider)) {
       throw new Error(`Cannot start plugin authorization for ${provider}`);
     }
-    if (!deps.sessionId) {
-      throw new Error(`Cannot start plugin authorization for ${provider}`);
-    }
 
     const providerLabel = formatProviderLabel(provider);
     const reusingPendingLink = canReusePendingAuthLink({
@@ -182,15 +179,17 @@ export function createPluginAuthOrchestration(
       await unlinkProvider(deps.requesterId, provider, deps.userTokenStore);
     }
 
-    await deps.onPendingAuth?.({
-      kind: "plugin",
-      provider,
-      requesterId: deps.requesterId,
-      sessionId: deps.sessionId,
-      linkSentAtMs: reusingPendingLink
-        ? deps.currentPendingAuth!.linkSentAtMs
-        : Date.now(),
-    });
+    if (deps.sessionId) {
+      await deps.onPendingAuth?.({
+        kind: "plugin",
+        provider,
+        requesterId: deps.requesterId,
+        sessionId: deps.sessionId,
+        linkSentAtMs: reusingPendingLink
+          ? deps.currentPendingAuth!.linkSentAtMs
+          : Date.now(),
+      });
+    }
     pendingPause = new PluginAuthorizationPauseError(
       provider,
       reusingPendingLink ? "link_already_sent" : "link_sent",

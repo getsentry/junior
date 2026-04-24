@@ -129,20 +129,20 @@ export function createMcpAuthOrchestration(
       await deleteMcpAuthSession(authSessionId);
     }
 
-    if (!deps.sessionId) {
-      throw new Error(
-        `Missing session context for MCP authorization for plugin "${provider}"`,
-      );
+    // `sessionId`/`requesterId` are guaranteed here: `onAuthorizationRequired`
+    // only fires for an MCP provider we actually created, and the provider
+    // factory returns undefined unless both are set.
+    if (deps.sessionId && deps.requesterId) {
+      await deps.onPendingAuth?.({
+        kind: "mcp",
+        provider,
+        requesterId: deps.requesterId,
+        sessionId: deps.sessionId,
+        linkSentAtMs: reusingPendingLink
+          ? deps.currentPendingAuth!.linkSentAtMs
+          : Date.now(),
+      });
     }
-    await deps.onPendingAuth?.({
-      kind: "mcp",
-      provider,
-      requesterId: deps.requesterId,
-      sessionId: deps.sessionId,
-      linkSentAtMs: reusingPendingLink
-        ? deps.currentPendingAuth!.linkSentAtMs
-        : Date.now(),
-    });
     pendingPause = new McpAuthorizationPauseError(
       provider,
       reusingPendingLink ? "link_already_sent" : "link_sent",
