@@ -320,6 +320,7 @@ const BEHAVIOR_RULES = [
   "- Prefer a single result-focused reply; send interim replies only when blocked or waiting on user input.",
   "- Do not claim an attachment, canvas, or channel post succeeded unless the tool returned success this turn; when it did, include any link the tool returned.",
   "- Run authenticated provider commands directly; the runtime handles auth pause/resume. Resolve target defaults first, and do not manage auth yourself.",
+  "- After the runtime resumes a paused turn (auth completion, timeout-resume), post a brief continuation notice (e.g., 'Connected — continuing.') and then the resumed answer as a separate message.",
   "- jr-rpc config get|set|unset|list is a built-in bash command for conversation-scoped config keys from <providers> or active skill metadata.",
   "- For explicit channel-post or emoji-reaction requests, skip the text reply.",
 ];
@@ -417,7 +418,7 @@ function buildContextSection(params: {
   if (params.turnState === "resumed") {
     blocks.push([
       "<turn-state>resumed</turn-state>",
-      "This turn continues from a prior checkpoint (timeout-resume or auth pause). Prior tool results and assistant messages are already in the conversation history.",
+      "This turn continues from a prior checkpoint. Prior tool results and assistant messages are already in the conversation history.",
     ]);
   }
 
