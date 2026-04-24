@@ -220,7 +220,7 @@ vi.mock("@/chat/pi/client", () => ({
   GEN_AI_PROVIDER_NAME: "test-provider",
   completeObject: async ({ prompt }: { prompt: string }) => {
     const instructionMatch = prompt.match(
-      /<current-instruction priority="highest">\n([\s\S]*?)\n<\/current-instruction>/,
+      /<current-instruction>\n([\s\S]*?)\n<\/current-instruction>/,
     );
     const instruction = instructionMatch?.[1] ?? "";
 
