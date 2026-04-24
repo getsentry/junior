@@ -93,4 +93,34 @@ describe("selectTurnThinkingLevel", () => {
       reason: "classifier_error_default",
     });
   });
+
+  it("truncates very long thread context with head + tail slices", async () => {
+    let capturedPrompt = "";
+    const completeObject = async ({ prompt }: { prompt: string }) => {
+      capturedPrompt = prompt;
+      return {
+        object: {
+          thinking_level: "medium",
+          confidence: 0.9,
+          reason: "ok",
+        },
+      };
+    };
+
+    const headMarker = "ORIGINAL_TASK_FRAMING_HEAD";
+    const tailMarker = "MOST_RECENT_TURN_TAIL";
+    const filler = "filler text. ".repeat(2_000);
+    const longContext = `${headMarker} ${filler} ${tailMarker}`;
+
+    await selectTurnThinkingLevel({
+      completeObject,
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "go",
+      conversationContext: longContext,
+    });
+
+    expect(capturedPrompt).toContain(headMarker);
+    expect(capturedPrompt).toContain(tailMarker);
+    expect(capturedPrompt).toContain("…[truncated]…");
+  });
 });

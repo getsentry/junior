@@ -564,8 +564,6 @@ export async function generateAssistantReply(
     });
 
     thinkingSelection = await selectTurnThinkingLevel({
-      activeSkillNames: activeSkills.map((skill) => skill.name),
-      attachmentCount: context.userAttachments?.length,
       completeObject,
       conversationContext: context.conversationContext,
       context: {
