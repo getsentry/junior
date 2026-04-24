@@ -1,4 +1,5 @@
 agents.lock
+.claude/scheduled_tasks.lock
 .next
 node_modules
 .env
