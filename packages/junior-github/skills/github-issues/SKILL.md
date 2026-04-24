@@ -11,12 +11,11 @@ Issue create, update, comment, label, state, and inspection via `gh` CLI.
 
 ## Reference loading
 
-| Operation                                | Load                                                                                                                                                                                                                                                                                                   |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Any operation                            | [references/api-surface.md](references/api-surface.md)                                                                                                                                                                                                                                                 |
-| `issue create`, `issue body rewrite`     | [references/issue-examples.md](references/issue-examples.md), the matching type-specific guide ([issue-bug.md](references/issue-bug.md), [issue-feature.md](references/issue-feature.md), [issue-task.md](references/issue-task.md)), and [references/research-rules.md](references/research-rules.md) |
-| When you need a concrete command pattern | [references/common-use-cases.md](references/common-use-cases.md)                                                                                                                                                                                                                                       |
-| On failure                               | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                                                                                                                                 |
+| Operation                            | Load                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Any operation                        | [references/api-surface.md](references/api-surface.md)                                                                                                                                                                                                                                                 |
+| `issue create`, `issue body rewrite` | [references/issue-examples.md](references/issue-examples.md), the matching type-specific guide ([issue-bug.md](references/issue-bug.md), [issue-feature.md](references/issue-feature.md), [issue-task.md](references/issue-task.md)), and [references/research-rules.md](references/research-rules.md) |
+| On failure                           | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md)                                                                                                                                                                                                                 |
 
 ## Workflow
 
@@ -77,7 +76,7 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 
 ### 5. Execute
 
-- Use `gh issue` commands from [references/api-surface.md](references/api-surface.md). Fall back to [references/common-use-cases.md](references/common-use-cases.md) when you need a concrete command pattern (body-file layout, multi-label edits, comment workflows).
+- Use `gh issue` commands from [references/api-surface.md](references/api-surface.md).
 - Check duplicates silently before creating a new issue.
 
 ### 6. Report result

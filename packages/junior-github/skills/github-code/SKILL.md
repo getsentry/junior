@@ -11,11 +11,10 @@ Repository checkout, source-code investigation, and pull request operations via 
 
 ## Reference loading
 
-| Operation                  | Load                                                                                   |
-| -------------------------- | -------------------------------------------------------------------------------------- |
-| Any operation              | [references/api-surface.md](references/api-surface.md)                                 |
-| Clone, pull request create | [references/common-use-cases.md](references/common-use-cases.md)                       |
-| On failure                 | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
+| Operation     | Load                                                                                   |
+| ------------- | -------------------------------------------------------------------------------------- |
+| Any operation | [references/api-surface.md](references/api-surface.md)                                 |
+| On failure    | [references/troubleshooting-workarounds.md](references/troubleshooting-workarounds.md) |
 
 ## Workflow
 
@@ -38,7 +37,7 @@ Repository checkout, source-code investigation, and pull request operations via 
 ### Clone path
 
 - Default to a shallow clone; deepen incrementally only when the task needs history.
-- Use exact command forms from [references/api-surface.md](references/api-surface.md) or [references/common-use-cases.md](references/common-use-cases.md).
+- Use exact command forms from [references/api-surface.md](references/api-surface.md).
 - After cloning, check for `AGENTS.md` in the repo root (and `.github/AGENTS.md`) before making edits. Treat discovered instructions as hard constraints.
 - Report the local directory and whether the clone is shallow or full.
 
