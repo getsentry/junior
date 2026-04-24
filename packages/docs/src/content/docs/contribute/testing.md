@@ -17,6 +17,18 @@ related:
 
 ## Commands
 
+Install dependencies before running tests:
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+If you only need the test toolchain and want the lightest setup path, this also works:
+
+```bash
+pnpm install --frozen-lockfile --ignore-scripts
+```
+
 Run core suite:
 
 ```bash
@@ -25,7 +37,7 @@ pnpm test
 pnpm typecheck
 ```
 
-Run one unit test file:
+Run one unit or integration test file:
 
 ```bash
 pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts
@@ -34,13 +46,14 @@ pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts
 Run one eval file:
 
 ```bash
-pnpm --filter @sentry/junior exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts
+pnpm --filter @sentry/junior-evals exec vitest run -c vitest.evals.config.ts path/to/eval.test.ts
 ```
 
 ## Notes
 
 - Evals require real sandbox access and are not always reliable in restricted sandbox environments.
 - Keep layer boundaries strict: behavior quality in evals, protocol details in integration tests, isolated invariants in unit tests.
+- `--ignore-scripts` is fine when you just need repo-local CLIs like `vitest`; rerun install without it if later steps depend on lifecycle scripts or generated artifacts.
 
 ## Next step
 

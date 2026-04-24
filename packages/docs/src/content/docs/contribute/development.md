@@ -19,9 +19,21 @@ related:
 
 ## Setup
 
+Install workspace dependencies first:
+
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 ```
+
+If you only need to run tests or inspect the repo and want to skip package lifecycle scripts during install, use:
+
+```bash
+pnpm install --frozen-lockfile --ignore-scripts
+```
+
+That is enough to make repo-local CLIs like `vitest` available. If you later need generated build artifacts or prepare hooks, rerun `pnpm install --frozen-lockfile` without `--ignore-scripts`.
+
+Then pull local Vercel env:
 
 ```bash
 pnpm dlx vercel@latest login
