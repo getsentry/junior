@@ -31,39 +31,56 @@ Load references conditionally based on the request:
 - If the request refers to an existing Linear item indirectly, inspect the current thread context for the previously mentioned issue key or URL before asking the user to restate it.
 - Ask one concise follow-up only when a write is blocked after considering both explicit user input and any configured defaults, such as multiple plausible teams, no clear target issue, or no valid team for a new issue.
 
-2. Use the active Linear MCP tools:
+2. Discover and prepare MCP tools:
 
 - `loadSkill` returns `available_tools` for this skill, including the exact `tool_name` values and input schemas exposed in this turn.
 - Call those exact tool names directly. Use `searchTools` only if you need to rediscover or filter the active Linear tools later in the turn.
 - Prefer a short read/search step before mutating when you need to confirm the existing issue, team, project, or workflow state.
-- For create/update operations, classify the work as a `bug`, `feature`, or `task` and shape the title/body accordingly.
-- For issue creation, ground the ticket in the actual engineering problem:
-  - use a short descriptive title for bugs, short imperative title for tasks and features
-  - summarize the problem and impact; include expected outcome only when the thread states one
-  - mention who raised the issue when clear from the thread
-  - attach screenshots from the thread as image links when present
-  - preserve relevant URLs inline (Sentry, GitHub, docs, reproduction links) — do not dump a link list
-  - prefer flat bullet lists over headed sections for simple issues
-  - translate Slack-specific phrasing into product or engineering language
-  - remove channel names, slash commands, and session chatter unless the user explicitly wants them preserved
-- When setting optional fields, stay literal:
-  - use the team's actual workflow states instead of assuming generic names like `Todo` or `In Progress`
-  - use only Linear's standard priority levels: `low`, `medium`, `high`, `urgent`
-  - set project, labels, cycle, estimate, or assignee only when the user asked for them or the thread makes them clear
+
+3. Draft issue content (create or substantial rewrite):
+
+Classify the work as `bug`, `feature`, or `task`. Shape the title and body per [references/issue-writing.md](references/issue-writing.md); calibrate depth via [references/issue-examples.md](references/issue-examples.md).
+
+**Hard constraints — apply to every new issue:**
+
+- Title ≤ 60 characters. Descriptive for bugs, imperative for tasks/features.
+- Summary ≤ 3 sentences. Do not restate the title in the body.
+- Prefer flat bullet lists over headed sections for simple issues.
+- Generalize session framing — strip channel references, slash commands, Slack thread IDs, user @mentions, and transcript fragments; replace with the underlying engineering problem.
+- Compress source material. Research notes, hypotheses, or transcripts become a short summary + scoped bullets — never paste raw investigation into the body.
+- Do not add desired outcome, expected behavior, or acceptance criteria unless the thread explicitly requests them.
+- When the request originated from a Slack thread or any on-behalf-of context, append a final line `Action taken on behalf of <name>.` using the user's real name.
+
+Attribute the reporter by name when clear from the thread (e.g. "Raised by Alice during incident triage") — do not reference Slack channels, threads, or conversation metadata. Attach screenshots from the thread as image links when present. Preserve relevant URLs (Sentry, GitHub, docs, repro links) inline — do not dump a link list.
+
+4. Set optional Linear fields literally:
+
+- Use the team's actual workflow states instead of generic names like `Todo` or `In Progress`.
+- Use only Linear's standard priority levels: `low`, `medium`, `high`, `urgent`.
+- Set project, labels, cycle, estimate, or assignee only when the user asked for them or the thread makes them clear.
+
+5. Verify draft before mutating:
+
+- Title length ≤ 60 characters.
+- Delegated-action footer is the last line when applicable.
+- No session framing remains (channel refs, slash commands, @mentions, Slack thread IDs).
+- Body structure matches complexity — no empty sections, no restated title, no raw research dump.
+
+If any gate fails, revise and re-check before calling the MCP create/update tool.
+
+6. Execute:
+
 - For updates, prefer partial changes over full rewrites. Fetch current issue state first if the mutation could overwrite structured fields or duplicate an existing comment.
 - Check for duplicates silently before creating a new issue when the request appears related to existing work.
-- When the thread clearly indicates the work originated in Slack, mention that succinctly in the Linear ticket or comment if it improves provenance, but do not paste large thread transcripts.
 
-3. Report the result:
+7. Report the result:
 
-- Return the canonical Linear issue URL or key and summarize what changed.
+- Return the canonical Linear issue URL or key and what changed.
 - Report issue type when you created a new issue and it materially clarifies the outcome.
-- Keep routine tool chatter silent. Do not narrate each MCP search or mutation step.
 
 ## Guardrails
 
 - Reuse or update an existing Linear issue when it is clearly the same work instead of creating a duplicate.
-- Do not present guesses as facts. If the thread leaves an important detail uncertain, label it as an assumption in the Linear content.
+- Label uncertain details as assumptions in the Linear content when the thread leaves them unresolved.
 - Prefer concise, durable ticket text over verbatim Slack quotes or long transcript dumps.
 - Do not invent team-specific workflow names, labels, or estimate values without first confirming they exist.
-- If Linear authorization is required, let the MCP OAuth flow pause and resume the thread automatically instead of asking the user to handle credentials manually.

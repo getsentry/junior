@@ -1,6 +1,6 @@
-# github setup
+# GitHub plugin setup
 
-This skill uses host-issued GitHub App installation tokens.
+This plugin exposes two skills — `github-code` (clone, source-code investigation, pull requests) and `github-issues` (issue workflows) — both authenticated via host-issued GitHub App installation tokens.
 
 ## 1) Create/install GitHub App
 
@@ -61,13 +61,13 @@ Repeat for `preview` and `development` as needed. After env changes, redeploy so
 
 ## 3) Runtime behavior
 
-- When the GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
+- When either GitHub skill is active, authenticated `gh` and `git` commands cause the runtime to inject GitHub credentials automatically for the current turn.
 - Issued credentials are reused only within the current turn.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API calls.
 
 ## 4) CLI usage
 
-Run as a regular sandbox `bash` command while this skill is active:
+Run as a regular sandbox `bash` command while the relevant skill is active:
 
 Clone a repository with a shallow checkout by default:
 
@@ -82,8 +82,7 @@ git -C repo fetch --depth=50 origin
 git -C repo fetch --unshallow
 ```
 
-GitHub operations still require the GitHub skill, but the runtime injects
-credentials automatically when the skill is active:
+GitHub operations still require a GitHub skill to be active; the runtime injects credentials automatically when one is loaded:
 
 ```bash
 gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sandbox/tmp/issue.md
@@ -92,7 +91,7 @@ gh issue create --repo owner/repo --title "Example issue" --body-file /vercel/sa
 `gh` supports either direct `GITHUB_TOKEN` (for local debugging) or sandbox-level header injection.
 The runtime uses `github.issues.read` for read-only issue commands, `github.issues.write` for issue edits, comments, and labels, `github.contents.write` for pushes and merge operations, and `github.pull-requests.write` for PR mutations after the branch is already on the remote.
 
-GitHub capability scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is skill-scoped: load the active GitHub skill first, keep repo context explicit, and let the runtime choose the required capability for the command.
+GitHub capability scoping is a safety rail, not a hard sandbox boundary. It helps prevent accidental write scope and wrong-repo mutations, and the host runtime still decides when to mint credentials. Credential injection is skill-scoped: load the relevant GitHub skill first, keep repo context explicit, and let the runtime choose the required capability for the command.
 
 Be careful with mixed-surface PR commands:
 
@@ -131,10 +130,10 @@ jr-rpc config set github.repo getsentry/junior
    - `GITHUB_INSTALLATION_ID`
 2. Confirm the GitHub App is installed on your test repo with the permissions above.
 3. Deploy `main` to prod.
-4. Run `/github` to create an issue in a safe test repo.
+4. Exercise `github-issues` to create an issue in a safe test repo.
 5. Verify the issue is authored by the GitHub App identity.
-6. Run `/github` to update title/body, add/remove labels, and add a comment.
-7. Push a test branch and run `/github` to create a draft PR using explicit repo targeting and `--head`.
+6. Exercise `github-issues` to update title/body, add/remove labels, and add a comment.
+7. Push a test branch and exercise `github-code` to create a draft PR using explicit repo targeting and `--head`.
 8. Verify all mutations succeed and are attributed to the app.
 9. Verify GitHub API calls succeed while this skill is active without writing tokens into sandbox env/files.
 10. Verify raw token values are never printed in output or logs.
