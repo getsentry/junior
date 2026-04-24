@@ -12,7 +12,7 @@ Manage low-level config flows for the current agent turn.
 
 `jr-rpc config get|set|unset|list` — read and write channel-scoped configuration values.
 
-- Choose config keys from the runtime provider-config catalog or the active skill's `uses-config` metadata.
+- Choose config keys from the runtime `<providers>` catalog or the active skill's `uses-config` metadata.
 
 Read `${CLAUDE_SKILL_ROOT}/references/commands.md` for full command syntax and response shapes.
 

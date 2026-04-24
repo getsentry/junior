@@ -53,7 +53,6 @@ import {
   type SandboxExecutor,
 } from "@/chat/sandbox/sandbox";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import { getRuntimeMetadata } from "@/chat/config";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
@@ -62,7 +61,6 @@ import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
 import {
   buildUserTurnText,
-  collectRelevantConfigurationKeys,
   encodeNonImageAttachmentForPrompt,
   getSessionIdentifiers,
   isAssistantMessage,
@@ -759,24 +757,16 @@ export async function generateAssistantReply(
     syncResumeState();
 
     // ── System prompt ────────────────────────────────────────────────
-    const activeToolSummaries = turnMcpToolManager
-      .getActiveToolCatalog(activeSkills)
-      .map(toExposedToolSummary);
     baseInstructions = buildSystemPrompt({
       availableSkills,
       activeSkills,
-      activeTools: activeToolSummaries,
       invocation: skillInvocation,
       assistant: context.assistant,
       requester: context.requester,
       artifactState: context.artifactState,
       configuration: configurationValues,
-      relevantConfigurationKeys: collectRelevantConfigurationKeys(
-        activeSkills,
-        invokedSkill,
-      ),
-      runtimeMetadata: getRuntimeMetadata(),
       threadParticipants: context.threadParticipants,
+      turnState: resumedFromCheckpoint ? "resumed" : "fresh",
     });
 
     const inputMessagesAttribute = serializeGenAiAttribute([
