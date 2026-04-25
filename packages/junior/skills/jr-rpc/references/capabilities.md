@@ -3,7 +3,7 @@
 Use the exact config-key names exposed by runtime context:
 
 - loaded skill `uses-config`
-- provider-config catalog in the prompt
+- `<providers>` catalog in the prompt
 
 Examples:
 

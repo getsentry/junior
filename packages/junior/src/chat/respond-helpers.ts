@@ -331,23 +331,6 @@ export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
   activeSkills.push(next);
 }
 
-/** Collect configuration keys referenced by active and invoked skills. */
-export function collectRelevantConfigurationKeys(
-  activeSkills: Array<{ usesConfig?: string[] }>,
-  explicitSkill?: { usesConfig?: string[] } | null,
-): string[] {
-  const keys = new Set<string>();
-  for (const skill of [
-    ...activeSkills,
-    ...(explicitSkill ? [explicitSkill] : []),
-  ]) {
-    for (const key of skill.usesConfig ?? []) {
-      keys.add(key);
-    }
-  }
-  return [...keys].sort((a, b) => a.localeCompare(b));
-}
-
 /** Remove trailing assistant messages before checkpointing. */
 export function trimTrailingAssistantMessages(
   messages: AgentMessage[],
