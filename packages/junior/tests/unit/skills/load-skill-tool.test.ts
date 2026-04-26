@@ -67,7 +67,6 @@ describe("load_skill tool", () => {
       ...(firstSkill.allowedTools
         ? { allowedTools: firstSkill.allowedTools }
         : {}),
-      ...(firstSkill.usesConfig ? { usesConfig: firstSkill.usesConfig } : {}),
     });
   });
 

@@ -1,7 +1,6 @@
 ---
 name: datadog
 description: Query live Datadog telemetry (logs, metrics, traces, spans, monitors, incidents, dashboards, services, hosts) through Datadog's hosted MCP server. Use when users ask to investigate production behavior in Datadog — searching logs, checking monitor status, inspecting traces or spans, looking up incidents, finding services, or correlating metrics. Do not use it for Sentry issues, repository/source-code work, or ticketing.
-uses-config: datadog.env datadog.service
 ---
 
 # Datadog Operations

@@ -164,11 +164,6 @@ function formatAvailableSkillsForPrompt(skills: SkillMetadata[]): string {
     if (skill.pluginProvider) {
       lines.push(`    <provider>${escapeXml(skill.pluginProvider)}</provider>`);
     }
-    if (skill.usesConfig && skill.usesConfig.length > 0) {
-      lines.push(
-        `    <uses_config>${escapeXml(skill.usesConfig.join(" "))}</uses_config>`,
-      );
-    }
     lines.push("  </skill>");
   }
   lines.push("</available-skills>");
@@ -187,11 +182,6 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
       `  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skillDir}/SKILL.md`)}">`,
     );
     lines.push(`References are relative to ${escapeXml(skillDir)}.`);
-    if (skill.usesConfig && skill.usesConfig.length > 0) {
-      lines.push(
-        `Uses config keys: ${escapeXml(skill.usesConfig.join(", "))}.`,
-      );
-    }
     lines.push("");
     lines.push(skill.body);
     lines.push("  </skill>");

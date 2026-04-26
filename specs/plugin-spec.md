@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-04-17
+- Last Edited: 2026-04-26
 
 ## Changelog
 
@@ -18,6 +18,7 @@
 - 2026-04-05: Added INV-1 spec invariant: plugin discovery is explicit only.
 - 2026-04-13: Made `mcp.transport` optional when `mcp.url` is present; Junior infers hosted HTTP transport from the URL.
 - 2026-04-17: Added `env-vars` manifest block and declared-only `${NAME}` expansion for `mcp.url`; placeholders must be listed in `env-vars`, and defaults live in the declaration (no inline `${NAME:-default}` form).
+- 2026-04-26: Clarified that runtime setup authority belongs to `plugin.yaml`, not arbitrary skill prose.
 
 ## Status
 
@@ -53,6 +54,8 @@ Define a plugin model where provider integrations are self-contained directories
 6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded for the turn.
 7. Pi sees a stable MCP tool surface (`searchTools` and `useTool`) instead of one native Pi tool per discovered MCP tool.
 8. `loadSkill` returns the newly exposed MCP tool descriptors for that skill, and the turn prompt mirrors the active registry in `<loaded_tools>`.
+9. Runtime setup belongs to `plugin.yaml`: CLI packages, system packages, postinstall commands, MCP endpoints/tool allowlists, credential delivery, OAuth, and provider config keys are manifest declarations, not skill instructions.
+10. Skills consume the plugin-provided runtime surface. They must not instruct the agent to install packages, bootstrap CLIs, configure MCP servers, create credentials, or repair sandbox package installation as part of normal workflow.
 
 ## Plugin directory structure
 
@@ -259,6 +262,7 @@ System runtime dependency execution environment:
 - No two plugins may use the same `name`.
 - If `target.config-key` is set, it must be listed in `config-keys`.
 - If a plugin declares capabilities without credentials, manifest load succeeds and runtime credential enablement fails with an explicit no-broker error when an authenticated command needs that provider.
+- `plugin.yaml` remains the enforceable runtime authority. `loadSkill` re-resolves the skill's parent plugin from its path, rejects mismatched plugin metadata, rebuilds metadata from the current skill file, and prepends a host-owned runtime boundary before the skill body.
 
 ## Discovery and loading
 
@@ -279,7 +283,7 @@ System runtime dependency execution environment:
 
 ### Initialization ordering
 
-The plugin registry is initialized at module load time (sync). This means it is fully populated before the first call to `discoverSkills()`, ensuring `isKnownCapability()` and `isKnownConfigKey()` validate plugin-contributed skills correctly.
+The plugin registry is initialized at module load time (sync). This means it is fully populated before the first call to `discoverSkills()`, ensuring plugin-backed skills can be associated with their parent plugin during discovery.
 
 ### Credential broker creation
 
@@ -371,6 +375,28 @@ The OAuth callback route uses `getOAuthProviderConfig()` instead of accessing `O
 
 Plugin skills use the same `SKILL.md` format and frontmatter contract as existing skills.
 
+### Skill/runtime boundary
+
+Plugin-backed skills may tell the model how to use available commands, MCP tools, config defaults, and provider-specific query syntax. They may include troubleshooting for unavailable runtime surfaces only as diagnosis and escalation, for example “report that the GitHub plugin runtime dependency is unavailable.”
+
+When the runtime loads a plugin-backed skill, it enforces the parent plugin before returning the skill:
+
+- re-resolve the parent plugin from the skill path;
+- reject stale or forged metadata that names a different plugin;
+- rebuild loaded metadata from the current `SKILL.md` frontmatter;
+- prepend a host-owned runtime boundary derived from the plugin manifest.
+
+That boundary tells the model that provider runtime packages, installer scripts, API keys, OAuth clients, and MCP servers are controlled by `plugin.yaml`, not by arbitrary skill prose.
+
+Plugin-backed skills must not:
+
+- ask the model to run package managers (`npm install`, `pnpm add`, `pip install`, `brew install`, `apt install`, `dnf install`, etc.);
+- ask the model to download and execute installers (`curl ... | sh`, shell installer scripts, or equivalent bootstrap flows);
+- ask the model to configure API keys, OAuth credentials, tokens, or MCP server endpoints;
+- ask the model to fix sandbox package installation from within a user workflow.
+
+When a bundled or third-party skill needs a CLI, system package, postinstall step, credential source, config key, or MCP server, the plugin wrapper declares that requirement in `plugin.yaml`. The skill should then rely on the runtime to provide it and fail with a clear plugin-runtime remediation when it is unavailable.
+
 ### Discovery
 
 `resolveSkillRoots()` in `skills.ts` appends `getPluginSkillRoots()`:
@@ -385,7 +411,7 @@ function resolveSkillRoots(): string[] {
 }
 ```
 
-Plugin skills are subject to the same frontmatter validation, `uses-config` checks, and name-deduplication as non-plugin skills.
+Plugin skills are subject to the same frontmatter validation and name-deduplication as non-plugin skills.
 
 ## Security properties
 

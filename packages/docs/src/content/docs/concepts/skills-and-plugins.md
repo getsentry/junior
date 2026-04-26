@@ -16,6 +16,7 @@ surface and credential sources may exist.
 - Skills define focused instruction bundles.
 - Plugins declare optional capabilities, optional credentials, and optional skills.
 - Runtime selects and executes skills based on task context, then uses the loaded skills to constrain credential access.
+- Plugins own runtime setup. If a skill needs a CLI, system package, MCP server, OAuth provider, or token delivery path, that requirement belongs in the plugin manifest instead of the skill prose.
 
 ## Skill sources
 
@@ -35,6 +36,8 @@ provider auth.
 ```bash
 pnpm skills:check
 ```
+
+Move package installs, CLI bootstraps, MCP server setup, and API-key configuration to `plugin.yaml` so reviewed manifests, not arbitrary skill instructions, control the runtime authority surface.
 
 ## Next step
 

@@ -1,7 +1,6 @@
 ---
 name: github-code
 description: Clone GitHub repositories, investigate source code, and manage pull requests via GitHub CLI. Use when users ask to inspect implementation details in a repository, clone code, edit files, answer source-code questions from repo evidence, or open/edit/view/merge pull requests. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
-uses-config: github.repo
 allowed-tools: bash
 ---
 

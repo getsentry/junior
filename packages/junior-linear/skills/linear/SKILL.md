@@ -1,7 +1,6 @@
 ---
 name: linear
 description: Manage Linear issues through Linear's hosted MCP server. Use when users ask to create a Linear ticket, update a Linear issue, add a Linear comment, move work between states, assign work, or look up Linear issue, team, or project details from Slack context.
-uses-config: linear.team linear.project
 ---
 
 # Linear Operations

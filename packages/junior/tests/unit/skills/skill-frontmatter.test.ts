@@ -66,7 +66,7 @@ describe("skill frontmatter validation", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("accepts hyphenated provider prefixes in uses-config tokens", () => {
+  it("rejects uses-config frontmatter", () => {
     const raw = [
       "---",
       "name: brief",
@@ -78,10 +78,11 @@ describe("skill frontmatter validation", () => {
     ].join("\n");
 
     const result = parseSkillFile(raw, "brief");
-    expect(result.ok).toBe(true);
-    expect(result.ok ? result.skill.usesConfig : null).toEqual([
-      "eval-oauth.repo",
-    ]);
+    expect(result).toEqual({
+      ok: false,
+      error:
+        'Frontmatter field "uses-config" is no longer supported; plugin config keys come from plugin.yaml.',
+    });
   });
 
   it("rejects requires-capabilities even when invalid", () => {
@@ -90,40 +91,6 @@ describe("skill frontmatter validation", () => {
       "name: brief",
       "description: Create a candidate brief from public engineering signals.",
       "requires-capabilities: github",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
-
-    const result = parseSkillFile(raw, "brief");
-    expect(result.ok).toBe(false);
-  });
-
-  it("accepts valid uses-config tokens", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "uses-config: github.repo jira.project",
-      "---",
-      "",
-      "# Body",
-    ].join("\n");
-
-    const result = parseSkillFile(raw, "brief");
-    expect(result.ok).toBe(true);
-    expect(result.ok ? result.skill.usesConfig : null).toEqual([
-      "github.repo",
-      "jira.project",
-    ]);
-  });
-
-  it("rejects invalid uses-config tokens", () => {
-    const raw = [
-      "---",
-      "name: brief",
-      "description: Create a candidate brief from public engineering signals.",
-      "uses-config: GITHUB_REPO",
       "---",
       "",
       "# Body",
