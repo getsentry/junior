@@ -23,8 +23,8 @@ Co-Authored-By: (agent model name) <email>
 ## Key Conventions
 
 - Use `/commit` skill for any commit operation.
-- Use `/create-pr` skill for any PR creation operation.
-- Use `/skill-creator` skill when creating or updating skills.
+- Use `/pr-writer` skill for any PR creation operation.
+- Use `/skill-writer` skill when creating or updating skills.
 - Prefer integration tests for most product/runtime changes that need real wiring.
 - Use evals as the integration-style layer for agent/prompt/natural-language behavior. See `packages/junior-evals/README.md`.
 - Run evals from Codex as escalated host commands when they need real Vercel Sandbox/network access; use `pnpm evals` for the full suite.
@@ -81,7 +81,7 @@ Co-Authored-By: (agent model name) <email>
 - `runtime/` orchestrates turns and turn-scoped formatting, `services/` do domain work (reply policy, delivery planning, channel intent, attachment validation), `state/` persists by concern, `ingress/` only normalizes/routes.
 - **Feature-based colocation**: group files by domain feature, not by technical role. Within a module, create subdirectories for each feature domain (e.g., `tools/slack/`, `tools/web/`, `tools/sandbox/`, `tools/skill/`). Shared contracts and cross-cutting utilities live at the module root. Only extract to a shared location when 2+ features need the same code.
 - Do not use barrel `index.ts` re-exports inside feature subdirectories — import directly from the source file. A module-root `index.ts` is acceptable as a composition root that wires features together.
-- Queue and worker paths must depend on injected runtime interfaces or factories, not import the production singleton from `@/chat/bot`.
+- Queue and worker paths must depend on injected runtime interfaces or factories, not import the production singleton from `@/chat/app/production`.
 - Do not use prototype patching or import-side-effect modules as the intended long-term ingress architecture.
 - Prefer domain-role names over mechanism names: avoid `patch`, vague `behavior`, and ambiguous `runtime` labels for non-runtime modules.
 - Tests and evals should create local runtimes via factories/fixtures and spy at real boundaries instead of patching the production singleton.
