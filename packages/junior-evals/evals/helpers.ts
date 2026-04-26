@@ -66,6 +66,21 @@ const evalOutputSchema = z.object({
   assistant_posts: z
     .array(assistantPostSchema)
     .describe("Assistant posts sent to the thread, including attached files"),
+  observed_tool_invocations: z
+    .array(
+      z.object({
+        tool: z.string().describe("Tool name the assistant attempted to call"),
+        bash_command: z
+          .string()
+          .optional()
+          .describe("Bash command when the invoked tool is bash"),
+        skill_name: z
+          .string()
+          .optional()
+          .describe("Skill name when the invoked tool is loadSkill"),
+      }),
+    )
+    .describe("Sanitized tool invocations observed during the eval"),
   canvases: z
     .array(canvasSchema)
     .describe("Slack canvases created during the turn"),
@@ -123,6 +138,7 @@ function hasAssistantStatusPending(result: EvalResult): boolean {
 function serializeEvalResult(result: EvalResult): string {
   const output: z.input<typeof evalOutputSchema> = {
     assistant_posts: result.posts,
+    observed_tool_invocations: result.toolInvocations,
     canvases: result.canvases,
     channel_posts: result.channelPosts,
     reactions: result.reactions,

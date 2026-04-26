@@ -144,6 +144,10 @@ export interface ReplyRequestContext {
   ) => void | Promise<void>;
   onTextDelta?: (deltaText: string) => void | Promise<void>;
   onAssistantMessageStart?: () => void | Promise<void>;
+  onToolInvocation?: (invocation: {
+    toolName: string;
+    params: Record<string, unknown>;
+  }) => void;
   /**
    * Known thread participants. Injected into the system prompt so the LLM can
    * produce correct <@USERID> mention syntax for people already in the conversation.
@@ -781,8 +785,22 @@ export async function generateAssistantReply(
     ]);
 
     // ── Agent tools ──────────────────────────────────────────────────
-    const onToolCall = (toolName: string) => {
+    const onToolCall = (toolName: string, params: Record<string, unknown>) => {
       toolCalls.push(toolName);
+      try {
+        context.onToolInvocation?.({ toolName, params });
+      } catch (error) {
+        logWarn(
+          "tool_invocation_observer_failed",
+          spanContext,
+          {
+            "gen_ai.tool.name": toolName,
+            "error.message":
+              error instanceof Error ? error.message : String(error),
+          },
+          "Tool invocation observer failed",
+        );
+      }
     };
     const baseAgentTools = createAgentTools(
       tools as Record<string, ToolDefinition<any>>,

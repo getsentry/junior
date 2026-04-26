@@ -131,6 +131,31 @@ describe("createAgentTools", () => {
     });
   });
 
+  it("reports tool call parameters to the caller", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const onToolCall = vi.fn();
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onToolCall,
+    );
+
+    await bashTool!.execute("tool-bash", { command: "which gh" });
+
+    expect(onToolCall).toHaveBeenCalledWith("bash", { command: "which gh" });
+  });
+
   it("rethrows plugin auth pauses without reporting a tool failure", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const capabilityRuntime = {

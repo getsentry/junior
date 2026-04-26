@@ -149,6 +149,55 @@ describe("GitHub Skill Workflows", () => {
     channel_id: "C-default-repo",
     thread_ts: "17000000.default-repo",
   };
+  const defaultRepoIssueThread = {
+    id: "thread-default-repo-issue",
+    channel_id: "C-default-repo-issue",
+    thread_ts: "17000000.default-repo-issue",
+  };
+
+  slackEval(
+    "when creating an issue after repo setup, use the stored repo without inventing tool failures",
+    {
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 75_000,
+        test_credential_token: "eval-default-repo-create-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention("Set the default repo to getsentry/junior for this channel.", {
+          thread: defaultRepoIssueThread,
+        }),
+        threadMessage(
+          "Create a GitHub issue for a bug where Slack follow-up replies sometimes blame missing tooling instead of showing the failed command.",
+          {
+            thread: defaultRepoIssueThread,
+            is_mention: true,
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "Stored GitHub repo context carries into a later issue-creation workflow, and tool-failure explanations stay grounded in observed command results.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "observed_tool_invocations includes a `loadSkill` invocation with `skill_name` set to `github-issues` before issue creation.",
+          "observed_tool_invocations includes a bash invocation that stores or uses `github.repo` as getsentry/junior.",
+          "observed_tool_invocations includes a bash invocation with `gh issue create` scoped to `--repo getsentry/junior`.",
+          "The first reply confirms default repo setup for getsentry/junior.",
+          "The second reply reports a created GitHub issue in getsentry/junior with an issue URL or issue number.",
+          "The second reply does not ask the user to restate the repository.",
+        ],
+        fail: [
+          "Do not claim that `gh`, the GitHub CLI, or `jr-rpc` is unavailable, missing, or not installed.",
+          "Do not blame issue creation on a missing tool without quoting an observed command failure.",
+          "Do not ask the user to pass --repo or provide the repo again.",
+          "Do not create or report an issue for a repository other than getsentry/junior.",
+        ],
+      }),
+    },
+  );
 
   slackEval(
     "when a default repo is set in one turn, reuse it in the next turn without asking again",
