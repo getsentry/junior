@@ -25,7 +25,7 @@ export function createAgentTools(
   sandboxExecutor?: SandboxExecutor,
   capabilityRuntime?: SkillCapabilityRuntime,
   pluginAuthOrchestration?: PluginAuthOrchestration,
-  onToolCall?: (toolName: string) => void,
+  onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
   return Object.entries(tools).map(([toolName, toolDef]) => ({
@@ -39,7 +39,6 @@ export function createAgentTools(
           ? toolCallId
           : undefined;
       const toolArgumentsAttribute = serializeGenAiAttribute(params);
-      onToolCall?.(toolName);
       const traceToolContext = {
         ...spanContext,
         conversationId: spanContext.conversationId,
@@ -58,6 +57,7 @@ export function createAgentTools(
         spanContext,
         async () => {
           const parsed = params as Record<string, unknown>;
+          onToolCall?.(toolName, parsed);
 
           try {
             if (typeof toolDef.execute !== "function") {

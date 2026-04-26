@@ -110,6 +110,7 @@ interface EvalReplyResultFixture {
   stream_text?: string;
   text: string;
   tool_calls?: string[];
+  tool_invocations?: EvalToolInvocation[];
   tool_error_count?: number;
   tool_result_count?: number;
   used_primary_text?: boolean;
@@ -156,6 +157,7 @@ export interface EvalResult {
     timestamp: string;
   }>;
   slackAdapter: FakeSlackAdapter;
+  toolInvocations: EvalToolInvocation[];
 }
 
 export interface EvalAttachedFile {
@@ -175,6 +177,12 @@ export interface EvalCanvasArtifact {
   title: string;
 }
 
+export interface EvalToolInvocation {
+  tool: string;
+  bash_command?: string;
+  skill_name?: string;
+}
+
 interface EvalSlackThreadReply {
   bot_id?: string;
   text?: string;
@@ -192,6 +200,30 @@ interface QueueDelivery {
   kind: ThreadMessageKind;
   message: Message;
   thread: TestThread;
+}
+
+interface RuntimeObservations {
+  toolInvocations: EvalToolInvocation[];
+}
+
+function toEvalToolInvocation(input: {
+  toolName: string;
+  params: Record<string, unknown>;
+}): EvalToolInvocation {
+  const invocation: EvalToolInvocation = { tool: input.toolName };
+
+  if (input.toolName === "bash" && typeof input.params.command === "string") {
+    invocation.bash_command = input.params.command.trim();
+  }
+
+  if (
+    input.toolName === "loadSkill" &&
+    typeof input.params.skill_name === "string"
+  ) {
+    invocation.skill_name = input.params.skill_name.trim();
+  }
+
+  return invocation;
 }
 
 // ---------------------------------------------------------------------------
@@ -822,6 +854,7 @@ function buildRuntimeServices(
   scenario: EvalScenario,
   env: HarnessEnvironment,
   threadRecordsById: Map<string, EvalThreadRecord>,
+  observations: RuntimeObservations,
 ): JuniorRuntimeServiceOverrides {
   const replyResults = scenario.overrides?.reply_results ?? [];
   const replyTexts = scenario.overrides?.reply_texts ?? [];
@@ -876,6 +909,10 @@ function buildRuntimeServices(
             await context?.onTextDelta?.(replyResult.stream_text);
           }
           replyState.successfulCount += 1;
+          observations.toolInvocations.push(
+            ...(replyResult.tool_invocations ??
+              (replyResult.tool_calls ?? []).map((tool) => ({ tool }))),
+          );
           return {
             text: replyResult.text,
             deliveryMode: "thread",
@@ -937,6 +974,11 @@ function buildRuntimeServices(
           reply = await Promise.race([
             generateAssistantReply(text, {
               ...context,
+              onToolInvocation: (invocation) => {
+                observations.toolInvocations.push(
+                  toEvalToolInvocation(invocation),
+                );
+              },
               ...(env.configuredSkillDirs.length > 0
                 ? { skillDirs: env.configuredSkillDirs }
                 : {}),
@@ -1110,6 +1152,7 @@ function collectResults(
   threadRecordsById: Map<string, EvalThreadRecord>,
   slackAdapter: FakeSlackAdapter,
   logRecords: EmittedLogRecord[],
+  observations: RuntimeObservations,
 ): EvalResult {
   const posts = [...threadRecordsById.values()].flatMap((record) =>
     record.thread.posts.map(toEvalAssistantPost),
@@ -1124,6 +1167,7 @@ function collectResults(
     reactions,
     posts,
     slackAdapter,
+    toolInvocations: observations.toolInvocations,
   };
 }
 
@@ -1141,6 +1185,9 @@ export async function runEvalScenario(
   const slackAdapter = new FakeSlackAdapter();
   const threadRecordsById = new Map<string, EvalThreadRecord>();
   const readyQueueDeliveries: QueueDelivery[] = [];
+  const observations: RuntimeObservations = {
+    toolInvocations: [],
+  };
   const channelStateById = new Map<
     string,
     { value: Record<string, unknown> }
@@ -1176,7 +1223,12 @@ export async function runEvalScenario(
     return record;
   };
 
-  const services = buildRuntimeServices(scenario, env, threadRecordsById);
+  const services = buildRuntimeServices(
+    scenario,
+    env,
+    threadRecordsById,
+    observations,
+  );
 
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => slackAdapter as any,
@@ -1197,7 +1249,12 @@ export async function runEvalScenario(
     await teardownHarnessEnvironment(scenario, env);
   }
 
-  return collectResults(threadRecordsById, slackAdapter, logRecords);
+  return collectResults(
+    threadRecordsById,
+    slackAdapter,
+    logRecords,
+    observations,
+  );
 }
 
 // Compile-time guards for Thread and Message fakes are in tests/fixtures/slack-harness.ts.
