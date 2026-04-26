@@ -94,9 +94,9 @@ target:
 
 ## Skill Metadata Validation
 
-- Plugin manifests define capabilities; skills consume provider config via `uses-config` rather than declaring capabilities.
-- `uses-config` values must exist in catalog config keys.
-- Invalid values are warn+skip during skill discovery (`skill_frontmatter_invalid`).
+- Plugin manifests define capabilities and config keys; skills do not declare either surface.
+- Deprecated skill-owned capability or config declarations are rejected during skill parsing.
+- Invalid skill frontmatter is warn+skip during skill discovery (`skill_frontmatter_invalid`).
 
 ## Prompt Contracts
 

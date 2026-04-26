@@ -47,7 +47,6 @@ function toLoadedSkill(
       ? { pluginProvider: metadata.pluginProvider }
       : {}),
     ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : {}),
-    ...(metadata?.usesConfig ? { usesConfig: metadata.usesConfig } : {}),
     body: result.instructions,
   };
 }

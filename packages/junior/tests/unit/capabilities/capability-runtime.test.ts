@@ -58,7 +58,6 @@ const githubSkill: Skill = {
   skillPath: "/tmp/github",
   body: "instructions",
   pluginProvider: "github",
-  usesConfig: ["github.repo"],
 };
 
 const sentrySkill: Skill = {

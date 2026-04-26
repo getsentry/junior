@@ -2,10 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  getCapabilityProvider,
-  isKnownConfigKey,
-} from "@/chat/capabilities/catalog";
+import { getCapabilityProvider } from "@/chat/capabilities/catalog";
 import {
   discoverSkills,
   loadSkillsByName,
@@ -115,7 +112,7 @@ describe("skills", () => {
     expect(parseSkillInvocation("/brief github: octocat", [])).toBeNull();
   });
 
-  it("skips skills with unknown capability/config metadata", async () => {
+  it("skips skills with unsupported capability metadata", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "junior-skills-"));
     const originalSkillDirs = process.env.SKILL_DIRS;
 
@@ -137,16 +134,6 @@ describe("skills", () => {
         "",
         "# Body",
       ]);
-      await writeSkillFile(tempRoot, "tmp-invalid-config", [
-        "---",
-        "name: tmp-invalid-config",
-        "description: Invalid config metadata skill.",
-        "uses-config: github.organization",
-        "---",
-        "",
-        "# Body",
-      ]);
-
       process.env.SKILL_DIRS = tempRoot;
       resetSkillDiscoveryCache();
 
@@ -155,7 +142,6 @@ describe("skills", () => {
 
       expect(names).toContain("tmp-valid-metadata");
       expect(names).not.toContain("tmp-invalid-capability");
-      expect(names).not.toContain("tmp-invalid-config");
     } finally {
       resetSkillDiscoveryCache();
       if (originalSkillDirs === undefined) {
@@ -225,7 +211,7 @@ describe("skills", () => {
     }
   });
 
-  it("discovers plugin skills that use config-only plugin defaults", async () => {
+  it("discovers plugin skills for config-only plugin defaults", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-skill-config-only-"),
     );
@@ -252,7 +238,6 @@ describe("skills", () => {
           "---",
           "name: demo-defaults",
           "description: Demo defaults skill",
-          "uses-config: demo.team demo.project",
           "---",
           "",
           "# Body",
@@ -269,10 +254,7 @@ describe("skills", () => {
       ).toMatchObject({
         name: "demo-defaults",
         pluginProvider: "demo",
-        usesConfig: ["demo.team", "demo.project"],
       });
-      expect(isKnownConfigKey("demo.team")).toBe(true);
-      expect(isKnownConfigKey("demo.project")).toBe(true);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
@@ -316,7 +298,6 @@ describe("skills", () => {
           "---",
           "name: demo-tool",
           "description: Demo tool skill",
-          "uses-config: demo.repo",
           "allowed-tools: bash",
           "---",
           "",
@@ -351,9 +332,9 @@ describe("skills", () => {
     }
   });
 
-  it("rejects plugin skills that claim another plugin's config keys", async () => {
+  it("rejects plugin skills with deprecated config frontmatter", async () => {
     const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-plugin-skill-foreign-config-"),
+      path.join(os.tmpdir(), "junior-plugin-skill-deprecated-config-"),
     );
     const pluginRoot = path.join(tempRoot, "demo");
 
@@ -377,7 +358,7 @@ describe("skills", () => {
           "---",
           "name: demo-tool",
           "description: Demo tool skill",
-          "uses-config: github.repo",
+          "uses-config: demo.repo",
           "---",
           "",
           "Use this skill.",
@@ -397,12 +378,11 @@ describe("skills", () => {
     }
   });
 
-  it("validates current skill config metadata at load time", async () => {
+  it("validates current skill frontmatter at load time", async () => {
     const tempRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "junior-plugin-skill-load-foreign-config-"),
+      path.join(os.tmpdir(), "junior-plugin-skill-load-deprecated-config-"),
     );
     const pluginRoot = path.join(tempRoot, "demo");
-    const otherPluginRoot = path.join(tempRoot, "other");
     const skillFile = path.join(pluginRoot, "skills", "demo-tool", "SKILL.md");
 
     try {
@@ -417,24 +397,12 @@ describe("skills", () => {
         ].join("\n"),
         "utf8",
       );
-      await fs.mkdir(otherPluginRoot, { recursive: true });
-      await fs.writeFile(
-        path.join(otherPluginRoot, "plugin.yaml"),
-        [
-          "name: other",
-          "description: Other plugin",
-          "config-keys:",
-          "  - repo",
-        ].join("\n"),
-        "utf8",
-      );
       await fs.writeFile(
         skillFile,
         [
           "---",
           "name: demo-tool",
           "description: Demo tool skill",
-          "uses-config: demo.repo",
           "---",
           "",
           "Use this skill.",
@@ -456,7 +424,7 @@ describe("skills", () => {
           "---",
           "name: demo-tool",
           "description: Demo tool skill",
-          "uses-config: other.repo",
+          "uses-config: demo.repo",
           "---",
           "",
           "Use this skill.",
@@ -465,7 +433,7 @@ describe("skills", () => {
       );
 
       await expect(loadSkillsByName(["demo-tool"], available)).rejects.toThrow(
-        "Plugin skills may only use config keys from their parent plugin: other.repo",
+        'Frontmatter field "uses-config" is no longer supported; plugin config keys come from plugin.yaml.',
       );
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });

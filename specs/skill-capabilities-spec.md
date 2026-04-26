@@ -30,7 +30,7 @@ Define how Junior maps a loaded plugin-backed skill to host-managed credentials 
 ## Core model
 
 1. Plugins own provider permissions in `plugin.yaml`.
-2. Skills may declare `uses-config` keys, but they do not declare capabilities.
+2. Skills do not declare capabilities or config keys.
 3. After a plugin-backed skill is loaded, the agent runs the real provider command.
 4. The runtime resolves the provider from the active skill, issues a provider lease, and injects credentials for the current turn only.
 5. If auth is missing or stale, the runtime starts a private OAuth flow and resumes the paused turn after authorization.
@@ -49,22 +49,21 @@ Capabilities remain a host-side permission description. They are not a model-fac
 
 ## Skill contract
 
-Plugin-backed skills may declare:
+Plugin-backed skills may declare normal skill metadata:
 
 ```yaml
 ---
 name: github
 description: Create and update GitHub issues.
-uses-config: github.repo
 ---
 ```
 
 Rules:
 
-- `uses-config` is optional.
+- `uses-config` is no longer supported. Config keys are owned by the parent plugin manifest and exposed through the provider catalog.
 - `requires-capabilities` is no longer supported.
 - Skills must never include secret values.
-- Skills should keep provider defaults explicit so repo/project commands stay deterministic.
+- Skills should use provider defaults from the runtime provider catalog so repo/project commands stay deterministic.
 - Skills must treat plugin-provided commands and tools as already available. Missing CLIs, missing MCP tools, sandbox package failures, or missing credentials are runtime/plugin setup failures to report or reconnect through runtime-owned flows, not problems for the skill to repair with package-manager or credential setup commands.
 
 ## Runtime contract
@@ -86,7 +85,7 @@ Rules:
 ### Runtime setup boundary
 
 - Loaded plugin-backed skills include a host-owned boundary derived from the plugin manifest before the skill body.
-- `loadSkill` re-resolves plugin ownership from the skill path, rejects mismatched plugin metadata, and constrains `uses-config` to the parent plugin.
+- `loadSkill` re-resolves plugin ownership from the skill path, rejects mismatched plugin metadata, and builds loaded metadata from the current `SKILL.md` frontmatter.
 - CLI and system packages belong in `plugin.yaml` `runtime-dependencies`.
 - Postinstall/bootstrap commands belong in `plugin.yaml` `runtime-postinstall`.
 - MCP endpoints and allowed tool surfaces belong in `plugin.yaml` `mcp`.

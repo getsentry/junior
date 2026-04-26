@@ -1,7 +1,6 @@
 ---
 name: sentry
 description: Query live Sentry telemetry (issues, events, replays, traces) and generate deep links scoped to users or timeframes. Use this skill when users ask to investigate live Sentry data, search errors, find replays, inspect traces, or look up Sentry issues/events. Do not use it for repository/source-code/PR tasks, even when the topic concerns Sentry products.
-uses-config: sentry.org sentry.project
 allowed-tools: bash
 ---
 

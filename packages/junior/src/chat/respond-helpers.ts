@@ -323,7 +323,6 @@ export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
     existing.description = next.description;
     existing.skillPath = next.skillPath;
     existing.allowedTools = next.allowedTools;
-    existing.usesConfig = next.usesConfig;
     existing.pluginProvider = next.pluginProvider;
     return;
   }

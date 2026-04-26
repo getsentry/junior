@@ -22,7 +22,6 @@ let cachedCatalog:
       signature: string;
       providers: CapabilityProviderDefinition[];
       capabilityToProvider: Map<string, CapabilityProviderDefinition>;
-      configKeys: Set<string>;
     }
   | undefined;
 
@@ -53,7 +52,6 @@ function getCapabilityCatalog() {
 
   const providers = getPluginCapabilityProviders();
   const capabilityToProvider = new Map<string, CapabilityProviderDefinition>();
-  const configKeys = new Set<string>();
 
   for (const provider of providers) {
     for (const capability of provider.capabilities) {
@@ -64,12 +62,9 @@ function getCapabilityCatalog() {
       }
       capabilityToProvider.set(capability, provider);
     }
-    for (const configKey of provider.configKeys) {
-      configKeys.add(configKey);
-    }
   }
 
-  cachedCatalog = { signature, providers, capabilityToProvider, configKeys };
+  cachedCatalog = { signature, providers, capabilityToProvider };
   return cachedCatalog;
 }
 
@@ -82,10 +77,6 @@ export function getCapabilityProvider(
 
 export function isKnownCapability(capability: string): boolean {
   return getCapabilityCatalog().capabilityToProvider.has(capability);
-}
-
-export function isKnownConfigKey(key: string): boolean {
-  return getCapabilityCatalog().configKeys.has(key);
 }
 
 export function listCapabilityProviders(): CapabilityProviderDefinition[] {

@@ -182,10 +182,13 @@ The only supported placeholder form is `${NAME}` — replaced with `process.env[
 
 ### Add skills to the plugin
 
-Put at least one skill under `skills/<skill-name>/SKILL.md` and declare any provider config keys it reads in frontmatter.
+Put at least one skill under `skills/<skill-name>/SKILL.md`. Provider config keys belong in `plugin.yaml`, not in skill frontmatter.
 
 ```yaml
-uses-config: my-provider.org my-provider.project
+---
+name: my-provider
+description: Work with My Provider resources.
+---
 ```
 
 ### Package it for discovery

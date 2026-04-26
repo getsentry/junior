@@ -51,7 +51,6 @@ describe("capability catalog", () => {
     expect(catalog.getCapabilityProvider("demo.read")).toMatchObject({
       provider: "demo",
     });
-    expect(catalog.isKnownConfigKey("demo.token")).toBe(true);
 
     currentSignature = "sig-2";
     currentProviders = [
@@ -64,8 +63,6 @@ describe("capability catalog", () => {
 
     expect(catalog.getCapabilityProvider("demo.read")).toBeUndefined();
     expect(catalog.isKnownCapability("other.read")).toBe(true);
-    expect(catalog.isKnownConfigKey("demo.token")).toBe(false);
-    expect(catalog.isKnownConfigKey("other.token")).toBe(true);
   });
 
   it("returns defensive copies from provider accessors", async () => {

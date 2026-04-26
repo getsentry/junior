@@ -40,7 +40,6 @@ const githubSkill: Skill = {
   body: "instructions",
   pluginProvider: "github",
   allowedTools: ["bash"],
-  usesConfig: ["github.repo"],
 };
 
 const sentrySkill: Skill = {
@@ -50,7 +49,6 @@ const sentrySkill: Skill = {
   body: "instructions",
   pluginProvider: "sentry",
   allowedTools: ["bash"],
-  usesConfig: ["sentry.org"],
 };
 
 describe("createPluginAuthOrchestration", () => {

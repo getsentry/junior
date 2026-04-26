@@ -64,7 +64,6 @@ describe("check cli", () => {
         "---",
         "name: demo-helper",
         "description: Help with demo tasks.",
-        "uses-config: demo.repo",
         "---",
         "",
         "Use this skill.",
@@ -195,8 +194,8 @@ describe("check cli", () => {
     ]);
   });
 
-  it("fails when skill uses-config tokens are invalid", async () => {
-    const repoRoot = makeTempDir("junior-validate-invalid-uses-config-");
+  it("fails when skill uses-config frontmatter is present", async () => {
+    const repoRoot = makeTempDir("junior-validate-uses-config-");
     writeAppFiles(repoRoot);
     writeFile(
       path.join(repoRoot, "app", "plugins", "demo", "plugin.yaml"),
@@ -208,7 +207,7 @@ describe("check cli", () => {
         "---",
         "name: repo-local",
         "description: Help with repo-local tasks.",
-        "uses-config: GITHUB_REPO",
+        "uses-config: demo.repo",
         "---",
         "",
         "Use this skill.",

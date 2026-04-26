@@ -1,7 +1,6 @@
 ---
 name: github-issues
 description: Create, update, comment on, label, and inspect GitHub issues via GitHub CLI with concise, evidence-backed content. Use when users ask to open, edit, view, close, reopen, or triage GitHub issues — including tracking bugs, features, or tasks. Prefer this skill over generic repository tools for any issue operation.
-uses-config: github.repo
 allowed-tools: bash
 ---
 

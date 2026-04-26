@@ -9,7 +9,6 @@ const activeSkill: Skill = {
   skillPath: "/tmp/github",
   body: "instructions",
   pluginProvider: "github",
-  usesConfig: ["github.repo"],
 };
 
 function makeChannelConfiguration() {

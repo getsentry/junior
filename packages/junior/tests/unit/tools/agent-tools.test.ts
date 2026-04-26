@@ -21,7 +21,6 @@ const githubSkill: Skill = {
   body: "instructions",
   pluginProvider: "github",
   allowedTools: ["bash"],
-  usesConfig: ["github.repo"],
 };
 
 describe("createAgentTools", () => {

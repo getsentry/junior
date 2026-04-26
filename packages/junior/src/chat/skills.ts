@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
-import { isKnownConfigKey } from "@/chat/capabilities/catalog";
 import { skillRoots } from "@/chat/discovery";
 import { logWarn } from "@/chat/logging";
 import {
@@ -17,7 +16,6 @@ import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 const SKILL_NAME_RE = /^[a-z0-9-]+$/;
-const DOTTED_TOKEN_RE = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const MAX_COMPATIBILITY_LENGTH = 500;
@@ -30,7 +28,6 @@ export interface ParsedSkillFile {
   compatibility?: string;
   license?: string;
   allowedTools?: string[];
-  usesConfig?: string[];
 }
 
 function hasAngleBrackets(value: string): boolean {
@@ -47,29 +44,6 @@ function validateSkillName(name: string): string | null {
     return "name must not start or end with a hyphen";
   if (name.includes("--")) return "name must not contain consecutive hyphens";
   return null;
-}
-
-function createTokenFieldSchema(fieldName: "uses-config", example: string) {
-  return z
-    .string({
-      error: `Frontmatter field "${fieldName}" must be a string when present`,
-    })
-    .superRefine((value, ctx) => {
-      const tokens = value
-        .split(/\s+/)
-        .map((token) => token.trim())
-        .filter((token) => token.length > 0);
-
-      for (const token of tokens) {
-        if (!DOTTED_TOKEN_RE.test(token)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `${fieldName} token "${token}" is invalid; expected dotted lowercase tokens (for example "${example}")`,
-          });
-          return;
-        }
-      }
-    });
 }
 
 function parseTokenList(value: string | undefined): string[] | undefined {
@@ -152,10 +126,6 @@ const skillFrontmatterSchema = z
           'Frontmatter field "allowed-tools" must be a string when present',
       })
       .optional(),
-    "uses-config": createTokenFieldSchema(
-      "uses-config",
-      "provider.repo",
-    ).optional(),
   })
   .passthrough();
 
@@ -194,6 +164,13 @@ export function parseSkillFile(
         'Frontmatter field "requires-capabilities" is no longer supported; plugin-backed skills inherit credentials from their plugin.',
     };
   }
+  if ("uses-config" in parsed) {
+    return {
+      ok: false,
+      error:
+        'Frontmatter field "uses-config" is no longer supported; plugin config keys come from plugin.yaml.',
+    };
+  }
 
   const result = skillFrontmatterSchema.safeParse(parsed);
   if (!result.success) {
@@ -211,7 +188,6 @@ export function parseSkillFile(
   }
 
   const allowedTools = parseTokenList(result.data["allowed-tools"]);
-  const usesConfig = parseTokenList(result.data["uses-config"]);
 
   return {
     ok: true,
@@ -227,7 +203,6 @@ export function parseSkillFile(
         ? { license: result.data.license }
         : {}),
       ...(allowedTools ? { allowedTools } : {}),
-      ...(usesConfig ? { usesConfig } : {}),
     },
   };
 }
@@ -244,7 +219,6 @@ export interface SkillMetadata {
   skillPath: string;
   pluginProvider?: string;
   allowedTools?: string[];
-  usesConfig?: string[];
 }
 
 export interface Skill extends SkillMetadata {
@@ -294,30 +268,6 @@ function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
     resolved.push(normalized);
   }
   return resolved;
-}
-
-function validateSkillMetadata(input: {
-  plugin?: PluginDefinition;
-  usesConfig?: string[];
-}): string | undefined {
-  const unknownConfigKeys = (input.usesConfig ?? []).filter(
-    (configKey) => !isKnownConfigKey(configKey),
-  );
-  if (unknownConfigKeys.length > 0) {
-    return `Unknown uses-config values: ${unknownConfigKeys.join(", ")}`;
-  }
-
-  if (input.plugin) {
-    const prefix = `${input.plugin.manifest.name}.`;
-    const foreignConfigKeys = (input.usesConfig ?? []).filter(
-      (configKey) => !configKey.startsWith(prefix),
-    );
-    if (foreignConfigKeys.length > 0) {
-      return `Plugin skills may only use config keys from their parent plugin: ${foreignConfigKeys.join(", ")}`;
-    }
-  }
-
-  return undefined;
 }
 
 function resolveSkillPlugin(
@@ -385,29 +335,15 @@ async function readSkillDirectory(
       return null;
     }
 
-    const { name, description, allowedTools, usesConfig } = parsed.skill;
+    const { name, description, allowedTools } = parsed.skill;
     const plugin = getPluginForSkillPath(skillDir);
-    const metadataError = validateSkillMetadata({ plugin, usesConfig });
-    if (metadataError) {
-      logWarn(
-        "skill_frontmatter_invalid",
-        {},
-        {
-          "file.path": skillDir,
-          "error.message": metadataError,
-        },
-        "Invalid skill frontmatter",
-      );
-      return null;
-    }
 
     return {
       name,
       description,
       skillPath: skillDir,
       ...(plugin ? { pluginProvider: plugin.manifest.name } : {}),
-      allowedTools,
-      usesConfig,
+      ...(allowedTools ? { allowedTools } : {}),
     };
   } catch (error) {
     logWarn(
@@ -532,38 +468,15 @@ export async function loadSkillsByName(
     }
 
     const plugin = resolveSkillPlugin(meta);
-    const metadataError = validateSkillMetadata({
-      plugin,
-      usesConfig: parsed.skill.usesConfig,
-    });
-    if (metadataError) {
-      throw new Error(`Invalid skill file in ${skillFile}: ${metadataError}`);
-    }
-
-    const loadedMeta: SkillMetadata = plugin
-      ? {
-          name: parsed.skill.name,
-          description: parsed.skill.description,
-          skillPath: meta.skillPath,
-          pluginProvider: plugin.manifest.name,
-          ...(parsed.skill.allowedTools
-            ? { allowedTools: parsed.skill.allowedTools }
-            : {}),
-          ...(parsed.skill.usesConfig
-            ? { usesConfig: parsed.skill.usesConfig }
-            : {}),
-        }
-      : {
-          ...meta,
-          name: parsed.skill.name,
-          description: parsed.skill.description,
-          ...(parsed.skill.allowedTools
-            ? { allowedTools: parsed.skill.allowedTools }
-            : {}),
-          ...(parsed.skill.usesConfig
-            ? { usesConfig: parsed.skill.usesConfig }
-            : {}),
-        };
+    const loadedMeta: SkillMetadata = {
+      name: parsed.skill.name,
+      description: parsed.skill.description,
+      skillPath: meta.skillPath,
+      ...(plugin ? { pluginProvider: plugin.manifest.name } : {}),
+      ...(parsed.skill.allowedTools
+        ? { allowedTools: parsed.skill.allowedTools }
+        : {}),
+    };
 
     skills.push({
       ...loadedMeta,

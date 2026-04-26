@@ -262,7 +262,7 @@ System runtime dependency execution environment:
 - No two plugins may use the same `name`.
 - If `target.config-key` is set, it must be listed in `config-keys`.
 - If a plugin declares capabilities without credentials, manifest load succeeds and runtime credential enablement fails with an explicit no-broker error when an authenticated command needs that provider.
-- `plugin.yaml` remains the enforceable runtime authority. `loadSkill` re-resolves the skill's parent plugin from its path, rejects mismatched plugin metadata, constrains `uses-config` to the parent plugin, and prepends a host-owned runtime boundary before the skill body.
+- `plugin.yaml` remains the enforceable runtime authority. `loadSkill` re-resolves the skill's parent plugin from its path, rejects mismatched plugin metadata, rebuilds metadata from the current skill file, and prepends a host-owned runtime boundary before the skill body.
 
 ## Discovery and loading
 
@@ -283,7 +283,7 @@ System runtime dependency execution environment:
 
 ### Initialization ordering
 
-The plugin registry is initialized at module load time (sync). This means it is fully populated before the first call to `discoverSkills()`, ensuring `isKnownCapability()` and `isKnownConfigKey()` validate plugin-contributed skills correctly.
+The plugin registry is initialized at module load time (sync). This means it is fully populated before the first call to `discoverSkills()`, ensuring plugin-backed skills can be associated with their parent plugin during discovery.
 
 ### Credential broker creation
 
@@ -383,7 +383,7 @@ When the runtime loads a plugin-backed skill, it enforces the parent plugin befo
 
 - re-resolve the parent plugin from the skill path;
 - reject stale or forged metadata that names a different plugin;
-- constrain `uses-config` to config keys owned by that parent plugin;
+- rebuild loaded metadata from the current `SKILL.md` frontmatter;
 - prepend a host-owned runtime boundary derived from the plugin manifest.
 
 That boundary tells the model that provider runtime packages, installer scripts, API keys, OAuth clients, and MCP servers are controlled by `plugin.yaml`, not by arbitrary skill prose.
@@ -411,7 +411,7 @@ function resolveSkillRoots(): string[] {
 }
 ```
 
-Plugin skills are subject to the same frontmatter validation, `uses-config` checks, and name-deduplication as non-plugin skills.
+Plugin skills are subject to the same frontmatter validation and name-deduplication as non-plugin skills.
 
 ## Security properties
 
