@@ -125,7 +125,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         messages: [],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
-        // Keep the same reference so MCP tool registration is visible here.
         tools: input.initialState.tools,
       };
     }
@@ -169,15 +168,16 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       agentProbe.continueCallCount += 1;
       this.aborted = false;
 
-      const mcpTool = this.state.tools.find(
-        (tool) => tool.name === MCP_TOOL_NAME,
+      const callMcpTool = this.state.tools.find(
+        (tool) => tool.name === "callMcpTool",
       );
-      if (!mcpTool) {
-        throw new Error(`${MCP_TOOL_NAME} tool missing on resume`);
+      if (!callMcpTool) {
+        throw new Error("callMcpTool missing on resume");
       }
 
-      await mcpTool.execute("tool-call-continue", {
-        query: "what did i say about the budget?",
+      await callMcpTool.execute("tool-call-continue", {
+        tool_name: MCP_TOOL_NAME,
+        arguments: { query: "what did i say about the budget?" },
       });
 
       if (this.aborted) {

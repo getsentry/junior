@@ -79,6 +79,4 @@ Use these patterns to shape concrete Datadog requests.
 
 ## 13. Storing channel defaults
 
-- Use `jr-rpc config set datadog.env <env>` only when the user explicitly asks to store an env default for the conversation/channel.
-- Use `jr-rpc config set datadog.service <service>` only when the user explicitly asks to store a service default for the conversation/channel.
 - Treat both defaults as optional fallbacks. Explicit user input wins whenever a request names a different env or service.

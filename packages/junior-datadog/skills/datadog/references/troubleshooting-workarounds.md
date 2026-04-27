@@ -2,14 +2,6 @@
 
 Use this reference when Datadog MCP calls fail or return unexpected results.
 
-## Authentication and connection
-
-| Symptom                                                            | Likely cause                                                | What to do                                                                                                                     |
-| ------------------------------------------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Tool call returns an authorization-required signal before running. | User has not yet completed the Datadog OAuth flow in Slack. | Let the runtime DM the user the authorization link and pause the turn. Do not prompt for credentials manually.                 |
-| Tool call returned `401` mid-session.                              | OAuth token expired or was revoked.                         | Expect Junior's MCP layer to resurface the authorization flow. Retry once the user has re-authorized; do not loop before that. |
-| OAuth callback did not resume the thread.                          | User closed the browser before the redirect completed.      | Ask the user to retry the request — the OAuth flow will restart and complete if they finish it this time.                      |
-
 ## Permission and scope errors
 
 - A Datadog API returning `403 Forbidden` or `permission denied` means the user's Datadog role cannot read that resource (metrics, APM, incidents, RUM, etc.).

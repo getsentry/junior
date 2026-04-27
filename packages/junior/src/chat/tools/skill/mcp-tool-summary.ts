@@ -2,6 +2,7 @@ import type { ManagedMcpToolDescriptor } from "@/chat/mcp/tool-manager";
 
 export interface ExposedToolSummary {
   tool_name: string;
+  mcp_tool_name: string;
   provider: string;
   description: string;
   input_schema: Record<string, unknown>;
@@ -35,6 +36,7 @@ export function toExposedToolSummary(
 ): ExposedToolSummary {
   return {
     tool_name: toolDef.name,
+    mcp_tool_name: toolDef.rawName,
     provider: toolDef.provider,
     description: toolDef.description,
     input_schema: toolDef.parameters,

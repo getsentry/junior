@@ -5,7 +5,7 @@ description: Manage Linear issues through Linear's hosted MCP server. Use when u
 
 # Linear Operations
 
-Use this skill for Linear issue workflows in the harness.
+Use this skill for Linear issue workflows.
 
 ## Reference loading
 
@@ -30,10 +30,8 @@ Load references conditionally based on the request:
 - If the request refers to an existing Linear item indirectly, inspect the current thread context for the previously mentioned issue key or URL before asking the user to restate it.
 - Ask one concise follow-up only when a write is blocked after considering both explicit user input and any configured defaults, such as multiple plausible teams, no clear target issue, or no valid team for a new issue.
 
-2. Discover and prepare MCP tools:
+2. Prepare the Linear operation:
 
-- `loadSkill` returns `available_tools` for this skill, including the exact `tool_name` values and input schemas exposed in this turn.
-- Call those exact tool names directly. Use `searchTools` only if you need to rediscover or filter the active Linear tools later in the turn.
 - Prefer a short read/search step before mutating when you need to confirm the existing issue, team, project, or workflow state.
 
 3. Draft issue content (create or substantial rewrite):

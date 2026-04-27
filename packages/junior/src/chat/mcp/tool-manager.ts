@@ -18,6 +18,8 @@ export class McpToolError extends Error {
 }
 
 function normalizeMcpToolName(provider: string, toolName: string): string {
+  // Raw MCP tool names are only provider-scoped. Prefix the provider for the
+  // model-facing callable name so two active MCP providers cannot collide.
   return `mcp__${provider}__${toolName}`;
 }
 
@@ -159,6 +161,7 @@ export interface ManagedMcpToolResult {
 
 export interface ManagedMcpToolDescriptor {
   name: string;
+  rawName: string;
   description: string;
   parameters: Record<string, unknown>;
   provider: string;
@@ -267,41 +270,6 @@ export class McpToolManager {
     return this.getResolvedActiveTools(skills, options).map((tool) =>
       this.toToolDescriptor(tool),
     );
-  }
-
-  searchTools(
-    skills: ActiveMcpSkillScope[],
-    query: string,
-    options: { provider?: string; limit?: number } = {},
-  ): ManagedMcpToolDescriptor[] {
-    const resolved = this.getResolvedActiveTools(skills, options);
-    const trimmedQuery = query.trim();
-    if (!trimmedQuery || trimmedQuery === "*") {
-      return resolved
-        .slice(0, Math.max(1, options.limit ?? 8))
-        .map((tool) => this.toToolDescriptor(tool));
-    }
-
-    const normalizedQuery = trimmedQuery.toLowerCase();
-    const queryTokens = normalizedQuery
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter((token) => token.length > 0);
-
-    return resolved
-      .map((tool) => ({
-        tool,
-        score: this.scoreToolMatch(tool, normalizedQuery, queryTokens),
-      }))
-      .filter((entry) => entry.score > 0)
-      .sort((left, right) => {
-        if (right.score !== left.score) {
-          return right.score - left.score;
-        }
-        return left.tool.name.localeCompare(right.tool.name);
-      })
-      .slice(0, Math.max(1, options.limit ?? 8))
-      .map((entry) => this.toToolDescriptor(entry.tool));
   }
 
   private filterListedTools(
@@ -465,49 +433,10 @@ export class McpToolManager {
   private toToolDescriptor(tool: ManagedMcpTool): ManagedMcpToolDescriptor {
     return {
       name: tool.name,
+      rawName: tool.rawName,
       description: tool.description,
       parameters: tool.parameters,
       provider: tool.provider,
     };
-  }
-
-  private scoreToolMatch(
-    tool: ManagedMcpTool,
-    normalizedQuery: string,
-    queryTokens: string[],
-  ): number {
-    const exactCandidates = [tool.name, tool.rawName, tool.title]
-      .filter((value): value is string => Boolean(value))
-      .map((value) => value.toLowerCase());
-
-    if (exactCandidates.includes(normalizedQuery)) {
-      return 100;
-    }
-
-    let score = 0;
-    const searchableText = [
-      tool.name,
-      tool.rawName,
-      tool.title,
-      tool.description,
-      tool.provider,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(" ")
-      .toLowerCase();
-
-    for (const candidate of exactCandidates) {
-      if (candidate.startsWith(normalizedQuery)) {
-        score = Math.max(score, 60);
-      }
-    }
-
-    for (const token of queryTokens) {
-      if (searchableText.includes(token)) {
-        score += 10;
-      }
-    }
-
-    return score;
   }
 }

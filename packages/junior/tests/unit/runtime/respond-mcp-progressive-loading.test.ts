@@ -19,6 +19,7 @@ const {
   pushPreToolAssistantMessage,
   promptCallCount,
   recordToolResultMessage,
+  systemPromptInputs,
 } = vi.hoisted(() => ({
   DEMO_SKILL: {
     name: "demo-skill",
@@ -42,6 +43,9 @@ const {
   promptCallCount: { value: 0 },
   pushPreToolAssistantMessage: { value: false },
   recordToolResultMessage: { value: false },
+  systemPromptInputs: [] as Array<{
+    activeMcpTools?: Array<{ tool_name: string }>;
+  }>,
 }));
 
 function makeDemoLoadedSkill() {
@@ -114,8 +118,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         messages: [],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
-        // Keep the same array reference so in-place mutations from
-        // syncMcpAgentTools() are visible (matches pi-agent-core behavior).
         tools: input.initialState.tools,
       };
       agentInitialToolNames.push(
@@ -205,22 +207,21 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         });
       }
 
-      // syncMcpAgentTools() mutates the shared tools array in place.
-      const mcpPingTool = this.state.tools.find(
-        (tool) => tool.name === "mcp__demo__ping",
+      const callMcpTool = this.state.tools.find(
+        (tool) => tool.name === "callMcpTool",
       );
-      if (!mcpPingTool) {
-        throw new Error(
-          "mcp__demo__ping not registered after loadSkill. Tools: " +
-            this.state.tools.map((t) => t.name).join(", "),
-        );
+      if (!callMcpTool) {
+        throw new Error("callMcpTool missing");
       }
 
-      await mcpPingTool.execute("tool-call-2", { query: "hello" });
+      await callMcpTool.execute("tool-call-2", {
+        tool_name: "mcp__demo__ping",
+        arguments: { query: "hello" },
+      });
       if (recordToolResultMessage.value) {
         this.state.messages.push({
           role: "toolResult",
-          toolName: "mcp__demo__ping",
+          toolName: "callMcpTool",
           isError: false,
           content: [{ type: "text", text: "pong" }],
         });
@@ -244,13 +245,16 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       if (lastMessage?.role === "assistant") {
         throw new Error("Cannot continue from message role: assistant");
       }
-      const mcpPingTool = this.state.tools.find(
-        (tool) => tool.name === "mcp__demo__ping",
+      const callMcpTool = this.state.tools.find(
+        (tool) => tool.name === "callMcpTool",
       );
-      if (!mcpPingTool) {
-        throw new Error("mcp__demo__ping tool missing on continue");
+      if (!callMcpTool) {
+        throw new Error("callMcpTool missing on continue");
       }
-      await mcpPingTool.execute("tool-call-continue", { query: "hello" });
+      await callMcpTool.execute("tool-call-continue", {
+        tool_name: "mcp__demo__ping",
+        arguments: { query: "hello" },
+      });
       if (this.aborted && continueStopsOnAbort.value) {
         return {};
       }
@@ -351,7 +355,12 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/prompt")>();
   return {
     ...actual,
-    buildSystemPrompt: () => "System prompt",
+    buildSystemPrompt: (input: {
+      activeMcpTools?: Array<{ tool_name: string }>;
+    }) => {
+      systemPromptInputs.push(input);
+      return "System prompt";
+    },
   };
 });
 
@@ -526,6 +535,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     promptCallCount.value = 0;
     pushPreToolAssistantMessage.value = false;
     recordToolResultMessage.value = false;
+    systemPromptInputs.length = 0;
 
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
@@ -587,7 +597,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
     expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
     expect(agentInitialToolNames[0]).toContain("loadSkill");
-    expect(agentInitialToolNames[0]).toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("callMcpTool");
+    expect(agentInitialToolNames[0]).not.toContain("searchTools");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
 
     const pausedCheckpoint = await getAgentTurnSessionCheckpoint(
@@ -614,9 +625,12 @@ describe("generateAssistantReply progressive MCP loading", () => {
       expect.objectContaining({ sessionId: expect.any(String) }),
     );
     expect(agentInitialToolNames[1]).toContain("loadSkill");
-    expect(agentInitialToolNames[1]).toContain("searchTools");
-    // On resume, pre-loaded skills activate MCP tools at init time.
-    expect(agentInitialToolNames[1]).toContain("mcp__demo__ping");
+    expect(agentInitialToolNames[1]).toContain("callMcpTool");
+    expect(agentInitialToolNames[1]).not.toContain("searchTools");
+    expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
+    expect(
+      systemPromptInputs[1]?.activeMcpTools?.map((tool) => tool.tool_name),
+    ).toEqual(["mcp__demo__ping"]);
     expect(loadSkillAvailableToolNames).toEqual([[]]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -653,8 +667,10 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(promptCallCount.value).toBe(1);
     expect(continueCallCount.value).toBe(0);
     expect(agentInitialToolNames[0]).toContain("loadSkill");
-    expect(agentInitialToolNames[0]).toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("callMcpTool");
+    expect(agentInitialToolNames[0]).not.toContain("searchTools");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
+    expect(systemPromptInputs[0]?.activeMcpTools).toEqual([]);
     expect(loadSkillAvailableToolNames).toEqual([["mcp__demo__ping"]]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({

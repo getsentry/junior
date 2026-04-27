@@ -12,6 +12,7 @@ import { slackOutputPolicy } from "@/chat/slack/output";
 import { SANDBOX_DATA_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
+import type { ExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
@@ -221,6 +222,32 @@ function formatProviderCatalogForPrompt(): string | null {
   return lines.join("\n");
 }
 
+function formatActiveToolsForPrompt(
+  tools: ExposedToolSummary[],
+): string | null {
+  if (tools.length === 0) {
+    return null;
+  }
+
+  const lines = [
+    "Active MCP tools available through `callMcpTool`. Pass the exact `tool_name`; `mcp_tool_name` is the upstream provider name.",
+  ];
+  for (const tool of tools) {
+    lines.push("  <tool>");
+    lines.push(`    <tool_name>${escapeXml(tool.tool_name)}</tool_name>`);
+    lines.push(
+      `    <mcp_tool_name>${escapeXml(tool.mcp_tool_name)}</mcp_tool_name>`,
+    );
+    lines.push(`    <provider>${escapeXml(tool.provider)}</provider>`);
+    lines.push(`    <description>${escapeXml(tool.description)}</description>`);
+    lines.push(
+      `    <input_schema>${escapeXml(tool.input_schema_summary)}</input_schema>`,
+    );
+    lines.push("  </tool>");
+  }
+  return lines.join("\n");
+}
+
 function formatReferenceFilesLines(): string[] | null {
   const files = listReferenceFiles();
   if (files.length === 0) {
@@ -300,7 +327,7 @@ const HEADER =
 
 const BEHAVIOR_RULES = [
   "- When a request matches an available skill or tool, load the best-matching skill and use the relevant tool or command before answering or acting; don't load multiple up front; don't claim a skill or tool was used unless it was actually called this turn.",
-  "- After loadSkill, resolve referenced paths under skill_dir, and call any MCP tools the skill registers by name; use searchTools only to rediscover registered tools.",
+  "- After loadSkill, resolve referenced paths under skill_dir, and call MCP tools with callMcpTool using exact `tool_name` values from `available_tools`; for preloaded or resumed skills, use <active-mcp-tools>.",
   "- Gather evidence with tools or skills before answering factual questions; say it is unverified rather than guess.",
   "- Execute clear tasks this turn; never ask the user to re-tag or re-invoke; when diagnosing tool availability or runtime failures, run the named tool or command, or a direct availability check, before reporting on it.",
   "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
@@ -426,10 +453,16 @@ function buildContextSection(params: {
 function buildCapabilitiesSection(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
+  activeMcpTools: ExposedToolSummary[];
 }): string {
   const blocks: string[] = [];
   blocks.push(formatAvailableSkillsForPrompt(params.availableSkills));
   blocks.push(formatLoadedSkillsForPrompt(params.activeSkills));
+
+  const activeTools = formatActiveToolsForPrompt(params.activeMcpTools);
+  if (activeTools) {
+    blocks.push(renderTagBlock("active-mcp-tools", activeTools));
+  }
 
   const providerCatalog = formatProviderCatalogForPrompt();
   if (providerCatalog) {
@@ -442,6 +475,7 @@ function buildCapabilitiesSection(params: {
 export function buildSystemPrompt(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
+  activeMcpTools?: ExposedToolSummary[];
   invocation: SkillInvocation | null;
   assistant?: {
     userName?: string;
@@ -476,7 +510,9 @@ export function buildSystemPrompt(params: {
   // - Keep this prompt generic and platform-level (behavior, output contract, capability disclosure).
   // - Platform-level behavior rules must live here, never in SOUL.md (pluggable per deployment).
   // - Skill-specific instructions belong in skills/*/SKILL.md and are injected via <loaded-skills>.
-  // - Pi-agent discloses tool schemas via the provider-native tool array; do not re-list them here.
+  // - Pi-agent discloses only stable runtime tools natively. MCP tool catalogs
+  //   are dynamic data, so expose them through loadSkill/<active-mcp-tools> and
+  //   execute them through callMcpTool without mutating the native tool list.
 
   const sections = [
     HEADER,
@@ -493,6 +529,7 @@ export function buildSystemPrompt(params: {
     buildCapabilitiesSection({
       availableSkills: params.availableSkills,
       activeSkills: params.activeSkills,
+      activeMcpTools: params.activeMcpTools ?? [],
     }),
     renderTagBlock("behavior", BEHAVIOR_RULES.join("\n")),
     buildOutputSection(),

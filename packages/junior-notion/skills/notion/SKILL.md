@@ -5,7 +5,7 @@ description: Search Notion pages and data sources and summarize the best match. 
 
 # Notion Operations
 
-Use this skill for Notion search and summarization workflows in the harness.
+Use this skill for Notion search and summarization workflows.
 
 ## Workflow
 
@@ -18,11 +18,8 @@ Use this skill for Notion search and summarization workflows in the harness.
 - Do not narrate each step with "let me...", "I found...", or partial findings while tools are still running.
 - Reply with the real answer once you have enough evidence, or explain the actual blocker if you cannot finish.
 
-3. Search with MCP:
+3. Search Notion:
 
-- `loadSkill` returns `available_tools` for this skill, including the exact `tool_name` values and argument schemas for the Notion tools exposed in this turn.
-- Use `useTool` with those exact `tool_name` values.
-- Use `searchTools` only if you need to rediscover or filter the active Notion tools later in the turn.
 - Decide the actual search phrases first. Notion search is title-biased, so search for the likely page or data source title, not the user's full sentence.
 - Use 1-3 short explicit search phrases.
 - Good: `deployment pipeline`, `launch tracker`, `incident review`
@@ -34,7 +31,7 @@ Use this skill for Notion search and summarization workflows in the harness.
 
 4. Fetch efficiently:
 
-- Search returns ranked page and data-source candidates only. Pick the best candidate, then fetch content with the disclosed Notion fetch tool via `useTool` using the returned URL or ID.
+- Search returns ranked page and data-source candidates only. Pick the best candidate, then fetch content using the returned URL or ID.
 - If a fetched page clearly points at an inline data source or database, fetch that data source next and work from it.
 - If the fetched data source already contains the rows and fields needed to answer, stop there and answer from that result.
 - Do not serially fetch many individual row pages when the container page or data source already exposes the needed fields.

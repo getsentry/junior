@@ -94,7 +94,7 @@ export function createLoadSkillTool(
 ) {
   return tool({
     description:
-      "Load a skill by name so its instructions are available for this turn. The result includes `available_tools` when the skill exposes MCP tools for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
+      "Load a skill by name so its instructions are available for this turn. The result includes `available_tools` when the skill exposes MCP tools; pass those tool_name values to callMcpTool. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,
