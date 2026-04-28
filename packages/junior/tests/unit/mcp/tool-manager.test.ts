@@ -7,14 +7,18 @@ const {
   clientSetupError,
   closeMock,
   listToolsMock,
+  logWarnMock,
   onAuthorizationRequiredMock,
+  setSpanAttributesMock,
 } = vi.hoisted(() => ({
   callToolMock: vi.fn(),
   clientOptions: [] as unknown[],
   clientSetupError: { value: undefined as unknown },
   closeMock: vi.fn(),
   listToolsMock: vi.fn(),
+  logWarnMock: vi.fn(),
   onAuthorizationRequiredMock: vi.fn(),
+  setSpanAttributesMock: vi.fn(),
 }));
 
 vi.mock("@/chat/mcp/client", () => {
@@ -58,6 +62,11 @@ vi.mock("@/chat/mcp/client", () => {
   };
 });
 
+vi.mock("@/chat/logging", () => ({
+  logWarn: logWarnMock,
+  setSpanAttributes: setSpanAttributesMock,
+}));
+
 import { McpAuthorizationRequiredError } from "@/chat/mcp/client";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 
@@ -87,7 +96,9 @@ describe("McpToolManager", () => {
     listToolsMock.mockReset();
     callToolMock.mockReset();
     closeMock.mockReset();
+    logWarnMock.mockReset();
     onAuthorizationRequiredMock.mockReset();
+    setSpanAttributesMock.mockReset();
     clientOptions.length = 0;
     clientSetupError.value = undefined;
 
@@ -158,6 +169,64 @@ describe("McpToolManager", () => {
       expect.objectContaining({ sessionId: expect.any(String) }),
     );
     expect(manager.getActiveToolCatalog(activeSkills)).toEqual([]);
+  });
+
+  it("annotates MCP tool spans with method and tool name", async () => {
+    const plugin = buildPlugin();
+    const manager = new McpToolManager([plugin]);
+    const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
+    await manager.activateProvider("demo");
+
+    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    await expect(
+      resolvedTools[0]!.execute({ query: "hello" }),
+    ).resolves.toMatchObject({
+      details: {
+        provider: "demo",
+        tool: "ping",
+      },
+    });
+
+    expect(setSpanAttributesMock).toHaveBeenCalledWith({
+      "gen_ai.tool.name": "ping",
+      "mcp.method.name": "tools/call",
+    });
+  });
+
+  it("logs expected MCP tool errors with semantic context", async () => {
+    const plugin = buildPlugin();
+    const manager = new McpToolManager([plugin]);
+    const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
+    await manager.activateProvider("demo");
+    callToolMock.mockResolvedValueOnce({
+      content: [
+        {
+          type: "text",
+          text: "Input validation error: Invalid input: expected object, received undefined",
+        },
+      ],
+      isError: true,
+    });
+
+    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    await expect(resolvedTools[0]!.execute({})).rejects.toThrow(
+      "expected object, received undefined",
+    );
+
+    const expectedAttributes = expect.objectContaining({
+      "gen_ai.tool.name": "ping",
+      "mcp.method.name": "tools/call",
+      "error.type": "tool_error",
+      "error.message":
+        "Input validation error: Invalid input: expected object, received undefined",
+    });
+    expect(setSpanAttributesMock).toHaveBeenCalledWith(expectedAttributes);
+    expect(logWarnMock).toHaveBeenCalledWith(
+      "mcp_tool_call_failed",
+      {},
+      expectedAttributes,
+      "MCP tool call failed",
+    );
   });
 
   it("surfaces MCP authorization challenges through the callback hook", async () => {

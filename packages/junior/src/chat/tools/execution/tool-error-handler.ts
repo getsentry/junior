@@ -5,7 +5,11 @@ import {
   type LogContext,
 } from "@/chat/logging";
 import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
-import { McpToolError } from "@/chat/mcp/tool-manager";
+import {
+  getMcpAwareErrorMessage,
+  getMcpAwareErrorType,
+  McpToolError,
+} from "@/chat/mcp/errors";
 import { SlackActionError } from "@/chat/slack/client";
 
 function getToolErrorAttributes(
@@ -34,8 +38,10 @@ export function handleToolExecutionError(
   shouldTrace: boolean,
   traceContext: LogContext,
 ): never {
+  const errorType = getMcpAwareErrorType(error, "tool_execution_error");
+  const errorMessage = getMcpAwareErrorMessage(error);
   setSpanAttributes({
-    "error.type": error instanceof Error ? error.name : "tool_execution_error",
+    "error.type": errorType,
   });
 
   if (shouldTrace) {
@@ -47,9 +53,8 @@ export function handleToolExecutionError(
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
-        "error.type":
-          error instanceof Error ? error.name : "tool_execution_error",
-        "error.message": error instanceof Error ? error.message : String(error),
+        "error.type": errorType,
+        "error.message": errorMessage,
       },
       "Agent tool call failed",
     );

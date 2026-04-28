@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { Skill } from "@/chat/skills";
+import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 
 const activeSkill: Skill = {
   name: "demo",
