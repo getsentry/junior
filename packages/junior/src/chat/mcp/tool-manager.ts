@@ -1,5 +1,6 @@
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import { logWarn, setSpanAttributes } from "@/chat/logging";
 import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
@@ -8,14 +9,11 @@ import {
   type PluginMcpListedTool,
   type PluginMcpToolCallResult,
 } from "./client";
-
-/** Thrown when an MCP tool returns an error result — an expected outcome, not a crash. */
-export class McpToolError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "McpToolError";
-  }
-}
+import {
+  getMcpAwareErrorMessage,
+  getMcpAwareErrorType,
+  McpToolError,
+} from "./errors";
 
 function normalizeMcpToolName(provider: string, toolName: string): string {
   // Raw MCP tool names are only provider-scoped. Prefix the provider for the
@@ -332,6 +330,11 @@ export class McpToolManager {
       execute: async (args) => {
         const resolvedArgs =
           typeof args === "object" && args !== null ? args : {};
+        const baseAttributes = {
+          "gen_ai.tool.name": tool.name,
+          "mcp.method.name": "tools/call",
+        };
+        setSpanAttributes(baseAttributes);
 
         try {
           const result = await client.callTool(tool.name, resolvedArgs);
@@ -371,6 +374,20 @@ export class McpToolManager {
                 },
               },
             };
+          }
+          const errorAttributes = {
+            ...baseAttributes,
+            "error.type": getMcpAwareErrorType(error, "mcp_tool_error"),
+            "error.message": getMcpAwareErrorMessage(error),
+          };
+          setSpanAttributes(errorAttributes);
+          if (error instanceof McpToolError) {
+            logWarn(
+              "mcp_tool_call_failed",
+              {},
+              errorAttributes,
+              "MCP tool call failed",
+            );
           }
           throw error;
         }

@@ -12,6 +12,7 @@
 - 2026-03-04: Normalized section shape with explicit `Status`, `Purpose`, and `Scope`.
 - 2026-03-06: Added snapshot lifecycle span requirements and aligned sandbox snapshot attributes.
 - 2026-04-06: Added official GenAI finish-reasons, system-instructions, and tool-description tracing attributes.
+- 2026-04-28: Added MCP tool-call span attributes from the OpenTelemetry MCP semantic conventions.
 
 ## Status
 
@@ -81,6 +82,26 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - `error.type`
 - `error.message`
 - `exception.stacktrace` (when captured and safe)
+
+### MCP Tool Calls
+
+MCP tool dispatcher and execution spans must follow the draft OpenTelemetry MCP
+semantic conventions:
+
+- `mcp.method.name` (`tools/call` for tool calls)
+- `gen_ai.operation.name` (`execute_tool` for tool calls)
+- `gen_ai.tool.name`
+- `jsonrpc.request.id` when available
+- `rpc.response.status_code` when a JSON-RPC response contains an error code
+- `mcp.protocol.version` when available
+- `mcp.session.id` when available
+- `network.protocol.name`
+- `network.protocol.version` when available
+- `network.transport`
+- `server.address` when applicable
+- `server.port` when `server.address` is set
+- `gen_ai.tool.call.arguments` only under explicit capture policy
+- `gen_ai.tool.call.result` only under explicit capture policy
 
 ## Attribute Policy
 

@@ -7,6 +7,7 @@ import {
   StreamableHTTPClientTransport,
   StreamableHTTPError,
 } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { setSpanAttributes } from "@/chat/logging";
 import type { PluginDefinition } from "@/chat/plugins/types";
 
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
@@ -16,6 +17,31 @@ const MCP_CLIENT_INFO = {
   name: "junior-mcp-client",
   version: "1.0.0",
 };
+const MCP_TOOLS_CALL_METHOD = "tools/call";
+
+function getDefaultPort(url: URL): number | undefined {
+  if (url.protocol === "https:") {
+    return 443;
+  }
+  if (url.protocol === "http:") {
+    return 80;
+  }
+  return undefined;
+}
+
+function getMcpNetworkAttributes(url: URL): Record<string, string | number> {
+  const port = url.port ? Number(url.port) : getDefaultPort(url);
+  return {
+    "server.address": url.hostname,
+    ...(port !== undefined ? { "server.port": port } : {}),
+    ...(url.protocol === "http:" || url.protocol === "https:"
+      ? {
+          "network.protocol.name": "http",
+          "network.transport": "tcp",
+        }
+      : {}),
+  };
+}
 
 export class McpAuthorizationRequiredError extends Error {
   readonly provider: string;
@@ -87,10 +113,26 @@ export class PluginMcpClient {
   ): Promise<ToolCallResult> {
     return await this.withSessionRecovery(async () => {
       const client = await this.getClient();
+      const mcp = this.plugin.manifest.mcp;
+      if (mcp) {
+        const url = new URL(mcp.url);
+        setSpanAttributes({
+          "mcp.method.name": MCP_TOOLS_CALL_METHOD,
+          "gen_ai.operation.name": "execute_tool",
+          "gen_ai.tool.name": name,
+          ...(this.transport?.sessionId
+            ? { "mcp.session.id": this.transport.sessionId }
+            : {}),
+          ...(this.transport?.protocolVersion
+            ? { "mcp.protocol.version": this.transport.protocolVersion }
+            : {}),
+          ...getMcpNetworkAttributes(url),
+        });
+      }
       const result = await this.wrapAuth(
         client.callTool({
           name,
-          ...(args && Object.keys(args).length > 0 ? { arguments: args } : {}),
+          arguments: args ?? {},
         }),
       );
       await this.syncTransportSessionId();

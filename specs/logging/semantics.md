@@ -10,6 +10,7 @@
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-06: Added sandbox snapshot lifecycle attribute mappings.
 - 2026-04-06: Added official GenAI finish-reason, system-instructions, and tool-description semantics.
+- 2026-04-28: Added MCP tool-call semantic attribute mappings.
 
 ## Status
 
@@ -82,6 +83,25 @@ This file is the canonical attribute and naming map for instrumentation in this 
 - `gen_ai.tool.call.result` (when captured)
 - Prefer `gen_ai.input.messages` / `gen_ai.output.messages` over legacy names like `gen_ai.request.messages` / `gen_ai.response.text`.
 - Prefer `gen_ai.response.finish_reasons` over custom `app.ai.stop_reason`.
+
+## MCP Tool Calls
+
+- `mcp.method.name`
+- `mcp.protocol.version`
+- `mcp.session.id`
+- `mcp.resource.uri` when applicable under explicit opt-in
+- `jsonrpc.protocol.version`
+- `jsonrpc.request.id`
+- `rpc.response.status_code`
+- `gen_ai.operation.name` (`execute_tool` for tool calls)
+- `gen_ai.tool.name`
+- `gen_ai.tool.call.arguments` only under explicit capture policy
+- `gen_ai.tool.call.result` only under explicit capture policy
+- `network.protocol.name`
+- `network.protocol.version`
+- `network.transport`
+- `server.address`
+- `server.port`
 
 ## Process / CLI Execution
 
