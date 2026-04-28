@@ -342,6 +342,8 @@ const DEFAULT_AUTHOR = {
   is_bot: false,
 };
 
+type AuthorOverrides = Partial<typeof DEFAULT_AUTHOR>;
+
 interface ThreadOverrides {
   id?: string;
   channel_id?: string;
@@ -349,7 +351,10 @@ interface ThreadOverrides {
 }
 
 /** Builds a first-turn mention event for a harnessed Slack eval. */
-export function mention(text: string, opts?: { thread?: ThreadOverrides }) {
+export function mention(
+  text: string,
+  opts?: { author?: AuthorOverrides; thread?: ThreadOverrides },
+) {
   const seq = nextId();
   return {
     type: "new_mention" as const,
@@ -363,7 +368,7 @@ export function mention(text: string, opts?: { thread?: ThreadOverrides }) {
       id: `m-${seq}`,
       text,
       is_mention: true,
-      author: { ...DEFAULT_AUTHOR },
+      author: { ...DEFAULT_AUTHOR, ...opts?.author },
     },
   };
 }
@@ -371,7 +376,11 @@ export function mention(text: string, opts?: { thread?: ThreadOverrides }) {
 /** Builds a follow-up subscribed-thread message for a harnessed Slack eval. */
 export function threadMessage(
   text: string,
-  opts?: { thread?: ThreadOverrides; is_mention?: boolean },
+  opts?: {
+    author?: AuthorOverrides;
+    thread?: ThreadOverrides;
+    is_mention?: boolean;
+  },
 ) {
   const seq = nextId();
   return {
@@ -386,7 +395,7 @@ export function threadMessage(
       id: `m-${seq}`,
       text,
       is_mention: opts?.is_mention ?? false,
-      author: { ...DEFAULT_AUTHOR },
+      author: { ...DEFAULT_AUTHOR, ...opts?.author },
     },
   };
 }
