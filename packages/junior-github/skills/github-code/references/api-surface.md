@@ -5,6 +5,7 @@ All operations use `gh` CLI. Commands must be deterministic and non-interactive.
 ## Repo scoping
 
 When the user omits `owner/repo`, resolve `github.repo` first with `jr-rpc config get github.repo`, then pass the resolved repo explicitly on the actual `gh` or `git` command.
+Run `jr-rpc config get github.repo` as a standalone bash command. Never chain it with `cd`, `&&`, pipes, or a provider command.
 Treat explicit repo flags as command-targeting safety rails, not as a credential-scoping mechanism.
 
 ## Capability to command mapping

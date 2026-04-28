@@ -1,6 +1,6 @@
 ---
 name: github-code
-description: Clone GitHub repositories, investigate source code, and manage pull requests via GitHub CLI. Use when users ask to inspect implementation details in a repository, clone code, edit files, answer source-code questions from repo evidence, or open/edit/view/merge pull requests. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
+description: Clone GitHub repositories, investigate source code, and manage pull requests via GitHub CLI. Use when users ask to inspect implementation details in a repository, clone code, edit files, answer source-code questions from repo evidence, open/edit/view/merge pull requests, or explain that PR creation needs the branch pushed with remote write auth before `gh pr create`. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
 allowed-tools: bash
 ---
 
@@ -21,6 +21,8 @@ Repository checkout, source-code investigation, and pull request operations via 
 
 - Determine whether the task is `clone`, `source-code investigation`, a pull request inspection (`view`, `list`, `diff`, `checks`), or a pull request mutation (`create`, `update`, `close`, `merge`).
 - Resolve repository (`owner/repo`). If not explicit, query channel config with `jr-rpc config get github.repo` before running any `gh` or `git` command. If still missing, ask the user.
+- Run `jr-rpc config get github.repo` as its own bash command. Do not combine it with `cd`, `&&`, pipes, or any `gh` or `git` command.
+- After resolving a configured repo, pass it explicitly to the next `gh` command with `--repo owner/repo`; do not rely on implicit GitHub CLI repository discovery.
 - Resolve the pull request number for operations targeting an existing PR.
 - Keep `--repo owner/repo` explicit on `gh` commands so the command itself targets the intended repository, not a stale default.
 
@@ -64,6 +66,7 @@ Repository checkout, source-code investigation, and pull request operations via 
 
 #### 3. Resolve mutation inputs
 
+- For PR creation credential/order questions, explicitly answer that repository context comes first, then `git push` pushes the branch with GitHub remote write access, then `gh pr create` runs against the pushed branch with pull-request permissions.
 - For PR creation, resolve the base branch (explicit user request wins; otherwise repository default).
 - Resolve the head branch from the current checkout or user request.
 - If the head branch may not exist on the remote yet, push it explicitly before PR creation.

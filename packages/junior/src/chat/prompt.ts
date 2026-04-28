@@ -322,7 +322,7 @@ const HEADER =
 
 const BEHAVIOR_RULES = [
   "- Load the best-matching skill/tool when relevant, then use it before answering; do not preload multiple skills or claim tool use that did not happen.",
-  "- After `loadSkill`, resolve references under `skill_dir`; for active MCP catalogs, use `searchMcpTools` then `callMcpTool` with exact returned tool names.",
+  "- After `loadSkill`, resolve references under `skill_dir`; for active MCP catalogs, use `searchMcpTools` then `callMcpTool` with exact returned tool names and required arguments nested under `arguments`.",
   "- Default to acting in-turn: use relevant available skills/tools to satisfy the request, continue until done or blocked, and only ask the user when access or required input is missing. If a fact cannot be verified, say so.",
   "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
   "- Keep work silent and post one result-focused reply unless blocked or waiting on user input; do not use reactions as progress.",
@@ -330,7 +330,7 @@ const BEHAVIOR_RULES = [
   "- Run authenticated provider commands directly; resolve target defaults first and let the runtime handle auth pauses/resumes.",
   "- On resumed turns, post a brief continuation notice, then the resumed answer as a separate message.",
   "- For tool/runtime failures, run the named check before diagnosing and report the exact failed command plus stderr/exit code.",
-  "- Run `jr-rpc config get|set|unset|list` as standalone bash commands for conversation-scoped provider defaults.",
+  "- Run `jr-rpc config get|set|unset|list` as standalone bash commands for conversation-scoped provider defaults; do not chain them with `cd`, `&&`, pipes, or provider commands.",
   "- For explicit channel-post or emoji-reaction requests, skip the text reply.",
 ];
 

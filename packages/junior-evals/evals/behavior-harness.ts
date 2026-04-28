@@ -168,8 +168,10 @@ export interface EvalAttachedFile {
 }
 
 export interface EvalAssistantPost {
+  channel?: string;
   files: EvalAttachedFile[];
   text: string;
+  thread_ts?: string;
 }
 
 export interface EvalCanvasArtifact {
@@ -1186,18 +1188,41 @@ function collectResults(
   logRecords: EmittedLogRecord[],
   observations: RuntimeObservations,
 ): EvalResult {
-  const posts = [...threadRecordsById.values()].flatMap((record) =>
-    record.thread.posts.map(toEvalAssistantPost),
+  const threadReplyTargets = new Set(
+    [...threadRecordsById.values()]
+      .filter((record) => record.thread.threadTs)
+      .map((record) => `${record.thread.channelId}:${record.thread.threadTs}`),
   );
   const { canvases, channelPosts, reactions } =
     collectSlackArtifactsFromCapturedCalls(readCapturedSlackApiCalls());
+  const threadPosts = [...threadRecordsById.values()].flatMap((record) =>
+    record.thread.posts.map((post) => ({
+      ...toEvalAssistantPost(post),
+      channel: record.thread.channelId,
+      ...(record.thread.threadTs ? { thread_ts: record.thread.threadTs } : {}),
+    })),
+  );
+  const callbackThreadPosts = channelPosts
+    .filter(
+      (post) =>
+        post.thread_ts &&
+        threadReplyTargets.has(`${post.channel}:${post.thread_ts}`),
+    )
+    .map(
+      (post): EvalAssistantPost => ({
+        channel: post.channel,
+        files: [],
+        text: post.text,
+        thread_ts: post.thread_ts,
+      }),
+    );
 
   return {
     canvases,
     channelPosts,
     logRecords,
     reactions,
-    posts,
+    posts: [...threadPosts, ...callbackThreadPosts],
     slackAdapter,
     toolInvocations: observations.toolInvocations,
   };

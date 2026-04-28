@@ -36,7 +36,7 @@ export function createCallMcpToolTool(
 ) {
   return tool({
     description:
-      "Call an active MCP tool by exact tool_name. Use loadSkill to activate the provider, then searchMcpTools to discover tool names and schemas; authorization is handled by the runtime when required.",
+      "Call an active MCP tool by exact tool_name. Use loadSkill to activate the provider, then searchMcpTools to discover tool names and schemas; copy required provider fields into arguments. Do not call with only tool_name unless the discovered tool has no arguments. Authorization is handled by the runtime when required.",
     inputSchema: Type.Object(
       {
         tool_name: Type.String({
@@ -45,7 +45,8 @@ export function createCallMcpToolTool(
         }),
         arguments: Type.Optional(
           Type.Record(Type.String(), Type.Unknown(), {
-            description: "Arguments matching the disclosed MCP tool schema.",
+            description:
+              'Arguments matching the disclosed MCP tool schema, for example { "query": "..." } when searchMcpTools shows query is required.',
           }),
         ),
       },

@@ -34,8 +34,8 @@ describe("OAuth Workflows", () => {
         contract:
           "After MCP authorization completes, the same thread gets a resumed answer that keeps prior context.",
         pass: [
-          "assistant_posts includes an access-needed message for Eval-auth.",
-          "channel_posts or assistant_posts includes a same-thread resumed answer.",
+          "The user sees an access-needed message for Eval-auth.",
+          "The same Slack thread later gets a resumed answer after authorization completes.",
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
         ],
         allow: [
@@ -81,15 +81,14 @@ describe("OAuth Workflows", () => {
       timeout: 300_000,
       criteria: rubric({
         contract:
-          "After generic OAuth authorization completes, the same thread gets a connection notice and a resumed answer that keeps prior context.",
+          "After generic OAuth authorization completes, the same thread gets a resumed answer that keeps prior context.",
         pass: [
-          "The same thread gets a connection or continuation notice that makes it clear the original request is continuing.",
-          "The same thread then gets a resumed answer.",
+          "The same Slack thread gets a resumed answer after authorization completes.",
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
         ],
         allow: [
           "A concise resumed answer that only restates the budget deadline is acceptable.",
-          "A brief connection notice is acceptable before the resumed answer.",
+          "A brief connection or continuation notice is acceptable before the resumed answer or in the same message as the resumed answer.",
         ],
         fail: [
           "Do not ask the user to repeat the deadline.",

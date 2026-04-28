@@ -5,6 +5,7 @@ All operations use `gh` CLI. Commands must be deterministic and non-interactive.
 ## Repo scoping
 
 When the user omits `owner/repo`, resolve `github.repo` first with `jr-rpc config get github.repo`, then pass the resolved repo explicitly on the actual `gh` command.
+Run `jr-rpc config get github.repo` as a standalone bash command. Never chain it with `cd`, `&&`, pipes, or a `gh` command.
 Treat explicit repo flags as command-targeting safety rails, not as a credential-scoping mechanism.
 
 ## Capability to command mapping
@@ -25,6 +26,7 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Add labels          | `gh issue edit NUMBER --repo owner/repo --add-label LABEL [--add-label LABEL2]`                               |
 | Remove labels       | `gh issue edit NUMBER --repo owner/repo --remove-label LABEL [--remove-label LABEL2]`                         |
 | Add comment         | `gh issue comment NUMBER --repo owner/repo --body-file PATH`                                                  |
+| List issues         | `gh issue list --repo owner/repo --json number,title,state,url --limit 20`                                    |
 | Read issue          | `gh issue view NUMBER --repo owner/repo --json number,title,state,labels,assignees,author,url,body`           |
 | Read comments       | `gh api /repos/owner/repo/issues/NUMBER/comments --method GET --header "Accept: application/vnd.github+json"` |
 

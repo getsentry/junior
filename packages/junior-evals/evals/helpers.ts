@@ -45,12 +45,20 @@ const attachedFileSchema = z.object({
 });
 
 const assistantPostSchema = z.object({
+  channel: z
+    .string()
+    .optional()
+    .describe("Slack channel ID where this assistant thread post was sent"),
   files: z
     .array(attachedFileSchema)
     .describe(
       "Actual files attached to this assistant thread post, not text describing files",
     ),
   text: z.string().describe("Visible text the assistant posted in the thread"),
+  thread_ts: z
+    .string()
+    .optional()
+    .describe("Slack thread timestamp for this assistant thread post"),
 });
 
 const canvasSchema = z.object({
@@ -65,7 +73,9 @@ const canvasSchema = z.object({
 const evalOutputSchema = z.object({
   assistant_posts: z
     .array(assistantPostSchema)
-    .describe("Assistant posts sent to the thread, including attached files"),
+    .describe(
+      "Visible assistant replies in the evaluated Slack thread, including attached files and auth-resume replies",
+    ),
   observed_tool_invocations: z
     .array(
       z.object({
@@ -111,7 +121,7 @@ const evalOutputSchema = z.object({
           ),
       }),
     )
-    .describe("Slack channel posts sent outside the thread-reply surface"),
+    .describe("Slack channel messages sent by the assistant"),
   reactions: z
     .array(
       z.object({
