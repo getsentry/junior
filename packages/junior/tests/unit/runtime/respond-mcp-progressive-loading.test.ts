@@ -12,13 +12,14 @@ const {
   deliverPrivateMessageMock,
   ignoreReplaceMessages,
   listToolsMock,
-  loadSkillAvailableToolNames,
   loadSkillExecutionErrorCount,
   loadSkillsByNameMock,
   omitFinalAssistantAfterTool,
   pushPreToolAssistantMessage,
   promptCallCount,
   recordToolResultMessage,
+  searchMcpToolNames,
+  systemPromptInputs,
 } = vi.hoisted(() => ({
   DEMO_SKILL: {
     name: "demo-skill",
@@ -35,13 +36,19 @@ const {
   deliverPrivateMessageMock: vi.fn(),
   ignoreReplaceMessages: { value: false },
   listToolsMock: vi.fn(),
-  loadSkillAvailableToolNames: [] as string[][],
   loadSkillExecutionErrorCount: { value: 0 },
   loadSkillsByNameMock: vi.fn(),
   omitFinalAssistantAfterTool: { value: false },
   promptCallCount: { value: 0 },
   pushPreToolAssistantMessage: { value: false },
   recordToolResultMessage: { value: false },
+  searchMcpToolNames: [] as string[][],
+  systemPromptInputs: [] as Array<{
+    activeMcpCatalogs?: Array<{
+      provider: string;
+      available_tool_count: number;
+    }>;
+  }>,
 }));
 
 function makeDemoLoadedSkill() {
@@ -114,8 +121,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         messages: [],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
-        // Keep the same array reference so in-place mutations from
-        // syncMcpAgentTools() are visible (matches pi-agent-core behavior).
         tools: input.initialState.tools,
       };
       agentInitialToolNames.push(
@@ -152,7 +157,8 @@ vi.mock("@mariozechner/pi-agent-core", () => {
 
       let loadSkillResult: {
         details?: {
-          available_tools?: Array<{ tool_name: string }>;
+          mcp_provider?: string;
+          available_tool_count?: number;
         };
       };
       try {
@@ -160,7 +166,8 @@ vi.mock("@mariozechner/pi-agent-core", () => {
           skill_name: DEMO_SKILL.name,
         })) as {
           details?: {
-            available_tools?: Array<{ tool_name: string }>;
+            mcp_provider?: string;
+            available_tool_count?: number;
           };
         };
       } catch (error) {
@@ -171,10 +178,23 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         });
         throw error;
       }
-      const availableTools = loadSkillResult.details?.available_tools ?? [];
-      loadSkillAvailableToolNames.push(
-        availableTools.map((tool) => tool.tool_name),
-      );
+      if (loadSkillResult.details?.mcp_provider) {
+        const searchMcpTools = this.state.tools.find(
+          (tool) => tool.name === "searchMcpTools",
+        );
+        if (!searchMcpTools) {
+          throw new Error("searchMcpTools missing");
+        }
+        const searchResult = (await searchMcpTools.execute("tool-call-search", {
+          provider: loadSkillResult.details.mcp_provider,
+          query: "ping query",
+        })) as {
+          details?: { tools?: Array<{ tool_name: string }> };
+        };
+        searchMcpToolNames.push(
+          (searchResult.details?.tools ?? []).map((tool) => tool.tool_name),
+        );
+      }
       if (this.aborted) {
         this.state.messages.push({
           role: "assistant",
@@ -205,22 +225,21 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         });
       }
 
-      // syncMcpAgentTools() mutates the shared tools array in place.
-      const mcpPingTool = this.state.tools.find(
-        (tool) => tool.name === "mcp__demo__ping",
+      const callMcpTool = this.state.tools.find(
+        (tool) => tool.name === "callMcpTool",
       );
-      if (!mcpPingTool) {
-        throw new Error(
-          "mcp__demo__ping not registered after loadSkill. Tools: " +
-            this.state.tools.map((t) => t.name).join(", "),
-        );
+      if (!callMcpTool) {
+        throw new Error("callMcpTool missing");
       }
 
-      await mcpPingTool.execute("tool-call-2", { query: "hello" });
+      await callMcpTool.execute("tool-call-2", {
+        tool_name: "mcp__demo__ping",
+        arguments: { query: "hello" },
+      });
       if (recordToolResultMessage.value) {
         this.state.messages.push({
           role: "toolResult",
-          toolName: "mcp__demo__ping",
+          toolName: "callMcpTool",
           isError: false,
           content: [{ type: "text", text: "pong" }],
         });
@@ -244,13 +263,16 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       if (lastMessage?.role === "assistant") {
         throw new Error("Cannot continue from message role: assistant");
       }
-      const mcpPingTool = this.state.tools.find(
-        (tool) => tool.name === "mcp__demo__ping",
+      const callMcpTool = this.state.tools.find(
+        (tool) => tool.name === "callMcpTool",
       );
-      if (!mcpPingTool) {
-        throw new Error("mcp__demo__ping tool missing on continue");
+      if (!callMcpTool) {
+        throw new Error("callMcpTool missing on continue");
       }
-      await mcpPingTool.execute("tool-call-continue", { query: "hello" });
+      await callMcpTool.execute("tool-call-continue", {
+        tool_name: "mcp__demo__ping",
+        arguments: { query: "hello" },
+      });
       if (this.aborted && continueStopsOnAbort.value) {
         return {};
       }
@@ -351,7 +373,15 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/prompt")>();
   return {
     ...actual,
-    buildSystemPrompt: () => "System prompt",
+    buildSystemPrompt: (input: {
+      activeMcpCatalogs?: Array<{
+        provider: string;
+        available_tool_count: number;
+      }>;
+    }) => {
+      systemPromptInputs.push(input);
+      return "System prompt";
+    },
   };
 });
 
@@ -519,13 +549,14 @@ describe("generateAssistantReply progressive MCP loading", () => {
     deliverPrivateMessageMock.mockReset();
     ignoreReplaceMessages.value = false;
     listToolsMock.mockReset();
-    loadSkillAvailableToolNames.length = 0;
+    searchMcpToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
     loadSkillsByNameMock.mockReset();
     omitFinalAssistantAfterTool.value = false;
     promptCallCount.value = 0;
     pushPreToolAssistantMessage.value = false;
     recordToolResultMessage.value = false;
+    systemPromptInputs.length = 0;
 
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
@@ -587,7 +618,9 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
     expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
     expect(agentInitialToolNames[0]).toContain("loadSkill");
-    expect(agentInitialToolNames[0]).toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("searchMcpTools");
+    expect(agentInitialToolNames[0]).toContain("callMcpTool");
+    expect(agentInitialToolNames[0]).not.toContain("searchTools");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
 
     const pausedCheckpoint = await getAgentTurnSessionCheckpoint(
@@ -614,10 +647,14 @@ describe("generateAssistantReply progressive MCP loading", () => {
       expect.objectContaining({ sessionId: expect.any(String) }),
     );
     expect(agentInitialToolNames[1]).toContain("loadSkill");
-    expect(agentInitialToolNames[1]).toContain("searchTools");
-    // On resume, pre-loaded skills activate MCP tools at init time.
-    expect(agentInitialToolNames[1]).toContain("mcp__demo__ping");
-    expect(loadSkillAvailableToolNames).toEqual([[]]);
+    expect(agentInitialToolNames[1]).toContain("searchMcpTools");
+    expect(agentInitialToolNames[1]).toContain("callMcpTool");
+    expect(agentInitialToolNames[1]).not.toContain("searchTools");
+    expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
+    expect(systemPromptInputs[1]?.activeMcpCatalogs).toEqual([
+      { provider: "demo", available_tool_count: 1 },
+    ]);
+    expect(searchMcpToolNames).toEqual([]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),
@@ -636,7 +673,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
   });
 
-  it("uses loadSkill-disclosed MCP tools in the same turn without replay", async () => {
+  it("searches loadSkill-activated MCP tools in the same turn without replay", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
 
@@ -653,9 +690,12 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(promptCallCount.value).toBe(1);
     expect(continueCallCount.value).toBe(0);
     expect(agentInitialToolNames[0]).toContain("loadSkill");
-    expect(agentInitialToolNames[0]).toContain("searchTools");
+    expect(agentInitialToolNames[0]).toContain("searchMcpTools");
+    expect(agentInitialToolNames[0]).toContain("callMcpTool");
+    expect(agentInitialToolNames[0]).not.toContain("searchTools");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
-    expect(loadSkillAvailableToolNames).toEqual([["mcp__demo__ping"]]);
+    expect(systemPromptInputs[0]?.activeMcpCatalogs).toEqual([]);
+    expect(searchMcpToolNames).toEqual([["mcp__demo__ping"]]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),

@@ -112,7 +112,7 @@ describe("McpToolManager", () => {
     onAuthorizationRequiredMock.mockResolvedValue(undefined);
   });
 
-  it("activates plugin-scoped MCP tools once and prefixes their names", async () => {
+  it("activates plugin-scoped MCP tools once with collision-safe names", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);
     const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
@@ -130,6 +130,7 @@ describe("McpToolManager", () => {
     const tools = manager.getActiveToolCatalog(activeSkills);
     expect(tools).toHaveLength(1);
     expect(tools[0]?.name).toBe("mcp__demo__ping");
+    expect(tools[0]?.rawName).toBe("ping");
     expect(tools[0]?.description).toBe("[demo] Ping the remote MCP server");
 
     const resolvedTools = manager.getResolvedActiveTools(activeSkills);
@@ -387,9 +388,6 @@ describe("McpToolManager", () => {
       "mcp__notion__notion-fetch",
       "mcp__notion__notion-create-pages",
     ]);
-    expect(
-      manager.searchTools(activeSkills, "fetch").map((tool) => tool.name),
-    ).toEqual(["mcp__notion__notion-fetch"]);
     const createPagesTool = manager
       .getResolvedActiveTools(activeSkills)
       .find((t) => t.name === "mcp__notion__notion-create-pages");

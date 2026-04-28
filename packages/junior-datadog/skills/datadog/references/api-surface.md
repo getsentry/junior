@@ -2,14 +2,6 @@
 
 Use this reference for any Datadog operation.
 
-## Runtime contract
-
-- `loadSkill` returns `available_tools` for this skill, including the exact Datadog MCP `tool_name` values exposed in the current turn.
-- Call those exact `tool_name` values directly.
-- Use `searchTools` only when you need to rediscover or filter the active Datadog tools later in the same turn.
-- Do not hardcode raw Datadog MCP tool names in advance. Tool discovery is part of the workflow.
-- Return concrete findings plus Datadog deep links for navigation.
-
 ## Provider surface
 
 The packaged plugin points at Datadog's hosted remote MCP server and enables the `core`, `apm`, and `error-tracking` toolsets. Tool exposure is intentionally limited to the read-oriented surface below.
@@ -58,34 +50,6 @@ If a user asks for a mutation, stop and explain that this skill is read-only.
 | "What tag values are valid for this metric?"     | `get_datadog_metric_context` before `get_datadog_metric`.                                                                                          |
 | "Which hosts are unhealthy?"                     | `search_datadog_hosts` filtered by health/tags.                                                                                                    |
 | "Find slow page loads."                          | `search_datadog_rum_events` with a page/speed filter.                                                                                              |
-
-## Config helpers
-
-Use these commands only when the user explicitly asks to inspect or store Datadog defaults for the current conversation/channel.
-
-Resolve env default:
-
-```bash
-jr-rpc config get datadog.env
-```
-
-Set env default:
-
-```bash
-jr-rpc config set datadog.env prod
-```
-
-Resolve service default:
-
-```bash
-jr-rpc config get datadog.service
-```
-
-Set service default:
-
-```bash
-jr-rpc config set datadog.service checkout
-```
 
 ## Content expectations
 

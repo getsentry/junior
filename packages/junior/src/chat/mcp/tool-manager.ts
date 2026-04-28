@@ -18,6 +18,8 @@ export class McpToolError extends Error {
 }
 
 function normalizeMcpToolName(provider: string, toolName: string): string {
+  // Raw MCP tool names are only provider-scoped. Prefix the provider for the
+  // model-facing callable name so two active MCP providers cannot collide.
   return `mcp__${provider}__${toolName}`;
 }
 
@@ -159,8 +161,12 @@ export interface ManagedMcpToolResult {
 
 export interface ManagedMcpToolDescriptor {
   name: string;
+  rawName: string;
+  title?: string;
   description: string;
   parameters: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  annotations?: Record<string, unknown>;
   provider: string;
 }
 
@@ -169,8 +175,6 @@ type ActiveMcpSkillScope = Pick<SkillMetadata, "pluginProvider">;
 type ActiveMcpSkill = Pick<SkillMetadata, "name" | "pluginProvider">;
 
 export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
-  rawName: string;
-  title?: string;
   execute: (args: Record<string, unknown>) => Promise<ManagedMcpToolResult>;
 }
 
@@ -269,41 +273,6 @@ export class McpToolManager {
     );
   }
 
-  searchTools(
-    skills: ActiveMcpSkillScope[],
-    query: string,
-    options: { provider?: string; limit?: number } = {},
-  ): ManagedMcpToolDescriptor[] {
-    const resolved = this.getResolvedActiveTools(skills, options);
-    const trimmedQuery = query.trim();
-    if (!trimmedQuery || trimmedQuery === "*") {
-      return resolved
-        .slice(0, Math.max(1, options.limit ?? 8))
-        .map((tool) => this.toToolDescriptor(tool));
-    }
-
-    const normalizedQuery = trimmedQuery.toLowerCase();
-    const queryTokens = normalizedQuery
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter((token) => token.length > 0);
-
-    return resolved
-      .map((tool) => ({
-        tool,
-        score: this.scoreToolMatch(tool, normalizedQuery, queryTokens),
-      }))
-      .filter((entry) => entry.score > 0)
-      .sort((left, right) => {
-        if (right.score !== left.score) {
-          return right.score - left.score;
-        }
-        return left.tool.name.localeCompare(right.tool.name);
-      })
-      .slice(0, Math.max(1, options.limit ?? 8))
-      .map((entry) => this.toToolDescriptor(entry.tool));
-  }
-
   private filterListedTools(
     plugin: PluginDefinition,
     tools: PluginMcpListedTool[],
@@ -349,6 +318,8 @@ export class McpToolManager {
     client: PluginMcpClient,
     tool: PluginMcpListedTool,
   ): ManagedMcpTool {
+    const outputSchema = toOptionalRecord(tool.outputSchema);
+    const annotations = toOptionalRecord(tool.annotations);
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
       description: describeMcpTool(plugin.manifest.name, tool),
@@ -356,6 +327,8 @@ export class McpToolManager {
       provider: plugin.manifest.name,
       rawName: tool.name,
       ...(tool.title?.trim() ? { title: tool.title.trim() } : {}),
+      ...(outputSchema ? { outputSchema } : {}),
+      ...(annotations ? { annotations } : {}),
       execute: async (args) => {
         const resolvedArgs =
           typeof args === "object" && args !== null ? args : {};
@@ -465,49 +438,19 @@ export class McpToolManager {
   private toToolDescriptor(tool: ManagedMcpTool): ManagedMcpToolDescriptor {
     return {
       name: tool.name,
+      rawName: tool.rawName,
+      ...(tool.title ? { title: tool.title } : {}),
       description: tool.description,
       parameters: tool.parameters,
+      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+      ...(tool.annotations ? { annotations: tool.annotations } : {}),
       provider: tool.provider,
     };
   }
+}
 
-  private scoreToolMatch(
-    tool: ManagedMcpTool,
-    normalizedQuery: string,
-    queryTokens: string[],
-  ): number {
-    const exactCandidates = [tool.name, tool.rawName, tool.title]
-      .filter((value): value is string => Boolean(value))
-      .map((value) => value.toLowerCase());
-
-    if (exactCandidates.includes(normalizedQuery)) {
-      return 100;
-    }
-
-    let score = 0;
-    const searchableText = [
-      tool.name,
-      tool.rawName,
-      tool.title,
-      tool.description,
-      tool.provider,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(" ")
-      .toLowerCase();
-
-    for (const candidate of exactCandidates) {
-      if (candidate.startsWith(normalizedQuery)) {
-        score = Math.max(score, 60);
-      }
-    }
-
-    for (const token of queryTokens) {
-      if (searchableText.includes(token)) {
-        score += 10;
-      }
-    }
-
-    return score;
-  }
+function toOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }

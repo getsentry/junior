@@ -225,4 +225,60 @@ describe("check cli", () => {
       "Validation failed (1 error, 1 plugin manifest, 1 skill directory checked).",
     );
   });
+
+  it("fails when skill instructions reference harness tool mechanics", async () => {
+    const repoRoot = makeTempDir("junior-validate-use-tool-");
+    writeAppFiles(repoRoot);
+    writeFile(
+      path.join(repoRoot, "app", "plugins", "demo", "plugin.yaml"),
+      [
+        "name: demo",
+        "description: Demo plugin",
+        "mcp:",
+        "  url: https://mcp.example.test/mcp",
+        "  allowed-tools:",
+        "    - demo-search",
+        "",
+      ].join("\n"),
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "app",
+        "plugins",
+        "demo",
+        "skills",
+        "demo-helper",
+        "SKILL.md",
+      ),
+      [
+        "---",
+        "name: demo-helper",
+        "description: Help with demo tasks.",
+        "---",
+        "",
+        "Use available_tools, then callMcpTool with the disclosed MCP tool name.",
+        "",
+      ].join("\n"),
+    );
+
+    const lines: string[] = [];
+    await expect(
+      runCheck(repoRoot, {
+        info: (line) => lines.push(line),
+        warn: (line) => lines.push(line),
+        error: (line) => lines.push(line),
+      }),
+    ).rejects.toThrow(
+      "Validation failed (1 error, 1 plugin manifest, 1 skill directory checked).",
+    );
+
+    expect(
+      lines.some((line) =>
+        line.includes(
+          "skill instructions must not hardcode harness tool-discovery or MCP dispatcher mechanics",
+        ),
+      ),
+    ).toBe(true);
+  });
 });

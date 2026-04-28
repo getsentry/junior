@@ -6,7 +6,6 @@ import {
   type Skill,
   type SkillMetadata,
 } from "@/chat/skills";
-import type { ExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 
 export type LoadSkillResult = {
   ok?: boolean;
@@ -17,10 +16,14 @@ export type LoadSkillResult = {
   skill_dir?: string;
   location?: string;
   instructions?: string;
-  available_tools?: ExposedToolSummary[];
+  mcp_provider?: string;
+  available_tool_count?: number;
 };
 
-export type LoadSkillMetadata = Pick<LoadSkillResult, "available_tools">;
+export type LoadSkillMetadata = Pick<
+  LoadSkillResult,
+  "mcp_provider" | "available_tool_count"
+>;
 
 function toLoadedSkill(
   result: LoadSkillResult,
@@ -84,6 +87,7 @@ async function loadSkillFromHost(
   };
 }
 
+/** Create the skill-loading tool that injects skill instructions and activates provider catalogs. */
 export function createLoadSkillTool(
   availableSkills: SkillMetadata[],
   options?: {
@@ -94,7 +98,7 @@ export function createLoadSkillTool(
 ) {
   return tool({
     description:
-      "Load a skill by name so its instructions are available for this turn. The result includes `available_tools` when the skill exposes MCP tools for this turn. Use when a request clearly matches a known skill. Do not use when no skill is relevant.",
+      "Load a skill by name so its instructions and provider tool catalog are available for this turn. When the result includes mcp_provider and available_tool_count, use searchMcpTools to list or search descriptors before callMcpTool. Use when a request clearly matches a known skill.",
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,

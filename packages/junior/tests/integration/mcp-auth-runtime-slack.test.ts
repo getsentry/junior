@@ -25,6 +25,7 @@ const {
   agentProbe: {
     continueCallCount: 0,
     promptCallCount: 0,
+    searchToolNames: [] as string[][],
   },
   MCP_TOOL_NAME: "mcp__eval-auth__budget-echo",
   SKILL_NAME: "eval-auth",
@@ -37,6 +38,7 @@ const {
 function resetAgentProbe(): void {
   agentProbe.promptCallCount = 0;
   agentProbe.continueCallCount = 0;
+  agentProbe.searchToolNames.length = 0;
 }
 
 function extractTextContent(message: unknown): string {
@@ -125,7 +127,6 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         messages: [],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
-        // Keep the same reference so MCP tool registration is visible here.
         tools: input.initialState.tools,
       };
     }
@@ -169,15 +170,36 @@ vi.mock("@mariozechner/pi-agent-core", () => {
       agentProbe.continueCallCount += 1;
       this.aborted = false;
 
-      const mcpTool = this.state.tools.find(
-        (tool) => tool.name === MCP_TOOL_NAME,
+      const searchMcpTools = this.state.tools.find(
+        (tool) => tool.name === "searchMcpTools",
       );
-      if (!mcpTool) {
-        throw new Error(`${MCP_TOOL_NAME} tool missing on resume`);
+      if (!searchMcpTools) {
+        throw new Error("searchMcpTools missing on resume");
+      }
+      const searchResult = (await searchMcpTools.execute("tool-search-resume", {
+        provider: EVAL_MCP_AUTH_PROVIDER,
+        query: "budget echo query",
+      })) as {
+        details?: { tools?: Array<{ tool_name?: unknown }> };
+      };
+      agentProbe.searchToolNames.push(
+        (searchResult.details?.tools ?? [])
+          .map((tool) => tool.tool_name)
+          .filter(
+            (toolName): toolName is string => typeof toolName === "string",
+          ),
+      );
+
+      const callMcpTool = this.state.tools.find(
+        (tool) => tool.name === "callMcpTool",
+      );
+      if (!callMcpTool) {
+        throw new Error("callMcpTool missing on resume");
       }
 
-      await mcpTool.execute("tool-call-continue", {
-        query: "what did i say about the budget?",
+      await callMcpTool.execute("tool-call-continue", {
+        tool_name: MCP_TOOL_NAME,
+        arguments: { query: "what did i say about the budget?" },
       });
 
       if (this.aborted) {
@@ -400,6 +422,7 @@ describe("mcp auth runtime slack integration", () => {
     expect(response.status).toBe(200);
     expect(agentProbe.promptCallCount).toBe(1);
     expect(agentProbe.continueCallCount).toBe(1);
+    expect(agentProbe.searchToolNames).toEqual([[MCP_TOOL_NAME]]);
 
     const latestReusableSession =
       await mcpAuthStoreModule.getLatestMcpAuthSessionForUserProvider(

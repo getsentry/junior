@@ -294,6 +294,16 @@ async function validateSkillDirectory(skillDir, duplicateNames) {
   if (!raw.replace(FRONTMATTER_RE, "").trim()) {
     warnings.push(`${skillFile}: no skill instructions after frontmatter`);
   }
+  const body = raw.replace(FRONTMATTER_RE, "");
+  if (
+    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b|<active-mcp-(?:tools|catalogs)>/.test(
+      body,
+    )
+  ) {
+    errors.push(
+      `${skillFile}: skill instructions must not hardcode harness tool-discovery or MCP dispatcher mechanics`,
+    );
+  }
 
   return { errors, warnings, name: typeof name === "string" ? name : null };
 }

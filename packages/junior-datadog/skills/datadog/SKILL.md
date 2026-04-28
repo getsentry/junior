@@ -5,7 +5,7 @@ description: Query live Datadog telemetry (logs, metrics, traces, spans, monitor
 
 # Datadog Operations
 
-Use this skill for Datadog observability investigations in the harness.
+Use this skill for Datadog observability investigations.
 
 ## Reference loading
 
@@ -28,10 +28,8 @@ Load references conditionally based on the request:
 - If the request refers to an earlier telemetry item indirectly (an incident, trace, or monitor already mentioned in the thread), inspect the current thread for the existing ID or URL before asking the user to restate it.
 - Ask one concise follow-up only when a search is genuinely under-specified, for example when the user asks about "errors" with no env, service, or time window hint and the thread has no prior context.
 
-2. Use the active Datadog MCP tools:
+2. Use the active Datadog tools:
 
-- `loadSkill` returns `available_tools` for this skill, including the exact `tool_name` values and input schemas exposed in this turn.
-- Call those exact tool names directly. Use `searchTools` only if you need to rediscover or filter the active Datadog tools later in the same turn.
 - Start narrow: pick the single most direct tool for the request before reaching for broader search.
   - Known incident ID → `get_datadog_incident`
   - Known trace ID → `get_datadog_trace`
@@ -61,7 +59,6 @@ Load references conditionally based on the request:
 
 - Read-only only in this skill. Do not create, edit, mute, or resolve monitors, incidents, notebooks, dashboards, SLOs, or feature flags — the plugin intentionally does not expose those tools.
 - Log, RUM, APM, and incident payloads can contain PII or sensitive customer data. Quote only the minimum needed to answer the question. Do not paste full raw log bodies or span payloads when a summary plus a deep link is enough.
-- If Datadog authorization is required, let the MCP OAuth flow pause and resume the thread automatically instead of asking the user to handle credentials manually.
 - If a Datadog tool returns a generic `403`, `permission denied`, or similar, stop and tell the user the current Datadog connection could not access the requested resource. Do not guess at missing RBAC scopes.
 - If Datadog responds with `429 Too Many Requests`, wait briefly and retry the same query once. If it still fails, report the throttle and stop.
 - For large traces that the server marks as truncated, report that fact; do not pretend the shown spans are complete.

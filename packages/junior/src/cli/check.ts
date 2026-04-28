@@ -122,6 +122,15 @@ async function validateSkillDirectory(
   if (!parsed.skill.body) {
     warnings.push(`${skillFile}: no skill instructions after frontmatter`);
   }
+  if (
+    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b|<active-mcp-(?:tools|catalogs)>/.test(
+      parsed.skill.body,
+    )
+  ) {
+    errors.push(
+      `${skillFile}: skill instructions must not hardcode harness tool-discovery or MCP dispatcher mechanics`,
+    );
+  }
 
   return { skillFile, skill: parsed.skill, errors, warnings };
 }

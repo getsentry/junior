@@ -12,6 +12,7 @@ import { slackOutputPolicy } from "@/chat/slack/output";
 import { SANDBOX_DATA_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
+import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
 
 const DEFAULT_SOUL = "You are Junior, a practical and concise assistant.";
@@ -221,6 +222,27 @@ function formatProviderCatalogForPrompt(): string | null {
   return lines.join("\n");
 }
 
+function formatActiveMcpCatalogsForPrompt(
+  catalogs: ActiveMcpCatalogSummary[],
+): string | null {
+  if (catalogs.length === 0) {
+    return null;
+  }
+
+  const lines = [
+    "Active MCP provider catalogs are available through `searchMcpTools`. Call it with provider to list descriptors or with query to narrow results, then pass the exact returned `tool_name` to `callMcpTool`.",
+  ];
+  for (const catalog of catalogs) {
+    lines.push("  <catalog>");
+    lines.push(`    <provider>${escapeXml(catalog.provider)}</provider>`);
+    lines.push(
+      `    <available_tool_count>${catalog.available_tool_count}</available_tool_count>`,
+    );
+    lines.push("  </catalog>");
+  }
+  return lines.join("\n");
+}
+
 function formatReferenceFilesLines(): string[] | null {
   const files = listReferenceFiles();
   if (files.length === 0) {
@@ -300,7 +322,7 @@ const HEADER =
 
 const BEHAVIOR_RULES = [
   "- When a request matches an available skill or tool, load the best-matching skill and use the relevant tool or command before answering or acting; don't load multiple up front; don't claim a skill or tool was used unless it was actually called this turn.",
-  "- After loadSkill, resolve referenced paths under skill_dir, and call any MCP tools the skill registers by name; use searchTools only to rediscover registered tools.",
+  "- After loadSkill, resolve referenced paths under skill_dir; when loadSkill or <active-mcp-catalogs> shows an MCP provider, use searchMcpTools for descriptors and callMcpTool with exact returned `tool_name` values.",
   "- Gather evidence with tools or skills before answering factual questions; say it is unverified rather than guess.",
   "- Execute clear tasks this turn; never ask the user to re-tag or re-invoke; when diagnosing tool availability or runtime failures, run the named tool or command, or a direct availability check, before reporting on it.",
   "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
@@ -426,10 +448,18 @@ function buildContextSection(params: {
 function buildCapabilitiesSection(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
+  activeMcpCatalogs: ActiveMcpCatalogSummary[];
 }): string {
   const blocks: string[] = [];
   blocks.push(formatAvailableSkillsForPrompt(params.availableSkills));
   blocks.push(formatLoadedSkillsForPrompt(params.activeSkills));
+
+  const activeCatalogs = formatActiveMcpCatalogsForPrompt(
+    params.activeMcpCatalogs,
+  );
+  if (activeCatalogs) {
+    blocks.push(renderTagBlock("active-mcp-catalogs", activeCatalogs));
+  }
 
   const providerCatalog = formatProviderCatalogForPrompt();
   if (providerCatalog) {
@@ -442,6 +472,7 @@ function buildCapabilitiesSection(params: {
 export function buildSystemPrompt(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
+  activeMcpCatalogs?: ActiveMcpCatalogSummary[];
   invocation: SkillInvocation | null;
   assistant?: {
     userName?: string;
@@ -476,7 +507,10 @@ export function buildSystemPrompt(params: {
   // - Keep this prompt generic and platform-level (behavior, output contract, capability disclosure).
   // - Platform-level behavior rules must live here, never in SOUL.md (pluggable per deployment).
   // - Skill-specific instructions belong in skills/*/SKILL.md and are injected via <loaded-skills>.
-  // - Pi-agent discloses tool schemas via the provider-native tool array; do not re-list them here.
+  // - Pi-agent discloses only stable runtime tools natively. MCP tool catalogs
+  //   are dynamic data, so expose them through loadSkill/searchMcpTools/
+  //   <active-mcp-catalogs> and execute them through callMcpTool without mutating
+  //   the native tool list.
 
   const sections = [
     HEADER,
@@ -493,6 +527,7 @@ export function buildSystemPrompt(params: {
     buildCapabilitiesSection({
       availableSkills: params.availableSkills,
       activeSkills: params.activeSkills,
+      activeMcpCatalogs: params.activeMcpCatalogs ?? [],
     }),
     renderTagBlock("behavior", BEHAVIOR_RULES.join("\n")),
     buildOutputSection(),

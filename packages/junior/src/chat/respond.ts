@@ -33,13 +33,13 @@ import {
   getPluginMcpProviders,
   getPluginProviders,
 } from "@/chat/plugins/registry";
-import { McpToolManager, type ManagedMcpTool } from "@/chat/mcp/tool-manager";
+import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { createTools } from "@/chat/tools";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
-import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
+import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
@@ -55,7 +55,6 @@ import {
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
-import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import { mergeArtifactsState } from "@/chat/runtime/thread-state";
 import { RetryableTurnError, isRetryableTurnError } from "@/chat/runtime/turn";
@@ -292,24 +291,6 @@ function buildUserTurnInput(args: {
   }
 
   return { routerBlocks, userContentParts };
-}
-
-/** Convert active MCP tools into ToolDefinition entries for first-class registration. */
-function mcpToolsToDefinitions(
-  mcpTools: ManagedMcpTool[],
-): Record<string, ToolDefinition<any>> {
-  const defs: Record<string, ToolDefinition<any>> = {};
-  for (const tool of mcpTools) {
-    defs[tool.name] = {
-      description: tool.description,
-      // Raw JSON Schema from MCP servers — not a TypeBox TSchema, but
-      // pi-agent-core validates with AJV and the Anthropic provider reads
-      // .properties/.required, so raw JSON Schema works at runtime.
-      inputSchema: tool.parameters as any,
-      execute: async (args: Record<string, unknown>) => tool.execute(args),
-    };
-  }
-  return defs;
 }
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
@@ -722,13 +703,22 @@ export async function generateAssistantReply(
           if (!effective.pluginProvider) {
             return undefined;
           }
-          syncMcpAgentTools();
+          if (
+            !turnMcpToolManager
+              .getActiveProviders()
+              .includes(effective.pluginProvider)
+          ) {
+            return undefined;
+          }
+          const availableToolCount = turnMcpToolManager.getActiveToolCatalog(
+            activeSkills,
+            {
+              provider: effective.pluginProvider,
+            },
+          ).length;
           return {
-            available_tools: turnMcpToolManager
-              .getActiveToolCatalog(activeSkills, {
-                provider: effective.pluginProvider,
-              })
-              .map(toExposedToolSummary),
+            mcp_provider: effective.pluginProvider,
+            available_tool_count: availableToolCount,
           };
         },
       },
@@ -761,9 +751,13 @@ export async function generateAssistantReply(
     syncResumeState();
 
     // ── System prompt ────────────────────────────────────────────────
+    const activeMcpCatalogs = toActiveMcpCatalogSummaries(
+      turnMcpToolManager.getActiveToolCatalog(activeSkills),
+    );
     baseInstructions = buildSystemPrompt({
       availableSkills,
       activeSkills,
+      activeMcpCatalogs,
       invocation: skillInvocation,
       assistant: context.assistant,
       requester: context.requester,
@@ -802,7 +796,7 @@ export async function generateAssistantReply(
         );
       }
     };
-    const baseAgentTools = createAgentTools(
+    const agentTools = createAgentTools(
       tools as Record<string, ToolDefinition<any>>,
       skillSandbox,
       spanContext,
@@ -812,29 +806,12 @@ export async function generateAssistantReply(
       pluginAuth,
       onToolCall,
     );
-
-    // Mutable tools array shared with the agent. Pi-agent-core does not clone
-    // this reference, so in-place mutations are visible to the running loop.
-    const agentTools: AgentTool[] = [...baseAgentTools];
-
-    const syncMcpAgentTools = () => {
-      const mcpTools = turnMcpToolManager.getResolvedActiveTools(activeSkills);
-      const mcpDefs = mcpToolsToDefinitions(mcpTools);
-      const mcpAgentTools = createAgentTools(
-        mcpDefs,
-        skillSandbox,
-        spanContext,
-        context.onStatus,
-        sandboxExecutor,
-        capabilityRuntime,
-        pluginAuth,
-        onToolCall,
-      );
-      agentTools.length = 0;
-      agentTools.push(...baseAgentTools, ...mcpAgentTools);
-    };
-
-    syncMcpAgentTools();
+    // Keep Pi's native tool schema static for the whole turn. Ideally this
+    // would use provider-native tool loading/search APIs, but Pi's generic
+    // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.
+    // Until it can, MCP tools are searched/disclosed as data and executed
+    // through callMcpTool so provider cache/session affinity never sees a
+    // mid-run native tool-list mutation.
 
     // ── Agent execution ──────────────────────────────────────────────
     agent = new Agent({

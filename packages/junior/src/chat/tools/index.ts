@@ -2,10 +2,11 @@ import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createAttachFileTool } from "@/chat/tools/sandbox/attach-file";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
+import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
+import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createSearchToolsTool } from "@/chat/tools/skill/search-tools";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
@@ -105,7 +106,11 @@ export function createTools(
   };
 
   if (context.mcpToolManager && context.getActiveSkills) {
-    tools.searchTools = createSearchToolsTool(
+    tools.searchMcpTools = createSearchMcpToolsTool(
+      context.mcpToolManager,
+      context.getActiveSkills,
+    );
+    tools.callMcpTool = createCallMcpToolTool(
       context.mcpToolManager,
       context.getActiveSkills,
     );
