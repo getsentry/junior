@@ -54,11 +54,11 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 - Generalize session framing — strip channel references, slash commands, Slack thread IDs, user @mentions, and transcript fragments; replace with the underlying technical problem.
 - Compress source material. Research notes, hypotheses, or transcripts become a short summary + scoped bullets — never paste raw investigation into the body.
 - Do not add desired outcome, expected behavior, or acceptance criteria unless the thread explicitly requests them.
-- When the request originated from a Slack thread or any on-behalf-of context, append a final line `Action taken on behalf of <name>.` using the user's real name.
+- When the request originated from a Slack thread or any on-behalf-of context, append a final line `Action taken on behalf of <name>.` using the action requester's real name. The action requester is the current `<requester>` or the person who explicitly asked you to create/update the issue, not necessarily the original reporter.
 
 **Attribution:**
 
-- Mention who raised the issue when clear from the thread.
+- Mention who raised the issue when clear from the thread. If the reporter differs from the action requester, keep them separate with durable body text such as `Reported by Alice.` or `Raised by Alice during incident triage.`
 - Attach screenshots from the thread as image links when present.
 - Include code snippets, related issues, and related PRs only when they materially improve the issue.
 
@@ -67,7 +67,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 Before running the `gh` create/edit command, check each gate. If any fails, revise and re-check before executing:
 
 - Title length ≤ 60 characters.
-- Delegated-action footer is the last line when applicable, using the user's real name.
+- Delegated-action footer is the last line when applicable, using the action requester's real name, not the reporter's name unless they are the same person.
 - No session framing remains (channel refs, slash commands, @mentions, Slack thread IDs).
 - Body structure matches complexity — no empty sections, no restated title, no raw research dump.
 

@@ -53,6 +53,74 @@ describe("GitHub Skill Workflows", () => {
     },
   );
 
+  const reporterRequesterThread = {
+    id: "thread-reporter-requester",
+    channel_id: "C-reporter-requester",
+    thread_ts: "17000000.reporter-requester",
+  };
+
+  slackEval(
+    "when one user reports and another files an issue, keep attribution roles separate",
+    {
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 90_000,
+        subscribed_decisions: [
+          {
+            should_reply: false,
+            reason: "context-setting message only",
+          },
+        ],
+        test_credential_token: "eval-github-attribution-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        threadMessage(
+          "Warden resolved its own review thread on https://github.com/getsentry/ops/pull/20366 even though the warning still applies. The warning was about `SCM_RPC_SHARED_SECRET` not being backported to the cookiecutter template, and the PR still shows `REVIEW_REQUIRED`.",
+          {
+            thread: reporterRequesterThread,
+            author: {
+              user_id: "U_BOJAN",
+              user_name: "bojan",
+              full_name: "Bojan Oro",
+            },
+          },
+        ),
+        mention(
+          "Create a GitHub issue for this in getsentry/warden. Include the issue body you filed in your reply so I can verify attribution.",
+          {
+            thread: reporterRequesterThread,
+            author: {
+              user_id: "U_DCRAMER",
+              user_name: "dcramer",
+              full_name: "David Cramer",
+            },
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "GitHub issue creation from a multi-user Slack thread preserves the original reporter separately from the action requester.",
+        pass: [
+          "The assistant posts exactly one reply.",
+          "The reply reports a created GitHub issue in getsentry/warden with an issue URL or issue number.",
+          "The reply includes the filed issue body or enough quoted issue content to verify attribution.",
+          "The shown issue content attributes the report to Bojan Oro.",
+          "The shown issue content ends its delegated-action footer with `Action taken on behalf of David Cramer.`",
+        ],
+        allow: [
+          "Reporter attribution may be phrased as `Reported by Bojan Oro`, `Raised by Bojan Oro`, or equivalent durable issue-body text.",
+        ],
+        fail: [
+          "Do not use `Action taken on behalf of Bojan Oro.`",
+          "Do not describe David Cramer as the reporter.",
+          "Do not omit reporter attribution when showing the filed issue content.",
+        ],
+      }),
+    },
+  );
+
   slackEval(
     "when a GitHub task mentions a Sentry product area, do not prompt for Sentry auth first",
     {

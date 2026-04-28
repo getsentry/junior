@@ -69,6 +69,26 @@ Good scope — quantified and specific:
 >
 > Action taken on behalf of Jane Doe.
 
+## Distinct reporter/requester example
+
+Bad attribution:
+
+> The bot resolved the review thread even though the warning still applies.
+>
+> Action taken on behalf of Bojan Oro.
+
+Good attribution:
+
+> Warden can resolve its own review thread even when the underlying warning still appears valid and the PR remains blocked.
+>
+> Reported by Bojan Oro.
+>
+> - Observed on a PR where Warden left a review comment about a missing backport
+> - The review thread was later marked resolved by the bot
+> - The PR still showed a blocking warning
+>
+> Action taken on behalf of David Cramer.
+
 ## Feature example
 
 Bad framing:
@@ -111,5 +131,6 @@ Good framing — current state, gap, options:
 - Confident fix claims without root-cause evidence
 - Speculative detail mixed into verified facts
 - Dumping a list of URLs without inline context
-- Session-specific content (user names, slash commands, channel references)
+- Session-specific content (slash commands, channel references, raw transcript framing, or unrelated user chatter)
+- Conflating reporter and action requester when they differ
 - Missing delegated attribution footer on user-requested issue creation

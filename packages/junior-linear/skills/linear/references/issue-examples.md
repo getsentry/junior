@@ -65,6 +65,20 @@ Good body:
 >
 > Action taken on behalf of Carol.
 
+## Distinct reporter/requester
+
+Good body:
+
+> The reviewer bot resolved its own warning even though the underlying issue still appeared valid.
+>
+> Reported by Bojan Oro.
+>
+> - Original warning still applied after the thread was resolved
+> - The related PR remained blocked
+> - The bot should not resolve review threads without confirming the condition cleared
+>
+> Action taken on behalf of David Cramer.
+
 ## Anti-patterns
 
 - Adding "Expected behavior" or "Desired outcome" when the thread didn't state one
@@ -72,3 +86,4 @@ Good body:
 - Restating the title as the first sentence of the body
 - Including fix suggestions when the thread only describes the problem
 - Dumping a list of URLs without inline context
+- Conflating the reporter with the action requester when they differ
