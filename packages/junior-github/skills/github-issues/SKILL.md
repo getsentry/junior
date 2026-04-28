@@ -22,6 +22,8 @@ Issue create, update, comment, label, state, and inspection via `gh` CLI.
 
 - Determine whether the task is `create`, `update`, `comment`, `labels`, `state`, or read-only inspection.
 - Resolve repository (`owner/repo`). If not explicit, query channel config with `jr-rpc config get github.repo` before running any `gh` command. If still missing, ask the user.
+- Run `jr-rpc config get github.repo` as its own bash command. Do not combine it with `cd`, `&&`, pipes, or any `gh` command.
+- After resolving a configured repo, pass it explicitly to the next `gh` command with `--repo owner/repo`; do not rely on implicit GitHub CLI repository discovery.
 - Resolve the issue number for non-create operations.
 - Keep `--repo owner/repo` explicit on `gh` commands so the command itself targets the intended repository, not a stale default.
 
@@ -76,6 +78,7 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 ### 5. Execute
 
 - Use `gh issue` commands from [references/api-surface.md](references/api-surface.md).
+- For issue listing or other read-only inspection, prefer `--json` output so empty results still produce deterministic stdout.
 - Check duplicates silently before creating a new issue.
 
 ### 6. Report result

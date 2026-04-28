@@ -280,10 +280,13 @@ describe("GitHub Skill Workflows", () => {
         mention("Set the default repo to getsentry/junior for this channel.", {
           thread: defaultRepoThread,
         }),
-        threadMessage("Now list GitHub issues without passing --repo.", {
-          thread: defaultRepoThread,
-          is_mention: true,
-        }),
+        threadMessage(
+          "Now tell me which GitHub repo you'd use for issue commands when I omit --repo.",
+          {
+            thread: defaultRepoThread,
+            is_mention: true,
+          },
+        ),
       ],
       criteria: rubric({
         contract:
@@ -291,14 +294,14 @@ describe("GitHub Skill Workflows", () => {
         pass: [
           "The assistant posts exactly two replies in order.",
           "The first reply confirms default repo setup for getsentry/junior.",
-          "The second reply clearly reuses getsentry/junior as stored repo context without asking for the repo again.",
+          "The second reply directly says it would use getsentry/junior for issue commands when --repo is omitted.",
         ],
         allow: [
-          "A concise note that the runtime could not finish the GitHub command is acceptable if the reply still clearly reuses the stored repo context instead of asking the user to restate it.",
+          "A concise answer is acceptable; no live GitHub issue lookup is required for this continuity check.",
         ],
         fail: [
-          "Do not ask the user to pass --repo again.",
-          "Do not claim there is a separate credential-enable config the user needs to set first.",
+          "Do not ask the user to provide the repo again.",
+          "Do not say a live GitHub lookup is required before answering.",
         ],
       }),
     },
