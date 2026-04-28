@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-04-16
+- Last Edited: 2026-04-28
 
 ## Changelog
 
@@ -14,6 +14,7 @@
 - 2026-03-21: Added canonical chat architecture spec.
 - 2026-04-15: Added canonical Slack agent delivery spec.
 - 2026-04-16: Added canonical Slack write contract spec.
+- 2026-04-28: Added canonical agent prompt spec.
 
 ## Status
 
@@ -50,6 +51,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/slack-outbound-contract-spec.md`
 - `specs/skill-capabilities-spec.md`
 - `specs/oauth-flows-spec.md`
+- `specs/agent-prompt-spec.md`
 - `specs/harness-agent-spec.md`
 - `specs/agent-session-resumability-spec.md`
 - `specs/agent-execution-spec.md`
