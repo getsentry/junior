@@ -1,4 +1,3 @@
-import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Type } from "@sinclair/typebox";
 import {
@@ -6,8 +5,10 @@ import {
   type AgentTool,
   type StreamFn,
 } from "@mariozechner/pi-agent-core";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import {
+  createEchoMcpTestServer,
+  type EchoMcpTestServer,
+} from "../fixtures/mcp-test-server";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -25,6 +26,17 @@ const usage = {
     total: 0,
   },
 };
+
+function exposedToolSummary(provider: string, tool: AgentTool) {
+  return {
+    tool_name: tool.name,
+    mcp_tool_name: tool.name.replace(`mcp__${provider}__`, ""),
+    provider,
+    description: tool.description,
+    input_schema: tool.parameters,
+    input_schema_summary: "value (required)",
+  };
+}
 
 function assistantMessage(content: Array<Record<string, unknown>>) {
   return {
@@ -51,25 +63,15 @@ function responseFor(message: ReturnType<typeof assistantMessage>) {
 }
 
 describe("MCP tools loaded mid-turn", () => {
-  let client: Client | undefined;
-  let transport: StdioClientTransport | undefined;
+  let mcp: EchoMcpTestServer | undefined;
 
   afterEach(async () => {
-    await client?.close();
-    await transport?.close();
-    client = undefined;
-    transport = undefined;
+    await mcp?.close();
+    mcp = undefined;
   });
 
-  it("loads stdio MCP tools mid-run and executes them through a static bridge tool", async () => {
-    transport = new StdioClientTransport({
-      command: process.execPath,
-      args: [path.resolve("tests/fixtures/stdio-mcp-server.mjs")],
-      cwd: process.cwd(),
-      stderr: "pipe",
-    });
-    client = new Client({ name: "junior-stdio-test", version: "1.0.0" });
-    await client.connect(transport);
+  it("loads MCP tools mid-run and executes them through static bridge tools", async () => {
+    mcp = await createEchoMcpTestServer();
 
     const activeMcpTools: AgentTool[] = [];
     const tools: AgentTool[] = [
@@ -79,19 +81,19 @@ describe("MCP tools loaded mid-turn", () => {
         description: "Load a skill and activate its provider tools",
         parameters: Type.Object({}),
         execute: async () => {
-          const listedTools = (await client!.listTools()).tools;
+          const listedTools = (await mcp!.client.listTools()).tools;
           activeMcpTools.splice(
             0,
             activeMcpTools.length,
             ...listedTools.map(
               (listedTool): AgentTool => ({
-                name: `mcp__stdio__${listedTool.name}`,
-                label: `mcp__stdio__${listedTool.name}`,
+                name: `mcp__${mcp!.provider}__${listedTool.name}`,
+                label: `mcp__${mcp!.provider}__${listedTool.name}`,
                 description: listedTool.description ?? listedTool.name,
                 parameters:
                   listedTool.inputSchema as unknown as AgentTool["parameters"],
                 execute: async (_toolCallId, params) => {
-                  const result = await client!.callTool({
+                  const result = await mcp!.client.callTool({
                     name: listedTool.name,
                     arguments:
                       params && typeof params === "object"
@@ -112,12 +114,28 @@ describe("MCP tools loaded mid-turn", () => {
           return {
             content: [{ type: "text", text: "loaded" }],
             details: {
-              available_tools: activeMcpTools.map((tool) => ({
-                tool_name: tool.name,
-              })),
+              mcp_provider: mcp!.provider,
+              available_tool_count: activeMcpTools.length,
             },
           };
         },
+      },
+      {
+        name: "searchMcpTools",
+        label: "searchMcpTools",
+        description: "Search active MCP tool descriptors",
+        parameters: Type.Object({
+          query: Type.Optional(Type.String()),
+          provider: Type.Optional(Type.String()),
+        }),
+        execute: async () => ({
+          content: [{ type: "text", text: "found" }],
+          details: {
+            tools: activeMcpTools.map((tool) =>
+              exposedToolSummary(mcp!.provider, tool),
+            ),
+          },
+        }),
       },
       {
         name: "callMcpTool",
@@ -183,10 +201,22 @@ describe("MCP tools loaded mid-turn", () => {
             assistantMessage([
               {
                 type: "toolCall",
+                id: "search-1",
+                name: "searchMcpTools",
+                arguments: { provider: mcp!.provider },
+              },
+            ]),
+          );
+        }
+        if (callCount === 3) {
+          return responseFor(
+            assistantMessage([
+              {
+                type: "toolCall",
                 id: "echo-1",
                 name: "callMcpTool",
                 arguments: {
-                  tool_name: "mcp__stdio__echo",
+                  tool_name: mcp!.toolName,
                   arguments: { value: "hello" },
                 },
               },
@@ -199,12 +229,40 @@ describe("MCP tools loaded mid-turn", () => {
 
     await agent.prompt({
       role: "user",
-      content: [{ type: "text", text: "use the stdio MCP tool" }],
+      content: [{ type: "text", text: "use the MCP tool" }],
       timestamp: Date.now(),
     });
 
-    expect(toolsSeenByModel[0]).toEqual(["loadSkill", "callMcpTool"]);
-    expect(toolsSeenByModel[1]).toEqual(["loadSkill", "callMcpTool"]);
+    expect(toolsSeenByModel[0]).toEqual([
+      "loadSkill",
+      "searchMcpTools",
+      "callMcpTool",
+    ]);
+    expect(toolsSeenByModel[1]).toEqual([
+      "loadSkill",
+      "searchMcpTools",
+      "callMcpTool",
+    ]);
+    expect(toolsSeenByModel[2]).toEqual([
+      "loadSkill",
+      "searchMcpTools",
+      "callMcpTool",
+    ]);
+    expect(agent.state.messages).toContainEqual(
+      expect.objectContaining({
+        role: "toolResult",
+        toolName: "searchMcpTools",
+        details: expect.objectContaining({
+          tools: [
+            expect.objectContaining({
+              tool_name: mcp.toolName,
+              input_schema: expect.any(Object),
+            }),
+          ],
+        }),
+        isError: false,
+      }),
+    );
     expect(agent.state.messages).toContainEqual(
       expect.objectContaining({
         role: "toolResult",

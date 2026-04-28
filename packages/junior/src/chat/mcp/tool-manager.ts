@@ -162,8 +162,11 @@ export interface ManagedMcpToolResult {
 export interface ManagedMcpToolDescriptor {
   name: string;
   rawName: string;
+  title?: string;
   description: string;
   parameters: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  annotations?: Record<string, unknown>;
   provider: string;
 }
 
@@ -172,8 +175,6 @@ type ActiveMcpSkillScope = Pick<SkillMetadata, "pluginProvider">;
 type ActiveMcpSkill = Pick<SkillMetadata, "name" | "pluginProvider">;
 
 export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
-  rawName: string;
-  title?: string;
   execute: (args: Record<string, unknown>) => Promise<ManagedMcpToolResult>;
 }
 
@@ -317,6 +318,8 @@ export class McpToolManager {
     client: PluginMcpClient,
     tool: PluginMcpListedTool,
   ): ManagedMcpTool {
+    const outputSchema = toOptionalRecord(tool.outputSchema);
+    const annotations = toOptionalRecord(tool.annotations);
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
       description: describeMcpTool(plugin.manifest.name, tool),
@@ -324,6 +327,8 @@ export class McpToolManager {
       provider: plugin.manifest.name,
       rawName: tool.name,
       ...(tool.title?.trim() ? { title: tool.title.trim() } : {}),
+      ...(outputSchema ? { outputSchema } : {}),
+      ...(annotations ? { annotations } : {}),
       execute: async (args) => {
         const resolvedArgs =
           typeof args === "object" && args !== null ? args : {};
@@ -434,9 +439,18 @@ export class McpToolManager {
     return {
       name: tool.name,
       rawName: tool.rawName,
+      ...(tool.title ? { title: tool.title } : {}),
       description: tool.description,
       parameters: tool.parameters,
+      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+      ...(tool.annotations ? { annotations: tool.annotations } : {}),
       provider: tool.provider,
     };
   }
+}
+
+function toOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }

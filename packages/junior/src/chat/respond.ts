@@ -39,7 +39,7 @@ import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { createTools } from "@/chat/tools";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
-import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
+import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import {
   GEN_AI_PROVIDER_NAME,
@@ -703,12 +703,22 @@ export async function generateAssistantReply(
           if (!effective.pluginProvider) {
             return undefined;
           }
+          if (
+            !turnMcpToolManager
+              .getActiveProviders()
+              .includes(effective.pluginProvider)
+          ) {
+            return undefined;
+          }
+          const availableToolCount = turnMcpToolManager.getActiveToolCatalog(
+            activeSkills,
+            {
+              provider: effective.pluginProvider,
+            },
+          ).length;
           return {
-            available_tools: turnMcpToolManager
-              .getActiveToolCatalog(activeSkills, {
-                provider: effective.pluginProvider,
-              })
-              .map(toExposedToolSummary),
+            mcp_provider: effective.pluginProvider,
+            available_tool_count: availableToolCount,
           };
         },
       },
@@ -741,13 +751,13 @@ export async function generateAssistantReply(
     syncResumeState();
 
     // ── System prompt ────────────────────────────────────────────────
-    const activeToolSummaries = turnMcpToolManager
-      .getActiveToolCatalog(activeSkills)
-      .map(toExposedToolSummary);
+    const activeMcpCatalogs = toActiveMcpCatalogSummaries(
+      turnMcpToolManager.getActiveToolCatalog(activeSkills),
+    );
     baseInstructions = buildSystemPrompt({
       availableSkills,
       activeSkills,
-      activeMcpTools: activeToolSummaries,
+      activeMcpCatalogs,
       invocation: skillInvocation,
       assistant: context.assistant,
       requester: context.requester,
@@ -796,8 +806,10 @@ export async function generateAssistantReply(
       pluginAuth,
       onToolCall,
     );
-    // Keep Pi's native tool schema static for the whole turn. MCP tools may be
-    // activated later by loadSkill, but they are disclosed as data and executed
+    // Keep Pi's native tool schema static for the whole turn. Ideally this
+    // would use provider-native tool loading/search APIs, but Pi's generic
+    // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.
+    // Until it can, MCP tools are searched/disclosed as data and executed
     // through callMcpTool so provider cache/session affinity never sees a
     // mid-run native tool-list mutation.
 

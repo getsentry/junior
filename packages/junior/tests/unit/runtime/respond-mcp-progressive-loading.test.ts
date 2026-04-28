@@ -12,13 +12,13 @@ const {
   deliverPrivateMessageMock,
   ignoreReplaceMessages,
   listToolsMock,
-  loadSkillAvailableToolNames,
   loadSkillExecutionErrorCount,
   loadSkillsByNameMock,
   omitFinalAssistantAfterTool,
   pushPreToolAssistantMessage,
   promptCallCount,
   recordToolResultMessage,
+  searchMcpToolNames,
   systemPromptInputs,
 } = vi.hoisted(() => ({
   DEMO_SKILL: {
@@ -36,15 +36,18 @@ const {
   deliverPrivateMessageMock: vi.fn(),
   ignoreReplaceMessages: { value: false },
   listToolsMock: vi.fn(),
-  loadSkillAvailableToolNames: [] as string[][],
   loadSkillExecutionErrorCount: { value: 0 },
   loadSkillsByNameMock: vi.fn(),
   omitFinalAssistantAfterTool: { value: false },
   promptCallCount: { value: 0 },
   pushPreToolAssistantMessage: { value: false },
   recordToolResultMessage: { value: false },
+  searchMcpToolNames: [] as string[][],
   systemPromptInputs: [] as Array<{
-    activeMcpTools?: Array<{ tool_name: string }>;
+    activeMcpCatalogs?: Array<{
+      provider: string;
+      available_tool_count: number;
+    }>;
   }>,
 }));
 
@@ -154,7 +157,8 @@ vi.mock("@mariozechner/pi-agent-core", () => {
 
       let loadSkillResult: {
         details?: {
-          available_tools?: Array<{ tool_name: string }>;
+          mcp_provider?: string;
+          available_tool_count?: number;
         };
       };
       try {
@@ -162,7 +166,8 @@ vi.mock("@mariozechner/pi-agent-core", () => {
           skill_name: DEMO_SKILL.name,
         })) as {
           details?: {
-            available_tools?: Array<{ tool_name: string }>;
+            mcp_provider?: string;
+            available_tool_count?: number;
           };
         };
       } catch (error) {
@@ -173,10 +178,23 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         });
         throw error;
       }
-      const availableTools = loadSkillResult.details?.available_tools ?? [];
-      loadSkillAvailableToolNames.push(
-        availableTools.map((tool) => tool.tool_name),
-      );
+      if (loadSkillResult.details?.mcp_provider) {
+        const searchMcpTools = this.state.tools.find(
+          (tool) => tool.name === "searchMcpTools",
+        );
+        if (!searchMcpTools) {
+          throw new Error("searchMcpTools missing");
+        }
+        const searchResult = (await searchMcpTools.execute("tool-call-search", {
+          provider: loadSkillResult.details.mcp_provider,
+          query: "ping query",
+        })) as {
+          details?: { tools?: Array<{ tool_name: string }> };
+        };
+        searchMcpToolNames.push(
+          (searchResult.details?.tools ?? []).map((tool) => tool.tool_name),
+        );
+      }
       if (this.aborted) {
         this.state.messages.push({
           role: "assistant",
@@ -356,7 +374,10 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
   return {
     ...actual,
     buildSystemPrompt: (input: {
-      activeMcpTools?: Array<{ tool_name: string }>;
+      activeMcpCatalogs?: Array<{
+        provider: string;
+        available_tool_count: number;
+      }>;
     }) => {
       systemPromptInputs.push(input);
       return "System prompt";
@@ -528,7 +549,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     deliverPrivateMessageMock.mockReset();
     ignoreReplaceMessages.value = false;
     listToolsMock.mockReset();
-    loadSkillAvailableToolNames.length = 0;
+    searchMcpToolNames.length = 0;
     loadSkillExecutionErrorCount.value = 0;
     loadSkillsByNameMock.mockReset();
     omitFinalAssistantAfterTool.value = false;
@@ -597,6 +618,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
 
     expect(isRetryableTurnError(firstError, "mcp_auth_resume")).toBe(true);
     expect(agentInitialToolNames[0]).toContain("loadSkill");
+    expect(agentInitialToolNames[0]).toContain("searchMcpTools");
     expect(agentInitialToolNames[0]).toContain("callMcpTool");
     expect(agentInitialToolNames[0]).not.toContain("searchTools");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
@@ -625,13 +647,14 @@ describe("generateAssistantReply progressive MCP loading", () => {
       expect.objectContaining({ sessionId: expect.any(String) }),
     );
     expect(agentInitialToolNames[1]).toContain("loadSkill");
+    expect(agentInitialToolNames[1]).toContain("searchMcpTools");
     expect(agentInitialToolNames[1]).toContain("callMcpTool");
     expect(agentInitialToolNames[1]).not.toContain("searchTools");
     expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
-    expect(
-      systemPromptInputs[1]?.activeMcpTools?.map((tool) => tool.tool_name),
-    ).toEqual(["mcp__demo__ping"]);
-    expect(loadSkillAvailableToolNames).toEqual([[]]);
+    expect(systemPromptInputs[1]?.activeMcpCatalogs).toEqual([
+      { provider: "demo", available_tool_count: 1 },
+    ]);
+    expect(searchMcpToolNames).toEqual([]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),
@@ -650,7 +673,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
   });
 
-  it("uses loadSkill-disclosed MCP tools in the same turn without replay", async () => {
+  it("searches loadSkill-activated MCP tools in the same turn without replay", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
 
@@ -667,11 +690,12 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(promptCallCount.value).toBe(1);
     expect(continueCallCount.value).toBe(0);
     expect(agentInitialToolNames[0]).toContain("loadSkill");
+    expect(agentInitialToolNames[0]).toContain("searchMcpTools");
     expect(agentInitialToolNames[0]).toContain("callMcpTool");
     expect(agentInitialToolNames[0]).not.toContain("searchTools");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
-    expect(systemPromptInputs[0]?.activeMcpTools).toEqual([]);
-    expect(loadSkillAvailableToolNames).toEqual([["mcp__demo__ping"]]);
+    expect(systemPromptInputs[0]?.activeMcpCatalogs).toEqual([]);
+    expect(searchMcpToolNames).toEqual([["mcp__demo__ping"]]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
         manifest: expect.objectContaining({ name: "demo" }),

@@ -19,7 +19,7 @@
 - 2026-04-13: Made `mcp.transport` optional when `mcp.url` is present; Junior infers hosted HTTP transport from the URL.
 - 2026-04-17: Added `env-vars` manifest block and declared-only `${NAME}` expansion for `mcp.url`; placeholders must be listed in `env-vars`, and defaults live in the declaration (no inline `${NAME:-default}` form).
 - 2026-04-26: Clarified that runtime setup authority belongs to `plugin.yaml`, not arbitrary skill prose.
-- 2026-04-27: Kept MCP execution behind stable `callMcpTool` while disclosing active tools through `loadSkill` and `<active-mcp-tools>`.
+- 2026-04-28: Kept MCP execution behind stable `callMcpTool` while disclosing searchable MCP catalogs through `loadSkill`, `searchMcpTools`, and `<active-mcp-catalogs>`.
 
 ## Status
 
@@ -53,8 +53,8 @@ Define a plugin model where provider integrations are self-contained directories
 4. Credential brokers are created on demand only for plugins that declare credentials (`oauth-bearer` or `github-app` type).
 5. Skills in `plugins/<name>/skills/` are auto-discovered alongside existing skill roots.
 6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded for the turn.
-7. Pi sees stable native tools (`loadSkill` and `callMcpTool`) at turn start. After a plugin-backed skill is loaded, the runtime activates that plugin's discovered MCP tools for `callMcpTool`.
-8. `loadSkill` returns the newly exposed MCP tool descriptors for that skill in `available_tools`, including the collision-safe `tool_name`, upstream MCP `mcp_tool_name`, and input schema.
+7. Pi sees stable native tools (`loadSkill`, `searchMcpTools`, and `callMcpTool`) at turn start. After a plugin-backed skill is loaded, the runtime activates that plugin's discovered MCP tools for search and execution.
+8. `loadSkill` activates the provider catalog and returns provider/count metadata once the MCP server is connected and `listTools` succeeds. If connection/listing needs MCP OAuth, `loadSkill` initiates the MCP auth pause and the resumed turn re-activates the catalog before the model continues. `searchMcpTools` returns focused descriptors, including input/output schema and annotations, for any available active-provider tool before `callMcpTool` executes it.
 9. Runtime setup belongs to `plugin.yaml`: CLI packages, system packages, postinstall commands, MCP endpoints/tool allowlists, credential delivery, OAuth, and provider config keys are manifest declarations, not skill instructions.
 10. Skills consume the plugin-provided runtime surface. They must not instruct the agent to install packages, bootstrap CLIs, configure MCP servers, create credentials, or repair sandbox package installation as part of normal workflow.
 
@@ -315,9 +315,13 @@ createPluginBroker(provider, deps: PluginBrokerDeps): CredentialBroker
 - MCP tools are not sandbox dependencies and are not registered globally at startup.
 - The runtime activates a plugin's MCP tools only after a skill owned by that plugin is loaded in the current turn.
 - Explicit `/skill` invocations preload the skill first, so same-plugin MCP tools are available before the first model step.
-- Mid-turn `loadSkill` updates the host-managed MCP registry, but Junior does not mutate the Pi native tool list during the turn. Late MCP tools are executed through stable `callMcpTool` so provider cache/session behavior sees a static native tool schema.
-- `loadSkill` returns `available_tools` for the newly exposed tools, including canonical `tool_name` values, upstream `mcp_tool_name` values, and full input schemas.
-- Preloaded and resumed skills disclose active MCP tool descriptors in `<active-mcp-tools>`; there is no generic `searchTools` discovery dispatcher.
+- Remote MCP tool catalogs are unknown until Junior connects to the MCP server and `listTools` succeeds. Plugin manifests and skills identify candidate providers; they do not contain the authoritative tool catalog.
+- Mid-turn `loadSkill` updates the host-managed MCP registry, but Junior does not mutate the Pi native tool list during the turn. Late MCP tools are searched through stable `searchMcpTools` and executed through stable `callMcpTool` so provider cache/session behavior sees a static native tool schema.
+- `loadSkill` returns provider/count metadata for the activated MCP catalog instead of dumping every available tool descriptor into the turn.
+- `searchMcpTools` returns focused descriptors for available active-provider tools, including canonical `tool_name` values, upstream `mcp_tool_name` values, input schema, optional output schema, and optional annotations. It may be called with a provider alone to enumerate that provider's active catalog, or with a query to narrow results.
+- Preloaded and resumed skills disclose searchable MCP provider/count summaries in `<active-mcp-catalogs>`; they do not disclose per-tool schemas until `searchMcpTools` returns matching descriptors.
+- If catalog activation requires MCP OAuth, `loadSkill` or preloaded-skill activation starts the authorization pause. After callback resume, Junior reconnects/lists tools, stores the catalog in the turn manager, and informs the model through `loadSkill` metadata or `<active-mcp-catalogs>` that tools are searchable.
+- There is no generic `searchTools` dispatcher that mutates the Pi native tool list.
 - When `mcp.allowed-tools` is set, discovery is filtered before exposure and provider activation fails if any allowlisted tool is absent.
 - MCP exposure is owned by the plugin manifest via `mcp.allowed-tools`; skill files do not declare per-tool MCP allowlists.
 - Canonical MCP tool names remain `mcp__<plugin>__<tool>`.

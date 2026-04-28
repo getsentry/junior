@@ -123,7 +123,7 @@ async function validateSkillDirectory(
     warnings.push(`${skillFile}: no skill instructions after frontmatter`);
   }
   if (
-    /\b(?:searchTools|useTool|callMcpTool|available_tools)\b|<active-mcp-tools>/.test(
+    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b|<active-mcp-(?:tools|catalogs)>/.test(
       parsed.skill.body,
     )
   ) {

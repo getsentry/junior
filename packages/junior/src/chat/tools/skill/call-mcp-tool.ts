@@ -3,19 +3,19 @@ import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { Skill } from "@/chat/skills";
 import { tool } from "@/chat/tools/definition";
 
+/** Create the stable dispatcher for active MCP provider tools. */
 export function createCallMcpToolTool(
   mcpToolManager: McpToolManager,
   getActiveSkills: () => Skill[],
 ) {
   return tool({
     description:
-      "Call an MCP tool that has already been exposed by loadSkill or <active-mcp-tools>. Use the exact tool_name from the disclosed tool list.",
+      "Call an active MCP tool by exact tool_name. Use loadSkill to activate the provider, then searchMcpTools to discover tool names and schemas; authorization is handled by the runtime when required.",
     inputSchema: Type.Object(
       {
         tool_name: Type.String({
           minLength: 1,
-          description:
-            "Exact MCP tool_name from loadSkill.available_tools or <active-mcp-tools>.",
+          description: "Exact MCP tool_name from searchMcpTools.",
         }),
         arguments: Type.Optional(
           Type.Record(Type.String(), Type.Unknown(), {

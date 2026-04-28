@@ -4,6 +4,7 @@ import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createLoadSkillTool } from "@/chat/tools/skill/load-skill";
+import { createSearchMcpToolsTool } from "@/chat/tools/skill/search-mcp-tools";
 import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-list-messages";
@@ -105,6 +106,10 @@ export function createTools(
   };
 
   if (context.mcpToolManager && context.getActiveSkills) {
+    tools.searchMcpTools = createSearchMcpToolsTool(
+      context.mcpToolManager,
+      context.getActiveSkills,
+    );
     tools.callMcpTool = createCallMcpToolTool(
       context.mcpToolManager,
       context.getActiveSkills,
