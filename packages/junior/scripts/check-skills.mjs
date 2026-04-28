@@ -296,7 +296,7 @@ async function validateSkillDirectory(skillDir, duplicateNames) {
   }
   const body = raw.replace(FRONTMATTER_RE, "");
   if (
-    /\b(?:searchTools|useTool|callMcpTool|available_tools)\b|<active-mcp-tools>/.test(
+    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b|<active-mcp-(?:tools|catalogs)>/.test(
       body,
     )
   ) {
