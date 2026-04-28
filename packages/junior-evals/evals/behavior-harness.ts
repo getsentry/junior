@@ -180,6 +180,8 @@ export interface EvalCanvasArtifact {
 export interface EvalToolInvocation {
   tool: string;
   bash_command?: string;
+  mcp_arguments?: Record<string, unknown>;
+  mcp_tool_name?: string;
   skill_name?: string;
 }
 
@@ -221,6 +223,23 @@ function toEvalToolInvocation(input: {
     typeof input.params.skill_name === "string"
   ) {
     invocation.skill_name = input.params.skill_name.trim();
+  }
+
+  if (
+    input.toolName === "callMcpTool" &&
+    typeof input.params.tool_name === "string"
+  ) {
+    invocation.mcp_tool_name = input.params.tool_name.trim();
+    if (
+      input.params.arguments &&
+      typeof input.params.arguments === "object" &&
+      !Array.isArray(input.params.arguments)
+    ) {
+      invocation.mcp_arguments = input.params.arguments as Record<
+        string,
+        unknown
+      >;
+    }
   }
 
   return invocation;
@@ -334,6 +353,16 @@ async function cleanupHarnessThreadState(
   const runtimeThreadIds = new Set(
     events.map((event) => buildRuntimeThreadId(event.thread)),
   );
+  const turnSessionKeys = events
+    .filter(
+      (event): event is MentionEvent | SubscribedMessageEvent =>
+        "message" in event,
+    )
+    .map((event) => {
+      const messageId = event.message.id ?? "";
+      const sessionId = `turn_${messageId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+      return `junior:agent_turn_session:${buildRuntimeThreadId(event.thread)}:${sessionId}`;
+    });
   const channelIds = new Set(
     events
       .map((event) => event.thread.channel_id?.trim())
@@ -343,6 +372,9 @@ async function cleanupHarnessThreadState(
   for (const threadId of runtimeThreadIds) {
     await stateAdapter.delete(`thread-state:${threadId}`);
     await stateAdapter.unsubscribe(threadId);
+  }
+  for (const key of turnSessionKeys) {
+    await stateAdapter.delete(key);
   }
   for (const channelId of channelIds) {
     await stateAdapter.delete(`channel-state:${channelId}`);

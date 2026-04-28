@@ -4,6 +4,8 @@ export const EVAL_MCP_AUTH_PROVIDER = "eval-auth";
 export const EVAL_MCP_AUTH_CODE = "eval-auth-code";
 export const EVAL_MCP_AUTH_ORIGIN = "https://eval-auth.example.test";
 export const EVAL_MCP_SERVER_URL = `${EVAL_MCP_AUTH_ORIGIN}/mcp`;
+const EVAL_MCP_NO_AUTH_ORIGIN = "https://eval-mcp.example.test";
+const EVAL_MCP_NO_AUTH_SERVER_URL = `${EVAL_MCP_NO_AUTH_ORIGIN}/mcp`;
 const EVAL_MCP_RESOURCE_METADATA_URL = `${EVAL_MCP_AUTH_ORIGIN}/.well-known/oauth-protected-resource/mcp`;
 const EVAL_MCP_AUTHORIZATION_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/authorize`;
 const EVAL_MCP_TOKEN_ENDPOINT = `${EVAL_MCP_AUTH_ORIGIN}/oauth/token`;
@@ -36,6 +38,100 @@ function jsonRpcResult(id: unknown, result: unknown, headers?: HeadersInit) {
 export function resetEvalMcpAuthMockState(): void {}
 
 export const evalMcpAuthHandlers = [
+  http.get(
+    EVAL_MCP_NO_AUTH_SERVER_URL,
+    async () => new HttpResponse(null, { status: 405 }),
+  ),
+  http.post(EVAL_MCP_NO_AUTH_SERVER_URL, async ({ request }) => {
+    const payload = (await request.json()) as
+      | { id?: unknown; method?: unknown; params?: Record<string, unknown> }
+      | Array<{
+          id?: unknown;
+          method?: unknown;
+          params?: Record<string, unknown>;
+        }>;
+    const message = Array.isArray(payload) ? payload[0] : payload;
+    const method =
+      message && typeof message.method === "string"
+        ? message.method
+        : undefined;
+
+    switch (method) {
+      case "initialize":
+        return jsonRpcResult(message?.id ?? null, {
+          protocolVersion: "2025-03-26",
+          capabilities: {
+            tools: {},
+          },
+          serverInfo: {
+            name: "eval-mcp",
+            version: "1.0.0",
+          },
+        });
+      case "tools/list":
+        return jsonRpcResult(message?.id ?? null, {
+          tools: [
+            {
+              name: "handbook-search",
+              title: "Handbook Search",
+              description: "Search the eval handbook fixture.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  query: { type: "string" },
+                },
+                required: ["query"],
+                additionalProperties: false,
+              },
+            },
+          ],
+        });
+      case "tools/call": {
+        const args =
+          message?.params &&
+          typeof message.params === "object" &&
+          message.params.arguments &&
+          typeof message.params.arguments === "object"
+            ? (message.params.arguments as Record<string, unknown>)
+            : undefined;
+        if (typeof args?.query !== "string") {
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: 'Input validation error: Invalid arguments for tool handbook-search:\n- "query": expected string, received undefined',
+              },
+            ],
+            isError: true,
+          });
+        }
+
+        return jsonRpcResult(message?.id ?? null, {
+          content: [
+            {
+              type: "text",
+              text: `Handbook result for "${args.query}": US holidays follow the published company holiday calendar.`,
+            },
+          ],
+          isError: false,
+        });
+      }
+      case "notifications/initialized":
+        return new HttpResponse(null, { status: 202 });
+      default:
+        return HttpResponse.json(
+          {
+            jsonrpc: "2.0",
+            id: message?.id ?? null,
+            error: {
+              code: -32601,
+              message: `Unsupported eval MCP method: ${String(method)}`,
+            },
+          },
+          { status: 400 },
+        );
+    }
+  }),
   http.get(
     EVAL_MCP_SERVER_URL,
     async () => new HttpResponse(null, { status: 405 }),
@@ -104,7 +200,19 @@ export const evalMcpAuthHandlers = [
           typeof message.params.arguments === "object"
             ? (message.params.arguments as Record<string, unknown>)
             : undefined;
-        const query = typeof args?.query === "string" ? args.query : "unknown";
+        if (typeof args?.query !== "string") {
+          return jsonRpcResult(message?.id ?? null, {
+            content: [
+              {
+                type: "text",
+                text: 'Input validation error: Invalid arguments for tool budget-echo:\n- "query": expected string, received undefined',
+              },
+            ],
+            isError: true,
+          });
+        }
+
+        const query = args.query;
         return jsonRpcResult(message?.id ?? null, {
           content: [
             {

@@ -28,6 +28,7 @@ Co-Authored-By: (agent model name) <email>
 - Prefer integration tests for most product/runtime changes that need real wiring.
 - Use evals as the integration-style layer for agent/prompt/natural-language behavior. See `packages/junior-evals/README.md`.
 - Run evals from Codex as escalated host commands when they need real Vercel Sandbox/network access; use `pnpm evals` for the full suite.
+- If evals fail from missing or expired Gateway/Vercel credentials, run `pnpm dev:env` to refresh secrets before retrying.
 - Use instrumentation conventions from `specs/logging/index.md`.
 - Use OpenTelemetry semantic keys for logs; when no semantic key exists, use `app.*`.
 - Keep release package lists aligned across `.craft.yml`, `scripts/bump-release-versions.mjs`, `.github/workflows/ci.yml`, `README.md`, and release docs; verify with `pnpm release:check`.

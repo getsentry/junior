@@ -6,6 +6,11 @@ export interface ExposedToolSummary {
   provider: string;
   title?: string;
   description: string;
+  signature: string;
+  call: {
+    tool_name: string;
+    arguments: Record<string, string>;
+  };
   input_schema: Record<string, unknown>;
   input_schema_summary: string;
   output_schema?: Record<string, unknown>;
@@ -17,19 +22,105 @@ export interface ActiveMcpCatalogSummary {
   available_tool_count: number;
 }
 
-/** Summarize an MCP input schema for quick catalog scanning. */
-export function summarizeInputSchema(schema: Record<string, unknown>): string {
-  const properties =
-    schema.properties && typeof schema.properties === "object"
-      ? (schema.properties as Record<string, unknown>)
-      : {};
-  const required = Array.isArray(schema.required)
+function getSchemaProperties(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  return schema.properties && typeof schema.properties === "object"
+    ? (schema.properties as Record<string, unknown>)
+    : {};
+}
+
+function getRequiredFields(schema: Record<string, unknown>): Set<string> {
+  return Array.isArray(schema.required)
     ? new Set(
         schema.required.filter(
           (value): value is string => typeof value === "string",
         ),
       )
     : new Set<string>();
+}
+
+function formatSchemaType(schema: unknown): string {
+  if (!schema || typeof schema !== "object") {
+    return "unknown";
+  }
+
+  const typed = schema as Record<string, unknown>;
+  const type = typed.type;
+  if (typeof type === "string") {
+    if (type === "array") {
+      return `${formatSchemaType(typed.items)}[]`;
+    }
+    return type;
+  }
+  if (Array.isArray(type)) {
+    return type.filter((value) => typeof value === "string").join(" | ");
+  }
+  if (Array.isArray(typed.enum) && typed.enum.length > 0) {
+    return typed.enum.map((value) => JSON.stringify(value)).join(" | ");
+  }
+  return "unknown";
+}
+
+function formatArgumentPlaceholder(name: string, schema: unknown): string {
+  const type = formatSchemaType(schema);
+  if (type === "string") {
+    return `<${name}>`;
+  }
+  if (type === "number" || type === "integer") {
+    return "<number>";
+  }
+  if (type === "boolean") {
+    return "<boolean>";
+  }
+  if (type.endsWith("[]")) {
+    return "<array>";
+  }
+  if (type === "object") {
+    return "<object>";
+  }
+  return `<${type}>`;
+}
+
+/** Build a stable model-readable MCP tool signature. */
+export function formatMcpToolSignature(
+  toolName: string,
+  schema: Record<string, unknown>,
+): string {
+  const properties = getSchemaProperties(schema);
+  const required = getRequiredFields(schema);
+  const fields = Object.entries(properties).map(([name, propertySchema]) => {
+    const marker = required.has(name) ? "" : "?";
+    return `${name}${marker}: ${formatSchemaType(propertySchema)}`;
+  });
+  if (fields.length === 0) {
+    return `${toolName}()`;
+  }
+  return `${toolName}({ ${fields.join(", ")} })`;
+}
+
+/** Build the exact callMcpTool argument shape agents should use. */
+export function formatMcpToolCallExample(
+  toolName: string,
+  schema: Record<string, unknown>,
+): ExposedToolSummary["call"] {
+  return {
+    tool_name: toolName,
+    arguments: Object.fromEntries(
+      Object.entries(getSchemaProperties(schema)).map(
+        ([name, propertySchema]) => [
+          name,
+          formatArgumentPlaceholder(name, propertySchema),
+        ],
+      ),
+    ),
+  };
+}
+
+/** Summarize an MCP input schema for quick catalog scanning. */
+export function summarizeInputSchema(schema: Record<string, unknown>): string {
+  const properties = getSchemaProperties(schema);
+  const required = getRequiredFields(schema);
   const propertyNames = Object.keys(properties);
   if (propertyNames.length === 0) {
     return "No arguments.";
@@ -50,6 +141,8 @@ export function toExposedToolSummary(
     provider: toolDef.provider,
     ...(toolDef.title ? { title: toolDef.title } : {}),
     description: toolDef.description,
+    signature: formatMcpToolSignature(toolDef.name, toolDef.parameters),
+    call: formatMcpToolCallExample(toolDef.name, toolDef.parameters),
     input_schema: toolDef.parameters,
     input_schema_summary: summarizeInputSchema(toolDef.parameters),
     ...(toolDef.outputSchema ? { output_schema: toolDef.outputSchema } : {}),
