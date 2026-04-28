@@ -78,6 +78,16 @@ const evalOutputSchema = z.object({
           .string()
           .optional()
           .describe("Skill name when the invoked tool is loadSkill"),
+        mcp_tool_name: z
+          .string()
+          .optional()
+          .describe("MCP tool name when the invoked tool is callMcpTool"),
+        mcp_arguments: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe(
+            "MCP provider arguments nested under callMcpTool.arguments",
+          ),
       }),
     )
     .describe("Sanitized tool invocations observed during the eval"),

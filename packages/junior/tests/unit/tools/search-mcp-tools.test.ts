@@ -25,6 +25,15 @@ describe("searchMcpTools", () => {
               type: "object",
               properties: {
                 title: { type: "string", description: "Issue title" },
+                labels: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Issue labels",
+                },
+                metadata: {
+                  type: "object",
+                  description: "Issue metadata",
+                },
               },
               required: ["title"],
             },
@@ -59,7 +68,13 @@ describe("searchMcpTools", () => {
     )) as {
       tools: Array<{
         tool_name: string;
+        signature: string;
+        call: {
+          tool_name: string;
+          arguments: Record<string, string>;
+        };
         input_schema: Record<string, unknown>;
+        input_schema_summary: string;
         output_schema?: Record<string, unknown>;
         annotations?: Record<string, unknown>;
       }>;
@@ -68,6 +83,17 @@ describe("searchMcpTools", () => {
     expect(result.tools).toHaveLength(1);
     expect(result.tools[0]).toMatchObject({
       tool_name: "mcp__demo__create_issue",
+      signature:
+        "mcp__demo__create_issue({ title: string, labels?: string[], metadata?: object })",
+      call: {
+        tool_name: "mcp__demo__create_issue",
+        arguments: {
+          title: "<title>",
+          labels: "<array>",
+          metadata: "<object>",
+        },
+      },
+      input_schema_summary: "title (required), labels, metadata",
       input_schema: {
         properties: {
           title: { type: "string", description: "Issue title" },
@@ -99,8 +125,19 @@ describe("searchMcpTools", () => {
       query: null,
       provider: "demo",
       tools: [
-        { tool_name: "mcp__demo__create_issue" },
-        { tool_name: "mcp__demo__list_projects" },
+        {
+          tool_name: "mcp__demo__create_issue",
+          signature:
+            "mcp__demo__create_issue({ title: string, labels?: string[], metadata?: object })",
+        },
+        {
+          tool_name: "mcp__demo__list_projects",
+          signature: "mcp__demo__list_projects()",
+          call: {
+            tool_name: "mcp__demo__list_projects",
+            arguments: {},
+          },
+        },
       ],
     });
     expect(manager.getActiveToolCatalog).toHaveBeenCalledWith([activeSkill], {
