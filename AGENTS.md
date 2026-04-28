@@ -105,6 +105,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/slack-outbound-contract-spec.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
 - `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
 - `specs/oauth-flows-spec.md` (OAuth authorization code flow + Slack UX contract)
+- `specs/agent-prompt-spec.md` (core prompt ownership, execution-bias, and bloat-control contract)
 - `specs/harness-agent-spec.md` (agent loop and output contract)
 - `specs/agent-session-resumability-spec.md` (multi-slice turn resumability and timeout recovery contract)
 - `specs/agent-execution-spec.md` (agent execution rubric and completion gates)
