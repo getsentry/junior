@@ -1,24 +1,4 @@
-import { SlackFormatConverter } from "@chat-adapter/slack";
 import { truncateStatusText } from "@/chat/runtime/status-format";
-
-const slackFormatter = new SlackFormatConverter();
-
-/**
- * Convert Slack-flavored Markdown into Slack `mrkdwn` for use as a notification
- * fallback in the top-level `text` field of Slack API calls.
- *
- * Slack's markdown block accepts a subset of standard Markdown (**bold**,
- * *italic*, [links](url), lists, headings, code blocks) and renders it
- * natively. This function produces the equivalent `mrkdwn` representation
- * for contexts that don't support the markdown block (notifications,
- * accessibility clients, legacy surfaces).
- */
-export function markdownToSlackMrkdwn(text: string): string {
-  if (!text.trim()) {
-    return "";
-  }
-  return slackFormatter.renderPostable({ markdown: text });
-}
 
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {

@@ -7,37 +7,13 @@ import {
   slackOutputPolicy,
   splitSlackReplyText,
 } from "@/chat/slack/output";
-import {
-  ensureBlockSpacing,
-  markdownToSlackMrkdwn,
-  renderSlackMrkdwn,
-} from "@/chat/slack/mrkdwn";
+import { ensureBlockSpacing, renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
 
 describe("renderSlackMrkdwn", () => {
   it("normalizes line endings and block spacing for Slack replies", () => {
     expect(renderSlackMrkdwn("one\r\n- item a\n- item b\r\n\r\ntwo   ")).toBe(
       "one\n\n- item a\n- item b\n\ntwo",
     );
-  });
-});
-
-describe("markdownToSlackMrkdwn", () => {
-  it("converts **bold** to *bold*", () => {
-    expect(markdownToSlackMrkdwn("**hello**")).toBe("*hello*");
-  });
-
-  it("converts [text](url) to <url|text>", () => {
-    expect(markdownToSlackMrkdwn("[click here](https://example.com)")).toBe(
-      "<https://example.com|click here>",
-    );
-  });
-
-  it("strips heading markers", () => {
-    expect(markdownToSlackMrkdwn("# Heading")).toBe("Heading");
-  });
-
-  it("returns empty string for whitespace-only input", () => {
-    expect(markdownToSlackMrkdwn("   ")).toBe("");
   });
 });
 

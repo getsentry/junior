@@ -53,9 +53,8 @@ Current rules:
 
 1. Prompting targets Slack-flavored Markdown (a subset of standard Markdown that Slack's markdown block renders natively: bold, italic, links, lists, headings, code blocks — no tables).
 2. `slack/output.ts` is the only canonical place to normalize line endings, block spacing, and reply chunk boundaries for Slack replies.
-3. `slack/mrkdwn.ts` owns `markdownToSlackMrkdwn()` which converts Slack-flavored Markdown into `mrkdwn` for notification fallback text.
-4. Reply messages use the Slack `markdown` block (`{type: "markdown"}`) for the displayed body and pass `mrkdwn`-converted text in the top-level `text` field for notifications and accessibility.
-5. Continuation markers and interruption markers are delivery-time annotations owned by `slack/output.ts`, not model-authored text.
+3. Reply messages use the Slack `markdown` block (`{type: "markdown"}`) for the displayed body. The top-level `text` field passes the raw markdown as a notification preview.
+4. Continuation markers and interruption markers are delivery-time annotations owned by `slack/output.ts`, not model-authored text.
 
 ### 3. Message Posting Contract
 
