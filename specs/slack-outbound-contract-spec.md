@@ -10,7 +10,7 @@
 - 2026-04-16: Initial canonical contract for Slack outbound operations and reply-text translation ownership.
 - 2026-04-16: Added support for finalized reply footers rendered as Slack context blocks with top-level text fallbacks.
 - 2026-04-22: Clarified that finalized reply footers may include the selected thinking-level bucket as structured reply metadata.
-- 2026-04-30: Switched reply body rendering from section/mrkdwn blocks to Slack-flavored markdown blocks; added markdownToSlackMrkdwn for notification fallback.
+- 2026-04-30: Switched reply body rendering from section/mrkdwn blocks to Slack-flavored markdown blocks; raw markdown passed as notification text fallback.
 
 ## Status
 
