@@ -175,6 +175,87 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
+  it("suppresses model text for reaction-only requests", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "slackMessageAddReaction",
+          isError: false,
+          content: [{ type: "text", text: "reaction added" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "արձագանքեցի :thumbsup:" }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "react to this",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["slackMessageAddReaction"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: false,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(true);
+  });
+
+  it("keeps post-canvas thread replies brief", () => {
+    const verboseReply = [
+      "I put together a reusable reference here:",
+      "https://example.invalid/files/F123",
+      "",
+      "**Highlights**",
+      "- Timeline details that belong in the canvas.",
+      "- API details that belong in the canvas.",
+      "- Limit details that belong in the canvas.",
+      "- Migration details that belong in the canvas.",
+      "",
+      "**Note**",
+      "- More caveats that belong in the canvas.",
+    ].join("\n");
+
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "slackCanvasCreate",
+          isError: false,
+          content: [{ type: "text", text: "canvas created" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: verboseReply }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "create a reusable reference",
+      replyFiles: [],
+      artifactStatePatch: {
+        lastCanvasUrl: "https://example.invalid/files/F123",
+      },
+      toolCalls: ["slackCanvasCreate"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe(
+      "I created a canvas with the full reference: https://example.invalid/files/F123",
+    );
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(true);
+  });
+
   it("preserves structured timing and usage diagnostics", () => {
     const reply = buildTurnResult({
       newMessages: [

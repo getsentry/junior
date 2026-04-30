@@ -10,6 +10,10 @@ export interface ReplyDeliveryPlan {
 const REACTION_ONLY_ACK_RE =
   /^(?::[a-z0-9_+-]+:|[\p{Extended_Pictographic}\uFE0F\u200D]+)$/u;
 const REDUNDANT_REACTION_ACK_TEXT = ["done", "got it", "ok", "okay"] as const;
+const REACTION_INTENT_RE =
+  /\b(react|reaction|emoji|thumbs?\s*up|acknowledge)\b/i;
+const REACTION_WITH_REPLY_INTENT_RE =
+  /\b(confirm|explain|reply|respond|say|tell|summari[sz]e|why)\b/i;
 
 function normalizeReactionAckText(text: string): string {
   return text
@@ -31,6 +35,18 @@ export function isRedundantReactionAckText(text: string): boolean {
   const normalized = normalizeReactionAckText(text);
   return REDUNDANT_REACTION_ACK_TEXT.includes(
     normalized as (typeof REDUNDANT_REACTION_ACK_TEXT)[number],
+  );
+}
+
+/** Check if the user asked for a reaction without also asking for text. */
+export function isReactionOnlyIntent(text: string): boolean {
+  const normalized = text.trim();
+  if (!normalized) {
+    return false;
+  }
+  return (
+    REACTION_INTENT_RE.test(normalized) &&
+    !REACTION_WITH_REPLY_INTENT_RE.test(normalized)
   );
 }
 

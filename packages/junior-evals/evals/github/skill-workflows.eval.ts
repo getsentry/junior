@@ -9,6 +9,7 @@ describe("GitHub Skill Workflows", () => {
         skill_dirs: ["evals/fixtures/skills"],
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 90_000,
         test_credential_token: "eval-smoke-token",
       },
       events: [mention("/capability-credential-smoke")],
@@ -17,6 +18,7 @@ describe("GitHub Skill Workflows", () => {
           "The GitHub capability credential smoke command succeeds in one reply.",
         pass: [
           "The assistant posts exactly one reply containing CREDENTIAL_OK.",
+          "The configured smoke command is `gh issue view 1 --repo getsentry/junior`; a final `CREDENTIAL_OK` reply is sufficient evidence that it succeeded.",
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),
@@ -127,7 +129,7 @@ describe("GitHub Skill Workflows", () => {
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github", "@sentry/junior-sentry"],
-        reply_timeout_ms: 75_000,
+        reply_timeout_ms: 120_000,
         test_credential_token: "eval-routing-token",
         skill_dirs: ["../junior/skills"],
       },

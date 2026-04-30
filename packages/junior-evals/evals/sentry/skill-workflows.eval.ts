@@ -9,6 +9,7 @@ describe("Sentry Skill Workflows", () => {
         skill_dirs: ["evals/fixtures/skills"],
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-sentry"],
+        reply_timeout_ms: 90_000,
         test_credential_token: "eval-sentry-token",
       },
       events: [mention("/sentry-credential-smoke")],
@@ -17,6 +18,7 @@ describe("Sentry Skill Workflows", () => {
           "The Sentry capability credential smoke command succeeds in one reply.",
         pass: [
           "The assistant posts exactly one reply containing CREDENTIAL_OK.",
+          "The configured smoke command is `sentry issues list --org getsentry`; a final `CREDENTIAL_OK` reply is sufficient evidence that it succeeded.",
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),

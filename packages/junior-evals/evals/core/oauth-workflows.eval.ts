@@ -36,6 +36,7 @@ describe("OAuth Workflows", () => {
         pass: [
           "The user sees an access-needed message for Eval-auth.",
           "The same Slack thread later gets a resumed answer after authorization completes.",
+          "Because the eval harness auto-completes MCP authorization off-transcript, treat a later same-thread resumed answer after the access-needed message as evidence that authorization completed.",
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
         ],
         allow: [

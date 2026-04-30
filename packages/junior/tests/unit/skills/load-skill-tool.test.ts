@@ -53,6 +53,12 @@ describe("load_skill tool", () => {
     });
     expect((result as any).location).toBe(sandboxSkillFile(firstSkill.name));
     expect((result as any).skill_dir).toBe(sandboxSkillDir(firstSkill.name));
+    expect((result as any).working_directory).toBe(
+      sandboxSkillDir(firstSkill.name),
+    );
+    expect((result as any).path_resolution).toContain(
+      sandboxSkillDir(firstSkill.name),
+    );
     expect((result as any).instructions).toBe("Instruction body");
     expect(loaded).toHaveLength(1);
     expect(loaded[0]).toMatchObject({

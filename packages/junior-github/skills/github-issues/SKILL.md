@@ -1,12 +1,13 @@
 ---
 name: github-issues
-description: Create, update, comment on, label, and inspect GitHub issues via GitHub CLI with concise, evidence-backed content. Use when users ask to open, edit, view, close, reopen, or triage GitHub issues — including tracking bugs, features, or tasks. Prefer this skill over generic repository tools for any issue operation.
+description: Create, update, comment on, label, and inspect GitHub issues via GitHub CLI with concise, evidence-backed content. Use when users ask to open, edit, view, close, reopen, or triage GitHub issues — including tracking bugs, features, or tasks. Prefer this skill over generic repository tools for issue operations; do not use for pull requests, branches, pushes, or PR auth-order questions.
 allowed-tools: bash
 ---
 
 # GitHub Issue Operations
 
 Issue create, update, comment, label, state, and inspection via `gh` CLI.
+Use only for GitHub issues. For pull requests, branches, pushes, or PR auth-order questions, load `github-code` instead.
 
 ## Reference loading
 
@@ -79,11 +80,12 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 
 - Use `gh issue` commands from [references/api-surface.md](references/api-surface.md).
 - For issue listing or other read-only inspection, prefer `--json` output so empty results still produce deterministic stdout.
-- Check duplicates silently before creating a new issue.
+- Check duplicates silently before creating a new issue. Do not mention this check in the final reply unless a duplicate blocks creation.
 
 ### 6. Report result
 
-- Return canonical issue URL, issue number, issue type, and applied changes.
+- Return canonical issue URL, issue number, and issue type.
+- Mention only user-visible issue changes. Do not mention duplicate checks, searches, "no duplicates found", or routine preparation steps.
 
 ## Guardrails
 

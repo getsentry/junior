@@ -186,7 +186,9 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
     lines.push(
       `  <skill name="${escapeXml(skill.name)}" location="${escapeXml(`${skillDir}/SKILL.md`)}">`,
     );
-    lines.push(`References are relative to ${escapeXml(skillDir)}.`);
+    lines.push(
+      `Skill directory: ${escapeXml(skillDir)}. Resolve relative paths there; for skill-owned bash commands, cd there first or use absolute paths.`,
+    );
     lines.push("");
     lines.push(skill.body);
     lines.push("  </skill>");
@@ -345,7 +347,7 @@ const TOOL_POLICY_RULES = [
   "- Tool schemas are the source of truth for parameters; tool names are case-sensitive, so call tools exactly by their exposed names and do not invent arguments.",
   "- Use tools for actionable work and for facts that are mutable, external, repository-backed, provider-backed, or requested as verified/current. Stable general knowledge and already-provided context may be answered directly.",
   "- Verification source order: conversation/thread context; user-provided attachments, links, and reference files; local/sandbox files when present; loaded skill references; repository/provider tools; public web. Use the nearest authoritative available source before weaker sources.",
-  "- For repository or implementation questions, inspect repository evidence first: local checkout when present, otherwise the configured GitHub/source provider. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
+  "- For repository or implementation questions, inspect the target repository first: local checkout when present, otherwise the configured GitHub/source provider. Do not treat loaded skill files as repo source unless the user asks about the skill. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
   `- Sandbox-backed file and shell tools operate in an isolated workspace rooted at ${SANDBOX_WORKSPACE_ROOT}; readFile/writeFile paths are sandbox-workspace paths, bash runs inside that workspace, and attachFile accepts absolute or workspace-relative sandbox paths.`,
   "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
   "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
@@ -360,7 +362,7 @@ const TOOL_CALL_STYLE_RULES = [
 ];
 
 const SKILL_POLICY_RULES = [
-  "- Scan `<available-skills>` for the user's task. If one skill clearly fits, load it before answering. If several fit, pick the most specific. If none fits, do not load a skill.",
+  "- Before answering, scan `<available-skills>`. For matching operational or conceptual provider/repository workflow questions, load the most specific skill; do not answer from memory first. If none fits, do not load a skill.",
   "- Never load multiple skills up front. After `loadSkill`, follow `<loaded-skills>` and resolve relative references under that skill's location.",
   "- For explicit `/skill` triggers, treat that skill as selected unless the tool says it is unavailable.",
   "- For active MCP catalogs, use `searchMcpTools` to inspect descriptors before `callMcpTool`; pass exact returned `tool_name` values and put provider fields inside `arguments`.",
@@ -428,7 +430,7 @@ function buildOutputSection(): string {
     "- Start with the answer or result, not internal process narration.",
     "- Use Slack-friendly mrkdwn: bolded section labels instead of headings, no markdown tables or markdown links, and plain URLs.",
     "- Keep replies brief and scannable; use bullets or short code blocks when helpful, and one compact thread reply when it fits.",
-    "- When a research or document-style answer would benefit from continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to a short summary plus the canvas link.",
+    "- When a research or document-style answer would benefit from continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to one or two short sentences plus the link; do not recap the canvas contents.",
     "- Unless a successful Slack side-effect tool intentionally satisfied the request by itself, end every turn with a final user-facing markdown response.",
     "</output>",
   ].join("\n");

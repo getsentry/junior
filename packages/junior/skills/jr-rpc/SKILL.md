@@ -1,6 +1,6 @@
 ---
 name: jr-rpc
-description: Manage low-level config flows via jr-rpc bash commands. Use when the user explicitly asks to read or update provider defaults. Normal authenticated operational work under plugin-owned skills should run the real provider command and let the runtime fetch credentials automatically.
+description: Manage low-level config flows via jr-rpc bash commands. Use only when the user explicitly asks to read or update provider defaults/config. Do not use for PR, branch, push, or auth-order questions; load the matching provider skill instead.
 allowed-tools: bash
 ---
 

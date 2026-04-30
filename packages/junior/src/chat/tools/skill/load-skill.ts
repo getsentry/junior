@@ -14,7 +14,9 @@ export type LoadSkillResult = {
   skill_name?: string;
   description?: string;
   skill_dir?: string;
+  working_directory?: string;
   location?: string;
+  path_resolution?: string;
   instructions?: string;
   mcp_provider?: string;
   available_tool_count?: number;
@@ -82,7 +84,9 @@ async function loadSkillFromHost(
     skill_name: skill.name,
     description: skill.description,
     skill_dir: skillDir,
+    working_directory: skillDir,
     location: skillFilePath,
+    path_resolution: `Resolve relative paths in this skill against ${skillDir}. For bash commands from this skill, cd to ${skillDir} first or use absolute paths.`,
     instructions: loaded.body,
   };
 }
@@ -98,7 +102,7 @@ export function createLoadSkillTool(
 ) {
   return tool({
     description:
-      "Load a skill by name so its instructions and provider tool catalog are available for this turn. When the result includes mcp_provider and available_tool_count, use searchMcpTools to list or search descriptors before callMcpTool. Use when a request clearly matches a known skill.",
+      "Load a skill by name for this turn. The result includes working_directory; resolve skill paths there and run skill-owned bash commands from there or with absolute paths. When the result includes mcp_provider, use searchMcpTools before callMcpTool. Use when a request clearly matches a known skill.",
     inputSchema: Type.Object({
       skill_name: Type.String({
         minLength: 1,

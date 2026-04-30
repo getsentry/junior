@@ -6,6 +6,7 @@ import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level"
 import type { AgentTurnUsage } from "@/chat/usage";
 import {
   buildReplyDeliveryPlan,
+  isReactionOnlyIntent,
   type ReplyDeliveryPlan,
 } from "@/chat/services/reply-delivery-plan";
 import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
@@ -23,6 +24,9 @@ import {
   normalizeToolNameFromResult,
   summarizeMessageText,
 } from "@/chat/respond-helpers";
+
+const POST_CANVAS_REPLY_MAX_CHARS = 700;
+const POST_CANVAS_REPLY_MAX_LINES = 8;
 
 export interface AgentTurnDiagnostics {
   assistantMessageCount: number;
@@ -74,6 +78,32 @@ export interface TurnResultInput {
   assistantUserName?: string;
 }
 
+function isVerbosePostCanvasReply(text: string): boolean {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  return (
+    text.length > POST_CANVAS_REPLY_MAX_CHARS ||
+    lines.length > POST_CANVAS_REPLY_MAX_LINES
+  );
+}
+
+function getCreatedCanvasUrl(
+  artifactStatePatch: Partial<ThreadArtifactsState>,
+): string | undefined {
+  if (artifactStatePatch.lastCanvasUrl) {
+    return artifactStatePatch.lastCanvasUrl;
+  }
+  return artifactStatePatch.recentCanvases?.find((canvas) => canvas.url)?.url;
+}
+
+function buildBriefPostCanvasReply(
+  artifactStatePatch: Partial<ThreadArtifactsState>,
+): string {
+  const canvasUrl = getCreatedCanvasUrl(artifactStatePatch);
+  return canvasUrl
+    ? `I created a canvas with the full reference: ${canvasUrl}`
+    : "I created a canvas with the full reference.";
+}
+
 /** Process raw agent messages into a structured AssistantReply. */
 export function buildTurnResult(input: TurnResultInput): AssistantReply {
   const {
@@ -113,6 +143,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
   const channelPostPerformed = successfulToolNames.has(
     "slackChannelPostMessage",
   );
+  const canvasCreated = successfulToolNames.has("slackCanvasCreate");
   const reactionPerformed = successfulToolNames.has("slackMessageAddReaction");
   const baseDeliveryPlan = buildReplyDeliveryPlan({
     explicitChannelPostIntent,
@@ -164,8 +195,19 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
       ? "success"
       : "execution_failure";
   const fallbackText = buildExecutionFailureMessage(toolErrorCount);
+  const suppressReactionOnlyText =
+    reactionPerformed &&
+    !channelPostPerformed &&
+    replyFiles.length === 0 &&
+    Boolean(primaryText) &&
+    isReactionOnlyIntent(userInput);
+  const rawResponseText = suppressReactionOnlyText
+    ? ""
+    : primaryText || (sideEffectOnlySuccess ? "" : fallbackText);
   const responseText =
-    primaryText || (sideEffectOnlySuccess ? "" : fallbackText);
+    canvasCreated && isVerbosePostCanvasReply(rawResponseText)
+      ? buildBriefPostCanvasReply(artifactStatePatch)
+      : rawResponseText;
   const escapedOrRawPayload =
     Boolean(primaryText) &&
     (isExecutionEscapeResponse(primaryText) ||

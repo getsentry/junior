@@ -1,6 +1,6 @@
 ---
 name: github-code
-description: Clone GitHub repositories, investigate source code, and manage pull requests via GitHub CLI. Use when users ask to inspect implementation details in a repository, clone code, edit files, answer source-code questions from repo evidence, open/edit/view/merge pull requests, or explain that PR creation needs the branch pushed with remote write auth before `gh pr create`. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
+description: Clone repositories, inspect source, edit code, and manage pull requests with GitHub CLI. Use for repo implementation questions, cloning/editing, PR inspection/mutation, and PR auth-order questions. For PR auth order, answer that `git push` needs GitHub remote write access before `gh pr create`. Prefer this skill for repository and code tasks even when the repo concerns Sentry products.
 allowed-tools: bash
 ---
 
@@ -48,6 +48,7 @@ Repository checkout, source-code investigation, and pull request operations via 
 
 - Use for questions like "where is this implemented?", "how does this workflow work in code?", "is there already logic for X?", or "verify this from the repo."
 - If the current workspace already contains the target repository, inspect local files directly before cloning.
+- Do not treat this skill's `SKILL.md`, bundled references, or `/vercel/sandbox/skills/...` as target repository source code. If no checkout of the target repo is present, inspect the configured GitHub repository by cloning it shallowly or reading files through `gh` before answering.
 - Prefer the narrowest deterministic evidence: local file search, exact file reads, targeted clone inspection, existing issues/PRs, tests.
 - Cite repository evidence in the reply: file paths, symbols, issue/PR numbers, or commit references when known.
 - If evidence is incomplete, say what is unknown instead of guessing.
