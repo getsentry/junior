@@ -194,20 +194,14 @@ async function fetchWithPinnedLookup(
           try {
             signal.removeEventListener("abort", onAbort);
             const headers = new Headers();
-            for (const [name, value] of Object.entries(response.headers)) {
-              if (Array.isArray(value)) {
-                for (const item of value) {
-                  headers.append(name, item);
-                }
-                continue;
-              }
-              if (typeof value === "string") {
-                headers.set(name, value);
-              }
+            const rawHeaders = response.rawHeaders;
+            for (let i = 0; i < rawHeaders.length; i += 2) {
+              headers.append(rawHeaders[i], rawHeaders[i + 1]);
             }
 
-            const raw = response.statusCode ?? 500;
-            const status = raw >= 200 && raw <= 599 ? raw : 502;
+            const rawStatus = response.statusCode ?? 500;
+            const status =
+              rawStatus >= 200 && rawStatus <= 599 ? rawStatus : 502;
             resolve(
               new Response(Buffer.concat(chunks), {
                 status,
@@ -343,7 +337,5 @@ export async function readResponseBody(
     chunks.push(value);
   }
 
-  return new TextDecoder().decode(
-    Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))),
-  );
+  return new TextDecoder().decode(Buffer.concat(chunks));
 }
