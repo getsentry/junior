@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-04-13
+- Last Edited: 2026-04-30
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-03-05: Linked to canonical session resumability contract for multi-slice timeout recovery.
 - 2026-04-06: Switched stop-reason observability to `gen_ai.response.finish_reasons`.
 - 2026-04-13: Clarified timeout behavior when turn-session checkpoints are available for resumable slices.
+- 2026-04-30: Added the thinking-level routing contract and normal-effort default.
 
 ## Status
 
@@ -38,6 +39,17 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 - Use `Agent` from `@mariozechner/pi-agent-core` for reply generation.
 - Use bounded execution with `AGENT_TURN_TIMEOUT_MS` and explicit `agent.abort()` on timeout.
 - Completion is based on assistant text output; there is no classifier-driven continuation loop.
+
+### Thinking-level routing
+
+- Route each main assistant turn through the fast thinking classifier before creating the Pi `Agent`.
+- The classifier may run with low thinking because it is a bounded routing task; the selected main-turn level is independent.
+- The default and failure fallback for substantive work is medium effort, which is the normal assistant reasoning level.
+- Use `none` only for greetings, acknowledgments, and turns that need no substantive assistant work.
+- Use `low` rarely, only for deterministic one-step answers or transformations with no tools, no current or external facts, no thread-background interpretation, and no source verification.
+- Use `medium` for ordinary assistant work, including explanations, source-backed checks, thread follow-ups, likely tool use, ambiguity, or multi-step analysis.
+- Use `high` for code changes, debugging/root-cause analysis, research-heavy work, non-trivial drafting, or explicit requests to be thorough.
+- Thread background and current-turn attachment/source blocks floor non-`none` selections at medium so short follow-ups and source-backed turns do not run with shallow reasoning.
 
 ### Timeout behavior
 

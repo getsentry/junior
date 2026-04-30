@@ -24,7 +24,13 @@ export interface TurnThinkingSelection {
   reason: string;
 }
 
-const DEFAULT_THINKING_LEVEL: TurnThinkingSelection["thinkingLevel"] = "low";
+const DEFAULT_THINKING_LEVEL: TurnThinkingSelection["thinkingLevel"] = "medium";
+const THINKING_LEVEL_RANK: Record<TurnThinkingLevel, number> = {
+  none: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+};
 
 interface TrimmedContext {
   text: string;
@@ -58,13 +64,14 @@ function trimContextForRouter(text: string | undefined): TrimmedContext | null {
 
 function buildClassifierSystemPrompt(): string {
   return [
-    "You route assistant turns to the cheapest thinking level that is still likely to succeed.",
+    "You route assistant turns to the thinking level most likely to produce a complete, source-grounded answer.",
     "Choose exactly one bucket: none, low, medium, or high.",
     "",
-    "Use none for greetings, acknowledgments, and trivial single-step asks.",
-    "Use low for straightforward explanations or simple one-step work.",
-    "Use medium for investigations, ambiguous asks, multi-step analysis, or likely multi-tool work.",
+    "Use none only for greetings, acknowledgments, and turns that need no substantive assistant work.",
+    "Use low rarely: only for deterministic one-step answers or transformations with no tools, no current/external facts, no thread-background interpretation, and no source verification.",
+    "Use medium for normal assistant work: explanations, source-backed checks, thread follow-ups, tool choice, likely tool use, ambiguous asks, multi-step analysis, or anything where a confident but shallow answer would be risky.",
     "Use high for code changes, debugging/root-cause analysis, research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
+    "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and the thread-background contains a pending task, classify the pending task — not the affirmation.",
     "",
@@ -173,18 +180,44 @@ export async function selectTurnThinkingLevel(args: {
         },
         prompt,
       });
+      const normalizedSelection = applyThinkingFloor(selection, {
+        minimum: trimmedContext || turnBlockCount > 0 ? "medium" : undefined,
+      });
 
       setSpanAttributes({
-        "app.ai.thinking_level": selection.thinkingLevel,
-        "app.ai.thinking_level_reason": selection.reason,
-        ...(selection.confidence !== undefined
-          ? { "app.ai.thinking_level_confidence": selection.confidence }
+        "app.ai.thinking_level": normalizedSelection.thinkingLevel,
+        "app.ai.thinking_level_reason": normalizedSelection.reason,
+        ...(normalizedSelection.confidence !== undefined
+          ? {
+              "app.ai.thinking_level_confidence":
+                normalizedSelection.confidence,
+            }
           : {}),
       });
 
-      return selection;
+      return normalizedSelection;
     },
   );
+}
+
+function applyThinkingFloor(
+  selection: TurnThinkingSelection,
+  args: { minimum?: TurnThinkingLevel },
+): TurnThinkingSelection {
+  const minimum = args.minimum;
+  if (
+    !minimum ||
+    selection.thinkingLevel === "none" ||
+    THINKING_LEVEL_RANK[selection.thinkingLevel] >= THINKING_LEVEL_RANK[minimum]
+  ) {
+    return selection;
+  }
+
+  return {
+    ...selection,
+    thinkingLevel: minimum,
+    reason: `thinking_floor:${minimum}:${selection.reason}`,
+  };
 }
 
 async function classifyTurn(args: {
@@ -214,7 +247,7 @@ async function classifyTurn(args: {
       return {
         confidence: parsed.confidence,
         thinkingLevel: DEFAULT_THINKING_LEVEL,
-        reason: `low_confidence_default:${reason}`,
+        reason: `low_confidence_medium_default:${reason}`,
       };
     }
 

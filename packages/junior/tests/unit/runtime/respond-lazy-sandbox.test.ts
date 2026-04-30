@@ -245,7 +245,7 @@ vi.mock("@/chat/pi/client", () => ({
     if (instruction === "attach the report") {
       return {
         object: {
-          thinking_level: "low",
+          thinking_level: "medium",
           confidence: 1,
           reason: "simple attachment request",
         },
@@ -545,6 +545,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(enabledCredentialSkillNames.value).toEqual(["demo-skill"]);
     expect(reply.sandboxId).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual(["loadSkill"]);
+    expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
 
   it("reprovisions plugin credentials for checkpoint-loaded skills at turn start", async () => {
@@ -566,7 +567,7 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     expect(reply.text).toBe("Attached report.");
     expect(createSandboxCallCount.value).toBe(1);
     expect(reply.diagnostics.toolCalls).toEqual(["attachFile"]);
-    expect(selectedThinkingLevels.value).toEqual(["low"]);
+    expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
 
   it("uses a high thinking level for explicit code-change asks", async () => {

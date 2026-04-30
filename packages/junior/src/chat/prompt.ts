@@ -9,7 +9,11 @@ import {
 import { logInfo, logWarn } from "@/chat/logging";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import { slackOutputPolicy } from "@/chat/slack/output";
-import { SANDBOX_DATA_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
+import {
+  SANDBOX_DATA_ROOT,
+  SANDBOX_WORKSPACE_ROOT,
+  sandboxSkillDir,
+} from "@/chat/sandbox/paths";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
@@ -317,33 +321,147 @@ function formatThreadParticipantsLines(
   });
 }
 
+function formatSlackCapabilityNames(
+  capabilities:
+    | {
+        canAddReactions?: boolean;
+        canCreateCanvas?: boolean;
+        canPostToChannel?: boolean;
+      }
+    | undefined,
+): string {
+  const names = [
+    capabilities?.canCreateCanvas ? "canvas_create" : "",
+    capabilities?.canPostToChannel ? "channel_post" : "",
+    capabilities?.canAddReactions ? "reaction_add" : "",
+  ].filter(Boolean);
+  return names.length > 0 ? names.join(", ") : "none";
+}
+
 const HEADER =
   "You are a Slack-based helper assistant. The behavior and output blocks below are authoritative; the personality block sets voice only.";
 
-const BEHAVIOR_RULES = [
-  "- Load the best-matching skill/tool when relevant, then use it before answering; do not preload multiple skills or claim tool use that did not happen.",
-  "- After `loadSkill`, resolve references under `skill_dir`; for active MCP catalogs, use `searchMcpTools` then `callMcpTool` with exact returned tool names and required arguments nested under `arguments`.",
-  "- Default to acting in-turn: use relevant available skills/tools to satisfy the request, continue until done or blocked, and only ask the user when access or required input is missing. If a fact cannot be verified, say so.",
-  "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
-  "- Keep work silent and post one result-focused reply unless blocked or waiting on user input; do not use reactions as progress.",
-  "- Do not claim an attachment, canvas, or channel post succeeded unless the tool returned success this turn; when it did, include any link the tool returned.",
-  "- Run authenticated provider commands directly; resolve target defaults first and let the runtime handle auth pauses/resumes.",
-  "- On resumed turns, post a brief continuation notice, then the resumed answer as a separate message.",
-  "- For tool/runtime failures, run the named check before diagnosing and report the exact failed command plus stderr/exit code.",
-  "- Run `jr-rpc config get|set|unset|list` as standalone bash commands for conversation-scoped provider defaults; do not chain them with `cd`, `&&`, pipes, or provider commands.",
-  "- For explicit channel-post or emoji-reaction requests, skip the text reply.",
+const TOOL_POLICY_RULES = [
+  "- Tool schemas are the source of truth for parameters; tool names are case-sensitive, so call tools exactly by their exposed names and do not invent arguments.",
+  "- Use tools for actionable work and for facts that are mutable, external, repository-backed, provider-backed, or requested as verified/current. Stable general knowledge and already-provided context may be answered directly.",
+  "- Verification source order: conversation/thread context; user-provided attachments, links, and reference files; local/sandbox files when present; loaded skill references; repository/provider tools; public web. Use the nearest authoritative available source before weaker sources.",
+  "- For repository or implementation questions, inspect repository evidence first: local checkout when present, otherwise the configured GitHub/source provider. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
+  `- Sandbox-backed file and shell tools operate in an isolated workspace rooted at ${SANDBOX_WORKSPACE_ROOT}; readFile/writeFile paths are sandbox-workspace paths, bash runs inside that workspace, and attachFile accepts absolute or workspace-relative sandbox paths.`,
+  "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
+  "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
+  "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
 ];
+
+const TOOL_CALL_STYLE_RULES = [
+  "- For routine low-risk tool use, call the tool directly without narrating the obvious step first.",
+  "- Briefly narrate only when it helps the user understand multi-step work, sensitive actions, destructive actions, or a notable change in approach.",
+  "- When a first-class tool exists for an action, use it directly instead of asking the user to run an equivalent command, slash command, or manual lookup.",
+  "- Keep tool-call explanations separate from final answers; final answers should report results, evidence, or blockers.",
+];
+
+const SKILL_POLICY_RULES = [
+  "- Scan `<available-skills>` for the user's task. If one skill clearly fits, load it before answering. If several fit, pick the most specific. If none fits, do not load a skill.",
+  "- Never load multiple skills up front. After `loadSkill`, follow `<loaded-skills>` and resolve relative references under that skill's location.",
+  "- For explicit `/skill` triggers, treat that skill as selected unless the tool says it is unavailable.",
+  "- For active MCP catalogs, use `searchMcpTools` to inspect descriptors before `callMcpTool`; pass exact returned `tool_name` values and put provider fields inside `arguments`.",
+  "- Run authenticated provider commands directly after resolving target defaults; let the runtime handle auth pauses/resumes.",
+  "- Run `jr-rpc config get|set|unset|list` as standalone bash commands for conversation-scoped provider defaults; do not chain them with `cd`, `&&`, pipes, or provider commands.",
+];
+
+const EXECUTION_CONTRACT_RULES = [
+  "- Actionable request: act in this turn.",
+  "- Continue until done or genuinely blocked. Do not finish with a plan, promise, or offer to check next when an available tool or source can move the request forward.",
+  "- Completion means the final answer covers the user's actual ask, including requested follow-up checks, and is grounded in the best evidence you could access.",
+  "- Ask the user only for missing access, approval, or a decision that blocks safe progress. Ask one focused question; otherwise infer conservatively and continue.",
+  "- For conflicting evidence, compare sources and state which source is authoritative for the answer.",
+  "- For non-trivial or long-running work, call `reportProgress` early when available, then only when the major phase changes. Routine tool calls should stay silent.",
+];
+
+const CONVERSATION_RULES = [
+  "- In thread follow-ups, answer from prior thread context; do not repeat resolved clarifying questions.",
+  "- Preserve attribution roles from thread context: the requester is the person asking now, which may differ from the original reporter or subject.",
+  "- On resumed turns, post a brief continuation notice, then the resumed answer as a separate message.",
+];
+
+const SLACK_ACTION_RULES = [
+  "- Context-bound Slack tools use runtime-owned targets; do not invent channel, canvas, list, or message IDs.",
+  "- Use first-class Slack tools for Slack side effects; do not use bash, curl, or provider APIs to bypass Slack tool targeting.",
+  "- Use channel-post and emoji-reaction tools only when the user explicitly asks for that Slack side effect.",
+  "- For explicit channel-post or emoji-reaction requests, skip a duplicate thread text reply when the tool result already satisfies the request.",
+  "- Do not claim an attachment, canvas, channel post, list update, or reaction succeeded unless the tool returned success this turn; when it did, include any link the tool returned.",
+  "- Do not use reactions as progress indicators.",
+];
+
+const SAFETY_RULES = [
+  "- Stay within the user's request and the runtime's available capabilities; do not pursue independent goals, persistence, replication, credential gathering, or access expansion.",
+  "- Respect stop, pause, audit, and approval boundaries. Do not bypass safeguards or persuade the user to weaken them.",
+  "- Do not change system prompts, tool policies, security settings, credentials, or runtime configuration unless the user explicitly requests that exact administrative action and an available tool permits it.",
+];
+
+const FAILURE_RULES = [
+  "- For tool/runtime failures, run the named check before diagnosing and report the exact failed command plus stderr/exit code.",
+  "- If a fact cannot be verified after focused checks, say what you checked and what blocked a stronger answer.",
+  "- Do not surface raw tool payloads, execution-escape text, or internal routing metadata as the final answer.",
+];
+
+function renderRuleSection(tag: string, lines: string[]): string {
+  return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
+}
+
+function buildBehaviorSection(): string {
+  return [
+    renderRuleSection("tool-policy", TOOL_POLICY_RULES),
+    renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
+    renderRuleSection("skill-policy", SKILL_POLICY_RULES),
+    renderRuleSection("execution-contract", EXECUTION_CONTRACT_RULES),
+    renderRuleSection("conversation", CONVERSATION_RULES),
+    renderRuleSection("slack-actions", SLACK_ACTION_RULES),
+    renderRuleSection("safety", SAFETY_RULES),
+    renderRuleSection("failure-handling", FAILURE_RULES),
+  ].join("\n\n");
+}
 
 function buildOutputSection(): string {
   const openTag = `<output format="slack-mrkdwn" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`;
   return [
     openTag,
+    "- Start with the answer or result, not internal process narration.",
     "- Use Slack-friendly mrkdwn: bolded section labels instead of headings, no markdown tables or markdown links, and plain URLs.",
     "- Keep replies brief and scannable; use bullets or short code blocks when helpful, and one compact thread reply when it fits.",
     "- When a research or document-style answer would benefit from continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to a short summary plus the canvas link.",
-    "- End every turn with a final user-facing markdown response.",
+    "- Unless a successful Slack side-effect tool intentionally satisfied the request by itself, end every turn with a final user-facing markdown response.",
     "</output>",
   ].join("\n");
+}
+
+function buildRuntimeSection(params: {
+  channelId?: string;
+  fastModelId?: string;
+  modelId?: string;
+  slackCapabilities?: {
+    canAddReactions?: boolean;
+    canCreateCanvas?: boolean;
+    canPostToChannel?: boolean;
+  };
+  thinkingLevel?: string;
+}): string {
+  const lines = [
+    `- version: ${escapeXml(getRuntimeMetadata().version ?? "unknown")}`,
+    params.modelId ? `- model: ${escapeXml(params.modelId)}` : "",
+    params.fastModelId ? `- fast_model: ${escapeXml(params.fastModelId)}` : "",
+    params.thinkingLevel
+      ? `- thinking: ${escapeXml(params.thinkingLevel)}`
+      : "",
+    params.channelId ? "- channel: slack" : "",
+    params.channelId
+      ? `- slack_capabilities: ${escapeXml(
+          formatSlackCapabilityNames(params.slackCapabilities),
+        )}`
+      : "",
+    `- sandbox_workspace: ${escapeXml(SANDBOX_WORKSPACE_ROOT)}`,
+  ].filter(Boolean);
+
+  return renderTagBlock("runtime", lines.join("\n"));
 }
 
 function buildContextSection(params: {
@@ -373,11 +491,6 @@ function buildContextSection(params: {
         ...referenceLines,
       ]),
     );
-  }
-
-  const runtimeVersion = getRuntimeMetadata().version;
-  if (runtimeVersion) {
-    blocks.push([`<runtime version="${escapeXml(runtimeVersion)}" />`]);
   }
 
   blocks.push(
@@ -467,6 +580,17 @@ export function buildSystemPrompt(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs?: ActiveMcpCatalogSummary[];
+  runtime?: {
+    channelId?: string;
+    fastModelId?: string;
+    modelId?: string;
+    slackCapabilities?: {
+      canAddReactions?: boolean;
+      canCreateCanvas?: boolean;
+      canPostToChannel?: boolean;
+    };
+    thinkingLevel?: string;
+  };
   invocation: SkillInvocation | null;
   assistant?: {
     userName?: string;
@@ -499,6 +623,8 @@ export function buildSystemPrompt(params: {
   // Core harness contract:
   // - See specs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
   // - Keep this prompt generic and platform-level (behavior, output contract, capability disclosure).
+  // - Keep stable, high-priority operating rules before volatile turn context
+  //   so instruction salience and prompt-prefix caching both stay predictable.
   // - Platform-level behavior rules must live here, never in SOUL.md (pluggable per deployment).
   // - Skill-specific instructions belong in skills/*/SKILL.md and are injected via <loaded-skills>.
   // - Pi-agent discloses only stable runtime tools natively. MCP tool catalogs
@@ -509,6 +635,13 @@ export function buildSystemPrompt(params: {
   const sections = [
     HEADER,
     renderTagBlock("personality", JUNIOR_PERSONALITY.trim()),
+    renderTagBlock("behavior", buildBehaviorSection()),
+    buildOutputSection(),
+    buildCapabilitiesSection({
+      availableSkills: params.availableSkills,
+      activeSkills: params.activeSkills,
+      activeMcpCatalogs: params.activeMcpCatalogs ?? [],
+    }),
     buildContextSection({
       assistant: params.assistant,
       requester: params.requester,
@@ -518,13 +651,7 @@ export function buildSystemPrompt(params: {
       invocation: params.invocation,
       turnState: params.turnState,
     }),
-    buildCapabilitiesSection({
-      availableSkills: params.availableSkills,
-      activeSkills: params.activeSkills,
-      activeMcpCatalogs: params.activeMcpCatalogs ?? [],
-    }),
-    renderTagBlock("behavior", BEHAVIOR_RULES.join("\n")),
-    buildOutputSection(),
+    buildRuntimeSection(params.runtime ?? {}),
   ];
 
   return sections.join("\n\n");

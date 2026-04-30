@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-04-28
+- Last Edited: 2026-04-30
 
 ## Changelog
 
 - 2026-04-28: Initial spec defining ownership, structure, and bloat controls for the core agent prompt.
+- 2026-04-30: Reworked the core prompt contract around fixed operating sections, source hierarchy, explicit completion gates, OpenClaw-style tool-call/safety boundaries, and stable-before-volatile ordering.
 
 ## Status
 
@@ -43,30 +44,72 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 `buildSystemPrompt(...)` must keep these concerns distinct:
 
 1. Identity/personality.
-2. Runtime and thread context.
-3. Available and loaded capabilities.
-4. Core behavior rules.
-5. Slack output contract.
+2. Core operating rules.
+3. Slack output contract.
+4. Available and loaded capabilities.
+5. Runtime and thread context.
 
 Context blocks describe facts. Behavior and output blocks carry instructions.
 
+Prompt order is part of the contract. Stable, high-priority operating rules must appear before volatile thread/session context so behavior has salience and provider prompt-prefix caching remains predictable. Do not move requester, artifacts, active catalogs, or configuration defaults above the behavior/output contract.
+
+The core operating rules must be split into fixed sections:
+
+1. Tool policy.
+2. Tool-call style.
+3. Skill policy.
+4. Execution contract.
+5. Conversation/thread continuity.
+6. Slack side-effect actions.
+7. Safety.
+8. Failure handling.
+
+These sections are separate because each owns a distinct decision. Do not collapse them back into one flat list when adding new behavior.
+
 ### Execution bias
 
-The core behavior rules must include one compact execution-bias rule:
+The execution contract must include compact execution-bias rules:
 
 - Default to acting in-turn.
 - Use relevant available skills/tools to satisfy the request.
 - Continue until done or blocked.
 - Ask the user only when access or required input is missing.
+- Treat plans, promises, and "I can check" offers as incomplete when an available tool or source can move the request forward.
+- Require final answers to cover the user's actual ask, including requested follow-up checks.
 - State when a fact cannot be verified.
 
-Do not restate this rule in skills or add sibling bullets that say the same thing with different wording.
+Do not restate these rules in skills or add sibling bullets that say the same thing with different wording.
+
+### Source hierarchy
+
+The tool policy must tell the model when source-backed work is required and which source class to try first:
+
+1. Conversation/thread context.
+2. User-provided attachments, links, and reference files.
+3. Local/sandbox files when present.
+4. Loaded skill references.
+5. Repository or provider tools.
+6. Public web.
+
+For repository or implementation questions, repository evidence is required before generic product framing or memory. When the repository is not locally mounted, the model should use the configured source provider rather than pretending local files are available.
+
+Mutable facts need live checks. Examples include files, repos, versions, issues, services, clocks, and live provider data.
 
 ### Tool and skill policy
 
 - Tool schemas remain the source of truth for tool parameters. The prompt may state when to use tools, not re-document every tool schema.
 - The model should load the best-matching skill when relevant and avoid preloading unrelated skills.
 - After loading a plugin-backed skill, the prompt may describe the generic MCP lookup path, but provider-specific tool strategy belongs in the skill or plugin docs.
+- Skill selection should be explicit: scan available skills, load one clearly matching skill, choose the most specific skill when several match, and avoid loading any skill when none clearly applies.
+- Tool-call style belongs in its own section: call routine tools directly, narrate only when it helps, and prefer first-class tools over asking the user to perform equivalent manual work.
+
+### Runtime and safety boundaries
+
+The tool policy must make sandbox workspace ownership explicit: sandbox-backed file and shell tools inspect the isolated sandbox workspace, not arbitrary host files. If sandbox execution is unavailable, the model should report that blocker instead of implying local inspection succeeded.
+
+Runtime facts should live in a compact runtime block after volatile context. Include only facts that help the model choose valid behavior, such as runtime version, model ids, selected thinking level, channel capabilities, and sandbox workspace root. Do not mix requester, artifacts, or configuration defaults into that runtime block.
+
+The safety section must stay generic and runtime-level: remain within the user's request, respect stop/pause/audit/approval boundaries, avoid access expansion, and avoid administrative prompt/tool/security/config changes unless explicitly requested and supported by an available tool.
 
 ### Bloat controls
 

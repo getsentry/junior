@@ -69,6 +69,34 @@ describe("Skill Infrastructure", () => {
   );
 
   slackEval(
+    "when asked to double-check a source-backed fact, use the source and answer completely",
+    {
+      overrides: { skill_dirs: ["evals/fixtures/skills"] },
+      events: [
+        mention(
+          "Can you double-check what the source handbook says about closed tracking issues proving capability support? I think there was a note for this.",
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "A verification request uses the available source-backed skill and returns the checked answer instead of offering to check later.",
+        pass: [
+          "observed_tool_invocations includes a `loadSkill` invocation with `skill_name` set to `source-handbook`.",
+          "observed_tool_invocations includes a `readFile` invocation.",
+          "The assistant posts exactly one final answer.",
+          "The answer says closed tracking issues alone do not prove capability support.",
+          "The answer says implementation evidence, linked PRs, release notes, issue comments, or an equivalent source-backed rationale is needed.",
+        ],
+        fail: [
+          "Do not offer to check the source handbook next or later.",
+          "Do not answer purely from memory without observed source/tool use.",
+          "Do not claim that a closed issue is enough to prove the capability exists.",
+        ],
+      }),
+    },
+  );
+
+  slackEval(
     "when an MCP-backed skill handles a lookup, return the provider-backed answer",
     {
       overrides: {

@@ -56,7 +56,7 @@ describe("selectTurnThinkingLevel", () => {
     expect(completeObject).toHaveBeenCalledOnce();
   });
 
-  it("falls back to the default low effort when classifier confidence is low", async () => {
+  it("falls back to medium effort when classifier confidence is low", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         thinking_level: "high",
@@ -72,12 +72,13 @@ describe("selectTurnThinkingLevel", () => {
     });
 
     expect(profile).toMatchObject({
-      thinkingLevel: "low",
-      reason: "low_confidence_default:not confident",
+      thinkingLevel: "medium",
+      reason: "low_confidence_medium_default:not confident",
     });
+    expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("medium");
   });
 
-  it("falls back to the default low effort when the classifier fails", async () => {
+  it("falls back to medium effort when the classifier fails", async () => {
     const completeObject = vi.fn(async () => {
       throw new Error("router failed");
     });
@@ -89,8 +90,74 @@ describe("selectTurnThinkingLevel", () => {
     });
 
     expect(profile).toMatchObject({
-      thinkingLevel: "low",
+      thinkingLevel: "medium",
       reason: "classifier_error_default",
+    });
+  });
+
+  it("preserves high-confidence low classifications for deterministic simple work", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        thinking_level: "low",
+        confidence: 0.97,
+        reason: "deterministic one-step transform",
+      },
+    }));
+
+    const profile = await selectTurnThinkingLevel({
+      completeObject,
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "alphabetize these words: beta, alpha",
+    });
+
+    expect(profile).toMatchObject({
+      thinkingLevel: "low",
+      reason: "deterministic one-step transform",
+    });
+    expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("low");
+  });
+
+  it("floors source-backed context turns at medium unless they are acknowledgments", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        thinking_level: "low",
+        confidence: 0.92,
+        reason: "simple follow-up",
+      },
+    }));
+
+    const profile = await selectTurnThinkingLevel({
+      completeObject,
+      conversationContext: "Earlier task: double-check the repo evidence.",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "go",
+    });
+
+    expect(profile).toMatchObject({
+      thinkingLevel: "medium",
+      reason: "thinking_floor:medium:simple follow-up",
+    });
+  });
+
+  it("does not floor acknowledgment turns with thread context", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        thinking_level: "none",
+        confidence: 0.96,
+        reason: "thanks only",
+      },
+    }));
+
+    const profile = await selectTurnThinkingLevel({
+      completeObject,
+      conversationContext: "Earlier answer already resolved the task.",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "thanks",
+    });
+
+    expect(profile).toMatchObject({
+      thinkingLevel: "none",
+      reason: "thanks only",
     });
   });
 

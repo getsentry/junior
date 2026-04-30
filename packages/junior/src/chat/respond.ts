@@ -663,6 +663,9 @@ export async function generateAssistantReply(
     });
 
     // ── Tool creation ────────────────────────────────────────────────
+    const toolChannelId =
+      context.toolChannelId ?? context.correlation?.channelId;
+    const channelCapabilities = resolveChannelCapabilities(toolChannelId);
     const tools = createTools(
       availableSkills,
       {
@@ -723,10 +726,8 @@ export async function generateAssistantReply(
         },
       },
       {
-        channelId: context.toolChannelId ?? context.correlation?.channelId,
-        channelCapabilities: resolveChannelCapabilities(
-          context.toolChannelId ?? context.correlation?.channelId,
-        ),
+        channelId: toolChannelId,
+        channelCapabilities,
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
         userText: userInput,
@@ -758,6 +759,13 @@ export async function generateAssistantReply(
       availableSkills,
       activeSkills,
       activeMcpCatalogs,
+      runtime: {
+        channelId: toolChannelId,
+        fastModelId: botConfig.fastModelId,
+        modelId: botConfig.modelId,
+        slackCapabilities: channelCapabilities,
+        thinkingLevel: thinkingSelection.thinkingLevel,
+      },
       invocation: skillInvocation,
       assistant: context.assistant,
       requester: context.requester,
