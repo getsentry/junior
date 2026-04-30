@@ -57,6 +57,7 @@ import { createApp } from "@sentry/junior";
 const app = await createApp({
   configDefaults: {
     "sentry.org": "sentry",
+    "github.org": "myorg",
     "github.repo": "myorg/myrepo",
   },
 });

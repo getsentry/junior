@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/plugins/registry", () => ({
   isPluginConfigKey: (key: string) =>
-    ["sentry.org", "sentry.project", "github.repo"].includes(key),
+    ["sentry.org", "sentry.project", "github.org", "github.repo"].includes(key),
 }));
 
 import {

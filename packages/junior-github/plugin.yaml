@@ -10,6 +10,7 @@ capabilities:
   - pull-requests.write
 
 config-keys:
+  - org
   - repo
 
 credentials:

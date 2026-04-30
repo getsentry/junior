@@ -67,6 +67,7 @@ capabilities:
   - github.pull-requests.read
   - github.pull-requests.write
 configKeys:
+  - github.org
   - github.repo
 target:
   type: repo

@@ -17,7 +17,7 @@ vi.mock("@/chat/plugins/registry", () => ({
               "github.pull-requests.read",
               "github.pull-requests.write",
             ],
-            configKeys: ["github.repo"],
+            configKeys: ["github.org", "github.repo"],
             credentials: {
               type: "github-app",
               apiDomains: ["api.github.com"],

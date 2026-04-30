@@ -29,7 +29,7 @@ const TEST_MANIFEST: PluginManifest = {
     "github.pull-requests.read",
     "github.pull-requests.write",
   ],
-  configKeys: ["github.repo"],
+  configKeys: ["github.org", "github.repo"],
   credentials: TEST_CREDENTIALS,
   target: {
     type: "repo",
