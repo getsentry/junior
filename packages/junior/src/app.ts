@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { setConfigDefaults } from "@/chat/configuration/defaults";
 import { logException } from "@/chat/logging";
 import { setPluginPackages } from "@/chat/plugins/package-discovery";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
@@ -11,6 +12,23 @@ import { POST as webhooksPOST } from "@/handlers/webhooks";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export interface JuniorAppOptions {
+  /**
+   * Install-wide configuration defaults applied to every conversation.
+   *
+   * Keys use the standard `provider.key` format (e.g. `"sentry.org"`).
+   * Channel-scoped overrides set via `jr-rpc config set` take precedence.
+   *
+   * @example
+   * ```ts
+   * createApp({
+   *   configDefaults: {
+   *     "sentry.org": "sentry",
+   *     "github.repo": "getsentry/sentry",
+   *   },
+   * });
+   * ```
+   */
+  configDefaults?: Record<string, unknown>;
   pluginPackages?: string[];
   waitUntil?: WaitUntilFn;
 }
@@ -55,6 +73,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   setPluginPackages(
     options?.pluginPackages ?? (await resolveBuildPluginPackages()),
   );
+  setConfigDefaults(options?.configDefaults);
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
 

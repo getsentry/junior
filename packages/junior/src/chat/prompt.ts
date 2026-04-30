@@ -529,7 +529,7 @@ function buildContextSection(params: {
   if (configLines) {
     blocks.push(
       renderTag("configuration", [
-        "Conversation-scoped defaults. Follow explicit user input when it conflicts.",
+        "Install and conversation-scoped defaults. Channel overrides take precedence; follow explicit user input when it conflicts.",
         ...configLines,
       ]),
     );

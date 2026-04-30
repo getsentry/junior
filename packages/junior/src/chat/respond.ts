@@ -20,6 +20,7 @@ import {
   createUserTokenStore,
 } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
+import { getConfigDefaults } from "@/chat/configuration/defaults";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
@@ -413,6 +414,7 @@ export async function generateAssistantReply(
       ? await context.channelConfiguration.resolveValues()
       : {};
     configurationValues = {
+      ...getConfigDefaults(),
       ...(context.configuration ?? {}),
       ...persistedConfigurationValues,
     };

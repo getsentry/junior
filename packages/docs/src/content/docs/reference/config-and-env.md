@@ -47,6 +47,25 @@ If your build command runs `junior snapshot create`:
 | `SENTRY_CLIENT_ID`     | Yes      | OAuth client ID.     |
 | `SENTRY_CLIENT_SECRET` | Yes      | OAuth client secret. |
 
+## Install-wide config defaults
+
+Set install-wide provider defaults so common contexts (e.g. your Sentry org) apply to every conversation without per-channel configuration.
+
+Pass `configDefaults` to `createApp()` in your `server.ts`:
+
+```ts
+import { createApp } from "@sentry/junior";
+
+const app = await createApp({
+  configDefaults: {
+    "sentry.org": "sentry",
+    "github.repo": "myorg/myrepo",
+  },
+});
+```
+
+Keys use the standard `provider.key` format declared by each plugin's `config-keys`. Channel-scoped overrides set via `jr-rpc config set` take precedence over install defaults.
+
 ## Verification
 
 - Validate required variables exist in deployment environment.

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-04-26
+- Last Edited: 2026-04-30
 
 ## Changelog
 
@@ -20,6 +20,7 @@
 - 2026-04-17: Added `env-vars` manifest block and declared-only `${NAME}` expansion for `mcp.url`; placeholders must be listed in `env-vars`, and defaults live in the declaration (no inline `${NAME:-default}` form).
 - 2026-04-26: Clarified that runtime setup authority belongs to `plugin.yaml`, not arbitrary skill prose.
 - 2026-04-28: Kept MCP execution behind stable `callMcpTool` while disclosing searchable MCP catalogs through `loadSkill`, `searchMcpTools`, and `<active-mcp-catalogs>`.
+- 2026-04-30: Added install-wide config defaults via `createApp({ configDefaults })` with channel-scoped override precedence.
 
 ## Status
 
@@ -38,6 +39,7 @@ Implemented (Sentry + GitHub migrated)
 - Provider Catalog: `packages/junior/src/chat/capabilities/catalog.ts`
 - Broker Factory: `packages/junior/src/chat/capabilities/factory.ts`
 - OAuth Providers: `packages/junior/src/chat/capabilities/jr-rpc-command.ts`
+- Install Config Defaults: `packages/junior/src/chat/configuration/defaults.ts`
 
 ## Purpose
 
@@ -375,6 +377,27 @@ The OAuth callback route uses `getOAuthProviderConfig()` instead of accessing `O
 ### Test credential override
 
 `TestCredentialBroker` substitution in eval mode works the same — `factory.ts` checks `EVAL_ENABLE_TEST_CREDENTIALS=1` and substitutes regardless of source.
+
+### Install-wide config defaults
+
+Deployers can set install-wide defaults for plugin config keys via `createApp()`:
+
+```typescript
+const app = await createApp({
+  configDefaults: {
+    "sentry.org": "sentry",
+  },
+});
+```
+
+Keys must use the qualified `provider.key` format declared by each plugin's `config-keys`. Values are validated against the standard secret-material screen.
+
+Resolution precedence (highest wins):
+
+1. Channel-scoped overrides (persisted via `jr-rpc config set`)
+2. Install-wide defaults (`configDefaults` in `createApp()`)
+
+Install defaults are stored once at startup (`setConfigDefaults`) and merged as the lowest-priority layer in `respond.ts` before each turn. The `<configuration>` block in the system prompt includes both install and channel-scoped values without distinguishing source.
 
 ## Skill integration
 
