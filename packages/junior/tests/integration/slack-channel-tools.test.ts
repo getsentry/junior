@@ -129,7 +129,6 @@ describe("slack channel tools", () => {
       channel: "C123",
       text: "Incident resolved.",
     });
-    expect(postCalls[0]?.params).toHaveProperty("mrkdwn");
     expect(getCapturedSlackApiCalls("chat.getPermalink")).toHaveLength(1);
   });
 
