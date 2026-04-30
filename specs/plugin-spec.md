@@ -390,14 +390,12 @@ const app = await createApp({
 });
 ```
 
-Keys must use the qualified `provider.key` format declared by each plugin's `config-keys`. Values are validated against the standard secret-material screen.
+Keys must be registered plugin config keys (`provider.key` declared in a loaded plugin manifest).
 
 Resolution precedence (highest wins):
 
 1. Channel-scoped overrides (persisted via `jr-rpc config set`)
 2. Install-wide defaults (`configDefaults` in `createApp()`)
-
-Install defaults are stored once at startup (`setConfigDefaults`) and merged as the lowest-priority layer in `respond.ts` before each turn. The `<configuration>` block in the system prompt includes both install and channel-scoped values without distinguishing source.
 
 ## Skill integration
 

@@ -49,9 +49,7 @@ If your build command runs `junior snapshot create`:
 
 ## Install-wide config defaults
 
-Set install-wide provider defaults so common contexts (e.g. your Sentry org) apply to every conversation without per-channel configuration.
-
-Pass `configDefaults` to `createApp()` in your `server.ts`:
+Pass `configDefaults` to `createApp()` to set provider defaults across all conversations:
 
 ```ts
 import { createApp } from "@sentry/junior";
@@ -64,7 +62,7 @@ const app = await createApp({
 });
 ```
 
-Keys use the standard `provider.key` format declared by each plugin's `config-keys`. Channel-scoped overrides set via `jr-rpc config set` take precedence over install defaults.
+Keys must be registered plugin config keys. Channel-scoped overrides (`jr-rpc config set`) take precedence.
 
 ## Verification
 

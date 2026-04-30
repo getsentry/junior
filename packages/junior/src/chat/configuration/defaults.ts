@@ -2,12 +2,7 @@ import { isPluginConfigKey } from "@/chat/plugins/registry";
 
 let installDefaults: Record<string, unknown> = {};
 
-/**
- * Store install-wide configuration defaults provided by the deployer.
- *
- * Called once at startup from `createApp()`. Each key must be a valid
- * plugin config key (`provider.key` declared in a loaded plugin manifest).
- */
+/** Store install-wide config defaults; keys must be registered plugin config keys. */
 export function setConfigDefaults(
   defaults: Record<string, unknown> | undefined,
 ): void {

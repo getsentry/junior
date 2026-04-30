@@ -12,22 +12,7 @@ import { POST as webhooksPOST } from "@/handlers/webhooks";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export interface JuniorAppOptions {
-  /**
-   * Install-wide configuration defaults applied to every conversation.
-   *
-   * Keys use the standard `provider.key` format (e.g. `"sentry.org"`).
-   * Channel-scoped overrides set via `jr-rpc config set` take precedence.
-   *
-   * @example
-   * ```ts
-   * createApp({
-   *   configDefaults: {
-   *     "sentry.org": "sentry",
-   *     "github.repo": "getsentry/sentry",
-   *   },
-   * });
-   * ```
-   */
+  /** Install-wide provider defaults (`provider.key` format). Channel overrides take precedence. */
   configDefaults?: Record<string, unknown>;
   pluginPackages?: string[];
   waitUntil?: WaitUntilFn;
