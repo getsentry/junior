@@ -3,11 +3,12 @@
 ## Metadata
 
 - Created: 2026-02-27
-- Last Edited: 2026-03-03
+- Last Edited: 2026-04-30
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
+- 2026-04-30: Added `github.org` to GitHub provider configKeys.
 
 ## Status
 
