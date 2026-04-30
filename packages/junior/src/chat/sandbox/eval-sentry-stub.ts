@@ -36,7 +36,17 @@ if (args.length === 0 || args[0] === "--version" || args[0] === "version") {
   process.exit(0);
 }
 
-if (args[0] === "issues" && args[1] === "list") {
+if (args[0] === "--help" || args[0] === "help") {
+  outputText("USAGE\\n  sentry issue list|view|events ...\\n  sentry org list|view ...\\n  sentry log list|view ...\\n  sentry trace list|view|logs ...\\n  sentry api ...\\n");
+  process.exit(0);
+}
+
+if (args.includes("--help")) {
+  outputText("sentry eval stub help\\n");
+  process.exit(0);
+}
+
+if (args[0] === "issue" && args[1] === "list") {
   if (hasFlag("--json")) {
     outputJson([]);
   } else {
@@ -45,7 +55,7 @@ if (args[0] === "issues" && args[1] === "list") {
   process.exit(0);
 }
 
-if (args[0] === "organizations" && args[1] === "list") {
+if (args[0] === "org" && args[1] === "list") {
   if (hasFlag("--json")) {
     outputJson([{ slug: "getsentry", name: "Sentry" }]);
   } else {

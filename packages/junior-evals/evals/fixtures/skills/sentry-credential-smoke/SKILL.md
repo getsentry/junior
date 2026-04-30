@@ -10,7 +10,7 @@ allowed-tools: bash
 
 Call `bash` with exactly:
 
-`sentry issues list --org getsentry`
+`sentry issue list getsentry/ --limit 1`
 
 ## Step 2: Return The Result
 

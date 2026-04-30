@@ -111,7 +111,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: sentrySkill,
-        command: "sentry issues list",
+        command: "sentry issue list",
         details: {
           exit_code: 1,
           stderr: "401 unauthorized",
