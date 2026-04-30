@@ -1,16 +1,12 @@
-import {
-  validateConfigKey,
-  validateConfigValue,
-} from "@/chat/configuration/validation";
+import { isPluginConfigKey } from "@/chat/plugins/registry";
 
 let installDefaults: Record<string, unknown> = {};
 
 /**
  * Store install-wide configuration defaults provided by the deployer.
  *
- * Called once at startup from `createApp()`. Keys are validated against
- * the standard config-key format (`provider.key`) and values are screened
- * for accidental secret material.
+ * Called once at startup from `createApp()`. Each key must be a valid
+ * plugin config key (`provider.key` declared in a loaded plugin manifest).
  */
 export function setConfigDefaults(
   defaults: Record<string, unknown> | undefined,
@@ -20,14 +16,11 @@ export function setConfigDefaults(
     return;
   }
 
-  for (const [key, value] of Object.entries(defaults)) {
-    const keyError = validateConfigKey(key);
-    if (keyError) {
-      throw new Error(`configDefaults: ${keyError}`);
-    }
-    const valueError = validateConfigValue(value);
-    if (valueError) {
-      throw new Error(`configDefaults["${key}"]: ${valueError}`);
+  for (const key of Object.keys(defaults)) {
+    if (!isPluginConfigKey(key)) {
+      throw new Error(
+        `configDefaults: "${key}" is not a registered plugin config key`,
+      );
     }
   }
 

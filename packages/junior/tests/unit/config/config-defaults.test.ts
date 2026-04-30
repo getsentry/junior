@@ -1,4 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/chat/plugins/registry", () => ({
+  isPluginConfigKey: (key: string) =>
+    ["sentry.org", "sentry.project", "github.repo"].includes(key),
+}));
+
 import {
   getConfigDefaults,
   setConfigDefaults,
@@ -27,24 +33,10 @@ describe("install config defaults", () => {
     expect(getConfigDefaults()).toEqual({});
   });
 
-  it("rejects keys that do not match the config key format", () => {
-    expect(() => setConfigDefaults({ bad_key: "value" })).toThrow(
-      "configDefaults",
+  it("rejects keys that are not registered plugin config keys", () => {
+    expect(() => setConfigDefaults({ "unknown.key": "value" })).toThrow(
+      "not a registered plugin config key",
     );
-  });
-
-  it("rejects keys that look like secrets", () => {
-    expect(() => setConfigDefaults({ "my.token": "abc" })).toThrow(
-      "secret-related",
-    );
-  });
-
-  it("rejects values that contain secret material", () => {
-    expect(() =>
-      setConfigDefaults({
-        "sentry.org": "Bearer abcdefghijklmnopqrstuvwxyz123456",
-      }),
-    ).toThrow("secret material");
   });
 
   it("does not mutate the input object", () => {
