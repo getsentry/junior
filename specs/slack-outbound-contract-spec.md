@@ -3,13 +3,14 @@
 ## Metadata
 
 - Created: 2026-04-16
-- Last Edited: 2026-04-22
+- Last Edited: 2026-04-30
 
 ## Changelog
 
 - 2026-04-16: Initial canonical contract for Slack outbound operations and reply-text translation ownership.
 - 2026-04-16: Added support for finalized reply footers rendered as Slack context blocks with top-level text fallbacks.
 - 2026-04-22: Clarified that finalized reply footers may include the selected thinking-level bucket as structured reply metadata.
+- 2026-04-30: Switched reply body rendering from section/mrkdwn blocks to Slack-flavored markdown blocks; added markdownToSlackMrkdwn for notification fallback.
 
 ## Status
 
@@ -50,10 +51,11 @@ Slack outbound behavior is split into two explicit boundaries:
 
 Current rules:
 
-1. Prompting should target Slack-friendly markdown, not generic full CommonMark.
+1. Prompting targets Slack-flavored Markdown (a subset of standard Markdown that Slack's markdown block renders natively: bold, italic, links, lists, headings, code blocks — no tables).
 2. `slack/output.ts` is the only canonical place to normalize line endings, block spacing, and reply chunk boundaries for Slack replies.
-3. Continuation markers and interruption markers are delivery-time annotations owned by `slack/output.ts`, not model-authored text.
-4. If future markdown-to-`mrkdwn` adaptations are needed, they must be added in `slack/output.ts` rather than scattered across delivery callers.
+3. `slack/mrkdwn.ts` owns `markdownToSlackMrkdwn()` which converts Slack-flavored Markdown into `mrkdwn` for notification fallback text.
+4. Reply messages use the Slack `markdown` block (`{type: "markdown"}`) for the displayed body and pass `mrkdwn`-converted text in the top-level `text` field for notifications and accessibility.
+5. Continuation markers and interruption markers are delivery-time annotations owned by `slack/output.ts`, not model-authored text.
 
 ### 3. Message Posting Contract
 

@@ -60,11 +60,8 @@ describe("Slack contract: outbound normalization", () => {
           text: "hello",
           blocks: [
             {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: "hello",
-              },
+              type: "markdown",
+              text: "hello",
             },
             {
               type: "context",

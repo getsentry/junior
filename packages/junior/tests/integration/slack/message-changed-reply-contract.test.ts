@@ -150,11 +150,8 @@ describe("Slack contract: edited-message reply delivery", () => {
         params: expect.objectContaining({
           blocks: [
             {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: "Hello world",
-              },
+              type: "markdown",
+              text: "Hello world",
             },
             {
               type: "context",

@@ -6,6 +6,12 @@ interface SlackMrkdwnTextObject {
   type: "mrkdwn";
 }
 
+/** Slack-flavored Markdown block — accepts a standard Markdown subset and Slack renders it natively. */
+interface SlackMarkdownBlock {
+  text: string;
+  type: "markdown";
+}
+
 interface SlackSectionBlock {
   text: SlackMrkdwnTextObject;
   type: "section";
@@ -16,7 +22,10 @@ interface SlackContextBlock {
   type: "context";
 }
 
-export type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
+export type SlackMessageBlock =
+  | SlackMarkdownBlock
+  | SlackSectionBlock
+  | SlackContextBlock;
 
 interface SlackReplyFooterItem {
   label: string;
@@ -123,29 +132,31 @@ export function buildSlackReplyFooter(args: {
   return items.length > 0 ? { items } : undefined;
 }
 
-/** Build Slack blocks for a finalized reply plus its optional metadata footer. */
+/** Build Slack blocks for a reply chunk using the Slack-flavored markdown block for the body. */
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,
 ): SlackMessageBlock[] | undefined {
-  if (!text.trim() || !footer?.items.length) {
+  if (!text.trim()) {
     return undefined;
   }
 
-  return [
+  const blocks: SlackMessageBlock[] = [
     {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text,
-      },
+      type: "markdown",
+      text,
     },
-    {
+  ];
+
+  if (footer?.items.length) {
+    blocks.push({
       type: "context",
       elements: footer.items.map((item) => ({
         type: "mrkdwn",
         text: `*${escapeSlackMrkdwn(item.label)}:* ${escapeSlackMrkdwn(item.value)}`,
       })),
-    },
-  ];
+    });
+  }
+
+  return blocks;
 }

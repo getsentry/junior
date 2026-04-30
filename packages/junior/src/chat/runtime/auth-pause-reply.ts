@@ -18,6 +18,7 @@ import {
   buildSlackReplyFooter,
   type SlackMessageBlock,
 } from "@/chat/slack/footer";
+import { markdownToSlackMrkdwn } from "@/chat/slack/mrkdwn";
 import { postSlackMessage } from "@/chat/slack/outbound";
 import {
   coerceThreadConversationState,
@@ -41,7 +42,8 @@ function buildAuthPauseSlackMessage(args: {
     usage: args.usage,
   });
   const blocks = buildSlackReplyBlocks(args.text, footer);
-  return blocks ? { text: args.text, blocks } : { text: args.text };
+  const mrkdwnText = markdownToSlackMrkdwn(args.text) || args.text;
+  return blocks ? { text: mrkdwnText, blocks } : { text: mrkdwnText };
 }
 
 /** Persist a visible auth-pause note as the completed reply for the turn. */

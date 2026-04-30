@@ -79,7 +79,7 @@ describe("buildSlackReplyFooter", () => {
 });
 
 describe("buildSlackReplyBlocks", () => {
-  it("renders the reply body plus a Slack context footer block", () => {
+  it("renders the reply body as a markdown block plus a context footer", () => {
     const footer = buildSlackReplyFooter({
       conversationId: "slack:C123:1700000000.000100",
       durationMs: 1250,
@@ -92,11 +92,8 @@ describe("buildSlackReplyBlocks", () => {
 
     expect(buildSlackReplyBlocks("Hello world", footer)).toEqual([
       {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Hello world",
-        },
+        type: "markdown",
+        text: "Hello world",
       },
       {
         type: "context",
@@ -118,6 +115,15 @@ describe("buildSlackReplyBlocks", () => {
             text: "*Thinking:* high",
           },
         ],
+      },
+    ]);
+  });
+
+  it("renders a markdown block without footer when footer is undefined", () => {
+    expect(buildSlackReplyBlocks("Hello world", undefined)).toEqual([
+      {
+        type: "markdown",
+        text: "Hello world",
       },
     ]);
   });

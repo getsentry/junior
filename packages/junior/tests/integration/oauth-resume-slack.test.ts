@@ -94,11 +94,8 @@ describe("oauth resume slack integration", () => {
         params: expect.objectContaining({
           blocks: [
             {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: "The budget deadline you mentioned earlier was Friday.",
-              },
+              type: "markdown",
+              text: "The budget deadline you mentioned earlier was Friday.",
             },
             {
               type: "context",

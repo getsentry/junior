@@ -424,11 +424,11 @@ function buildBehaviorSection(): string {
 }
 
 function buildOutputSection(): string {
-  const openTag = `<output format="slack-mrkdwn" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`;
+  const openTag = `<output format="slack-markdown" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`;
   return [
     openTag,
     "- Start with the answer or result, not internal process narration.",
-    "- Use Slack-friendly mrkdwn: bolded section labels instead of headings, no markdown tables or markdown links, and plain URLs.",
+    "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No tables.",
     "- Keep replies brief and scannable; use bullets or short code blocks when helpful, and one compact thread reply when it fits.",
     "- When a research or document-style answer would benefit from continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to one or two short sentences plus the link; do not recap the canvas contents.",
     "- Unless a successful Slack side-effect tool intentionally satisfied the request by itself, end every turn with a final user-facing markdown response.",
