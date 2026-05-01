@@ -11,8 +11,37 @@
   ],
   "ignorePatterns": ["dist/**"],
   "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@mariozechner/pi-ai",
+            "importNames": [
+              "completeSimple",
+              "getEnvApiKey",
+              "getModels",
+              "registerApiProvider"
+            ],
+            "message": "Use @/chat/pi/client so provider calls stay traced and gateway auth stays centralized."
+          },
+          {
+            "name": "@mariozechner/pi-ai/anthropic",
+            "message": "Register anthropic providers only in @/chat/pi/client."
+          }
+        ]
+      }
+    ],
     "unicorn/no-useless-fallback-in-spread": "off",
     "vitest/hoisted-apis-on-top": "off",
     "vitest/require-mock-type-parameters": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/chat/pi/client.ts"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ]
 }

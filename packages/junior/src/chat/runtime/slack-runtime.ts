@@ -45,6 +45,7 @@ async function maybeHandleThreadOptOutDecision(args: {
 
 type RuntimeLogContext = Record<string, unknown> & {
   assistantUserName: string;
+  conversationId?: string;
   modelId: string;
   slackChannelId?: string;
   slackThreadId?: string;
@@ -187,6 +188,7 @@ function buildLogContext(
   },
 ): RuntimeLogContext {
   return {
+    conversationId: args.threadId ?? args.runId,
     slackThreadId: args.threadId,
     slackUserId: args.requesterId,
     slackUserName: args.requesterUserName,
@@ -356,91 +358,6 @@ export function createSlackTurnRuntime<
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
         const runId = deps.getRunId(thread, message);
-        const rawUserText = message.text;
-        const userText = deps.stripLeadingBotMention(rawUserText, {
-          stripLeadingSlackMentionToken: Boolean(message.isMention),
-        });
-        const context: ThreadContext = {
-          threadId,
-          requesterId: message.author.userId,
-          channelId,
-          runId,
-        };
-
-        const preflightDecision = getSubscribedReplyPreflightDecision({
-          botUserName: deps.assistantUserName,
-          rawText: rawUserText,
-          text: userText,
-          isExplicitMention: Boolean(message.isMention),
-        });
-
-        if (preflightDecision && !preflightDecision.shouldReply) {
-          const reason = preflightDecision.reasonDetail
-            ? `${preflightDecision.reason}:${preflightDecision.reasonDetail}`
-            : preflightDecision.reason;
-          await skipSubscribedMessage({
-            thread,
-            message,
-            decision: { shouldReply: false, reason },
-            context,
-            userText,
-          });
-          return;
-        }
-
-        const preparedState = await deps.prepareTurnState({
-          thread,
-          message,
-          userText,
-          explicitMention: Boolean(message.isMention),
-          context,
-        });
-
-        await deps.persistPreparedState({
-          thread,
-          preparedState,
-        });
-
-        const decision = await deps.decideSubscribedReply({
-          rawText: rawUserText,
-          text: userText,
-          conversationContext:
-            deps.getPreparedConversationContext(preparedState),
-          hasAttachments: message.attachments.length > 0,
-          isExplicitMention: Boolean(message.isMention),
-          context,
-        });
-
-        if (
-          await maybeHandleThreadOptOutDecision({
-            thread,
-            decision,
-            beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
-          })
-        ) {
-          await skipSubscribedMessage({
-            thread,
-            message,
-            decision,
-            context,
-            preparedState,
-            userText,
-          });
-          return;
-        }
-
-        if (!decision.shouldReply) {
-          await skipSubscribedMessage({
-            thread,
-            message,
-            decision,
-            context,
-            preparedState,
-            userText,
-          });
-          return;
-        }
-
         await deps.withSpan(
           "chat.turn",
           "chat.turn",
@@ -452,6 +369,93 @@ export function createSlackTurnRuntime<
             runId,
           }),
           async () => {
+            // This path can compact context and run router/vision model calls
+            // before replyToThread() opens the main reply span.
+            const rawUserText = message.text;
+            const userText = deps.stripLeadingBotMention(rawUserText, {
+              stripLeadingSlackMentionToken: Boolean(message.isMention),
+            });
+            const context: ThreadContext = {
+              threadId,
+              requesterId: message.author.userId,
+              channelId,
+              runId,
+            };
+
+            const preflightDecision = getSubscribedReplyPreflightDecision({
+              botUserName: deps.assistantUserName,
+              rawText: rawUserText,
+              text: userText,
+              isExplicitMention: Boolean(message.isMention),
+            });
+
+            if (preflightDecision && !preflightDecision.shouldReply) {
+              const reason = preflightDecision.reasonDetail
+                ? `${preflightDecision.reason}:${preflightDecision.reasonDetail}`
+                : preflightDecision.reason;
+              await skipSubscribedMessage({
+                thread,
+                message,
+                decision: { shouldReply: false, reason },
+                context,
+                userText,
+              });
+              return;
+            }
+
+            const preparedState = await deps.prepareTurnState({
+              thread,
+              message,
+              userText,
+              explicitMention: Boolean(message.isMention),
+              context,
+            });
+
+            await deps.persistPreparedState({
+              thread,
+              preparedState,
+            });
+
+            const decision = await deps.decideSubscribedReply({
+              rawText: rawUserText,
+              text: userText,
+              conversationContext:
+                deps.getPreparedConversationContext(preparedState),
+              hasAttachments: message.attachments.length > 0,
+              isExplicitMention: Boolean(message.isMention),
+              context,
+            });
+
+            if (
+              await maybeHandleThreadOptOutDecision({
+                thread,
+                decision,
+                beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+              })
+            ) {
+              await skipSubscribedMessage({
+                thread,
+                message,
+                decision,
+                context,
+                preparedState,
+                userText,
+              });
+              return;
+            }
+
+            if (!decision.shouldReply) {
+              await skipSubscribedMessage({
+                thread,
+                message,
+                decision,
+                context,
+                preparedState,
+                userText,
+              });
+              return;
+            }
+
             await deps.replyToThread(thread, message, {
               explicitMention: Boolean(message.isMention),
               preparedState,

@@ -4,10 +4,27 @@ import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import type { Skill } from "@/chat/skills";
 
-const { handleToolExecutionError } = vi.hoisted(() => ({
-  handleToolExecutionError: vi.fn((error: unknown) => {
-    throw error;
-  }),
+const { handleToolExecutionError, setSpanAttributesMock, withSpanMock } =
+  vi.hoisted(() => ({
+    handleToolExecutionError: vi.fn((error: unknown) => {
+      throw error;
+    }),
+    setSpanAttributesMock: vi.fn(),
+    withSpanMock: vi.fn(
+      async (
+        _name: string,
+        _op: string,
+        _context: Record<string, unknown>,
+        callback: () => Promise<unknown>,
+        _attributes?: Record<string, unknown>,
+      ) => callback(),
+    ),
+  }));
+
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  setSpanAttributes: setSpanAttributesMock,
+  withSpan: withSpanMock,
 }));
 
 vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
@@ -26,6 +43,8 @@ const githubSkill: Skill = {
 describe("createAgentTools", () => {
   beforeEach(() => {
     handleToolExecutionError.mockClear();
+    setSpanAttributesMock.mockClear();
+    withSpanMock.mockClear();
   });
 
   it("emits assistant status only for reportProgress", async () => {
@@ -154,6 +173,94 @@ describe("createAgentTools", () => {
     await bashTool!.execute("tool-bash", { command: "which gh" });
 
     expect(onToolCall).toHaveBeenCalledWith("bash", { command: "which gh" });
+  });
+
+  it("records tool call arguments and result on the execute_tool span", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({
+            ok: true,
+            stdout: "done",
+          }),
+        },
+      },
+      sandbox,
+      {
+        conversationId: "thread_123",
+      },
+    );
+
+    const result = await bashTool!.execute("tool-bash", {
+      command: "pwd",
+    });
+
+    expect(result.details).toEqual({
+      ok: true,
+      stdout: "done",
+    });
+    expect(withSpanMock).toHaveBeenCalledWith(
+      "execute_tool bash",
+      "gen_ai.execute_tool",
+      {
+        conversationId: "thread_123",
+      },
+      expect.any(Function),
+      expect.objectContaining({
+        "gen_ai.provider.name": "vercel-ai-gateway",
+        "gen_ai.operation.name": "execute_tool",
+        "gen_ai.tool.name": "bash",
+        "gen_ai.tool.description": "bash",
+        "gen_ai.tool.call.id": "tool-bash",
+        "gen_ai.tool.call.arguments": expect.any(String),
+      }),
+    );
+    expect(setSpanAttributesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "gen_ai.tool.call.result": expect.any(String),
+      }),
+    );
+  });
+
+  it("records the raw tool result instead of the MCP envelope", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const [mcpTool] = createAgentTools(
+      {
+        mcp__demo__ping: {
+          description: "[demo] ping",
+          inputSchema: {} as any,
+          execute: async () => ({
+            content: [{ type: "text", text: "pong" }],
+            details: {
+              provider: "demo",
+              tool: "ping",
+              rawResult: {
+                content: [{ type: "text", text: "pong" }],
+                isError: false,
+              },
+            },
+          }),
+        },
+      },
+      sandbox,
+      {},
+    );
+
+    await mcpTool!.execute("tool-mcp", { query: "hello" });
+
+    const resultCall = setSpanAttributesMock.mock.calls.find(
+      (call) => call[0] && "gen_ai.tool.call.result" in call[0],
+    );
+    expect(resultCall).toBeDefined();
+    const resultAttribute = resultCall?.[0]?.[
+      "gen_ai.tool.call.result"
+    ] as string;
+    expect(resultAttribute).toContain('"isError":false');
+    expect(resultAttribute).not.toContain('"provider":"demo"');
+    expect(resultAttribute).not.toContain('"tool":"ping"');
   });
 
   it("rethrows plugin auth pauses without reporting a tool failure", async () => {

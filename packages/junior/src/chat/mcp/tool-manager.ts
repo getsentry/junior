@@ -331,7 +331,7 @@ export class McpToolManager {
         const resolvedArgs =
           typeof args === "object" && args !== null ? args : {};
         const baseAttributes = {
-          "gen_ai.tool.name": tool.name,
+          "app.mcp.tool.name": tool.name,
           "mcp.method.name": "tools/call",
         };
         setSpanAttributes(baseAttributes);

@@ -26,7 +26,12 @@ import {
   extractGenAiUsageAttributes,
   serializeGenAiAttribute,
 } from "@/chat/logging";
-import { logException, logWarn, setSpanAttributes } from "@/chat/logging";
+import {
+  logException,
+  logWarn,
+  setSpanAttributes,
+  withSpan,
+} from "@/chat/logging";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
@@ -144,6 +149,7 @@ export function resolveGatewayModel(modelId: string): Model<any> {
   return matched;
 }
 
+/** Execute a direct chat completion inside a dedicated `gen_ai.chat` span. */
 export async function completeText(params: {
   modelId: string;
   system?: string;
@@ -175,69 +181,77 @@ export async function completeText(params: {
       ? { "app.ai.reasoning_effort": params.thinkingLevel }
       : {}),
   };
-  setSpanAttributes(startAttributes);
-  const message = await completeSimple(
-    model,
-    {
-      systemPrompt: params.system,
-      messages: params.messages,
-    },
-    {
-      ...(apiKey ? { apiKey } : {}),
-      temperature: params.temperature,
-      maxTokens: params.maxTokens,
-      reasoning: params.thinkingLevel,
-      signal: params.signal,
-      metadata: params.metadata,
-    },
-  );
-  const outputText = extractText(message);
-  const outputMessagesAttribute = serializeGenAiAttribute([
-    {
-      role: "assistant",
-      content: outputText ? [{ type: "text", text: outputText }] : [],
-    },
-  ]);
-  const usageAttributes = extractGenAiUsageAttributes(message);
-  const endAttributes = {
-    "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-    "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-    "gen_ai.request.model": params.modelId,
-    ...(outputMessagesAttribute
-      ? { "gen_ai.output.messages": outputMessagesAttribute }
-      : {}),
-    ...usageAttributes,
-    ...(message.stopReason
-      ? { "gen_ai.response.finish_reasons": [message.stopReason] }
-      : {}),
-    ...(params.thinkingLevel
-      ? { "app.ai.reasoning_effort": params.thinkingLevel }
-      : {}),
-  };
-  setSpanAttributes(endAttributes);
-  if (message.stopReason === "error") {
-    const providerMessage =
-      message.errorMessage?.trim() || "Unknown provider error";
-    logWarn(
-      "ai_completion_provider_error",
-      {},
-      {
+  return withSpan(
+    "ai.chat_completion",
+    "gen_ai.chat",
+    { modelId: params.modelId },
+    async () => {
+      const message = await completeSimple(
+        model,
+        {
+          systemPrompt: params.system,
+          messages: params.messages,
+        },
+        {
+          ...(apiKey ? { apiKey } : {}),
+          temperature: params.temperature,
+          maxTokens: params.maxTokens,
+          reasoning: params.thinkingLevel,
+          signal: params.signal,
+          metadata: params.metadata,
+        },
+      );
+      const outputText = extractText(message);
+      const outputMessagesAttribute = serializeGenAiAttribute([
+        {
+          role: "assistant",
+          content: outputText ? [{ type: "text", text: outputText }] : [],
+        },
+      ]);
+      const usageAttributes = extractGenAiUsageAttributes(message);
+      const endAttributes = {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
-        "error.message": providerMessage,
-      },
-      "AI completion returned provider error",
-    );
-    throw new Error(`AI provider error: ${providerMessage}`);
-  }
+        ...(outputMessagesAttribute
+          ? { "gen_ai.output.messages": outputMessagesAttribute }
+          : {}),
+        ...usageAttributes,
+        ...(message.stopReason
+          ? { "gen_ai.response.finish_reasons": [message.stopReason] }
+          : {}),
+        ...(params.thinkingLevel
+          ? { "app.ai.reasoning_effort": params.thinkingLevel }
+          : {}),
+      };
+      setSpanAttributes(endAttributes);
+      if (message.stopReason === "error") {
+        const providerMessage =
+          message.errorMessage?.trim() || "Unknown provider error";
+        logWarn(
+          "ai_completion_provider_error",
+          {},
+          {
+            "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+            "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
+            "gen_ai.request.model": params.modelId,
+            "error.message": providerMessage,
+          },
+          "AI completion returned provider error",
+        );
+        throw new Error(`AI provider error: ${providerMessage}`);
+      }
 
-  return {
-    message,
-    text: outputText,
-  };
+      return {
+        message,
+        text: outputText,
+      };
+    },
+    startAttributes,
+  );
 }
 
+/** Execute a schema-constrained completion using the traced text path above. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
   schema: TSchema;

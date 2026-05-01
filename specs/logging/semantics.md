@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-04-06
+- Last Edited: 2026-05-01
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-03-06: Added sandbox snapshot lifecycle attribute mappings.
 - 2026-04-06: Added official GenAI finish-reason, system-instructions, and tool-description semantics.
 - 2026-04-28: Added MCP tool-call semantic attribute mappings.
+- 2026-05-01: Added `gen_ai.conversation.id` to the canonical GenAI semantic map.
 
 ## Status
 
@@ -67,6 +68,7 @@ This file is the canonical attribute and naming map for instrumentation in this 
 
 ## GenAI
 
+- `gen_ai.conversation.id`
 - `gen_ai.provider.name`
 - `gen_ai.operation.name`
 - `gen_ai.request.model`
@@ -102,6 +104,7 @@ This file is the canonical attribute and naming map for instrumentation in this 
 - `network.transport`
 - `server.address`
 - `server.port`
+- `app.mcp.tool.name` for the raw provider-scoped MCP tool name when it differs from the agent-facing `gen_ai.tool.name`
 
 ## Process / CLI Execution
 

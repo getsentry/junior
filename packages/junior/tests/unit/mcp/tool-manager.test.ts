@@ -188,7 +188,7 @@ describe("McpToolManager", () => {
     });
 
     expect(setSpanAttributesMock).toHaveBeenCalledWith({
-      "gen_ai.tool.name": "ping",
+      "app.mcp.tool.name": "ping",
       "mcp.method.name": "tools/call",
     });
   });
@@ -214,7 +214,7 @@ describe("McpToolManager", () => {
     );
 
     const expectedAttributes = expect.objectContaining({
-      "gen_ai.tool.name": "ping",
+      "app.mcp.tool.name": "ping",
       "mcp.method.name": "tools/call",
       "error.type": "tool_error",
       "error.message":

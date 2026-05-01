@@ -248,7 +248,7 @@ describe("PluginMcpClient", () => {
     expect(setSpanAttributesMock).toHaveBeenCalledWith({
       "mcp.method.name": "tools/call",
       "gen_ai.operation.name": "execute_tool",
-      "gen_ai.tool.name": "notion-search",
+      "app.mcp.tool.name": "notion-search",
       "mcp.session.id": "server-session",
       "mcp.protocol.version": "2025-11-25",
       "server.address": "mcp.notion.com",

@@ -1541,19 +1541,23 @@ export async function withSpan<T>(
     }
   }
 
-  return withLogContext(context, () =>
-    Sentry.startSpan(
+  return withLogContext(context, () => {
+    // Child spans inherit the active log context so nested GenAI spans keep
+    // conversation/session correlation even when callers pass only delta
+    // context such as modelId or tool metadata.
+    const inheritedAttributes = getLogContextAttributes();
+    return Sentry.startSpan(
       {
         name,
         op,
         attributes: {
-          ...toSpanAttributes(context),
+          ...inheritedAttributes,
           ...normalizedAttributes,
         },
       },
       callback,
-    ),
-  );
+    );
+  });
 }
 
 /** Set attributes on the currently active Sentry span. */

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-04-06
+- Last Edited: 2026-05-01
 
 ## Changelog
 
@@ -13,6 +13,7 @@
 - 2026-03-06: Added snapshot lifecycle span requirements and aligned sandbox snapshot attributes.
 - 2026-04-06: Added official GenAI finish-reasons, system-instructions, and tool-description tracing attributes.
 - 2026-04-28: Added MCP tool-call span attributes from the OpenTelemetry MCP semantic conventions.
+- 2026-05-01: Added `gen_ai.conversation.id` as required correlation context for GenAI spans when available.
 
 ## Status
 
@@ -67,6 +68,7 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 ### Correlation Context
 
 - `messaging.message.conversation_id` / `app.workflow.run_id` / `enduser.id` when available.
+- `gen_ai.conversation.id` on GenAI spans when the conversation/thread identifier is known.
 - `messaging.destination.name` for channel context when available.
 - `gen_ai.request.model` for model-level tracing.
 - `gen_ai.response.finish_reasons` when available from provider responses.

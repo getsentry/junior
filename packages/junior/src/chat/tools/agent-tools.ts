@@ -16,6 +16,18 @@ import { resolveCredentialInjection } from "@/chat/tools/execution/inject-creden
 import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 
+function toToolResultAttributeValue(details: unknown): unknown {
+  if (
+    details &&
+    typeof details === "object" &&
+    "rawResult" in details &&
+    (details as { rawResult?: unknown }).rawResult !== undefined
+  ) {
+    return (details as { rawResult: unknown }).rawResult;
+  }
+  return details;
+}
+
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createAgentTools(
   tools: Record<string, ToolDefinition<any>>,
@@ -116,7 +128,7 @@ export function createAgentTools(
               });
             }
             const toolResultAttribute = serializeGenAiAttribute(
-              normalized.details,
+              toToolResultAttributeValue(normalized.details),
             );
             if (toolResultAttribute) {
               setSpanAttributes({
