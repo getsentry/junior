@@ -12,6 +12,7 @@ import {
   type WebhookOptions,
 } from "chat";
 import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
+import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
 
 type ChatInternals = {
   logger?: {
@@ -108,6 +109,9 @@ export class JuniorChat<
         (async (): Promise<void> => {
           try {
             const message = await messageOrFactory();
+            if (isExternalSlackUser(message.raw as Record<string, unknown>)) {
+              return;
+            }
             const normalized = normalizeIncomingSlackThreadId(
               threadId,
               message,
@@ -125,6 +129,9 @@ export class JuniorChat<
           }
         })(),
       );
+      return;
+    }
+    if (isExternalSlackUser(messageOrFactory.raw as Record<string, unknown>)) {
       return;
     }
     enqueueBackgroundTask(

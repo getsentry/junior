@@ -4,6 +4,7 @@ import {
   isMessageChangedEnvelope,
 } from "@/chat/ingress/message-changed";
 import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatcher";
+import { runWithWorkspaceTeamId } from "@/chat/ingress/workspace-membership";
 import {
   createRequestContext,
   logException,
@@ -145,6 +146,7 @@ export async function handlePlatformWebhook(
     // that introduce a new bot @mention. The Slack adapter drops these subtypes,
     // so we dispatch them as a synthesized mention before forwarding to the adapter.
     let rebuiltRequest = request;
+    let slackWorkspaceTeamId: string | undefined;
     if (platform === "slack") {
       const rawBody = await request.text();
       let parsedBody: unknown;
@@ -154,15 +156,21 @@ export async function handlePlatformWebhook(
         parsedBody = undefined;
       }
 
+      slackWorkspaceTeamId = getSlackPayloadTeamId(parsedBody);
+
       if (parsedBody && isMessageChangedEnvelope(parsedBody)) {
         try {
-          await handleAuthenticatedSlackMessageChangedMention({
-            body: parsedBody,
-            bot,
-            rawBody,
-            request,
-            waitUntil,
-          });
+          const handleMention = () =>
+            handleAuthenticatedSlackMessageChangedMention({
+              body: parsedBody,
+              bot,
+              rawBody,
+              request,
+              waitUntil,
+            });
+          await (slackWorkspaceTeamId
+            ? runWithWorkspaceTeamId(slackWorkspaceTeamId, handleMention)
+            : handleMention());
         } catch (error) {
           logException(error, "slack_message_changed_side_channel_failed");
         }
@@ -183,9 +191,13 @@ export async function handlePlatformWebhook(
         requestContext,
         async () => {
           try {
-            const response = await handler(rebuiltRequest, {
-              waitUntil: (task: Promise<unknown>) => waitUntil(task),
-            } as Parameters<typeof handler>[1]);
+            const callHandler = () =>
+              handler(rebuiltRequest, {
+                waitUntil: (task: Promise<unknown>) => waitUntil(task),
+              } as Parameters<typeof handler>[1]);
+            const response = await (slackWorkspaceTeamId
+              ? runWithWorkspaceTeamId(slackWorkspaceTeamId, callHandler)
+              : callHandler());
             if (response.status >= 400) {
               let responseBodySnippet: string | undefined;
               try {

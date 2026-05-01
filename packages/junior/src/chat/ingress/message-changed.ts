@@ -24,10 +24,12 @@ interface SlackMessageChangedEvent {
     channel: string;
     message: {
       files?: SlackEditedMessageFile[];
+      source_team?: string;
       text?: string;
       ts: string;
       thread_ts?: string;
       user?: string;
+      user_team?: string;
     };
     previous_message: {
       text?: string;
@@ -132,12 +134,23 @@ export function extractMessageChangedMention(
   const threadId = `slack:${channelId}:${threadTs}`;
   const teamId = typeof body.team_id === "string" ? body.team_id : undefined;
 
+  const userTeam =
+    typeof event.message.user_team === "string"
+      ? event.message.user_team
+      : undefined;
+  const sourceTeam =
+    typeof event.message.source_team === "string"
+      ? event.message.source_team
+      : undefined;
+
   const raw: Record<string, unknown> = {
     channel: channelId,
     ts: messageTs,
     thread_ts: threadTs,
     user: userId,
     ...(teamId ? { team_id: teamId } : {}),
+    ...(userTeam ? { user_team: userTeam } : {}),
+    ...(sourceTeam ? { source_team: sourceTeam } : {}),
   };
 
   const message = new Message({
