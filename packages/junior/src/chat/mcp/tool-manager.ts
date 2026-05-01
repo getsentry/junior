@@ -331,7 +331,6 @@ export class McpToolManager {
         const resolvedArgs =
           typeof args === "object" && args !== null ? args : {};
         const baseAttributes = {
-          "app.mcp.tool.name": tool.name,
           "mcp.method.name": "tools/call",
         };
         setSpanAttributes(baseAttributes);

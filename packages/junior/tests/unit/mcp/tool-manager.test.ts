@@ -171,7 +171,7 @@ describe("McpToolManager", () => {
     expect(manager.getActiveToolCatalog(activeSkills)).toEqual([]);
   });
 
-  it("annotates MCP tool spans with method and tool name", async () => {
+  it("annotates MCP tool spans with the MCP method name", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);
     const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
@@ -188,7 +188,6 @@ describe("McpToolManager", () => {
     });
 
     expect(setSpanAttributesMock).toHaveBeenCalledWith({
-      "app.mcp.tool.name": "ping",
       "mcp.method.name": "tools/call",
     });
   });
@@ -214,7 +213,6 @@ describe("McpToolManager", () => {
     );
 
     const expectedAttributes = expect.objectContaining({
-      "app.mcp.tool.name": "ping",
       "mcp.method.name": "tools/call",
       "error.type": "tool_error",
       "error.message":

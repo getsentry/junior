@@ -104,7 +104,6 @@ This file is the canonical attribute and naming map for instrumentation in this 
 - `network.transport`
 - `server.address`
 - `server.port`
-- `app.mcp.tool.name` for the raw provider-scoped MCP tool name when it differs from the agent-facing `gen_ai.tool.name`
 
 ## Process / CLI Execution
 

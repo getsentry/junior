@@ -119,7 +119,6 @@ export class PluginMcpClient {
         setSpanAttributes({
           "mcp.method.name": MCP_TOOLS_CALL_METHOD,
           "gen_ai.operation.name": "execute_tool",
-          "app.mcp.tool.name": name,
           ...(this.transport?.sessionId
             ? { "mcp.session.id": this.transport.sessionId }
             : {}),
