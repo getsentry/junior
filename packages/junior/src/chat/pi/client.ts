@@ -166,10 +166,16 @@ export async function completeText(params: {
   const systemInstructionsAttribute = params.system
     ? serializeGenAiAttribute([{ type: "text", content: params.system }])
     : undefined;
-  const startAttributes = {
+  const baseAttributes = {
     "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
+    ...(params.thinkingLevel
+      ? { "app.ai.reasoning_effort": params.thinkingLevel }
+      : {}),
+  };
+  const startAttributes = {
+    ...baseAttributes,
     ...(systemInstructionsAttribute
       ? { "gen_ai.system_instructions": systemInstructionsAttribute }
       : {}),
@@ -177,9 +183,6 @@ export async function completeText(params: {
       ? { "gen_ai.input.messages": requestMessagesAttribute }
       : {}),
     "app.ai.auth_mode": apiKey ? "oidc" : "api_key",
-    ...(params.thinkingLevel
-      ? { "app.ai.reasoning_effort": params.thinkingLevel }
-      : {}),
   };
   return withSpan(
     "ai.chat_completion",
@@ -210,18 +213,13 @@ export async function completeText(params: {
       ]);
       const usageAttributes = extractGenAiUsageAttributes(message);
       const endAttributes = {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-        "gen_ai.request.model": params.modelId,
+        ...baseAttributes,
         ...(outputMessagesAttribute
           ? { "gen_ai.output.messages": outputMessagesAttribute }
           : {}),
         ...usageAttributes,
         ...(message.stopReason
           ? { "gen_ai.response.finish_reasons": [message.stopReason] }
-          : {}),
-        ...(params.thinkingLevel
-          ? { "app.ai.reasoning_effort": params.thinkingLevel }
           : {}),
       };
       setSpanAttributes(endAttributes);
@@ -232,9 +230,7 @@ export async function completeText(params: {
           "ai_completion_provider_error",
           {},
           {
-            "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-            "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-            "gen_ai.request.model": params.modelId,
+            ...baseAttributes,
             "error.message": providerMessage,
           },
           "AI completion returned provider error",
