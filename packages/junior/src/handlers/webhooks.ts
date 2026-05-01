@@ -160,17 +160,15 @@ export async function handlePlatformWebhook(
 
       if (parsedBody && isMessageChangedEnvelope(parsedBody)) {
         try {
-          const handleMention = () =>
+          await runWithWorkspaceTeamId(slackWorkspaceTeamId, () =>
             handleAuthenticatedSlackMessageChangedMention({
               body: parsedBody,
               bot,
               rawBody,
               request,
               waitUntil,
-            });
-          await (slackWorkspaceTeamId
-            ? runWithWorkspaceTeamId(slackWorkspaceTeamId, handleMention)
-            : handleMention());
+            }),
+          );
         } catch (error) {
           logException(error, "slack_message_changed_side_channel_failed");
         }
@@ -191,13 +189,13 @@ export async function handlePlatformWebhook(
         requestContext,
         async () => {
           try {
-            const callHandler = () =>
-              handler(rebuiltRequest, {
-                waitUntil: (task: Promise<unknown>) => waitUntil(task),
-              } as Parameters<typeof handler>[1]);
-            const response = await (slackWorkspaceTeamId
-              ? runWithWorkspaceTeamId(slackWorkspaceTeamId, callHandler)
-              : callHandler());
+            const response = await runWithWorkspaceTeamId(
+              slackWorkspaceTeamId,
+              () =>
+                handler(rebuiltRequest, {
+                  waitUntil: (task: Promise<unknown>) => waitUntil(task),
+                } as Parameters<typeof handler>[1]),
+            );
             if (response.status >= 400) {
               let responseBodySnippet: string | undefined;
               try {

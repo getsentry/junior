@@ -3,7 +3,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 const workspaceTeamIdStorage = new AsyncLocalStorage<string>();
 
 /** Run a callback with the workspace team ID available for membership checks. */
-export function runWithWorkspaceTeamId<T>(teamId: string, fn: () => T): T {
+export function runWithWorkspaceTeamId<T>(
+  teamId: string | undefined,
+  fn: () => T,
+): T {
+  if (!teamId) return fn();
   return workspaceTeamIdStorage.run(teamId, fn);
 }
 
