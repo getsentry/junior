@@ -12,6 +12,7 @@ import type {
   PluginRuntimePostinstallCommand,
   PluginSystemRuntimeDependency,
   PluginSystemRuntimeDependencyFromUrl,
+  StaticHeadersCredentials,
 } from "./types";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
@@ -175,6 +176,14 @@ const baseCredentialsSchema = z
 const oauthBearerCredentialsSchema = baseCredentialsSchema.extend({
   type: z.literal("oauth-bearer"),
 });
+
+const staticHeadersCredentialsSchema = z
+  .object({
+    type: z.literal("static-headers"),
+    "api-domains": apiDomainsSchema,
+    "api-headers": stringMapSchema,
+  })
+  .passthrough();
 
 const githubAppCredentialsSchema = baseCredentialsSchema.extend({
   type: z.literal("github-app"),
@@ -347,9 +356,11 @@ function normalizeCredentials(
   const schema =
     data.type === "oauth-bearer"
       ? oauthBearerCredentialsSchema
-      : data.type === "github-app"
-        ? githubAppCredentialsSchema
-        : undefined;
+      : data.type === "static-headers"
+        ? staticHeadersCredentialsSchema
+        : data.type === "github-app"
+          ? githubAppCredentialsSchema
+          : undefined;
 
   if (!schema) {
     throw new Error(
@@ -380,6 +391,17 @@ function normalizeCredentials(
         ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
         : {}),
     } satisfies OAuthBearerCredentials;
+  }
+
+  if (result.data.type === "static-headers") {
+    return {
+      type: "static-headers",
+      apiDomains: result.data["api-domains"],
+      apiHeaders: normalizeStringMap(
+        result.data["api-headers"],
+        `Plugin ${name} credentials.api-headers`,
+      ) as Record<string, string>,
+    } satisfies StaticHeadersCredentials;
   }
 
   return {

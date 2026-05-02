@@ -7,6 +7,7 @@ import { logInfo, logWarn, setSpanAttributes } from "@/chat/logging";
 import { createGitHubAppBroker } from "./auth/github-app-broker";
 import { parsePluginManifest } from "./manifest";
 import { createOAuthBearerBroker } from "./auth/oauth-bearer-broker";
+import { createStaticHeadersBroker } from "./auth/static-headers-broker";
 import { discoverInstalledPluginPackageContent } from "./package-discovery";
 import type {
   PluginBrokerDeps,
@@ -454,6 +455,8 @@ export function createPluginBroker(
 
   if (credentials.type === "oauth-bearer") {
     broker = createOAuthBearerBroker(plugin.manifest, credentials, deps);
+  } else if (credentials.type === "static-headers") {
+    broker = createStaticHeadersBroker(plugin.manifest, credentials);
   } else if (credentials.type === "github-app") {
     broker = createGitHubAppBroker(plugin.manifest, credentials);
   } else {

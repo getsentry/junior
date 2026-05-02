@@ -1,12 +1,15 @@
-import type { PluginCredentials } from "../types";
+import type { GitHubAppCredentials, OAuthBearerCredentials } from "../types";
 
-const DEFAULT_PLACEHOLDERS: Record<PluginCredentials["type"], string> = {
+const DEFAULT_PLACEHOLDERS: Record<
+  OAuthBearerCredentials["type"] | GitHubAppCredentials["type"],
+  string
+> = {
   "oauth-bearer": "host_managed_credential",
   "github-app": "ghp_host_managed_credential",
 };
 
 export function resolveAuthTokenPlaceholder(
-  credentials: PluginCredentials,
+  credentials: OAuthBearerCredentials | GitHubAppCredentials,
 ): string {
   return (
     credentials.authTokenPlaceholder?.trim() ||

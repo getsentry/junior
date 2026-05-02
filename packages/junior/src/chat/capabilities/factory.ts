@@ -36,6 +36,15 @@ export function createSkillCapabilityRuntime(
     if (!credentials) {
       continue;
     }
+    if (credentials.type === "static-headers") {
+      // TestCredentialBroker models token-based providers that expose a
+      // placeholder env var and inject a fake Bearer token. static-headers has
+      // no authTokenEnv/placeholder contract, so eval mode should use the real
+      // plugin broker even when test credentials are enabled.
+      brokersByProvider[name] = createPluginBroker(name, { userTokenStore });
+      continue;
+    }
+
     const placeholder = resolveAuthTokenPlaceholder(credentials);
     brokersByProvider[name] = useTestBroker
       ? new TestCredentialBroker({
