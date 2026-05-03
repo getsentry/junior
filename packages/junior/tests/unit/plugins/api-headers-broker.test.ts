@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createStaticHeadersBroker } from "@/chat/plugins/auth/static-headers-broker";
-import type {
-  PluginManifest,
-  StaticHeadersCredentials,
-} from "@/chat/plugins/types";
+import { createApiHeadersBroker } from "@/chat/plugins/auth/api-headers-broker";
+import type { PluginManifest } from "@/chat/plugins/types";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -12,13 +9,10 @@ const MANIFEST: PluginManifest = {
   description: "Example API access",
   capabilities: ["example.query"],
   configKeys: [],
-  credentials: {
-    type: "static-headers",
-    apiDomains: ["api.example.com"],
-    apiHeaders: {
-      Authorization: "$EXAMPLE_AUTH_HEADER",
-      "Content-Type": "text/plain",
-    },
+  apiDomains: ["api.example.com"],
+  apiHeaders: {
+    Authorization: "${EXAMPLE_AUTH_HEADER}",
+    "Content-Type": "text/plain",
   },
 };
 
@@ -27,15 +21,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("static headers credential broker", () => {
+describe("API headers broker", () => {
   it("resolves env-backed header values into header transforms", async () => {
     process.env.EXAMPLE_AUTH_HEADER = "Basic abc123";
 
-    const broker = createStaticHeadersBroker(
-      MANIFEST,
-      MANIFEST.credentials as StaticHeadersCredentials,
-    );
-    const lease = await broker.issue({ reason: "test:static-headers" });
+    const broker = createApiHeadersBroker(MANIFEST);
+    const lease = await broker.issue({ reason: "test:api-headers" });
 
     expect(lease.provider).toBe("example");
     expect(lease.env).toEqual({});
@@ -53,15 +44,12 @@ describe("static headers credential broker", () => {
   it("throws when an env-backed header references a missing env var", async () => {
     delete process.env.EXAMPLE_AUTH_HEADER;
 
-    const broker = createStaticHeadersBroker(
-      MANIFEST,
-      MANIFEST.credentials as StaticHeadersCredentials,
-    );
+    const broker = createApiHeadersBroker(MANIFEST);
 
     await expect(
-      broker.issue({ reason: "test:missing-static-header-env" }),
+      broker.issue({ reason: "test:missing-api-header-env" }),
     ).rejects.toThrow(
-      'Missing EXAMPLE_AUTH_HEADER for static headers credential provider "example"',
+      'Missing EXAMPLE_AUTH_HEADER for API header provider "example"',
     );
   });
 });

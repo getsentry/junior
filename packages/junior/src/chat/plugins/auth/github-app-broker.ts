@@ -3,6 +3,8 @@ import type {
   CredentialBroker,
   CredentialLease,
 } from "@/chat/credentials/broker";
+import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
+import { resolveApiHeaderTransforms } from "./api-headers-broker";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
 import type { GitHubAppCredentials, PluginManifest } from "../types";
 
@@ -221,6 +223,7 @@ export function createGitHubAppBroker(
   } = credentials;
   const apiBase = `https://${apiDomains[0]}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
+  const pluginHeaderTransforms = () => resolveApiHeaderTransforms(manifest);
 
   /**
    * Capabilities that require git HTTPS auth (github.com, not just api.github.com).
@@ -282,13 +285,16 @@ export function createGitHubAppBroker(
           id: randomUUID(),
           provider,
           env: { [authTokenEnv]: placeholder },
-          headerTransforms: leaseDomains.map((domain) => ({
-            domain,
-            headers: {
-              ...(apiHeaders ?? {}),
-              Authorization: authorizationFor(domain, cached.token),
-            },
-          })),
+          headerTransforms: mergeHeaderTransforms([
+            ...pluginHeaderTransforms(),
+            ...leaseDomains.map((domain) => ({
+              domain,
+              headers: {
+                ...(apiHeaders ?? {}),
+                Authorization: authorizationFor(domain, cached.token),
+              },
+            })),
+          ]),
           expiresAt: new Date(cached.expiresAt).toISOString(),
           metadata: {
             installationId: String(cached.installationId),
@@ -333,13 +339,19 @@ export function createGitHubAppBroker(
         id: randomUUID(),
         provider,
         env: { [authTokenEnv]: placeholder },
-        headerTransforms: leaseDomains.map((domain) => ({
-          domain,
-          headers: {
-            ...(apiHeaders ?? {}),
-            Authorization: authorizationFor(domain, accessTokenResponse.token),
-          },
-        })),
+        headerTransforms: mergeHeaderTransforms([
+          ...pluginHeaderTransforms(),
+          ...leaseDomains.map((domain) => ({
+            domain,
+            headers: {
+              ...(apiHeaders ?? {}),
+              Authorization: authorizationFor(
+                domain,
+                accessTokenResponse.token,
+              ),
+            },
+          })),
+        ]),
         expiresAt: new Date(expiresAtMs).toISOString(),
         metadata: {
           installationId: String(installationId),

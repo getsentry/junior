@@ -23,12 +23,6 @@ export interface OAuthBearerCredentials {
   authTokenPlaceholder?: string;
 }
 
-export interface StaticHeadersCredentials {
-  type: "static-headers";
-  apiDomains: string[];
-  apiHeaders: Record<string, string>;
-}
-
 export interface GitHubAppCredentials {
   type: "github-app";
   apiDomains: string[];
@@ -40,10 +34,7 @@ export interface GitHubAppCredentials {
   installationIdEnv: string;
 }
 
-export type PluginCredentials =
-  | OAuthBearerCredentials
-  | StaticHeadersCredentials
-  | GitHubAppCredentials;
+export type PluginCredentials = OAuthBearerCredentials | GitHubAppCredentials;
 
 export interface PluginNpmRuntimeDependency {
   type: "npm";
@@ -91,6 +82,8 @@ export interface PluginManifest {
   description: string;
   capabilities: string[];
   configKeys: string[];
+  apiDomains?: string[];
+  apiHeaders?: Record<string, string>;
   envVars?: Record<string, PluginEnvVarDeclaration>;
   credentials?: PluginCredentials;
   runtimeDependencies?: PluginRuntimeDependency[];

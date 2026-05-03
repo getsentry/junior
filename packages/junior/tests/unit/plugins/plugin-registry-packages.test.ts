@@ -590,7 +590,7 @@ describe("plugin registry package discovery", () => {
           delete: async () => {},
         },
       }),
-    ).toThrow('Provider "demo" has no credentials configured');
+    ).toThrow('Provider "demo" has no credentials or API headers configured');
   });
 
   it("parses system URL runtime dependencies with required sha256", async () => {

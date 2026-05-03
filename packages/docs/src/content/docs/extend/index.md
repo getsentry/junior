@@ -113,12 +113,15 @@ config-keys:
   - org
   - project
 
+api-domains:
+  - api.example.com
+api-headers:
+  X-Api-Version: "2026-01-01"
+
 credentials:
   type: oauth-bearer
   api-domains:
     - api.example.com
-  api-headers:
-    X-Api-Version: "2026-01-01"
   auth-token-env: EXAMPLE_AUTH_TOKEN
   auth-token-placeholder: host_managed_credential
 
@@ -153,13 +156,14 @@ runtime-postinstall:
 - `description`: short summary of what the plugin integrates
 - `capabilities`: actions the plugin’s skills may request, qualified as `<plugin>.<capability>`
 - `config-keys`: provider-specific configuration keys, qualified as `<plugin>.<key>`
-- `credentials`: how auth is delivered to tools; current types are `oauth-bearer` and `github-app`
+- `api-domains` and `api-headers`: optional host-managed HTTP headers injected for matching sandbox requests
+- `credentials`: how token auth is delivered to tools; current types are `oauth-bearer` and `github-app`
 - `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`
 - `target`: optional credential target scope tied to a declared config key
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
 - `mcp`: optional MCP server configuration for provider-scoped tool sources; `mcp.url` implies hosted HTTP transport, so `mcp.transport: http` is optional
-- `env-vars`: optional map of deployment env vars the manifest may reference from `mcp.url`. Each key names an env var (uppercase, `[A-Z_][A-Z0-9_]*`) and may declare a `default` used when the env var is unset; see [Env-var expansion in `mcp.url`](#env-var-expansion-in-mcpurl).
+- `env-vars`: optional map of deployment env vars the manifest may reference from `mcp.url` or `api-headers`. Each key names an env var (uppercase, `[A-Z_][A-Z0-9_]*`) and may declare a `default` for `mcp.url`; API header references cannot use defaults.
 - `mcp.url`: supports `${VAR}` placeholders that must be declared in `env-vars`. This lets region-pinned providers pick the right host at deploy time without a manifest fork.
 - `mcp.allowed-tools`: optional raw MCP tool-name allowlist when a plugin should expose only part of a provider's tool surface
 
@@ -178,7 +182,33 @@ mcp:
 
 The only supported placeholder form is `${NAME}` — replaced with `process.env[NAME]`, falling back to the declared `default`. Plugin discovery fails loudly at load time if `NAME` is not listed in `env-vars`, or if it is listed without a default and the env var is unset.
 
-`NAME` must match `[A-Z_][A-Z0-9_]*`. Expansion only runs on `mcp.url` — not on other manifest fields — to keep the contract narrow. Every env var a manifest references must be declared in `env-vars`; placeholders that escape the declared allowlist are rejected at load time, so a manifest cannot opportunistically read ambient secrets (e.g. `SLACK_BOT_TOKEN`) from the host process.
+`NAME` must match `[A-Z_][A-Z0-9_]*`. Every env var a manifest references must be declared in `env-vars`; placeholders that escape the declared allowlist are rejected at load time, so a manifest cannot opportunistically read ambient secrets (e.g. `SLACK_BOT_TOKEN`) from the host process.
+
+### API headers
+
+Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. This can stand alone for header-authenticated providers or pair with token-backed credentials. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
+
+```yaml
+env-vars:
+  EXAMPLE_AUTH_HEADER:
+
+api-domains:
+  - api.example.com
+
+api-headers:
+  Authorization: ${EXAMPLE_AUTH_HEADER}
+  Content-Type: text/plain
+```
+
+Literal headers are also valid:
+
+```yaml
+api-domains:
+  - api.example.com
+
+api-headers:
+  X-Api-Version: "2026-01-01"
+```
 
 ### Add skills to the plugin
 

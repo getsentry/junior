@@ -47,7 +47,20 @@ vi.mock("@/chat/plugins/registry", () => ({
               },
             },
           }
-        : undefined,
+        : provider === "example"
+          ? {
+              manifest: {
+                name: "example",
+                description: "Example",
+                capabilities: ["example.api"],
+                configKeys: [],
+                apiDomains: ["api.example.com"],
+                apiHeaders: {
+                  "X-Api-Key": "${EXAMPLE_API_KEY}",
+                },
+              },
+            }
+          : undefined,
 }));
 
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
@@ -66,6 +79,14 @@ const sentrySkill: Skill = {
   skillPath: "/tmp/sentry",
   body: "instructions",
   pluginProvider: "sentry",
+};
+
+const exampleSkill: Skill = {
+  name: "example",
+  description: "Example helper",
+  skillPath: "/tmp/example",
+  body: "instructions",
+  pluginProvider: "example",
 };
 
 describe("skill capability runtime", () => {
@@ -200,5 +221,50 @@ describe("skill capability runtime", () => {
     ).resolves.toMatchObject({ reused: false });
 
     expect(seenReason).toBe("test:no-target");
+  });
+
+  it("issues header transforms for plugins without credentials", async () => {
+    let issueCalls = 0;
+    const broker: CredentialBroker = {
+      issue: async () => {
+        issueCalls += 1;
+        return {
+          id: "lease-1",
+          provider: "example",
+          env: {},
+          headerTransforms: [
+            {
+              domain: "api.example.com",
+              headers: {
+                "X-Api-Key": "secret",
+              },
+            },
+          ],
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        };
+      },
+    };
+
+    const runtime = new SkillCapabilityRuntime({
+      broker,
+      requesterId: "U123",
+    });
+
+    await expect(
+      runtime.enableCredentialsForTurn({
+        activeSkill: exampleSkill,
+        reason: "test:api-headers",
+      }),
+    ).resolves.toMatchObject({ reused: false });
+
+    expect(issueCalls).toBe(1);
+    expect(runtime.getTurnHeaderTransforms()).toEqual([
+      {
+        domain: "api.example.com",
+        headers: {
+          "X-Api-Key": "secret",
+        },
+      },
+    ]);
   });
 });

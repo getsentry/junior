@@ -4,9 +4,11 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
+import { resolveApiHeaderTransforms } from "./api-headers-broker";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
@@ -72,6 +74,7 @@ export function createOAuthBearerBroker(
   const provider = manifest.name;
   const { apiDomains, apiHeaders, authTokenEnv } = credentials;
   const authTokenPlaceholder = resolveAuthTokenPlaceholder(credentials);
+  const pluginHeaderTransforms = () => resolveApiHeaderTransforms(manifest);
 
   function buildLease(
     token: string,
@@ -82,10 +85,13 @@ export function createOAuthBearerBroker(
       id: randomUUID(),
       provider,
       env: { [authTokenEnv]: authTokenPlaceholder },
-      headerTransforms: apiDomains.map((domain) => ({
-        domain,
-        headers: { ...(apiHeaders ?? {}), Authorization: `Bearer ${token}` },
-      })),
+      headerTransforms: mergeHeaderTransforms([
+        ...pluginHeaderTransforms(),
+        ...apiDomains.map((domain) => ({
+          domain,
+          headers: { ...(apiHeaders ?? {}), Authorization: `Bearer ${token}` },
+        })),
+      ]),
       expiresAt: new Date(expiresAtMs).toISOString(),
       metadata: { reason },
     };

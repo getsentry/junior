@@ -81,7 +81,7 @@ export class SkillCapabilityRuntime {
     }
 
     const plugin = getPluginDefinition(provider);
-    if (!plugin?.manifest.credentials) {
+    if (!plugin?.manifest.credentials && !plugin?.manifest.apiHeaders) {
       return undefined;
     }
 
