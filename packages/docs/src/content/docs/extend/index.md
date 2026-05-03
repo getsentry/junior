@@ -186,7 +186,7 @@ The only supported placeholder form is `${NAME}` — replaced with `process.env[
 
 ### API headers
 
-Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. This can stand alone for header-authenticated providers or pair with token-backed credentials. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
+Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. This can stand alone for header-authenticated providers or pair with token-backed credentials. When paired with token-backed credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
 
 ```yaml
 env-vars:

@@ -329,7 +329,7 @@ The registry provides `createPluginBroker(provider, deps)` which constructs the 
 
 - `oauth-bearer`: Creates a generic `OAuthBearerBroker` that handles per-user OAuth tokens, token refresh, static env fallback, and header transforms — all parameterized from the manifest.
 - `github-app`: Creates a `GitHubAppBroker` that signs JWTs with an RSA private key and exchanges them for short-lived installation tokens via the GitHub App API. No `UserTokenStore` dependency — tokens are per-installation, not per-user.
-- plugin-level `api-headers`: Creates an `ApiHeadersBroker` for providers that only need header injection. Token-backed brokers include plugin-level API header transforms alongside their credential transforms.
+- plugin-level `api-headers`: Creates an `ApiHeadersBroker` for providers that only need header injection. Token-backed brokers include plugin-level API header transforms alongside their credential transforms; credential headers are applied last and win if both sources set the same header for the same domain.
 - no-credentials/no-headers plugins: broker creation fails with a provider-scoped no-credentials error.
 
 ### Plugin registry exports

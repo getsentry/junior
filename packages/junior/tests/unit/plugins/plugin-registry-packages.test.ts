@@ -840,7 +840,7 @@ describe("plugin registry package discovery", () => {
     });
   });
 
-  it("rejects Authorization in plugin api headers", async () => {
+  it("rejects Authorization in credential api headers", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-package-"),
     );
