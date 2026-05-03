@@ -128,6 +128,53 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     ]);
   });
 
+  it("merges plugin-level API headers with token-backed credential headers", async () => {
+    process.env.SENTRY_AUTH_TOKEN = "static-env-token";
+    process.env.SENTRY_EXTRA_AUTH = "PluginManaged value";
+    const manifest: PluginManifest = {
+      ...SENTRY_MANIFEST,
+      apiDomains: ["uploads.sentry.io", "sentry.io"],
+      apiHeaders: {
+        Authorization: "${SENTRY_EXTRA_AUTH}",
+        "X-Sentry-Mode": "sandbox",
+      },
+    };
+
+    const broker = createOAuthBearerBroker(
+      manifest,
+      manifest.credentials as OAuthBearerCredentials,
+      { userTokenStore: createMockTokenStore() },
+    );
+    const lease = await broker.issue({
+      reason: "test:plugin-api-headers",
+    });
+
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "uploads.sentry.io",
+        headers: {
+          Authorization: "PluginManaged value",
+          "X-Sentry-Mode": "sandbox",
+        },
+      },
+      {
+        domain: "sentry.io",
+        headers: {
+          Authorization: "Bearer static-env-token",
+          "X-Sentry-Mode": "sandbox",
+        },
+      },
+      {
+        domain: "us.sentry.io",
+        headers: { Authorization: "Bearer static-env-token" },
+      },
+      {
+        domain: "de.sentry.io",
+        headers: { Authorization: "Bearer static-env-token" },
+      },
+    ]);
+  });
+
   it("throws CredentialUnavailableError when no credentials are available", async () => {
     delete process.env.SENTRY_AUTH_TOKEN;
     const broker = createBroker();

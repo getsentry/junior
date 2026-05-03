@@ -479,7 +479,7 @@ Plugin skills are subject to the same frontmatter validation and name-deduplicat
 All existing security invariants from `security-policy.md` are preserved:
 
 - **Host-trusted code.** Plugin manifests are YAML files committed to the repository. No dynamic code loading.
-- **Credential delivery via header transforms only.** The generic broker delivers tokens as `Authorization: Bearer` headers on each declared `api-domains` entry. The sandbox never sees real token values.
+- **Credential delivery via header transforms only.** Token credentials and plugin-level `api-headers` are delivered as host-managed header transforms for declared `api-domains`. Real secret values never enter sandbox env vars, files, or command arguments.
 - **Short-lived leases.** Lease behavior is unchanged. The `CredentialLease` contract enforces expiry timestamps.
 - **No env var leakage.** Placeholder values are injected for the `auth-token-env` variable.
 - **OAuth privacy rules unchanged.** Authorization URLs are delivered privately. The agent never sees token values.
