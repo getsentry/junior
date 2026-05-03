@@ -1,10 +1,11 @@
-import { describe } from "vitest";
-import { mention, rubric, slackEval } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals } from "../helpers";
 
-describe("Output Contract", () => {
-  slackEval(
-    "when asked for a structured overview, use bolded section labels instead of markdown headings",
-    {
+describeEval("Output Contract", slackEvals, (it) => {
+  it("when asked for a structured overview, avoid hash markdown headings", async ({
+    run,
+  }) => {
+    await run({
       events: [
         mention(
           "Give me a short overview of how OAuth 2.0 authorization code flow works. Cover the authorization request, token exchange, and refresh. Keep it to a few short sections.",
@@ -13,22 +14,26 @@ describe("Output Contract", () => {
       requireSandboxReady: false,
       criteria: rubric({
         contract:
-          "Structured multi-section replies use Slack-friendly bolded section labels, not markdown heading syntax.",
+          "Structured multi-section replies do not use hash-prefixed markdown heading markers.",
         pass: [
           "The assistant posts one reply that covers the authorization request, token exchange, and refresh.",
-          "Section labels appear as bolded short phrases on their own line, not as markdown headings.",
+          "No section label line starts with `#`, `##`, or `###`.",
+        ],
+        allow: [
+          "Bolded title lines, bolded section labels, and numbered bold labels are acceptable.",
         ],
         fail: [
-          "Do not use markdown heading syntax (lines beginning with `#`, `##`, or `###`) for section labels.",
-          "Do not paste a heading line like `# Authorization Request` at the start of a section.",
+          "Do not use lines beginning with `#`, `##`, or `###` for section labels.",
+          "Do not paste a hash-heading line like `# Authorization Request` at the start of a section.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when the reply contains multiple URLs, use plain URLs instead of markdown link syntax",
-    {
+  it("when the reply contains multiple URLs, use plain URLs instead of markdown link syntax", async ({
+    run,
+  }) => {
+    await run({
       events: [
         mention(
           "Where can I find the official documentation for the Slack Web API, Slack Bolt JS, and Slack Block Kit? Just point me at the three canonical starting pages.",
@@ -47,12 +52,13 @@ describe("Output Contract", () => {
           "Do not wrap URLs in Slack `<url|label>` link syntax unless the user explicitly asked for that form.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when asked to compare two options, use bullets instead of a markdown table",
-    {
+  it("when asked to compare two options, use bullets instead of a markdown table", async ({
+    run,
+  }) => {
+    await run({
       events: [
         mention(
           "Give me a short comparison of REST and GraphQL across these three dimensions: caching, over-fetching, and tooling maturity. Keep it tight.",
@@ -71,6 +77,6 @@ describe("Output Contract", () => {
           "Do not include a row like `| REST | GraphQL |` or similar pipe-delimited structures.",
         ],
       }),
-    },
-  );
+    });
+  });
 });

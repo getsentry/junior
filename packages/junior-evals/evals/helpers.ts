@@ -1,6 +1,17 @@
-import { configure, evaluate } from "vitest-evals/evaluate";
-import { gateway } from "@ai-sdk/gateway";
-import { z } from "zod";
+import {
+  namedJudge,
+  type DescribeEvalOptions,
+  type JudgeContext,
+} from "vitest-evals";
+import { completeText, resolveGatewayModel } from "@/chat/pi/client";
+import {
+  toJsonValue,
+  type Harness,
+  type HarnessRun,
+  type JsonValue,
+  type NormalizedMessage,
+  type ToolCallRecord,
+} from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import {
   type EvalEvent,
@@ -8,141 +19,6 @@ import {
   type EvalResult,
   runEvalScenario,
 } from "./behavior-harness";
-
-configure({ model: gateway("openai/gpt-5.2") });
-
-// ── Eval output schema ─────────────────────────────────────
-
-const slackMetadataSchema = z.object({
-  thread_title_set: z
-    .boolean()
-    .describe("Whether the assistant set a title on the Slack thread"),
-  suggested_prompts_set: z
-    .boolean()
-    .describe(
-      "Whether the assistant set suggested prompts on the Slack thread",
-    ),
-  assistant_status_pending: z
-    .boolean()
-    .describe(
-      "Whether any assistant thread still has a non-empty status indicator after the turn completed (should always be false)",
-    ),
-});
-
-const attachedFileSchema = z.object({
-  filename: z
-    .string()
-    .describe("Filename of an actual file attached to the assistant post"),
-  isImage: z.boolean().describe("Whether the attached file is an image"),
-  mimeType: z
-    .string()
-    .optional()
-    .describe("MIME type of the attached file when known"),
-  sizeBytes: z
-    .number()
-    .optional()
-    .describe("File size in bytes when the harness has the binary payload"),
-});
-
-const assistantPostSchema = z.object({
-  channel: z
-    .string()
-    .optional()
-    .describe("Slack channel ID where this assistant thread post was sent"),
-  files: z
-    .array(attachedFileSchema)
-    .describe(
-      "Actual files attached to this assistant thread post, not text describing files",
-    ),
-  text: z.string().describe("Visible text the assistant posted in the thread"),
-  thread_ts: z
-    .string()
-    .optional()
-    .describe("Slack thread timestamp for this assistant thread post"),
-});
-
-const canvasSchema = z.object({
-  title: z.string().describe("Title of a Slack canvas created during the turn"),
-  markdown: z
-    .string()
-    .describe(
-      "Initial markdown body written into the created Slack canvas during the turn",
-    ),
-});
-
-const evalOutputSchema = z.object({
-  assistant_posts: z
-    .array(assistantPostSchema)
-    .describe(
-      "Visible assistant replies in the evaluated Slack thread, including attached files and auth-resume replies",
-    ),
-  observed_tool_invocations: z
-    .array(
-      z.object({
-        tool: z.string().describe("Tool name the assistant attempted to call"),
-        bash_command: z
-          .string()
-          .optional()
-          .describe("Bash command when the invoked tool is bash"),
-        skill_name: z
-          .string()
-          .optional()
-          .describe("Skill name when the invoked tool is loadSkill"),
-        mcp_tool_name: z
-          .string()
-          .optional()
-          .describe("MCP tool name when the invoked tool is callMcpTool"),
-        mcp_arguments: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe(
-            "MCP provider arguments nested under callMcpTool.arguments",
-          ),
-      }),
-    )
-    .describe("Sanitized tool invocations observed during the eval"),
-  canvases: z
-    .array(canvasSchema)
-    .describe("Slack canvases created during the turn"),
-  channel_posts: z
-    .array(
-      z.object({
-        channel: z
-          .string()
-          .describe("Slack channel ID where a direct channel post was sent"),
-        text: z
-          .string()
-          .describe("Message text sent via Slack chat.postMessage"),
-        thread_ts: z
-          .string()
-          .optional()
-          .describe(
-            "Slack thread timestamp when the message was sent as a thread reply",
-          ),
-      }),
-    )
-    .describe("Slack channel messages sent by the assistant"),
-  reactions: z
-    .array(
-      z.object({
-        channel: z
-          .string()
-          .describe("Slack channel ID where the reaction was added"),
-        emoji: z
-          .string()
-          .describe("Emoji reaction name sent via Slack reactions.add"),
-        timestamp: z
-          .string()
-          .describe(
-            "Target message timestamp reacted to via Slack reactions.add",
-          ),
-      }),
-    )
-    .describe("Slack reactions added by the assistant"),
-  slack_metadata: slackMetadataSchema.describe(
-    "Slack thread metadata set by the assistant",
-  ),
-});
 
 function hasAssistantStatusPending(result: EvalResult): boolean {
   const lastByThread = new Map<string, string>();
@@ -155,20 +31,101 @@ function hasAssistantStatusPending(result: EvalResult): boolean {
   return false;
 }
 
-function serializeEvalResult(result: EvalResult): string {
-  const output: z.input<typeof evalOutputSchema> = {
-    assistant_posts: result.posts,
-    observed_tool_invocations: result.toolInvocations,
-    canvases: result.canvases,
-    channel_posts: result.channelPosts,
-    reactions: result.reactions,
+function toJson(value: unknown): JsonValue {
+  return toJsonValue(value) ?? null;
+}
+
+function toJsonRecord(
+  value: Record<string, unknown>,
+): Record<string, JsonValue> {
+  const record: Record<string, JsonValue> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    record[key] = toJson(entry);
+  }
+  return record;
+}
+
+function buildEvalOutput(result: EvalResult): Record<string, JsonValue> {
+  return {
+    assistant_posts: toJson(result.posts),
+    observed_tool_invocations: toJson(result.toolInvocations),
+    canvases: toJson(result.canvases),
+    channel_posts: toJson(result.channelPosts),
+    reactions: toJson(result.reactions),
     slack_metadata: {
       thread_title_set: result.slackAdapter.titleCalls.length > 0,
       suggested_prompts_set: result.slackAdapter.promptCalls.length > 0,
       assistant_status_pending: hasAssistantStatusPending(result),
     },
   };
+}
+
+function serializeEvalOutput(output: Record<string, JsonValue>): string {
   return JSON.stringify(output, null, 2);
+}
+
+function toToolCallRecord(
+  invocation: EvalResult["toolInvocations"][number],
+): ToolCallRecord {
+  const args: Record<string, JsonValue> = {};
+  if (invocation.bash_command) {
+    args.command = invocation.bash_command;
+  }
+  if (invocation.skill_name) {
+    args.skill_name = invocation.skill_name;
+  }
+  if (invocation.mcp_tool_name) {
+    args.tool_name = invocation.mcp_tool_name;
+  }
+  if (invocation.mcp_arguments) {
+    args.arguments = toJson(invocation.mcp_arguments);
+  }
+
+  return {
+    name: invocation.tool,
+    ...(Object.keys(args).length > 0 ? { arguments: args } : {}),
+  };
+}
+
+function toHarnessRun(result: EvalResult): HarnessRun {
+  const output = buildEvalOutput(result);
+  const toolCalls = result.toolInvocations.map(toToolCallRecord);
+  const messages: NormalizedMessage[] = [
+    ...result.posts.map(
+      (post): NormalizedMessage => ({
+        role: "assistant",
+        content: post.text,
+        metadata: toJsonRecord({
+          ...(post.channel ? { channel: post.channel } : {}),
+          ...(post.thread_ts ? { thread_ts: post.thread_ts } : {}),
+          files: post.files,
+        }),
+      }),
+    ),
+    ...(toolCalls.length > 0
+      ? [
+          {
+            role: "assistant" as const,
+            toolCalls,
+          },
+        ]
+      : []),
+  ];
+
+  return {
+    output,
+    session: {
+      messages,
+      outputText: serializeEvalOutput(output),
+      metadata: toJsonRecord({
+        slack_metadata: output.slack_metadata,
+      }),
+    },
+    usage: {
+      toolCalls: toolCalls.length,
+    },
+    errors: [],
+  };
 }
 
 // ── Core eval wrapper ──────────────────────────────────────
@@ -180,14 +137,12 @@ interface EvalRubric {
   fail?: readonly string[];
 }
 
-interface SlackEvalOptions {
+export interface SlackEvalInput {
   events: EvalEvent[];
   overrides?: EvalOverrides;
   criteria: EvalRubric;
   requireGatewayReady?: boolean;
   taskTimeout?: number;
-  threshold?: number;
-  timeout?: number;
   requireSandboxReady?: boolean;
 }
 
@@ -220,7 +175,11 @@ function formatRubric(criteria: EvalRubric): string {
     .join("\n\n");
 }
 
-function assertGatewayReady(name: string, result: EvalResult): void {
+function getEvalLabel(input: SlackEvalInput): string {
+  return input.criteria.contract;
+}
+
+function assertGatewayReady(input: SlackEvalInput, result: EvalResult): void {
   const failure = result.logRecords.find((record) => {
     if (record.eventName !== "ai_completion_failed") {
       return false;
@@ -239,12 +198,12 @@ function assertGatewayReady(name: string, result: EvalResult): void {
     failure.body ||
     "AI Gateway authentication failed";
   throw new Error(
-    `Eval gateway bootstrap failed for "${name}". Received "${message}". ` +
+    `Eval gateway bootstrap failed for "${getEvalLabel(input)}". Received "${message}". ` +
       "Refresh AI Gateway auth first (for example via `vercel env pull`) and retry.",
   );
 }
 
-function assertSandboxReady(name: string, result: EvalResult): void {
+function assertSandboxReady(input: SlackEvalInput, result: EvalResult): void {
   const failingPosts = result.posts.filter((post) =>
     post.text.includes(SANDBOX_SETUP_FAILED_TEXT),
   );
@@ -254,12 +213,12 @@ function assertSandboxReady(name: string, result: EvalResult): void {
 
   const sample = failingPosts[0]?.text ?? SANDBOX_SETUP_FAILED_TEXT;
   throw new Error(
-    `Eval sandbox bootstrap failed for "${name}". Received "${sample}". ` +
+    `Eval sandbox bootstrap failed for "${getEvalLabel(input)}". Received "${sample}". ` +
       "Evals require a working Vercel Sandbox and do not permit local fallback.",
   );
 }
 
-function assertStatusCleared(name: string, result: EvalResult): void {
+function assertStatusCleared(input: SlackEvalInput, result: EvalResult): void {
   const lastByThread = new Map<string, string>();
   for (const call of result.slackAdapter.statusCalls) {
     const key = `${call.channelId}:${call.threadTs}`;
@@ -268,7 +227,7 @@ function assertStatusCleared(name: string, result: EvalResult): void {
   for (const [thread, text] of lastByThread) {
     if (text !== "") {
       throw new Error(
-        `Eval "${name}" left assistant status pending on thread ${thread}: "${text}". ` +
+        `Eval "${getEvalLabel(input)}" left assistant status pending on thread ${thread}: "${text}". ` +
           "Every turn must clear the assistant status indicator before completing.",
       );
     }
@@ -286,56 +245,170 @@ export function rubric(criteria: EvalRubric): EvalRubric {
   return criteria;
 }
 
-/** Defines one end-to-end conversational eval case for the Slack harness. */
-export function slackEval(name: string, opts: SlackEvalOptions) {
-  evaluate(name, {
-    timeout: opts.timeout ?? 120_000,
-    threshold: opts.threshold ?? 0.75,
-    task: async () => {
-      const logRecords: EmittedLogRecord[] = [];
-      const unregisterLogSink = registerLogRecordSink((record) => {
-        logRecords.push(record);
-      });
-      try {
-        const taskPromise = runEvalScenario(
-          {
-            events: opts.events,
-            overrides: opts.overrides,
-          },
-          { logRecords },
-        );
-        const result =
-          typeof opts.taskTimeout === "number" && opts.taskTimeout > 0
-            ? await Promise.race([
-                taskPromise,
-                new Promise<never>((_, reject) =>
-                  setTimeout(
-                    () =>
-                      reject(
-                        new Error(
-                          `Eval harness timed out after ${opts.taskTimeout}ms before judge evaluation`,
-                        ),
-                      ),
-                    opts.taskTimeout,
-                  ),
-                ),
-              ])
-            : await taskPromise;
-        if (opts.requireGatewayReady ?? true) {
-          assertGatewayReady(name, result);
-        }
-        if (opts.requireSandboxReady ?? true) {
-          assertSandboxReady(name, result);
-        }
-        assertStatusCleared(name, result);
-        return serializeEvalResult(result);
-      } finally {
-        unregisterLogSink();
-      }
-    },
-    criteria: formatRubric(opts.criteria),
-  });
+type JudgeAnswer = "A" | "B" | "C" | "D" | "E";
+
+interface JudgeResultPayload {
+  answer: JudgeAnswer;
+  rationale: string;
 }
+
+const CHOICE_SCORES: Record<JudgeAnswer, number> = {
+  A: 1,
+  B: 0.75,
+  C: 0.5,
+  D: 0.25,
+  E: 0,
+};
+
+const EVAL_SYSTEM =
+  'You are assessing a submitted output based on a given criterion. Ignore differences in style, grammar, punctuation, or length. Focus only on whether the criterion is met. Return only raw JSON matching {"answer":"A","rationale":"..."}.';
+const EVAL_JUDGE_MODEL_ID = resolveGatewayModel("openai/gpt-5.4").id;
+
+function formatJudgePrompt(output: string, criteria: string): string {
+  return `<submission>
+${output}
+</submission>
+
+<criteria>
+${criteria}
+</criteria>
+
+Does the submission meet the criteria? Select one option:
+(A) The criteria is fully met with no issues
+(B) The criteria is mostly met with minor gaps
+(C) The criteria is partially met with notable gaps
+(D) The criteria is barely met or only tangentially addressed
+(E) The criteria is not met at all
+
+Return only a JSON object with:
+- answer: one of "A", "B", "C", "D", "E"
+- rationale: a concise explanation`;
+}
+
+function isJudgeAnswer(value: unknown): value is JudgeAnswer {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(CHOICE_SCORES, value)
+  );
+}
+
+function parseJudgeResult(text: string): JudgeResultPayload {
+  const parsed = JSON.parse(text) as unknown;
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !isJudgeAnswer((parsed as Record<string, unknown>).answer) ||
+    typeof (parsed as Record<string, unknown>).rationale !== "string"
+  ) {
+    throw new Error(`Rubric judge returned invalid JSON: ${text}`);
+  }
+  return parsed as JudgeResultPayload;
+}
+
+/** Replays Slack events through the real runtime and returns normalized artifacts. */
+export const slackHarness: Harness<SlackEvalInput> = {
+  name: "slack",
+  prompt: async (input, options) => {
+    const { text } = await completeText({
+      modelId: EVAL_JUDGE_MODEL_ID,
+      system: options?.system,
+      messages: [
+        {
+          role: "user",
+          content: input,
+          timestamp: Date.now(),
+        },
+      ],
+      temperature: 0,
+      metadata: options?.metadata,
+    });
+    return text;
+  },
+  run: async (input) => {
+    const logRecords: EmittedLogRecord[] = [];
+    const unregisterLogSink = registerLogRecordSink((record) => {
+      logRecords.push(record);
+    });
+    try {
+      const taskPromise = runEvalScenario(
+        {
+          events: input.events,
+          overrides: input.overrides,
+        },
+        { logRecords },
+      );
+      const result =
+        typeof input.taskTimeout === "number" && input.taskTimeout > 0
+          ? await Promise.race([
+              taskPromise,
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        `Eval harness timed out after ${input.taskTimeout}ms before judge evaluation`,
+                      ),
+                    ),
+                  input.taskTimeout,
+                ),
+              ),
+            ])
+          : await taskPromise;
+      if (input.requireGatewayReady ?? true) {
+        assertGatewayReady(input, result);
+      }
+      if (input.requireSandboxReady ?? true) {
+        assertSandboxReady(input, result);
+      }
+      assertStatusCleared(input, result);
+      return toHarnessRun(result);
+    } finally {
+      unregisterLogSink();
+    }
+  },
+};
+
+/** Scores Slack eval output against the case rubric. */
+export const RubricJudge = namedJudge(
+  "RubricJudge",
+  async ({
+    inputValue,
+    output,
+    harness,
+  }: JudgeContext<
+    SlackEvalInput,
+    Record<string, unknown>,
+    typeof slackHarness
+  >) => {
+    const object = parseJudgeResult(
+      await harness.prompt(
+        formatJudgePrompt(output, formatRubric(inputValue.criteria)),
+        {
+          system: EVAL_SYSTEM,
+          metadata: {
+            judge: "RubricJudge",
+          },
+        },
+      ),
+    );
+    const answer = object.answer as keyof typeof CHOICE_SCORES;
+
+    return {
+      score: CHOICE_SCORES[answer],
+      metadata: {
+        answer,
+        rationale: object.rationale,
+      },
+    };
+  },
+);
+
+/** Shared vitest-evals suite options for Slack conversation evals. */
+export const slackEvals = {
+  harness: slackHarness,
+  judges: [RubricJudge],
+  judgeThreshold: 0.75,
+} satisfies DescribeEvalOptions<SlackEvalInput>;
 
 // ── Event builders ─────────────────────────────────────────
 

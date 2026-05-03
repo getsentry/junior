@@ -1,10 +1,11 @@
-import { describe } from "vitest";
-import { mention, rubric, slackEval } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals } from "../helpers";
 
-describe("Media and Attachments", () => {
-  slackEval(
-    "when the user asks for an image, attach an image instead of replying with text alone",
-    {
+describeEval("Media and Attachments", slackEvals, (it) => {
+  it("when the user asks for an image, attach an image instead of replying with text alone", async ({
+    run,
+  }) => {
+    await run({
       overrides: { mock_image_generation: true },
       events: [mention("show me how you feel")],
       criteria: rubric({
@@ -17,6 +18,6 @@ describe("Media and Attachments", () => {
           "Do not include sandbox setup failure text.",
         ],
       }),
-    },
-  );
+    });
+  });
 });

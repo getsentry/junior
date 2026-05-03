@@ -1,10 +1,11 @@
-import { describe } from "vitest";
-import { mention, rubric, slackEval, threadStart } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals, threadStart } from "../helpers";
 
-describe("Lifecycle and Resilience", () => {
-  slackEval(
-    "when an assistant thread starts, set title and prompts without posting a reply",
-    {
+describeEval("Lifecycle and Resilience", slackEvals, (it) => {
+  it("when an assistant thread starts, set title and prompts without posting a reply", async ({
+    run,
+  }) => {
+    await run({
       events: [threadStart()],
       criteria: rubric({
         contract:
@@ -15,12 +16,13 @@ describe("Lifecycle and Resilience", () => {
           "Suggested prompts are set exactly once.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when reply generation fails before any answer, post one clear error reply",
-    {
+  it("when reply generation fails before any answer, post one clear error reply", async ({
+    run,
+  }) => {
+    await run({
       overrides: { fail_reply_call: 1 },
       events: [mention("What's the status of the deploy?")],
       criteria: rubric({
@@ -34,12 +36,13 @@ describe("Lifecycle and Resilience", () => {
           "Do not leak stack traces, exception text, or debugging narration in the reply.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when a short reply is interrupted by the provider, keep the partial answer in one marked post",
-    {
+  it("when a short reply is interrupted by the provider, keep the partial answer in one marked post", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         reply_results: [
           {
@@ -63,6 +66,6 @@ describe("Lifecycle and Resilience", () => {
           "Do not mention provider internals, execution failure details, or logged-for-debugging text.",
         ],
       }),
-    },
-  );
+    });
+  });
 });

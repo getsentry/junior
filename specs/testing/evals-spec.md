@@ -3,10 +3,11 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-04-21
+- Last Edited: 2026-05-03
 
 ## Changelog
 
+- 2026-05-03: Updated authoring rules for the vitest-evals harness-first API: suites use `describeEval()` with shared Slack harness options, cases call `run(...)` directly, and LLM judges reuse the harness prompt seam.
 - 2026-04-21: Described evals as the integration-style layer for agent-facing behavior and clarified the boundary against ordinary runtime/product integration tests.
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-03-04: Normalized section shape by introducing explicit `Non-Goals`.
@@ -16,7 +17,7 @@
 
 ## Intent
 
-Evals validate end-to-end conversational behavior outcomes through the runtime harness and LLM-judged criteria. Treat them as the integration-style layer for agent-facing behavior: use them when the contract depends on natural-language interpretation, continuity, prompt behavior, or reply quality.
+Evals validate end-to-end conversational behavior outcomes through the runtime harness and LLM-judged criteria. Treat them as the integration-style layer for agent-facing behavior: use them when the contract depends on natural-language interpretation, continuity, prompt behavior, or reply quality. The Slack eval judge uses the same harness prompt seam as the suite, backed by Junior's Pi client and Vercel AI Gateway.
 
 ## Scope
 
@@ -33,7 +34,7 @@ In scope:
 
 ## Authoring Rules
 
-1. Define cases via `slackEval()` and event builders.
+1. Define suites via `describeEval()` with the shared Slack harness options, and define cases as plain `it()` tests that call `run(...)` with event builders.
 2. Keep each case focused on one primary behavior outcome.
 3. Express expectations through the structured rubric shape used by `rubric({ contract, pass, allow, fail })`.
 4. Every new or edited eval must keep its rubric human-readable to maintainers.
@@ -42,7 +43,7 @@ In scope:
    `allow` lists acceptable optional variations.
    `fail` lists failure conditions or forbidden output.
 5. Do not write judge criteria as one dense paragraph.
-6. Let the `describe()` block own the behavior area. The file path and `describe()` context already provide scope, so each individual eval name should only state the specific scenario and outcome.
+6. Let the `describeEval()` block own the behavior area. The file path and `describeEval()` context already provide scope, so each individual eval name should only state the specific scenario and outcome.
 7. Prefer `when <trigger>, <outcome>` over vague labels like `continuity: remembers prior turn context`.
 8. Avoid asserting tool-internal mechanics unless explicitly user-visible.
 9. Keep user prompts natural and product-realistic. Do not script exact internal commands, tool names, or implementation steps into the prompt just to force a path.

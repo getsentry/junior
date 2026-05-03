@@ -1,40 +1,44 @@
-import { describe } from "vitest";
-import { mention, rubric, slackEval, threadMessage } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals, threadMessage } from "../helpers";
 
-describe("Passive Behavior", () => {
+describeEval("Passive Behavior", slackEvals, (it) => {
   const sideConversationThread = {
     id: "thread-passive-side-conversation",
     channel_id: "C-passive-side-conversation",
     thread_ts: "17000000.passive-side-conversation",
   };
 
-  slackEval("when a later question is human-to-human, stay out of the thread", {
-    overrides: {
-      reply_texts: [
-        "The deploy changed the billing worker and the API auth flow.",
-      ],
-    },
-    events: [
-      mention(
-        "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
-        {
+  it("when a later question is human-to-human, stay out of the thread", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        reply_texts: [
+          "The deploy changed the billing worker and the API auth flow.",
+        ],
+      },
+      events: [
+        mention(
+          "Summarize this deploy in one sentence. It changed the billing worker and the API auth flow.",
+          {
+            thread: sideConversationThread,
+          },
+        ),
+        threadMessage("@sam can you take the billing worker rollback?", {
           thread: sideConversationThread,
-        },
-      ),
-      threadMessage("@sam can you take the billing worker rollback?", {
-        thread: sideConversationThread,
+        }),
+      ],
+      criteria: rubric({
+        contract:
+          "A later human-to-human question is ignored even when it is phrased like something Junior could answer.",
+        pass: [
+          "The assistant posts exactly one reply: the initial helpful answer about the deploy.",
+        ],
+        fail: [
+          "Do not answer the later question addressed to @sam about who should take the rollback.",
+        ],
       }),
-    ],
-    criteria: rubric({
-      contract:
-        "A later human-to-human question is ignored even when it is phrased like something Junior could answer.",
-      pass: [
-        "The assistant posts exactly one reply: the initial helpful answer about the deploy.",
-      ],
-      fail: [
-        "Do not answer the later question addressed to @sam about who should take the rollback.",
-      ],
-    }),
+    });
   });
 
   const directedFollowUpThread = {
@@ -43,9 +47,10 @@ describe("Passive Behavior", () => {
     thread_ts: "17000000.passive-directed-follow-up",
   };
 
-  slackEval(
-    "when a follow-up is clearly directed at Junior's prior answer, reply without another @mention",
-    {
+  it("when a follow-up is clearly directed at Junior's prior answer, reply without another @mention", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         reply_texts: ["You need the budget by Friday."],
       },
@@ -65,8 +70,8 @@ describe("Passive Behavior", () => {
           "The second reply plainly restates that the budget is needed by Friday.",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const casualPronounThread = {
     id: "thread-passive-casual-pronoun",
@@ -74,9 +79,10 @@ describe("Passive Behavior", () => {
     thread_ts: "17000000.passive-casual-pronoun",
   };
 
-  slackEval(
-    "when a casual pronoun question reads like coworker talk, stay out of the thread",
-    {
+  it("when a casual pronoun question reads like coworker talk, stay out of the thread", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         reply_texts: [
           "The deploy changed the billing worker and the API auth flow.",
@@ -101,8 +107,8 @@ describe("Passive Behavior", () => {
           "Do not reply to the later casual question 'Is that the right approach?'",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const domainVocabThread = {
     id: "thread-passive-domain-vocab",
@@ -110,9 +116,10 @@ describe("Passive Behavior", () => {
     thread_ts: "17000000.passive-domain-vocab",
   };
 
-  slackEval(
-    "when a later question only shares topic vocabulary, do not treat it as directed at Junior",
-    {
+  it("when a later question only shares topic vocabulary, do not treat it as directed at Junior", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         reply_texts: [
           "The billing worker handles invoice processing and payment retries.",
@@ -136,8 +143,8 @@ describe("Passive Behavior", () => {
           "Do not reply to the later question about the billing worker timeline.",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const canYouThread = {
     id: "thread-passive-can-you",
@@ -145,9 +152,10 @@ describe("Passive Behavior", () => {
     thread_ts: "17000000.passive-can-you",
   };
 
-  slackEval(
-    "when 'can you' is directed at a coworker, stay out of the thread",
-    {
+  it("when 'can you' is directed at a coworker, stay out of the thread", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         reply_texts: ["Here's the deployment status."],
       },
@@ -163,8 +171,8 @@ describe("Passive Behavior", () => {
         ],
         fail: ["Do not reply to the later 'Can you check on this?' message."],
       }),
-    },
-  );
+    });
+  });
 
   const genuineFollowUpThread = {
     id: "thread-passive-genuine-follow-up",
@@ -172,9 +180,10 @@ describe("Passive Behavior", () => {
     thread_ts: "17000000.passive-genuine-follow-up",
   };
 
-  slackEval(
-    "when the user explicitly asks Junior to elaborate, post a second reply",
-    {
+  it("when the user explicitly asks Junior to elaborate, post a second reply", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         reply_texts: ["The deploy changed three services."],
       },
@@ -197,8 +206,8 @@ describe("Passive Behavior", () => {
           "The second reply provides more detail about the deploy changes.",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const terseFollowUpThread = {
     id: "thread-passive-terse-follow-up",
@@ -206,9 +215,10 @@ describe("Passive Behavior", () => {
     thread_ts: "17000000.passive-terse-follow-up",
   };
 
-  slackEval(
-    "when a terse clarification comes right after Junior's answer, treat it as directed back to Junior",
-    {
+  it("when a terse clarification comes right after Junior's answer, treat it as directed back to Junior", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         reply_texts: [
           "The deploy changed billing, auth, and the API gateway.",
@@ -231,8 +241,8 @@ describe("Passive Behavior", () => {
           "The second reply clarifies which services changed.",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const humansTookFloorThread = {
     id: "thread-passive-humans-took-floor",
@@ -240,9 +250,10 @@ describe("Passive Behavior", () => {
     thread_ts: "17000000.passive-humans-took-floor",
   };
 
-  slackEval(
-    "when humans resume the thread, keep ignoring same-topic questions unless they turn back to Junior",
-    {
+  it("when humans resume the thread, keep ignoring same-topic questions unless they turn back to Junior", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         reply_texts: ["The deploy changed billing, auth, and the API gateway."],
       },
@@ -265,8 +276,8 @@ describe("Passive Behavior", () => {
         ],
         fail: ["Do not answer the later billing worker timeline question."],
       }),
-    },
-  );
+    });
+  });
 
   const optOutThread = {
     id: "thread-opt-out",
@@ -274,9 +285,10 @@ describe("Passive Behavior", () => {
     thread_ts: "17000000.optout",
   };
 
-  slackEval(
-    "when the user says to stop participating, stay quiet until re-mentioned",
-    {
+  it("when the user says to stop participating, stay quiet until re-mentioned", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         reply_texts: [
           "I can help in this thread.",
@@ -305,6 +317,6 @@ describe("Passive Behavior", () => {
         ],
         fail: ["Do not treat the stop message like an ordinary help request."],
       }),
-    },
-  );
+    });
+  });
 });

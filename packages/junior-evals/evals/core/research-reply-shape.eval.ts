@@ -1,10 +1,11 @@
-import { describe } from "vitest";
-import { mention, rubric, slackEval } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals } from "../helpers";
 
-describe("Research Reply Shape", () => {
-  slackEval(
-    "when summarizing multiple sources, show initial progress and return a concise answer without process chatter",
-    {
+describeEval("Research Reply Shape", slackEvals, (it) => {
+  it("when summarizing multiple sources, show initial progress and return a concise answer without process chatter", async ({
+    run,
+  }) => {
+    await run({
       events: [
         mention(
           "Read these three sources and give me one brief, coherent summary of how modern Slack agent streaming works. Keep it short enough to fit in one normal Slack reply, and do not include code samples: https://docs.slack.dev/ai/developing-agents/ , https://docs.slack.dev/reference/methods/chat.startStream/ , https://docs.slack.dev/reference/methods/chat.stopStream/ .",
@@ -15,7 +16,6 @@ describe("Research Reply Shape", () => {
       },
       requireSandboxReady: false,
       taskTimeout: 150_000,
-      timeout: 210_000,
       criteria: rubric({
         contract:
           "A multi-source research request returns a concise Slack-style answer without process chatter.",
@@ -33,12 +33,13 @@ describe("Research Reply Shape", () => {
           "Do not send caveats about inaccessible or partial sources as a stray status-like note.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when long-form research is requested as a reusable reference, create a canvas and keep the thread reply brief",
-    {
+  it("when long-form research is requested as a reusable reference, create a canvas and keep the thread reply brief", async ({
+    run,
+  }) => {
+    await run({
       events: [
         mention(
           "Read these three sources and put together a detailed timeline and implementation reference for modern Slack agent streaming that I can come back to later. Cover how the APIs evolved, the key methods, the current limits, and the migration gotchas: https://docs.slack.dev/ai/developing-agents/ , https://docs.slack.dev/reference/methods/chat.startStream/ , https://docs.slack.dev/reference/methods/chat.stopStream/ .",
@@ -49,7 +50,6 @@ describe("Research Reply Shape", () => {
       },
       requireSandboxReady: false,
       taskTimeout: 180_000,
-      timeout: 240_000,
       criteria: rubric({
         contract:
           "A long-form research deliverable becomes a Slack canvas, with the thread reserved for a short summary and pointer.",
@@ -68,6 +68,6 @@ describe("Research Reply Shape", () => {
           "Do not add process chatter such as 'let me check', 'fetching', or similar tool-progress narration.",
         ],
       }),
-    },
-  );
+    });
+  });
 });

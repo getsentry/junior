@@ -1,10 +1,11 @@
-import { describe } from "vitest";
-import { mention, rubric, slackEval, threadMessage } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals, threadMessage } from "../helpers";
 
-describe("Skill Infrastructure", () => {
-  slackEval(
-    "when the candidate brief command runs, return one candidate brief reply",
-    {
+describeEval("Skill Infrastructure", slackEvals, (it) => {
+  it("when the candidate brief command runs, return one candidate brief reply", async ({
+    run,
+  }) => {
+    await run({
       overrides: { skill_dirs: ["evals/fixtures/skills"] },
       events: [mention("/candidate-brief David Cramer")],
       criteria: rubric({
@@ -16,8 +17,8 @@ describe("Skill Infrastructure", () => {
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),
-    },
-  );
+    });
+  });
 
   const candidateBriefThread = {
     id: "thread-candidate-brief-repeat",
@@ -25,9 +26,10 @@ describe("Skill Infrastructure", () => {
     thread_ts: "17000000.candidate-brief",
   };
 
-  slackEval(
-    "when the candidate brief command runs twice in one thread, keep the replies ordered",
-    {
+  it("when the candidate brief command runs twice in one thread, keep the replies ordered", async ({
+    run,
+  }) => {
+    await run({
       overrides: { skill_dirs: ["evals/fixtures/skills"] },
       events: [
         mention("/candidate-brief Alice Example", {
@@ -48,12 +50,13 @@ describe("Skill Infrastructure", () => {
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when the working-directory command runs, return one file-list reply",
-    {
+  it("when the working-directory command runs, return one file-list reply", async ({
+    run,
+  }) => {
+    await run({
       overrides: { skill_dirs: ["evals/fixtures/skills"] },
       events: [mention("/list-working-directory")],
       criteria: rubric({
@@ -65,12 +68,13 @@ describe("Skill Infrastructure", () => {
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when asked to double-check a source-backed fact, use the source and answer completely",
-    {
+  it("when asked to double-check a source-backed fact, use the source and answer completely", async ({
+    run,
+  }) => {
+    await run({
       overrides: { skill_dirs: ["evals/fixtures/skills"] },
       events: [
         mention(
@@ -93,12 +97,13 @@ describe("Skill Infrastructure", () => {
           "Do not claim that a closed issue is enough to prove the capability exists.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when an MCP-backed skill handles a lookup, return the provider-backed answer",
-    {
+  it("when an MCP-backed skill handles a lookup, return the provider-backed answer", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         plugin_dirs: ["evals/fixtures/plugins"],
       },
@@ -108,7 +113,6 @@ describe("Skill Infrastructure", () => {
         ),
       ],
       taskTimeout: 120_000,
-      timeout: 300_000,
       criteria: rubric({
         contract:
           "An MCP-backed skill can complete a natural lookup by using the provider result instead of surfacing tool validation errors.",
@@ -128,6 +132,6 @@ describe("Skill Infrastructure", () => {
           "Do not say the MCP runtime is broken or that the lookup cannot be attempted.",
         ],
       }),
-    },
-  );
+    });
+  });
 });

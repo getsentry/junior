@@ -4,9 +4,9 @@
 
 Evals are end-to-end Slack conversation evaluations. They are the integration-style test layer for agent-facing behavior when model interpretation is part of the contract.
 
-- We define conversation cases inline in TypeScript using `slackEval()`.
+- We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
 - We run the real runtime/harness against those fixtures.
-- We score outcomes with an LLM judge via `vitest-evals`.
+- We score outcomes with a `vitest-evals` judge that reuses the Slack harness prompt seam, backed by Junior's Pi client and the Vercel AI Gateway model `openai/gpt-5.4`.
 
 ## Layer Boundaries
 
@@ -52,7 +52,7 @@ Not in scope:
 
 ## Execution Model
 
-For each case (`slackEval()` call):
+For each `it()` case inside a `describeEval()` suite:
 
 1. Replay events through the harness via `runEvalScenario()`.
 2. Create a fresh runtime instance for the case via the chat composition root; do not mutate the production singleton runtime.
@@ -97,7 +97,7 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 
 ## Authoring Rules
 
-- Add core cases under `evals/core/*.eval.ts` and plugin-specific cases under `evals/<plugin>/` using `slackEval()`.
+- Add core cases under `evals/core/*.eval.ts` and plugin-specific cases under `evals/<plugin>/` using `describeEval()` with `slackEvals`.
 - Use event builders (`mention`, `threadMessage`, `threadStart`) from `evals/helpers.ts`.
 - Use `auto_complete_mcp_oauth` or `auto_complete_oauth` when the harness should instantly complete the fake provider callback after our app has genuinely initiated auth.
 - For multi-turn, pass the same `thread` override so events land in one thread.
@@ -109,7 +109,7 @@ Evals require real Vercel Sandbox access. If sandbox bootstrap fails, the eval f
 - `allow` should list acceptable optional variations.
 - `fail` should list forbidden outputs or failure conditions.
 - Do not write judge criteria as one dense paragraph.
-- Let the `describe()` block own the behavior area. The file path and `describe()` context already provide scope.
+- Let the `describeEval()` block own the behavior area. The file path and `describeEval()` context already provide scope.
 - Each eval name should only state the specific scenario and outcome.
 - Prefer `when <trigger>, <outcome>` over vague labels like `continuity: remembers prior turn context`.
 - Keep user prompts natural. They should read like plausible user requests, not scripted implementation instructions.
@@ -159,13 +159,18 @@ Avoid:
 ## Minimal Case
 
 ```typescript
-import { mention, rubric, slackEval } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals } from "../helpers";
 
-slackEval("when explicitly mentioned, post one direct reply", {
-  events: [mention("<@U_APP> summarize this")],
-  criteria: rubric({
-    contract: "An explicit mention gets one direct reply.",
-    pass: ["The assistant posts exactly one reply to the mention."],
-  }),
+describeEval("Routing", slackEvals, (it) => {
+  it("when explicitly mentioned, post one direct reply", async ({ run }) => {
+    await run({
+      events: [mention("<@U_APP> summarize this")],
+      criteria: rubric({
+        contract: "An explicit mention gets one direct reply.",
+        pass: ["The assistant posts exactly one reply to the mention."],
+      }),
+    });
+  });
 });
 ```

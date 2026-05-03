@@ -1,10 +1,11 @@
-import { describe } from "vitest";
-import { mention, rubric, slackEval, threadMessage } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals, threadMessage } from "../helpers";
 
-describe("GitHub Skill Workflows", () => {
-  slackEval(
-    "when the GitHub credential smoke command runs, return one CREDENTIAL_OK reply",
-    {
+describeEval("GitHub Skill Workflows", slackEvals, (it) => {
+  it("when the GitHub credential smoke command runs, return one CREDENTIAL_OK reply", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         skill_dirs: ["evals/fixtures/skills"],
         enable_test_credentials: true,
@@ -22,12 +23,13 @@ describe("GitHub Skill Workflows", () => {
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when creating a GitHub issue, skip duplicate-search narration in the reply",
-    {
+  it("when creating a GitHub issue, skip duplicate-search narration in the reply", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
@@ -52,8 +54,8 @@ describe("GitHub Skill Workflows", () => {
           "Do not report that no duplicates were found.",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const reporterRequesterThread = {
     id: "thread-reporter-requester",
@@ -61,9 +63,10 @@ describe("GitHub Skill Workflows", () => {
     thread_ts: "17000000.reporter-requester",
   };
 
-  slackEval(
-    "when one user reports and another files an issue, keep attribution roles separate",
-    {
+  it("when one user reports and another files an issue, keep attribution roles separate", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
@@ -120,12 +123,13 @@ describe("GitHub Skill Workflows", () => {
           "Do not omit reporter attribution when showing the filed issue content.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when a GitHub task mentions a Sentry product area, do not prompt for Sentry auth first",
-    {
+  it("when a GitHub task mentions a Sentry product area, do not prompt for Sentry auth first", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github", "@sentry/junior-sentry"],
@@ -151,12 +155,13 @@ describe("GitHub Skill Workflows", () => {
           "Do not ask to inspect live Sentry data before doing the GitHub task.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when asked an implementation question about this repo, answer from repository evidence",
-    {
+  it("when asked an implementation question about this repo, answer from repository evidence", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
@@ -181,12 +186,13 @@ describe("GitHub Skill Workflows", () => {
           "Do not answer purely from generic GitHub or OAuth knowledge without repo evidence.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when asked about PR auth sequencing, mention push auth before PR auth",
-    {
+  it("when asked about PR auth sequencing, mention push auth before PR auth", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
@@ -211,8 +217,8 @@ describe("GitHub Skill Workflows", () => {
           "Do not omit the explicit push-auth step.",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const defaultRepoThread = {
     id: "thread-default-repo",
@@ -225,9 +231,10 @@ describe("GitHub Skill Workflows", () => {
     thread_ts: "17000000.default-repo-issue",
   };
 
-  slackEval(
-    "when creating an issue after repo setup, use the stored repo without inventing tool failures",
-    {
+  it("when creating an issue after repo setup, use the stored repo without inventing tool failures", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
@@ -266,12 +273,13 @@ describe("GitHub Skill Workflows", () => {
           "Do not create or report an issue for a repository other than getsentry/junior.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when a default repo is set in one turn, reuse it in the next turn without asking again",
-    {
+  it("when a default repo is set in one turn, reuse it in the next turn without asking again", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-github"],
@@ -306,6 +314,6 @@ describe("GitHub Skill Workflows", () => {
           "Do not say a live GitHub lookup is required before answering.",
         ],
       }),
-    },
-  );
+    });
+  });
 });

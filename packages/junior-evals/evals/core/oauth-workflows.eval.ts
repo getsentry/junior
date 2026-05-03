@@ -1,16 +1,17 @@
-import { describe } from "vitest";
-import { rubric, slackEval, threadMessage } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { rubric, slackEvals, threadMessage } from "../helpers";
 
-describe("OAuth Workflows", () => {
+describeEval("OAuth Workflows", slackEvals, (it) => {
   const mcpAuthResumeThread = {
     id: "thread-auth-resume",
     channel_id: "C-auth-resume",
     thread_ts: "17000000.auth-resume",
   };
 
-  slackEval(
-    "when MCP auth pauses a turn, resume in the same thread with prior context intact",
-    {
+  it("when MCP auth pauses a turn, resume in the same thread with prior context intact", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         auto_complete_mcp_oauth: ["eval-auth"],
         plugin_dirs: ["evals/fixtures/plugins"],
@@ -29,7 +30,6 @@ describe("OAuth Workflows", () => {
         ),
       ],
       taskTimeout: 120_000,
-      timeout: 300_000,
       criteria: rubric({
         contract:
           "After MCP authorization completes, the same thread gets a resumed answer that keeps prior context.",
@@ -49,8 +49,8 @@ describe("OAuth Workflows", () => {
           "Do not post a generic failure message.",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const oauthResumeThread = {
     id: "thread-oauth-resume",
@@ -58,9 +58,10 @@ describe("OAuth Workflows", () => {
     thread_ts: "17000000.oauth-resume",
   };
 
-  slackEval(
-    "when generic OAuth pauses a turn, resume in the same thread with prior context intact",
-    {
+  it("when generic OAuth pauses a turn, resume in the same thread with prior context intact", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         auto_complete_oauth: ["eval-oauth"],
         plugin_dirs: ["evals/fixtures/plugins"],
@@ -79,7 +80,6 @@ describe("OAuth Workflows", () => {
         ),
       ],
       taskTimeout: 120_000,
-      timeout: 300_000,
       criteria: rubric({
         contract:
           "After generic OAuth authorization completes, the same thread gets a resumed answer that keeps prior context.",
@@ -97,8 +97,8 @@ describe("OAuth Workflows", () => {
           "Do not post a generic failure message.",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const oauthReconnectThread = {
     id: "thread-oauth-reconnect",
@@ -106,9 +106,10 @@ describe("OAuth Workflows", () => {
     thread_ts: "17000000.oauth-reconnect",
   };
 
-  slackEval(
-    "when the user explicitly asks to reconnect, confirm reconnection without auto-resuming another task",
-    {
+  it("when the user explicitly asks to reconnect, confirm reconnection without auto-resuming another task", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         auto_complete_oauth: ["eval-oauth"],
         plugin_dirs: ["evals/fixtures/plugins"],
@@ -120,7 +121,6 @@ describe("OAuth Workflows", () => {
         ),
       ],
       taskTimeout: 120_000,
-      timeout: 300_000,
       criteria: rubric({
         contract:
           "An explicit reconnect request can drive a fresh authorization cycle to completion in the same thread.",
@@ -137,6 +137,6 @@ describe("OAuth Workflows", () => {
           "Do not post a generic failure message.",
         ],
       }),
-    },
-  );
+    });
+  });
 });

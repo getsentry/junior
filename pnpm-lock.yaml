@@ -197,9 +197,6 @@ importers:
 
   packages/junior-evals:
     devDependencies:
-      "@ai-sdk/gateway":
-        specifier: ^3.0.99
-        version: 3.0.99(zod@4.3.6)
       "@sentry/junior":
         specifier: workspace:*
         version: file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.33)(@sentry/node@10.48.0)
@@ -219,11 +216,8 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(msw@2.13.3(@types/node@25.6.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.6.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))
       vitest-evals:
-        specifier: ^0.7.0
-        version: 0.7.0(ai@6.0.162(zod@4.3.6))(tinyrainbow@3.1.0)(vitest@4.1.4(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(msw@2.13.3(@types/node@25.6.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.6.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)))(zod@4.3.6)
-      zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: 0.9.0-beta.1
+        version: 0.9.0-beta.1(ai@6.0.162(zod@4.3.6))(tinyrainbow@3.1.0)(vitest@4.1.4(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(msw@2.13.3(@types/node@25.6.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.6.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)))(zod@4.3.6)
 
   packages/junior-github: {}
 
@@ -10639,15 +10633,15 @@ packages:
       vite:
         optional: true
 
-  vitest-evals@0.7.0:
+  vitest-evals@0.9.0-beta.1:
     resolution:
       {
-        integrity: sha512-ZHvgKeP+DgL11wpS/GXDQTt0zlFkJwpk1PLBybXZfJnuXRBSkNrO3nVticVtHO8soHoP3rK0TtBUxV5du29OuQ==,
+        integrity: sha512-Y3BfT0SStUgl7pwgWsN4/EVwl85jQQ8+sgLOh7BVd8PEvWaZeLbnhy6/bVjxDB1vis9DlwwgxJvHlQ3Ca5qdHQ==,
       }
     peerDependencies:
       ai: ">=4 <7"
       tinyrainbow: ">=2 <4"
-      vitest: ">=3 <5"
+      vitest: ">=4 <5"
       zod: ">=3 <5"
     peerDependenciesMeta:
       ai:
@@ -18286,7 +18280,7 @@ snapshots:
     optionalDependencies:
       vite: 6.4.1(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)
 
-  vitest-evals@0.7.0(ai@6.0.162(zod@4.3.6))(tinyrainbow@3.1.0)(vitest@4.1.4(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(msw@2.13.3(@types/node@25.6.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.6.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)))(zod@4.3.6):
+  vitest-evals@0.9.0-beta.1(ai@6.0.162(zod@4.3.6))(tinyrainbow@3.1.0)(vitest@4.1.4(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(msw@2.13.3(@types/node@25.6.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.6.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)))(zod@4.3.6):
     dependencies:
       tinyrainbow: 3.1.0
       vitest: 4.1.4(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(msw@2.13.3(@types/node@25.6.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.6.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3))

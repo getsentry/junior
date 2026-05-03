@@ -1,10 +1,11 @@
-import { describe } from "vitest";
-import { mention, rubric, slackEval, threadMessage } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals, threadMessage } from "../helpers";
 
-describe("Routing and Continuity", () => {
-  slackEval(
-    "when a thread message explicitly mentions Junior, post a direct reply",
-    {
+describeEval("Routing and Continuity", slackEvals, (it) => {
+  it("when a thread message explicitly mentions Junior, post a direct reply", async ({
+    run,
+  }) => {
+    await run({
       events: [threadMessage("<@U_APP> what is 2+2?", { is_mention: true })],
       criteria: rubric({
         contract:
@@ -15,12 +16,13 @@ describe("Routing and Continuity", () => {
         ],
         fail: ["Do not return sandbox setup failure text."],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when asked to post in channel, send a channel post instead of a thread reply",
-    {
+  it("when asked to post in channel, send a channel post instead of a thread reply", async ({
+    run,
+  }) => {
+    await run({
       events: [mention("@bot say hello to the channel!")],
       criteria: rubric({
         contract:
@@ -33,12 +35,13 @@ describe("Routing and Continuity", () => {
           "A lightweight acknowledgement reaction in reactions is acceptable.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when asked to post in another named channel, explain the limitation instead",
-    {
+  it("when asked to post in another named channel, explain the limitation instead", async ({
+    run,
+  }) => {
+    await run({
       events: [
         mention(
           "@bot post this in #discuss-design-engineering instead: Heads up, design review starts in 10 minutes.",
@@ -57,12 +60,13 @@ describe("Routing and Continuity", () => {
           "Do not claim the message was posted to #discuss-design-engineering.",
         ],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when the request is reaction-only, add a reaction without reply clutter",
-    {
+  it("when the request is reaction-only, add a reaction without reply clutter", async ({
+    run,
+  }) => {
+    await run({
       events: [mention("react to this")],
       criteria: rubric({
         contract:
@@ -73,8 +77,8 @@ describe("Routing and Continuity", () => {
           "Do not add a short acknowledgement reply such as 'Done'.",
         ],
       }),
-    },
-  );
+    });
+  });
 
   const continuityThread = {
     id: "thread-continuity",
@@ -82,9 +86,10 @@ describe("Routing and Continuity", () => {
     thread_ts: "17000000.continuity",
   };
 
-  slackEval(
-    "when a follow-up asks about the prior turn, recall the earlier budget context",
-    {
+  it("when a follow-up asks about the prior turn, recall the earlier budget context", async ({
+    run,
+  }) => {
+    await run({
       events: [
         mention("I need the budget by Friday.", { thread: continuityThread }),
         threadMessage("what did i just ask?", {
@@ -101,6 +106,6 @@ describe("Routing and Continuity", () => {
         ],
         fail: ["Do not return sandbox setup failure text."],
       }),
-    },
-  );
+    });
+  });
 });

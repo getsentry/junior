@@ -34,5 +34,6 @@ export default defineConfig({
     include: ["evals/**/*.eval.ts"],
     setupFiles: [path.resolve(juniorPackageRoot, "tests/msw/setup.ts")],
     reporters: [new DefaultEvalReporter()],
+    testTimeout: 300_000,
   },
 });

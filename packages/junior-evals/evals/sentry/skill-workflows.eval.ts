@@ -1,10 +1,11 @@
-import { describe } from "vitest";
-import { mention, rubric, slackEval } from "../helpers";
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals } from "../helpers";
 
-describe("Sentry Skill Workflows", () => {
-  slackEval(
-    "when the Sentry credential smoke command runs, return one CREDENTIAL_OK reply",
-    {
+describeEval("Sentry Skill Workflows", slackEvals, (it) => {
+  it("when the Sentry credential smoke command runs, return one CREDENTIAL_OK reply", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         skill_dirs: ["evals/fixtures/skills"],
         enable_test_credentials: true,
@@ -22,12 +23,13 @@ describe("Sentry Skill Workflows", () => {
         ],
         fail: ["Do not include sandbox setup failure text."],
       }),
-    },
-  );
+    });
+  });
 
-  slackEval(
-    "when listing Sentry organizations, use the current org command surface",
-    {
+  it("when listing Sentry organizations, use the current org command surface", async ({
+    run,
+  }) => {
+    await run({
       overrides: {
         enable_test_credentials: true,
         plugin_packages: ["@sentry/junior-sentry"],
@@ -49,6 +51,6 @@ describe("Sentry Skill Workflows", () => {
           "Do not ask the user to reconnect Sentry unless the command returns an auth failure.",
         ],
       }),
-    },
-  );
+    });
+  });
 });
