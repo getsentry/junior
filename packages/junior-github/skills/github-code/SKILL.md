@@ -20,7 +20,8 @@ Repository checkout, source-code investigation, and pull request operations via 
 ### 1. Resolve operation and target
 
 - Determine whether the task is `clone`, `source-code investigation`, a pull request inspection (`view`, `list`, `diff`, `checks`), or a pull request mutation (`create`, `update`, `close`, `merge`).
-- Resolve repository (`owner/repo`). If not explicit, query channel config with `jr-rpc config get github.repo` before running any `gh` or `git` command. If still missing, ask the user.
+- Resolve repository from the requested action: explicit target wins; otherwise use `<configuration>` `github.repo`. If absent, run standalone `jr-rpc config get github.repo`.
+- Preserve non-target GitHub references when they materially support the work.
 - Run `jr-rpc config get github.repo` as its own bash command. Do not combine it with `cd`, `&&`, pipes, or any `gh` or `git` command.
 - After resolving a configured repo, pass it explicitly to the next `gh` command with `--repo owner/repo`; do not rely on implicit GitHub CLI repository discovery.
 - Resolve the pull request number for operations targeting an existing PR.

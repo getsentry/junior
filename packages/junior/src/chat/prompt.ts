@@ -346,6 +346,7 @@ const HEADER =
 const TOOL_POLICY_RULES = [
   "- Tool schemas are the source of truth for parameters; tool names are case-sensitive, so call tools exactly by their exposed names and do not invent arguments.",
   "- Use tools for actionable work and for facts that are mutable, external, repository-backed, provider-backed, or requested as verified/current. Stable general knowledge and already-provided context may be answered directly.",
+  "- Resolve provider action targets before calls: explicit target wins; ambient `<configuration>` fills omitted targets. Treat non-target links/references as context.",
   "- Verification source order: conversation/thread context; user-provided attachments, links, and reference files; local/sandbox files when present; loaded skill references; repository/provider tools; public web. Use the nearest authoritative available source before weaker sources.",
   "- For repository or implementation questions, inspect the target repository first: local checkout when present, otherwise the configured GitHub/source provider. Do not treat loaded skill files as repo source unless the user asks about the skill. Cite file paths, symbols, PRs/issues, commits, or URLs that support the answer.",
   `- Sandbox-backed file and shell tools operate in an isolated workspace rooted at ${SANDBOX_WORKSPACE_ROOT}; readFile/writeFile paths are sandbox-workspace paths, bash runs inside that workspace, and attachFile accepts absolute or workspace-relative sandbox paths.`,
@@ -531,7 +532,7 @@ function buildContextSection(params: {
   if (configLines) {
     blocks.push(
       renderTag("configuration", [
-        "Install and conversation-scoped defaults. Channel overrides take precedence; follow explicit user input when it conflicts.",
+        "Ambient provider defaults; explicit targets win.",
         ...configLines,
       ]),
     );

@@ -147,6 +147,7 @@ Good conversational evals should:
 - Use concrete real-world scenarios (incident updates, planning follow-ups, capability setup requests), not abstract mechanics like "posted two replies."
 - Use judge criteria written in product language, not implementation language.
 - Use rubric sections that are easy for maintainers to scan in a failure: one `contract`, a short `pass` list, and focused `allow` / `fail` lists only when needed.
+- Use fake/nonexistent external targets unless the eval explicitly opts into live provider access.
 - Cover realistic failure behavior (clear user-visible errors) without depending on internal tool wiring.
 - Keep eval output payload user-facing (assistant posts + Slack-visible metadata), excluding low-level tool-call traces.
 
@@ -154,6 +155,7 @@ Avoid:
 
 - Criteria tied to exact internal tool call names (`bash`, etc.) when user-visible behavior is what matters.
 - User prompts that prescribe exact internal commands or tool choices just to force the desired path.
+- Prompts that can hit random external URLs or mutate real provider resources for a behavior that can be tested with fake references.
 - Cases that only validate mocks or internal state transitions without conversational context.
 
 ## Minimal Case

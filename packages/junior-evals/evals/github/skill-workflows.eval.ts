@@ -82,7 +82,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
       },
       events: [
         threadMessage(
-          "Warden resolved its own review thread on https://github.com/getsentry/ops/pull/20366 even though the warning still applies. The warning was about `SCM_RPC_SHARED_SECRET` not being backported to the cookiecutter template, and the PR still shows `REVIEW_REQUIRED`.",
+          "Warden resolved its own review thread on getsentry/junior-eval-ops-reference-never-exists#20366 even though the warning still applies. The warning was about `SCM_RPC_SHARED_SECRET` not being backported to the cookiecutter template, and the PR still shows `REVIEW_REQUIRED`.",
           {
             thread: reporterRequesterThread,
             author: {
@@ -93,7 +93,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
           },
         ),
         mention(
-          "Create a GitHub issue for this in getsentry/warden. Include the issue body you filed in your reply so I can verify attribution.",
+          "Create a GitHub issue for this in getsentry/junior-eval-warden-never-exists. Include the issue body you filed in your reply so I can verify attribution.",
           {
             thread: reporterRequesterThread,
             author: {
@@ -109,7 +109,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
           "GitHub issue creation from a multi-user Slack thread preserves the original reporter separately from the action requester.",
         pass: [
           "The assistant posts exactly one reply.",
-          "The reply reports a created GitHub issue in getsentry/warden with an issue URL or issue number.",
+          "The reply reports a created GitHub issue in getsentry/junior-eval-warden-never-exists with an issue URL or issue number.",
           "The reply includes the filed issue body or enough quoted issue content to verify attribution.",
           "The shown issue content attributes the report to Bojan Oro.",
           "The shown issue content ends its delegated-action footer with `Action taken on behalf of David Cramer.`",
@@ -230,6 +230,16 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
     channel_id: "C-default-repo-issue",
     thread_ts: "17000000.default-repo-issue",
   };
+  const targetClassificationContextThread = {
+    id: "thread-target-classification-context",
+    channel_id: "C-target-classification-context",
+    thread_ts: "17000000.target-classification-context",
+  };
+  const targetClassificationExplicitThread = {
+    id: "thread-target-classification-explicit",
+    channel_id: "C-target-classification-explicit",
+    thread_ts: "17000000.target-classification-explicit",
+  };
 
   it("when creating an issue after repo setup, use the stored repo without inventing tool failures", async ({
     run,
@@ -312,6 +322,97 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         fail: [
           "Do not ask the user to provide the repo again.",
           "Do not say a live GitHub lookup is required before answering.",
+        ],
+      }),
+    });
+  });
+
+  it("when drafting a fake issue from contextual foreign reference, keep the default repo as target", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 75_000,
+        test_credential_token: "eval-target-classification-context-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        threadMessage(
+          "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel. Do not verify it exists.",
+          {
+            thread: targetClassificationContextThread,
+            is_mention: true,
+          },
+        ),
+        threadMessage(
+          "We need a tracking issue for the Junior bot. This example from getsentry/junior-eval-reference-never-exists#123 shows GitHub issue references can be mistaken for the target repo. Draft the issue I should approve with target repo, title, and body. Do not run GitHub commands.",
+          {
+            thread: targetClassificationContextThread,
+            is_mention: true,
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "Draft a fake issue against the default repo while keeping the fake foreign issue reference as context.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The first reply confirms default repo setup for getsentry/junior-eval-bot-never-exists.",
+          "The second reply says the target repo is getsentry/junior-eval-bot-never-exists.",
+          "The second reply treats getsentry/junior-eval-reference-never-exists#123 as context or a reference.",
+          "observed_tool_invocations does not include a bash invocation with `gh issue create`, `gh issue comment`, or `gh issue view`.",
+        ],
+        fail: [
+          "Do not choose getsentry/junior-eval-reference-never-exists as the action target.",
+          "Do not run GitHub commands against either fake repo.",
+          "Do not ask the user to provide the repo again.",
+        ],
+      }),
+    });
+  });
+
+  it("when confirming a fake explicit issue reference, use that issue as target", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 75_000,
+        test_credential_token: "eval-target-classification-explicit-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        threadMessage(
+          "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel. Do not verify it exists.",
+          {
+            thread: targetClassificationExplicitThread,
+            is_mention: true,
+          },
+        ),
+        threadMessage(
+          "Before I approve a later comment, confirm the target issue for getsentry/junior-eval-reference-never-exists#123. Do not run GitHub commands.",
+          {
+            thread: targetClassificationExplicitThread,
+            is_mention: true,
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "Confirm the explicitly referenced issue as target even when a default repo is set.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The first reply confirms default repo setup for getsentry/junior-eval-bot-never-exists.",
+          "The second reply says the action target would be getsentry/junior-eval-reference-never-exists#123 or repo getsentry/junior-eval-reference-never-exists.",
+          "observed_tool_invocations does not include a bash invocation with `gh issue create`, `gh issue comment`, or `gh issue view`.",
+        ],
+        fail: [
+          "Do not choose getsentry/junior-eval-bot-never-exists as the action target.",
+          "Do not run GitHub commands against either fake repo.",
+          "Do not ask the user to restate the repository or issue number.",
         ],
       }),
     });

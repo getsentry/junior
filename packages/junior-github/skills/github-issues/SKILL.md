@@ -22,7 +22,8 @@ Use only for GitHub issues. For pull requests, branches, pushes, or PR auth-orde
 ### 1. Resolve operation and target
 
 - Determine whether the task is `create`, `update`, `comment`, `labels`, `state`, or read-only inspection.
-- Resolve repository (`owner/repo`). If not explicit, query channel config with `jr-rpc config get github.repo` before running any `gh` command. If still missing, ask the user.
+- Resolve repository from the requested action: explicit target wins; otherwise use `<configuration>` `github.repo`. If absent, run standalone `jr-rpc config get github.repo`.
+- Preserve non-target GitHub references that materially support created issue or comment bodies.
 - Run `jr-rpc config get github.repo` as its own bash command. Do not combine it with `cd`, `&&`, pipes, or any `gh` command.
 - After resolving a configured repo, pass it explicitly to the next `gh` command with `--repo owner/repo`; do not rely on implicit GitHub CLI repository discovery.
 - Resolve the issue number for non-create operations.
@@ -57,6 +58,7 @@ Follow [references/research-rules.md](references/research-rules.md) for cross-ty
 - Generalize session framing — strip channel references, slash commands, Slack thread IDs, user @mentions, and transcript fragments; replace with the underlying technical problem.
 - Compress source material. Research notes, hypotheses, or transcripts become a short summary + scoped bullets — never paste raw investigation into the body.
 - Do not add desired outcome, expected behavior, or acceptance criteria unless the thread explicitly requests them.
+- Preserve material source references inline.
 - When the request originated from a Slack thread or any on-behalf-of context, append a final line `Action taken on behalf of <name>.` using the action requester's real name. The action requester is the current `<requester>` or the person who explicitly asked you to create/update the issue, not necessarily the original reporter.
 
 **Attribution:**
