@@ -212,6 +212,7 @@ vi.mock("@/chat/config", () => ({
     fastModelId: "test-fast-model",
     modelId: "test-model",
     turnTimeoutMs: 1000,
+    userName: "junior",
   },
   getRuntimeMetadata: () => ({ version: "test" }),
 }));
