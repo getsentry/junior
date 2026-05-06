@@ -95,10 +95,6 @@ export type { AssistantReply, AgentTurnDiagnostics };
 
 export interface ReplyRequestContext {
   skillDirs?: string[];
-  assistant?: {
-    userId?: string;
-    userName?: string;
-  };
   requester?: {
     userId?: string;
     userName?: string;
@@ -151,15 +147,6 @@ export interface ReplyRequestContext {
     toolName: string;
     params: Record<string, unknown>;
   }) => void;
-  /**
-   * Known thread participants. Injected into per-turn context so the LLM can
-   * produce correct <@USERID> mention syntax for people already in the conversation.
-   */
-  threadParticipants?: Array<{
-    userId?: string;
-    userName?: string;
-    fullName?: string;
-  }>;
 }
 
 let startupDiscoveryLogged = false;
@@ -429,7 +416,7 @@ export async function generateAssistantReply(
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
       runId: context.correlation?.runId,
-      assistantUserName: context.assistant?.userName,
+      assistantUserName: botConfig.userName,
       modelId: botConfig.modelId,
     };
 
@@ -753,7 +740,7 @@ export async function generateAssistantReply(
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
       runId: context.correlation?.runId,
-      assistantUserName: context.assistant?.userName,
+      assistantUserName: botConfig.userName,
       modelId: botConfig.modelId,
     });
 
@@ -863,11 +850,9 @@ export async function generateAssistantReply(
         thinkingLevel: thinkingSelection.thinkingLevel,
       },
       invocation: skillInvocation,
-      assistant: context.assistant,
       requester: context.requester,
       artifactState: context.artifactState,
       configuration: configurationValues,
-      threadParticipants: context.threadParticipants,
       turnState: resumedFromCheckpoint ? "resumed" : "fresh",
     });
     const promptContentParts: UserTurnContentPart[] = [
@@ -1131,7 +1116,7 @@ export async function generateAssistantReply(
       usage: turnUsage,
       thinkingSelection,
       correlation: context.correlation,
-      assistantUserName: context.assistant?.userName,
+      assistantUserName: botConfig.userName,
     });
   } catch (error) {
     if (timedOut && timeoutResumeConversationId && timeoutResumeSessionId) {
@@ -1147,7 +1132,7 @@ export async function generateAssistantReply(
           requesterId: context.correlation?.requesterId,
           channelId: context.correlation?.channelId,
           runId: context.correlation?.runId,
-          assistantUserName: context.assistant?.userName,
+          assistantUserName: botConfig.userName,
           modelId: botConfig.modelId,
         },
       });
@@ -1199,7 +1184,7 @@ export async function generateAssistantReply(
           requesterId: context.correlation?.requesterId,
           channelId: context.correlation?.channelId,
           runId: context.correlation?.runId,
-          assistantUserName: context.assistant?.userName,
+          assistantUserName: botConfig.userName,
           modelId: botConfig.modelId,
         },
       });
@@ -1232,7 +1217,7 @@ export async function generateAssistantReply(
         slackUserId: context.correlation?.requesterId,
         slackChannelId: context.correlation?.channelId,
         runId: context.correlation?.runId,
-        assistantUserName: context.assistant?.userName,
+        assistantUserName: botConfig.userName,
         modelId: botConfig.modelId,
       },
       {},

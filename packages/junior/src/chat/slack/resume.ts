@@ -124,10 +124,6 @@ function createResumeReplyContext(
 
   return {
     ...replyContext,
-    assistant: {
-      userName: botConfig.userName,
-      ...replyContext.assistant,
-    },
     correlation: {
       ...replyContext.correlation,
       threadId: replyContext.correlation?.threadId ?? threadId,

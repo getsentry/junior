@@ -182,7 +182,6 @@ describe("generateAssistantReply timeout resume", () => {
 
   it("checkpoints the last safe boundary and throws a retryable timeout error", async () => {
     const replyPromise = generateAssistantReply("help me", {
-      assistant: { userName: "junior" },
       requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-1",
@@ -224,7 +223,6 @@ describe("generateAssistantReply timeout resume", () => {
 
   it("persists omitted-image context in the checkpointed Pi user message", async () => {
     const replyPromise = generateAssistantReply("what is in this image?", {
-      assistant: { userName: "junior" },
       requester: { userId: "U123" },
       omittedImageAttachmentCount: 1,
       correlation: {

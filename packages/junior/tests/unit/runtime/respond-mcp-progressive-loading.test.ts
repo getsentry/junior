@@ -89,7 +89,6 @@ function makeReplyContext(args: {
   turnId: string;
 }) {
   return {
-    assistant: { userName: "junior" },
     requester: { userId: "U123" },
     correlation: {
       channelId: "C123",
@@ -880,7 +879,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
       });
 
     const context = {
-      assistant: { userName: "junior" },
       requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-3",
@@ -953,7 +951,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
     });
 
     const firstError = await generateAssistantReply("help me", {
-      assistant: { userName: "junior" },
       requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-5",
@@ -983,7 +980,6 @@ describe("generateAssistantReply progressive MCP loading", () => {
     completeEmptyAssistantOnAbort.value = true;
 
     const firstError = await generateAssistantReply("help me", {
-      assistant: { userName: "junior" },
       requester: { userId: "U123" },
       correlation: {
         conversationId: "conversation-6",

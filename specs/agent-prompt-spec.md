@@ -10,6 +10,7 @@
 - 2026-04-28: Initial spec defining ownership, structure, and bloat controls for the core agent prompt.
 - 2026-04-30: Reworked the core prompt contract around fixed operating sections, source hierarchy, explicit completion gates, OpenClaw-style tool-call/safety boundaries, and stable-before-volatile ordering.
 - 2026-05-06: Required the initial system prompt to be byte-stable across conversations and turns, with volatile runtime context moved into per-turn user-message context.
+- 2026-05-06: Clarified that deployment-stable assistant identity belongs in the system prompt while requester identity remains per-turn context.
 
 ## Status
 
@@ -43,9 +44,9 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 ### Section boundaries
 
-`buildSystemPrompt()` must be static: no parameters, no requester/thread/session/runtime/model/provider/catalog data, and no content that can vary between conversations or turns. This is required for provider prompt-prefix caching and for consistent multi-turn behavior.
+`buildSystemPrompt()` must be static: no parameters, no requester/thread/session/runtime/model/provider/catalog data, and no content that can vary between conversations or turns. Deployment-stable assistant identity, such as the bot Slack username, belongs here. This is required for provider prompt-prefix caching and for consistent multi-turn behavior.
 
-`buildTurnContextPrompt(...)` owns volatile prompt context. It is attached to the current user turn, including resumed-turn context, and may vary by conversation or turn. Completed turns must strip this context before storing durable Pi message history so prior turns are not replayed with stale runtime facts.
+`buildTurnContextPrompt(...)` owns volatile prompt context. It is attached to the current user turn, including requester identity and resumed-turn context, and may vary by conversation or turn. Completed turns must strip this context before storing durable Pi message history so prior turns are not replayed with stale runtime facts.
 
 The combined prompt surface must keep these concerns distinct:
 

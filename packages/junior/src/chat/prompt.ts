@@ -129,8 +129,7 @@ function formatConfigurationValue(value: unknown): string {
   }
 }
 
-function renderIdentityBlock(
-  tag: "assistant" | "requester",
+function renderRequesterBlock(
   fields: Record<string, string | undefined>,
 ): string[] {
   const lines = Object.entries(fields)
@@ -138,10 +137,10 @@ function renderIdentityBlock(
     .map(([key, value]) => `- ${key}: ${escapeXml(value as string)}`);
 
   if (lines.length === 0) {
-    return [`<${tag}>`, "none", `</${tag}>`];
+    return ["<requester>", "none", "</requester>"];
   }
 
-  return [`<${tag}>`, ...lines, `</${tag}>`];
+  return ["<requester>", ...lines, "</requester>"];
 }
 
 function renderTag(tag: string, lines: string[]): string[] {
@@ -305,24 +304,6 @@ function formatConfigurationLines(
   );
 }
 
-function formatThreadParticipantsLines(
-  participants:
-    | Array<{ userId?: string; userName?: string; fullName?: string }>
-    | undefined,
-): string[] | null {
-  if (!participants || participants.length === 0) return null;
-  return participants.map((p) => {
-    const parts: string[] = [];
-    if (p.userId) {
-      parts.push(`user_id: ${escapeXml(p.userId)}`);
-      parts.push(`slack_mention: <@${p.userId}>`);
-    }
-    if (p.userName) parts.push(`user_name: ${escapeXml(p.userName)}`);
-    if (p.fullName) parts.push(`full_name: ${escapeXml(p.fullName)}`);
-    return `- ${parts.join(", ")}`;
-  });
-}
-
 function formatSlackCapabilityNames(
   capabilities:
     | {
@@ -441,6 +422,13 @@ function buildOutputSection(): string {
   ].join("\n");
 }
 
+function buildIdentitySection(): string {
+  return renderTagBlock(
+    "identity",
+    `Your Slack username is \`${escapeXml(botConfig.userName)}\`.`,
+  );
+}
+
 function buildRuntimeSection(params: {
   channelId?: string;
   fastModelId?: string;
@@ -472,15 +460,9 @@ function buildRuntimeSection(params: {
 }
 
 function buildContextSection(params: {
-  assistant?: { userName?: string; userId?: string };
   requester?: { userName?: string; fullName?: string; userId?: string };
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
-  threadParticipants?: Array<{
-    userId?: string;
-    userName?: string;
-    fullName?: string;
-  }>;
   invocation: SkillInvocation | null;
   turnState?: "fresh" | "resumed";
 }): string {
@@ -501,31 +483,12 @@ function buildContextSection(params: {
   }
 
   blocks.push(
-    renderIdentityBlock("assistant", {
-      user_name: params.assistant?.userName ?? botConfig.userName,
-      user_id: params.assistant?.userId,
-    }),
-  );
-
-  blocks.push(
-    renderIdentityBlock("requester", {
+    renderRequesterBlock({
       full_name: params.requester?.fullName,
       user_name: params.requester?.userName,
       user_id: params.requester?.userId,
     }),
   );
-
-  const participantLines = formatThreadParticipantsLines(
-    params.threadParticipants,
-  );
-  if (participantLines) {
-    blocks.push(
-      renderTag("thread-participants", [
-        "Known participants. When you mention one of these people, use the provided `<@USERID>` token exactly; do not write a bare `@name`.",
-        ...participantLines,
-      ]),
-    );
-  }
 
   const artifactLines = formatArtifactsLines(params.artifactState);
   if (artifactLines) {
@@ -599,10 +562,6 @@ type TurnContextPromptInput = {
     thinkingLevel?: string;
   };
   invocation: SkillInvocation | null;
-  assistant?: {
-    userName?: string;
-    userId?: string;
-  };
   requester?: {
     userName?: string;
     fullName?: string;
@@ -610,16 +569,6 @@ type TurnContextPromptInput = {
   };
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
-  /**
-   * Known thread participants: array of { userId, userName, fullName }.
-   * Injected so the LLM can write correct <@USERID> mentions for people
-   * already in the conversation without a separate API call.
-   */
-  threadParticipants?: Array<{
-    userId?: string;
-    userName?: string;
-    fullName?: string;
-  }>;
   /**
    * Whether this turn is a fresh prompt or a resume from a prior checkpoint
    * (OAuth pause or timeout-resume). Surfaced in <context> so the model knows
@@ -630,6 +579,7 @@ type TurnContextPromptInput = {
 
 const STATIC_SYSTEM_PROMPT = [
   HEADER,
+  buildIdentitySection(),
   renderTagBlock("personality", JUNIOR_PERSONALITY.trim()),
   renderTagBlock("behavior", buildBehaviorSection()),
   buildOutputSection(),
@@ -658,11 +608,9 @@ export function buildTurnContextPrompt(params: TurnContextPromptInput): string {
       activeMcpCatalogs: params.activeMcpCatalogs ?? [],
     }),
     buildContextSection({
-      assistant: params.assistant,
       requester: params.requester,
       artifactState: params.artifactState,
       configuration: params.configuration,
-      threadParticipants: params.threadParticipants,
       invocation: params.invocation,
       turnState: params.turnState,
     }),

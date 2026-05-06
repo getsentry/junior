@@ -13,7 +13,6 @@ import {
   persistThreadStateById,
   getChannelConfigurationServiceById,
 } from "@/chat/runtime/thread-state";
-import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import {
   getTurnUserMessage,
   getTurnUserReplyAttachmentContext,
@@ -175,7 +174,6 @@ async function resumeTimedOutTurn(
     failureText:
       "I hit an error while resuming that request. Please try the command again.",
     replyContext: {
-      assistant: { userName: botConfig.userName },
       requester: {
         userId: userMessage.author.userId,
         userName: userMessage.author.userName,
@@ -195,7 +193,6 @@ async function resumeTimedOutTurn(
       channelConfiguration,
       piMessages: conversation.piMessages,
       sandbox,
-      threadParticipants: buildThreadParticipants(conversation.messages),
       onAuthPending: async (nextPendingAuth) => {
         await applyPendingAuthUpdate({
           conversation,

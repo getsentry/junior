@@ -34,7 +34,6 @@ import {
   mergeArtifactsState,
 } from "@/chat/runtime/thread-state";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
-import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import {
   generateThreadTitle,
@@ -303,13 +302,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         try {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
-          const threadParticipants = buildThreadParticipants(
-            preparedState.conversation.messages,
-          );
           const reply = await deps.services.generateAssistantReply(userText, {
-            assistant: {
-              userName: botConfig.userName,
-            },
             requester: {
               userId: message.author.userId,
               userName: message.author.userName ?? fallbackIdentity?.userName,
@@ -361,7 +354,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversation: preparedState.conversation,
               });
             },
-            threadParticipants,
             onStatus: (nextStatus) => status.update(nextStatus),
           });
           const diagnosticsContext = {

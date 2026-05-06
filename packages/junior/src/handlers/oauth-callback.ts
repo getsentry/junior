@@ -36,7 +36,6 @@ import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
 } from "@/chat/plugins/auth/oauth-request";
-import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import {
   getTurnUserMessage,
   getTurnUserReplyAttachmentContext,
@@ -259,7 +258,6 @@ async function resumeCheckpointedOAuthTurn(
     failureText:
       "I connected your account but hit an error processing your request. Please try the command again.",
     replyContext: {
-      assistant: { userName: botConfig.userName },
       requester: {
         userId: userMessage.author.userId,
         userName: userMessage.author.userName,
@@ -277,7 +275,6 @@ async function resumeCheckpointedOAuthTurn(
       channelConfiguration,
       piMessages: conversation.piMessages,
       sandbox: getPersistedSandboxState(currentState),
-      threadParticipants: buildThreadParticipants(conversation.messages),
       onAuthPending: async (nextPendingAuth) => {
         await applyPendingAuthUpdate({
           conversation,

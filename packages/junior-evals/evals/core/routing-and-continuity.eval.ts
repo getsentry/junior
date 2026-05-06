@@ -63,6 +63,54 @@ describeEval("Routing and Continuity", slackEvals, (it) => {
     });
   });
 
+  const actorIdentityThread = {
+    id: "thread-actor-identity",
+    channel_id: "C-actor-identity",
+    thread_ts: "17000000.actor-identity",
+  };
+
+  it("when another participant is already named, answer as the requested actor", async ({
+    run,
+  }) => {
+    await run({
+      events: [
+        mention("The billing rollout is paused until the retry queue drains.", {
+          thread: actorIdentityThread,
+          author: {
+            user_id: "U_ALICE",
+            user_name: "alice",
+            full_name: "Alice Example",
+          },
+        }),
+        threadMessage(
+          "<@U_APP> can you draft the one-sentence status update for this?",
+          {
+            thread: actorIdentityThread,
+            is_mention: true,
+            author: {
+              user_id: "U_DAVID",
+              user_name: "dcramer",
+              full_name: "David Cramer",
+            },
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "When explicitly asked to do work in a multi-participant thread, the assistant treats itself as the requested actor.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The second reply drafts a one-sentence status update about the paused billing rollout and retry queue.",
+          "The second reply does not assign the drafting work to Alice, David, Junior, or another participant.",
+        ],
+        fail: [
+          "Do not say Alice, David, Junior, or another participant will handle the draft.",
+          "Do not answer only with a promise to draft it later.",
+        ],
+      }),
+    });
+  });
+
   it("when the request is reaction-only, add a reaction without reply clutter", async ({
     run,
   }) => {

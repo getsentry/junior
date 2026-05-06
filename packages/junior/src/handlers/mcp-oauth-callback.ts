@@ -14,7 +14,6 @@ import {
   getPersistedThreadState,
   persistThreadStateById,
 } from "@/chat/runtime/thread-state";
-import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import {
   getTurnUserMessage,
   getTurnUserReplyAttachmentContext,
@@ -235,7 +234,6 @@ async function resumeAuthorizedMcpTurn(args: {
     failureText:
       "MCP authorization completed, but resuming the request failed. Please retry the original command.",
     replyContext: {
-      assistant: { userName: botConfig.userName },
       requester: {
         userId: authSession.userId,
         userName: userMessage?.author?.userName,
@@ -259,7 +257,6 @@ async function resumeAuthorizedMcpTurn(args: {
       pendingAuth,
       channelConfiguration,
       sandbox: getPersistedSandboxState(currentState),
-      threadParticipants: buildThreadParticipants(conversation.messages),
       onAuthPending: async (nextPendingAuth) => {
         await applyPendingAuthUpdate({
           conversation,
