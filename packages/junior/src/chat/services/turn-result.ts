@@ -1,7 +1,7 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
+import type { PiMessage } from "@/chat/pi/messages";
 import type { LogContext } from "@/chat/logging";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
@@ -49,7 +49,7 @@ export interface AssistantReply {
   text: string;
   files?: FileUpload[];
   artifactStatePatch?: Partial<ThreadArtifactsState>;
-  piMessages?: AgentMessage[];
+  piMessages?: PiMessage[];
   deliveryPlan?: ReplyDeliveryPlan;
   deliveryMode?: "thread" | "channel_only";
   sandboxId?: string;
@@ -59,7 +59,7 @@ export interface AssistantReply {
 
 export interface TurnResultInput {
   newMessages: unknown[];
-  piMessages?: AgentMessage[];
+  piMessages?: PiMessage[];
   userInput: string;
   replyFiles: FileUpload[];
   artifactStatePatch: Partial<ThreadArtifactsState>;

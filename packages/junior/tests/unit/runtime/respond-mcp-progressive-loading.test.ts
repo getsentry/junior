@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { PiMessage } from "@/chat/pi/messages";
 
 const {
   DEMO_SKILL,
@@ -751,7 +751,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
   it("seeds normal turns from persisted Pi history without storing turn context", async () => {
     listToolsMock.mockReset();
     listToolsMock.mockResolvedValue(makeDemoMcpTools());
-    const priorMessages: AgentMessage[] = [
+    const priorMessages: PiMessage[] = [
       {
         role: "user",
         content: [{ type: "text", text: "prior question" }],
@@ -762,7 +762,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
         content: [{ type: "text", text: "prior answer" }],
         timestamp: 2,
       },
-    ] as AgentMessage[];
+    ] as PiMessage[];
 
     const reply = await generateAssistantReply("help me", {
       ...makeReplyContext({
@@ -902,7 +902,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     ignoreReplaceMessages.value = true;
     continueStopsOnAbort.value = true;
 
-    const priorMessages: AgentMessage[] = [
+    const priorMessages: PiMessage[] = [
       {
         role: "user",
         content: [{ type: "text", text: "help me" }],

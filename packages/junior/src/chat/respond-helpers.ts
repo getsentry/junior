@@ -4,8 +4,8 @@
  * These are extracted to reduce the size of the main orchestration module and
  * make individual helpers independently testable.
  */
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
+import type { PiMessage } from "@/chat/pi/messages";
 import type { Skill } from "@/chat/skills";
 
 const MAX_INLINE_ATTACHMENT_BASE64_CHARS = 120_000;
@@ -332,8 +332,8 @@ export function upsertActiveSkill(activeSkills: Skill[], next: Skill): void {
 
 /** Remove trailing assistant messages before checkpointing. */
 export function trimTrailingAssistantMessages(
-  messages: AgentMessage[],
-): AgentMessage[] {
+  messages: PiMessage[],
+): PiMessage[] {
   let end = messages.length;
   while (end > 0 && getPiMessageRole(messages[end - 1]) === "assistant") {
     end -= 1;

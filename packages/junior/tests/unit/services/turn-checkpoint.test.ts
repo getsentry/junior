@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { PiMessage } from "@/chat/pi/messages";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -27,7 +27,7 @@ describe("persistAuthPauseCheckpoint", () => {
     const { getAgentTurnSessionCheckpoint, upsertAgentTurnSessionCheckpoint } =
       await import("@/chat/state/turn-session-store");
 
-    const priorMessages: AgentMessage[] = [
+    const priorMessages: PiMessage[] = [
       {
         role: "user",
         content: [{ type: "text", text: "help me" }],

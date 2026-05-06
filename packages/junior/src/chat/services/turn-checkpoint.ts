@@ -1,10 +1,10 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import {
   getAgentTurnSessionCheckpoint,
   upsertAgentTurnSessionCheckpoint,
   type AgentTurnSessionCheckpoint,
 } from "@/chat/state/turn-session-store";
 import { logException } from "@/chat/logging";
+import type { PiMessage } from "@/chat/pi/messages";
 import { trimTrailingAssistantMessages } from "@/chat/respond-helpers";
 
 export interface TurnCheckpointContext {
@@ -48,7 +48,7 @@ export async function persistCompletedCheckpoint(args: {
   conversationId: string;
   sessionId: string;
   sliceId: number;
-  allMessages: AgentMessage[];
+  allMessages: PiMessage[];
   loadedSkillNames: string[];
 }): Promise<void> {
   await upsertAgentTurnSessionCheckpoint({
@@ -69,7 +69,7 @@ export async function persistAuthPauseCheckpoint(args: {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
-  messages: AgentMessage[];
+  messages: PiMessage[];
   loadedSkillNames: string[];
   errorMessage: string;
   logContext: {
@@ -135,7 +135,7 @@ export async function persistTimeoutCheckpoint(args: {
   conversationId: string;
   sessionId: string;
   currentSliceId: number;
-  messages: AgentMessage[];
+  messages: PiMessage[];
   loadedSkillNames: string[];
   errorMessage: string;
   logContext: {

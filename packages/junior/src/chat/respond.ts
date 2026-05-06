@@ -1,4 +1,4 @@
-import { Agent, type AgentMessage } from "@mariozechner/pi-agent-core";
+import { Agent } from "@mariozechner/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -48,6 +48,7 @@ import {
   getPiGatewayApiKeyOverride,
   resolveGatewayModel,
 } from "@/chat/pi/client";
+import type { PiMessage } from "@/chat/pi/messages";
 import {
   createSandboxExecutor,
   type SandboxAcquiredState,
@@ -119,7 +120,7 @@ export interface ReplyRequestContext {
   pendingAuth?: ConversationPendingAuthState;
   configuration?: Record<string, unknown>;
   /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
-  piMessages?: AgentMessage[];
+  piMessages?: PiMessage[];
   channelConfiguration?: ChannelConfigurationService;
   userAttachments?: Array<{
     data?: Buffer;
@@ -297,9 +298,9 @@ function buildUserTurnInput(args: {
 }
 
 function refreshCheckpointTurnContext(
-  messages: AgentMessage[],
+  messages: PiMessage[],
   turnContextPrompt: string,
-): AgentMessage[] {
+): PiMessage[] {
   // Resumes need fresh runtime facts without duplicating the original user turn.
   const marker = getTurnContextMarker(turnContextPrompt);
   let replaced = false;
@@ -326,7 +327,7 @@ function refreshCheckpointTurnContext(
       text: turnContextPrompt,
     };
     replaced = true;
-    return { ...message, content } as AgentMessage;
+    return { ...message, content } as PiMessage;
   });
 
   if (replaced) {
@@ -339,14 +340,14 @@ function refreshCheckpointTurnContext(
       role: "user",
       content: [{ type: "text", text: turnContextPrompt }],
       timestamp: Date.now(),
-    } as AgentMessage,
+    } as PiMessage,
   ];
 }
 
 function stripTurnContextFromMessages(
-  messages: AgentMessage[],
+  messages: PiMessage[],
   turnContextPrompt: string,
-): AgentMessage[] {
+): PiMessage[] {
   const marker = getTurnContextMarker(turnContextPrompt);
   return messages.flatMap((message) => {
     const record = message as { role?: unknown; content?: unknown };
@@ -363,7 +364,7 @@ function stripTurnContextFromMessages(
     if (content.length === 0) {
       return [];
     }
-    return [{ ...message, content } as AgentMessage];
+    return [{ ...message, content } as PiMessage];
   });
 }
 
@@ -390,7 +391,7 @@ export async function generateAssistantReply(
   let timeoutResumeConversationId: string | undefined;
   let timeoutResumeSessionId: string | undefined;
   let timeoutResumeSliceId = 1;
-  let timeoutResumeMessages: AgentMessage[] = [];
+  let timeoutResumeMessages: PiMessage[] = [];
   let beforeMessageCount = 0;
   let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
   let lastKnownSandboxDependencyProfileHash: string | undefined =
@@ -972,7 +973,7 @@ export async function generateAssistantReply(
       });
     });
 
-    let newMessages: AgentMessage[] = [];
+    let newMessages: PiMessage[] = [];
     beforeMessageCount = agent.state.messages.length;
     try {
       if (resumedFromCheckpoint) {

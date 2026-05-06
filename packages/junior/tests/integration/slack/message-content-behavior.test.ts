@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { PiMessage } from "@/chat/pi/messages";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -8,7 +8,7 @@ import {
 
 interface CapturedCall {
   contextConversation?: string;
-  piMessages?: AgentMessage[];
+  piMessages?: PiMessage[];
   prompt: string;
 }
 
@@ -153,7 +153,7 @@ describe("Slack behavior: message content", () => {
 
   it("passes durable Pi history into the next turn", async () => {
     const calls: CapturedCall[] = [];
-    const firstTurnHistory: AgentMessage[] = [
+    const firstTurnHistory: PiMessage[] = [
       {
         role: "user",
         content: [{ type: "text", text: "I need the budget by Friday" }],
@@ -164,7 +164,7 @@ describe("Slack behavior: message content", () => {
         content: [{ type: "text", text: "First response." }],
         timestamp: 2,
       },
-    ] as AgentMessage[];
+    ] as PiMessage[];
 
     const { slackRuntime } = createTestChatRuntime({
       services: {

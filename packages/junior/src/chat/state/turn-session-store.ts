@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { isRecord } from "@/chat/coerce";
+import type { PiMessage } from "@/chat/pi/messages";
 import { getStateAdapter } from "./adapter";
 
 const AGENT_TURN_SESSION_PREFIX = "junior:agent_turn_session";
@@ -19,7 +19,7 @@ export interface AgentTurnSessionCheckpoint {
   conversationId: string;
   errorMessage?: string;
   loadedSkillNames?: string[];
-  piMessages: AgentMessage[];
+  piMessages: PiMessage[];
   resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
   sessionId: string;
@@ -82,7 +82,7 @@ function parseAgentTurnSessionCheckpoint(
       state: status,
       updatedAtMs,
       piMessages: Array.isArray(parsed.piMessages)
-        ? (parsed.piMessages as AgentMessage[])
+        ? (parsed.piMessages as PiMessage[])
         : [],
       ...(Array.isArray(parsed.loadedSkillNames)
         ? {
@@ -123,7 +123,7 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   sessionId: string;
   sliceId: number;
   state: AgentTurnSessionStatus;
-  piMessages: AgentMessage[];
+  piMessages: PiMessage[];
   loadedSkillNames?: string[];
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
