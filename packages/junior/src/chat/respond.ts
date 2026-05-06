@@ -303,39 +303,33 @@ function refreshCheckpointTurnContext(
 ): PiMessage[] {
   // Resumes need fresh runtime facts without duplicating the original user turn.
   const marker = getTurnContextMarker(turnContextPrompt);
-  let replaced = false;
-  const refreshed = messages.map((message) => {
-    if (replaced) {
-      return message;
+  for (let index = 0; index < messages.length; index += 1) {
+    const content = getUserMessageContent(messages[index]);
+    if (!content) {
+      continue;
     }
-
-    const record = message as { role?: unknown; content?: unknown };
-    if (record.role !== "user" || !Array.isArray(record.content)) {
-      return message;
-    }
-
-    const contextIndex = record.content.findIndex((part) =>
+    const contextIndex = content.findIndex((part) =>
       isTurnContextPart(part, marker),
     );
     if (contextIndex < 0) {
-      return message;
+      continue;
     }
 
-    const content = [...record.content];
-    content[contextIndex] = {
-      ...(content[contextIndex] as object),
+    const updatedMessages = [...messages];
+    const updatedContent = [...content];
+    updatedContent[contextIndex] = {
+      ...(updatedContent[contextIndex] as object),
       text: turnContextPrompt,
     };
-    replaced = true;
-    return { ...message, content } as PiMessage;
-  });
-
-  if (replaced) {
-    return refreshed;
+    updatedMessages[index] = {
+      ...messages[index],
+      content: updatedContent,
+    } as PiMessage;
+    return updatedMessages;
   }
 
   return [
-    ...refreshed,
+    ...messages,
     {
       role: "user",
       content: [{ type: "text", text: turnContextPrompt }],
@@ -350,26 +344,33 @@ function stripTurnContextFromMessages(
 ): PiMessage[] {
   const marker = getTurnContextMarker(turnContextPrompt);
   return messages.flatMap((message) => {
-    const record = message as { role?: unknown; content?: unknown };
-    if (record.role !== "user" || !Array.isArray(record.content)) {
+    const content = getUserMessageContent(message);
+    if (!content) {
       return [message];
     }
 
-    const content = record.content.filter(
+    const strippedContent = content.filter(
       (part) => !isTurnContextPart(part, marker),
     );
-    if (content.length === record.content.length) {
+    if (strippedContent.length === content.length) {
       return [message];
     }
-    if (content.length === 0) {
+    if (strippedContent.length === 0) {
       return [];
     }
-    return [{ ...message, content } as PiMessage];
+    return [{ ...message, content: strippedContent } as PiMessage];
   });
 }
 
 function getTurnContextMarker(turnContextPrompt: string): string {
   return turnContextPrompt.split("\n", 1)[0];
+}
+
+function getUserMessageContent(message: PiMessage): unknown[] | undefined {
+  const record = message as { role?: unknown; content?: unknown };
+  return record.role === "user" && Array.isArray(record.content)
+    ? record.content
+    : undefined;
 }
 
 function isTurnContextPart(part: unknown, marker: string): boolean {
