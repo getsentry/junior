@@ -34,16 +34,17 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
         contract:
           "After MCP authorization completes, the same thread gets a resumed answer that keeps prior context.",
         pass: [
-          "The user sees an access-needed message for Eval-auth.",
           "The same Slack thread later gets a resumed answer after authorization completes.",
-          "Because the eval harness auto-completes MCP authorization off-transcript, treat a later same-thread resumed answer after the access-needed message as evidence that authorization completed.",
+          "Because the eval harness auto-completes MCP authorization off-transcript, treat a later same-thread resumed answer as evidence that authorization completed.",
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
         ],
         allow: [
+          "The private auth-link handoff may happen off-thread and does not need to appear in assistant_posts.",
           "A concise resumed answer that only restates the budget deadline is acceptable.",
           "A brief connection or continuation notice is acceptable before the resumed answer.",
         ],
         fail: [
+          "Do not post a public thread note that only says a private auth link was sent.",
           "Do not ask the user to repeat the deadline.",
           "Do not behave as if prior thread context was lost.",
           "Do not post a generic failure message.",
@@ -88,10 +89,12 @@ describeEval("OAuth Workflows", slackEvals, (it) => {
           "The resumed answer explicitly says the earlier budget deadline was Friday.",
         ],
         allow: [
+          "The private auth-link handoff may happen off-thread and does not need to appear in assistant_posts.",
           "A concise resumed answer that only restates the budget deadline is acceptable.",
           "A brief connection or continuation notice is acceptable before the resumed answer or in the same message as the resumed answer.",
         ],
         fail: [
+          "Do not post a public thread note that only says a private auth link was sent.",
           "Do not ask the user to repeat the deadline.",
           "Do not behave as if prior thread context was lost.",
           "Do not post a generic failure message.",

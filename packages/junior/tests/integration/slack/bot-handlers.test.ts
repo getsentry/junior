@@ -30,19 +30,6 @@ function createRuntime(
   });
 }
 
-function toPostedText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value && typeof value === "object") {
-    const markdown = (value as { markdown?: unknown }).markdown;
-    if (typeof markdown === "string") {
-      return markdown;
-    }
-  }
-  return String(value);
-}
-
 // ── Tests ────────────────────────────────────────────────────────────
 
 describe("bot handlers (integration)", () => {
@@ -453,23 +440,39 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(thread.posts).toHaveLength(1);
-    expect(toPostedText(thread.posts[0])).toContain(
-      "I need your Notion access to continue. I sent you a private link.",
-    );
+    expect(thread.posts).toHaveLength(0);
     const state = thread.getState();
     const conversation = (
       state as {
         conversation?: {
           processing?: { activeTurnId?: string };
-          messages?: Array<{ role?: string; text?: string }>;
+          messages?: Array<{
+            id?: string;
+            meta?: { replied?: boolean; skippedReason?: string };
+            role?: string;
+            text?: string;
+          }>;
         };
       }
     ).conversation;
     expect(conversation?.processing?.activeTurnId).toBeUndefined();
-    expect(conversation?.messages?.at(-1)).toMatchObject({
-      role: "assistant",
-      text: "I need your Notion access to continue. I sent you a private link.",
+    expect(conversation?.messages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          text: expect.stringContaining("private link"),
+        }),
+      ]),
+    );
+    expect(
+      conversation?.messages?.find(
+        (message) => message.id === "msg-auth-pause",
+      ),
+    ).toMatchObject({
+      meta: {
+        replied: true,
+        skippedReason: undefined,
+      },
     });
   });
 
@@ -507,23 +510,39 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(thread.posts).toHaveLength(1);
-    expect(toPostedText(thread.posts[0])).toContain(
-      "I need your Github access to continue. I sent you a private link.",
-    );
+    expect(thread.posts).toHaveLength(0);
     const state = thread.getState();
     const conversation = (
       state as {
         conversation?: {
           processing?: { activeTurnId?: string };
-          messages?: Array<{ role?: string; text?: string }>;
+          messages?: Array<{
+            id?: string;
+            meta?: { replied?: boolean; skippedReason?: string };
+            role?: string;
+            text?: string;
+          }>;
         };
       }
     ).conversation;
     expect(conversation?.processing?.activeTurnId).toBeUndefined();
-    expect(conversation?.messages?.at(-1)).toMatchObject({
-      role: "assistant",
-      text: "I need your Github access to continue. I sent you a private link.",
+    expect(conversation?.messages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          text: expect.stringContaining("private link"),
+        }),
+      ]),
+    );
+    expect(
+      conversation?.messages?.find(
+        (message) => message.id === "msg-plugin-auth-pause",
+      ),
+    ).toMatchObject({
+      meta: {
+        replied: true,
+        skippedReason: undefined,
+      },
     });
   });
 

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-04-30
+- Last Edited: 2026-05-06
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-04-06: Switched stop-reason observability to `gen_ai.response.finish_reasons`.
 - 2026-04-13: Clarified timeout behavior when turn-session checkpoints are available for resumable slices.
 - 2026-04-30: Added the thinking-level routing contract and normal-effort default.
+- 2026-05-06: Clarified that normal turns seed Pi from durable conversation message history instead of flattening prior turns into the current prompt.
 
 ## Status
 
@@ -37,6 +38,9 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
 ### Loop model
 
 - Use `Agent` from `@mariozechner/pi-agent-core` for reply generation.
+- For normal turns, instantiate a fresh Pi agent with the static system prompt, restore durable conversation-level Pi message history, then prompt only the current turn.
+- Persist updated conversation-level Pi message history only after the final visible reply is delivered by the runtime.
+- Per-turn runtime context may be included in the current user prompt for generation, but it must not be stored in durable conversation-level Pi history after completion.
 - Use bounded execution with `AGENT_TURN_TIMEOUT_MS` and explicit `agent.abort()` on timeout.
 - Completion is based on assistant text output; there is no classifier-driven continuation loop.
 

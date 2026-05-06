@@ -3,6 +3,7 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
 const {
   DEMO_SKILL,
+  agentInitialSystemPrompts,
   agentInitialToolNames,
   callToolMock,
   clientOptions,
@@ -17,9 +18,11 @@ const {
   omitFinalAssistantAfterTool,
   pushPreToolAssistantMessage,
   promptCallCount,
+  promptSeedMessages,
   recordToolResultMessage,
+  resumeTurnContextCounts,
   searchMcpToolNames,
-  systemPromptInputs,
+  turnContextInputs,
 } = vi.hoisted(() => ({
   DEMO_SKILL: {
     name: "demo-skill",
@@ -27,6 +30,7 @@ const {
     skillPath: "/tmp/skills/demo-skill",
     pluginProvider: "demo",
   } as const,
+  agentInitialSystemPrompts: [] as string[],
   agentInitialToolNames: [] as string[][],
   callToolMock: vi.fn(),
   clientOptions: [] as Array<Record<string, unknown>>,
@@ -40,10 +44,12 @@ const {
   loadSkillsByNameMock: vi.fn(),
   omitFinalAssistantAfterTool: { value: false },
   promptCallCount: { value: 0 },
+  promptSeedMessages: [] as unknown[][],
   pushPreToolAssistantMessage: { value: false },
   recordToolResultMessage: { value: false },
+  resumeTurnContextCounts: [] as number[],
   searchMcpToolNames: [] as string[][],
-  systemPromptInputs: [] as Array<{
+  turnContextInputs: [] as Array<{
     activeMcpCatalogs?: Array<{
       provider: string;
       available_tool_count: number;
@@ -123,6 +129,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
+      agentInitialSystemPrompts.push(input.initialState.systemPrompt);
       agentInitialToolNames.push(
         input.initialState.tools.map((tool) => tool.name),
       );
@@ -146,6 +153,7 @@ vi.mock("@mariozechner/pi-agent-core", () => {
     async prompt(message: unknown) {
       promptCallCount.value += 1;
       this.aborted = false;
+      promptSeedMessages.push([...this.state.messages]);
       this.state.messages.push(message);
 
       const loadSkillTool = this.state.tools.find(
@@ -257,6 +265,22 @@ vi.mock("@mariozechner/pi-agent-core", () => {
 
     async continue() {
       continueCallCount.value += 1;
+      resumeTurnContextCounts.push(
+        this.state.messages.filter((message) => {
+          const candidate = message as { role?: unknown; content?: unknown };
+          return (
+            candidate.role === "user" &&
+            Array.isArray(candidate.content) &&
+            candidate.content.some(
+              (part) =>
+                part &&
+                typeof part === "object" &&
+                (part as { type?: unknown }).type === "text" &&
+                (part as { text?: unknown }).text === "Turn context",
+            )
+          );
+        }).length,
+      );
       const lastMessage = this.state.messages[
         this.state.messages.length - 1
       ] as { role?: unknown } | undefined;
@@ -373,14 +397,15 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/prompt")>();
   return {
     ...actual,
-    buildSystemPrompt: (input: {
+    buildSystemPrompt: () => "System prompt",
+    buildTurnContextPrompt: (input: {
       activeMcpCatalogs?: Array<{
         provider: string;
         available_tool_count: number;
       }>;
     }) => {
-      systemPromptInputs.push(input);
-      return "System prompt";
+      turnContextInputs.push(input);
+      return "Turn context";
     },
   };
 });
@@ -541,6 +566,7 @@ import { isRetryableTurnError } from "@/chat/runtime/turn";
 describe("generateAssistantReply progressive MCP loading", () => {
   beforeEach(async () => {
     agentInitialToolNames.length = 0;
+    agentInitialSystemPrompts.length = 0;
     callToolMock.mockReset();
     clientOptions.length = 0;
     completeEmptyAssistantOnAbort.value = false;
@@ -554,9 +580,11 @@ describe("generateAssistantReply progressive MCP loading", () => {
     loadSkillsByNameMock.mockReset();
     omitFinalAssistantAfterTool.value = false;
     promptCallCount.value = 0;
+    promptSeedMessages.length = 0;
     pushPreToolAssistantMessage.value = false;
     recordToolResultMessage.value = false;
-    systemPromptInputs.length = 0;
+    resumeTurnContextCounts.length = 0;
+    turnContextInputs.length = 0;
 
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
@@ -651,7 +679,12 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(agentInitialToolNames[1]).toContain("callMcpTool");
     expect(agentInitialToolNames[1]).not.toContain("searchTools");
     expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
-    expect(systemPromptInputs[1]?.activeMcpCatalogs).toEqual([
+    expect(agentInitialSystemPrompts).toEqual([
+      "System prompt",
+      "System prompt",
+    ]);
+    expect(resumeTurnContextCounts).toEqual([1]);
+    expect(turnContextInputs[1]?.activeMcpCatalogs).toEqual([
       { provider: "demo", available_tool_count: 1 },
     ]);
     expect(searchMcpToolNames).toEqual([]);
@@ -694,7 +727,8 @@ describe("generateAssistantReply progressive MCP loading", () => {
     expect(agentInitialToolNames[0]).toContain("callMcpTool");
     expect(agentInitialToolNames[0]).not.toContain("searchTools");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
-    expect(systemPromptInputs[0]?.activeMcpCatalogs).toEqual([]);
+    expect(agentInitialSystemPrompts).toEqual(["System prompt"]);
+    expect(turnContextInputs[0]?.activeMcpCatalogs).toEqual([]);
     expect(searchMcpToolNames).toEqual([["mcp__demo__ping"]]);
     expect(callToolMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -712,6 +746,41 @@ describe("generateAssistantReply progressive MCP loading", () => {
       state: "completed",
       loadedSkillNames: [DEMO_SKILL.name],
     });
+  });
+
+  it("seeds normal turns from persisted Pi history without storing turn context", async () => {
+    listToolsMock.mockReset();
+    listToolsMock.mockResolvedValue(makeDemoMcpTools());
+    const priorMessages: AgentMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "prior question" }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "prior answer" }],
+        timestamp: 2,
+      },
+    ] as AgentMessage[];
+
+    const reply = await generateAssistantReply("help me", {
+      ...makeReplyContext({
+        conversationId: "conversation-history",
+        threadTs: "1712345.0003",
+        turnId: "turn-history",
+      }),
+      conversationContext: "duplicated prior transcript",
+      piMessages: priorMessages,
+    });
+
+    expect(promptSeedMessages[0]).toEqual(priorMessages);
+    expect(reply.piMessages?.slice(0, 2)).toEqual(priorMessages);
+    expect(JSON.stringify(reply.piMessages)).not.toContain("Turn context");
+    expect(JSON.stringify(reply.piMessages)).not.toContain(
+      "duplicated prior transcript",
+    );
+    expect(JSON.stringify(reply.piMessages)).toContain("help me");
   });
 
   it("parks for auth when MCP auth is requested during a tool call", async () => {

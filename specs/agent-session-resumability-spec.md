@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-04-16
+- Last Edited: 2026-05-06
 
 ## Changelog
 
@@ -13,6 +13,7 @@
 - 2026-04-13: Aligned the spec with the current implementation: signed internal timeout-resume callbacks, eager thread-state persistence for sandbox/artifact state, and no automatic resume after visible assistant output has started.
 - 2026-04-16: Clarified that Slack delivery now waits for finalized replies, so timeout continuation remains eligible until final visible reply posting begins.
 - 2026-04-22: Added `superseded` checkpoint state and clarified that auth checkpoints do not keep `activeTurnId` alive; thread-local pending-auth state decides whether an auth-blocked request is still resumable.
+- 2026-05-06: Removed the public Slack auth-pause note; auth pauses complete the live turn after private auth-link delivery.
 
 ## Status
 
@@ -195,7 +196,7 @@ The callback must:
 1. User message starts a new `session_id` under `conversation_id`.
 2. Slice `1` runs and eagerly persists sandbox/artifact state as those values change.
 3. If the turn finishes, commit `completed` and persist final thread state/output.
-4. If MCP auth pauses at a safe boundary, commit `awaiting_resume` with `resume_reason=auth`; the live Slack turn still ends with a visible "private link sent" note, and the OAuth callback later consults thread-local pending-auth state before resuming.
+4. If MCP auth pauses at a safe boundary, commit `awaiting_resume` with `resume_reason=auth`; the live Slack turn ends after private auth-link delivery without a second public thread note, and the OAuth callback later consults thread-local pending-auth state before resuming.
 5. If timeout is reached before any assistant text is visible, commit `awaiting_resume` with `resume_reason=timeout` and schedule the signed internal timeout-resume callback.
 6. The timeout-resume handler validates `expected_checkpoint_version`, rebuilds durable runtime state, restores Pi messages, and calls `continue()`.
 7. If timeout happens after visible assistant output begins, keep the timeout checkpoint but do not auto-schedule continuation.

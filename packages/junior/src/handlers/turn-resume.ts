@@ -40,7 +40,7 @@ import {
 } from "@/chat/services/timeout-resume";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AssistantReply } from "@/chat/respond";
-import { deliverAuthPauseReply } from "@/chat/runtime/auth-pause-reply";
+import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   applyPendingAuthUpdate,
   clearPendingAuth,
@@ -84,6 +84,9 @@ async function persistCompletedReplyState(args: {
       replied: true,
     },
   });
+  if (args.reply.piMessages) {
+    conversation.piMessages = args.reply.piMessages;
+  }
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),
@@ -190,6 +193,7 @@ async function resumeTimedOutTurn(
       pendingAuth: conversation.processing.pendingAuth,
       conversationContext,
       channelConfiguration,
+      piMessages: conversation.piMessages,
       sandbox,
       threadParticipants: buildThreadParticipants(conversation.messages),
       onAuthPending: async (nextPendingAuth) => {
@@ -228,19 +232,18 @@ async function resumeTimedOutTurn(
         {
           "app.ai.conversation_id": payload.conversationId,
           "app.ai.session_id": payload.sessionId,
+          ...(isRetryableTurnError(error)
+            ? { "app.turn.retryable_reason": error.reason }
+            : {}),
         },
         "Failed to resume timed-out turn",
       );
       await persistFailedReplyState(checkpoint);
     },
-    onAuthPause: async (error) => {
-      await deliverAuthPauseReply({
-        channelId: thread.channelId,
-        conversationId: payload.conversationId,
-        error,
+    onAuthPause: async () => {
+      await persistAuthPauseTurnState({
         sessionId: payload.sessionId,
         threadStateId: payload.conversationId,
-        threadTs: thread.threadTs,
       });
       logWarn(
         "timeout_resume_reparked_for_auth",

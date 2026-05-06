@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
   createTestMessage,
@@ -7,6 +8,7 @@ import {
 
 interface CapturedCall {
   contextConversation?: string;
+  piMessages?: AgentMessage[];
   prompt: string;
 }
 
@@ -149,8 +151,20 @@ describe("Slack behavior: message content", () => {
     expect(thread.posts).toHaveLength(0);
   });
 
-  it("carries prior turn context into the next turn", async () => {
+  it("passes durable Pi history into the next turn", async () => {
     const calls: CapturedCall[] = [];
+    const firstTurnHistory: AgentMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "I need the budget by Friday" }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "First response." }],
+        timestamp: 2,
+      },
+    ] as AgentMessage[];
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -171,9 +185,11 @@ describe("Slack behavior: message content", () => {
             calls.push({
               prompt,
               contextConversation: context?.conversationContext,
+              piMessages: context?.piMessages,
             });
             return {
               text: calls.length === 1 ? "First response." : "Second response.",
+              piMessages: calls.length === 1 ? firstTurnHistory : undefined,
               diagnostics: {
                 assistantMessageCount: 1,
                 modelId: "fake-agent-model",
@@ -210,5 +226,6 @@ describe("Slack behavior: message content", () => {
 
     expect(calls).toHaveLength(2);
     expect(calls[1]?.contextConversation ?? "").toContain("budget by Friday");
+    expect(calls[1]?.piMessages).toEqual(firstTurnHistory);
   });
 });

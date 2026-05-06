@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-02-27
-- Last Edited: 2026-04-30
+- Last Edited: 2026-05-06
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
 - 2026-04-30: Added `github.org` to GitHub provider configKeys.
+- 2026-05-06: Clarified that provider catalog prompt disclosure belongs in per-turn context, not the static system prompt.
 
 ## Status
 
@@ -102,7 +103,7 @@ target:
 
 ## Prompt Contracts
 
-- System prompt should include provider catalog summary so natural language requests can map to valid config/capability tokens.
+- Per-turn prompt context should include provider catalog summary so natural language requests can map to valid config/capability tokens without changing the static system prompt.
 - Prompt guidance must remain generic and provider-extensible.
 
 ## Observability

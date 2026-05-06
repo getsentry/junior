@@ -127,6 +127,7 @@ describe("turn resume handler", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
+        piMessages: [],
         messages: [
           {
             id: "msg.1",
@@ -216,6 +217,7 @@ describe("turn resume handler", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
+        piMessages: [],
         messages: [
           {
             id: "msg.1",
@@ -330,6 +332,7 @@ describe("turn resume handler", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
+        piMessages: [],
         messages: [
           {
             id: "msg.1",

@@ -131,6 +131,7 @@ describe("turn resume slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
+        piMessages: [],
         messages: [
           {
             id: "msg.1",
@@ -279,6 +280,7 @@ describe("turn resume slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
+        piMessages: [],
         messages: [
           {
             id: "msg.2",
@@ -392,6 +394,7 @@ describe("turn resume slack integration", () => {
         schemaVersion: 1,
         backfill: {},
         compactions: [],
+        piMessages: [],
         messages: [
           {
             id: "msg.3",

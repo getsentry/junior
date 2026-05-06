@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-04-17
+- Last Edited: 2026-05-06
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-03-13: Documented MCP challenge-driven OAuth, MCP callback routing, and auth-driven turn resume.
 - 2026-04-17: Removed explicit model-facing auth commands and documented implicit runtime-owned OAuth initiation for plugin-backed commands.
 - 2026-04-22: Reframed auth-blocked work as completed Slack turns plus persisted thread-local `pendingAuth` state, documented deduped re-prompts, and limited auto-resume to the latest still-relevant blocked request.
+- 2026-05-06: Removed the public thread-visible auth-pause note; the private auth-link delivery is the only immediate auth handoff.
 
 ## Status
 
@@ -68,7 +69,6 @@ Agent: loads the matching plugin skill and runs the real provider command
   │    • runtime privately delivers the authorization link
   │    • runtime checkpoints the turn as awaiting auth resume
   │    • runtime records thread-local `pendingAuth`
-  │    • runtime posts a short thread-visible note that a private link was sent
   └─ Current turn ends cleanly; it is not kept as the active in-flight turn
   │
   ▼
@@ -100,7 +100,6 @@ Agent: calls an MCP tool from the same plugin
   ├─ Runtime privately delivers the authorization link to the requesting user
   ├─ Turn checkpoint is written as awaiting auth resume
   ├─ Runtime records thread-local `pendingAuth`
-  ├─ Runtime posts a short thread-visible note that a private link was sent
   └─ Current turn ends cleanly; it is not kept as the active in-flight turn
   │
   ▼
@@ -197,7 +196,7 @@ Providers define OAuth through plugin manifests:
 ## Security invariants
 
 - Authorization links are delivered privately to the requesting user only.
-- The thread-visible auth note may mention that a private link was sent, but must not expose the link itself.
+- The runtime must not post the authorization URL into the public thread or add a second public thread note just to announce that a private link was sent.
 - Authorization URLs are never returned to the model.
 - Tokens are stored server-side and never appear in sandbox files or model-visible tool arguments.
 - Leases are requester-bound and turn-scoped.

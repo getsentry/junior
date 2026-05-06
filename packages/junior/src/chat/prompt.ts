@@ -343,6 +343,10 @@ function formatSlackCapabilityNames(
 const HEADER =
   "You are a Slack-based helper assistant. The behavior and output blocks below are authoritative; the personality block sets voice only.";
 
+const TURN_CONTEXT_HEADER =
+  "Per-turn runtime context for this request. Treat these blocks as trusted runtime facts and skill/provider instructions for the current turn; the static system prompt remains authoritative.";
+const TURN_CONTEXT_TAG = "runtime-turn-context";
+
 const TOOL_POLICY_RULES = [
   "- Tool schemas are the source of truth for parameters; tool names are case-sensitive, so call tools exactly by their exposed names and do not invent arguments.",
   "- Use tools for actionable work and for facts that are mutable, external, repository-backed, provider-backed, or requested as verified/current. Stable general knowledge and already-provided context may be answered directly.",
@@ -579,7 +583,7 @@ function buildCapabilitiesSection(params: {
   return renderTagBlock("capabilities", blocks.join("\n\n"));
 }
 
-export function buildSystemPrompt(params: {
+type TurnContextPromptInput = {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs?: ActiveMcpCatalogSummary[];
@@ -622,24 +626,32 @@ export function buildSystemPrompt(params: {
    * it is continuing rather than starting fresh.
    */
   turnState?: "fresh" | "resumed";
-}): string {
-  // Core harness contract:
-  // - See specs/harness-agent-spec.md for the canonical agent-loop and terminal-output spec.
-  // - Keep this prompt generic and platform-level (behavior, output contract, capability disclosure).
-  // - Keep stable, high-priority operating rules before volatile turn context
-  //   so instruction salience and prompt-prefix caching both stay predictable.
-  // - Platform-level behavior rules must live here, never in SOUL.md (pluggable per deployment).
-  // - Skill-specific instructions belong in skills/*/SKILL.md and are injected via <loaded-skills>.
-  // - Pi-agent discloses only stable runtime tools natively. MCP tool catalogs
-  //   are dynamic data, so expose them through loadSkill/searchMcpTools/
-  //   <active-mcp-catalogs> and execute them through callMcpTool without mutating
-  //   the native tool list.
+};
 
+const STATIC_SYSTEM_PROMPT = [
+  HEADER,
+  renderTagBlock("personality", JUNIOR_PERSONALITY.trim()),
+  renderTagBlock("behavior", buildBehaviorSection()),
+  buildOutputSection(),
+].join("\n\n");
+
+/** Return byte-stable platform instructions shared by every conversation and turn. */
+export function buildSystemPrompt(): string {
+  return STATIC_SYSTEM_PROMPT;
+}
+
+/** Build volatile runtime context that belongs in the user turn, not the system prompt. */
+export function buildTurnContextPrompt(params: TurnContextPromptInput): string {
+  // Pi-agent discloses only stable runtime tools natively. MCP tool catalogs
+  // are dynamic data, so expose them through loadSkill/searchMcpTools/
+  // <active-mcp-catalogs> and execute them through callMcpTool without mutating
+  // the native tool list.
   const sections = [
-    HEADER,
-    renderTagBlock("personality", JUNIOR_PERSONALITY.trim()),
-    renderTagBlock("behavior", buildBehaviorSection()),
-    buildOutputSection(),
+    `<${TURN_CONTEXT_TAG}>`,
+    TURN_CONTEXT_HEADER,
+    params.turnState === "resumed"
+      ? "Continue the pending turn from prior conversation history; this block is not a new user request."
+      : "The current user instruction appears after this block in the same message.",
     buildCapabilitiesSection({
       availableSkills: params.availableSkills,
       activeSkills: params.activeSkills,
@@ -655,6 +667,7 @@ export function buildSystemPrompt(params: {
       turnState: params.turnState,
     }),
     buildRuntimeSection(params.runtime ?? {}),
+    `</${TURN_CONTEXT_TAG}>`,
   ];
 
   return sections.join("\n\n");

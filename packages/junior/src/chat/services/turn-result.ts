@@ -1,3 +1,4 @@
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import { logInfo, logWarn } from "@/chat/logging";
@@ -48,6 +49,7 @@ export interface AssistantReply {
   text: string;
   files?: FileUpload[];
   artifactStatePatch?: Partial<ThreadArtifactsState>;
+  piMessages?: AgentMessage[];
   deliveryPlan?: ReplyDeliveryPlan;
   deliveryMode?: "thread" | "channel_only";
   sandboxId?: string;
@@ -57,6 +59,7 @@ export interface AssistantReply {
 
 export interface TurnResultInput {
   newMessages: unknown[];
+  piMessages?: AgentMessage[];
   userInput: string;
   replyFiles: FileUpload[];
   artifactStatePatch: Partial<ThreadArtifactsState>;
@@ -108,6 +111,7 @@ function buildBriefPostCanvasReply(
 export function buildTurnResult(input: TurnResultInput): AssistantReply {
   const {
     newMessages,
+    piMessages,
     userInput,
     replyFiles,
     artifactStatePatch,
@@ -271,6 +275,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
       Object.keys(artifactStatePatch).length > 0
         ? artifactStatePatch
         : undefined,
+    piMessages,
     deliveryPlan,
     deliveryMode,
     sandboxId,

@@ -30,7 +30,7 @@ import {
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { resumeAuthorizedRequest } from "@/chat/slack/resume";
-import { deliverAuthPauseReply } from "@/chat/runtime/auth-pause-reply";
+import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   applyPendingAuthUpdate,
   clearPendingAuth,
@@ -135,6 +135,9 @@ async function persistCompletedReplyState(
       replied: true,
     },
   });
+  if (reply.piMessages) {
+    conversation.piMessages = reply.piMessages;
+  }
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),
@@ -251,6 +254,7 @@ async function resumeAuthorizedMcpTurn(args: {
         authSession.channelId,
       conversationContext,
       artifactState: artifacts,
+      piMessages: conversation.piMessages,
       configuration: authSession.configuration,
       pendingAuth,
       channelConfiguration,
@@ -309,19 +313,19 @@ async function resumeAuthorizedMcpTurn(args: {
       }
     },
     onAuthPause: async (error) => {
-      await deliverAuthPauseReply({
-        channelId: authSession.channelId!,
-        conversationId: authSession.conversationId,
-        error,
-        fallbackProvider: provider,
+      await persistAuthPauseTurnState({
         sessionId: resolvedSessionId,
         threadStateId: `slack:${authSession.channelId!}:${authSession.threadTs!}`,
-        threadTs: authSession.threadTs!,
       });
       logWarn(
         "mcp_oauth_callback_resume_reparked_for_auth",
         {},
-        { "app.credential.provider": provider },
+        {
+          "app.credential.provider": provider,
+          ...(isRetryableTurnError(error)
+            ? { "app.turn.retryable_reason": error.reason }
+            : {}),
+        },
         "Resumed MCP turn requested another authorization flow",
       );
     },

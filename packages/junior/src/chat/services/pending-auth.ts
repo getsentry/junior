@@ -1,8 +1,4 @@
-import { formatProviderLabel } from "@/chat/oauth-flow";
-import type {
-  AuthorizationPauseDisposition,
-  AuthorizationPauseKind,
-} from "@/chat/services/auth-pause";
+import type { AuthorizationPauseKind } from "@/chat/services/auth-pause";
 import type {
   ConversationPendingAuthState,
   ThreadConversationState,
@@ -36,22 +32,6 @@ export function canReusePendingAuthLink(args: {
     pendingAuth.linkSentAtMs + AUTH_LINK_REUSE_WINDOW_MS >
       (args.nowMs ?? Date.now())
   );
-}
-
-export function buildAuthPauseReplyText(args: {
-  disposition?: AuthorizationPauseDisposition;
-  provider?: string;
-}): string {
-  const providerLabel = args.provider ? formatProviderLabel(args.provider) : "";
-  if (args.disposition === "link_already_sent") {
-    return providerLabel
-      ? `I still need your ${providerLabel} access to continue. I already sent you a private link.`
-      : "I still need additional access to continue. I already sent you a private link.";
-  }
-
-  return providerLabel
-    ? `I need your ${providerLabel} access to continue. I sent you a private link.`
-    : "I need additional access to continue. I sent you a private link.";
 }
 
 export function getConversationPendingAuth(args: {

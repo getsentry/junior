@@ -33,7 +33,7 @@ import {
   persistThreadState,
   mergeArtifactsState,
 } from "@/chat/runtime/thread-state";
-import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-reply";
+import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { buildThreadParticipants } from "@/chat/runtime/thread-participants";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import {
@@ -44,10 +44,7 @@ import {
   generateConversationId,
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
-import {
-  applyPendingAuthUpdate,
-  buildAuthPauseReplyText,
-} from "@/chat/services/pending-auth";
+import { applyPendingAuthUpdate } from "@/chat/services/pending-auth";
 import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
@@ -321,6 +318,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             conversationContext:
               preparedState.routingContext ?? preparedState.conversationContext,
             artifactState: preparedState.artifacts,
+            piMessages: preparedState.conversation.piMessages,
             pendingAuth: preparedState.conversation.processing.pendingAuth,
             configuration: preparedState.configuration,
             channelConfiguration: preparedState.channelConfiguration,
@@ -451,6 +449,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               replied: true,
             },
           });
+          if (reply.piMessages) {
+            preparedState.conversation.piMessages = reply.piMessages;
+          }
 
           const artifactStatePatch: Partial<ThreadArtifactsState> =
             reply.artifactStatePatch ? { ...reply.artifactStatePatch } : {};
@@ -588,39 +589,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             isRetryableTurnError(error, "mcp_auth_resume") ||
             isRetryableTurnError(error, "plugin_auth_resume")
           ) {
-            const authPauseText = buildAuthPauseReplyText({
-              disposition: error.metadata?.authDisposition,
-              provider: error.metadata?.authProvider,
-            });
-            const authPauseFooter = buildSlackReplyFooter({
-              conversationId,
-              durationMs: error.metadata?.authDurationMs,
-              thinkingLevel: error.metadata?.authThinkingLevel,
-              usage: error.metadata?.authUsage,
-            });
-            const useSlackFooterForAuthPause =
-              Boolean(authPauseFooter) &&
-              Boolean(channelId && threadTs) &&
-              (thread.adapter as { name?: string } | undefined)?.name ===
-                "slack";
-            if (useSlackFooterForAuthPause && channelId && threadTs) {
-              await beforeFirstResponsePost();
-              await postSlackApiReplyPosts({
-                channelId,
-                threadTs,
-                footer: authPauseFooter,
-                posts: [{ stage: "thread_reply", text: authPauseText }],
-              });
-            } else {
-              await postThreadReply(
-                buildSlackOutputMessage(authPauseText),
-                "thread_reply",
-              );
-            }
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: error.metadata?.sessionId ?? turnId,
-              text: authPauseText,
             });
             await persistThreadState(thread, {
               conversation: preparedState.conversation,

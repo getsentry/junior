@@ -3,12 +3,13 @@
 ## Metadata
 
 - Created: 2026-04-28
-- Last Edited: 2026-04-30
+- Last Edited: 2026-05-06
 
 ## Changelog
 
 - 2026-04-28: Initial spec defining ownership, structure, and bloat controls for the core agent prompt.
 - 2026-04-30: Reworked the core prompt contract around fixed operating sections, source hierarchy, explicit completion gates, OpenClaw-style tool-call/safety boundaries, and stable-before-volatile ordering.
+- 2026-05-06: Required the initial system prompt to be byte-stable across conversations and turns, with volatile runtime context moved into per-turn user-message context.
 
 ## Status
 
@@ -20,7 +21,8 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 ## Scope
 
-- `buildSystemPrompt(...)` in `packages/junior/src/chat/prompt.ts`.
+- `buildSystemPrompt()` in `packages/junior/src/chat/prompt.ts`.
+- `buildTurnContextPrompt(...)` in `packages/junior/src/chat/prompt.ts`.
 - Platform-owned behavior, capability, context, and Slack output instructions.
 - Boundaries between the core harness prompt, deployment personality files, and skill instructions.
 
@@ -41,7 +43,11 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 ### Section boundaries
 
-`buildSystemPrompt(...)` must keep these concerns distinct:
+`buildSystemPrompt()` must be static: no parameters, no requester/thread/session/runtime/model/provider/catalog data, and no content that can vary between conversations or turns. This is required for provider prompt-prefix caching and for consistent multi-turn behavior.
+
+`buildTurnContextPrompt(...)` owns volatile prompt context. It is attached to the current user turn, including resumed-turn context, and may vary by conversation or turn. Completed turns must strip this context before storing durable Pi message history so prior turns are not replayed with stale runtime facts.
+
+The combined prompt surface must keep these concerns distinct:
 
 1. Identity/personality.
 2. Core operating rules.
@@ -51,7 +57,7 @@ Define the canonical contract for Junior's platform-owned agent prompt so prompt
 
 Context blocks describe facts. Behavior and output blocks carry instructions.
 
-Prompt order is part of the contract. Stable, high-priority operating rules must appear before volatile thread/session context so behavior has salience and provider prompt-prefix caching remains predictable. Do not move requester, artifacts, active catalogs, or configuration defaults above the behavior/output contract.
+Prompt order is part of the contract. Stable, high-priority operating rules live in the system prompt. Volatile requester, artifacts, active catalogs, configuration defaults, runtime metadata, and resume state must stay out of the system prompt and live in per-turn context.
 
 The core operating rules must be split into fixed sections:
 
@@ -107,7 +113,7 @@ Mutable facts need live checks. Examples include files, repos, versions, issues,
 
 The tool policy must make sandbox workspace ownership explicit: sandbox-backed file and shell tools inspect the isolated sandbox workspace, not arbitrary host files. If sandbox execution is unavailable, the model should report that blocker instead of implying local inspection succeeded.
 
-Runtime facts should live in a compact runtime block after volatile context. Include only facts that help the model choose valid behavior, such as runtime version, model ids, selected thinking level, channel capabilities, and sandbox workspace root. Do not mix requester, artifacts, or configuration defaults into that runtime block.
+Runtime facts should live in a compact runtime block inside per-turn context. Include only facts that help the model choose valid behavior, such as runtime version, model ids, selected thinking level, channel capabilities, and sandbox workspace root. Do not mix requester, artifacts, or configuration defaults into that runtime block.
 
 The safety section must stay generic and runtime-level: remain within the user's request, respect stop/pause/audit/approval boundaries, avoid access expansion, and avoid administrative prompt/tool/security/config changes unless explicitly requested and supported by an available tool.
 

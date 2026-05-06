@@ -84,4 +84,30 @@ describe("conversation state", () => {
       "staff engineer",
     );
   });
+
+  it("keeps durable Pi message history in conversation state", () => {
+    const conversation = coerceThreadConversationState({
+      conversation: {
+        messages: [],
+        piMessages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "prior request" }],
+            timestamp: 1,
+          },
+        ],
+      },
+    });
+
+    expect(conversation.piMessages).toEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "prior request" }],
+        timestamp: 1,
+      },
+    ]);
+    expect(
+      buildConversationStatePatch(conversation).conversation.piMessages,
+    ).toHaveLength(1);
+  });
 });

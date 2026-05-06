@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-04-22
+- Last Edited: 2026-05-06
 
 ## Changelog
 
@@ -20,6 +20,7 @@
 - 2026-04-22: Updated finalized reply footer metadata examples to reflect the displayed thinking-level bucket instead of the active trace ID.
 - 2026-04-22: Required explicit progress messages to be written as proper sentence fragments (capitalized first letter, present-participle verb).
 - 2026-04-22: Reframed auth-blocked requests as completed thread replies plus thread-local pending-auth state, and removed the public OAuth "connected, continuing..." preamble from automatic resumes.
+- 2026-05-06: Removed the public thread-visible auth-pause note; private auth-link delivery is the only immediate user-facing auth handoff before callback resume.
 
 ## Status
 
@@ -218,7 +219,7 @@ Current rules:
 3. Resume success is defined by final visible Slack delivery, not only by successful assistant generation.
 4. Persisted thread state is updated only after the final reply has been delivered to Slack.
 5. Because live turns do not publish provisional assistant text, timeout continuation remains eligible until final reply delivery starts.
-6. When a turn blocks on OAuth/MCP auth, Junior must end that live turn with a short thread-visible note such as "I sent you a private link" and clear `activeTurnId`; the resumable auth state lives separately in persisted thread state.
+6. When a turn blocks on OAuth/MCP auth, Junior must end that live turn after privately delivering the auth link, clear `activeTurnId`, and persist thread-local pending-auth state. Do not post a second public thread reply just to say a private link was sent.
 7. Automatic auth resumes must not post a separate public "account connected, continuing..." banner before the real resumed answer. The resumed answer itself is the visible continuation.
 8. If auth completes after a newer thread message already superseded the blocked request, Junior stores the credentials but does not post a stale resumed answer.
 

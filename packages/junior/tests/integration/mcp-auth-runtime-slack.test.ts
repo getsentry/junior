@@ -70,21 +70,6 @@ function hasPriorBudgetContext(messages: unknown[]): boolean {
   );
 }
 
-function toPostedText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (value && typeof value === "object") {
-    const markdown = (value as { markdown?: unknown }).markdown;
-    if (typeof markdown === "string") {
-      return markdown;
-    }
-  }
-
-  return String(value);
-}
-
 vi.mock("@/chat/services/turn-thinking-level", async () => {
   const actual = await vi.importActual<
     typeof import("@/chat/services/turn-thinking-level")
@@ -355,10 +340,7 @@ describe("mcp auth runtime slack integration", () => {
         }),
       }),
     ]);
-    expect(thread.posts).toHaveLength(1);
-    expect(toPostedText(thread.posts[0])).toContain(
-      "I need your Eval-auth access to continue. I sent you a private link.",
-    );
+    expect(thread.posts).toHaveLength(0);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
 
     const pendingAuthSession =
@@ -482,10 +464,6 @@ describe("mcp auth runtime slack integration", () => {
           }),
           expect.objectContaining({
             role: "assistant",
-            text: "I need your Eval-auth access to continue. I sent you a private link.",
-          }),
-          expect.objectContaining({
-            role: "assistant",
             text: assistantReplyWithContext,
           }),
         ]),
@@ -563,10 +541,7 @@ describe("mcp auth runtime slack integration", () => {
 
     expect(agentProbe.promptCallCount).toBe(1);
     expect(agentProbe.continueCallCount).toBe(0);
-    expect(thread.posts).toHaveLength(1);
-    expect(toPostedText(thread.posts[0])).toContain(
-      "I need your Eval-auth access to continue. I sent you a private link.",
-    );
+    expect(thread.posts).toHaveLength(0);
 
     const pendingCheckpoint =
       await turnSessionStoreModule.getAgentTurnSessionCheckpoint(

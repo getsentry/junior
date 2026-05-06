@@ -21,7 +21,7 @@ import {
   resumeAuthorizedRequest,
   resumeSlackTurn,
 } from "@/chat/slack/resume";
-import { deliverAuthPauseReply } from "@/chat/runtime/auth-pause-reply";
+import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import { logException, logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import {
@@ -64,6 +64,7 @@ import {
   canScheduleTurnTimeoutResume,
   scheduleTurnTimeoutResume,
 } from "@/chat/services/timeout-resume";
+import type { AssistantReply } from "@/chat/respond";
 
 /**
  * OAuth callback contract for `@sentry/junior`.
@@ -78,21 +79,6 @@ function htmlErrorResponse(
   status: number,
 ): Response {
   return htmlCallbackResponse(escapeXml(title), escapeXml(message), status);
-}
-
-async function buildResumeConversationContext(
-  channelId: string,
-  threadTs: string,
-): Promise<string | undefined> {
-  const conversation = coerceThreadConversationState(
-    await getPersistedThreadState(`slack:${channelId}:${threadTs}`),
-  );
-  const latestUserMessageId = [...conversation.messages]
-    .reverse()
-    .find((message) => message.role === "user")?.id;
-  return buildConversationContext(conversation, {
-    excludeMessageId: latestUserMessageId,
-  });
 }
 
 async function buildCheckpointConversationContext(
@@ -111,12 +97,7 @@ async function buildCheckpointConversationContext(
 async function persistCompletedOAuthReplyState(args: {
   conversationId: string;
   sessionId: string;
-  reply: {
-    text: string;
-    sandboxId?: string;
-    sandboxDependencyProfileHash?: string;
-    artifactStatePatch?: Record<string, unknown>;
-  };
+  reply: AssistantReply;
 }): Promise<void> {
   const currentState = await getPersistedThreadState(args.conversationId);
   const conversation = coerceThreadConversationState(currentState);
@@ -144,6 +125,9 @@ async function persistCompletedOAuthReplyState(args: {
       replied: true,
     },
   });
+  if (args.reply.piMessages) {
+    conversation.piMessages = args.reply.piMessages;
+  }
   markTurnCompleted({
     conversation,
     nowMs: Date.now(),
@@ -291,6 +275,7 @@ async function resumeCheckpointedOAuthTurn(
       pendingAuth,
       conversationContext,
       channelConfiguration,
+      piMessages: conversation.piMessages,
       sandbox: getPersistedSandboxState(currentState),
       threadParticipants: buildThreadParticipants(conversation.messages),
       onAuthPending: async (nextPendingAuth) => {
@@ -335,15 +320,10 @@ async function resumeCheckpointedOAuthTurn(
         sessionId: resolvedSessionId,
       });
     },
-    onAuthPause: async (error) => {
-      await deliverAuthPauseReply({
-        channelId: stored.channelId!,
-        conversationId: stored.resumeConversationId,
-        error,
-        fallbackProvider: stored.provider,
+    onAuthPause: async () => {
+      await persistAuthPauseTurnState({
         sessionId: resolvedSessionId,
         threadStateId: stored.resumeConversationId!,
-        threadTs: stored.threadTs!,
       });
     },
     onTimeoutPause: async (error) => {
@@ -378,10 +358,16 @@ async function resumePendingOAuthMessage(
 ): Promise<void> {
   if (!stored.pendingMessage || !stored.channelId || !stored.threadTs) return;
 
-  const conversationContext = await buildResumeConversationContext(
-    stored.channelId,
-    stored.threadTs,
+  const threadId = `slack:${stored.channelId}:${stored.threadTs}`;
+  const conversation = coerceThreadConversationState(
+    await getPersistedThreadState(threadId),
   );
+  const latestUserMessageId = [...conversation.messages]
+    .reverse()
+    .find((message) => message.role === "user")?.id;
+  const conversationContext = buildConversationContext(conversation, {
+    excludeMessageId: latestUserMessageId,
+  });
   await resumeAuthorizedRequest({
     messageText: stored.pendingMessage,
     channelId: stored.channelId,
@@ -391,6 +377,7 @@ async function resumePendingOAuthMessage(
     replyContext: {
       requester: { userId: stored.userId },
       conversationContext,
+      piMessages: conversation.piMessages,
       configuration: stored.configuration,
     },
     onSuccess: async (reply) => {
