@@ -57,4 +57,16 @@ describe("prompt builders", () => {
     expect(firstTurnContext).toContain("<requester>");
     expect(buildSystemPrompt()).toBe(firstSystemPrompt);
   });
+
+  it("omits requester context when requester metadata is unavailable", () => {
+    const turnContext = buildTurnContextPrompt({
+      availableSkills: [],
+      activeSkills: [],
+      activeMcpCatalogs: [],
+      invocation: null,
+      turnState: "fresh",
+    });
+
+    expect(turnContext).not.toContain("<requester>");
+  });
 });

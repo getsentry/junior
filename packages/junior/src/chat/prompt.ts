@@ -131,13 +131,13 @@ function formatConfigurationValue(value: unknown): string {
 
 function renderRequesterBlock(
   fields: Record<string, string | undefined>,
-): string[] {
+): string[] | null {
   const lines = Object.entries(fields)
     .filter(([, value]) => Boolean(value))
     .map(([key, value]) => `- ${key}: ${escapeXml(value as string)}`);
 
   if (lines.length === 0) {
-    return ["<requester>", "none", "</requester>"];
+    return null;
   }
 
   return ["<requester>", ...lines, "</requester>"];
@@ -482,13 +482,14 @@ function buildContextSection(params: {
     );
   }
 
-  blocks.push(
-    renderRequesterBlock({
-      full_name: params.requester?.fullName,
-      user_name: params.requester?.userName,
-      user_id: params.requester?.userId,
-    }),
-  );
+  const requesterLines = renderRequesterBlock({
+    full_name: params.requester?.fullName,
+    user_name: params.requester?.userName,
+    user_id: params.requester?.userId,
+  });
+  if (requesterLines) {
+    blocks.push(requesterLines);
+  }
 
   const artifactLines = formatArtifactsLines(params.artifactState);
   if (artifactLines) {
