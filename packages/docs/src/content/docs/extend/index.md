@@ -7,6 +7,7 @@ prerequisites:
 related:
   - /extend/datadog-plugin/
   - /extend/github-plugin/
+  - /extend/hex-plugin/
   - /extend/linear-plugin/
   - /extend/notion-plugin/
   - /extend/sentry-plugin/
@@ -49,7 +50,7 @@ my-junior-plugin/
 For reuse across apps or teams, package plugin manifests + skills as npm packages and install them next to `@sentry/junior`.
 
 ```bash
-pnpm add @sentry/junior @sentry/junior-datadog @sentry/junior-github @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
+pnpm add @sentry/junior @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
 ```
 
 List the plugin packages in `juniorNitro` so they are bundled at build time and available at runtime:
@@ -65,6 +66,7 @@ export default defineConfig({
       pluginPackages: [
         "@sentry/junior-datadog",
         "@sentry/junior-github",
+        "@sentry/junior-hex",
         "@sentry/junior-linear",
         "@sentry/junior-notion",
         "@sentry/junior-sentry",

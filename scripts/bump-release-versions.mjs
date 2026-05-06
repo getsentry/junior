@@ -13,6 +13,7 @@ const files = [
   "packages/junior-agent-browser/package.json",
   "packages/junior-datadog/package.json",
   "packages/junior-github/package.json",
+  "packages/junior-hex/package.json",
   "packages/junior-linear/package.json",
   "packages/junior-notion/package.json",
   "packages/junior-sentry/package.json",

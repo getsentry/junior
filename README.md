@@ -23,6 +23,7 @@ Start here:
 | `@sentry/junior-agent-browser` | Agent Browser plugin package for browser automation                                                                                                                 |
 | `@sentry/junior-datadog`       | Datadog plugin package for observability workflows (**non-functional**: Datadog has DCR locked down, see the [package README](./packages/junior-datadog/README.md)) |
 | `@sentry/junior-github`        | GitHub plugin package for issue workflows                                                                                                                           |
+| `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                                                                                                               |
 | `@sentry/junior-linear`        | Linear plugin package for issue workflows                                                                                                                           |
 | `@sentry/junior-notion`        | Notion plugin package for page search workflows                                                                                                                     |
 | `@sentry/junior-sentry`        | Sentry plugin package for issue workflows                                                                                                                           |

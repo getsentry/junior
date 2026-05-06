@@ -81,7 +81,7 @@ The initializer creates local `app/plugins` and `app/skills` directories, so you
 If you want to use npm-distributed plugins, install them explicitly:
 
 ```bash
-pnpm add @sentry/junior-datadog @sentry/junior-github @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
+pnpm add @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
 ```
 
 List the plugin packages in `juniorNitro` so they are bundled and available at runtime:
@@ -97,6 +97,7 @@ export default defineConfig({
       pluginPackages: [
         "@sentry/junior-datadog",
         "@sentry/junior-github",
+        "@sentry/junior-hex",
         "@sentry/junior-linear",
         "@sentry/junior-notion",
         "@sentry/junior-sentry",

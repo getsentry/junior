@@ -38,6 +38,9 @@ importers:
       "@sentry/junior-github":
         specifier: workspace:*
         version: link:../../packages/junior-github
+      "@sentry/junior-hex":
+        specifier: workspace:*
+        version: link:../../packages/junior-hex
       "@sentry/junior-linear":
         specifier: workspace:*
         version: link:../../packages/junior-linear
@@ -220,6 +223,8 @@ importers:
         version: 0.9.0-beta.1(ai@6.0.162(zod@4.3.6))(tinyrainbow@3.1.0)(vitest@4.1.4(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(msw@2.13.3(@types/node@25.6.0)(typescript@5.9.3))(vite@8.0.3(@types/node@25.6.0)(esbuild@0.27.4)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.8.3)))(zod@4.3.6)
 
   packages/junior-github: {}
+
+  packages/junior-hex: {}
 
   packages/junior-linear: {}
 
