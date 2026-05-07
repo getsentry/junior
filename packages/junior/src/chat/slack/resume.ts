@@ -11,7 +11,10 @@ import {
   type LogContext,
 } from "@/chat/logging";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
-import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
+import {
+  finalizeFailedTurnReply,
+  requireTurnFailureEventId,
+} from "@/chat/services/turn-failure-response";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   createSlackWebApiAssistantStatusSession,
@@ -114,16 +117,6 @@ function getDefaultLockKey(channelId: string, threadTs: string): string {
   return `slack:${channelId}:${threadTs}`;
 }
 
-function requireEventId(
-  eventId: string | undefined,
-  eventName: string,
-): string {
-  if (!eventId) {
-    throw new Error(`Sentry did not return an event ID for ${eventName}`);
-  }
-  return eventId;
-}
-
 function getResumeLogContext(
   args: ResumeSlackTurnArgs,
   lockKey: string,
@@ -176,10 +169,15 @@ async function handleResumeFailure(args: {
   resumeArgs: ResumeSlackTurnArgs;
 }): Promise<void> {
   const logContext = getResumeLogContext(args.resumeArgs, args.lockKey);
-  const eventId = requireEventId(
-    logException(args.error, args.eventName, logContext, {}, args.body),
+  const capturedEventId = logException(
+    args.error,
     args.eventName,
+    logContext,
+    {},
+    args.body,
   );
+  await args.resumeArgs.onFailure?.(args.error);
+  const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
   let postError: unknown;
   try {
     await postResumeFailureReply({
@@ -191,7 +189,6 @@ async function handleResumeFailure(args: {
   } catch (error) {
     postError = error;
   }
-  await args.resumeArgs.onFailure?.(args.error);
   if (postError) {
     throw postError;
   }

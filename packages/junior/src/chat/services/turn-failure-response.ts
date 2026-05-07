@@ -11,7 +11,8 @@ type LogException = (
   body?: string,
 ) => string | undefined;
 
-function requireEventId(
+/** Require captured turn failures to carry a real Sentry event reference. */
+export function requireTurnFailureEventId(
   eventId: string | undefined,
   eventName: string,
 ): string {
@@ -113,7 +114,7 @@ export function finalizeFailedTurnReply(args: {
   }
 
   const capture = getFailureCapture(args.reply);
-  const eventId = requireEventId(
+  const eventId = requireTurnFailureEventId(
     args.logException(
       capture.error,
       capture.eventName,
