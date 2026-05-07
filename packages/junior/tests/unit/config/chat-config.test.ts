@@ -71,6 +71,42 @@ describe("chat config", () => {
     expect(botConfig.visionModelId).toBe("openai/gpt-5.4");
   });
 
+  it("uses the default advisor config when AI_ADVISOR_MODEL is absent", async () => {
+    delete process.env.AI_ADVISOR_MODEL;
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.advisor).toMatchObject({
+      modelId: "openai/gpt-5.5",
+      thinkingLevel: "xhigh",
+    });
+  });
+
+  it("parses advisor config when AI_ADVISOR_MODEL is set", async () => {
+    process.env.AI_ADVISOR_MODEL = "openai/gpt-5.4";
+    process.env.AI_ADVISOR_THINKING_LEVEL = "xhigh";
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.advisor).toEqual({
+      modelId: "openai/gpt-5.4",
+      thinkingLevel: "xhigh",
+    });
+  });
+
+  it("throws at config load when AI_ADVISOR_MODEL is not registered", async () => {
+    process.env.AI_ADVISOR_MODEL = "openai/gpt-definitely-not-real";
+
+    await expect(loadConfig()).rejects.toThrow(/Unknown AI Gateway model id/);
+  });
+
+  it("throws at config load when AI_ADVISOR_THINKING_LEVEL is invalid", async () => {
+    process.env.AI_ADVISOR_MODEL = "openai/gpt-5.4";
+    process.env.AI_ADVISOR_THINKING_LEVEL = "deeply";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "AI_ADVISOR_THINKING_LEVEL must be one of",
+    );
+  });
+
   it("throws at config load when AI_MODEL is not a registered gateway model id", async () => {
     process.env.AI_MODEL = "openai/gpt-definitely-not-real";
 

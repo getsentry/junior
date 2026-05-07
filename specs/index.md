@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-04-28
+- Last Edited: 2026-05-06
 
 ## Changelog
 
@@ -15,6 +15,7 @@
 - 2026-04-15: Added canonical Slack agent delivery spec.
 - 2026-04-16: Added canonical Slack write contract spec.
 - 2026-04-28: Added canonical agent prompt spec.
+- 2026-05-06: Added draft advisor tool spec.
 
 ## Status
 
@@ -35,6 +36,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - Policy specs: security and governance constraints (`*-policy.md`).
 - Index specs: curated navigators for a domain (`index.md`).
 - Archive specs: historical evaluations, completed trackers, and superseded design docs (`specs/archive/**`).
+- Draft specs: proposed contracts that are not yet canonical runtime behavior.
 
 ## Naming Rules
 
@@ -66,6 +68,10 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 
 - Logging: `specs/logging/index.md`
 - Testing: `specs/testing/index.md`
+
+## Draft Specs
+
+- `specs/advisor-tool-spec.md`
 
 ## Archive Policy
 

@@ -1,4 +1,4 @@
-import { Agent } from "@mariozechner/pi-agent-core";
+import { Agent, type AgentTool } from "@mariozechner/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -42,6 +42,7 @@ import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
+import { isAdvisorToolAllowed } from "@/chat/tools/advisor/tool";
 import {
   GEN_AI_PROVIDER_NAME,
   completeObject,
@@ -658,6 +659,7 @@ export async function generateAssistantReply(
     const replyFiles: FileUpload[] = [];
     const artifactStatePatch: Partial<ThreadArtifactsState> = {};
     const toolCalls: string[] = [];
+    let advisorTools: AgentTool[] = [];
     let agent: Agent | undefined;
 
     // ── MCP auth orchestration ───────────────────────────────────────
@@ -818,6 +820,12 @@ export async function generateAssistantReply(
         getActiveSkills: () => activeSkills,
         mcpToolManager: turnMcpToolManager,
         sandbox,
+        advisor: {
+          config: botConfig.advisor,
+          conversationId: sessionConversationId,
+          logContext: spanContext,
+          getTools: () => advisorTools,
+        },
       },
     );
 
@@ -899,6 +907,7 @@ export async function generateAssistantReply(
       pluginAuth,
       onToolCall,
     );
+    advisorTools = agentTools.filter((tool) => isAdvisorToolAllowed(tool.name));
     // Keep Pi's native tool schema static for the whole turn. Ideally this
     // would use provider-native tool loading/search APIs, but Pi's generic
     // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.

@@ -209,6 +209,10 @@ vi.mock("@mariozechner/pi-agent-core", () => {
 
 vi.mock("@/chat/config", () => ({
   botConfig: {
+    advisor: {
+      modelId: "test-advisor-model",
+      thinkingLevel: "xhigh",
+    },
     fastModelId: "test-fast-model",
     modelId: "test-model",
     turnTimeoutMs: 1000,

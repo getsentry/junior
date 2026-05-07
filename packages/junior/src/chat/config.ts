@@ -5,6 +5,17 @@ import { resolveGatewayModel } from "@/chat/pi/client";
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 800;
+const ADVISOR_THINKING_LEVELS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
+
+export type AdvisorThinkingLevel = (typeof ADVISOR_THINKING_LEVELS)[number];
+
+const DEFAULT_ADVISOR_THINKING_LEVEL: AdvisorThinkingLevel = "xhigh";
 /** Buffer between the Vercel function timeout and the agent turn timeout,
  *  so the agent can abort and post a failure reply before Vercel kills it. */
 const FUNCTION_TIMEOUT_BUFFER_SECONDS = 20;
@@ -24,12 +35,18 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 ] as const;
 
 export interface BotConfig {
+  advisor: AdvisorConfig;
   fastModelId: string;
   loadingMessages: string[];
   modelId: string;
   visionModelId?: string;
   turnTimeoutMs: number;
   userName: string;
+}
+
+export interface AdvisorConfig {
+  modelId: string;
+  thinkingLevel: AdvisorThinkingLevel;
 }
 
 export interface ChatConfig {
@@ -103,6 +120,23 @@ function parseLoadingMessages(rawValue: string | undefined): string[] {
   });
 }
 
+function parseAdvisorThinkingLevel(
+  rawValue: string | undefined,
+): AdvisorThinkingLevel {
+  const value = toOptionalTrimmed(rawValue);
+  if (!value) {
+    return DEFAULT_ADVISOR_THINKING_LEVEL;
+  }
+
+  if (ADVISOR_THINKING_LEVELS.includes(value as AdvisorThinkingLevel)) {
+    return value as AdvisorThinkingLevel;
+  }
+
+  throw new Error(
+    `AI_ADVISOR_THINKING_LEVEL must be one of: minimal, low, medium, high, xhigh`,
+  );
+}
+
 // Compile-time assertion: `getModel`'s second generic is constrained to
 // `keyof (typeof MODELS)[TProvider]`, so a stale default becomes a tsc error.
 const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "openai/gpt-5.4").id;
@@ -110,12 +144,24 @@ const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
   "openai/gpt-5.4-mini",
 ).id;
+const DEFAULT_ADVISOR_MODEL_ID = getModel(
+  "vercel-ai-gateway",
+  "openai/gpt-5.5",
+).id;
 
 function validateGatewayModelId(raw: string | undefined): string | undefined {
   const trimmed = toOptionalTrimmed(raw);
   if (trimmed === undefined) return undefined;
   resolveGatewayModel(trimmed);
   return trimmed;
+}
+
+function readAdvisorConfig(env: NodeJS.ProcessEnv): AdvisorConfig {
+  return {
+    modelId:
+      validateGatewayModelId(env.AI_ADVISOR_MODEL) ?? DEFAULT_ADVISOR_MODEL_ID,
+    thinkingLevel: parseAdvisorThinkingLevel(env.AI_ADVISOR_THINKING_LEVEL),
+  };
 }
 
 function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
@@ -134,6 +180,7 @@ function readBotConfig(env: NodeJS.ProcessEnv): BotConfig {
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,
     ),
+    advisor: readAdvisorConfig(env),
   };
 }
 

@@ -115,11 +115,11 @@ importers:
         specifier: ^2.0.5
         version: 2.0.5
       "@mariozechner/pi-agent-core":
-        specifier: 0.68.1
-        version: 0.68.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+        specifier: 0.73.0
+        version: 0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
       "@mariozechner/pi-ai":
-        specifier: 0.68.1
-        version: 0.68.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+        specifier: 0.73.0
+        version: 0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
       "@modelcontextprotocol/sdk":
         specifier: 1.29.0
         version: 1.29.0(zod@4.3.6)
@@ -257,6 +257,18 @@ packages:
     resolution:
       {
         integrity: sha512-MzZtPabJF1b0FTDl6Z6H5ljphPwACLGP13lu8MTiB8jXaW/YXlpOp+Po2cVou3MPM5+f5toyLnul9whKCy7fBg==,
+      }
+    hasBin: true
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
+
+  "@anthropic-ai/sdk@0.91.1":
+    resolution:
+      {
+        integrity: sha512-LAmu761tSN9r66ixvmciswUj/ZC+1Q4iAfpedTfSVLeswRwnY3n2Nb6Tsk+cLPP28aLOPWeMgIuTuCcMC6W/iw==,
       }
     hasBin: true
     peerDependencies:
@@ -1944,17 +1956,17 @@ packages:
     engines: { node: ">=18" }
     hasBin: true
 
-  "@mariozechner/pi-agent-core@0.68.1":
+  "@mariozechner/pi-agent-core@0.73.0":
     resolution:
       {
-        integrity: sha512-7q0vHSc6IIlNNdfP5+4ktv/9Bidfo6dCFRRJVz96K9qjN+5rYJ+4V28quvcw/Vf0pfDgRMBRR0Yhjx51lb60tg==,
+        integrity: sha512-ugcpvq0X9fr9fTSK29/3S4+KU/eeVMrBb7ZU3HqiF3xD7I1GlgumLj4FYmDrYSEA6+rzgNWlJUKwjKh9o0Z6AA==,
       }
     engines: { node: ">=20.0.0" }
 
-  "@mariozechner/pi-ai@0.68.1":
+  "@mariozechner/pi-ai@0.73.0":
     resolution:
       {
-        integrity: sha512-z52kMOZK1/fxzKu7nTwdfOCHhOE/G5GwGsxzR98X6LX7yAz384iqwG4DoXn7nI05ETH7jXLET6wUrYIHMo91Qw==,
+        integrity: sha512-phKOpcde/ssz6UYszkmaGJ9LF9mgt/AP8LrtSwsfap+kMSeFfSQ2/mCSBT1mLJ2BqVuff9uXs1/+op1aQeaafQ==,
       }
     engines: { node: ">=20.0.0" }
     hasBin: true
@@ -10172,6 +10184,12 @@ packages:
     engines: { node: ">=14.17" }
     hasBin: true
 
+  typebox@1.1.38:
+    resolution:
+      {
+        integrity: sha512-pZ0aQPmMmXoUvSbeuWf/Hzsc+avNw/Zd6VeE8CFgkVGWyuHPJvqeJJDeJqLve+K70LvjYIoleGcoJHPT17cWoA==,
+      }
+
   uc.micro@2.1.0:
     resolution:
       {
@@ -11146,6 +11164,12 @@ snapshots:
       json-schema: 0.4.0
 
   "@anthropic-ai/sdk@0.90.0(zod@4.3.6)":
+    dependencies:
+      json-schema-to-ts: 3.1.1
+    optionalDependencies:
+      zod: 4.3.6
+
+  "@anthropic-ai/sdk@0.91.1(zod@4.3.6)":
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
@@ -12302,9 +12326,10 @@ snapshots:
       - encoding
       - supports-color
 
-  "@mariozechner/pi-agent-core@0.68.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)":
+  "@mariozechner/pi-agent-core@0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)":
     dependencies:
-      "@mariozechner/pi-ai": 0.68.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+      "@mariozechner/pi-ai": 0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+      typebox: 1.1.38
     transitivePeerDependencies:
       - "@modelcontextprotocol/sdk"
       - aws-crt
@@ -12314,19 +12339,19 @@ snapshots:
       - ws
       - zod
 
-  "@mariozechner/pi-ai@0.68.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)":
+  "@mariozechner/pi-ai@0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)":
     dependencies:
-      "@anthropic-ai/sdk": 0.90.0(zod@4.3.6)
+      "@anthropic-ai/sdk": 0.91.1(zod@4.3.6)
       "@aws-sdk/client-bedrock-runtime": 3.1034.0
       "@google/genai": 1.47.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))
       "@mistralai/mistralai": 2.2.1
-      "@sinclair/typebox": 0.34.49
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
       chalk: 5.6.2
       openai: 6.26.0(ws@8.20.0)(zod@4.3.6)
       partial-json: 0.1.7
       proxy-agent: 6.5.0
+      typebox: 1.1.38
       undici: 7.24.6
       zod-to-json-schema: 3.25.2(zod@4.3.6)
     transitivePeerDependencies:
@@ -13150,8 +13175,8 @@ snapshots:
       "@chat-adapter/state-memory": 4.26.0
       "@chat-adapter/state-redis": 4.26.0
       "@logtape/logtape": 2.0.5
-      "@mariozechner/pi-agent-core": 0.68.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
-      "@mariozechner/pi-ai": 0.68.1(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+      "@mariozechner/pi-agent-core": 0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
+      "@mariozechner/pi-ai": 0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)
       "@modelcontextprotocol/sdk": 1.29.0(zod@4.3.6)
       "@sentry/node": 10.48.0
       "@sinclair/typebox": 0.34.49
@@ -18043,6 +18068,8 @@ snapshots:
       minimatch: 10.2.5
       typescript: 5.9.3
       yaml: 2.8.3
+
+  typebox@1.1.38: {}
 
   typesafe-path@0.2.2: {}
 
