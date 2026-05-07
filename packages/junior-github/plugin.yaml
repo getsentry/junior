@@ -2,6 +2,8 @@ name: github
 description: GitHub issue management via GitHub App
 
 capabilities:
+  - actions.read
+  - actions.write
   - issues.read
   - issues.write
   - contents.read

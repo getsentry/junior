@@ -56,6 +56,7 @@ Create and install a GitHub App before you verify GitHub workflows:
 1. Open GitHub App settings and create a new app.
 2. Generate a private key and store the downloaded `.pem` file securely.
 3. Grant repository permissions for:
+   - Actions: Read and write
    - Issues: Read and write
    - Contents: Read and write
    - Pull requests: Read and write

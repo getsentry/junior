@@ -22,6 +22,8 @@ const TEST_MANIFEST: PluginManifest = {
   name: "github",
   description: "GitHub issue management via GitHub App",
   capabilities: [
+    "github.actions.read",
+    "github.actions.write",
     "github.issues.read",
     "github.issues.write",
     "github.contents.read",
@@ -173,6 +175,7 @@ describe("github app credential broker", () => {
     expect(body.permissions).toEqual({
       issues: "write",
       contents: "write",
+      actions: "write",
       pull_requests: "write",
     });
     expect(body.repositories).toBeUndefined();

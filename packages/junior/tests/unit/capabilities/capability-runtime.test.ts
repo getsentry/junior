@@ -10,6 +10,8 @@ vi.mock("@/chat/plugins/registry", () => ({
             name: "github",
             description: "GitHub",
             capabilities: [
+              "github.actions.read",
+              "github.actions.write",
               "github.issues.read",
               "github.issues.write",
               "github.contents.read",

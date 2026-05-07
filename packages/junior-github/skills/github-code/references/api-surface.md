@@ -10,12 +10,14 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 
 ## Capability to command mapping
 
-| Capability                   | Commands                                                                        |
-| ---------------------------- | ------------------------------------------------------------------------------- |
-| `github.contents.read`       | `gh repo clone`, `git fetch`                                                    |
-| `github.contents.write`      | `git push`, `gh api` (create/update file contents), `gh pr merge`               |
-| `github.pull-requests.read`  | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                        |
-| `github.pull-requests.write` | `gh pr create --head <branch>` after explicit push, `gh pr edit`, `gh pr close` |
+| Capability                   | Commands                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `github.actions.read`        | `gh run list`, `gh run view`, `gh run watch`, `gh workflow list`, `gh workflow view` |
+| `github.actions.write`       | `gh workflow run`, `gh run rerun`, `gh run cancel`                                   |
+| `github.contents.read`       | `gh repo clone`, `git fetch`                                                         |
+| `github.contents.write`      | `git push`, `gh api` (create/update file contents), `gh pr merge`                    |
+| `github.pull-requests.read`  | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                             |
+| `github.pull-requests.write` | `gh pr create --head <branch>` after explicit push, `gh pr edit`, `gh pr close`      |
 
 ## Command matrix
 
@@ -33,6 +35,10 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | List pull requests                 | `gh pr list --repo owner/repo [--state open                                               | closed   | merged]`   |
 | Diff pull request                  | `gh pr diff NUMBER --repo owner/repo`                                                     |
 | Check pull request status          | `gh pr checks NUMBER --repo owner/repo`                                                   |
+| Dispatch workflow                  | `gh workflow run WORKFLOW -R owner/repo --ref REF [-f key=value ...]`                     |
+| List workflow runs                 | `gh run list -R owner/repo --workflow WORKFLOW [--limit N] [--json ...]`                  |
+| View workflow run                  | `gh run view RUN_ID -R owner/repo [--json ...] [--log-failed]`                            |
+| Watch workflow run                 | `gh run watch RUN_ID -R owner/repo --exit-status`                                         |
 
 ## Config helpers
 
