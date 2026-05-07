@@ -108,7 +108,7 @@ describe("oauth resume slack integration", () => {
                 }),
                 expect.objectContaining({
                   type: "mrkdwn",
-                  text: "*Tokens:* 1,234",
+                  text: "*Tokens:* 1.2k",
                 }),
                 expect.objectContaining({
                   type: "mrkdwn",
