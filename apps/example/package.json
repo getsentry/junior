@@ -17,7 +17,7 @@
     "@sentry/junior-linear": "workspace:*",
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
-    "@sentry/node": "^10.51.0",
+    "@sentry/node": "10.50.0-alpha.0",
     "hono": "^4.12.6"
   },
   "devDependencies": {
