@@ -8,7 +8,13 @@ const MAX_ROUTER_CONTEXT_CHARS = 8_000;
 const ROUTER_CONTEXT_HEAD_CHARS = 3_000;
 const ROUTER_CONTEXT_TAIL_CHARS = 5_000;
 const TRUNCATION_MARKER = "\n…[truncated]…\n";
-const TURN_THINKING_LEVELS = ["none", "low", "medium", "high"] as const;
+const TURN_THINKING_LEVELS = [
+  "none",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
 
 const turnExecutionProfileSchema = z.object({
   thinking_level: z.enum(TURN_THINKING_LEVELS),
@@ -30,6 +36,7 @@ const THINKING_LEVEL_RANK: Record<TurnThinkingLevel, number> = {
   low: 1,
   medium: 2,
   high: 3,
+  xhigh: 4,
 };
 
 interface TrimmedContext {
@@ -65,12 +72,13 @@ function trimContextForRouter(text: string | undefined): TrimmedContext | null {
 function buildClassifierSystemPrompt(): string {
   return [
     "You route assistant turns to the thinking level most likely to produce a complete, source-grounded answer.",
-    "Choose exactly one bucket: none, low, medium, or high.",
+    "Choose exactly one bucket: none, low, medium, high, or xhigh.",
     "",
     "Use none only for greetings, acknowledgments, and turns that need no substantive assistant work.",
     "Use low rarely: only for deterministic one-step answers or transformations with no tools, no current/external facts, no thread-background interpretation, and no source verification.",
     "Use medium for normal assistant work: explanations, source-backed checks, thread follow-ups, tool choice, likely tool use, ambiguous asks, multi-step analysis, or anything where a confident but shallow answer would be risky.",
-    "Use high for code changes, debugging/root-cause analysis, research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
+    "Use high for research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
+    "Use xhigh for the most complex tasks: code changes, debugging/root-cause analysis, broad refactors, architecture decisions, multi-file implementation, or any task where deep reasoning across multiple systems or files is required.",
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and the thread-background contains a pending task, classify the pending task — not the affirmation.",
@@ -277,5 +285,7 @@ export function toAgentThinkingLevel(
       return "medium";
     case "high":
       return "high";
+    case "xhigh":
+      return "xhigh";
   }
 }

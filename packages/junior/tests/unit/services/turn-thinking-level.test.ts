@@ -33,10 +33,10 @@ describe("selectTurnThinkingLevel", () => {
     expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("off");
   });
 
-  it("classifies code-change asks with the fast model", async () => {
+  it("classifies code-change asks as xhigh with the fast model", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
-        thinking_level: "high",
+        thinking_level: "xhigh",
         confidence: 0.93,
         reason: "code change request",
       },
@@ -50,10 +50,33 @@ describe("selectTurnThinkingLevel", () => {
     });
 
     expect(profile).toMatchObject({
-      thinkingLevel: "high",
+      thinkingLevel: "xhigh",
       reason: "code change request",
     });
     expect(completeObject).toHaveBeenCalledOnce();
+    expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("xhigh");
+  });
+
+  it("classifies research-heavy work as high", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        thinking_level: "high",
+        confidence: 0.91,
+        reason: "research-heavy investigation",
+      },
+    }));
+
+    const profile = await selectTurnThinkingLevel({
+      completeObject,
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "research how the Slack delivery pipeline works end to end",
+    });
+
+    expect(profile).toMatchObject({
+      thinkingLevel: "high",
+      reason: "research-heavy investigation",
+    });
+    expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("high");
   });
 
   it("falls back to medium effort when classifier confidence is low", async () => {
@@ -189,5 +212,28 @@ describe("selectTurnThinkingLevel", () => {
     expect(capturedPrompt).toContain(headMarker);
     expect(capturedPrompt).toContain(tailMarker);
     expect(capturedPrompt).toContain("…[truncated]…");
+  });
+
+  it("does not floor xhigh classifications", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        thinking_level: "xhigh",
+        confidence: 0.95,
+        reason: "multi-file refactor with architecture implications",
+      },
+    }));
+
+    const profile = await selectTurnThinkingLevel({
+      completeObject,
+      conversationContext: "Prior task context about a large refactor.",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "go ahead and implement the refactor",
+    });
+
+    expect(profile).toMatchObject({
+      thinkingLevel: "xhigh",
+      reason: "multi-file refactor with architecture implications",
+    });
+    expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("xhigh");
   });
 });
