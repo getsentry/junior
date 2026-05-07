@@ -10,3 +10,4 @@ mcp:
   allowed-tools:
     - create_thread
     - get_thread
+    - continue_thread
