@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -11,6 +11,14 @@ const repoRoot = path.resolve(import.meta.dirname, "../../../..");
 const exampleRoot = path.join(repoRoot, "apps/example");
 const exampleEntry = path.join(exampleRoot, "server.ts");
 const exampleRequire = createRequire(exampleEntry);
+
+function isSamePath(left: string, right: string): boolean {
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return false;
+  }
+}
 
 function getExamplePluginPackages(): string[] {
   const pkg = JSON.parse(
@@ -42,15 +50,17 @@ function buildJuniorPackage(): void {
   const installedPackageRoot = path.dirname(
     path.dirname(exampleRequire.resolve("@sentry/junior")),
   );
-  rmSync(path.join(installedPackageRoot, "dist"), {
+  const sourceDist = path.join(repoRoot, "packages/junior/dist");
+  const installedDist = path.join(installedPackageRoot, "dist");
+  if (isSamePath(installedDist, sourceDist)) {
+    return;
+  }
+
+  rmSync(installedDist, {
     force: true,
     recursive: true,
   });
-  cpSync(
-    path.join(repoRoot, "packages/junior/dist"),
-    path.join(installedPackageRoot, "dist"),
-    { recursive: true },
-  );
+  cpSync(sourceDist, installedDist, { recursive: true });
 }
 
 async function importExampleApp() {
