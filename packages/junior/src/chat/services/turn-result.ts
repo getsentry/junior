@@ -220,10 +220,9 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     : outcome;
   const deliveryPlan =
     resolvedOutcome === "success" &&
-    reactionPerformed &&
     !resolvedText &&
     replyFiles.length === 0 &&
-    !channelPostPerformed
+    (reactionPerformed || channelPostPerformed)
       ? {
           ...baseDeliveryPlan,
           postThreadText: false,

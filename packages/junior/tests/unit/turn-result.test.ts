@@ -138,6 +138,35 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });
 
+  it("suppresses empty thread text when a channel post is the successful side effect", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "slackChannelPostMessage",
+          isError: false,
+          content: [{ type: "text", text: "message posted" }],
+        },
+      ],
+      userInput: "share the update",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["slackChannelPostMessage"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryPlan).toMatchObject({
+      mode: "thread",
+      postThreadText: false,
+    });
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(false);
+  });
+
   it("keeps thread text when a turn adds a reaction and returns real text", () => {
     const reply = buildTurnResult({
       newMessages: [
