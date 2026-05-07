@@ -23,7 +23,7 @@ describe("buildSlackReplyFooter", () => {
         },
         {
           label: "Tokens",
-          value: "1,234",
+          value: "1.2k",
         },
         {
           label: "Time",
@@ -71,9 +71,77 @@ describe("buildSlackReplyFooter", () => {
       items: [
         {
           label: "Tokens",
-          value: "1,234",
+          value: "1.2k",
         },
       ],
+    });
+  });
+
+  describe("formatSlackTokenCount", () => {
+    it("shows raw number for values under 1000", () => {
+      expect(buildSlackReplyFooter({ usage: { totalTokens: 542 } })).toEqual({
+        items: [{ label: "Tokens", value: "542" }],
+      });
+    });
+
+    it("shows k suffix for thousands", () => {
+      expect(buildSlackReplyFooter({ usage: { totalTokens: 54300 } })).toEqual({
+        items: [{ label: "Tokens", value: "54.3k" }],
+      });
+    });
+
+    it("drops trailing zero in k suffix", () => {
+      expect(buildSlackReplyFooter({ usage: { totalTokens: 2000 } })).toEqual({
+        items: [{ label: "Tokens", value: "2k" }],
+      });
+    });
+
+    it("shows m suffix for millions", () => {
+      expect(
+        buildSlackReplyFooter({ usage: { totalTokens: 1465542 } }),
+      ).toEqual({
+        items: [{ label: "Tokens", value: "1.47m" }],
+      });
+    });
+
+    it("drops trailing zeros in m suffix", () => {
+      expect(
+        buildSlackReplyFooter({ usage: { totalTokens: 2000000 } }),
+      ).toEqual({
+        items: [{ label: "Tokens", value: "2m" }],
+      });
+    });
+  });
+
+  describe("formatSlackDuration", () => {
+    it("shows ms for sub-second durations", () => {
+      expect(buildSlackReplyFooter({ durationMs: 450 })).toEqual({
+        items: [{ label: "Time", value: "450ms" }],
+      });
+    });
+
+    it("shows decimal seconds for 1-9s", () => {
+      expect(buildSlackReplyFooter({ durationMs: 1250 })).toEqual({
+        items: [{ label: "Time", value: "1.3s" }],
+      });
+    });
+
+    it("shows whole seconds for 10-59s", () => {
+      expect(buildSlackReplyFooter({ durationMs: 42000 })).toEqual({
+        items: [{ label: "Time", value: "42s" }],
+      });
+    });
+
+    it("shows minutes and seconds for 60s+", () => {
+      expect(buildSlackReplyFooter({ durationMs: 417000 })).toEqual({
+        items: [{ label: "Time", value: "6m57s" }],
+      });
+    });
+
+    it("shows only minutes when seconds is zero", () => {
+      expect(buildSlackReplyFooter({ durationMs: 120000 })).toEqual({
+        items: [{ label: "Time", value: "2m" }],
+      });
     });
   });
 });

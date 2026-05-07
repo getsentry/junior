@@ -44,7 +44,16 @@ function escapeSlackMrkdwn(text: string): string {
 }
 
 function formatSlackTokenCount(value: number): string {
-  return new Intl.NumberFormat("en-US").format(value);
+  if (value >= 1_000_000) {
+    const millions = value / 1_000_000;
+    // Show up to 2 decimal places, drop trailing zeros
+    return `${parseFloat(millions.toFixed(2))}m`;
+  }
+  if (value >= 1_000) {
+    const thousands = value / 1_000;
+    return `${parseFloat(thousands.toFixed(1))}k`;
+  }
+  return `${value}`;
 }
 
 function formatSlackDuration(durationMs: number): string {
@@ -52,12 +61,23 @@ function formatSlackDuration(durationMs: number): string {
     return `${durationMs}ms`;
   }
 
-  const durationSeconds = durationMs / 1_000;
-  if (durationSeconds < 10) {
-    return `${durationSeconds.toFixed(1).replace(/\.0$/, "")}s`;
+  const totalSeconds = Math.round(durationMs / 1_000);
+
+  if (totalSeconds < 10) {
+    const precise = durationMs / 1_000;
+    return `${precise.toFixed(1).replace(/\.0$/, "")}s`;
   }
 
-  return `${Math.round(durationSeconds)}s`;
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (seconds === 0) {
+    return `${minutes}m`;
+  }
+  return `${minutes}m${seconds}s`;
 }
 
 function resolveTotalTokens(
