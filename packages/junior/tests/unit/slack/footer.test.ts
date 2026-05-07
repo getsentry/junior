@@ -37,6 +37,21 @@ describe("buildSlackReplyFooter", () => {
     });
   });
 
+  it("keeps ID as plain text when no conversation URL is available", () => {
+    expect(
+      buildSlackReplyFooter({
+        conversationId: "slack:C123:1700000000.000100",
+      }),
+    ).toEqual({
+      items: [
+        {
+          label: "ID",
+          value: "slack:C123:1700000000.000100",
+        },
+      ],
+    });
+  });
+
   it("omits the footer when no items are available", () => {
     expect(buildSlackReplyFooter({})).toBeUndefined();
   });

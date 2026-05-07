@@ -1,5 +1,9 @@
+import * as Sentry from "@/chat/sentry";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
+
+const SENTRY_CONVERSATION_SEARCH_STATS_PERIOD = "14d";
+const ORG_ID_HOST_RE = /^o(\d+)\./;
 
 interface SlackMrkdwnTextObject {
   text: string;
@@ -29,6 +33,7 @@ export type SlackMessageBlock =
 
 interface SlackReplyFooterItem {
   label: string;
+  url?: string;
   value: string;
 }
 
@@ -41,6 +46,73 @@ function escapeSlackMrkdwn(text: string): string {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function escapeSlackLinkUrl(url: string): string {
+  return url
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "%3C")
+    .replaceAll(">", "%3E");
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function quoteSentrySearchValue(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function getDsnOrgId(host: string | undefined): string | undefined {
+  return host?.match(ORG_ID_HOST_RE)?.[1];
+}
+
+function isSentrySaasDsnHost(host: string): boolean {
+  return host === "sentry.io" || host.endsWith(".sentry.io");
+}
+
+function buildSentryWebBaseUrl(dsn: {
+  host: string;
+  path?: string;
+  port?: string;
+  protocol: string;
+}): string {
+  if (isSentrySaasDsnHost(dsn.host)) {
+    return "https://sentry.io";
+  }
+
+  const port = dsn.port ? `:${dsn.port}` : "";
+  const path = dsn.path ? `/${dsn.path}` : "";
+  return `${dsn.protocol}://${dsn.host}${port}${path}`;
+}
+
+function getSentryConversationSearchUrl(
+  conversationId: string,
+): string | undefined {
+  const client = Sentry.getClient();
+  const dsn = client?.getDsn();
+  if (!dsn?.host || !dsn.projectId) {
+    return undefined;
+  }
+
+  const orgId =
+    toOptionalString(client?.getOptions().orgId) ?? getDsnOrgId(dsn.host);
+  if (!orgId) {
+    return undefined;
+  }
+
+  const params = new URLSearchParams();
+  params.set(
+    "query",
+    `gen_ai.conversation.id:${quoteSentrySearchValue(conversationId)}`,
+  );
+  params.set("project", dsn.projectId);
+  params.set("statsPeriod", SENTRY_CONVERSATION_SEARCH_STATS_PERIOD);
+
+  return `${buildSentryWebBaseUrl(dsn)}/organizations/${orgId}/explore/traces/?${params.toString()}`;
 }
 
 function formatSlackTokenCount(value: number): string {
@@ -120,10 +192,15 @@ export function buildSlackReplyFooter(args: {
 
   const conversationId = args.conversationId?.trim();
   if (conversationId) {
-    items.push({
+    const idItem: SlackReplyFooterItem = {
       label: "ID",
       value: conversationId,
-    });
+    };
+    const conversationUrl = getSentryConversationSearchUrl(conversationId);
+    if (conversationUrl) {
+      idItem.url = conversationUrl;
+    }
+    items.push(idItem);
   }
 
   const totalTokens = resolveTotalTokens(args.usage);
@@ -173,7 +250,9 @@ export function buildSlackReplyBlocks(
       type: "context",
       elements: footer.items.map((item) => ({
         type: "mrkdwn",
-        text: `*${escapeSlackMrkdwn(item.label)}:* ${escapeSlackMrkdwn(item.value)}`,
+        text: item.url
+          ? `*${escapeSlackMrkdwn(item.label)}:* <${escapeSlackLinkUrl(item.url)}|${escapeSlackMrkdwn(item.value)}>`
+          : `*${escapeSlackMrkdwn(item.label)}:* ${escapeSlackMrkdwn(item.value)}`,
       })),
     });
   }
