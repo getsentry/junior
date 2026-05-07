@@ -18,7 +18,7 @@
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/node": "^10.48.0",
-    "hono": "^4.12.14"
+    "hono": "^4.12.16"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
