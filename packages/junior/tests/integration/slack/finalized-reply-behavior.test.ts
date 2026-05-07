@@ -301,7 +301,7 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(secondPost.startsWith("```ts\n")).toBe(true);
   });
 
-  it("adds an interruption marker to provider-error replies", async () => {
+  it("replaces provider-error replies with the canonical event-id response", async () => {
     const longReply =
       `${"A".repeat(slackOutputPolicy.maxInlineChars)}\n\n` +
       "This should continue into a second post.";
@@ -328,8 +328,12 @@ describe("Slack behavior: finalized thread replies", () => {
     );
 
     expect(thread.postKinds.every((kind) => kind === "value")).toBe(true);
-    expect(toPostedText(thread.posts.at(-1))).toContain(
-      getSlackInterruptionMarker().trim(),
+    expect(thread.posts).toHaveLength(1);
+    const postedText = toPostedText(thread.posts[0]);
+    expect(postedText).toContain(
+      "I ran into an internal error while processing that. Reference: `event_id=",
     );
+    expect(postedText).not.toContain(longReply);
+    expect(postedText).not.toContain(getSlackInterruptionMarker().trim());
   });
 });

@@ -12,7 +12,7 @@ import {
 } from "../msw/handlers/slack-api";
 
 function makeDiagnostics(
-  outcome: "success" | "provider_error" = "success",
+  outcome: "success" | "execution_failure" | "provider_error" = "success",
   extras: Record<string, unknown> = {},
 ) {
   return {
@@ -47,8 +47,6 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.001",
       connectedText:
         "Your eval-auth MCP access is now connected. Continuing the original request...",
-      failureText:
-        "MCP authorization completed, but resuming the request failed. Please retry the original command.",
       replyContext: {
         requester: { userId: "U123" },
       },
@@ -137,7 +135,6 @@ describe("oauth resume slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.002",
       connectedText: "Connected. Continuing...",
-      failureText: "Resume failed.",
       replyContext: {
         requester: { userId: "U123" },
       },
@@ -164,7 +161,7 @@ describe("oauth resume slack integration", () => {
     expect(postCalls[4]?.params.text).toContain("line 80");
   });
 
-  it("marks interrupted resumed replies explicitly", async () => {
+  it("replaces resumed provider-error replies with the canonical event-id response", async () => {
     const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
 
     await resumeAuthorizedRequest({
@@ -172,7 +169,6 @@ describe("oauth resume slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.003",
       connectedText: "Connected. Continuing...",
-      failureText: "Resume failed.",
       replyContext: {
         requester: { userId: "U123" },
       },
@@ -188,8 +184,46 @@ describe("oauth resume slack integration", () => {
     expect(postCalls[1]?.params).toMatchObject({
       channel: "C123",
       thread_ts: "1700000000.003",
-      text: `Partial output${getSlackInterruptionMarker()}`,
     });
+    expect(postCalls[1]?.params.text).toContain(
+      "I ran into an internal error while processing that. Reference: `event_id=",
+    );
+    expect(postCalls[1]?.params.text).not.toContain("Partial output");
+    expect(postCalls[1]?.params.text).not.toContain(
+      getSlackInterruptionMarker().trim(),
+    );
+  });
+
+  it("replaces resumed execution-failure replies before Slack planning", async () => {
+    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
+
+    await resumeAuthorizedRequest({
+      messageText: "Continue the original request",
+      channelId: "C123",
+      threadTs: "1700000000.006",
+      connectedText: "Connected. Continuing...",
+      replyContext: {
+        requester: { userId: "U123" },
+      },
+      generateReply: async () =>
+        ({
+          text: "",
+          diagnostics: makeDiagnostics("execution_failure", {
+            assistantMessageCount: 0,
+            usedPrimaryText: false,
+          }),
+        }) as any,
+    });
+
+    const postCalls = getCapturedSlackApiCalls("chat.postMessage");
+    expect(postCalls).toHaveLength(2);
+    expect(postCalls[1]?.params).toMatchObject({
+      channel: "C123",
+      thread_ts: "1700000000.006",
+    });
+    expect(postCalls[1]?.params.text).toContain(
+      "I ran into an internal error while processing that. Reference: `event_id=",
+    );
   });
 
   it("delivers resumed reply files through the shared reply planner", async () => {
@@ -200,7 +234,6 @@ describe("oauth resume slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.004",
       connectedText: "Connected. Continuing...",
-      failureText: "Resume failed.",
       replyContext: {
         requester: { userId: "U123" },
       },
@@ -254,7 +287,6 @@ describe("oauth resume slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.005",
       connectedText: "Connected. Continuing...",
-      failureText: "Resume failed.",
       replyContext: {
         requester: { userId: "U123" },
       },

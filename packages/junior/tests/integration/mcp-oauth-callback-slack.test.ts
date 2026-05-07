@@ -347,17 +347,6 @@ describe("mcp oauth callback slack integration", () => {
         }),
       ]),
     );
-    expect(getCapturedSlackApiCalls("chat.postMessage")).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          params: expect.objectContaining({
-            channel: "C123",
-            thread_ts: "1700000000.001",
-            text: "I couldn't complete this request in this turn due to an execution failure. I've logged the details for debugging.",
-          }),
-        }),
-      ]),
-    );
   });
 
   it("does not resume a stale MCP-blocked request after a newer thread message", async () => {

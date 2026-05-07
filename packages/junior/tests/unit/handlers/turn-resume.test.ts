@@ -272,13 +272,6 @@ describe("turn resume handler", () => {
         await args.onSuccess?.(reply);
       } catch (error) {
         await args.onFailure?.(error);
-        if (args.failureText) {
-          await postSlackMessageMock(
-            args.channelId,
-            args.threadTs,
-            args.failureText,
-          );
-        }
       }
     });
 
@@ -377,13 +370,6 @@ describe("turn resume handler", () => {
         );
       } catch (error) {
         await args.onFailure?.(error);
-        if (args.failureText) {
-          await postSlackMessageMock(
-            args.channelId,
-            args.threadTs,
-            args.failureText,
-          );
-        }
       }
     });
 

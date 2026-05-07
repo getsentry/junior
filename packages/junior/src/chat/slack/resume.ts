@@ -5,7 +5,13 @@ import {
   type AssistantReply,
   type ReplyRequestContext,
 } from "@/chat/respond";
+import {
+  buildTurnFailureResponse,
+  logException,
+  type LogContext,
+} from "@/chat/logging";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
+import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   createSlackWebApiAssistantStatusSession,
@@ -96,7 +102,6 @@ export interface ResumeSlackTurnArgs {
   replyContext?: ReplyRequestContext;
   lockKey?: string;
   initialText?: string;
-  failureText?: string;
   generateReply?: typeof generateAssistantReply;
   onSuccess?: (reply: AssistantReply) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
@@ -107,6 +112,89 @@ export interface ResumeSlackTurnArgs {
 
 function getDefaultLockKey(channelId: string, threadTs: string): string {
   return `slack:${channelId}:${threadTs}`;
+}
+
+function requireEventId(
+  eventId: string | undefined,
+  eventName: string,
+): string {
+  if (!eventId) {
+    throw new Error(`Sentry did not return an event ID for ${eventName}`);
+  }
+  return eventId;
+}
+
+function getResumeLogContext(
+  args: ResumeSlackTurnArgs,
+  lockKey: string,
+): LogContext {
+  return {
+    conversationId: args.replyContext?.correlation?.conversationId ?? lockKey,
+    slackThreadId: args.replyContext?.correlation?.threadId ?? lockKey,
+    slackUserId:
+      args.replyContext?.requester?.userId ??
+      args.replyContext?.correlation?.requesterId,
+    slackUserName: args.replyContext?.requester?.userName,
+    slackChannelId: args.channelId,
+    runId: args.replyContext?.correlation?.runId,
+    assistantUserName: botConfig.userName,
+    modelId: botConfig.modelId,
+  };
+}
+
+async function postResumeFailureReply(args: {
+  channelId: string;
+  threadTs: string;
+  eventId: string;
+  logContext: LogContext;
+}): Promise<void> {
+  try {
+    await postSlackApiMessage({
+      channelId: args.channelId,
+      threadTs: args.threadTs,
+      text: buildTurnFailureResponse(args.eventId),
+    });
+  } catch (error) {
+    logException(
+      error,
+      "slack_resume_failure_reply_post_failed",
+      args.logContext,
+      {
+        "app.error.original_event_id": args.eventId,
+      },
+      "Failed to post resumed turn failure reply",
+    );
+    throw error;
+  }
+}
+
+async function handleResumeFailure(args: {
+  body: string;
+  error: unknown;
+  eventName: string;
+  lockKey: string;
+  resumeArgs: ResumeSlackTurnArgs;
+}): Promise<void> {
+  const logContext = getResumeLogContext(args.resumeArgs, args.lockKey);
+  const eventId = requireEventId(
+    logException(args.error, args.eventName, logContext, {}, args.body),
+    args.eventName,
+  );
+  let postError: unknown;
+  try {
+    await postResumeFailureReply({
+      channelId: args.resumeArgs.channelId,
+      threadTs: args.resumeArgs.threadTs,
+      eventId,
+      logContext,
+    });
+  } catch (error) {
+    postError = error;
+  }
+  await args.resumeArgs.onFailure?.(args.error);
+  if (postError) {
+    throw postError;
+  }
 }
 
 function createResumeReplyContext(
@@ -199,7 +287,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
       ...replyContext,
     });
     const replyTimeoutMs = resolveReplyTimeoutMs(args.replyTimeoutMs);
-    const reply =
+    let reply =
       typeof replyTimeoutMs === "number"
         ? await Promise.race([
             replyPromise,
@@ -216,6 +304,11 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
             ),
           ])
         : await replyPromise;
+    reply = finalizeFailedTurnReply({
+      reply,
+      logException,
+      context: getResumeLogContext(args, lockKey),
+    });
 
     await status.stop();
     const footer = buildSlackReplyFooter({
@@ -252,15 +345,13 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
       };
     } else {
       deferredFailureHandler = async () => {
-        await args.onFailure?.(error);
-
-        if (args.failureText) {
-          await postSlackMessageBestEffort(
-            args.channelId,
-            args.threadTs,
-            args.failureText,
-          );
-        }
+        await handleResumeFailure({
+          body: "Failed to resume Slack turn",
+          error,
+          eventName: "slack_resume_turn_failed",
+          lockKey,
+          resumeArgs: args,
+        });
       };
     }
   } finally {
@@ -272,15 +363,13 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
       await deferredPauseHandler();
       return;
     } catch (pauseError) {
-      await args.onFailure?.(pauseError);
-
-      if (args.failureText) {
-        await postSlackMessageBestEffort(
-          args.channelId,
-          args.threadTs,
-          args.failureText,
-        );
-      }
+      await handleResumeFailure({
+        body: "Failed to handle resumed turn pause",
+        error: pauseError,
+        eventName: "slack_resume_pause_handler_failed",
+        lockKey,
+        resumeArgs: args,
+      });
       return;
     }
   }
@@ -296,7 +385,6 @@ export async function resumeAuthorizedRequest(args: {
   channelId: string;
   threadTs: string;
   connectedText: string;
-  failureText: string;
   replyContext?: ReplyRequestContext;
   lockKey?: string;
   generateReply?: typeof generateAssistantReply;
@@ -313,7 +401,6 @@ export async function resumeAuthorizedRequest(args: {
     replyContext: args.replyContext,
     lockKey: args.lockKey,
     initialText: args.connectedText,
-    failureText: args.failureText,
     generateReply: args.generateReply,
     onSuccess: args.onSuccess,
     onFailure: args.onFailure,

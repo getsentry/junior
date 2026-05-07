@@ -27,7 +27,7 @@ function createMockDeps(
     getRunId: () => undefined,
     initializeAssistantThread: vi.fn().mockResolvedValue(undefined),
     refreshAssistantThreadContext: vi.fn().mockResolvedValue(undefined),
-    logException: vi.fn(),
+    logException: vi.fn(() => "evt_test"),
     logWarn: vi.fn(),
     onSubscribedMessageSkipped: vi.fn().mockResolvedValue(undefined),
     recordSkippedSubscribedMessage: vi.fn().mockResolvedValue(undefined),
@@ -76,7 +76,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=unknown`.",
+        "I ran into an internal error while processing that. Reference: `event_id=evt_test`.",
       );
     });
 
@@ -96,7 +96,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=unknown`.",
+        "I ran into an internal error while processing that. Reference: `event_id=evt_test`.",
       );
     });
 
@@ -118,7 +118,7 @@ describe("createSlackTurnRuntime", () => {
       );
     });
 
-    it("falls back to generic message when sentry capture returns no event id", async () => {
+    it("fails closed when sentry capture returns no event id", async () => {
       const replyError = new Error("reply failed");
       const deps = createMockDeps({
         replyToThread: vi.fn().mockRejectedValue(replyError),
@@ -129,11 +129,10 @@ describe("createSlackTurnRuntime", () => {
       const thread = createTestThread({});
       const message = createTestMessage({});
 
-      await runtime.handleNewMention(thread, message);
-
-      expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=unknown`.",
+      await expect(runtime.handleNewMention(thread, message)).rejects.toThrow(
+        "Sentry did not return an event ID for mention_handler_failed",
       );
+      expect(thread.posts).toHaveLength(0);
     });
   });
 
@@ -378,7 +377,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleSubscribedMessage(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=unknown`.",
+        "I ran into an internal error while processing that. Reference: `event_id=evt_test`.",
       );
     });
   });

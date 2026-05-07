@@ -22,7 +22,7 @@ import {
   resumeSlackTurn,
 } from "@/chat/slack/resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
-import { logException, logInfo } from "@/chat/logging";
+import { logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import {
   getChannelConfigurationServiceById,
@@ -255,8 +255,6 @@ async function resumeCheckpointedOAuthTurn(
     threadTs: stored.threadTs,
     lockKey: stored.resumeConversationId,
     initialText: "",
-    failureText:
-      "I connected your account but hit an error processing your request. Please try the command again.",
     replyContext: {
       requester: {
         userId: userMessage.author.userId,
@@ -304,14 +302,7 @@ async function resumeCheckpointedOAuthTurn(
         reply,
       });
     },
-    onFailure: async (error) => {
-      logException(
-        error,
-        "oauth_callback_resume_failed",
-        {},
-        { "app.credential.provider": stored.provider },
-        "Failed to auto-resume checkpointed turn after OAuth callback",
-      );
+    onFailure: async () => {
       await persistFailedOAuthReplyState({
         conversationId: stored.resumeConversationId!,
         sessionId: resolvedSessionId,
@@ -370,7 +361,6 @@ async function resumePendingOAuthMessage(
     channelId: stored.channelId,
     threadTs: stored.threadTs,
     connectedText: "",
-    failureText: `I connected your account but hit an error processing your request. Please try \`${stored.pendingMessage}\` again.`,
     replyContext: {
       requester: { userId: stored.userId },
       conversationContext,
@@ -387,15 +377,6 @@ async function resumePendingOAuthMessage(
           "app.ai.tool_calls": reply.diagnostics.toolCalls.length,
         },
         "OAuth callback auto-resumed pending message finished replying",
-      );
-    },
-    onFailure: async (error) => {
-      logException(
-        error,
-        "oauth_callback_resume_failed",
-        {},
-        { "app.credential.provider": stored.provider },
-        "Failed to auto-resume pending message after OAuth callback",
       );
     },
   });

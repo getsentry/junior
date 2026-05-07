@@ -69,7 +69,6 @@ describe("resumeAuthorizedRequest", () => {
       channelId: "C-test",
       threadTs: "1700000000.0001",
       connectedText: "connected",
-      failureText: "resume failed",
       replyContext: {
         requester: { userId: "U-test" },
       },
@@ -82,6 +81,15 @@ describe("resumeAuthorizedRequest", () => {
     await resumePromise;
 
     expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(postMessageMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        channel: "C-test",
+        thread_ts: "1700000000.0001",
+        text: expect.stringContaining(
+          "I ran into an internal error while processing that. Reference: `event_id=",
+        ),
+      }),
+    );
   });
 
   it("releases the thread lock before scheduling another timeout slice", async () => {
@@ -119,14 +127,13 @@ describe("resumeAuthorizedRequest", () => {
     expect(onTimeoutPause).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to normal failure handling when timeout pause handling throws", async () => {
+  it("posts the canonical failure response when timeout pause handling throws", async () => {
     const onFailure = vi.fn(async () => undefined);
 
     await resumeSlackTurn({
       messageText: "continue this turn",
       channelId: "C-test",
       threadTs: "1700000000.0003",
-      failureText: "resume failed",
       replyContext: {
         requester: { userId: "U-test" },
       },
@@ -145,5 +152,14 @@ describe("resumeAuthorizedRequest", () => {
     });
 
     expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C-test",
+        thread_ts: "1700000000.0003",
+        text: expect.stringContaining(
+          "I ran into an internal error while processing that. Reference: `event_id=",
+        ),
+      }),
+    );
   });
 });

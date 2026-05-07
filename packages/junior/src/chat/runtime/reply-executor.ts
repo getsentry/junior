@@ -3,7 +3,6 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
-  buildTurnFailureResponse,
   logException,
   logInfo,
   logWarn,
@@ -17,7 +16,6 @@ import {
   type PlannedSlackReplyStage,
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
-import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
@@ -63,6 +61,10 @@ import { markTurnCompleted, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
 import { isRedundantReactionAckText } from "@/chat/services/reply-delivery-plan";
 import { deleteSlackMessage } from "@/chat/slack/outbound";
+import {
+  finalizeFailedTurnReply,
+  getAgentTurnDiagnosticsAttributes,
+} from "@/chat/services/turn-failure-response";
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
@@ -71,26 +73,6 @@ export interface ReplyExecutorServices {
   scheduleTurnTimeoutResume: (
     request: TurnTimeoutResumeRequest,
   ) => Promise<void>;
-}
-
-function getExecutionFailureReason(reply: {
-  diagnostics: {
-    assistantMessageCount: number;
-    errorMessage?: string;
-    toolErrorCount: number;
-  };
-}): string {
-  const errorMessage = reply.diagnostics.errorMessage?.trim();
-  if (errorMessage) {
-    return errorMessage;
-  }
-  if (reply.diagnostics.toolErrorCount > 0) {
-    return `${reply.diagnostics.toolErrorCount} tool result error(s)`;
-  }
-  if (reply.diagnostics.assistantMessageCount > 0) {
-    return "assistant returned no text";
-  }
-  return "empty assistant turn";
 }
 
 interface ReplyExecutorDeps {
@@ -365,67 +347,15 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             assistantUserName: botConfig.userName,
             modelId: reply.diagnostics.modelId,
           };
-          const diagnosticsAttributes = {
-            "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-            "gen_ai.operation.name": "invoke_agent",
-            "app.ai.outcome": reply.diagnostics.outcome,
-            "app.ai.assistant_messages":
-              reply.diagnostics.assistantMessageCount,
-            "app.ai.tool_results": reply.diagnostics.toolResultCount,
-            "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
-            "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
-            "app.ai.used_primary_text": reply.diagnostics.usedPrimaryText,
-            ...(reply.diagnostics.thinkingLevel
-              ? {
-                  "app.ai.reasoning_effort": reply.diagnostics.thinkingLevel,
-                }
-              : {}),
-            ...(reply.diagnostics.stopReason
-              ? {
-                  "gen_ai.response.finish_reasons": [
-                    reply.diagnostics.stopReason,
-                  ],
-                }
-              : {}),
-            ...(reply.diagnostics.errorMessage
-              ? { "error.message": reply.diagnostics.errorMessage }
-              : {}),
-          };
+          const diagnosticsAttributes =
+            getAgentTurnDiagnosticsAttributes(reply);
           setSpanAttributes(diagnosticsAttributes);
-          if (reply.diagnostics.outcome === "provider_error") {
-            const providerError =
-              reply.diagnostics.providerError ??
-              new Error(
-                reply.diagnostics.errorMessage ??
-                  "Provider error without explicit message",
-              );
-            const eventId = logException(
-              providerError,
-              "agent_turn_provider_error",
-              diagnosticsContext,
-              diagnosticsAttributes,
-              "Agent turn failed with provider error",
-            );
-            reply = {
-              ...reply,
-              text: buildTurnFailureResponse(eventId),
-            };
-          } else if (reply.diagnostics.outcome !== "success") {
-            const failureReason = getExecutionFailureReason(reply);
-            const eventId = logException(
-              new Error(`Agent turn execution failure: ${failureReason}`),
-              "agent_turn_execution_failure",
-              diagnosticsContext,
-              {
-                ...diagnosticsAttributes,
-                "app.ai.execution_failure_reason": failureReason,
-              },
-              "Agent turn completed with execution failure",
-            );
-            reply = {
-              ...reply,
-              text: buildTurnFailureResponse(eventId),
-            };
+          if (reply.diagnostics.outcome !== "success") {
+            reply = finalizeFailedTurnReply({
+              reply,
+              logException,
+              context: diagnosticsContext,
+            });
           }
 
           markConversationMessage(

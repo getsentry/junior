@@ -23,10 +23,6 @@ export interface PlannedSlackReplyPost {
   text: string;
 }
 
-function isInterruptedVisibleReply(reply: AssistantReply): boolean {
-  return reply.diagnostics.outcome === "provider_error";
-}
-
 function resolveReplyDelivery(reply: AssistantReply): {
   shouldPostThreadReply: boolean;
   attachFiles: ReplyFileDelivery;
@@ -68,13 +64,10 @@ function buildReplyText(text: string): string {
 
 function buildTextPosts(args: {
   text: string;
-  interrupted: boolean;
   firstFiles?: FileUpload[];
   firstStage?: PlannedSlackReplyStage;
 }): PlannedSlackReplyPost[] {
-  const chunks = splitSlackReplyText(args.text, {
-    interrupted: args.interrupted,
-  });
+  const chunks = splitSlackReplyText(args.text);
   return chunks.map((chunk, index) => ({
     text: chunk,
     ...(index === 0 && args.firstFiles ? { files: args.firstFiles } : {}),
@@ -151,13 +144,11 @@ export function planSlackReplyPosts(args: {
   const { shouldPostThreadReply, attachFiles } = resolveReplyDelivery(
     args.reply,
   );
-  const interrupted = isInterruptedVisibleReply(args.reply);
   const posts: PlannedSlackReplyPost[] = [];
 
   const textPosts = shouldPostThreadReply
     ? buildTextPosts({
         text: args.reply.text,
-        interrupted,
         firstFiles: attachFiles === "inline" ? replyFiles : undefined,
       })
     : [];

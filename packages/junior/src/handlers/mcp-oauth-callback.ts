@@ -231,8 +231,6 @@ async function resumeAuthorizedMcpTurn(args: {
     threadTs: authSession.threadTs,
     lockKey: authSession.conversationId,
     connectedText: "",
-    failureText:
-      "MCP authorization completed, but resuming the request failed. Please retry the original command.",
     replyContext: {
       requester: {
         userId: authSession.userId,
@@ -285,14 +283,7 @@ async function resumeAuthorizedMcpTurn(args: {
         );
       }
     },
-    onFailure: async (error) => {
-      logException(
-        error,
-        "mcp_oauth_callback_resume_failed",
-        {},
-        { "app.credential.provider": provider },
-        "Failed to resume MCP-authorized turn",
-      );
+    onFailure: async () => {
       try {
         await persistFailedReplyState(
           authSession.channelId!,

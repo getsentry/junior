@@ -336,7 +336,9 @@ describe("turn resume slack integration", () => {
         params: expect.objectContaining({
           channel: "C123",
           thread_ts: "1712345.0002",
-          text: "I hit an error while resuming that request. Please try the command again.",
+          text: expect.stringContaining(
+            "I ran into an internal error while processing that. Reference: `event_id=",
+          ),
         }),
       }),
     ]);

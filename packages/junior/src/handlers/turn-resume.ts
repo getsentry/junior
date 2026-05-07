@@ -171,8 +171,6 @@ async function resumeTimedOutTurn(
     channelId: thread.channelId,
     threadTs: thread.threadTs,
     lockKey: payload.conversationId,
-    failureText:
-      "I hit an error while resuming that request. Please try the command again.",
     replyContext: {
       requester: {
         userId: userMessage.author.userId,
@@ -221,20 +219,7 @@ async function resumeTimedOutTurn(
         );
       }
     },
-    onFailure: async (error) => {
-      logException(
-        error,
-        "timeout_resume_failed",
-        {},
-        {
-          "app.ai.conversation_id": payload.conversationId,
-          "app.ai.session_id": payload.sessionId,
-          ...(isRetryableTurnError(error)
-            ? { "app.turn.retryable_reason": error.reason }
-            : {}),
-        },
-        "Failed to resume timed-out turn",
-      );
+    onFailure: async () => {
       await persistFailedReplyState(checkpoint);
     },
     onAuthPause: async () => {

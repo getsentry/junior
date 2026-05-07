@@ -205,7 +205,7 @@ export function createSlackTurnRuntime<
   const postFallbackErrorReplyWithLogging = async (args: {
     thread: Thread;
     errorContext: RuntimeLogContext;
-    eventId: string | undefined;
+    eventId: string;
     postFailureEventName: string;
     postFailureBody: string;
   }): Promise<void> => {
@@ -218,9 +218,7 @@ export function createSlackTurnRuntime<
         args.errorContext,
         {
           "app.slack.reply_stage": "error_fallback_post",
-          ...(args.eventId
-            ? { "app.error.original_event_id": args.eventId }
-            : {}),
+          "app.error.original_event_id": args.eventId,
           ...getSlackErrorObservabilityAttributes(postError),
         },
         args.postFailureBody,
@@ -323,6 +321,11 @@ export function createSlackTurnRuntime<
           {},
           "onNewMention failed",
         );
+        if (!eventId) {
+          throw new Error(
+            "Sentry did not return an event ID for mention_handler_failed",
+          );
+        }
         await hooks?.beforeFirstResponsePost?.();
         await postFallbackErrorReplyWithLogging({
           thread,
@@ -477,6 +480,11 @@ export function createSlackTurnRuntime<
           {},
           "onSubscribedMessage failed",
         );
+        if (!eventId) {
+          throw new Error(
+            "Sentry did not return an event ID for subscribed_message_handler_failed",
+          );
+        }
         await hooks?.beforeFirstResponsePost?.();
         await postFallbackErrorReplyWithLogging({
           thread,
