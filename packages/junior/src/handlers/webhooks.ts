@@ -18,7 +18,7 @@ import type { WaitUntilFn } from "@/handlers/types";
 
 interface SlackWebhookAuthAdapter {
   botUserId?: string;
-  defaultBotToken?: string;
+  defaultBotTokenProvider?: () => string | Promise<string>;
   requestContext?: {
     run<T>(context: unknown, fn: () => T): T;
   };
@@ -57,6 +57,10 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
     return;
   }
 
+  // Chat SDK initializes adapters automatically inside webhook handling. This
+  // side-channel runs before the SDK handler, so it must join that lifecycle.
+  await args.bot.initialize();
+
   const webhookOptions = {
     waitUntil: (task: Promise<unknown>) => args.waitUntil(task),
   };
@@ -85,7 +89,7 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
     return true;
   };
 
-  if (authAdapter.defaultBotToken) {
+  if (authAdapter.defaultBotTokenProvider) {
     dispatch();
     return;
   }

@@ -7,7 +7,7 @@ title: "handlePlatformWebhook"
 
 > **handlePlatformWebhook**(`request`, `platform`, `waitUntil`, `bot?`): `Promise`\<`Response`\>
 
-Defined in: [handlers/webhooks.ts:119](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L119)
+Defined in: [handlers/webhooks.ts:124](https://github.com/getsentry/junior/blob/main/packages/junior/src/handlers/webhooks.ts#L124)
 
 Handles `POST /api/webhooks/:platform`.
 

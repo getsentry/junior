@@ -99,7 +99,14 @@ describe("behavior harness", () => {
     expect(observedRuntimeIds.messageThreadId).toBe(
       "slack:C_AUTH:1700000000.0001",
     );
-    expect(result.posts).toEqual([{ text: "observed", files: [] }]);
+    expect(result.posts).toEqual([
+      {
+        channel: "C_AUTH",
+        files: [],
+        text: "observed",
+        thread_ts: "1700000000.0001",
+      },
+    ]);
   });
 
   it("routes two same-thread mention-shaped events through the queued runtime in order", async () => {
@@ -141,8 +148,18 @@ describe("behavior harness", () => {
     expect(handleNewMentionMock).toHaveBeenCalledTimes(1);
     expect(handleSubscribedMessageMock).toHaveBeenCalledTimes(1);
     expect(result.posts).toEqual([
-      { text: "observed", files: [] },
-      { text: "observed", files: [] },
+      {
+        channel: "C_QUEUE",
+        files: [],
+        text: "observed",
+        thread_ts: "1700000000.0002",
+      },
+      {
+        channel: "C_QUEUE",
+        files: [],
+        text: "observed",
+        thread_ts: "1700000000.0002",
+      },
     ]);
   });
 
@@ -185,7 +202,9 @@ describe("behavior harness", () => {
 
     expect(result.posts).toEqual([
       {
+        channel: "C_MEDIA",
         text: "",
+        thread_ts: "1700000000.0003",
         files: [
           {
             filename: "generated.png",

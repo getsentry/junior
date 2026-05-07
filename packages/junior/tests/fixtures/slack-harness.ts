@@ -287,6 +287,9 @@ export function createTestThread(args: {
     createSentMessageFromMessage(message: Message): SentMessage {
       return message as unknown as SentMessage;
     },
+    async getParticipants(): Promise<Author[]> {
+      return [];
+    },
     get posts() {
       return posts;
     },

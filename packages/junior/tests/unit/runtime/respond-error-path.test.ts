@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/skills", () => ({
   discoverSkills: vi.fn(async () => {
@@ -8,10 +8,16 @@ vi.mock("@/chat/skills", () => ({
   parseSkillInvocation: vi.fn(),
 }));
 
-import { generateAssistantReply } from "@/chat/respond";
-
 describe("generateAssistantReply error path", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("preserves sandbox dependency hash on non-retryable failures", async () => {
+    vi.resetModules();
+    vi.stubEnv("AI_MODEL", "openai/gpt-5.4");
+    const { generateAssistantReply } = await import("@/chat/respond");
+
     const reply = await generateAssistantReply("hello", {
       sandbox: {
         sandboxId: "sb-123",
