@@ -7,12 +7,7 @@ import {
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import {
-  logException,
-  logWarn,
-  resolveErrorReference,
-  withSpan,
-} from "@/chat/logging";
+import { logException, logWarn, withSpan } from "@/chat/logging";
 import { createReplyToThread } from "@/chat/runtime/reply-executor";
 import {
   initializeAssistantThread as initializeAssistantThreadImpl,
@@ -66,7 +61,6 @@ export function createSlackRuntime(
     assistantUserName: botConfig.userName,
     modelId: botConfig.modelId,
     now: options.now ?? (() => Date.now()),
-    getErrorReference: resolveErrorReference,
     getThreadId,
     getChannelId,
     getRunId,

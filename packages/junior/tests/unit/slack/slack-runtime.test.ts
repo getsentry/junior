@@ -22,7 +22,6 @@ function createMockDeps(
     assistantUserName: "test-bot",
     modelId: "test-model",
     now: () => 1700000000000,
-    getErrorReference: (eventId: string) => ({ eventId }),
     getChannelId: (_thread, message) => message.threadId?.split(":")[1],
     getThreadId: (_thread, message) => message.threadId,
     getRunId: () => undefined,
@@ -77,7 +76,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Please try again.",
+        "I ran into an internal error while processing that. Reference: `event_id=unknown`.",
       );
     });
 
@@ -97,7 +96,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Please try again.",
+        "I ran into an internal error while processing that. Reference: `event_id=unknown`.",
       );
     });
 
@@ -107,10 +106,6 @@ describe("createSlackTurnRuntime", () => {
         replyToThread: vi.fn().mockRejectedValue(replyError),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
         logException: vi.fn(() => "evt_123"),
-        getErrorReference: (_eventId: string) => ({
-          eventId: "evt_123",
-          traceId: "trace_abc",
-        }),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
@@ -119,7 +114,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=evt_123 trace_id=trace_abc`.",
+        "I ran into an internal error while processing that. Reference: `event_id=evt_123`.",
       );
     });
 
@@ -137,7 +132,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Please try again.",
+        "I ran into an internal error while processing that. Reference: `event_id=unknown`.",
       );
     });
   });
@@ -383,7 +378,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleSubscribedMessage(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Please try again.",
+        "I ran into an internal error while processing that. Reference: `event_id=unknown`.",
       );
     });
   });

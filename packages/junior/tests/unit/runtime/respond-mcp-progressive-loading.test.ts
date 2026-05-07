@@ -861,9 +861,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       }),
     );
 
-    expect(reply.text).toBe(
-      "I couldn't complete this request in this turn due to an execution failure. I've logged the details for debugging.",
-    );
+    expect(reply.text).toBe("");
     expect(reply.diagnostics.outcome).toBe("execution_failure");
     expect(reply.diagnostics.usedPrimaryText).toBe(false);
   });

@@ -14,7 +14,6 @@ import { isExplicitChannelPostIntent } from "@/chat/services/channel-intent";
 import { enforceAttachmentClaimTruth } from "@/chat/services/attachment-claims";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import {
-  buildExecutionFailureMessage,
   extractAssistantText,
   getTerminalAssistantMessages,
   isAssistantMessage,
@@ -198,7 +197,7 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     : sideEffectOnlySuccess
       ? "success"
       : "execution_failure";
-  const fallbackText = buildExecutionFailureMessage(toolErrorCount);
+  const fallbackText = "";
   const suppressReactionOnlyText =
     reactionPerformed &&
     !channelPostPerformed &&

@@ -227,15 +227,6 @@ export function encodeNonImageAttachmentForPrompt(attachment: {
   ].join("\n");
 }
 
-/** Build a user-facing message for execution failures. */
-export function buildExecutionFailureMessage(toolErrorCount: number): string {
-  if (toolErrorCount > 0) {
-    return "I couldn't complete this because one or more required tools failed in this turn. I've logged the failure details.";
-  }
-
-  return "I couldn't complete this request in this turn due to an execution failure. I've logged the details for debugging.";
-}
-
 /** Type guard for Pi SDK tool result messages. */
 export function isToolResultMessage(
   value: unknown,

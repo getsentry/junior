@@ -1666,13 +1666,15 @@ export function resolveErrorReference(eventId: string): ErrorReference {
   };
 }
 
-/** Build a user-facing error message that includes the Sentry event ID. */
-export function buildErrorResponseMessage(reference: ErrorReference): string {
-  const parts = [`event_id=${reference.eventId}`];
-  if (reference.traceId) {
-    parts.push(`trace_id=${reference.traceId}`);
+const TURN_FAILURE_RESPONSE_TEMPLATE =
+  "I ran into an internal error while processing that. Reference: `event_id={eventId}`.";
+
+/** Build the static user-facing response for a failed turn. */
+export function buildTurnFailureResponse(eventId: string | undefined): string {
+  if (!eventId) {
+    return TURN_FAILURE_RESPONSE_TEMPLATE.replace("{eventId}", "unknown");
   }
-  return `I ran into an internal error while processing that. Reference: \`${parts.join(" ")}\`.`;
+  return TURN_FAILURE_RESPONSE_TEMPLATE.replace("{eventId}", eventId);
 }
 
 // ---------------------------------------------------------------------------

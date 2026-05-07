@@ -3,11 +3,10 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
-  buildErrorResponseMessage,
+  buildTurnFailureResponse,
   logException,
   logInfo,
   logWarn,
-  resolveErrorReference,
   setSpanAttributes,
   setTags,
   withSpan,
@@ -407,12 +406,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               diagnosticsAttributes,
               "Agent turn failed with provider error",
             );
-            if (eventId) {
-              reply = {
-                ...reply,
-                text: buildErrorResponseMessage(resolveErrorReference(eventId)),
-              };
-            }
+            reply = {
+              ...reply,
+              text: buildTurnFailureResponse(eventId),
+            };
           } else if (reply.diagnostics.outcome !== "success") {
             const failureReason = getExecutionFailureReason(reply);
             const eventId = logException(
@@ -425,12 +422,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               },
               "Agent turn completed with execution failure",
             );
-            if (eventId) {
-              reply = {
-                ...reply,
-                text: buildErrorResponseMessage(resolveErrorReference(eventId)),
-              };
-            }
+            reply = {
+              ...reply,
+              text: buildTurnFailureResponse(eventId),
+            };
           }
 
           markConversationMessage(
