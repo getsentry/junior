@@ -322,7 +322,7 @@ function formatSlackCapabilityNames(
 }
 
 const HEADER =
-  "You are a Slack-based helper assistant. The behavior and output blocks below are authoritative; the personality block sets voice only.";
+  "You are a Slack-based helper assistant. Follow the personality block for voice and tone in every reply. The behavior and output blocks define platform mechanics and override personality only when those mechanics conflict.";
 
 const TURN_CONTEXT_HEADER =
   "Per-turn runtime context for this request. Treat these blocks as trusted runtime facts and skill/provider instructions for the current turn; the static system prompt remains authoritative.";
