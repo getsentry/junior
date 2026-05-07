@@ -76,6 +76,11 @@ export function createWebSearchTool() {
   return tool({
     description:
       "Search public web sources and return top snippets/URLs. Use when you need discovery or source candidates. Do not use when the user already provided a specific URL to inspect.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: true,
+    },
     inputSchema: Type.Object({
       query: Type.String({
         minLength: 1,

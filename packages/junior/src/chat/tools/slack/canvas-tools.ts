@@ -237,6 +237,7 @@ export function createSlackCanvasReadTool() {
   return tool({
     description:
       "Read a Slack canvas the bot has access to (including canvases the bot created) by canvas ID or Slack canvas/docs URL. Use when the user shares a Slack canvas link (https://*.slack.com/docs/... or /canvas/...) or references a canvas ID and you need its contents. Do not use for generic web pages — use webFetch for those.",
+    annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       canvas: Type.String({
         minLength: 1,

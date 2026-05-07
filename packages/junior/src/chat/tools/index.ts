@@ -23,6 +23,7 @@ import {
 } from "@/chat/tools/slack/list-tools";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createAdvisorTool } from "@/chat/tools/advisor/tool";
+import type { ToolDefinition } from "@/chat/tools/definition";
 import type {
   ToolHooks,
   ToolRuntimeContext,
@@ -82,7 +83,7 @@ export function createTools(
   context: ToolRuntimeContext,
 ) {
   const state = createToolState(hooks, context);
-  const tools: Record<string, unknown> = {
+  const tools: Record<string, ToolDefinition<any>> = {
     loadSkill: createLoadSkillTool(availableSkills, {
       onSkillLoaded: hooks.onSkillLoaded,
     }),

@@ -41,6 +41,11 @@ export function createWebFetchTool(hooks: ToolHooks) {
   return tool({
     description:
       "Fetch and extract readable content from a specific URL. Use when you need details from a known page or document. Do not use for discovery when search is the first step.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: true,
+    },
     inputSchema: Type.Object({
       url: Type.String({
         minLength: 1,

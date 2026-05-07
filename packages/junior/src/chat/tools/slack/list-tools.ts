@@ -133,6 +133,7 @@ export function createSlackListGetItemsTool(state: ToolState) {
   return tool({
     description:
       "Read items from the active Slack list tracked in artifact context. Use when the user asks for task status, open items, or list contents. Do not use when list state is already known from the immediately prior result.",
+    annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       limit: Type.Optional(
         Type.Integer({

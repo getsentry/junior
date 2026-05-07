@@ -10,6 +10,7 @@ export function createSlackChannelListMessagesTool(
   return tool({
     description:
       "List channel messages from Slack history in the active channel context. Use when the user asks for recent or historical channel context outside this thread. Do not use for live monitoring or when current thread context already answers the question.",
+    annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       limit: Type.Optional(
         Type.Integer({

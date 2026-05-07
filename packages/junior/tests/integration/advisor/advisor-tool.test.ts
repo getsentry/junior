@@ -7,11 +7,12 @@ import { createTools } from "@/chat/tools";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { AdvisorSessionStore } from "@/chat/tools/advisor/session-store";
 import {
+  createAdvisorToolDefinitions,
   createAdvisorTool,
-  isAdvisorToolAllowed,
   type AdvisorToolResult,
   type AdvisorToolRuntimeContext,
 } from "@/chat/tools/advisor/tool";
+import { tool } from "@/chat/tools/definition";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -145,39 +146,58 @@ describe("advisor tool", () => {
     expect(JSON.stringify(contexts[0])).toContain("inspectEvidence");
   });
 
-  it("keeps write and user-visible tools out of the advisor tool set", () => {
-    expect(
-      [
-        "bash",
-        "readFile",
-        "searchMcpTools",
-        "slackCanvasRead",
-        "slackChannelListMessages",
-        "slackListGetItems",
-        "systemTime",
-        "webFetch",
-        "webSearch",
-      ].every(isAdvisorToolAllowed),
-    ).toBe(true);
+  it("builds the advisor tool set from read-only metadata", () => {
+    const readOnlyTool = tool({
+      description: "Read only",
+      annotations: { readOnlyHint: true, destructiveHint: false },
+      inputSchema: Type.Object({}),
+    });
+    const conflictingTool = tool({
+      description: "Conflicting",
+      annotations: { readOnlyHint: true, destructiveHint: true },
+      inputSchema: Type.Object({}),
+    });
+    const writeTool = tool({
+      description: "Write",
+      inputSchema: Type.Object({}),
+    });
 
-    expect(
-      [
-        "advisor",
-        "attachFile",
-        "callMcpTool",
-        "imageGenerate",
-        "loadSkill",
-        "reportProgress",
-        "slackCanvasCreate",
-        "slackCanvasUpdate",
-        "slackChannelPostMessage",
-        "slackListAddItems",
-        "slackListCreate",
-        "slackListUpdateItem",
-        "slackMessageAddReaction",
-        "writeFile",
-      ].some(isAdvisorToolAllowed),
-    ).toBe(false);
+    const advisorDefinitions = createAdvisorToolDefinitions({
+      attachFile: writeTool,
+      conflictingTool,
+      readFile: readOnlyTool,
+      slackCanvasCreate: writeTool,
+      slackCanvasRead: readOnlyTool,
+      writeFile: writeTool,
+    });
+
+    expect(Object.keys(advisorDefinitions).sort()).toEqual([
+      "readFile",
+      "slackCanvasRead",
+    ]);
+  });
+
+  it("exposes the expected real read-only tool definitions to the advisor", () => {
+    const advisorDefinitions = createAdvisorToolDefinitions(
+      createTools(
+        [],
+        {},
+        {
+          channelCapabilities: resolveChannelCapabilities("C12345"),
+          sandbox: {} as any,
+        },
+      ),
+    );
+
+    expect(Object.keys(advisorDefinitions).sort()).toEqual([
+      "readFile",
+      "slackCanvasRead",
+      "slackChannelListMessages",
+      "slackListGetItems",
+      "systemTime",
+      "webFetch",
+      "webSearch",
+    ]);
   });
 
   it("continues the advisor session across calls in a parent conversation", async () => {

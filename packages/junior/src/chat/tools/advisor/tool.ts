@@ -26,7 +26,7 @@ import {
   getAdvisorSessionKey,
   type AdvisorSessionStore,
 } from "@/chat/tools/advisor/session-store";
-import { tool } from "@/chat/tools/definition";
+import { tool, type ToolDefinition } from "@/chat/tools/definition";
 import { escapeXml } from "@/chat/xml";
 
 export type AdvisorErrorCode =
@@ -57,26 +57,15 @@ export interface AdvisorToolRuntimeContext {
   streamFn?: StreamFn;
 }
 
-const ADVISOR_ALLOWED_TOOL_NAMES = new Set([
-  "bash",
-  "readFile",
-  "searchMcpTools",
-  "slackCanvasRead",
-  "slackChannelListMessages",
-  "slackListGetItems",
-  "systemTime",
-  "webFetch",
-  "webSearch",
-]);
-
 const ADVISOR_TOOL_DESCRIPTION =
-  "Ask a stronger advisor for deep technical guidance. Call this when the task has a hard reasoning core: algorithm design, architecture, concurrency, security-sensitive logic, data modeling, unclear requirements, repeated failures, difficult debugging, broad refactors, or final review of nontrivial work. Pass a focused question plus curated context containing the exact evidence, constraints, current plan, alternatives, command output, code snippets, or diffs the advisor should start from. The advisor does not automatically receive the parent transcript, keeps its own advisor history for this parent conversation, can use inspection tools to verify evidence, can reason deeply, and returns guidance for you to apply and verify. Follow-up calls can build on prior advisor guidance but must include any new evidence or changed constraints. Use it after initial orientation reads when repository context matters, before committing to a non-obvious implementation plan, when changing approach, when stuck, and before declaring complex work complete. Do not use it for greetings, simple deterministic edits, routine formatting, or tasks where the next action is already obvious from fresh tool output.";
+  "Ask a stronger advisor for deep technical guidance. Call this when the task has a hard reasoning core: algorithm design, architecture, concurrency, security-sensitive logic, data modeling, unclear requirements, repeated failures, difficult debugging, broad refactors, or final review of nontrivial work. Pass a focused question plus curated context containing the exact evidence, constraints, current plan, alternatives, command output, code snippets, or diffs the advisor should start from. The advisor does not automatically receive the parent transcript, keeps its own advisor history for this parent conversation, can use read-only inspection tools to verify evidence, can reason deeply, and returns guidance for you to apply and verify. Follow-up calls can build on prior advisor guidance but must include any new evidence or changed constraints. Use it after initial orientation reads when repository context matters, before committing to a non-obvious implementation plan, when changing approach, when stuck, and before declaring complex work complete. Do not use it for greetings, simple deterministic edits, routine formatting, or tasks where the next action is already obvious from fresh tool output.";
 
 const ADVISOR_SYSTEM_PROMPT = [
   "You are a senior technical advisor for the executor.",
-  "Analyze the executor-supplied context deeply. Use inspection tools when direct inspection or verification would materially improve the advice.",
+  "Analyze the executor-supplied context deeply. Use read-only tools when direct inspection or verification would materially improve the advice.",
   "Distinguish evidence from inference. Treat the advisor task as the focus for this call and the executor context as the starting evidence packet.",
   "Do not assume access to parent transcript or tool output that was not included or gathered in this advisor call.",
+  "Use only the read-only tools provided to you.",
   "Do not make user-visible side effects, post Slack messages, or mutate files. If a mutating action is needed, recommend it to the executor instead.",
   "Identify the hard part, recommend a concrete plan or correction, call out blocking risks, and propose focused verification.",
   "If the supplied context is insufficient, say exactly what additional evidence the executor needs to gather before acting.",
@@ -116,9 +105,26 @@ function success(memo: string): AdvisorToolResult {
   };
 }
 
-/** Return whether a normal executor tool is safe to expose to the advisor. */
-export function isAdvisorToolAllowed(toolName: string): boolean {
-  return ADVISOR_ALLOWED_TOOL_NAMES.has(toolName);
+function hasReadOnlyToolAnnotations(
+  annotations: ToolDefinition["annotations"],
+): boolean {
+  return (
+    annotations?.readOnlyHint === true && annotations.destructiveHint !== true
+  );
+}
+
+/** Build the advisor's read-only tool definition subset. */
+export function createAdvisorToolDefinitions(
+  definitions: Record<string, ToolDefinition<any>>,
+): Record<string, ToolDefinition<any>> {
+  return Object.fromEntries(
+    Object.entries(definitions).filter(
+      ([name, definition]) =>
+        name !== "callMcpTool" &&
+        name !== "searchMcpTools" &&
+        hasReadOnlyToolAnnotations(definition.annotations),
+    ),
+  );
 }
 
 /** Create the advisor tool backed by conversation-scoped message history. */

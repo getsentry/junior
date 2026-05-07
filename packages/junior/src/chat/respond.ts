@@ -39,10 +39,9 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { createTools } from "@/chat/tools";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
-import type { ToolDefinition } from "@/chat/tools/definition";
 import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
-import { isAdvisorToolAllowed } from "@/chat/tools/advisor/tool";
+import { createAdvisorToolDefinitions } from "@/chat/tools/advisor/tool";
 import {
   GEN_AI_PROVIDER_NAME,
   completeObject,
@@ -898,7 +897,7 @@ export async function generateAssistantReply(
       }
     };
     const agentTools = createAgentTools(
-      tools as Record<string, ToolDefinition<any>>,
+      tools,
       skillSandbox,
       spanContext,
       context.onStatus,
@@ -907,7 +906,16 @@ export async function generateAssistantReply(
       pluginAuth,
       onToolCall,
     );
-    advisorTools = agentTools.filter((tool) => isAdvisorToolAllowed(tool.name));
+    advisorTools = createAgentTools(
+      createAdvisorToolDefinitions(tools),
+      skillSandbox,
+      spanContext,
+      context.onStatus,
+      sandboxExecutor,
+      capabilityRuntime,
+      pluginAuth,
+      onToolCall,
+    );
     // Keep Pi's native tool schema static for the whole turn. Ideally this
     // would use provider-native tool loading/search APIs, but Pi's generic
     // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.

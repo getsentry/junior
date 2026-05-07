@@ -18,7 +18,7 @@ The core contract is intentionally small:
 - The executor calls `advisor({ question, context })`.
 - The advisor gets its own conversation-scoped Pi message history.
 - The executor passes the current evidence explicitly; the parent transcript is not forked or implicitly forwarded.
-- The advisor can use inspection tools from the normal tool layer, but not recursive, write, or user-visible tools.
+- The advisor can use tools from the normal tool layer that are annotated read-only, but not recursive, write, or user-visible tools.
 - The advisor returns guidance; it does not own implementation.
 
 ## Prior Art
@@ -32,7 +32,7 @@ The core contract is intentionally small:
 - Forking the main transcript into a hidden advisor conversation.
 - Maintaining replay hashes, call records, idempotency bookkeeping, or per-turn call counters.
 - Building a general multi-agent orchestration framework.
-- Adding a separate read-only tool sandbox in V1. The advisor receives an explicit inspection-tool allowlist; the executor remains responsible for side effects.
+- Adding a separate read-only tool sandbox in V1. The advisor receives the host-filtered read-only tool subset; the executor remains responsible for side effects.
 
 ## Configuration
 
@@ -54,7 +54,7 @@ Input:
 - `question`: required focused advisor question or decision point.
 - `context`: required curated evidence packet with the requirements, constraints, current plan, alternatives, code snippets, diffs, command output, and open questions the advisor should start from.
 
-The tool description is the executor-facing trigger policy. It must say the advisor is stronger, tool-backed, does not automatically receive the parent transcript, keeps advisor history for the parent conversation, receives an inspection-oriented tool subset, and is for hard reasoning rather than routine work.
+The tool description is the executor-facing trigger policy. It must say the advisor is stronger, tool-backed, does not automatically receive the parent transcript, keeps advisor history for the parent conversation, receives a read-only tool subset, and is for hard reasoning rather than routine work.
 
 ## Runtime Contract
 
@@ -62,7 +62,7 @@ The tool description is the executor-facing trigger policy. It must say the advi
 2. Build one advisor request message with `<advisor-task>` and `<executor-context>` sections.
 3. Load advisor messages from `junior:<conversationId>:advisor_session`.
 4. Create a Pi `Agent` with the advisor model, thinking level, system prompt, and advisor-allowed tools.
-5. Expose only the advisor inspection-tool allowlist. Do not expose recursive, write, user-visible, or unconstrained external-action tools.
+5. Expose only read-only tool definitions to the advisor. A tool is advisor-readable only when `readOnlyHint: true` and `destructiveHint` is not `true`. Do not expose recursive, write, user-visible, or unconstrained external-action tools.
 6. Assign the loaded messages to `advisorAgent.state.messages`.
 7. Run `advisorAgent.prompt(requestMessage)`.
 8. On success, save `advisorAgent.state.messages` back to the advisor session key.
@@ -90,6 +90,7 @@ It must require the advisor to:
 - Use tools when inspection or verification would materially improve the advice.
 - Distinguish evidence from inference.
 - Avoid assuming access to parent transcript or tool output that was not supplied or gathered in the advisor run.
+- Use only tools annotated as read-only.
 - Avoid user-visible side effects and file mutation; recommend mutating actions to the executor instead.
 - Identify the hard part, recommend a concrete plan or correction, call out blocking risks, and propose focused verification.
 - Say what evidence is missing when the supplied context is insufficient.
@@ -126,8 +127,10 @@ Coverage must prove:
 - advisor config defaults, overrides, and invalid config handling
 - tool exposure only when advisor runtime context is configured
 - explicit executor context reaches the advisor
-- advisor receives inspection tools while write and user-visible tools are excluded
+- advisor receives read-only tools while write and user-visible tools are excluded
 - advisor messages persist and restore across calls in the same parent conversation
+
+Future MCP advisor access needs a separate nested-agent auth and resume contract before `searchMcpTools` or `callMcpTool` can be exposed to the advisor.
 
 ## References
 
