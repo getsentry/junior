@@ -197,16 +197,13 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     : sideEffectOnlySuccess
       ? "success"
       : "execution_failure";
-  const fallbackText = "";
   const suppressReactionOnlyText =
     reactionPerformed &&
     !channelPostPerformed &&
     replyFiles.length === 0 &&
     Boolean(primaryText) &&
     isReactionOnlyIntent(userInput);
-  const rawResponseText = suppressReactionOnlyText
-    ? ""
-    : primaryText || (sideEffectOnlySuccess ? "" : fallbackText);
+  const rawResponseText = suppressReactionOnlyText ? "" : primaryText;
   const responseText =
     canvasCreated && isVerbosePostCanvasReply(rawResponseText)
       ? buildBriefPostCanvasReply(artifactStatePatch)
@@ -216,9 +213,13 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
     (isExecutionEscapeResponse(primaryText) ||
       isRawToolPayloadResponse(primaryText));
   const resolvedText = escapedOrRawPayload
-    ? fallbackText
+    ? ""
     : enforceAttachmentClaimTruth(responseText, replyFiles.length > 0);
+  const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
+    ? "execution_failure"
+    : outcome;
   const deliveryPlan =
+    resolvedOutcome === "success" &&
     reactionPerformed &&
     !resolvedText &&
     replyFiles.length === 0 &&
@@ -229,9 +230,6 @@ export function buildTurnResult(input: TurnResultInput): AssistantReply {
         }
       : baseDeliveryPlan;
   const deliveryMode: "thread" | "channel_only" = deliveryPlan.mode;
-  const resolvedOutcome: AgentTurnDiagnostics["outcome"] = escapedOrRawPayload
-    ? "execution_failure"
-    : outcome;
 
   if (shouldTrace) {
     logInfo(

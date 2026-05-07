@@ -204,6 +204,48 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
+  it("keeps thread delivery enabled for reaction turns that fail validation", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "toolResult",
+          toolName: "slackMessageAddReaction",
+          isError: false,
+          content: [{ type: "text", text: "reaction added" }],
+        },
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                type: "tool_call",
+                name: "slackMessageAddReaction",
+                input: { reaction: "thumbsup" },
+              }),
+            },
+          ],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "react and tell me what happened",
+      replyFiles: [],
+      artifactStatePatch: {},
+      toolCalls: ["slackMessageAddReaction"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      spanContext: {},
+      thinkingSelection,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.deliveryPlan).toMatchObject({
+      postThreadText: true,
+    });
+    expect(reply.diagnostics.outcome).toBe("execution_failure");
+    expect(reply.diagnostics.usedPrimaryText).toBe(true);
+  });
+
   it("keeps post-canvas thread replies brief", () => {
     const verboseReply = [
       "I put together a reusable reference here:",
