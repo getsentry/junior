@@ -22,7 +22,7 @@ function createMockDeps(
     assistantUserName: "test-bot",
     modelId: "test-model",
     now: () => 1700000000000,
-    getErrorReference: () => null,
+    getErrorReference: (eventId: string) => ({ eventId }),
     getChannelId: (_thread, message) => message.threadId?.split(":")[1],
     getThreadId: (_thread, message) => message.threadId,
     getRunId: () => undefined,
@@ -107,9 +107,9 @@ describe("createSlackTurnRuntime", () => {
         replyToThread: vi.fn().mockRejectedValue(replyError),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
         logException: vi.fn(() => "evt_123"),
-        getErrorReference: () => ({
+        getErrorReference: (_eventId: string) => ({
           eventId: "evt_123",
-          traceId: "trace_ignored",
+          traceId: "trace_abc",
         }),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
@@ -119,17 +119,16 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=evt_123 trace_id=trace_ignored`.",
+        "I ran into an internal error while processing that. Reference: `event_id=evt_123 trace_id=trace_abc`.",
       );
     });
 
-    it("falls back to trace id when sentry event id is unavailable", async () => {
+    it("falls back to generic message when sentry capture returns no event id", async () => {
       const replyError = new Error("reply failed");
       const deps = createMockDeps({
         replyToThread: vi.fn().mockRejectedValue(replyError),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
         logException: vi.fn(() => undefined),
-        getErrorReference: () => ({ traceId: "trace_123" }),
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = createTestThread({});
@@ -138,7 +137,7 @@ describe("createSlackTurnRuntime", () => {
       await runtime.handleNewMention(thread, message);
 
       expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `trace_id=trace_123`.",
+        "I ran into an internal error while processing that. Please try again.",
       );
     });
   });

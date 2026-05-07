@@ -3,9 +3,11 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { botConfig } from "@/chat/config";
 import { getSlackMessageTs } from "@/chat/slack/message";
 import {
+  buildErrorResponseMessage,
   logException,
   logInfo,
   logWarn,
+  resolveErrorReference,
   setSpanAttributes,
   setTags,
   withSpan,
@@ -302,7 +304,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         try {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
-          const reply = await deps.services.generateAssistantReply(userText, {
+          let reply = await deps.services.generateAssistantReply(userText, {
             requester: {
               userId: message.author.userId,
               userName: message.author.userName ?? fallbackIdentity?.userName,
@@ -398,16 +400,22 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 reply.diagnostics.errorMessage ??
                   "Provider error without explicit message",
               );
-            logException(
+            const eventId = logException(
               providerError,
               "agent_turn_provider_error",
               diagnosticsContext,
               diagnosticsAttributes,
               "Agent turn failed with provider error",
             );
+            if (eventId) {
+              reply = {
+                ...reply,
+                text: buildErrorResponseMessage(resolveErrorReference(eventId)),
+              };
+            }
           } else if (reply.diagnostics.outcome !== "success") {
             const failureReason = getExecutionFailureReason(reply);
-            logException(
+            const eventId = logException(
               new Error(`Agent turn execution failure: ${failureReason}`),
               "agent_turn_execution_failure",
               diagnosticsContext,
@@ -417,6 +425,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               },
               "Agent turn completed with execution failure",
             );
+            if (eventId) {
+              reply = {
+                ...reply,
+                text: buildErrorResponseMessage(resolveErrorReference(eventId)),
+              };
+            }
           }
 
           markConversationMessage(

@@ -1,7 +1,7 @@
 import type { Message, Thread } from "chat";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
-import type { ErrorReference } from "@/chat/logging";
+import { buildErrorResponseMessage, type ErrorReference } from "@/chat/logging";
 import { getSlackErrorObservabilityAttributes } from "@/chat/runtime/thread-context";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 
@@ -89,7 +89,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
   ) => void;
   modelId: string;
   now: () => number;
-  getErrorReference: (eventId?: string) => ErrorReference | null;
+  getErrorReference: (eventId: string) => ErrorReference;
   recordSkippedSubscribedMessage: (args: {
     completedAtMs: number;
     decision: SubscribedReplyDecision;
@@ -146,14 +146,11 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
   ) => Promise<void>;
 }
 
-function buildFailureMessage(reference: ErrorReference | null): string {
+function buildFailureMessage(reference: ErrorReference | undefined): string {
   if (!reference) {
     return "I ran into an internal error while processing that. Please try again.";
   }
-  if (reference.eventId) {
-    return `I ran into an internal error while processing that. Reference: \`event_id=${reference.eventId} trace_id=${reference.traceId}\`.`;
-  }
-  return `I ran into an internal error while processing that. Reference: \`trace_id=${reference.traceId}\`.`;
+  return buildErrorResponseMessage(reference);
 }
 
 export interface SlackTurnRuntime<
@@ -215,7 +212,7 @@ export function createSlackTurnRuntime<
 
   const postFallbackErrorReplyWithLogging = async (args: {
     thread: Thread;
-    reference: ErrorReference | null;
+    reference: ErrorReference | undefined;
     errorContext: RuntimeLogContext;
     eventId?: string;
     postFailureEventName: string;
@@ -336,7 +333,7 @@ export function createSlackTurnRuntime<
           "onNewMention failed",
         );
         await hooks?.beforeFirstResponsePost?.();
-        const reference = deps.getErrorReference(eventId);
+        const reference = eventId ? deps.getErrorReference(eventId) : undefined;
         await postFallbackErrorReplyWithLogging({
           thread,
           reference,
@@ -492,7 +489,7 @@ export function createSlackTurnRuntime<
           "onSubscribedMessage failed",
         );
         await hooks?.beforeFirstResponsePost?.();
-        const reference = deps.getErrorReference(eventId);
+        const reference = eventId ? deps.getErrorReference(eventId) : undefined;
         await postFallbackErrorReplyWithLogging({
           thread,
           reference,

@@ -1,5 +1,4 @@
 import type { FileUpload, PostableMessage } from "chat";
-import { logWarn } from "@/chat/logging";
 import { renderSlackMrkdwn } from "@/chat/slack/mrkdwn";
 
 const MAX_INLINE_CHARS = 2200;
@@ -338,20 +337,9 @@ export function buildSlackOutputMessage(
       };
     }
 
-    logWarn(
-      "slack_output_normalized_empty",
-      {},
-      {
-        "app.output.original_length": text.length,
-        "app.output.parsed_length": normalized.length,
-        "app.output.file_count": fileCount,
-      },
-      "Slack output normalized to empty content",
+    throw new Error(
+      `Slack output normalized to empty content: original_length=${text.length} parsed_length=${normalized.length}`,
     );
-    return {
-      markdown: "I couldn't produce a response.",
-      files,
-    };
   }
 
   return {

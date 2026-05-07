@@ -484,12 +484,12 @@ describe("bot handlers (integration)", () => {
     );
 
     expect(thread.posts).toHaveLength(1);
-    expect(thread.posts[0]).toEqual(
-      expect.objectContaining({
-        markdown:
-          "Partial output...\n\n[Response interrupted before completion]",
-      }),
-    );
+    const postText =
+      typeof thread.posts[0] === "string"
+        ? thread.posts[0]
+        : ((thread.posts[0] as { markdown?: string }).markdown ?? "");
+    expect(postText).toContain("I ran into an internal error");
+    expect(postText).toContain("event_id=");
   });
 
   it("emits assistant status updates in shared channel threads", async () => {

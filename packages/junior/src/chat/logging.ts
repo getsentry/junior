@@ -1414,8 +1414,8 @@ export function setSentryScopeContext(
 // ---------------------------------------------------------------------------
 
 export interface ErrorReference {
-  traceId: string;
-  eventId?: string;
+  eventId: string;
+  traceId?: string;
 }
 
 type SpanAttributePrimitive = string | number | boolean;
@@ -1657,21 +1657,22 @@ export function getActiveTraceId(): string | undefined {
   }
 }
 
-/** Build a trace + event ID reference for error correlation. */
-export function resolveErrorReference(eventId?: string): ErrorReference | null {
+/** Resolve a Sentry error reference for user-facing error messages. */
+export function resolveErrorReference(eventId: string): ErrorReference {
   const traceId = getActiveTraceId();
-  if (!eventId && !traceId) {
-    return null;
-  }
-
-  if (!traceId) {
-    return null;
-  }
-
   return {
-    traceId,
-    ...(eventId ? { eventId } : {}),
+    eventId,
+    ...(traceId ? { traceId } : {}),
   };
+}
+
+/** Build a user-facing error message that includes the Sentry event ID. */
+export function buildErrorResponseMessage(reference: ErrorReference): string {
+  const parts = [`event_id=${reference.eventId}`];
+  if (reference.traceId) {
+    parts.push(`trace_id=${reference.traceId}`);
+  }
+  return `I ran into an internal error while processing that. Reference: \`${parts.join(" ")}\`.`;
 }
 
 // ---------------------------------------------------------------------------
