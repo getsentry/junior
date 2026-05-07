@@ -74,6 +74,7 @@ describe("createWebSearchTool", () => {
         model: { model: "xai/grok-4-fast-reasoning" },
         prompt: "vercel ai gateway",
         toolChoice: { type: "tool", toolName: "parallelSearch" },
+        abortSignal: expect.any(AbortSignal),
       }),
     );
     expect(result).toEqual({
@@ -156,6 +157,93 @@ describe("createWebSearchTool", () => {
       error: "web search failed: webSearch timed out",
       timeout: true,
       retryable: true,
+    });
+    vi.useRealTimers();
+  });
+
+  it("aborts the generateText call on timeout", async () => {
+    vi.useFakeTimers();
+    let capturedSignal: AbortSignal | undefined;
+    vi.mocked(generateText).mockImplementation(((opts: {
+      abortSignal?: AbortSignal;
+    }) => {
+      capturedSignal = opts.abortSignal;
+      return new Promise(() => {
+        // Intentionally unresolved to trigger tool timeout.
+      });
+    }) as never);
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    const pending = tool.execute({ query: "slow query" }, {} as never);
+    expect(capturedSignal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await pending;
+    expect(capturedSignal?.aborted).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("does not abort signal on successful search", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    vi.mocked(generateText).mockImplementation(((opts: {
+      abortSignal?: AbortSignal;
+    }) => {
+      capturedSignal = opts.abortSignal;
+      return Promise.resolve({ toolResults: [] });
+    }) as never);
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    await tool.execute({ query: "fast query" }, {} as never);
+    expect(capturedSignal?.aborted).toBe(false);
+  });
+
+  it("still reports timeout even if abort signal cleanup throws", async () => {
+    vi.useFakeTimers();
+    const brokenController = new AbortController();
+    const originalAbort = brokenController.abort.bind(brokenController);
+    brokenController.abort = () => {
+      originalAbort();
+      throw new Error("abort listener blew up");
+    };
+
+    // Patch AbortController to return our broken one
+    const originalAC = globalThis.AbortController;
+    globalThis.AbortController = class extends originalAC {
+      constructor() {
+        super();
+        return brokenController as unknown as AbortController;
+      }
+    } as typeof AbortController;
+
+    vi.mocked(generateText).mockImplementation(
+      () =>
+        new Promise(() => {
+          // Intentionally unresolved to trigger tool timeout.
+        }) as never,
+    );
+
+    const tool = createWebSearchTool();
+    if (typeof tool.execute !== "function") {
+      throw new Error("webSearch execute function missing");
+    }
+
+    const pending = tool.execute({ query: "boom query" }, {} as never);
+    await vi.advanceTimersByTimeAsync(60_000);
+    const result = await pending;
+
+    globalThis.AbortController = originalAC;
+
+    expect(result).toMatchObject({
+      ok: false,
+      timeout: true,
+      error: "web search failed: webSearch timed out",
     });
     vi.useRealTimers();
   });

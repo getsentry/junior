@@ -97,6 +97,7 @@ export function createWebSearchTool() {
       // search tool on a search-tuned model and only allow an explicit
       // override.
       const model = process.env.AI_WEB_SEARCH_MODEL ?? DEFAULT_SEARCH_MODEL;
+      const controller = new AbortController();
 
       try {
         // AI SDK Gateway reads AI_GATEWAY_API_KEY or ambient Vercel OIDC
@@ -113,9 +114,11 @@ export function createWebSearchTool() {
               }),
             },
             toolChoice: { type: "tool", toolName: SEARCH_TOOL_NAME },
+            abortSignal: controller.signal,
           }),
           SEARCH_TIMEOUT_MS,
           "webSearch",
+          { onTimeout: () => controller.abort() },
         );
 
         const results = parseSearchResults(response.toolResults, maxResults);

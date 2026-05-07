@@ -265,13 +265,18 @@ export async function withTimeout<T>(
   task: Promise<T>,
   timeoutMs: number,
   label: string,
+  options?: { onTimeout?: () => void },
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`${label} timed out`)),
-      timeoutMs,
-    );
+    timer = setTimeout(() => {
+      reject(new Error(`${label} timed out`));
+      try {
+        options?.onTimeout?.();
+      } catch {
+        // Timeout semantics must not depend on cleanup success.
+      }
+    }, timeoutMs);
   });
 
   try {
