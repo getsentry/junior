@@ -1,0 +1,18 @@
+name: eval-oauth
+description: Eval-only generic OAuth auth-resume fixture
+
+capabilities:
+  - read
+
+credentials:
+  type: oauth-bearer
+  api-domains:
+    - eval-oauth.example.test
+  auth-token-env: EVAL_OAUTH_ACCESS_TOKEN
+
+oauth:
+  client-id-env: EVAL_OAUTH_CLIENT_ID
+  client-secret-env: EVAL_OAUTH_CLIENT_SECRET
+  authorize-endpoint: https://eval-oauth.example.test/oauth/authorize
+  token-endpoint: https://eval-oauth.example.test/oauth/token
+  scope: read

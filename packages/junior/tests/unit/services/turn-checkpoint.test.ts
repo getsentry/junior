@@ -1,0 +1,100 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PiMessage } from "@/chat/pi/messages";
+
+const ORIGINAL_ENV = { ...process.env };
+
+describe("persistAuthPauseCheckpoint", () => {
+  beforeEach(async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      JUNIOR_STATE_ADAPTER: "memory",
+    };
+    vi.resetModules();
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
+    await disconnectStateAdapter();
+  });
+
+  afterEach(async () => {
+    const { disconnectStateAdapter } = await import("@/chat/state/adapter");
+    await disconnectStateAdapter();
+    vi.resetModules();
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it("reuses the latest stored transcript when the auth pause captured no messages", async () => {
+    const { persistAuthPauseCheckpoint } =
+      await import("@/chat/services/turn-checkpoint");
+    const { getAgentTurnSessionCheckpoint, upsertAgentTurnSessionCheckpoint } =
+      await import("@/chat/state/turn-session-store");
+
+    const priorMessages: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "help me" }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "working on it" }],
+        api: "responses",
+        provider: "openai",
+        model: "gpt-5.3",
+        usage: {
+          input: 1,
+          output: 1,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 2,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            total: 0,
+          },
+        },
+        timestamp: 2,
+        stopReason: "toolUse",
+      },
+    ];
+
+    await upsertAgentTurnSessionCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      sliceId: 1,
+      state: "awaiting_resume",
+      piMessages: priorMessages,
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "auth",
+      errorMessage: "initial auth pause",
+    });
+
+    const nextSliceId = await persistAuthPauseCheckpoint({
+      conversationId: "conversation-1",
+      sessionId: "turn-1",
+      currentSliceId: 1,
+      messages: [],
+      loadedSkillNames: ["demo-skill"],
+      errorMessage: "plugin auth pause",
+      logContext: {
+        modelId: "test-model",
+      },
+    });
+
+    expect(nextSliceId).toBe(2);
+
+    const checkpoint = await getAgentTurnSessionCheckpoint(
+      "conversation-1",
+      "turn-1",
+    );
+    expect(checkpoint).toMatchObject({
+      state: "awaiting_resume",
+      sliceId: 2,
+      resumedFromSliceId: 1,
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "auth",
+      errorMessage: "plugin auth pause",
+      piMessages: [priorMessages[0]],
+    });
+  });
+});

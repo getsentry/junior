@@ -1,0 +1,3 @@
+[mcp_servers.sentry]
+url = "https://mcp.sentry.dev/mcp/sentry/junior?experimental=1"
+

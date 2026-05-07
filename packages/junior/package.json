@@ -1,0 +1,73 @@
+{
+  "name": "@sentry/junior",
+  "version": "0.38.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "packageManager": "pnpm@10.30.2",
+  "bin": {
+    "junior": "bin/junior.mjs"
+  },
+  "exports": {
+    ".": "./dist/app.js",
+    "./instrumentation": "./dist/instrumentation.js",
+    "./nitro": "./dist/nitro.js",
+    "./vercel": "./dist/vercel.js"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
+    "build": "tsup",
+    "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin tsup.config.ts",
+    "lint:fix": "oxlint --config .oxlintrc.json --deny-warnings --fix src tests scripts bin tsup.config.ts",
+    "test": "pnpm run test:slack-boundary && pnpm run test:arch-boundary && vitest run",
+    "test:watch": "vitest",
+    "test:slack-boundary": "node scripts/check-slack-test-boundary.mjs",
+    "test:arch-boundary": "depcruise --config .dependency-cruiser.mjs src/chat",
+    "typecheck": "tsc --noEmit",
+    "skills:check": "node scripts/check-skills.mjs"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "^3.0.110",
+    "@chat-adapter/slack": "4.27.0",
+    "@chat-adapter/state-memory": "4.27.0",
+    "@chat-adapter/state-redis": "4.27.0",
+    "@logtape/logtape": "^2.0.7",
+    "@mariozechner/pi-agent-core": "0.73.0",
+    "@mariozechner/pi-ai": "0.73.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@sinclair/typebox": "^0.34.49",
+    "@slack/web-api": "^7.15.2",
+    "@vercel/functions": "^3.5.0",
+    "@vercel/sandbox": "^1.10.0",
+    "ai": "^6.0.175",
+    "bash-tool": "^1.3.16",
+    "chat": "4.27.0",
+    "hono": "^4.12.6",
+    "just-bash": "2.14.2",
+    "node-html-markdown": "^2.0.0",
+    "yaml": "^2.8.4",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@sentry/node": ">=10.0.0"
+  },
+  "devDependencies": {
+    "@sentry/node": "10.50.0-alpha.0",
+    "@types/node": "^25.6.0",
+    "dependency-cruiser": "^17.4.0",
+    "msw": "^2.14.3",
+    "nitro": "3.0.260429-beta",
+    "oxlint": "^1.63.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vercel": "^51.4.0",
+    "vitest": "^4.1.5"
+  }
+}

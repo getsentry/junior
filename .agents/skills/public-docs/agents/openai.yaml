@@ -1,0 +1,4 @@
+interface:
+  display_name: "Public Docs"
+  short_description: "Author and maintain public docs in packages/docs."
+  default_prompt: "Use this skill to draft or update public user-facing documentation in packages/docs with clear structure and verification."

@@ -1,0 +1,420 @@
+import { describeEval } from "vitest-evals";
+import { mention, rubric, slackEvals, threadMessage } from "../helpers";
+
+describeEval("GitHub Skill Workflows", slackEvals, (it) => {
+  it("when the GitHub credential smoke command runs, return one CREDENTIAL_OK reply", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        skill_dirs: ["evals/fixtures/skills"],
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 90_000,
+        test_credential_token: "eval-smoke-token",
+      },
+      events: [mention("/capability-credential-smoke")],
+      criteria: rubric({
+        contract:
+          "The GitHub capability credential smoke command succeeds in one reply.",
+        pass: [
+          "The assistant posts exactly one reply containing CREDENTIAL_OK.",
+          "The configured smoke command is `gh issue view 1 --repo getsentry/junior`; a final `CREDENTIAL_OK` reply is sufficient evidence that it succeeded.",
+        ],
+        fail: ["Do not include sandbox setup failure text."],
+      }),
+    });
+  });
+
+  it("when creating a GitHub issue, skip duplicate-search narration in the reply", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 75000,
+        test_credential_token: "eval-github-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention(
+          "Create an issue for adding rate limiting to the API endpoint in getsentry/junior",
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "The assistant creates the GitHub issue and reports the result without duplicate-search narration clutter.",
+        pass: [
+          "The reply proceeds directly to issue creation and reports the result.",
+        ],
+        fail: [
+          "Do not mention checking for duplicates.",
+          "Do not mention searching for similar issues.",
+          "Do not report that no duplicates were found.",
+        ],
+      }),
+    });
+  });
+
+  const reporterRequesterThread = {
+    id: "thread-reporter-requester",
+    channel_id: "C-reporter-requester",
+    thread_ts: "17000000.reporter-requester",
+  };
+
+  it("when one user reports and another files an issue, keep attribution roles separate", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 90_000,
+        subscribed_decisions: [
+          {
+            should_reply: false,
+            reason: "context-setting message only",
+          },
+        ],
+        test_credential_token: "eval-github-attribution-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        threadMessage(
+          "Warden resolved its own review thread on getsentry/junior-eval-ops-reference-never-exists#20366 even though the warning still applies. The warning was about `SCM_RPC_SHARED_SECRET` not being backported to the cookiecutter template, and the PR still shows `REVIEW_REQUIRED`.",
+          {
+            thread: reporterRequesterThread,
+            author: {
+              user_id: "U_BOJAN",
+              user_name: "bojan",
+              full_name: "Bojan Oro",
+            },
+          },
+        ),
+        mention(
+          "Create a GitHub issue for this in getsentry/junior-eval-warden-never-exists. Include the issue body you filed in your reply so I can verify attribution.",
+          {
+            thread: reporterRequesterThread,
+            author: {
+              user_id: "U_DCRAMER",
+              user_name: "dcramer",
+              full_name: "David Cramer",
+            },
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "GitHub issue creation from a multi-user Slack thread preserves the original reporter separately from the action requester.",
+        pass: [
+          "The assistant posts exactly one reply.",
+          "The reply reports a created GitHub issue in getsentry/junior-eval-warden-never-exists with an issue URL or issue number.",
+          "The reply includes the filed issue body or enough quoted issue content to verify attribution.",
+          "The shown issue content attributes the report to Bojan Oro.",
+          "The shown issue content ends its delegated-action footer with `Action taken on behalf of David Cramer.`",
+        ],
+        allow: [
+          "Reporter attribution may be phrased as `Reported by Bojan Oro`, `Raised by Bojan Oro`, or equivalent durable issue-body text.",
+        ],
+        fail: [
+          "Do not use `Action taken on behalf of Bojan Oro.`",
+          "Do not describe David Cramer as the reporter.",
+          "Do not omit reporter attribution when showing the filed issue content.",
+        ],
+      }),
+    });
+  });
+
+  it("when a GitHub task mentions a Sentry product area, do not prompt for Sentry auth first", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github", "@sentry/junior-sentry"],
+        reply_timeout_ms: 120_000,
+        test_credential_token: "eval-routing-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention(
+          "Create a GitHub issue in getsentry/junior about why the Metrics Beta wording can send a code-change request down the wrong auth path.",
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "A repository task that happens to mention a Sentry product area still follows the GitHub path instead of asking for unrelated Sentry auth.",
+        pass: [
+          "The reply reports a GitHub issue result or otherwise proceeds as GitHub issue work.",
+          "The reply does not ask the user to connect a Sentry account first.",
+        ],
+        fail: [
+          "Do not say you need to connect Sentry first.",
+          "Do not mention sending a Sentry authorization link.",
+          "Do not ask to inspect live Sentry data before doing the GitHub task.",
+        ],
+      }),
+    });
+  });
+
+  it("when asked an implementation question about this repo, answer from repository evidence", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 90_000,
+        test_credential_token: "eval-repo-evidence-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention(
+          "In this repo, where do we resolve GitHub credential injection from the loaded skill for the current turn? Keep it brief and cite the repo file or symbol you checked.",
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "An implementation question is answered from repository evidence rather than generic memory or product framing.",
+        pass: [
+          "The reply cites repository evidence such as a file path, symbol, or nearby contract reference.",
+          "The reply explains briefly that credential injection comes from the loaded plugin-backed skill for the current turn.",
+        ],
+        fail: [
+          "Do not answer as if this were a product or UI question.",
+          "Do not answer purely from generic GitHub or OAuth knowledge without repo evidence.",
+        ],
+      }),
+    });
+  });
+
+  it("when asked about PR auth sequencing, mention push auth before PR auth", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 60_000,
+        test_credential_token: "eval-pr-auth-order-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention(
+          "Before you open a GitHub pull request from an existing branch, what credentials do you need and in what order? Keep it short.",
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "The assistant explains the GitHub PR auth order without omitting the push step.",
+        pass: [
+          "The answer explicitly says the branch push happens before `gh pr create` for the PR step.",
+          "The answer says the push step needs GitHub write access for the remote.",
+        ],
+        fail: [
+          "Do not imply that PR creation auth alone is sufficient before the push.",
+          "Do not omit the explicit push-auth step.",
+        ],
+      }),
+    });
+  });
+
+  const defaultRepoThread = {
+    id: "thread-default-repo",
+    channel_id: "C-default-repo",
+    thread_ts: "17000000.default-repo",
+  };
+  const defaultRepoIssueThread = {
+    id: "thread-default-repo-issue",
+    channel_id: "C-default-repo-issue",
+    thread_ts: "17000000.default-repo-issue",
+  };
+  const targetClassificationContextThread = {
+    id: "thread-target-classification-context",
+    channel_id: "C-target-classification-context",
+    thread_ts: "17000000.target-classification-context",
+  };
+  const targetClassificationExplicitThread = {
+    id: "thread-target-classification-explicit",
+    channel_id: "C-target-classification-explicit",
+    thread_ts: "17000000.target-classification-explicit",
+  };
+
+  it("when creating an issue after repo setup, use the stored repo without inventing tool failures", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 75_000,
+        test_credential_token: "eval-default-repo-create-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention("Set the default repo to getsentry/junior for this channel.", {
+          thread: defaultRepoIssueThread,
+        }),
+        threadMessage(
+          "Create a GitHub issue for a bug where Slack follow-up replies sometimes blame missing tooling instead of showing the failed command.",
+          {
+            thread: defaultRepoIssueThread,
+            is_mention: true,
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "Stored GitHub repo context carries into a later issue-creation workflow, and tool-failure explanations stay grounded in observed command results.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "observed_tool_invocations includes a `loadSkill` invocation with `skill_name` set to `github-issues` before issue creation.",
+          "observed_tool_invocations includes a bash invocation that stores or uses `github.repo` as getsentry/junior.",
+          "observed_tool_invocations includes a bash invocation with `gh issue create` scoped to `--repo getsentry/junior`.",
+          "The first reply confirms default repo setup for getsentry/junior.",
+          "The second reply reports a created GitHub issue in getsentry/junior with an issue URL or issue number.",
+          "The second reply does not ask the user to restate the repository.",
+        ],
+        fail: [
+          "Do not claim that `gh`, the GitHub CLI, or `jr-rpc` is unavailable, missing, or not installed.",
+          "Do not blame issue creation on a missing tool without quoting an observed command failure.",
+          "Do not ask the user to pass --repo or provide the repo again.",
+          "Do not create or report an issue for a repository other than getsentry/junior.",
+        ],
+      }),
+    });
+  });
+
+  it("when a default repo is set in one turn, reuse it in the next turn without asking again", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        test_credential_token: "eval-default-repo-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        mention("Set the default repo to getsentry/junior for this channel.", {
+          thread: defaultRepoThread,
+        }),
+        threadMessage(
+          "Now tell me which GitHub repo you'd use for issue commands when I omit --repo.",
+          {
+            thread: defaultRepoThread,
+            is_mention: true,
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "Stored repo context is reused in a later turn without asking the user to restate the repo.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The first reply confirms default repo setup for getsentry/junior.",
+          "The second reply directly says it would use getsentry/junior for issue commands when --repo is omitted.",
+        ],
+        allow: [
+          "A concise answer is acceptable; no live GitHub issue lookup is required for this continuity check.",
+        ],
+        fail: [
+          "Do not ask the user to provide the repo again.",
+          "Do not say a live GitHub lookup is required before answering.",
+        ],
+      }),
+    });
+  });
+
+  it("when drafting a fake issue from contextual foreign reference, keep the default repo as target", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 75_000,
+        test_credential_token: "eval-target-classification-context-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        threadMessage(
+          "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel. Do not verify it exists.",
+          {
+            thread: targetClassificationContextThread,
+            is_mention: true,
+          },
+        ),
+        threadMessage(
+          "We need a tracking issue for the Junior bot. This example from getsentry/junior-eval-reference-never-exists#123 shows GitHub issue references can be mistaken for the target repo. Draft the issue I should approve with target repo, title, and body. Do not run GitHub commands.",
+          {
+            thread: targetClassificationContextThread,
+            is_mention: true,
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "Draft a fake issue against the default repo while keeping the fake foreign issue reference as context.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The first reply confirms default repo setup for getsentry/junior-eval-bot-never-exists.",
+          "The second reply says the target repo is getsentry/junior-eval-bot-never-exists.",
+          "The second reply treats getsentry/junior-eval-reference-never-exists#123 as context or a reference.",
+          "observed_tool_invocations does not include a bash invocation with `gh issue create`, `gh issue comment`, or `gh issue view`.",
+        ],
+        fail: [
+          "Do not choose getsentry/junior-eval-reference-never-exists as the action target.",
+          "Do not run GitHub commands against either fake repo.",
+          "Do not ask the user to provide the repo again.",
+        ],
+      }),
+    });
+  });
+
+  it("when confirming a fake explicit issue reference, use that issue as target", async ({
+    run,
+  }) => {
+    await run({
+      overrides: {
+        enable_test_credentials: true,
+        plugin_packages: ["@sentry/junior-github"],
+        reply_timeout_ms: 75_000,
+        test_credential_token: "eval-target-classification-explicit-token",
+        skill_dirs: ["../junior/skills"],
+      },
+      events: [
+        threadMessage(
+          "Set the default repo to getsentry/junior-eval-bot-never-exists for this channel. Do not verify it exists.",
+          {
+            thread: targetClassificationExplicitThread,
+            is_mention: true,
+          },
+        ),
+        threadMessage(
+          "Before I approve a later comment, confirm the target issue for getsentry/junior-eval-reference-never-exists#123. Do not run GitHub commands.",
+          {
+            thread: targetClassificationExplicitThread,
+            is_mention: true,
+          },
+        ),
+      ],
+      criteria: rubric({
+        contract:
+          "Confirm the explicitly referenced issue as target even when a default repo is set.",
+        pass: [
+          "The assistant posts exactly two replies in order.",
+          "The first reply confirms default repo setup for getsentry/junior-eval-bot-never-exists.",
+          "The second reply says the action target would be getsentry/junior-eval-reference-never-exists#123 or repo getsentry/junior-eval-reference-never-exists.",
+          "observed_tool_invocations does not include a bash invocation with `gh issue create`, `gh issue comment`, or `gh issue view`.",
+        ],
+        fail: [
+          "Do not choose getsentry/junior-eval-bot-never-exists as the action target.",
+          "Do not run GitHub commands against either fake repo.",
+          "Do not ask the user to restate the repository or issue number.",
+        ],
+      }),
+    });
+  });
+});

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Junior favicon">
+  <rect x="0" y="0" width="64" height="64" fill="#111111" />
+  <path
+    d="M24 18V39C24 45 20 48 14 48"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M36 46V28M36 33C36 30 39 28 43 28"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="49" cy="46" r="3" fill="#39ff14" />
+</svg>

@@ -1,0 +1,49 @@
+{
+  "name": "junior-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "node scripts/dev-with-root-env.mjs",
+    "dev:env": "pnpx vercel env pull .env.local --environment=development && pnpm run cloudflare:token",
+    "cli": "node scripts/cli-with-root-env.mjs",
+    "cloudflare:token": "node scripts/refresh-cloudflare-tunnel-token.mjs",
+    "prepare": "simple-git-hooks",
+    "lint": "pnpm --filter @sentry/junior lint",
+    "lint:fix": "pnpm --filter @sentry/junior lint:fix",
+    "lint-staged": "lint-staged",
+    "build": "pnpm --filter @sentry/junior build",
+    "build:example": "pnpm --filter @sentry/junior-example build",
+    "docs:dev": "pnpm --filter @sentry/junior-docs dev",
+    "docs:build": "pnpm --filter @sentry/junior-docs build",
+    "docs:check": "pnpm --filter @sentry/junior-docs check",
+    "release:check": "node scripts/check-release-config.mjs",
+    "start": "pnpm --filter @sentry/junior-example dev",
+    "test": "pnpm --filter @sentry/junior build && pnpm --filter @sentry/junior test",
+    "test:watch": "pnpm --filter @sentry/junior test:watch",
+    "evals": "pnpm --filter @sentry/junior-evals evals",
+    "typecheck": "pnpm --filter @sentry/junior typecheck && pnpm --filter @sentry/junior-example typecheck",
+    "skills:check": "pnpm --filter @sentry/junior skills:check"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged"
+  },
+  "lint-staged": {
+    "packages/junior/**/*.{js,jsx,ts,tsx,mjs,cjs}": "pnpm --filter @sentry/junior exec oxlint --config .oxlintrc.json --deny-warnings --fix",
+    "*.{js,jsx,ts,tsx,mjs,cjs,json,md,mdx,yml,yaml}": "pnpm exec prettier --write --ignore-unknown"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "vitest-evals>ai": ">=4",
+        "vitest-evals>zod": ">=3"
+      }
+    }
+  },
+  "devDependencies": {
+    "agent-browser": "^0.26.0",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.3",
+    "simple-git-hooks": "^2.13.1",
+    "tsx": "^4.21.0"
+  }
+}
