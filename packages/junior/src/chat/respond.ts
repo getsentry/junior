@@ -51,6 +51,7 @@ import {
   resolveGatewayModel,
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
+import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import {
   createSandboxExecutor,
   type SandboxAcquiredState,
@@ -927,6 +928,7 @@ export async function generateAssistantReply(
     // ── Agent execution ──────────────────────────────────────────────
     agent = new Agent({
       getApiKey: () => getPiGatewayApiKeyOverride(),
+      streamFn: createTracedStreamFn(),
       initialState: {
         systemPrompt: baseInstructions,
         model: resolveGatewayModel(botConfig.modelId),

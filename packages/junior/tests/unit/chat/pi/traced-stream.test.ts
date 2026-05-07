@@ -1,0 +1,207 @@
+import type { StreamFn } from "@mariozechner/pi-agent-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createAssistantMessageEventStream,
+  type AssistantMessage,
+  type Model,
+} from "@mariozechner/pi-ai";
+
+const { startInactiveSpan, withActiveSpan } = vi.hoisted(() => {
+  const span = {
+    setAttribute: vi.fn(),
+    setAttributes: vi.fn(),
+    setStatus: vi.fn(),
+    end: vi.fn(),
+  };
+  return {
+    startInactiveSpan: vi.fn((_options: unknown) => span),
+    withActiveSpan: vi.fn(<T>(_s: unknown, cb: () => T) => cb()),
+  };
+});
+
+vi.mock("@/chat/sentry", () => ({
+  startInactiveSpan,
+  withActiveSpan,
+}));
+
+function fakeModel(id: string): Model<"anthropic-messages"> {
+  return { id } as unknown as Model<"anthropic-messages">;
+}
+
+function fakeMessage(): AssistantMessage {
+  return {
+    role: "assistant",
+    content: [{ type: "text", text: "hi" }],
+    api: "anthropic-messages",
+    provider: "vercel-ai-gateway",
+    model: "openai/gpt-5.4",
+    usage: {
+      input: 100,
+      output: 5,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 105,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: Date.now(),
+  };
+}
+
+type SpanMock = {
+  setAttribute: ReturnType<typeof vi.fn>;
+  setAttributes: ReturnType<typeof vi.fn>;
+  setStatus: ReturnType<typeof vi.fn>;
+  end: ReturnType<typeof vi.fn>;
+};
+
+function getSpan(): SpanMock {
+  return startInactiveSpan.mock.results[0]!.value as SpanMock;
+}
+
+describe("createTracedStreamFn", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it("opens a gen_ai.chat span when invoked", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const returned = await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    expect(returned).toBe(stream);
+    expect(startInactiveSpan).toHaveBeenCalledTimes(1);
+    const opts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
+      name: string;
+      op: string;
+    };
+    expect(opts.op).toBe("gen_ai.chat");
+    expect(opts.name).toBe("chat openai/gpt-5.4");
+  });
+
+  it("sets gen_ai.input.messages and gen_ai.system_instructions on the chat span", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      {
+        systemPrompt: "you are junior",
+        messages: [{ role: "user", content: "hello", timestamp: 0 }],
+      },
+      undefined,
+    );
+
+    const opts = startInactiveSpan.mock.calls[0]?.[0] as unknown as {
+      attributes: Record<string, unknown>;
+    };
+    expect(opts.attributes["gen_ai.provider.name"]).toBe("vercel-ai-gateway");
+    expect(typeof opts.attributes["gen_ai.input.messages"]).toBe("string");
+    expect(opts.attributes["gen_ai.input.messages"]).toContain("hello");
+    expect(typeof opts.attributes["gen_ai.system_instructions"]).toBe("string");
+    expect(opts.attributes["gen_ai.system_instructions"]).toContain(
+      "you are junior",
+    );
+    expect(opts.attributes["gen_ai.operation.name"]).toBe("chat");
+    expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
+  });
+
+  it("sets output.messages, usage tokens, finish_reasons, response.model after stream completion", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    const returned = await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    expect(returned).toBe(stream);
+
+    // Resolve the stream's terminal Promise to trigger end-attribute population.
+    const finalMessage = fakeMessage();
+    stream.end(finalMessage);
+    await stream.result();
+    // Allow the .then callback to flush.
+    await new Promise((r) => setImmediate(r));
+
+    const span = getSpan();
+    const endAttributes = Object.fromEntries(
+      span.setAttribute.mock.calls.map((c) => [c[0], c[1]]),
+    );
+    expect(typeof endAttributes["gen_ai.output.messages"]).toBe("string");
+    expect(endAttributes["gen_ai.usage.input_tokens"]).toBe(100);
+    expect(endAttributes["gen_ai.usage.output_tokens"]).toBe(5);
+    expect(endAttributes["gen_ai.response.finish_reasons"]).toEqual(["stop"]);
+    expect(endAttributes["gen_ai.response.model"]).toBe("openai/gpt-5.4");
+    expect(span.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("inherits LogContext attributes (e.g. gen_ai.conversation.id) onto the chat span", async () => {
+    const { withLogContext } = await import("@/chat/logging");
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+
+    await withLogContext(
+      { conversationId: "conv_123", turnId: "turn_456" },
+      async () => {
+        await traced(
+          fakeModel("openai/gpt-5.4"),
+          { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+          undefined,
+        );
+      },
+    );
+
+    const opts = startInactiveSpan.mock.calls[0]?.[0] as {
+      attributes: Record<string, unknown>;
+    };
+    expect(opts.attributes["gen_ai.conversation.id"]).toBe("conv_123");
+    expect(opts.attributes["app.turn.id"]).toBe("turn_456");
+    // wrapper-supplied attributes still present
+    expect(opts.attributes["gen_ai.operation.name"]).toBe("chat");
+    expect(opts.attributes["gen_ai.request.model"]).toBe("openai/gpt-5.4");
+  });
+
+  it("ends the span when the stream errors", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const stream = createAssistantMessageEventStream();
+    const base = vi.fn(() => stream);
+
+    const traced = createTracedStreamFn(base as unknown as StreamFn);
+    await traced(
+      fakeModel("openai/gpt-5.4"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      undefined,
+    );
+
+    // pi-ai's AssistantMessageEventStream resolves `result()` with the carrier
+    // AssistantMessage on `error` events instead of rejecting, so the wrapper's
+    // `.then` success arm runs on the error path. The load-bearing invariant
+    // is that the span ends exactly once.
+    const errorMessage = { ...fakeMessage(), stopReason: "error" as const };
+    stream.push({ type: "error", reason: "error", error: errorMessage });
+    await stream.result();
+    await new Promise((r) => setImmediate(r));
+
+    const span = getSpan();
+    expect(span.end).toHaveBeenCalledTimes(1);
+    // End attributes are still populated because the success arm runs.
+    const endAttributeKeys = span.setAttribute.mock.calls.map((c) => c[0]);
+    expect(endAttributeKeys).toContain("gen_ai.output.messages");
+  });
+});
