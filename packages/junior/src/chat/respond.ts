@@ -39,6 +39,7 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { createTools } from "@/chat/tools";
 import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import type { ToolDefinition } from "@/chat/tools/definition";
 import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
 import { createAdvisorToolDefinitions } from "@/chat/tools/advisor/tool";
@@ -828,6 +829,14 @@ export async function generateAssistantReply(
       },
     );
 
+    const toolGuidance = Object.entries(
+      tools as Record<string, ToolDefinition<any>>,
+    ).map(([name, definition]) => ({
+      name,
+      promptGuidelines: definition.promptGuidelines,
+      promptSnippet: definition.promptSnippet,
+    }));
+
     syncResumeState();
     for (const skill of activeSkills) {
       await turnMcpToolManager.activateForSkill(skill);
@@ -849,6 +858,7 @@ export async function generateAssistantReply(
       availableSkills,
       activeSkills,
       activeMcpCatalogs,
+      toolGuidance,
       runtime: {
         channelId: toolChannelId,
         fastModelId: botConfig.fastModelId,

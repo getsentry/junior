@@ -1,10 +1,14 @@
 import { Type } from "@sinclair/typebox";
 import { tool } from "@/chat/tools/definition";
 
+/** Create the sandbox full-file write tool definition exposed to the agent. */
 export function createWriteFileTool() {
   return tool({
     description:
       "Write UTF-8 content to a file in the sandbox workspace. Use for intentional file creation or replacement after validation. Do not use for exploratory analysis-only turns.",
+    promptSnippet: "new file or deliberate full-file replacement",
+    promptGuidelines: ["targeted existing-file changes: editFile"],
+    executionMode: "sequential",
     inputSchema: Type.Object(
       {
         path: Type.String({

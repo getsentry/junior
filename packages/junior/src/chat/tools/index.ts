@@ -1,5 +1,9 @@
 import { createBashTool } from "@/chat/tools/sandbox/bash";
+import { createEditFileTool } from "@/chat/tools/sandbox/edit-file";
+import { createFindFilesTool } from "@/chat/tools/sandbox/find-files";
+import { createGrepTool } from "@/chat/tools/sandbox/grep";
 import { createAttachFileTool } from "@/chat/tools/sandbox/attach-file";
+import { createListDirTool } from "@/chat/tools/sandbox/list-dir";
 import type { SkillMetadata } from "@/chat/skills";
 import { createImageGenerateTool } from "@/chat/tools/web/image-generate";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
@@ -92,6 +96,10 @@ export function createTools(
     bash: createBashTool(),
     attachFile: createAttachFileTool(context.sandbox, hooks),
     readFile: createReadFileTool(),
+    editFile: createEditFileTool(),
+    grep: createGrepTool(),
+    findFiles: createFindFilesTool(),
+    listDir: createListDirTool(),
     writeFile: createWriteFileTool(),
     webSearch: createWebSearchTool(),
     webFetch: createWebFetchTool(hooks),

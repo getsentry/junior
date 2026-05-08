@@ -17,6 +17,11 @@ import {
 } from "@/chat/sandbox/skill-sync";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
+import { editFile } from "@/chat/tools/sandbox/edit-file";
+import { findFiles } from "@/chat/tools/sandbox/find-files";
+import { grepFiles } from "@/chat/tools/sandbox/grep";
+import { listDir } from "@/chat/tools/sandbox/list-dir";
+import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
 
 // Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
 // Spec: specs/logging/tracing-spec.md (required sandbox span semantics)
@@ -60,7 +65,15 @@ export interface SandboxExecutor {
   dispose(): Promise<void>;
 }
 
-const SANDBOX_TOOL_NAMES = new Set(["bash", "readFile", "writeFile"]);
+const SANDBOX_TOOL_NAMES = new Set([
+  "bash",
+  "readFile",
+  "editFile",
+  "grep",
+  "findFiles",
+  "listDir",
+  "writeFile",
+]);
 
 function parseHeaderTransforms(
   raw: unknown,
@@ -165,12 +178,20 @@ export function createSandboxExecutor(options?: {
     );
   };
 
+  const parsePositiveNumber = (raw: unknown): number | undefined => {
+    if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) {
+      return undefined;
+    }
+    return Math.floor(raw);
+  };
+
   const executeBashTool = async <T>(
     rawInput: Record<string, unknown>,
     command: string,
   ): Promise<SandboxExecutionEnvelope<T>> => {
     const headerTransforms = parseHeaderTransforms(rawInput.headerTransforms);
     const env = parseEnv(rawInput.env);
+    const timeoutMs = parsePositiveNumber(rawInput.timeoutMs);
     logSandboxBootRequest("tool.bash", {
       "app.sandbox.command_length": command.length,
     });
@@ -187,6 +208,7 @@ export function createSandboxExecutor(options?: {
             command,
             ...(headerTransforms ? { headerTransforms } : {}),
             ...(env ? { env } : {}),
+            ...(timeoutMs ? { timeoutMs } : {}),
           });
           setSpanAttributes({
             "process.exit.code": response.exitCode,
@@ -222,7 +244,7 @@ export function createSandboxExecutor(options?: {
         cwd: SANDBOX_WORKSPACE_ROOT,
         exit_code: result.exitCode,
         signal: null,
-        timed_out: false,
+        timed_out: Boolean(result.timedOut),
         stdout: result.stdout,
         stderr: result.stderr,
         stdout_truncated: result.stdoutTruncated,
@@ -238,6 +260,8 @@ export function createSandboxExecutor(options?: {
     if (!filePath) {
       throw new Error("path is required");
     }
+    const offset = parsePositiveNumber(rawInput.offset);
+    const limit = parsePositiveNumber(rawInput.limit);
 
     if (!sessionManager.getSandboxId()) {
       const hostPath =
@@ -254,11 +278,12 @@ export function createSandboxExecutor(options?: {
           });
           setSpanStatus("ok");
           return {
-            result: {
+            result: sliceFileContent({
               content,
               path: filePath,
-              success: true,
-            } as T,
+              offset,
+              limit,
+            }) as T,
           };
         } catch (error) {
           if (!isHostFileMissingError(error)) {
@@ -288,9 +313,12 @@ export function createSandboxExecutor(options?: {
         });
         setSpanStatus("ok");
         return {
-          content,
-          path: filePath,
-          success: true,
+          ...sliceFileContent({
+            content,
+            path: filePath,
+            offset,
+            limit,
+          }),
         };
       },
     );
@@ -338,6 +366,139 @@ export function createSandboxExecutor(options?: {
     };
   };
 
+  const executeEditFileTool = async <T>(
+    rawInput: Record<string, unknown>,
+  ): Promise<SandboxExecutionEnvelope<T>> => {
+    const filePath = String(rawInput.path ?? "").trim();
+    if (!filePath) {
+      throw new Error("path is required");
+    }
+    if (!Array.isArray(rawInput.edits)) {
+      throw new Error("edits is required");
+    }
+
+    logSandboxBootRequest("tool.editFile", {
+      "file.path": filePath,
+    });
+    const executors = await sessionManager.ensureToolExecutors();
+    const result = await withSandboxSpan(
+      "sandbox.editFile",
+      "sandbox.fs.edit",
+      {
+        "app.sandbox.path.length": filePath.length,
+        "app.sandbox.edit.count": rawInput.edits.length,
+      },
+      async () => {
+        const response = await editFile({
+          fs: executors.fs,
+          path: filePath,
+          edits: rawInput.edits as Array<{ oldText: string; newText: string }>,
+        });
+        setSpanStatus("ok");
+        return response;
+      },
+    );
+
+    return { result: result as T };
+  };
+
+  const executeGrepTool = async <T>(
+    rawInput: Record<string, unknown>,
+  ): Promise<SandboxExecutionEnvelope<T>> => {
+    const pattern = String(rawInput.pattern ?? "");
+    if (!pattern) {
+      throw new Error("pattern is required");
+    }
+
+    logSandboxBootRequest("tool.grep");
+    const contextLines = parsePositiveNumber(rawInput.context);
+    const limit = parsePositiveNumber(rawInput.limit);
+    const executors = await sessionManager.ensureToolExecutors();
+    const result = await withSandboxSpan(
+      "sandbox.grep",
+      "sandbox.fs.search",
+      {
+        "app.sandbox.pattern.length": pattern.length,
+      },
+      async () => {
+        const response = await grepFiles({
+          fs: executors.fs,
+          pattern,
+          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
+          ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : {}),
+          ...(typeof rawInput.ignoreCase === "boolean"
+            ? { ignoreCase: rawInput.ignoreCase }
+            : {}),
+          ...(typeof rawInput.literal === "boolean"
+            ? { literal: rawInput.literal }
+            : {}),
+          ...(contextLines ? { context: contextLines } : {}),
+          ...(limit ? { limit } : {}),
+        });
+        setSpanStatus("ok");
+        return response;
+      },
+    );
+
+    return { result: result as T };
+  };
+
+  const executeFindFilesTool = async <T>(
+    rawInput: Record<string, unknown>,
+  ): Promise<SandboxExecutionEnvelope<T>> => {
+    const pattern = String(rawInput.pattern ?? "");
+    if (!pattern) {
+      throw new Error("pattern is required");
+    }
+
+    logSandboxBootRequest("tool.findFiles");
+    const limit = parsePositiveNumber(rawInput.limit);
+    const executors = await sessionManager.ensureToolExecutors();
+    const result = await withSandboxSpan(
+      "sandbox.findFiles",
+      "sandbox.fs.find",
+      {
+        "app.sandbox.pattern.length": pattern.length,
+      },
+      async () => {
+        const response = await findFiles({
+          fs: executors.fs,
+          pattern,
+          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
+          ...(limit ? { limit } : {}),
+        });
+        setSpanStatus("ok");
+        return response;
+      },
+    );
+
+    return { result: result as T };
+  };
+
+  const executeListDirTool = async <T>(
+    rawInput: Record<string, unknown>,
+  ): Promise<SandboxExecutionEnvelope<T>> => {
+    logSandboxBootRequest("tool.listDir");
+    const limit = parsePositiveNumber(rawInput.limit);
+    const executors = await sessionManager.ensureToolExecutors();
+    const result = await withSandboxSpan(
+      "sandbox.listDir",
+      "sandbox.fs.list",
+      {},
+      async () => {
+        const response = await listDir({
+          fs: executors.fs,
+          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
+          ...(limit ? { limit } : {}),
+        });
+        setSpanStatus("ok");
+        return response;
+      },
+    );
+
+    return { result: result as T };
+  };
+
   const execute = async <T>(
     params: SandboxExecutionInput,
   ): Promise<SandboxExecutionEnvelope<T>> => {
@@ -362,6 +523,22 @@ export function createSandboxExecutor(options?: {
 
     if (params.toolName === "readFile") {
       return await executeReadFileTool(rawInput);
+    }
+
+    if (params.toolName === "editFile") {
+      return await executeEditFileTool(rawInput);
+    }
+
+    if (params.toolName === "grep") {
+      return await executeGrepTool(rawInput);
+    }
+
+    if (params.toolName === "findFiles") {
+      return await executeFindFilesTool(rawInput);
+    }
+
+    if (params.toolName === "listDir") {
+      return await executeListDirTool(rawInput);
     }
 
     if (params.toolName === "writeFile") {

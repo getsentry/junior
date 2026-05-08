@@ -69,4 +69,28 @@ describe("prompt builders", () => {
 
     expect(turnContext).not.toContain("<requester>");
   });
+
+  it("puts tool guidance in turn context, not the static system prompt", () => {
+    const systemPrompt = buildSystemPrompt();
+    const turnContext = buildTurnContextPrompt({
+      availableSkills: [],
+      activeSkills: [],
+      activeMcpCatalogs: [],
+      invocation: null,
+      toolGuidance: [
+        {
+          name: "editFile",
+          promptSnippet: "exact edits",
+          promptGuidelines: ["unique oldText"],
+        },
+      ],
+      turnState: "fresh",
+    });
+
+    expect(systemPrompt).not.toContain("<tool-guidance>");
+    expect(turnContext).toContain("<tool-guidance>");
+    expect(turnContext).toContain('name="editFile"');
+    expect(turnContext).toContain("- exact edits");
+    expect(turnContext).toContain("- unique oldText");
+  });
 });

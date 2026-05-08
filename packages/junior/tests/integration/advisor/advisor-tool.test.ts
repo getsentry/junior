@@ -190,6 +190,9 @@ describe("advisor tool", () => {
     );
 
     expect(Object.keys(advisorDefinitions).sort()).toEqual([
+      "findFiles",
+      "grep",
+      "listDir",
       "readFile",
       "slackCanvasRead",
       "slackChannelListMessages",

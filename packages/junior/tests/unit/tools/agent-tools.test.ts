@@ -175,6 +175,27 @@ describe("createAgentTools", () => {
     expect(onToolCall).toHaveBeenCalledWith("bash", { command: "which gh" });
   });
 
+  it("forwards Pi tool preparation metadata", () => {
+    const sandbox = new SkillSandbox([], []);
+    const prepareArguments = vi.fn((args: unknown) => args as never);
+    const [editTool] = createAgentTools(
+      {
+        editFile: {
+          description: "edit",
+          inputSchema: {} as any,
+          prepareArguments,
+          executionMode: "sequential",
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+    );
+
+    expect(editTool?.prepareArguments).toBe(prepareArguments);
+    expect(editTool?.executionMode).toBe("sequential");
+  });
+
   it("records tool call arguments and result on the execute_tool span", async () => {
     const sandbox = new SkillSandbox([], []);
     const [bashTool] = createAgentTools(

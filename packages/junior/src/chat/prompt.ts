@@ -248,6 +248,40 @@ function formatActiveMcpCatalogsForPrompt(
   return lines.join("\n");
 }
 
+interface ToolPromptContext {
+  name: string;
+  promptGuidelines?: string[];
+  promptSnippet?: string;
+}
+
+function formatToolGuidanceForPrompt(
+  tools: ToolPromptContext[],
+): string | null {
+  const guidedTools = tools.filter(
+    (tool) =>
+      Boolean(tool.promptSnippet?.trim()) ||
+      (tool.promptGuidelines?.length ?? 0) > 0,
+  );
+  if (guidedTools.length === 0) {
+    return null;
+  }
+
+  const lines: string[] = [];
+  for (const tool of guidedTools) {
+    lines.push(`  <tool name="${escapeXml(tool.name)}">`);
+    if (tool.promptSnippet?.trim()) {
+      lines.push(`    - ${escapeXml(tool.promptSnippet.trim())}`);
+    }
+    if (tool.promptGuidelines && tool.promptGuidelines.length > 0) {
+      for (const guideline of tool.promptGuidelines) {
+        lines.push(`    - ${escapeXml(guideline)}`);
+      }
+    }
+    lines.push("  </tool>");
+  }
+  return lines.join("\n");
+}
+
 function formatReferenceFilesLines(): string[] | null {
   const files = listReferenceFiles();
   if (files.length === 0) {
@@ -527,6 +561,7 @@ function buildCapabilitiesSection(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
+  toolGuidance?: ToolPromptContext[];
 }): string {
   const blocks: string[] = [];
   blocks.push(formatAvailableSkillsForPrompt(params.availableSkills));
@@ -537,6 +572,11 @@ function buildCapabilitiesSection(params: {
   );
   if (activeCatalogs) {
     blocks.push(renderTagBlock("active-mcp-catalogs", activeCatalogs));
+  }
+
+  const toolGuidance = formatToolGuidanceForPrompt(params.toolGuidance ?? []);
+  if (toolGuidance) {
+    blocks.push(renderTagBlock("tool-guidance", toolGuidance));
   }
 
   const providerCatalog = formatProviderCatalogForPrompt();
@@ -551,6 +591,7 @@ type TurnContextPromptInput = {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs?: ActiveMcpCatalogSummary[];
+  toolGuidance?: ToolPromptContext[];
   runtime?: {
     channelId?: string;
     fastModelId?: string;
@@ -607,6 +648,7 @@ export function buildTurnContextPrompt(params: TurnContextPromptInput): string {
       availableSkills: params.availableSkills,
       activeSkills: params.activeSkills,
       activeMcpCatalogs: params.activeMcpCatalogs ?? [],
+      toolGuidance: params.toolGuidance ?? [],
     }),
     buildContextSection({
       requester: params.requester,

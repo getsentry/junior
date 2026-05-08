@@ -33,6 +33,8 @@ export function createAgentTools(
     label: toolName,
     description: toolDef.description,
     parameters: toolDef.inputSchema,
+    prepareArguments: toolDef.prepareArguments,
+    executionMode: toolDef.executionMode,
     execute: async (toolCallId: unknown, params: unknown) => {
       const normalizedToolCallId =
         typeof toolCallId === "string" && toolCallId.length > 0

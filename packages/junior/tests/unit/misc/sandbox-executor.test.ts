@@ -787,8 +787,12 @@ describe("createSandboxExecutor", () => {
 
     expect(response.result).toEqual({
       content: "Reference note",
+      end_line: 1,
       path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      start_line: 1,
       success: true,
+      total_lines: 1,
+      truncated: false,
     });
     expect(sandboxGetMock).not.toHaveBeenCalled();
     expect(sandboxCreateMock).not.toHaveBeenCalled();
@@ -825,8 +829,12 @@ describe("createSandboxExecutor", () => {
 
     expect(response.result).toEqual({
       content: "from sandbox",
+      end_line: 1,
       path: `${sandboxSkillDir("demo-skill")}/references/missing.md`,
+      start_line: 1,
       success: true,
+      total_lines: 1,
+      truncated: false,
     });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
@@ -868,8 +876,12 @@ describe("createSandboxExecutor", () => {
 
     expect(response.result).toEqual({
       content: "Sandbox note",
+      end_line: 1,
       path: `${sandboxSkillDir("demo-skill")}/references/note.md`,
+      start_line: 1,
       success: true,
+      total_lines: 1,
+      truncated: false,
     });
     expect(sandboxGetMock).toHaveBeenCalledWith({ sandboxId: "sbx_existing" });
   });

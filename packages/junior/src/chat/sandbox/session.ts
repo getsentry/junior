@@ -24,6 +24,7 @@ import {
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import type { SandboxCommandResult } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
+import type { SandboxFileSystem } from "@/chat/tools/sandbox/file-utils";
 
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const SANDBOX_RUNTIME = "node22";
@@ -49,18 +50,21 @@ interface SandboxToolExecutors {
       headers: Record<string, string>;
     }>;
     env?: Record<string, string>;
+    timeoutMs?: number;
   }) => Promise<{
     stdout: string;
     stderr: string;
     exitCode: number;
     stdoutTruncated: boolean;
     stderrTruncated: boolean;
+    timedOut?: boolean;
   }>;
   readFile: (input: { path: string }) => Promise<{ content: string }>;
   writeFile: (input: {
     path: string;
     content: string;
   }) => Promise<{ success: boolean }>;
+  fs: SandboxFileSystem;
 }
 
 interface SandboxSessionManager {
@@ -637,16 +641,46 @@ export function createSandboxSessionManager(options?: {
           env: input.env,
           pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,
         });
+        const controller =
+          input.timeoutMs && input.timeoutMs > 0
+            ? new AbortController()
+            : undefined;
+        let timedOut = false;
+        const timeoutId = controller
+          ? setTimeout(() => {
+              timedOut = true;
+              controller.abort();
+            }, input.timeoutMs)
+          : undefined;
         return await withTemporaryHeaderTransforms(
           sandboxInstance,
           input.headerTransforms,
           async () => {
-            const commandResult = await sandboxInstance.runCommand({
-              cmd: "bash",
-              args: ["-c", script],
-              cwd: SANDBOX_WORKSPACE_ROOT,
-            });
-            return await readCommandOutput(commandResult);
+            try {
+              const commandResult = await sandboxInstance.runCommand({
+                cmd: "bash",
+                args: ["-c", script],
+                cwd: SANDBOX_WORKSPACE_ROOT,
+                ...(controller ? { signal: controller.signal } : {}),
+              });
+              return await readCommandOutput(commandResult);
+            } catch (error) {
+              if (timedOut) {
+                return {
+                  stdout: "",
+                  stderr: `Command timed out after ${input.timeoutMs}ms`,
+                  exitCode: 124,
+                  stdoutTruncated: false,
+                  stderrTruncated: false,
+                  timedOut: true,
+                };
+              }
+              throw error;
+            } finally {
+              if (timeoutId) {
+                clearTimeout(timeoutId);
+              }
+            }
           },
         );
       },
@@ -660,6 +694,7 @@ export function createSandboxSessionManager(options?: {
           toolCallId: "sandbox-write-file",
           messages: [],
         })) as { success: boolean },
+      fs: sandboxInstance.fs as SandboxFileSystem,
     };
   };
 
