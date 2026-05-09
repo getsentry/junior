@@ -19,6 +19,7 @@ import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 import { editFile } from "@/chat/tools/sandbox/edit-file";
 import { findFiles } from "@/chat/tools/sandbox/find-files";
+import { positiveInteger } from "@/chat/tools/sandbox/file-utils";
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 import { listDir } from "@/chat/tools/sandbox/list-dir";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
@@ -178,20 +179,13 @@ export function createSandboxExecutor(options?: {
     );
   };
 
-  const parsePositiveNumber = (raw: unknown): number | undefined => {
-    if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) {
-      return undefined;
-    }
-    return Math.floor(raw);
-  };
-
   const executeBashTool = async <T>(
     rawInput: Record<string, unknown>,
     command: string,
   ): Promise<SandboxExecutionEnvelope<T>> => {
     const headerTransforms = parseHeaderTransforms(rawInput.headerTransforms);
     const env = parseEnv(rawInput.env);
-    const timeoutMs = parsePositiveNumber(rawInput.timeoutMs);
+    const timeoutMs = positiveInteger(rawInput.timeoutMs);
     logSandboxBootRequest("tool.bash", {
       "app.sandbox.command_length": command.length,
     });
@@ -260,8 +254,8 @@ export function createSandboxExecutor(options?: {
     if (!filePath) {
       throw new Error("path is required");
     }
-    const offset = parsePositiveNumber(rawInput.offset);
-    const limit = parsePositiveNumber(rawInput.limit);
+    const offset = positiveInteger(rawInput.offset);
+    const limit = positiveInteger(rawInput.limit);
 
     if (!sessionManager.getSandboxId()) {
       const hostPath =
@@ -411,8 +405,8 @@ export function createSandboxExecutor(options?: {
     }
 
     logSandboxBootRequest("tool.grep");
-    const contextLines = parsePositiveNumber(rawInput.context);
-    const limit = parsePositiveNumber(rawInput.limit);
+    const contextLines = positiveInteger(rawInput.context);
+    const limit = positiveInteger(rawInput.limit);
     const executors = await sessionManager.ensureToolExecutors();
     const result = await withSandboxSpan(
       "sandbox.grep",
@@ -452,7 +446,7 @@ export function createSandboxExecutor(options?: {
     }
 
     logSandboxBootRequest("tool.findFiles");
-    const limit = parsePositiveNumber(rawInput.limit);
+    const limit = positiveInteger(rawInput.limit);
     const executors = await sessionManager.ensureToolExecutors();
     const result = await withSandboxSpan(
       "sandbox.findFiles",
@@ -479,7 +473,7 @@ export function createSandboxExecutor(options?: {
     rawInput: Record<string, unknown>,
   ): Promise<SandboxExecutionEnvelope<T>> => {
     logSandboxBootRequest("tool.listDir");
-    const limit = parsePositiveNumber(rawInput.limit);
+    const limit = positiveInteger(rawInput.limit);
     const executors = await sessionManager.ensureToolExecutors();
     const result = await withSandboxSpan(
       "sandbox.listDir",
