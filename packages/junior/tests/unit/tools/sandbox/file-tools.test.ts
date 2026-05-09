@@ -173,4 +173,48 @@ describe("sandbox file tools", () => {
       details: { ok: true, path: "src", truncated: false },
     });
   });
+
+  it("matches globstar directories with or without nested segments", async () => {
+    const memory = createMemoryFs({
+      "src/app.ts": "top",
+      "src/nested/test.ts": "nested",
+      "src/nested/test.js": "ignored",
+    });
+
+    await expect(
+      findFiles({ fs: memory.fs, pattern: "src/**/*.ts" }),
+    ).resolves.toEqual({
+      content: [{ type: "text", text: "src/app.ts\nsrc/nested/test.ts" }],
+      details: { ok: true, path: ".", truncated: false },
+    });
+  });
+
+  it("deduplicates overlapping grep context lines", async () => {
+    const memory = createMemoryFs({
+      "src/app.ts": ["before", "needle one", "needle two", "after"].join("\n"),
+    });
+
+    await expect(
+      grepFiles({
+        fs: memory.fs,
+        path: "src",
+        pattern: "needle",
+        literal: true,
+        context: 1,
+      }),
+    ).resolves.toMatchObject({
+      content: [
+        {
+          type: "text",
+          text: [
+            "app.ts-1- before",
+            "app.ts:2: needle one",
+            "app.ts:3: needle two",
+            "app.ts-4- after",
+          ].join("\n"),
+        },
+      ],
+      details: { ok: true, path: "src", truncated: false },
+    });
+  });
 });

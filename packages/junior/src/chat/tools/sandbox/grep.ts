@@ -98,6 +98,7 @@ export async function grepFiles(params: {
       files.length === 1 && filePath === root
         ? path.posix.basename(filePath)
         : path.posix.relative(root, filePath);
+    const matchedLines: number[] = [];
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       if (
         !lineMatches({
@@ -115,13 +116,22 @@ export async function grepFiles(params: {
         break;
       }
       matchCount += 1;
+      matchedLines.push(lineIndex);
+    }
 
+    const matchedLineSet = new Set(matchedLines);
+    const emittedLines = new Set<number>();
+    for (const lineIndex of matchedLines) {
       const start = Math.max(0, lineIndex - context);
       const end = Math.min(lines.length - 1, lineIndex + context);
       for (let current = start; current <= end; current += 1) {
+        if (emittedLines.has(current)) {
+          continue;
+        }
+        emittedLines.add(current);
         const truncated = truncateGrepLine(lines[current]);
         lineTruncated ||= truncated.truncated;
-        const separator = current === lineIndex ? ":" : "-";
+        const separator = matchedLineSet.has(current) ? ":" : "-";
         output.push(
           `${relativePath}${separator}${current + 1}${separator} ${truncated.line}`,
         );
