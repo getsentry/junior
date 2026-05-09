@@ -1,7 +1,5 @@
-import type { Message, Thread } from "chat";
 import { botConfig } from "@/chat/config";
-import { completeText } from "@/chat/pi/client";
-import { getSlackMessageTs } from "@/chat/slack/message";
+import type { completeText } from "@/chat/pi/client";
 import type {
   ConversationCompaction,
   ConversationMessage,
@@ -17,7 +15,6 @@ const CONTEXT_MIN_LIVE_MESSAGES = 12;
 const CONTEXT_COMPACTION_BATCH_SIZE = 24;
 const CONTEXT_MAX_COMPACTIONS = 16;
 const CONTEXT_MAX_MESSAGE_CHARS = 3200;
-const BACKFILL_MESSAGE_LIMIT = 80;
 
 export interface ConversationMemoryDeps {
   completeText: typeof completeText;
@@ -417,6 +414,7 @@ async function compactConversationIfNeededWithDeps(
   }
 }
 
+/** Build the service that owns durable conversation memory compaction and titles. */
 export function createConversationMemoryService(
   deps: ConversationMemoryDeps,
 ): ConversationMemoryService {
@@ -426,125 +424,6 @@ export function createConversationMemoryService(
     generateThreadTitle: async (sourceText) =>
       await generateThreadTitleWithDeps(sourceText, deps),
   };
-}
-
-const defaultConversationMemoryService = createConversationMemoryService({
-  completeText,
-});
-
-export const compactConversationIfNeeded =
-  defaultConversationMemoryService.compactConversationIfNeeded;
-export const generateThreadTitle =
-  defaultConversationMemoryService.generateThreadTitle;
-
-function createConversationMessageFromSdkMessage(
-  entry: Message,
-): ConversationMessage | null {
-  const rawText = normalizeConversationText(entry.text);
-  if (!rawText) {
-    return null;
-  }
-
-  return {
-    id: entry.id,
-    role: entry.author.isMe ? "assistant" : "user",
-    text: rawText,
-    createdAtMs: entry.metadata.dateSent.getTime(),
-    author: {
-      userId: entry.author.userId,
-      userName: entry.author.userName,
-      fullName: entry.author.fullName,
-      isBot:
-        typeof entry.author.isBot === "boolean"
-          ? entry.author.isBot
-          : undefined,
-    },
-    meta: {
-      slackTs: getSlackMessageTs(entry),
-    },
-  };
-}
-
-export async function seedConversationBackfill(
-  thread: Thread,
-  conversation: ThreadConversationState,
-  currentTurn: {
-    messageId: string;
-    messageCreatedAtMs: number;
-  },
-): Promise<void> {
-  if (conversation.backfill.completedAtMs) {
-    return;
-  }
-  if (conversation.messages.length > 0 || conversation.compactions.length > 0) {
-    conversation.backfill = {
-      completedAtMs: Date.now(),
-      source: "recent_messages",
-    };
-    updateConversationStats(conversation);
-    return;
-  }
-
-  const seeded: ConversationMessage[] = [];
-  let source: "recent_messages" | "thread_fetch" = "recent_messages";
-
-  try {
-    const fetchedNewestFirst: Message[] = [];
-    for await (const entry of thread.messages) {
-      fetchedNewestFirst.push(entry);
-      if (fetchedNewestFirst.length >= BACKFILL_MESSAGE_LIMIT) {
-        break;
-      }
-    }
-    fetchedNewestFirst.reverse();
-    for (const entry of fetchedNewestFirst) {
-      const message = createConversationMessageFromSdkMessage(entry);
-      if (message) {
-        seeded.push(message);
-      }
-    }
-    if (seeded.length > 0) {
-      source = "thread_fetch";
-    }
-  } catch {}
-
-  if (seeded.length === 0) {
-    try {
-      await thread.refresh();
-    } catch {}
-
-    const fromRecent = thread.recentMessages.slice(-BACKFILL_MESSAGE_LIMIT);
-    for (const entry of fromRecent) {
-      const message = createConversationMessageFromSdkMessage(entry);
-      if (message) {
-        seeded.push(message);
-      }
-    }
-    source = "recent_messages";
-  }
-
-  for (const message of seeded) {
-    if (
-      message.id !== currentTurn.messageId &&
-      message.createdAtMs > currentTurn.messageCreatedAtMs
-    ) {
-      continue;
-    }
-    if (
-      message.id !== currentTurn.messageId &&
-      message.createdAtMs === currentTurn.messageCreatedAtMs &&
-      message.id > currentTurn.messageId
-    ) {
-      continue;
-    }
-    upsertConversationMessage(conversation, message);
-  }
-
-  conversation.backfill = {
-    completedAtMs: Date.now(),
-    source,
-  };
-  updateConversationStats(conversation);
 }
 
 export function isHumanConversationMessage(

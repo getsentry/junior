@@ -322,9 +322,7 @@ describe("bot image hydration", () => {
         ],
       },
     ]);
-    const downloadPrivateSlackFileMock = vi.fn(async () =>
-      Buffer.from("downloaded-image"),
-    );
+    const downloadFileMock = vi.fn(async () => Buffer.from("downloaded-image"));
     const completeTextMock = vi.fn(async () => ({
       text: "Recovered screenshot context",
       message: {} as never,
@@ -335,7 +333,7 @@ describe("bot image hydration", () => {
         services: {
           visionContext: {
             listThreadReplies: listThreadRepliesMock,
-            downloadPrivateSlackFile: downloadPrivateSlackFileMock,
+            downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
           replyExecutor: {
@@ -370,7 +368,7 @@ describe("bot image hydration", () => {
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
-    expect(downloadPrivateSlackFileMock).toHaveBeenCalledTimes(1);
+    expect(downloadFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
     const persistedState = secondThread.getState() as {
       conversation: {
@@ -418,9 +416,7 @@ describe("bot image hydration", () => {
         ],
       },
     ]);
-    const downloadPrivateSlackFileMock = vi.fn(async () =>
-      Buffer.from("downloaded-image"),
-    );
+    const downloadFileMock = vi.fn(async () => Buffer.from("downloaded-image"));
     const completeTextMock = vi.fn(async () => ({
       text: "Passive screenshot summary",
       message: {} as never,
@@ -446,7 +442,7 @@ describe("bot image hydration", () => {
           },
           visionContext: {
             listThreadReplies: listThreadRepliesMock,
-            downloadPrivateSlackFile: downloadPrivateSlackFileMock,
+            downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
           replyExecutor: {
@@ -529,7 +525,7 @@ describe("bot image hydration", () => {
     );
 
     expect(listThreadRepliesMock).toHaveBeenCalledTimes(1);
-    expect(downloadPrivateSlackFileMock).toHaveBeenCalledTimes(1);
+    expect(downloadFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
     expect(generateAssistantReply).toHaveBeenCalledTimes(1);
 
@@ -575,9 +571,7 @@ describe("bot image hydration", () => {
         ],
       },
     ]);
-    const downloadPrivateSlackFileMock = vi.fn(async () =>
-      Buffer.from("downloaded-image"),
-    );
+    const downloadFileMock = vi.fn(async () => Buffer.from("downloaded-image"));
     const completeTextMock = vi.fn(async () => ({
       text: "Current screenshot summary",
       message: {} as never,
@@ -601,7 +595,7 @@ describe("bot image hydration", () => {
         services: {
           visionContext: {
             listThreadReplies: listThreadRepliesMock,
-            downloadPrivateSlackFile: downloadPrivateSlackFileMock,
+            downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
           replyExecutor: {
@@ -662,7 +656,7 @@ describe("bot image hydration", () => {
       }),
     );
 
-    expect(downloadPrivateSlackFileMock).toHaveBeenCalledTimes(1);
+    expect(downloadFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
     expect(attachmentFetch).not.toHaveBeenCalled();
     expect(generateAssistantReply).toHaveBeenCalledTimes(1);
@@ -686,9 +680,7 @@ describe("bot image hydration", () => {
         ],
       },
     ]);
-    const downloadPrivateSlackFileMock = vi.fn(async () =>
-      Buffer.from("downloaded-image"),
-    );
+    const downloadFileMock = vi.fn(async () => Buffer.from("downloaded-image"));
     let completeTextCallCount = 0;
     const completeTextMock = vi.fn(async () => {
       completeTextCallCount += 1;
@@ -734,7 +726,7 @@ describe("bot image hydration", () => {
         services: {
           visionContext: {
             listThreadReplies: listThreadRepliesMock,
-            downloadPrivateSlackFile: downloadPrivateSlackFileMock,
+            downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
           replyExecutor: {
@@ -801,7 +793,7 @@ describe("bot image hydration", () => {
       }),
     );
 
-    expect(downloadPrivateSlackFileMock).toHaveBeenCalledTimes(2);
+    expect(downloadFileMock).toHaveBeenCalledTimes(2);
     expect(completeTextMock).toHaveBeenCalledTimes(3);
     expect(firstAttachmentFetch).toHaveBeenCalledTimes(1);
     expect(secondAttachmentFetch).not.toHaveBeenCalled();

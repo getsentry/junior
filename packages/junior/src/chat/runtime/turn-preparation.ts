@@ -13,21 +13,21 @@ import {
   type ThreadArtifactsState,
 } from "@/chat/state/artifacts";
 import {
-  compactConversationIfNeeded,
   buildConversationContext,
   isHumanConversationMessage,
   normalizeConversationText,
-  seedConversationBackfill,
+  updateConversationStats,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import {
   countPotentialImageAttachments,
   hasPotentialImageAttachment,
-  hydrateConversationVisionContext,
   isVisionEnabled,
 } from "@/chat/services/vision-context";
 import { getChannelConfigurationService } from "@/chat/runtime/thread-state";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+
+const BACKFILL_MESSAGE_LIMIT = 80;
 
 export interface PreparedTurnState {
   artifacts: ThreadArtifactsState;
@@ -42,8 +42,25 @@ export interface PreparedTurnState {
 }
 
 export interface PrepareTurnStateDeps {
-  compactConversationIfNeeded: typeof compactConversationIfNeeded;
-  hydrateConversationVisionContext: typeof hydrateConversationVisionContext;
+  compactConversationIfNeeded: (
+    conversation: ThreadConversationState,
+    context: {
+      threadId?: string;
+      channelId?: string;
+      requesterId?: string;
+      runId?: string;
+    },
+  ) => Promise<void>;
+  hydrateConversationVisionContext: (
+    conversation: ThreadConversationState,
+    context: {
+      threadId?: string;
+      channelId?: string;
+      requesterId?: string;
+      runId?: string;
+      threadTs?: string;
+    },
+  ) => Promise<void>;
 }
 
 function hasPendingImageHydration(
@@ -55,6 +72,117 @@ function hasPendingImageHydration(
   );
 }
 
+function createConversationMessageFromSdkMessage(
+  entry: Message,
+): ConversationMessage | null {
+  const rawText = normalizeConversationText(entry.text);
+  if (!rawText) {
+    return null;
+  }
+
+  return {
+    id: entry.id,
+    role: entry.author.isMe ? "assistant" : "user",
+    text: rawText,
+    createdAtMs: entry.metadata.dateSent.getTime(),
+    author: {
+      userId: entry.author.userId,
+      userName: entry.author.userName,
+      fullName: entry.author.fullName,
+      isBot:
+        typeof entry.author.isBot === "boolean"
+          ? entry.author.isBot
+          : undefined,
+    },
+    meta: {
+      slackTs: getSlackMessageTs(entry),
+    },
+  };
+}
+
+async function seedConversationBackfill(
+  thread: Thread,
+  conversation: ThreadConversationState,
+  currentTurn: {
+    messageId: string;
+    messageCreatedAtMs: number;
+  },
+): Promise<void> {
+  if (conversation.backfill.completedAtMs) {
+    return;
+  }
+  if (conversation.messages.length > 0 || conversation.compactions.length > 0) {
+    conversation.backfill = {
+      completedAtMs: Date.now(),
+      source: "recent_messages",
+    };
+    updateConversationStats(conversation);
+    return;
+  }
+
+  const seeded: ConversationMessage[] = [];
+  let source: "recent_messages" | "thread_fetch" = "recent_messages";
+
+  try {
+    const fetchedNewestFirst: Message[] = [];
+    for await (const entry of thread.messages) {
+      fetchedNewestFirst.push(entry);
+      if (fetchedNewestFirst.length >= BACKFILL_MESSAGE_LIMIT) {
+        break;
+      }
+    }
+    fetchedNewestFirst.reverse();
+    for (const entry of fetchedNewestFirst) {
+      const message = createConversationMessageFromSdkMessage(entry);
+      if (message) {
+        seeded.push(message);
+      }
+    }
+    if (seeded.length > 0) {
+      source = "thread_fetch";
+    }
+  } catch {}
+
+  if (seeded.length === 0) {
+    try {
+      await thread.refresh();
+    } catch {}
+
+    const fromRecent = thread.recentMessages.slice(-BACKFILL_MESSAGE_LIMIT);
+    for (const entry of fromRecent) {
+      const message = createConversationMessageFromSdkMessage(entry);
+      if (message) {
+        seeded.push(message);
+      }
+    }
+    source = "recent_messages";
+  }
+
+  for (const message of seeded) {
+    if (
+      message.id !== currentTurn.messageId &&
+      message.createdAtMs > currentTurn.messageCreatedAtMs
+    ) {
+      continue;
+    }
+    if (
+      message.id !== currentTurn.messageId &&
+      message.createdAtMs === currentTurn.messageCreatedAtMs &&
+      message.id > currentTurn.messageId
+    ) {
+      continue;
+    }
+    upsertConversationMessage(conversation, message);
+  }
+
+  conversation.backfill = {
+    completedAtMs: Date.now(),
+    source,
+  };
+  updateConversationStats(conversation);
+}
+
+/** Build the turn-state preparer from injected conversation services. */
 export function createPrepareTurnState(deps: PrepareTurnStateDeps) {
   return async function prepareTurnState(args: {
     explicitMention: boolean;

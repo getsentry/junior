@@ -45,9 +45,8 @@ export function createJuniorRuntimeServices(
     completeText: overrides.visionContext?.completeText ?? completeText,
     listThreadReplies:
       overrides.visionContext?.listThreadReplies ?? listThreadReplies,
-    downloadPrivateSlackFile:
-      overrides.visionContext?.downloadPrivateSlackFile ??
-      downloadPrivateSlackFile,
+    downloadFile:
+      overrides.visionContext?.downloadFile ?? downloadPrivateSlackFile,
   });
 
   return {

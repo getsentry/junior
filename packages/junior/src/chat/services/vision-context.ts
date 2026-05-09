@@ -1,11 +1,9 @@
 import type { Attachment } from "chat";
 import { botConfig } from "@/chat/config";
-import { completeText } from "@/chat/pi/client";
+import type { completeText } from "@/chat/pi/client";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { toOptionalString } from "@/chat/coerce";
 import { logInfo, logWarn } from "@/chat/logging";
-import { listThreadReplies } from "@/chat/slack/channel";
-import { downloadPrivateSlackFile } from "@/chat/slack/client";
 import {
   getConversationMessageSlackTs,
   isHumanConversationMessage,
@@ -19,6 +17,22 @@ export interface UserInputAttachment {
   promptText?: string;
 }
 
+interface VisionThreadFile {
+  id?: string;
+  mimetype?: string;
+  name?: string;
+  size?: number;
+  url_private?: string;
+  url_private_download?: string;
+}
+
+interface VisionThreadReply {
+  ts?: string;
+  subtype?: string;
+  bot_id?: string;
+  files?: VisionThreadFile[];
+}
+
 const MAX_USER_ATTACHMENTS = 3;
 const MAX_USER_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const MAX_MESSAGE_IMAGE_ATTACHMENTS = 3;
@@ -26,8 +40,14 @@ const MAX_VISION_SUMMARY_CHARS = 500;
 
 export interface VisionContextDeps {
   completeText: typeof completeText;
-  downloadPrivateSlackFile: typeof downloadPrivateSlackFile;
-  listThreadReplies: typeof listThreadReplies;
+  downloadFile: (url: string) => Promise<Buffer>;
+  listThreadReplies: (input: {
+    channelId: string;
+    threadTs: string;
+    limit?: number;
+    maxPages?: number;
+    targetMessageTs?: string[];
+  }) => Promise<VisionThreadReply[]>;
 }
 
 export interface VisionContextService {
@@ -457,7 +477,7 @@ async function hydrateConversationVisionContextWithDeps(
     return;
   }
 
-  let replies: Awaited<ReturnType<typeof listThreadReplies>>;
+  let replies: VisionThreadReply[];
   try {
     replies = await deps.listThreadReplies({
       channelId: context.channelId,
@@ -579,7 +599,7 @@ async function hydrateConversationVisionContextWithDeps(
 
       let imageData: Buffer;
       try {
-        imageData = await deps.downloadPrivateSlackFile(downloadUrl);
+        imageData = await deps.downloadFile(downloadUrl);
       } catch (error) {
         logWarn(
           "conversation_image_download_failed",
@@ -695,12 +715,3 @@ export function createVisionContextService(
       ),
   };
 }
-
-const defaultVisionContextService = createVisionContextService({
-  completeText,
-  downloadPrivateSlackFile,
-  listThreadReplies,
-});
-
-export const hydrateConversationVisionContext =
-  defaultVisionContextService.hydrateConversationVisionContext;

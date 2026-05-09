@@ -25,6 +25,18 @@ export default {
       },
     },
     {
+      name: "no-chat-services-to-slack",
+      comment:
+        "Service modules must depend on small injected ports, not Slack infrastructure.",
+      severity: "error",
+      from: {
+        path: "^src/chat/services/",
+      },
+      to: {
+        path: "^src/chat/slack/",
+      },
+    },
+    {
       name: "no-chat-state-to-runtime",
       comment: "State modules must not depend on runtime orchestration.",
       severity: "error",

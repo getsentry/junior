@@ -35,7 +35,7 @@ import {
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
 import {
-  generateThreadTitle,
+  type ConversationMemoryService,
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
@@ -68,7 +68,7 @@ import {
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
-  generateThreadTitle: typeof generateThreadTitle;
+  generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
   lookupSlackUser: typeof lookupSlackUser;
   scheduleTurnTimeoutResume: (
     request: TurnTimeoutResumeRequest,
