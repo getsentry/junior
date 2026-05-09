@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-04-26
+- Last Edited: 2026-05-08
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-03-20: Documented prompt exposure of declared capabilities and clarified Sentry OAuth initiation paths.
 - 2026-04-17: Removed skill-level capability declarations and explicit model-facing auth commands in favor of plugin-owned permission manifests plus runtime-owned implicit auth.
 - 2026-04-26: Added the plugin-owned runtime setup boundary for packages, MCP endpoints, OAuth, and credentials.
+- 2026-05-08: Added plugin-owned `command-env` as a non-secret CLI compatibility surface.
 
 ## Status
 
@@ -34,7 +35,7 @@ Define how Junior maps a loaded plugin-backed skill to host-managed credentials 
 3. After a plugin-backed skill is loaded, the agent runs the real provider command.
 4. The runtime resolves the provider from the active skill, issues a provider lease, and injects credentials for the current turn only.
 5. If auth is missing or stale, the runtime starts a private OAuth flow and resumes the paused turn after authorization.
-6. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, or set up MCP servers.
+6. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, command env, or MCP servers.
 
 ## Plugin contract
 
@@ -42,6 +43,7 @@ Plugins define:
 
 - `capabilities`: host-side permission manifest for the provider integration
 - `credentials`: how runtime leases are delivered to tools
+- `command-env`: non-secret env vars or placeholders needed by sandbox commands
 - `oauth`: optional per-user OAuth configuration
 - `target`: optional provider-default metadata such as a repo config key
 
@@ -64,7 +66,7 @@ Rules:
 - `requires-capabilities` is no longer supported.
 - Skills must never include secret values.
 - Skills should use provider defaults from the runtime provider catalog so repo/project commands stay deterministic.
-- Skills must treat plugin-provided commands and tools as already available. Missing CLIs, missing MCP tools, sandbox package failures, or missing credentials are runtime/plugin setup failures to report or reconnect through runtime-owned flows, not problems for the skill to repair with package-manager or credential setup commands.
+- Skills must treat plugin-provided commands, tools, and command env as already available. Missing CLIs, missing MCP tools, sandbox package failures, missing command env, or missing credentials are runtime/plugin setup failures to report or reconnect through runtime-owned flows, not problems for the skill to repair with package-manager or credential setup commands.
 
 ## Runtime contract
 
@@ -80,6 +82,7 @@ Rules:
 - Enablement happens when the authenticated provider command runs, not at skill-load time.
 - Delivery uses sandbox header transforms for matching domains.
 - Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
+- Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys or deployment defaults, but never real secrets.
 - Do not inject long-lived secrets into sandbox files.
 
 ### Runtime setup boundary
@@ -89,6 +92,7 @@ Rules:
 - CLI and system packages belong in `plugin.yaml` `runtime-dependencies`.
 - Postinstall/bootstrap commands belong in `plugin.yaml` `runtime-postinstall`.
 - MCP endpoints and allowed tool surfaces belong in `plugin.yaml` `mcp`.
+- CLI env placeholders and deployment defaults belong in `plugin.yaml` `command-env`.
 - OAuth and static credential env names belong in `plugin.yaml` `oauth` and `credentials`.
 - Skill text may diagnose missing runtime surfaces, but must not tell the agent to install packages, run installer scripts, configure API keys, or repair sandbox package installation from inside a user workflow.
 
@@ -140,7 +144,7 @@ Emit events without secret material:
 - Skill-level capability allowlists.
 - Model-visible auth-management commands.
 - Provider-specific policy engines beyond requester and turn scoping.
-- Using arbitrary skill prose as an authority source for runtime package installation, MCP setup, or credential configuration.
+- Using arbitrary skill prose as an authority source for runtime package installation, MCP setup, command env, or credential configuration.
 
 ## Backward compatibility
 

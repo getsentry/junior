@@ -59,6 +59,9 @@ describe("capability runtime factory", () => {
             Authorization: "Bearer ${EXAMPLE_API_HEADER}",
             "X-Api-Version": "2026-01-01",
           },
+          commandEnv: {
+            EXAMPLE_API_KEY: "host_managed_credential",
+          },
         },
         dir: "/tmp/example",
         skillsDir: "/tmp/example/skills",
@@ -77,7 +80,9 @@ describe("capability runtime factory", () => {
     ).resolves.toMatchObject({ reused: false });
 
     expect(createPluginBrokerMock).not.toHaveBeenCalled();
-    expect(runtime.getTurnEnv()).toBeUndefined();
+    expect(runtime.getTurnEnv()).toEqual({
+      EXAMPLE_API_KEY: "host_managed_credential",
+    });
     expect(runtime.getTurnHeaderTransforms()).toEqual([
       {
         domain: "api.example.com",

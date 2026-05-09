@@ -67,6 +67,9 @@ export function createSkillCapabilityRuntime(
             provider: name,
             headerTransforms: () =>
               resolveTestApiHeaderTransforms(plugin.manifest),
+            ...(plugin.manifest.commandEnv
+              ? { env: plugin.manifest.commandEnv }
+              : {}),
           })
         : createPluginBroker(name, { userTokenStore });
       continue;
@@ -85,6 +88,9 @@ export function createSkillCapabilityRuntime(
                 headerTransforms: () =>
                   resolveTestApiHeaderTransforms(plugin.manifest),
               }
+            : {}),
+          ...(plugin.manifest.commandEnv
+            ? { env: plugin.manifest.commandEnv }
             : {}),
           envKey: credentials.authTokenEnv,
           placeholder,

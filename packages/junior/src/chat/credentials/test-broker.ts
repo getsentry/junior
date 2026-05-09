@@ -11,6 +11,7 @@ interface TestBrokerConfig {
   domains?: string[];
   apiHeaders?: Record<string, string>;
   headerTransforms?: () => CredentialHeaderTransform[];
+  env?: Record<string, string>;
   envKey?: string;
   placeholder?: string;
 }
@@ -27,10 +28,12 @@ export class TestCredentialBroker implements CredentialBroker {
     const token =
       process.env.EVAL_TEST_CREDENTIAL_TOKEN?.trim() || "eval-test-token";
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    const env =
-      this.config.envKey && this.config.placeholder
+    const env = {
+      ...(this.config.env ?? {}),
+      ...(this.config.envKey && this.config.placeholder
         ? { [this.config.envKey]: this.config.placeholder }
-        : {};
+        : {}),
+    };
     const tokenTransforms =
       this.config.domains?.map((domain) => ({
         domain,

@@ -84,7 +84,10 @@ export function createOAuthBearerBroker(
     return {
       id: randomUUID(),
       provider,
-      env: { [authTokenEnv]: authTokenPlaceholder },
+      env: {
+        ...(manifest.commandEnv ?? {}),
+        [authTokenEnv]: authTokenPlaceholder,
+      },
       headerTransforms: mergeHeaderTransforms([
         ...pluginHeaderTransforms(),
         ...apiDomains.map((domain) => ({

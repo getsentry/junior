@@ -1,36 +1,59 @@
 name: datadog
-description: Query Datadog telemetry (logs, metrics, traces, monitors, incidents, dashboards) via Datadog's hosted MCP server
+description: Query Datadog telemetry (logs, metrics, traces, monitors, incidents, dashboards) with Datadog's Pup CLI
 
 config-keys:
   - env
   - service
 
-# Datadog orgs are region-pinned. The MCP hostname must match the customer's
-# Datadog site. Non-US1 operators set DATADOG_SITE to their site host (e.g.
-# `us5.datadoghq.com`, `datadoghq.eu`, `ap1.datadoghq.com`, `ddog-gov.com`).
-# US1 operators can leave DATADOG_SITE unset and the default applies.
+capabilities:
+  - api
+
+# Datadog orgs are region-pinned. Pup routes requests to api.${DATADOG_SITE}.
+# Deployment env vars use DATADOG_* names; Pup receives DD_* command env.
+# Non-US1 operators set DATADOG_SITE to their site host (e.g. us5.datadoghq.com,
+# datadoghq.eu, ap1.datadoghq.com, ddog-gov.com). US1 operators can leave
+# DATADOG_SITE unset and the default applies.
 env-vars:
+  DATADOG_API_KEY:
+  DATADOG_APP_KEY:
   DATADOG_SITE:
     default: datadoghq.com
 
-mcp:
-  url: https://mcp.${DATADOG_SITE}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
-  allowed-tools:
-    - analyze_datadog_logs
-    - get_datadog_incident
-    - get_datadog_metric
-    - get_datadog_metric_context
-    - get_datadog_notebook
-    - get_datadog_trace
-    - search_datadog_dashboards
-    - search_datadog_events
-    - search_datadog_hosts
-    - search_datadog_incidents
-    - search_datadog_logs
-    - search_datadog_metrics
-    - search_datadog_monitors
-    - search_datadog_notebooks
-    - search_datadog_rum_events
-    - search_datadog_service_dependencies
-    - search_datadog_services
-    - search_datadog_spans
+api-domains:
+  - api.datadoghq.com
+  - api.us3.datadoghq.com
+  - api.us5.datadoghq.com
+  - api.ap1.datadoghq.com
+  - api.ap2.datadoghq.com
+  - api.datadoghq.eu
+  - api.ddog-gov.com
+
+api-headers:
+  DD-API-KEY: ${DATADOG_API_KEY}
+  DD-APPLICATION-KEY: ${DATADOG_APP_KEY}
+
+command-env:
+  DD_API_KEY: host_managed_credential
+  DD_APP_KEY: host_managed_credential
+  DD_SITE: ${DATADOG_SITE}
+  DD_READ_ONLY: "1"
+  FORCE_AGENT_MODE: "1"
+
+runtime-postinstall:
+  - cmd: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+        version=0.58.5
+        archive="pup_${version}_Linux_x86_64.tar.gz"
+        url="https://github.com/DataDog/pup/releases/download/v${version}/${archive}"
+        sha256="9543d968a6bd3b00da7ef20053717494beba7962e6cea01368d82857c8ea926b"
+        tmp="$(mktemp -d)"
+        trap 'rm -rf "$tmp"' EXIT
+        curl -fsSL "$url" -o "$tmp/$archive"
+        echo "${sha256}  $tmp/$archive" | sha256sum -c -
+        tar -xzf "$tmp/$archive" -C "$tmp"
+        mkdir -p /vercel/sandbox/.junior/bin
+        install -m 0755 "$tmp/pup" /vercel/sandbox/.junior/bin/pup
+        pup --version

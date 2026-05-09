@@ -1,11 +1,6 @@
 # @sentry/junior-datadog
 
-> [!WARNING]
-> **This plugin does not currently work.** Datadog's hosted MCP server requires OAuth Dynamic Client Registration (DCR, [RFC 7591](https://www.rfc-editor.org/rfc/rfc7591)) for third-party clients like Junior, and DCR is locked down on Datadog's side. Until Datadog exposes DCR (or an equivalent registration path) on `mcp.datadoghq.com`, Junior cannot complete the OAuth handshake and every Datadog tool call will fail.
->
-> The package is kept in-tree so the integration is ready to ship the moment Datadog unblocks DCR. Do not add it to a production deployment in the meantime.
-
-`@sentry/junior-datadog` adds read-only Datadog telemetry workflows to Junior through Datadog's hosted MCP server.
+`@sentry/junior-datadog` adds read-only Datadog telemetry workflows to Junior through Datadog's Pup CLI.
 
 Install it alongside `@sentry/junior`:
 
@@ -21,13 +16,35 @@ juniorNitro({
 });
 ```
 
-This package does not use `DD_API_KEY`, `DD_APP_KEY`, or a shared workspace integration. Each user connects their own Datadog account the first time Junior calls a Datadog MCP tool. Junior sends the OAuth link privately and resumes the thread automatically after the user authorizes.
+Set Datadog credentials in the Junior deployment environment:
 
-Junior intentionally keeps this package read-only by limiting the MCP tool surface to search, fetch, and log analytics tools. The plugin does not expose notebook writes, monitor edits, or other mutating Datadog tools.
+```bash
+DATADOG_API_KEY=...
+DATADOG_APP_KEY=...
+DATADOG_SITE=datadoghq.com # optional; defaults to US1
+```
+
+Use `DATADOG_API_KEY`, `DATADOG_APP_KEY`, and `DATADOG_SITE` in the Junior deployment environment. The plugin maps those host-side `DATADOG_*` values to Datadog API headers and Pup's sandbox `DD_*` env values.
+
+The real API and application keys stay host-side. Junior injects them into matching Datadog API requests as `DD-API-KEY` and `DD-APPLICATION-KEY` headers; the sandbox only receives non-secret placeholder values so Pup can perform its normal auth checks.
+
+Junior keeps this package read-only by setting Pup's read-only mode and by guiding the skill to use `pup --read-only --agent` commands. The plugin is intended for searches, fetches, and analytics across logs, metrics, traces/spans, monitors, incidents, dashboards, hosts, services, and RUM.
 
 ## Datadog site
 
-The packaged manifest defaults to the US1 endpoint (`mcp.datadoghq.com`) and enables the `core`, `apm`, and `error-tracking` toolsets. Teams on other Datadog sites (US3, US5, EU, AP1, AP2, GovCloud) set `DATADOG_SITE` in their Junior deployment env to their site host (e.g. `us5.datadoghq.com`, `datadoghq.eu`, `ddog-gov.com`). No code changes or plugin copy needed. See the [Datadog plugin docs](https://junior.sentry.dev/extend/datadog-plugin/) for the full site table.
+The packaged manifest defaults to the US1 API endpoint. Teams on other Datadog sites set `DATADOG_SITE` in their Junior deployment env to their site host. Setting deployment `DD_SITE` alone has no effect.
+
+| Datadog site | `DATADOG_SITE` value                 |
+| ------------ | ------------------------------------ |
+| US1          | _unset_ (default) or `datadoghq.com` |
+| US3          | `us3.datadoghq.com`                  |
+| US5          | `us5.datadoghq.com`                  |
+| EU           | `datadoghq.eu`                       |
+| AP1          | `ap1.datadoghq.com`                  |
+| AP2          | `ap2.datadoghq.com`                  |
+| GovCloud     | `ddog-gov.com`                       |
+
+The packaged API allowlist covers those standard Datadog sites. Custom or staging Datadog domains require a manifest change so the sandbox network header transform is allowed for that host.
 
 ## Optional channel defaults
 
@@ -42,8 +59,8 @@ These defaults are optional fallbacks. If a user names a different env or servic
 
 ## Auth model
 
-- Datadog MCP requires user-based OAuth (OAuth 2.1 + PKCE) and does not accept shared bearer tokens here.
-- This package is not suitable for fully headless or unattended automation.
-- Users can disconnect from Junior App Home with `Unlink`, or by asking Junior to disconnect Datadog.
+- This package uses deployment-level Datadog API and application keys, not per-user OAuth.
+- Use a Datadog application key with the smallest read scopes/role that covers the telemetry users need.
+- Real key values never enter the sandbox env, files, or command arguments.
 
 Full setup guide: https://junior.sentry.dev/extend/datadog-plugin/

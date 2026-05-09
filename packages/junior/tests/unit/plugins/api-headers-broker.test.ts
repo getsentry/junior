@@ -41,6 +41,22 @@ describe("API headers broker", () => {
     ]);
   });
 
+  it("includes plugin command env in issued leases", async () => {
+    process.env.EXAMPLE_AUTH_HEADER = "Basic abc123";
+
+    const broker = createApiHeadersBroker({
+      ...MANIFEST,
+      commandEnv: {
+        EXAMPLE_API_KEY: "host_managed_credential",
+      },
+    });
+    const lease = await broker.issue({ reason: "test:command-env" });
+
+    expect(lease.env).toEqual({
+      EXAMPLE_API_KEY: "host_managed_credential",
+    });
+  });
+
   it("throws when an env-backed header references a missing env var", async () => {
     delete process.env.EXAMPLE_AUTH_HEADER;
 

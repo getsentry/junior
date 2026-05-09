@@ -5,77 +5,82 @@ Use these patterns to shape concrete Datadog requests.
 ## 1. Triage "service X is failing right now"
 
 - Default the time window to the last 15 minutes unless the user gave a different one.
-- Constrain by `service:` and `env:` (explicit user input wins; fall back to `datadog.service` / `datadog.env`).
-- `search_datadog_monitors` for `service:<x>` first — a firing monitor usually names the failure mode.
-- Then `analyze_datadog_logs` to aggregate by status/level/message to find the top error shape.
-- If the user asks "why", fetch one representative failing trace with `get_datadog_trace` or `search_datadog_spans` filtered to `service:<x> status:error`.
-- Report monitor state, top error, and one failing trace link — not a dump.
+- Constrain by `service:` and `env:`. Explicit user input wins; fall back to `datadog.service` / `datadog.env`.
+- Run `pup --read-only --agent monitors search --query="service:<x>"` or `monitors list --tags=service:<x>,env:<env>` first; a firing monitor usually names the failure mode.
+- Then run `pup --read-only --agent logs aggregate --query="service:<x> env:<env>" --from="15m" --to="now" --compute=count --group-by=status` or group by an error facet such as `@error.kind`.
+- If the user asks "why", search representative failing spans with `pup --read-only --agent traces search --query="service:<x> env:<env> status:error" --from="15m" --limit=20`.
+- Report monitor state, top error, and one representative trace/span link when available.
 
 ## 2. "Is this monitor alerting?"
 
-- Use `search_datadog_monitors` with the monitor name, tag, or ID.
-- Report state (`OK`, `Warn`, `Alert`, `No Data`), last transition, and the monitor link.
-- If the monitor is in `No Data`, note that explicitly — it is not the same as healthy.
+- If the user gave a monitor ID, run `pup --read-only --agent monitors get <id>`.
+- Otherwise run `pup --read-only --agent monitors search --query="<name or tag>"` or `monitors list --name="<name>" --tags=...`.
+- Report state (`OK`, `Warn`, `Alert`, `No Data`), last transition if present, and the monitor link.
+- If the monitor is in `No Data`, note that explicitly; it is not the same as healthy.
 
 ## 3. "Tell me about incident INC-123" or "What is the status of the Redis incident?"
 
-- If the user named the incident ID, go straight to `get_datadog_incident`.
-- If only a topic was named, use `search_datadog_incidents` filtered by active/severity and scan for a match in the thread's time window.
-- Report severity, state, owner, and link to the incident.
-- Note that incident timeline detail may be absent from the MCP response; do not fabricate timeline entries.
+- If the user named the incident ID, run `pup --read-only --agent incidents get <id>`.
+- If only a topic was named, run `pup --read-only --agent incidents list --query="state:active <topic>" --limit=20` and scan for a match in the thread's time window.
+- Report severity, state, owner/team if present, and link to the incident.
+- Do not fabricate timeline entries if Pup does not return them.
 
 ## 4. Log search with a specific query
 
-- Default to `search_datadog_logs` only when the user explicitly wants raw log lines.
-- Constrain with `service:`, `env:`, `status:`, `host:`, or `@<faceted_field>:` as appropriate (see `query-syntax.md`).
+- Use `pup --read-only --agent logs search` only when the user explicitly wants raw log lines.
+- Constrain with `service:`, `env:`, `status:`, `host:`, or `@<faceted_field>:` as appropriate.
 - Cap page size and time window to avoid huge responses.
-- Report a short summary plus a Datadog logs deep link. Quote only the minimum log content.
+- Report a short summary plus a Datadog logs deep link when available. Quote only the minimum log content.
 
 ## 5. "What are the top errors for service X right now?"
 
-- Prefer `analyze_datadog_logs` with a SQL-style `GROUP BY status` or `GROUP BY @http.status_code` / `GROUP BY @error.kind`.
+- Prefer `pup --read-only --agent logs aggregate --query="service:<x> env:<env> status:error" --compute=count --group-by=@error.kind --limit=10`.
+- Use `--group-by=@http.status_code`, `status`, `service`, `host`, or another facet when it better matches the question.
 - Report the top 3-5 buckets with counts, not an exhaustive table.
-- Include the aggregated query link so the user can open the same view in Datadog.
 
 ## 6. Trace inspection by ID
 
-- Use `get_datadog_trace` with the trace ID.
-- Cite the top 3 slowest or error-tagged spans (service, operation, duration, error state).
-- If the server marks the trace as truncated, say so — some spans are not present.
+- Pup exposes span search. Use `pup --read-only --agent traces search --query="trace_id:<id>" --from=<window> --to=<window> --limit=100`.
+- Cite the top 3 slowest or error-tagged spans: service, resource/operation, duration, error state.
+- If the returned spans look partial, say so. Do not claim a complete trace tree unless the output proves it.
 
 ## 7. Span search for a known error pattern
 
-- Use `search_datadog_spans` with explicit filters like `service:<x> status:error resource_name:"..."` and a bounded time window.
-- Report span counts plus the most illustrative span's trace link.
+- Use `pup --read-only --agent traces search --query='service:<x> env:<env> status:error resource_name:"..."' --from=... --to=...`.
+- For counts or latency buckets, use `pup --read-only --agent traces aggregate --query="service:<x> env:<env>" --compute=count --group-by=resource_name`.
+- Report counts plus the most illustrative span's trace link when available.
 
 ## 8. Service topology lookup
 
-- Use `search_datadog_service_dependencies` to answer "what calls X?" or "what does X depend on?" or "what does team Y own?".
-- Return the dependency list with service names and link back to the Service Catalog page.
+- Use `pup --read-only --agent apm dependencies list --env <env> --from=... --to=...` to answer dependency questions.
+- Use `pup --read-only --agent apm flow-map --query="service:<x>" --env <env> --from=... --to=...` when the question is centered on one service.
+- Return the dependency list with service names and a Service Catalog/APM link when available.
 
 ## 9. Metric lookup
 
-- Use `search_datadog_metrics` when the user is unsure of the metric name.
-- Once the metric name is known, use `get_datadog_metric` with the time window and tag filters.
-- Use `get_datadog_metric_context` before querying if the user wants to know which tags (`env`, `service`, `host`, ...) are usable.
-- Report headline numbers (current, peak, delta) plus a metric explorer link.
+- Use `pup --read-only --agent metrics search --query="<pattern>"` or `metrics list --filter="<pattern>"` when the user is unsure of the metric name.
+- Once the metric name is known, use `pup --read-only --agent metrics query --query="avg:<metric>{env:<env>,service:<service>}" --from=... --to=...`.
+- Use `pup --read-only --agent metrics metadata get <metric>` and `metrics tags list <metric> --from=... --to=...` before querying if the user wants valid tags.
+- Report headline numbers: current, peak, delta, or bucketed values as appropriate.
 
 ## 10. Host health
 
-- Use `search_datadog_hosts` filtered by tag, role, or `down:true`.
-- Return counts, the list of unhealthy hosts (names + tags), and a host map link.
+- Use `pup --read-only --agent infrastructure hosts list --filter="env:<env> <role-or-service>" --count=50`.
+- Use `pup --read-only --agent infrastructure hosts get <hostname>` for a specific host.
+- Return counts, unhealthy host names/tags, and a host map link when available.
 
 ## 11. RUM / frontend slowness
 
-- Use `search_datadog_rum_events` only when the user asked about end-user / browser experience.
+- Use `pup --read-only --agent rum aggregate` for top views/errors and `rum events` only when the user needs example events.
+- Use `pup --read-only --agent rum sessions search` for session questions.
 - Constrain to `@type:error`, slow page loads, or specific views; bound the time window.
-- Do not use RUM for backend errors — those live in logs/APM.
+- Do not use RUM for backend errors; those live in logs/APM.
 
 ## 12. Dashboards and notebooks
 
-- `search_datadog_dashboards` to list dashboards by topic, team, or tag — useful for "do we already have a dashboard for X?".
-- `search_datadog_notebooks` + `get_datadog_notebook` for reading existing investigation notebooks.
-- This skill does not create or edit dashboards or notebooks. If the user asks, stop and say so.
+- `pup --read-only --agent dashboards list` and `dashboards get <id>` are useful for "do we already have a dashboard for X?".
+- `pup --read-only --agent notebooks list` and `notebooks get <id>` are for reading investigation notebooks.
+- This skill does not create or edit dashboards or notebooks.
 
 ## 13. Storing channel defaults
 

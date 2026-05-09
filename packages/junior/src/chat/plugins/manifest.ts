@@ -268,6 +268,7 @@ const manifestSourceSchema = z
       .optional(),
     "api-domains": apiDomainsSchema.optional(),
     "api-headers": stringMapSchema.optional(),
+    "command-env": stringMapSchema.optional(),
     credentials: z
       .record(z.string(), z.unknown(), {
         error: "must be an object when provided",
@@ -381,6 +382,51 @@ function normalizeRequiredApiHeaders(
     assertDeclaredEnvReferences(headerValue, envVars, `${prefix}.${key}`);
   }
   return apiHeaders;
+}
+
+function assertCommandEnvReferencesArePublic(
+  value: string,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+  context: string,
+): void {
+  for (const match of value.matchAll(ENV_PLACEHOLDER_RE)) {
+    const name = match[1] as string;
+    if (!Object.prototype.hasOwnProperty.call(envVars, name)) {
+      throw new Error(
+        `${context} references env var ${name} which is not declared in env-vars`,
+      );
+    }
+    if (envVars[name]?.default === undefined) {
+      throw new Error(
+        `${context} references env var ${name}, but command-env env vars must declare defaults`,
+      );
+    }
+  }
+}
+
+function normalizeCommandEnv(
+  value: Record<string, string>,
+  prefix: string,
+  envVars: Record<string, PluginEnvVarDeclaration>,
+): Record<string, string> {
+  const env = normalizeStringMap(value, prefix);
+  if (!env) {
+    throw new Error(`${prefix} must contain at least one env var`);
+  }
+
+  for (const [key, envValue] of Object.entries(env)) {
+    if (!ENV_VAR_NAME_RE.test(key)) {
+      throw new Error(`${prefix}.${key} must be an uppercase env var name`);
+    }
+    assertCommandEnvReferencesArePublic(envValue, envVars, `${prefix}.${key}`);
+  }
+
+  return Object.fromEntries(
+    Object.entries(env).map(([key, envValue]) => [
+      key,
+      expandEnvPlaceholders(envValue, envVars, `${prefix}.${key}`),
+    ]),
+  );
 }
 
 function normalizeCredentials(
@@ -759,6 +805,11 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
         `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} api-headers must be an object when provided`,
       );
     }
+    if (path === "command-env") {
+      throw new Error(
+        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} command-env must be an object when provided`,
+      );
+    }
     if (path === "credentials") {
       throw new Error(
         `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} credentials must be an object when provided`,
@@ -830,10 +881,22 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
   if (data["api-domains"] && !apiHeaders) {
     throw new Error(`Plugin ${data.name} api-domains requires api-headers`);
   }
+  const commandEnv = data["command-env"]
+    ? normalizeCommandEnv(
+        data["command-env"],
+        `Plugin ${data.name} command-env`,
+        envVars,
+      )
+    : undefined;
 
   const credentials = data.credentials
     ? normalizeCredentials(data.credentials, data.name)
     : undefined;
+  if (commandEnv && !credentials && !apiHeaders) {
+    throw new Error(
+      `Plugin ${data.name} command-env requires credentials or api-headers`,
+    );
+  }
   const runtimeDependencies = data["runtime-dependencies"]
     ? normalizeRuntimeDependencies(data["runtime-dependencies"], data.name)
     : undefined;
@@ -849,6 +912,7 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
     configKeys,
     ...(data["api-domains"] ? { apiDomains: data["api-domains"] } : {}),
     ...(apiHeaders ? { apiHeaders } : {}),
+    ...(commandEnv ? { commandEnv } : {}),
     ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
     ...(credentials ? { credentials } : {}),
     ...(runtimeDependencies ? { runtimeDependencies } : {}),

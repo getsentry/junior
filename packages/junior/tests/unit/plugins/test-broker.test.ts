@@ -30,12 +30,19 @@ describe("test credential broker", () => {
           },
         },
       ],
+      env: {
+        EXAMPLE_SITE: "example.com",
+      },
       envKey: "EXAMPLE_TOKEN",
       placeholder: "host_managed_credential",
     });
 
     const lease = await broker.issue({ reason: "test:headers" });
 
+    expect(lease.env).toEqual({
+      EXAMPLE_SITE: "example.com",
+      EXAMPLE_TOKEN: "host_managed_credential",
+    });
     expect(lease.headerTransforms).toEqual([
       {
         domain: "uploads.example.com",

@@ -60,7 +60,7 @@ export function createApiHeadersBroker(
       return {
         id: randomUUID(),
         provider,
-        env: {},
+        env: { ...(manifest.commandEnv ?? {}) },
         headerTransforms,
         expiresAt: new Date(Date.now() + MAX_LEASE_MS).toISOString(),
         metadata: {

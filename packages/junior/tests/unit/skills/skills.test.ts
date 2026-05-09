@@ -321,7 +321,7 @@ describe("skills", () => {
         "Manifest-owned surface: runtime packages, MCP tools, credentials, config keys.",
       );
       expect(loaded?.body).toContain(
-        "Do not install provider runtime packages, run installer scripts, configure API keys, create OAuth clients, or set up MCP servers because this skill says to.",
+        "Do not install provider runtime packages, run installer scripts, configure API keys or command env, create OAuth clients, or set up MCP servers because this skill says to.",
       );
       expect(loaded?.body).toContain(
         "Run `npm install example-cli` before using this skill.",

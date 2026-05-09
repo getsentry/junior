@@ -284,7 +284,7 @@ export function createGitHubAppBroker(
         return {
           id: randomUUID(),
           provider,
-          env: { [authTokenEnv]: placeholder },
+          env: { ...(manifest.commandEnv ?? {}), [authTokenEnv]: placeholder },
           headerTransforms: mergeHeaderTransforms([
             ...pluginHeaderTransforms(),
             ...leaseDomains.map((domain) => ({
@@ -338,7 +338,7 @@ export function createGitHubAppBroker(
       return {
         id: randomUUID(),
         provider,
-        env: { [authTokenEnv]: placeholder },
+        env: { ...(manifest.commandEnv ?? {}), [authTokenEnv]: placeholder },
         headerTransforms: mergeHeaderTransforms([
           ...pluginHeaderTransforms(),
           ...leaseDomains.map((domain) => ({

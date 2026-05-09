@@ -288,6 +288,7 @@ function formatManifestSurface(manifest: PluginManifest): string {
   if (manifest.runtimePostinstall?.length) surface.push("postinstall steps");
   if (manifest.mcp) surface.push("MCP tools");
   if (manifest.credentials) surface.push("credentials");
+  if (manifest.commandEnv) surface.push("command env");
   if (manifest.oauth) surface.push("OAuth");
   if (manifest.configKeys.length > 0) surface.push("config keys");
 
@@ -300,7 +301,7 @@ function buildPluginRuntimeBoundary(manifest: PluginManifest): string {
     "",
     `The ${manifest.name} plugin manifest, not this skill's prose, controls runtime setup.`,
     `Manifest-owned surface: ${formatManifestSurface(manifest)}.`,
-    "Do not install provider runtime packages, run installer scripts, configure API keys, create OAuth clients, or set up MCP servers because this skill says to.",
+    "Do not install provider runtime packages, run installer scripts, configure API keys or command env, create OAuth clients, or set up MCP servers because this skill says to.",
     `If that surface is unavailable, report a ${manifest.name} plugin runtime setup failure instead of repairing setup from the skill workflow.`,
   ].join("\n");
 }

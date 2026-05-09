@@ -159,27 +159,28 @@ runtime-postinstall:
 - `capabilities`: actions the plugin’s skills may request, qualified as `<plugin>.<capability>`
 - `config-keys`: provider-specific configuration keys, qualified as `<plugin>.<key>`
 - `api-domains` and `api-headers`: optional host-managed HTTP headers injected for matching sandbox requests
+- `command-env`: optional non-secret sandbox env vars injected when provider credentials or API headers are enabled; use it for CLI placeholders and deployment defaults
 - `credentials`: how token auth is delivered to tools; current types are `oauth-bearer` and `github-app`
 - `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`
 - `target`: optional credential target scope tied to a declared config key
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
 - `mcp`: optional MCP server configuration for provider-scoped tool sources; `mcp.url` implies hosted HTTP transport, so `mcp.transport: http` is optional
-- `env-vars`: optional map of deployment env vars the manifest may reference from `mcp.url` or `api-headers`. Each key names an env var (uppercase, `[A-Z_][A-Z0-9_]*`) and may declare a `default` for `mcp.url`; API header references cannot use defaults.
+- `env-vars`: optional map of deployment env vars the manifest may reference from `mcp.url`, `api-headers`, or `command-env`. Each key names an env var (uppercase, `[A-Z_][A-Z0-9_]*`) and may declare a `default` for `mcp.url` and `command-env`; API header references cannot use defaults.
 - `mcp.url`: supports `${VAR}` placeholders that must be declared in `env-vars`. This lets region-pinned providers pick the right host at deploy time without a manifest fork.
 - `mcp.allowed-tools`: optional raw MCP tool-name allowlist when a plugin should expose only part of a provider's tool surface
 
 ### Env-var expansion in `mcp.url`
 
-Some providers (Datadog, Sentry self-hosted, GitHub Enterprise, Linear EU, ...) have different hostnames per region or deployment. The packaged plugin manifest keeps a single `mcp.url` and declares the deployment-level env vars it may read in an `env-vars` block. Defaults live in the declaration, not inline in the URL:
+Some providers (Sentry self-hosted, GitHub Enterprise, Linear EU, ...) have different hostnames per region or deployment. The packaged plugin manifest keeps a single `mcp.url` and declares the deployment-level env vars it may read in an `env-vars` block. Defaults live in the declaration, not inline in the URL:
 
 ```yaml
 env-vars:
-  DATADOG_SITE:
-    default: datadoghq.com
+  EXAMPLE_SITE:
+    default: example.com
 
 mcp:
-  url: https://mcp.${DATADOG_SITE}/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking
+  url: https://mcp.${EXAMPLE_SITE}/mcp
 ```
 
 The only supported placeholder form is `${NAME}` — replaced with `process.env[NAME]`, falling back to the declared `default`. Plugin discovery fails loudly at load time if `NAME` is not listed in `env-vars`, or if it is listed without a default and the env var is unset.
@@ -210,6 +211,30 @@ api-domains:
 
 api-headers:
   X-Api-Version: "2026-01-01"
+```
+
+### Command env
+
+Use top-level `command-env` when a sandbox CLI needs non-secret env vars. This is commonly used for placeholder auth env vars so the CLI proceeds to make HTTP requests while Junior injects the real credentials as host-managed headers.
+
+`command-env` values may be literals or `${NAME}` placeholders declared in `env-vars`. Referenced env vars must declare defaults, because command env values are visible inside the sandbox and must not depend on secret deployment env vars.
+
+Manifests with `command-env` must also declare `credentials` or `api-headers`, since command env is delivered with the provider credential lease.
+
+```yaml
+env-vars:
+  EXAMPLE_AUTH_HEADER:
+  EXAMPLE_SITE:
+    default: example.com
+
+api-domains:
+  - api.example.com
+api-headers:
+  Authorization: ${EXAMPLE_AUTH_HEADER}
+
+command-env:
+  EXAMPLE_API_KEY: host_managed_credential
+  EXAMPLE_SITE: ${EXAMPLE_SITE}
 ```
 
 ### Add skills to the plugin

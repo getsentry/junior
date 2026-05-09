@@ -4,56 +4,54 @@ Use this reference for any Datadog operation.
 
 ## Provider surface
 
-The packaged plugin points at Datadog's hosted remote MCP server and enables the `core`, `apm`, and `error-tracking` toolsets. Tool exposure is intentionally limited to the read-oriented surface below.
+The packaged plugin installs Datadog's `pup` CLI and configures it for agent-mode, read-only Datadog API access. Pup defaults to JSON output, which is the right format for analysis.
 
-### Tools exposed in this skill
+Run commands as `pup --read-only --agent ...`. If a command surface is unclear, inspect `pup --read-only --agent agent schema --compact` or `pup --read-only --agent <group> --help` before guessing.
 
-| Tool                                  | Intent                                                                              |
-| ------------------------------------- | ----------------------------------------------------------------------------------- |
-| `search_datadog_logs`                 | Search raw log events by filter (service, host, env, status, query, time window).   |
-| `analyze_datadog_logs`                | SQL-style aggregation over logs for counts, group-bys, top-N, and numeric analysis. |
-| `search_datadog_events`               | Datadog Events API: deployments, infra changes, alerts, status events.              |
-| `search_datadog_metrics`              | List available metrics by name pattern, tag, or service.                            |
-| `get_datadog_metric`                  | Query a specific metric time series over a time window.                             |
-| `get_datadog_metric_context`          | Fetch metadata and available tag dimensions for a metric.                           |
-| `search_datadog_spans`                | Search APM spans by service, operation, tags, time, error state.                    |
-| `get_datadog_trace`                   | Fetch a full trace by trace ID.                                                     |
-| `search_datadog_services`             | List services from the Software Catalog with ownership and tag metadata.            |
-| `search_datadog_service_dependencies` | Upstream/downstream service map for a service, or services owned by a team.         |
-| `search_datadog_hosts`                | List monitored hosts with tags and health state.                                    |
-| `search_datadog_monitors`             | List monitors, their statuses, and alert conditions.                                |
-| `search_datadog_incidents`            | List incidents with severity, state, and metadata.                                  |
-| `get_datadog_incident`                | Retrieve a specific incident by ID (timeline detail may be absent).                 |
-| `search_datadog_dashboards`           | List available dashboards.                                                          |
-| `search_datadog_notebooks`            | List Datadog notebooks by author, tag, or content.                                  |
-| `get_datadog_notebook`                | Fetch a notebook by ID.                                                             |
-| `search_datadog_rum_events`           | Search Datadog RUM (Real User Monitoring) events for browser / frontend issues.     |
+### Read-oriented commands
 
-### Tools intentionally not exposed
+| Need                    | Pup command pattern                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Raw logs                | `pup --read-only --agent logs search --query="service:checkout env:prod status:error" --from="15m" --limit=20`                       |
+| Log aggregation         | `pup --read-only --agent logs aggregate --query="service:checkout env:prod" --compute=count --group-by=status`                       |
+| Metrics                 | `pup --read-only --agent metrics list`, `metrics search`, `metrics query`, `metrics metadata get`, `metrics tags list`               |
+| Spans / traces          | `pup --read-only --agent traces search --query="service:checkout status:error" --from="15m" --limit=20`                              |
+| Span aggregation        | `pup --read-only --agent traces aggregate --query="service:checkout" --compute="percentile(@duration, 95)" --group-by=resource_name` |
+| APM services            | `pup --read-only --agent apm services list --env prod`, `apm services stats --env prod`                                              |
+| Service dependencies    | `pup --read-only --agent apm dependencies list --env prod` or `apm flow-map --query="service:checkout"`                              |
+| Monitors                | `pup --read-only --agent monitors search --query="service:checkout"`, `monitors list --tags=service:checkout`, `monitors get <id>`   |
+| Incidents               | `pup --read-only --agent incidents list --query="state:active" --limit=20`, `incidents get <id>`                                     |
+| Hosts                   | `pup --read-only --agent infrastructure hosts list --filter="env:prod" --count=50`, `infrastructure hosts get <host>`                |
+| Dashboards              | `pup --read-only --agent dashboards list`, `dashboards get <id>`, `dashboards url <id>`                                              |
+| Notebooks               | `pup --read-only --agent notebooks list`, `notebooks get <id>`                                                                       |
+| RUM events and sessions | `pup --read-only --agent rum events --query='@type:error'`, `rum aggregate`, `rum sessions search`                                   |
 
-- Notebook mutations (`create_datadog_notebook`, `edit_datadog_notebook`).
-- Monitor, SLO, or incident mutations.
-- Feature-flag, DBM, and security toolsets (the packaged URL does not request them).
+### Commands to avoid
+
+Do not run write commands, even with `--read-only` present:
+
+- `create`, `update`, `delete`, `import`, `submit`, `cancel`, `mute`, `resolve`, or any command that writes a JSON file to Datadog.
+- API key, app key, user, org policy, security, SLO, dashboard, monitor, incident, notebook, RUM metric, retention filter, playlist, or workflow mutations.
 
 If a user asks for a mutation, stop and explain that this skill is read-only.
 
 ## Operation patterns
 
-| Intent                                           | Minimum tool pattern                                                                                                                               |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "Why is service X failing right now?"            | `search_datadog_monitors` + `analyze_datadog_logs` (top error counts by status or message) + optionally `get_datadog_trace` for one failing trace. |
-| "Show me errors for service X in the last hour." | `analyze_datadog_logs` for counts/top-N first; only fall back to `search_datadog_logs` if the user asked for specific log lines.                   |
-| "What is the status of monitor X?"               | `search_datadog_monitors` with the monitor name/tag, then cite state + last transition time.                                                       |
-| "Tell me about incident INC-123."                | `get_datadog_incident` directly. Only fall back to `search_datadog_incidents` if no ID is known.                                                   |
-| "What depends on the checkout service?"          | `search_datadog_service_dependencies` scoped to that service.                                                                                      |
-| "How did this trace spend its time?"             | `get_datadog_trace` by ID; cite the slowest spans.                                                                                                 |
-| "What tag values are valid for this metric?"     | `get_datadog_metric_context` before `get_datadog_metric`.                                                                                          |
-| "Which hosts are unhealthy?"                     | `search_datadog_hosts` filtered by health/tags.                                                                                                    |
-| "Find slow page loads."                          | `search_datadog_rum_events` with a page/speed filter.                                                                                              |
+| Intent                                           | Minimum command pattern                                                                                                 |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| "Why is service X failing right now?"            | `monitors search/list` + `logs aggregate` for top errors + optionally `traces search` for representative failing spans. |
+| "Show me errors for service X in the last hour." | `logs aggregate` for counts/top-N first; only use `logs search` if the user asked for specific log lines.               |
+| "What is the status of monitor X?"               | `monitors search --query=...` or `monitors get <id>`, then cite state and last transition if present.                   |
+| "Tell me about incident INC-123."                | `incidents get <id>` directly. Only fall back to `incidents list --query=...` if no ID is known.                        |
+| "What depends on checkout?"                      | `apm dependencies list --env <env>` or `apm flow-map --query="service:checkout" --env <env>`.                           |
+| "How did this trace spend its time?"             | `traces search --query="trace_id:<id>"`; cite slowest/error spans. Pup exposes span search, not a guaranteed full tree. |
+| "What tag values are valid for this metric?"     | `metrics metadata get <metric>` and `metrics tags list <metric> --from=... --to=...` before `metrics query`.            |
+| "Which hosts are unhealthy?"                     | `infrastructure hosts list --filter=...` with env/service/role filters.                                                 |
+| "Find slow page loads."                          | `rum aggregate` or `rum events` with RUM facets and a bounded time window.                                              |
 
 ## Content expectations
 
-- Translate Slack-thread wording into stable observability language (env, service, status, span, monitor, incident, host).
-- Preserve material URLs present in the conversation (Sentry, GitHub, dashboards, prior Datadog links) when they add evidence.
-- Include Datadog deep links (`https://app.datadoghq.com/...`) with the answer so users can click through.
-- Label assumptions clearly when the thread leaves important details uncertain (chosen env, chosen time window, chosen service).
+- Translate Slack-thread wording into stable observability language: env, service, status, span, monitor, incident, host.
+- Preserve material URLs present in the conversation when they add evidence.
+- Include Datadog deep links when Pup returns them or when a stable ID-specific link is obvious.
+- Label assumptions clearly when the thread leaves important details uncertain: chosen env, chosen time window, chosen service.
