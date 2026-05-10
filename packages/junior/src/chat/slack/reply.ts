@@ -4,6 +4,7 @@ import type { AssistantReply } from "@/chat/respond";
 import type { ReplyFileDelivery } from "@/chat/services/reply-delivery-plan";
 import {
   buildSlackReplyBlocks,
+  buildSlackReplyFooter,
   type SlackReplyFooter,
 } from "@/chat/slack/footer";
 import { postSlackMessage, uploadFilesToThread } from "@/chat/slack/outbound";
@@ -178,15 +179,12 @@ export function planSlackReplyPosts(args: {
   return posts;
 }
 
-/**
- * Deliver planned Slack reply posts over raw Slack Web API calls for resume and
- * callback handlers that do not have a Chat SDK thread object.
- */
-export async function postSlackApiReplyPosts(args: {
+/** Send already planned reply posts through the shared Slack outbound boundary. */
+async function postSlackApiReplyPosts(args: {
   beforePost?: () => Promise<void>;
   footer?: SlackReplyFooter;
   channelId: string;
-  fileUploadFailureMode?: "best_effort" | "strict";
+  fileUploadFailureMode: "best_effort" | "strict";
   onPostError?: (context: {
     error: unknown;
     messageTs?: string;
@@ -226,7 +224,7 @@ export async function postSlackApiReplyPosts(args: {
 
       await uploadReplyFiles({
         channelId: args.channelId,
-        failureMode: args.fileUploadFailureMode ?? "best_effort",
+        failureMode: args.fileUploadFailureMode,
         threadTs: args.threadTs,
         files: post.files,
       });
@@ -241,4 +239,44 @@ export async function postSlackApiReplyPosts(args: {
   }
 
   return lastPostedMessageTs;
+}
+
+/** Keep live and resumed turns on the same finalized Slack delivery path. */
+export async function deliverSlackApiFinalReply(args: {
+  beforePost?: () => Promise<void>;
+  channelId: string;
+  conversationId?: string;
+  fileUploadFailureMode: "best_effort" | "strict";
+  onPostError?: (context: {
+    error: unknown;
+    messageTs?: string;
+    stage: PlannedSlackReplyStage;
+  }) => Promise<void> | void;
+  reply: AssistantReply;
+  threadTs: string;
+}): Promise<{
+  posts: PlannedSlackReplyPost[];
+  sentMessageTs?: string;
+}> {
+  const posts = planSlackReplyPosts({ reply: args.reply });
+  const footer = buildSlackReplyFooter({
+    conversationId: args.conversationId,
+    durationMs: args.reply.diagnostics.durationMs,
+    thinkingLevel: args.reply.diagnostics.thinkingLevel,
+    usage: args.reply.diagnostics.usage,
+  });
+  const sentMessageTs = await postSlackApiReplyPosts({
+    beforePost: args.beforePost,
+    channelId: args.channelId,
+    threadTs: args.threadTs,
+    posts,
+    fileUploadFailureMode: args.fileUploadFailureMode,
+    footer,
+    onPostError: args.onPostError,
+  });
+
+  return {
+    posts,
+    ...(sentMessageTs ? { sentMessageTs } : {}),
+  };
 }

@@ -20,11 +20,7 @@ import {
   createSlackWebApiAssistantStatusSession,
   type AssistantStatusSession,
 } from "@/chat/slack/assistant-thread/status";
-import { buildSlackReplyFooter } from "@/chat/slack/footer";
-import {
-  planSlackReplyPosts,
-  postSlackApiReplyPosts,
-} from "@/chat/slack/reply";
+import { deliverSlackApiFinalReply } from "@/chat/slack/reply";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -297,18 +293,12 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     });
 
     await status.stop();
-    const footer = buildSlackReplyFooter({
-      conversationId: args.replyContext?.correlation?.conversationId ?? lockKey,
-      durationMs: reply.diagnostics.durationMs,
-      thinkingLevel: reply.diagnostics.thinkingLevel,
-      usage: reply.diagnostics.usage,
-    });
-    await postSlackApiReplyPosts({
+    await deliverSlackApiFinalReply({
       channelId: args.channelId,
       threadTs: args.threadTs,
-      posts: planSlackReplyPosts({ reply }),
+      reply,
+      conversationId: args.replyContext?.correlation?.conversationId ?? lockKey,
       fileUploadFailureMode: "best_effort",
-      footer,
     });
     await args.onSuccess?.(reply);
   } catch (error) {

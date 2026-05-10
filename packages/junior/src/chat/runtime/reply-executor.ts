@@ -11,8 +11,8 @@ import {
   withSpan,
 } from "@/chat/logging";
 import {
+  deliverSlackApiFinalReply,
   planSlackReplyPosts,
-  postSlackApiReplyPosts,
   type PlannedSlackReplyStage,
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
@@ -49,7 +49,6 @@ import {
   isVisionEnabled,
 } from "@/chat/services/vision-context";
 import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
-import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
@@ -390,89 +389,74 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const reactionPerformed = reply.diagnostics.toolCalls.includes(
             "slackMessageAddReaction",
           );
-          const plannedPosts = planSlackReplyPosts({ reply });
-          const replyFooter = buildSlackReplyFooter({
-            conversationId,
-            durationMs: reply.diagnostics.durationMs,
-            thinkingLevel: reply.diagnostics.thinkingLevel,
-            usage: reply.diagnostics.usage,
-          });
-          const shouldUseSlackFooter =
-            Boolean(replyFooter) &&
-            Boolean(channelId && threadTs) &&
-            (thread.adapter as { name?: string } | undefined)?.name === "slack";
-
           // Final Slack delivery is part of turn success. We only mark the turn
           // completed after the visible reply has been accepted by Slack.
-          if (plannedPosts.length > 0) {
-            let sent: SentMessage | undefined;
-            if (shouldUseSlackFooter) {
-              const slackChannelId = channelId;
-              const slackThreadTs = threadTs;
-              if (!slackChannelId || !slackThreadTs) {
-                throw new Error(
-                  "Slack footer delivery requires a concrete channel and thread timestamp",
-                );
-              }
-
-              const sentMessageTs = await postSlackApiReplyPosts({
-                beforePost: beforeFirstResponsePost,
-                channelId: slackChannelId,
-                threadTs: slackThreadTs,
-                posts: plannedPosts,
-                fileUploadFailureMode: "strict",
-                footer: replyFooter,
-                onPostError: ({ error, messageTs, stage }) => {
-                  logException(
-                    error,
-                    "slack_thread_post_failed",
-                    turnTraceContext,
-                    {
-                      "app.slack.reply_stage": stage,
-                      ...(messageTs
-                        ? { "messaging.message.id": messageTs }
-                        : {}),
-                      ...getSlackErrorObservabilityAttributes(error),
-                    },
-                    "Failed to post Slack thread reply",
-                  );
-                },
-              });
-
-              if (sentMessageTs) {
-                sent = {
-                  id: sentMessageTs,
-                  text: reply.text,
-                  delete: async () => {
-                    await deleteSlackMessage({
-                      channelId: slackChannelId,
-                      timestamp: sentMessageTs,
-                    });
+          let sent: SentMessage | undefined;
+          let plannedPosts: ReturnType<typeof planSlackReplyPosts>;
+          if (
+            channelId &&
+            threadTs &&
+            (thread.adapter as { name?: string } | undefined)?.name === "slack"
+          ) {
+            const delivery = await deliverSlackApiFinalReply({
+              beforePost: beforeFirstResponsePost,
+              channelId,
+              threadTs,
+              reply,
+              conversationId,
+              fileUploadFailureMode: "strict",
+              onPostError: ({ error, messageTs, stage }) => {
+                logException(
+                  error,
+                  "slack_thread_post_failed",
+                  turnTraceContext,
+                  {
+                    "app.slack.reply_stage": stage,
+                    ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                    ...getSlackErrorObservabilityAttributes(error),
                   },
-                } as SentMessage;
-              }
-            } else {
-              for (const post of plannedPosts) {
-                sent = await postThreadReply(
-                  buildSlackOutputMessage(post.text, post.files),
-                  post.stage,
+                  "Failed to post Slack thread reply",
                 );
-              }
+              },
+            });
+            plannedPosts = delivery.posts;
+
+            const sentMessageTs = delivery.sentMessageTs;
+            if (sentMessageTs) {
+              sent = {
+                id: sentMessageTs,
+                text: reply.text,
+                delete: async () => {
+                  await deleteSlackMessage({
+                    channelId,
+                    timestamp: sentMessageTs,
+                  });
+                },
+              } as SentMessage;
             }
-            const firstPlannedMessageHasFiles =
-              (plannedPosts[0]?.files?.length ?? 0) > 0;
-            // When a reaction already acknowledged the turn, delete the
-            // redundant thread reply. The post itself completes Slack's
-            // assistant response cycle (clearing the typing indicator).
-            if (
-              sent &&
-              reactionPerformed &&
-              plannedPosts.length === 1 &&
-              !firstPlannedMessageHasFiles &&
-              isRedundantReactionAckText(reply.text)
-            ) {
-              await sent.delete();
+          } else {
+            plannedPosts = planSlackReplyPosts({ reply });
+            for (const post of plannedPosts) {
+              sent = await postThreadReply(
+                buildSlackOutputMessage(post.text, post.files),
+                post.stage,
+              );
             }
+          }
+
+          const firstPlannedMessageHasFiles =
+            (plannedPosts[0]?.files?.length ?? 0) > 0;
+          // When a reaction already acknowledged the turn, delete the
+          // redundant thread reply. The post itself completes Slack's
+          // assistant response cycle (clearing the typing indicator).
+          if (
+            sent &&
+            reactionPerformed &&
+            plannedPosts.length === 1 &&
+            !firstPlannedMessageHasFiles &&
+            isRedundantReactionAckText(reply.text)
+          ) {
+            await sent.delete();
           }
 
           const titleUpdateResult = await assistantTitleTask;
