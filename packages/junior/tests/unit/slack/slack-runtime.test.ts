@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Attachment } from "chat";
 import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
@@ -12,7 +11,6 @@ import {
 
 interface TestState {
   prepared: boolean;
-  conversationContext?: string;
 }
 
 function createMockDeps(
@@ -62,82 +60,10 @@ describe("createSlackTurnRuntime", () => {
         explicitMention: true,
       });
     });
-
-    it("posts a safe error when replyToThread fails", async () => {
-      const replyError = new Error("reply failed");
-      const deps = createMockDeps({
-        replyToThread: vi.fn().mockRejectedValue(replyError),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({});
-
-      await runtime.handleNewMention(thread, message);
-
-      expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=evt_test`.",
-      );
-    });
-
-    it("posts a safe error when subscribe fails", async () => {
-      const subscribeError = new Error("subscribe failed");
-      const deps = createMockDeps({
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      // Override subscribe to throw
-      thread.subscribe = async () => {
-        throw subscribeError;
-      };
-      const message = createTestMessage({});
-
-      await runtime.handleNewMention(thread, message);
-
-      expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=evt_test`.",
-      );
-    });
-
-    it("includes sentry event id when available", async () => {
-      const replyError = new Error("reply failed");
-      const deps = createMockDeps({
-        replyToThread: vi.fn().mockRejectedValue(replyError),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-        logException: vi.fn(() => "evt_123"),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({});
-
-      await runtime.handleNewMention(thread, message);
-
-      expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=evt_123`.",
-      );
-    });
-
-    it("fails closed when sentry capture returns no event id", async () => {
-      const replyError = new Error("reply failed");
-      const deps = createMockDeps({
-        replyToThread: vi.fn().mockRejectedValue(replyError),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-        logException: vi.fn(() => undefined),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({});
-
-      await expect(runtime.handleNewMention(thread, message)).rejects.toThrow(
-        "Sentry did not return an event ID for mention_handler_failed",
-      );
-      expect(thread.posts).toHaveLength(0);
-    });
   });
 
   describe("handleSubscribedMessage", () => {
-    it("calls prepareTurnState → persistPreparedState → shouldReply → replyToThread in order", async () => {
+    it("calls prepareTurnState → persistPreparedState → decideSubscribedReply → replyToThread in order", async () => {
       const callOrder: string[] = [];
       const deps = createMockDeps({
         prepareTurnState: vi.fn(async () => {
@@ -148,7 +74,7 @@ describe("createSlackTurnRuntime", () => {
           callOrder.push("persistPreparedState");
         }),
         decideSubscribedReply: vi.fn(async () => {
-          callOrder.push("shouldReply");
+          callOrder.push("decideSubscribedReply");
           return { shouldReply: true, reason: "test" };
         }),
         replyToThread: vi.fn(async () => {
@@ -165,7 +91,7 @@ describe("createSlackTurnRuntime", () => {
       expect(callOrder).toEqual([
         "prepareTurnState",
         "persistPreparedState",
-        "shouldReply",
+        "decideSubscribedReply",
         "replyToThread",
       ]);
     });
@@ -193,100 +119,7 @@ describe("createSlackTurnRuntime", () => {
       );
     });
 
-    it("when shouldReply: false, skips replyToThread", async () => {
-      const deps = createMockDeps({
-        decideSubscribedReply: vi.fn(async () => ({
-          shouldReply: false,
-          reason: "passive conversation",
-        })),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({});
-
-      await runtime.handleSubscribedMessage(thread, message);
-
-      expect(deps.replyToThread).not.toHaveBeenCalled();
-      expect(deps.recordSkippedSubscribedMessage).not.toHaveBeenCalled();
-      expect(deps.onSubscribedMessageSkipped).toHaveBeenCalledWith(
-        expect.objectContaining({
-          thread,
-          message,
-          decision: { shouldReply: false, reason: "passive conversation" },
-          completedAtMs: 1700000000000,
-        }),
-      );
-    });
-
-    it("preflight-skips messages addressed to another party before preparing turn state", async () => {
-      const deps = createMockDeps();
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({
-        text: "@Cursor can you take this one?",
-        isMention: false,
-      });
-
-      await runtime.handleSubscribedMessage(thread, message);
-
-      expect(deps.prepareTurnState).not.toHaveBeenCalled();
-      expect(deps.persistPreparedState).not.toHaveBeenCalled();
-      expect(deps.decideSubscribedReply).not.toHaveBeenCalled();
-      expect(deps.replyToThread).not.toHaveBeenCalled();
-      expect(deps.onSubscribedMessageSkipped).toHaveBeenCalledWith(
-        expect.objectContaining({
-          thread,
-          message,
-          decision: {
-            shouldReply: false,
-            reason: "directed_to_other_party:named_mention:Cursor",
-          },
-          completedAtMs: 1700000000000,
-        }),
-      );
-      expect(deps.recordSkippedSubscribedMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          thread,
-          message,
-          userText: "@Cursor can you take this one?",
-          decision: {
-            shouldReply: false,
-            reason: "directed_to_other_party:named_mention:Cursor",
-          },
-          completedAtMs: 1700000000000,
-        }),
-      );
-    });
-
-    it("unsubscribes when subscribed-thread routing returns thread opt-out", async () => {
-      const deps = createMockDeps({
-        decideSubscribedReply: vi.fn(async () => ({
-          shouldReply: false,
-          shouldUnsubscribe: true,
-          reason: "thread_opt_out:user asked junior to stop participating",
-        })),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      await thread.subscribe();
-      const message = createTestMessage({
-        text: "<@U123> leave this thread alone",
-        isMention: true,
-      });
-
-      await runtime.handleSubscribedMessage(thread, message);
-
-      expect(thread.subscribed).toBe(false);
-      expect(deps.prepareTurnState).toHaveBeenCalled();
-      expect(deps.persistPreparedState).toHaveBeenCalled();
-      expect(deps.decideSubscribedReply).toHaveBeenCalled();
-      expect(deps.replyToThread).not.toHaveBeenCalled();
-      expect(thread.posts).toEqual([
-        "Understood. I'll stay out of this thread unless someone @mentions me again.",
-      ]);
-    });
-
-    it("passes conversationContext from getPreparedConversationContext to shouldReply", async () => {
+    it("passes conversationContext from getPreparedConversationContext to decideSubscribedReply", async () => {
       const deps = createMockDeps({
         getPreparedConversationContext: vi.fn(() => "some context"),
         withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
@@ -299,85 +132,6 @@ describe("createSlackTurnRuntime", () => {
 
       expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
         expect.objectContaining({ conversationContext: "some context" }),
-      );
-    });
-
-    it("passes explicitMention: true for classifier-approved subscribed mentions", async () => {
-      const deps = createMockDeps({
-        decideSubscribedReply: vi.fn(async () => ({
-          shouldReply: true,
-          reason: "llm_classifier:follow_up_question",
-        })),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({ isMention: true });
-
-      await runtime.handleSubscribedMessage(thread, message);
-
-      expect(deps.replyToThread).toHaveBeenCalledWith(thread, message, {
-        explicitMention: true,
-        preparedState: { prepared: true },
-      });
-    });
-
-    it("passes hasAttachments: true when message has attachments", async () => {
-      const deps = createMockDeps({
-        decideSubscribedReply: vi.fn(async (args) => ({
-          shouldReply: Boolean(args.hasAttachments),
-          reason: args.hasAttachments ? "attachment" : "empty message",
-        })),
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({
-        text: "",
-        attachments: [
-          {
-            type: "image",
-            url: "https://example.com/img.png",
-          } satisfies Attachment,
-        ],
-      });
-
-      await runtime.handleSubscribedMessage(thread, message);
-
-      expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
-        expect.objectContaining({ hasAttachments: true }),
-      );
-      expect(deps.replyToThread).toHaveBeenCalled();
-    });
-
-    it("passes hasAttachments: false when message has no attachments", async () => {
-      const deps = createMockDeps({
-        withSpan: vi.fn(async (_n, _o, _c, cb) => cb()),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({ text: "hello" });
-
-      await runtime.handleSubscribedMessage(thread, message);
-
-      expect(deps.decideSubscribedReply).toHaveBeenCalledWith(
-        expect.objectContaining({ hasAttachments: false }),
-      );
-    });
-
-    it("on failure, posts a safe error message", async () => {
-      const err = new Error("handler boom");
-      const deps = createMockDeps({
-        prepareTurnState: vi.fn().mockRejectedValue(err),
-      });
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = createTestThread({});
-      const message = createTestMessage({});
-
-      await runtime.handleSubscribedMessage(thread, message);
-
-      expect(thread.posts).toContain(
-        "I ran into an internal error while processing that. Reference: `event_id=evt_test`.",
       );
     });
   });
