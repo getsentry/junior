@@ -16,13 +16,13 @@ import {
   type PlannedSlackReplyStage,
 } from "@/chat/slack/reply";
 import { buildSlackOutputMessage } from "@/chat/slack/output";
+import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   getAssistantThreadContext,
   getChannelId,
   getMessageTs,
-  getSlackErrorObservabilityAttributes,
   getThreadId,
   getThreadTs,
   getRunId,

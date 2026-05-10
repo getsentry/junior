@@ -54,12 +54,12 @@ async function postSlackMessageBestEffort(
       text,
     });
   } catch {
-    // Best effort.
+    // The connected notice should not decide whether the resumed turn succeeds.
   }
 }
 
 /** Create a read-only configuration service from persisted values. */
-export function createReadOnlyConfigService(
+function createReadOnlyConfigService(
   values: Record<string, unknown>,
 ): ChannelConfigurationService {
   const entries = Object.entries(values).map(([key, value]) => ({
@@ -98,7 +98,7 @@ export class ResumeTurnBusyError extends Error {
   }
 }
 
-export interface ResumeSlackTurnArgs {
+interface ResumeSlackTurnArgs {
   messageText: string;
   channelId: string;
   threadTs: string;
@@ -178,20 +178,12 @@ async function handleResumeFailure(args: {
   );
   await args.resumeArgs.onFailure?.(args.error);
   const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
-  let postError: unknown;
-  try {
-    await postResumeFailureReply({
-      channelId: args.resumeArgs.channelId,
-      threadTs: args.resumeArgs.threadTs,
-      eventId,
-      logContext,
-    });
-  } catch (error) {
-    postError = error;
-  }
-  if (postError) {
-    throw postError;
-  }
+  await postResumeFailureReply({
+    channelId: args.resumeArgs.channelId,
+    threadTs: args.resumeArgs.threadTs,
+    eventId,
+    logContext,
+  });
 }
 
 function createResumeReplyContext(
@@ -245,8 +237,7 @@ function createResumeReplyContext(
  * never arrived.
  */
 export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
-  const requesterUserId = args.replyContext?.requester?.userId;
-  if (!requesterUserId) {
+  if (!args.replyContext?.requester?.userId) {
     throw new Error("Resumed turn requires replyContext.requester.userId");
   }
 
@@ -280,9 +271,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
 
     const generateReply = args.generateReply ?? generateAssistantReply;
     const replyContext = createResumeReplyContext(args, status);
-    const replyPromise = generateReply(args.messageText, {
-      ...replyContext,
-    });
+    const replyPromise = generateReply(args.messageText, replyContext);
     const replyTimeoutMs = resolveReplyTimeoutMs(args.replyTimeoutMs);
     let reply =
       typeof replyTimeoutMs === "number"
@@ -325,20 +314,22 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
   } catch (error) {
     await status.stop();
 
+    const onAuthPause = args.onAuthPause;
+    const onTimeoutPause = args.onTimeoutPause;
     if (
       (isRetryableTurnError(error, "mcp_auth_resume") ||
         isRetryableTurnError(error, "plugin_auth_resume")) &&
-      args.onAuthPause
+      onAuthPause
     ) {
       deferredPauseHandler = async () => {
-        await args.onAuthPause?.(error);
+        await onAuthPause(error);
       };
     } else if (
       isRetryableTurnError(error, "turn_timeout_resume") &&
-      args.onTimeoutPause
+      onTimeoutPause
     ) {
       deferredPauseHandler = async () => {
-        await args.onTimeoutPause?.(error);
+        await onTimeoutPause(error);
       };
     } else {
       deferredFailureHandler = async () => {

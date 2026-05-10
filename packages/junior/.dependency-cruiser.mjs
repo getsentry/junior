@@ -37,6 +37,18 @@ export default {
       },
     },
     {
+      name: "no-chat-slack-to-runtime",
+      comment:
+        "Slack modules must own Slack behavior and avoid runtime orchestration imports.",
+      severity: "error",
+      from: {
+        path: "^src/chat/slack/",
+      },
+      to: {
+        path: "^src/chat/runtime/",
+      },
+    },
+    {
       name: "no-chat-state-to-runtime",
       comment: "State modules must not depend on runtime orchestration.",
       severity: "error",

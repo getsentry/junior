@@ -2,7 +2,7 @@ import type { Message, Thread } from "chat";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildTurnFailureResponse } from "@/chat/logging";
-import { getSlackErrorObservabilityAttributes } from "@/chat/runtime/thread-context";
+import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 
 export interface AssistantLifecycleEvent {

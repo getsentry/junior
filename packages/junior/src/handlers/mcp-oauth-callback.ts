@@ -28,7 +28,7 @@ import {
   updateConversationStats,
 } from "@/chat/services/conversation-memory";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import { resumeAuthorizedRequest } from "@/chat/slack/resume";
+import { resumeAuthorizedRequest } from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   applyPendingAuthUpdate,

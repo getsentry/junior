@@ -1,17 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
-  postSlackMessageMock,
   resumeSlackTurnMock,
   scheduleTurnTimeoutResumeMock,
-  uploadFilesToThreadMock,
   verifyTurnTimeoutResumeRequestMock,
   waitUntilCallbacks,
 } = vi.hoisted(() => ({
-  postSlackMessageMock: vi.fn(),
   resumeSlackTurnMock: vi.fn(),
   scheduleTurnTimeoutResumeMock: vi.fn(),
-  uploadFilesToThreadMock: vi.fn(),
   verifyTurnTimeoutResumeRequestMock: vi.fn(),
   waitUntilCallbacks: [] as Array<() => Promise<unknown> | void>,
 }));
@@ -35,15 +31,9 @@ vi.mock("@/chat/services/timeout-resume", async (importOriginal) => ({
   verifyTurnTimeoutResumeRequest: verifyTurnTimeoutResumeRequestMock,
 }));
 
-vi.mock("@/chat/slack/resume", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/slack/resume")>()),
-  postSlackMessage: postSlackMessageMock,
+vi.mock("@/chat/runtime/slack-resume", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/runtime/slack-resume")>()),
   resumeSlackTurn: resumeSlackTurnMock,
-}));
-
-vi.mock("@/chat/slack/outbound", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/slack/outbound")>()),
-  uploadFilesToThread: uploadFilesToThreadMock,
 }));
 
 import { RetryableTurnError } from "@/chat/runtime/turn";
@@ -64,18 +54,14 @@ const testWaitUntil: WaitUntilFn = (task) => {
 describe("turn resume handler", () => {
   beforeEach(async () => {
     waitUntilCallbacks.length = 0;
-    postSlackMessageMock.mockReset();
     resumeSlackTurnMock.mockReset();
     scheduleTurnTimeoutResumeMock.mockReset();
-    uploadFilesToThreadMock.mockReset();
     verifyTurnTimeoutResumeRequestMock.mockReset();
 
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
 
-    postSlackMessageMock.mockResolvedValue(undefined);
     scheduleTurnTimeoutResumeMock.mockResolvedValue(undefined);
-    uploadFilesToThreadMock.mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -268,7 +254,6 @@ describe("turn resume handler", () => {
       } as any;
 
       try {
-        await args.onReply?.(reply);
         await args.onSuccess?.(reply);
       } catch (error) {
         await args.onFailure?.(error);

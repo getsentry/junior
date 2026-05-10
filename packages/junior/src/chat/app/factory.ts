@@ -7,6 +7,7 @@ import {
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { logException, logWarn, withSpan } from "@/chat/logging";
 import { createReplyToThread } from "@/chat/runtime/reply-executor";
 import {
@@ -19,7 +20,12 @@ import {
   getThreadId,
   stripLeadingBotMention,
 } from "@/chat/runtime/thread-context";
-import { persistThreadState } from "@/chat/runtime/thread-state";
+import {
+  getPersistedThreadState,
+  mergeArtifactsState,
+  persistThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import {
   createPrepareTurnState,
   type PreparedTurnState,
@@ -38,6 +44,21 @@ export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
   now?: () => number;
   services?: JuniorRuntimeServiceOverrides;
+}
+
+async function persistAssistantContextChannelId(args: {
+  sourceChannelId: string;
+  threadId: string;
+}): Promise<void> {
+  const currentArtifacts = coerceThreadArtifactsState(
+    await getPersistedThreadState(args.threadId),
+  );
+  const nextArtifacts = mergeArtifactsState(currentArtifacts, {
+    assistantContextChannelId: args.sourceChannelId,
+  });
+  await persistThreadStateById(args.threadId, {
+    artifacts: nextArtifacts,
+  });
 }
 
 export function createSlackRuntime(
@@ -149,11 +170,15 @@ export function createSlackRuntime(
       sourceChannelId,
     }) => {
       await initializeAssistantThreadImpl({
-        threadId,
         channelId,
         threadTs,
         sourceChannelId,
         getSlackAdapter: options.getSlackAdapter,
+        onContextChannelResolved: (resolvedSourceChannelId) =>
+          persistAssistantContextChannelId({
+            sourceChannelId: resolvedSourceChannelId,
+            threadId,
+          }),
       });
     },
     refreshAssistantThreadContext: async ({
@@ -163,11 +188,15 @@ export function createSlackRuntime(
       sourceChannelId,
     }) => {
       await refreshAssistantThreadContextImpl({
-        threadId,
         channelId,
         threadTs,
         sourceChannelId,
         getSlackAdapter: options.getSlackAdapter,
+        onContextChannelResolved: (resolvedSourceChannelId) =>
+          persistAssistantContextChannelId({
+            sourceChannelId: resolvedSourceChannelId,
+            threadId,
+          }),
       });
     },
   });

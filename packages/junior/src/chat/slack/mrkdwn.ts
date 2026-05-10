@@ -1,4 +1,4 @@
-import { truncateStatusText } from "@/chat/runtime/status-format";
+import { truncateStatusText } from "@/chat/slack/status-format";
 
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {

@@ -53,7 +53,10 @@ vi.mock("@/chat/logging", async (importOriginal) => {
   };
 });
 
-import { resumeAuthorizedRequest, resumeSlackTurn } from "@/chat/slack/resume";
+import {
+  resumeAuthorizedRequest,
+  resumeSlackTurn,
+} from "@/chat/runtime/slack-resume";
 
 describe("resumeAuthorizedRequest", () => {
   beforeEach(async () => {

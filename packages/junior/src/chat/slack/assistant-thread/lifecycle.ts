@@ -1,18 +1,12 @@
-import { ThreadImpl } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
-import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
-import {
-  mergeArtifactsState,
-  persistThreadState,
-} from "@/chat/runtime/thread-state";
 import { normalizeSlackConversationId } from "@/chat/slack/client";
 
 interface AssistantThreadLifecycleEvent {
-  threadId: string;
   channelId: string;
   threadTs: string;
   sourceChannelId?: string;
   getSlackAdapter: () => SlackAdapter;
+  onContextChannelResolved: (sourceChannelId: string) => Promise<void>;
 }
 
 async function syncAssistantThreadContext(
@@ -46,20 +40,7 @@ async function syncAssistantThreadContext(
     return;
   }
 
-  const thread = ThreadImpl.fromJSON({
-    _type: "chat:Thread",
-    adapterName: "slack",
-    channelId,
-    id: event.threadId,
-    isDM: channelId.startsWith("D"),
-  });
-  const currentArtifacts = coerceThreadArtifactsState(await thread.state);
-  const nextArtifacts = mergeArtifactsState(currentArtifacts, {
-    assistantContextChannelId: sourceChannelId,
-  });
-  await persistThreadState(thread, {
-    artifacts: nextArtifacts,
-  });
+  await event.onContextChannelResolved(sourceChannelId);
 }
 
 /** Initialize a newly started Slack assistant thread. */

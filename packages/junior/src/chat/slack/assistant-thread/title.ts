@@ -3,7 +3,7 @@ import { logError, logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   getSlackApiErrorCode,
   isSlackTitlePermissionError,
-} from "@/chat/runtime/thread-context";
+} from "@/chat/slack/errors";
 import {
   getThreadTitleSourceMessage,
   type ConversationMemoryService,

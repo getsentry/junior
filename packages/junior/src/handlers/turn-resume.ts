@@ -1,6 +1,9 @@
 import { botConfig } from "@/chat/config";
 import { logException, logWarn } from "@/chat/logging";
-import { ResumeTurnBusyError, resumeSlackTurn } from "@/chat/slack/resume";
+import {
+  ResumeTurnBusyError,
+  resumeSlackTurn,
+} from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   getAgentTurnSessionCheckpoint,

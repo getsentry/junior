@@ -20,7 +20,7 @@ import {
   ResumeTurnBusyError,
   resumeAuthorizedRequest,
   resumeSlackTurn,
-} from "@/chat/slack/resume";
+} from "@/chat/runtime/slack-resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import { logInfo } from "@/chat/logging";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";

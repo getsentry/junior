@@ -40,7 +40,8 @@ describe("oauth resume slack integration", () => {
   });
 
   it("posts resumed status updates through the Slack MSW harness", async () => {
-    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
+    const { resumeAuthorizedRequest } =
+      await import("@/chat/runtime/slack-resume");
     await resumeAuthorizedRequest({
       messageText: "What budget deadline did I mention earlier?",
       channelId: "C123",
@@ -124,7 +125,8 @@ describe("oauth resume slack integration", () => {
   }, 10_000);
 
   it("chunks long resumed replies into explicit continuation messages", async () => {
-    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
+    const { resumeAuthorizedRequest } =
+      await import("@/chat/runtime/slack-resume");
     const longReply = Array.from(
       { length: 80 },
       (_, i) => `line ${i + 1}`,
@@ -162,7 +164,8 @@ describe("oauth resume slack integration", () => {
   });
 
   it("replaces resumed provider-error replies with the canonical event-id response", async () => {
-    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
+    const { resumeAuthorizedRequest } =
+      await import("@/chat/runtime/slack-resume");
 
     await resumeAuthorizedRequest({
       messageText: "Continue the original request",
@@ -195,7 +198,8 @@ describe("oauth resume slack integration", () => {
   });
 
   it("replaces resumed execution-failure replies before Slack planning", async () => {
-    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
+    const { resumeAuthorizedRequest } =
+      await import("@/chat/runtime/slack-resume");
 
     await resumeAuthorizedRequest({
       messageText: "Continue the original request",
@@ -227,7 +231,8 @@ describe("oauth resume slack integration", () => {
   });
 
   it("delivers resumed reply files through the shared reply planner", async () => {
-    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
+    const { resumeAuthorizedRequest } =
+      await import("@/chat/runtime/slack-resume");
 
     await resumeAuthorizedRequest({
       messageText: "Continue the original request",
@@ -277,7 +282,8 @@ describe("oauth resume slack integration", () => {
   });
 
   it("keeps the resumed reply visible when file upload followups fail", async () => {
-    const { resumeAuthorizedRequest } = await import("@/chat/slack/resume");
+    const { resumeAuthorizedRequest } =
+      await import("@/chat/runtime/slack-resume");
     queueSlackApiError("files.completeUploadExternal", {
       error: "upload_failed",
     });

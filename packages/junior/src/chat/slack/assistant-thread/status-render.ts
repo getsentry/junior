@@ -1,4 +1,4 @@
-import { truncateStatusText } from "@/chat/runtime/status-format";
+import { truncateStatusText } from "@/chat/slack/status-format";
 import { normalizeSlackStatusText } from "@/chat/slack/mrkdwn";
 
 const DEFAULT_STATUS_CONTEXTS = {

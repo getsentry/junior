@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-21
-- Last Edited: 2026-05-09
+- Last Edited: 2026-05-10
 
 ## Changelog
 
@@ -15,6 +15,7 @@
 - 2026-03-22: Removed test-only plugin registry mutation APIs and made plugin discovery reload from the current root signature instead of import-time state.
 - 2026-03-22: Replaced prototype-patch ingress with the explicit `JuniorChat` subclass, removed the OAuth resume post-message observer global, split queue transport from queue retry policy, and replaced the ambient user-token-store singleton with construction at the call site.
 - 2026-05-09: Added the enforced service-to-Slack boundary: domain services depend on injected Slack-backed ports instead of Slack infrastructure modules.
+- 2026-05-10: Added the enforced Slack-to-runtime boundary and moved resumed Slack turn orchestration under `runtime/`.
 
 ## Status
 
@@ -66,6 +67,7 @@ Define the normative architecture contract for `packages/junior/src/chat` so new
 - `runtime/` may depend on `services/`, `state/`, `queue/`, `turn/`, `slack/`, and pure helpers.
 - `services/` must not depend on `runtime/`.
 - `services/` must not import Slack infrastructure; use small injected ports owned by the service when a domain service needs Slack-backed data or files.
+- `slack/` modules must not import runtime orchestration modules.
 - `state/` must not depend on `runtime/` or service modules.
 - `ingress/` may route into queue/runtime entrypoints, but must not own business logic that belongs in `runtime/` or `services/`.
 
