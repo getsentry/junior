@@ -24,12 +24,14 @@ async function loadFooter() {
 }
 
 afterEach(() => {
+  delete process.env.SENTRY_ORG_SLUG;
   vi.doUnmock("@/chat/sentry");
   vi.resetModules();
 });
 
 describe("Slack footer Sentry links", () => {
-  it("links the ID to an Explore traces search from the active SaaS DSN", async () => {
+  it("links the ID to an Explore traces search using org slug subdomain for SaaS", async () => {
+    process.env.SENTRY_ORG_SLUG = "my-org";
     mockSentryClient({
       dsn: {
         protocol: "https",
@@ -53,14 +55,14 @@ describe("Slack footer Sentry links", () => {
         elements: [
           {
             type: "mrkdwn",
-            text: "*ID:* <https://sentry.io/organizations/123/explore/traces/?query=gen_ai.conversation.id%3A%22slack%3AC123%3A1700000000.000100%22&amp;project=4501&amp;statsPeriod=14d|slack:C123:1700000000.000100>",
+            text: "*ID:* <https://my-org.sentry.io/explore/traces/?query=gen_ai.conversation.id%3A%22slack%3AC123%3A1700000000.000100%22&amp;project=4501&amp;statsPeriod=14d|slack:C123:1700000000.000100>",
           },
         ],
       },
     ]);
   });
 
-  it("uses an explicit SDK orgId before the DSN host org ID", async () => {
+  it("leaves the ID plain when SENTRY_ORG_SLUG is not set even with numeric org data", async () => {
     mockSentryClient({
       dsn: {
         protocol: "https",
@@ -77,7 +79,31 @@ describe("Slack footer Sentry links", () => {
         items: [
           {
             label: "ID",
-            url: "https://sentry.io/organizations/456/explore/traces/?query=gen_ai.conversation.id%3A%22conversation-1%22&project=4501&statsPeriod=14d",
+            value: "conversation-1",
+          },
+        ],
+      },
+    );
+  });
+
+  it("uses /organizations/{slug}/ for self-hosted DSN", async () => {
+    process.env.SENTRY_ORG_SLUG = "my-org";
+    mockSentryClient({
+      dsn: {
+        protocol: "https",
+        host: "sentry.example.com",
+        projectId: "4501",
+      },
+    });
+
+    const { buildSlackReplyFooter } = await loadFooter();
+
+    expect(buildSlackReplyFooter({ conversationId: "conversation-1" })).toEqual(
+      {
+        items: [
+          {
+            label: "ID",
+            url: "https://sentry.example.com/organizations/my-org/explore/traces/?query=gen_ai.conversation.id%3A%22conversation-1%22&project=4501&statsPeriod=14d",
             value: "conversation-1",
           },
         ],

@@ -3,7 +3,6 @@ import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level"
 import type { AgentTurnUsage } from "@/chat/usage";
 
 const SENTRY_CONVERSATION_SEARCH_STATS_PERIOD = "14d";
-const ORG_ID_HOST_RE = /^o(\d+)\./;
 
 interface SlackMrkdwnTextObject {
   text: string;
@@ -55,19 +54,13 @@ function escapeSlackLinkUrl(url: string): string {
     .replaceAll(">", "%3E");
 }
 
-function toOptionalString(value: unknown): string | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
 function quoteSentrySearchValue(value: string): string {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 
-function getDsnOrgId(host: string | undefined): string | undefined {
-  return host?.match(ORG_ID_HOST_RE)?.[1];
+function getSentryOrgSlug(): string | undefined {
+  const slug = process.env.SENTRY_ORG_SLUG?.trim();
+  return slug || undefined;
 }
 
 function isSentrySaasDsnHost(host: string): boolean {
@@ -98,9 +91,8 @@ function getSentryConversationSearchUrl(
     return undefined;
   }
 
-  const orgId =
-    toOptionalString(client?.getOptions().orgId) ?? getDsnOrgId(dsn.host);
-  if (!orgId) {
+  const orgSlug = getSentryOrgSlug();
+  if (!orgSlug) {
     return undefined;
   }
 
@@ -112,7 +104,13 @@ function getSentryConversationSearchUrl(
   params.set("project", dsn.projectId);
   params.set("statsPeriod", SENTRY_CONVERSATION_SEARCH_STATS_PERIOD);
 
-  return `${buildSentryWebBaseUrl(dsn)}/organizations/${orgId}/explore/traces/?${params.toString()}`;
+  const search = `explore/traces/?${params.toString()}`;
+
+  if (isSentrySaasDsnHost(dsn.host)) {
+    return `https://${orgSlug}.sentry.io/${search}`;
+  }
+
+  return `${buildSentryWebBaseUrl(dsn)}/organizations/${orgSlug}/${search}`;
 }
 
 function formatSlackTokenCount(value: number): string {
