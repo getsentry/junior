@@ -24,10 +24,7 @@ describe("plugin manifest command proxies", () => {
       "/tmp/github",
     );
 
-    expect(manifest.commandProxies).toEqual([
-      { command: "gh", provider: "github" },
-      { command: "git", provider: "github" },
-    ]);
+    expect(manifest.commandProxies).toEqual(["gh", "git"]);
   });
 
   it("rejects invalid command proxy executable names", () => {

@@ -92,7 +92,7 @@ export interface PluginManifest {
   commandEnv?: Record<string, string>;
   envVars?: Record<string, PluginEnvVarDeclaration>;
   credentials?: PluginCredentials;
-  commandProxies?: PluginCommandProxy[];
+  commandProxies?: string[];
   runtimeDependencies?: PluginRuntimeDependency[];
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
   mcp?: PluginMcpConfig;

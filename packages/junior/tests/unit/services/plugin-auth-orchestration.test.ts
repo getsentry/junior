@@ -58,11 +58,9 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        details: {
-          exit_code: 1,
-          stderr:
-            "401 unauthorized\nJUNIOR_COMMAND_PROXY_PROVIDER provider=sentry",
-        },
+        exit_code: 1,
+        stderr:
+          "401 unauthorized\nJUNIOR_COMMAND_PROXY_PROVIDER provider=sentry",
       }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
 
@@ -97,11 +95,9 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        details: {
-          exit_code: 91,
-          stderr:
-            "No sentry credentials available.\nJUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=sentry",
-        },
+        exit_code: 91,
+        stderr:
+          "No sentry credentials available.\nJUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=sentry",
       }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
 
@@ -130,10 +126,8 @@ describe("createPluginAuthOrchestration", () => {
     );
 
     await orchestration.handleCommandFailure({
-      details: {
-        exit_code: 1,
-        stderr: "401 unauthorized",
-      },
+      exit_code: 1,
+      stderr: "401 unauthorized",
     });
 
     expect(startOAuthFlow).not.toHaveBeenCalled();
@@ -166,11 +160,9 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        details: {
-          exit_code: 1,
-          stderr:
-            "bad credentials\nJUNIOR_COMMAND_PROXY_PROVIDER provider=github",
-        },
+        exit_code: 1,
+        stderr:
+          "bad credentials\nJUNIOR_COMMAND_PROXY_PROVIDER provider=github",
       }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
 
@@ -200,37 +192,12 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        details: {
-          exit_code: 1,
-          stderr:
-            "bad credentials\nJUNIOR_COMMAND_PROXY_PROVIDER provider=github",
-        },
+        exit_code: 1,
+        stderr:
+          "bad credentials\nJUNIOR_COMMAND_PROXY_PROVIDER provider=github",
       }),
     ).rejects.toThrow("Missing base URL");
 
-    expect(unlinkProvider).not.toHaveBeenCalled();
-  });
-
-  it("ignores auth-like failures for commands unrelated to the provider", async () => {
-    const orchestration = createPluginAuthOrchestration(
-      {
-        requesterId: "U123",
-        userMessage: "check GitHub",
-        userTokenStore: {} as any,
-      },
-      vi.fn(),
-    );
-
-    await expect(
-      orchestration.handleCommandFailure({
-        details: {
-          exit_code: 1,
-          stderr: "401 unauthorized",
-        },
-      }),
-    ).resolves.toBeUndefined();
-
-    expect(startOAuthFlow).not.toHaveBeenCalled();
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 });

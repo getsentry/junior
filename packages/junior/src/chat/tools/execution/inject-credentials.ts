@@ -5,12 +5,12 @@ import {
   COMMAND_PROXY_AUTH_REQUIRED_PROVIDERS_ENV,
 } from "@/chat/sandbox/command-proxy-env";
 
-export interface CredentialInjection {
+interface CredentialInjection {
   headerTransforms?: Array<{ domain: string; [key: string]: unknown }>;
   env?: Record<string, string>;
 }
 
-export interface CommandProxyCredentialState {
+interface CommandProxyCredentialState {
   activeProviders: string[];
   authRequiredProviders: string[];
 }
@@ -42,19 +42,12 @@ function commandProxyEnv(
   };
 }
 
-/** Resolve credential injection for a tool call (only applies to bash). */
+/** Resolve host-owned credential injection for a sandbox bash command. */
 export function resolveCredentialInjection(
-  toolName: string,
-  command: string,
   capabilityRuntime: SkillCapabilityRuntime | undefined,
   commandProxyState?: CommandProxyCredentialState,
 ): CredentialInjection {
-  if (toolName !== "bash" || !capabilityRuntime) {
-    return {};
-  }
-
-  const isJrRpcCommand = /^jr-rpc(?:\s|$)/.test(command.trim());
-  if (isJrRpcCommand) {
+  if (!capabilityRuntime) {
     return {};
   }
 

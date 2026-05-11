@@ -74,11 +74,11 @@ function registerPluginManifest(
       );
     }
   }
-  for (const proxy of manifest.commandProxies ?? []) {
-    const existing = state.commandProxyToPlugin.get(proxy.command);
+  for (const command of manifest.commandProxies ?? []) {
+    const existing = state.commandProxyToPlugin.get(command);
     if (existing) {
       throw new Error(
-        `Duplicate command proxy "${proxy.command}" in plugins "${existing.manifest.name}" and "${manifest.name}"`,
+        `Duplicate command proxy "${command}" in plugins "${existing.manifest.name}" and "${manifest.name}"`,
       );
     }
   }
@@ -98,8 +98,8 @@ function registerPluginManifest(
   for (const key of manifest.configKeys) {
     state.pluginConfigKeys.add(key);
   }
-  for (const proxy of manifest.commandProxies ?? []) {
-    state.commandProxyToPlugin.set(proxy.command, definition);
+  for (const command of manifest.commandProxies ?? []) {
+    state.commandProxyToPlugin.set(command, definition);
   }
 }
 
@@ -386,7 +386,10 @@ export function getPluginRuntimePostinstall(): PluginRuntimePostinstallCommand[]
 export function getPluginCommandProxies(): PluginCommandProxy[] {
   const state = ensurePluginsLoaded();
   return state.pluginDefinitions.flatMap((plugin) =>
-    (plugin.manifest.commandProxies ?? []).map((proxy) => ({ ...proxy })),
+    (plugin.manifest.commandProxies ?? []).map((command) => ({
+      command,
+      provider: plugin.manifest.name,
+    })),
   );
 }
 

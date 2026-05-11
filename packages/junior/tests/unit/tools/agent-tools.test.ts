@@ -178,83 +178,6 @@ describe("createAgentTools", () => {
     });
   });
 
-  it("enables command-proxy credentials for direct git commands", async () => {
-    const sandbox = new SkillSandbox([], []);
-    const enableCommandProxyCredentialsForTurn = vi.fn(async () => ({
-      activeProviders: ["github"],
-      authRequiredProviders: [],
-    }));
-    const capabilityRuntime = {
-      enableCommandProxyCredentialsForTurn,
-      getTurnHeaderTransforms: vi.fn(() => [
-        {
-          domain: "github.com",
-          headers: { Authorization: "Basic token-1" },
-        },
-      ]),
-      getTurnEnv: vi.fn(() => ({
-        GITHUB_TOKEN: "ghp_host_managed_credential",
-      })),
-      getEnabledProviders: () => ["github"],
-    } as any;
-    const sandboxExecutor = {
-      canExecute: (toolName: string) => toolName === "bash",
-      execute: vi.fn(async ({ input }) => ({
-        result: {
-          ok: true,
-          command: (input as Record<string, unknown>).command,
-          cwd: "/vercel/sandbox",
-          exit_code: 0,
-          signal: null,
-          timed_out: false,
-          stdout: "ok",
-          stderr: "",
-          stdout_truncated: false,
-          stderr_truncated: false,
-        },
-      })),
-    } as any;
-
-    const [bashTool] = createAgentTools(
-      {
-        bash: {
-          description: "bash",
-          inputSchema: {} as any,
-          execute: async () => ({ ok: true }),
-        },
-      },
-      sandbox,
-      {},
-      undefined,
-      sandboxExecutor,
-      capabilityRuntime,
-    );
-
-    await bashTool!.execute("tool-1", {
-      command: "git fetch origin main",
-    });
-
-    expect(enableCommandProxyCredentialsForTurn).toHaveBeenCalledWith({
-      providers: ["github"],
-      reason: "sandbox:command-proxy",
-    });
-    expect(sandboxExecutor.execute).toHaveBeenCalledWith({
-      toolName: "bash",
-      input: expect.objectContaining({
-        command: "git fetch origin main",
-        env: expect.objectContaining({
-          JUNIOR_COMMAND_PROXY_ACTIVE_PROVIDERS: "github",
-        }),
-        headerTransforms: [
-          {
-            domain: "github.com",
-            headers: { Authorization: "Basic token-1" },
-          },
-        ],
-      }),
-    });
-  });
-
   it("prepares command-proxy credentials for sandbox bash commands", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const capabilityRuntime = {
@@ -605,9 +528,9 @@ describe("createAgentTools", () => {
     await expect(
       bashTool!.execute("tool-2", { command: "gh issue view 123" }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
-    expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith({
-      details: expect.any(Object),
-    });
+    expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith(
+      expect.any(Object),
+    );
     expect(handleToolExecutionError).not.toHaveBeenCalled();
   });
 });

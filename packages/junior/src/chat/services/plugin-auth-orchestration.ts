@@ -37,7 +37,7 @@ export interface PluginAuthOrchestration {
     provider: string;
     error: CredentialUnavailableError;
   }) => Promise<never>;
-  handleCommandFailure: (input: { details: unknown }) => Promise<void>;
+  handleCommandFailure: (details: unknown) => Promise<void>;
   getPendingPause: () => PluginAuthorizationPauseError | undefined;
 }
 
@@ -186,14 +186,14 @@ export function createPluginAuthOrchestration(
 
   return {
     handleCredentialUnavailable,
-    handleCommandFailure: async (input) => {
-      const provider = commandProxyAuthProvider(input.details);
+    handleCommandFailure: async (details) => {
+      const provider = commandProxyAuthProvider(details);
       if (
         !provider ||
         !deps.requesterId ||
         !deps.userTokenStore ||
         !getPluginOAuthConfig(provider) ||
-        !isCommandAuthFailure(input.details)
+        !isCommandAuthFailure(details)
       ) {
         return;
       }

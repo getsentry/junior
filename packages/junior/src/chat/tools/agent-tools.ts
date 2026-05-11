@@ -86,10 +86,10 @@ export function createAgentTools(
                 : "";
             const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
             const isJrRpcCommand = /^jr-rpc(?:\s|$)/.test(bashCommand);
+            const isSandboxBashCommand =
+              isSandbox && Boolean(bashCommand) && !isJrRpcCommand;
             const commandProxyCredentialState =
-              isSandbox &&
-              bashCommand &&
-              !isJrRpcCommand &&
+              isSandboxBashCommand &&
               capabilityRuntime &&
               commandProxyProviders.length > 0
                 ? await capabilityRuntime.enableCommandProxyCredentialsForTurn({
@@ -101,12 +101,12 @@ export function createAgentTools(
               []) {
               hooks.onPluginProviderActivated?.(provider);
             }
-            const injection = resolveCredentialInjection(
-              toolName,
-              bashCommand,
-              capabilityRuntime,
-              commandProxyCredentialState,
-            );
+            const injection = isSandboxBashCommand
+              ? resolveCredentialInjection(
+                  capabilityRuntime,
+                  commandProxyCredentialState,
+                )
+              : {};
 
             const sandboxInput = buildSandboxInput(toolName, parsed);
             const result = isSandbox
@@ -129,10 +129,10 @@ export function createAgentTools(
                 });
 
             const normalized = normalizeToolResult(result, isSandbox);
-            if (bashCommand && pluginAuthOrchestration) {
-              await pluginAuthOrchestration.handleCommandFailure({
-                details: normalized.details,
-              });
+            if (isSandboxBashCommand && pluginAuthOrchestration) {
+              await pluginAuthOrchestration.handleCommandFailure(
+                normalized.details,
+              );
             }
             const resultAttributeValue =
               normalized.details &&

@@ -5,7 +5,6 @@ import type {
   PluginEnvVarDeclaration,
   PluginMcpConfig,
   OAuthBearerCredentials,
-  PluginCommandProxy,
   PluginCredentials,
   PluginManifest,
   PluginNpmRuntimeDependency,
@@ -660,8 +659,8 @@ function normalizeRuntimePostinstall(
 function normalizeCommandProxies(
   proxies: unknown[],
   name: string,
-): PluginCommandProxy[] | undefined {
-  const parsed: PluginCommandProxy[] = [];
+): string[] | undefined {
+  const parsed: string[] = [];
   const seen = new Set<string>();
 
   for (const proxy of proxies) {
@@ -684,10 +683,7 @@ function normalizeCommandProxies(
       continue;
     }
     seen.add(result.data);
-    parsed.push({
-      command: result.data,
-      provider: name,
-    });
+    parsed.push(result.data);
   }
 
   return parsed.length > 0 ? parsed : undefined;
