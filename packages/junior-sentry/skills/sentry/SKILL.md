@@ -22,6 +22,7 @@ Before declaring a Sentry data surface unavailable, verify the current CLI help:
 - Resolve org from channel config: `jr-rpc config get sentry.org`
 - Resolve project from channel config: `jr-rpc config get sentry.project` (optional — many queries span multiple projects).
 - If org is missing and needed, ask the user.
+- If an active repository context exists (cloned repo or configured `github.repo`), check the repo root for `TELEMETRY.md` before forming queries. When present, use its query recipes, org/project mappings, and investigation pivots as repo-specific guidance. Explicit user targets, IDs, URLs, and conversation config still win. If absent, continue normally.
 
 2. Execute via CLI:
 

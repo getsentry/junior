@@ -28,6 +28,8 @@ Load references conditionally based on the request:
 - If the request refers to an earlier telemetry item indirectly, inspect the current thread for the existing ID or URL before asking the user to restate it.
 - Ask one concise follow-up only when a search is genuinely under-specified, for example when the user asks about "errors" with no env, service, or time window hint and the thread has no prior context.
 
+- If an active repository context exists (cloned repo or configured `github.repo`), check the repo root for `TELEMETRY.md` before forming queries. When present, use its query recipes, service/env mappings, and investigation pivots as repo-specific guidance. Explicit user targets, IDs, URLs, and conversation config still win. If absent, continue normally.
+
 2. Use Pup:
 
 - Run Datadog commands with `pup --read-only --agent ...`. The plugin also sets read-only/agent env vars, but include the flags so command transcripts show the intended mode.
