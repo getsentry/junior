@@ -97,7 +97,7 @@ export function getAgentTurnDiagnosticsAttributes(
         }
       : {}),
     ...(reply.diagnostics.errorMessage
-      ? { "error.message": reply.diagnostics.errorMessage }
+      ? { "exception.message": reply.diagnostics.errorMessage }
       : {}),
   };
 }

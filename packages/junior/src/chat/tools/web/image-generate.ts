@@ -42,7 +42,7 @@ async function enrichImagePrompt(rawPrompt: string): Promise<string> {
     logWarn(
       "image_prompt_enrichment_failed",
       {},
-      { "error.message": String(error) },
+      { "exception.message": String(error) },
       "Image prompt enrichment failed, using raw prompt",
     );
     return rawPrompt;

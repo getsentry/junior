@@ -148,7 +148,7 @@ export class SkillCapabilityRuntime {
         {
           "app.skill.name": input.activeSkill?.name,
           "app.credential.provider": provider,
-          "error.message":
+          "exception.message":
             error instanceof Error ? error.message : String(error),
         },
         "Provider credential resolution failed",

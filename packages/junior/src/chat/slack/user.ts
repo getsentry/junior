@@ -105,7 +105,8 @@ export async function lookupSlackUser(
       {},
       {
         "enduser.id": userId,
-        "error.message": error instanceof Error ? error.message : String(error),
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
       },
       "Slack user lookup failed with exception",
     );

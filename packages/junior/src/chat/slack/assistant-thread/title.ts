@@ -104,7 +104,7 @@ export function maybeUpdateAssistantTitle(args: {
           modelId: args.modelId,
         },
         {
-          "error.message":
+          "exception.message":
             error instanceof Error ? error.message : String(error),
         },
         "Thread title generation failed",

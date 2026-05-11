@@ -2,6 +2,7 @@ import { Agent, type AgentTool } from "@mariozechner/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
+  extractGenAiUsageAttributes,
   extractGenAiUsageSummary,
   getActiveTraceId,
   logException,
@@ -411,8 +412,6 @@ export async function generateAssistantReply(
         context.correlation?.conversationId ??
         context.correlation?.threadId ??
         context.correlation?.runId,
-      turnId: context.correlation?.turnId,
-      agentId: context.correlation?.turnId,
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
@@ -437,7 +436,7 @@ export async function generateAssistantReply(
         {
           "app.skill.count": availableSkills.length,
           "app.skill.names": availableSkills.map((skill) => skill.name).sort(),
-          "file.directories": roots,
+          "app.file.directories": roots,
           "app.plugin.count": plugins.length,
           "app.plugin.names": plugins
             .map((plugin) => plugin.manifest.name)
@@ -736,8 +735,6 @@ export async function generateAssistantReply(
 
     setTags({
       conversationId: spanContext.conversationId,
-      turnId: spanContext.turnId,
-      agentId: spanContext.agentId,
       slackThreadId: context.correlation?.threadId,
       slackUserId: context.correlation?.requesterId,
       slackChannelId: context.correlation?.channelId,
@@ -899,7 +896,7 @@ export async function generateAssistantReply(
           spanContext,
           {
             "gen_ai.tool.name": toolName,
-            "error.message":
+            "exception.message":
               error instanceof Error ? error.message : String(error),
           },
           "Tool invocation observer failed",
@@ -953,7 +950,7 @@ export async function generateAssistantReply(
             "streaming_message_start_error",
             {},
             {
-              "error.message":
+              "exception.message":
                 error instanceof Error ? error.message : String(error),
             },
             "Failed to deliver assistant message start to stream coordinator",
@@ -978,7 +975,7 @@ export async function generateAssistantReply(
           "streaming_text_delta_error",
           {},
           {
-            "error.message":
+            "exception.message":
               error instanceof Error ? error.message : String(error),
           },
           "Failed to deliver text delta to stream",
@@ -1081,12 +1078,7 @@ export async function generateAssistantReply(
             ...(outputMessagesAttribute
               ? { "gen_ai.output.messages": outputMessagesAttribute }
               : {}),
-            ...(usageSummary.inputTokens !== undefined
-              ? { "gen_ai.usage.input_tokens": usageSummary.inputTokens }
-              : {}),
-            ...(usageSummary.outputTokens !== undefined
-              ? { "gen_ai.usage.output_tokens": usageSummary.outputTokens }
-              : {}),
+            ...extractGenAiUsageAttributes(usageSummary),
           });
           if (getPendingAuthPause()) {
             timeoutResumeMessages = [...agent.state.messages];
@@ -1281,7 +1273,7 @@ export async function generateAssistantReply(
         "mcp_tool_manager_close_failed",
         {},
         {
-          "error.message":
+          "exception.message":
             closeError instanceof Error
               ? closeError.message
               : String(closeError),

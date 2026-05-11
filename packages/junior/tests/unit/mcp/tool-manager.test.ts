@@ -215,7 +215,7 @@ describe("McpToolManager", () => {
     const expectedAttributes = expect.objectContaining({
       "mcp.method.name": "tools/call",
       "error.type": "tool_error",
-      "error.message":
+      "exception.message":
         "Input validation error: Invalid input: expected object, received undefined",
     });
     expect(setSpanAttributesMock).toHaveBeenCalledWith(expectedAttributes);

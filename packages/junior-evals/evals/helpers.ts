@@ -184,7 +184,7 @@ function assertGatewayReady(input: SlackEvalInput, result: EvalResult): void {
     if (record.eventName !== "ai_completion_failed") {
       return false;
     }
-    const errorMessage = String(record.attributes["error.message"] ?? "");
+    const errorMessage = String(record.attributes["exception.message"] ?? "");
     return GATEWAY_AUTH_FAILURE_PATTERNS.some((pattern) =>
       errorMessage.includes(pattern),
     );
@@ -194,7 +194,7 @@ function assertGatewayReady(input: SlackEvalInput, result: EvalResult): void {
   }
 
   const message =
-    String(failure.attributes["error.message"] ?? "").trim() ||
+    String(failure.attributes["exception.message"] ?? "").trim() ||
     failure.body ||
     "AI Gateway authentication failed";
   throw new Error(

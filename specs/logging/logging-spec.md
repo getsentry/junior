@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-04-06
+- Last Edited: 2026-05-11
 
 ## Changelog
 
@@ -11,6 +11,7 @@
 - 2026-03-04: Updated code and test file references to repo-root paths under `packages/junior/`.
 - 2026-03-18: Added console rendering policy for compact dev logs and clarified that tool success lifecycle uses spans instead of duplicate start/complete info logs.
 - 2026-04-06: Aligned GenAI semantic keys with official finish-reasons, system-instructions, and tool-description attributes.
+- 2026-05-11: Aligned exception details and GenAI cache token counters with OpenTelemetry 1.41.0.
 
 ## Status
 
@@ -141,8 +142,8 @@ Rules:
 ### Console Rendering Policy
 
 - Structured records remain rich for sinks and Sentry; console rendering may project a smaller view for readability.
-- Default dev console output should keep a small stable core (`event.name`, conversation/turn correlation, trace/span ids, and event-local outcome fields) and suppress low-value ambient fields that are repeated on nearly every line.
-- Default console output should suppress duplicated correlation fields when a stronger equivalent is already present (for example `app.agent.id` when it matches `app.turn.id`).
+- Default dev console output should keep a small stable core (`event.name`, conversation correlation, trace/span ids, and event-local outcome fields) and suppress low-value ambient fields that are repeated on nearly every line.
+- Default console output should suppress duplicated correlation fields when a stronger telemetry pivot is already present.
 - Development console output may render a human-oriented summary line instead of the full key/value projection, as long as structured attributes remain intact for non-console sinks and `JUNIOR_LOG_FORMAT=structured` can force the full projection. This explicitly applies to worker-based dev runtimes that do not expose TTY state to the logging process.
 - Large payload attributes should be compacted for `debug` and `info` console output using short previews plus length metadata. `warn` and `error` console output may retain fuller payload detail subject to normal redaction/truncation rules.
 - Console projection is a presentation concern only; it must not remove the underlying structured attributes from emitted log records.
@@ -205,13 +206,14 @@ Rules:
 - `gen_ai.input.messages` (serialized request messages when captured)
 - `gen_ai.output.messages` (serialized model output messages when captured)
 - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` (when available)
+- `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` (when available)
 - `gen_ai.tool.description` (for tool-call spans when available)
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` (for tool-call spans when captured)
 
 ### Error
 
 - `error.type`
-- `error.message`
+- `exception.message`
 - `exception.stacktrace` (only on error-level logs/events; truncated)
 
 ### Workflow / App-specific (namespaced)

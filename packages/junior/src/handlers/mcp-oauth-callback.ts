@@ -311,7 +311,7 @@ async function resumeAuthorizedMcpTurn(args: {
         {
           "app.credential.provider": provider,
           ...(isRetryableTurnError(error)
-            ? { "app.turn.retryable_reason": error.reason }
+            ? { "app.ai.retryable_reason": error.reason }
             : {}),
         },
         "Resumed MCP turn requested another authorization flow",

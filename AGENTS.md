@@ -101,6 +101,8 @@ Co-Authored-By: (agent model name) <email>
 
 ## Known Specs
 
+- `TELEMETRY.md` (root telemetry diagnostic map: query surfaces, pivots, and recipes)
+- `TELEMETRY.spec.md` (format contract for repository-root telemetry maps)
 - `specs/index.md` (spec taxonomy, naming rules, and canonical vs archive guidance)
 - `specs/security-policy.md` (global runtime/container/token security policy)
 - `specs/chat-architecture-spec.md` (chat composition, service, and test-seam architecture contract)

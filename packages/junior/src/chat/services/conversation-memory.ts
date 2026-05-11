@@ -287,7 +287,8 @@ async function summarizeConversationChunk(
         modelId: botConfig.fastModelId,
       },
       {
-        "error.message": error instanceof Error ? error.message : String(error),
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
         "app.compaction_messages_covered": messages.length,
       },
       "Compaction summarization failed; using fallback summary",

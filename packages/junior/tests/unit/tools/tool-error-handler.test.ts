@@ -42,7 +42,7 @@ describe("handleToolExecutionError", () => {
         "gen_ai.tool.name": "callMcpTool",
         "gen_ai.tool.call.id": "tool-call-id",
         "error.type": "tool_error",
-        "error.message": "remote tool failed",
+        "exception.message": "remote tool failed",
       }),
       "Agent tool call failed",
     );

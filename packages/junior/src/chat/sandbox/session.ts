@@ -249,7 +249,7 @@ export function createSandboxSessionManager(options?: {
       "sandbox_network_policy_restore_failed",
       traceContext,
       {
-        "error.message":
+        "exception.message":
           reason instanceof Error ? reason.message : String(reason),
       },
       "Sandbox network policy restore failed; discarding sandbox instance",

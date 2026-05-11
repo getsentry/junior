@@ -176,7 +176,7 @@ function buildLoadedPluginState(
         {},
         {
           "file.directory": pluginsRoot,
-          "error.message":
+          "exception.message":
             error instanceof Error ? error.message : String(error),
         },
         "Failed to read plugin root",
@@ -205,7 +205,7 @@ function buildLoadedPluginState(
         {},
         {
           "file.directory": pluginsRoot,
-          "error.message":
+          "exception.message":
             error instanceof Error ? error.message : String(error),
         },
         "Failed to read plugin root",
@@ -255,7 +255,7 @@ function logLoadedPlugins(state: LoadedPluginState): void {
         "app.plugin.config_key_count": plugin.manifest.configKeys.length,
         "app.plugin.has_mcp": Boolean(plugin.manifest.mcp),
         "file.directory": plugin.dir,
-        "file.skill_directory": plugin.skillsDir,
+        "app.file.skill_directory": plugin.skillsDir,
       },
       "Loaded plugin",
     );

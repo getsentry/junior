@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-05-01
+- Last Edited: 2026-05-11
 
 ## Changelog
 
@@ -12,6 +12,7 @@
 - 2026-04-06: Added official GenAI finish-reason, system-instructions, and tool-description semantics.
 - 2026-04-28: Added MCP tool-call semantic attribute mappings.
 - 2026-05-01: Added `gen_ai.conversation.id` to the canonical GenAI semantic map.
+- 2026-05-11: Aligned error details, cache token usage, and non-standard file fields with OpenTelemetry 1.41.0.
 
 ## Status
 
@@ -78,6 +79,8 @@ This file is the canonical attribute and naming map for instrumentation in this 
 - `gen_ai.output.messages` (when captured)
 - `gen_ai.usage.input_tokens` (when available)
 - `gen_ai.usage.output_tokens` (when available)
+- `gen_ai.usage.cache_read.input_tokens` (when available)
+- `gen_ai.usage.cache_creation.input_tokens` (when available)
 - `gen_ai.tool.description` (when available)
 - `gen_ai.tool.name` (for `execute_tool`)
 - `gen_ai.tool.call.id` (when available)
@@ -126,6 +129,11 @@ This file is the canonical attribute and naming map for instrumentation in this 
 
 Use `app.*` only for data with no current semantic key:
 
+- `app.file.id`
+- `app.file.mime_type`
+- `app.file.skill_directory`
+- `app.file.candidates`
+- `app.file.directories`
 - `app.sandbox.stdout_bytes`
 - `app.sandbox.stderr_bytes`
 - `app.sandbox.sync.files_written`
@@ -142,7 +150,7 @@ Use `app.*` only for data with no current semantic key:
 ## Error Semantics
 
 - `error.type` for low-cardinality error class.
-- `error.message` and `exception.stacktrace` only when needed and safe.
+- `exception.message` and `exception.stacktrace` only when needed and safe.
 
 ## Naming Rules
 

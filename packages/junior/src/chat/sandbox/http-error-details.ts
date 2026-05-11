@@ -60,7 +60,7 @@ export function extractHttpErrorDetails(
 
   const attributes: Record<string, string | number | boolean | string[]> = {
     "error.type": normalizedError.name || "Error",
-    "error.message":
+    "exception.message":
       toTrimmedString(normalizedError.message, previewLimit) ?? "HTTP error",
   };
 

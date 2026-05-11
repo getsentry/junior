@@ -309,7 +309,7 @@ export function createSlackTurnRuntime<
             error,
             "mention_handler_auth_pause",
             errorContext,
-            { "app.turn.retryable_reason": error.reason },
+            { "app.ai.retryable_reason": error.reason },
             "onNewMention parked turn for auth resume",
           );
           return;
@@ -468,7 +468,7 @@ export function createSlackTurnRuntime<
             error,
             "subscribed_message_handler_auth_pause",
             errorContext,
-            { "app.turn.retryable_reason": error.reason },
+            { "app.ai.retryable_reason": error.reason },
             "onSubscribedMessage parked turn for auth resume",
           );
           return;

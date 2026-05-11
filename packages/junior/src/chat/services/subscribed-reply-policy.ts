@@ -48,7 +48,7 @@ export function createSubscribedReplyPolicy(
             modelId: botConfig.fastModelId,
           },
           {
-            "error.message":
+            "exception.message":
               error instanceof Error ? error.message : String(error),
           },
           "Subscribed-message classifier failed; skipping reply",

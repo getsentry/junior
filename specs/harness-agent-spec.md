@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-24
-- Last Edited: 2026-05-06
+- Last Edited: 2026-05-11
 
 ## Changelog
 
@@ -13,6 +13,7 @@
 - 2026-04-13: Clarified timeout behavior when turn-session checkpoints are available for resumable slices.
 - 2026-04-30: Added the thinking-level routing contract and normal-effort default.
 - 2026-05-06: Clarified that normal turns seed Pi from durable conversation message history instead of flattening prior turns into the current prompt.
+- 2026-05-11: Aligned agent telemetry fields with current OpenTelemetry GenAI and exception semantics.
 
 ## Status
 
@@ -109,13 +110,15 @@ Define the canonical runtime contract for assistant-turn execution and user-visi
   - `gen_ai.output.messages`
   - `gen_ai.usage.input_tokens`
   - `gen_ai.usage.output_tokens`
+  - `gen_ai.usage.cache_read.input_tokens` (when available)
+  - `gen_ai.usage.cache_creation.input_tokens` (when available)
   - `app.ai.outcome` (`success|execution_failure|provider_error`)
   - `app.ai.assistant_messages`
   - `app.ai.tool_results`
   - `app.ai.tool_error_results`
   - `app.ai.used_primary_text`
   - `gen_ai.response.finish_reasons` (when available)
-  - `error.message` (when available)
+  - `exception.message` (when available)
 - Do not emit empty placeholders for absent optional attributes.
 
 ## Verification

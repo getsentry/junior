@@ -174,11 +174,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           nextTurnId: turnId,
           updateConversationStats,
         });
-        const turnStartedAtMs = Date.now();
         const turnTraceContext = {
           conversationId,
-          turnId,
-          agentId: turnId,
           slackThreadId: threadId,
           slackUserId: message.author.userId,
           slackChannelId: channelId,
@@ -188,8 +185,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         };
         setTags({
           conversationId,
-          turnId,
-          agentId: turnId,
         });
         if (shouldEmitDevAgentTrace()) {
           logInfo(
@@ -507,7 +502,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               "agent_turn_completed",
               turnTraceContext,
               {
-                "app.turn.duration_ms": Date.now() - turnStartedAtMs,
                 "app.ai.outcome": reply.diagnostics.outcome,
                 "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
                 "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
@@ -609,9 +603,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               logWarn(
                 "agent_turn_failed",
                 turnTraceContext,
-                {
-                  "app.turn.duration_ms": Date.now() - turnStartedAtMs,
-                },
+                {},
                 "Agent turn failed",
               );
             }

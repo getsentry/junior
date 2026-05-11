@@ -31,8 +31,6 @@ export interface EmittedLogRecord {
 
 export interface LogContext {
   conversationId?: string;
-  turnId?: string;
-  agentId?: string;
   platform?: string;
   requestId?: string;
   slackThreadId?: string;
@@ -71,14 +69,14 @@ const SECRETS_RE = [
 ];
 
 const LEGACY_KEY_MAP: Record<string, string> = {
-  error: "error.message",
+  error: "exception.message",
   "error.stack": "exception.stacktrace",
   "gen_ai.system": "gen_ai.provider.name",
   "gen_ai.request.messages": "gen_ai.input.messages",
   "gen_ai.response.text": "gen_ai.output.messages",
   "messaging.conversation.id": "messaging.message.conversation_id",
   bytes: "file.size",
-  media_type: "file.mime_type",
+  media_type: "app.file.mime_type",
   skillDir: "file.path",
   root: "file.directory",
   originalLength: "app.output.original_length",
@@ -106,14 +104,12 @@ const LOGTAPE_BODY_KEY = "__logtape_body";
 const ROOT_LOGGER_CATEGORY = ["junior"] as const;
 const CONSOLE_PRIORITY_KEYS = [
   "gen_ai.conversation.id",
-  "app.turn.id",
   "event.name",
   "app.log.source",
-  "error.message",
+  "exception.message",
   "messaging.message.id",
-  "app.trace_id",
-  "app.span_id",
-  "app.agent.id",
+  "trace_id",
+  "span_id",
   "messaging.message.conversation_id",
   "messaging.destination.name",
   "app.run.id",
@@ -126,7 +122,7 @@ const CONSOLE_ALWAYS_HIDDEN_KEYS = new Set([
   "gen_ai.agent.name",
   "app.platform",
   "enduser.id",
-  "enduser.pseudo_id",
+  "enduser.pseudo.id",
   "http.request.method",
   "messaging.system",
   "url.full",
@@ -377,8 +373,6 @@ function sanitizeValue(value: unknown): AttributeValue | undefined {
 function contextToAttributes(context: LogContext): LogAttributes {
   const attributes: Record<string, unknown> = {
     "gen_ai.conversation.id": context.conversationId,
-    "app.turn.id": context.turnId,
-    "app.agent.id": context.agentId,
     "app.platform": context.platform,
     "app.request.id": context.requestId,
     "messaging.system":
@@ -386,7 +380,7 @@ function contextToAttributes(context: LogContext): LogAttributes {
     "messaging.message.conversation_id": context.slackThreadId,
     "messaging.destination.name": context.slackChannelId,
     "enduser.id": context.slackUserId,
-    "enduser.pseudo_id": context.slackUserName,
+    "enduser.pseudo.id": context.slackUserName,
     "app.run.id": context.runId,
     "gen_ai.agent.name": context.assistantUserName,
     "gen_ai.request.model": context.modelId,
@@ -707,9 +701,6 @@ function shouldHideConsoleAttribute(
   if (CONSOLE_DROP_WHEN_COUNTED_KEYS.has(key)) {
     return true;
   }
-  if (key === "app.agent.id" && attributes[key] === attributes["app.turn.id"]) {
-    return true;
-  }
   if (
     key === "messaging.message.conversation_id" &&
     attributes[key] === attributes["gen_ai.conversation.id"]
@@ -902,16 +893,12 @@ function getPrettyConsoleSummaryTokens(
     const conversationId = toOptionalString(
       attributes["gen_ai.conversation.id"],
     );
-    const turnId = toOptionalString(attributes["app.turn.id"]);
     const messageId = toOptionalString(attributes["messaging.message.id"]);
     if (conversationId) {
       pushPrettyConsoleToken(
         tokens,
         `conv=${abbreviateConsoleId(conversationId)}`,
       );
-    }
-    if (turnId) {
-      pushPrettyConsoleToken(tokens, `turn=${abbreviateConsoleId(turnId)}`);
     }
     if (messageId) {
       pushPrettyConsoleToken(tokens, `msg=${abbreviateConsoleId(messageId)}`);
@@ -1167,7 +1154,6 @@ export const log = {
       {
         ...attrs,
         "error.type": normalizedError.name,
-        "error.message": normalizedError.message,
         "exception.type": normalizedError.name,
         "exception.message": normalizedError.message,
         "exception.stacktrace": normalizedError.stack,
@@ -1435,6 +1421,19 @@ function toSpanAttributeValue(value: unknown): SpanAttributeValue | undefined {
   return sanitized.length > 0 ? sanitized : undefined;
 }
 
+function normalizeSpanAttributes(
+  attributes: Record<string, unknown>,
+): Record<string, SpanAttributeValue> {
+  const normalized: Record<string, SpanAttributeValue> = {};
+  for (const [rawKey, value] of Object.entries(attributes)) {
+    const normalizedValue = toSpanAttributeValue(value);
+    if (normalizedValue !== undefined) {
+      normalized[normalizeAttributeKey(rawKey)] = normalizedValue;
+    }
+  }
+  return normalized;
+}
+
 /** Capture an error to Sentry and emit an error log record. */
 export function captureException(
   error: unknown,
@@ -1528,13 +1527,7 @@ export async function withSpan<T>(
   callback: () => Promise<T>,
   attributes: Record<string, unknown> = {},
 ): Promise<T> {
-  const normalizedAttributes: Record<string, SpanAttributeValue> = {};
-  for (const [key, value] of Object.entries(attributes)) {
-    const normalizedValue = toSpanAttributeValue(value);
-    if (normalizedValue !== undefined) {
-      normalizedAttributes[key] = normalizedValue;
-    }
-  }
+  const normalizedAttributes = normalizeSpanAttributes(attributes);
 
   return withLogContext(context, () => {
     // Child spans inherit the active log context so nested GenAI spans keep
@@ -1570,11 +1563,10 @@ export function setSpanAttributes(attributes: Record<string, unknown>): void {
     return;
   }
 
-  for (const [key, value] of Object.entries(attributes)) {
-    const normalizedValue = toSpanAttributeValue(value);
-    if (normalizedValue !== undefined) {
-      setAttribute.call(span, key, normalizedValue);
-    }
+  for (const [key, value] of Object.entries(
+    normalizeSpanAttributes(attributes),
+  )) {
+    setAttribute.call(span, key, value);
   }
 }
 
@@ -1770,6 +1762,21 @@ function toFiniteTokenCount(value: unknown): number | undefined {
   return rounded >= 0 ? rounded : undefined;
 }
 
+function sumTokenCounts(
+  ...values: Array<number | undefined>
+): number | undefined {
+  let total = 0;
+  let hasValue = false;
+  for (const value of values) {
+    if (value === undefined) {
+      continue;
+    }
+    total += value;
+    hasValue = true;
+  }
+  return hasValue ? total : undefined;
+}
+
 // pi-ai `Usage` field name -> our camelCase equivalent. This is the only shape
 // that reaches the extractor today; pi-ai normalizes every provider response
 // into this canonical set before we ever see it.
@@ -1790,7 +1797,8 @@ function readPiUsage(source: unknown): AgentTurnUsage {
   const usage = asRecord(record.usage) ?? record;
   const summary: AgentTurnUsage = {};
   for (const [piKey, ourKey] of PI_USAGE_FIELDS) {
-    const value = toFiniteTokenCount(usage[piKey]);
+    const value =
+      toFiniteTokenCount(usage[piKey]) ?? toFiniteTokenCount(usage[ourKey]);
     if (value !== undefined) {
       summary[ourKey] = value;
     }
@@ -1820,20 +1828,38 @@ export function extractGenAiUsageSummary(
   return summary;
 }
 
-/** Extract input/output token counts from AI provider usage metadata for tracing. */
+/** Extract GenAI token usage attributes from AI provider usage metadata for tracing. */
 export function extractGenAiUsageAttributes(
   ...sources: unknown[]
 ): Partial<
-  Record<"gen_ai.usage.input_tokens" | "gen_ai.usage.output_tokens", number>
+  Record<
+    | "gen_ai.usage.input_tokens"
+    | "gen_ai.usage.output_tokens"
+    | "gen_ai.usage.cache_read.input_tokens"
+    | "gen_ai.usage.cache_creation.input_tokens",
+    number
+  >
 > {
-  const { inputTokens, outputTokens } = extractGenAiUsageSummary(...sources);
+  const { inputTokens, outputTokens, cachedInputTokens, cacheCreationTokens } =
+    extractGenAiUsageSummary(...sources);
+  const semanticInputTokens = sumTokenCounts(
+    inputTokens,
+    cachedInputTokens,
+    cacheCreationTokens,
+  );
 
   return {
-    ...(inputTokens !== undefined
-      ? { "gen_ai.usage.input_tokens": inputTokens }
+    ...(semanticInputTokens !== undefined
+      ? { "gen_ai.usage.input_tokens": semanticInputTokens }
       : {}),
     ...(outputTokens !== undefined
       ? { "gen_ai.usage.output_tokens": outputTokens }
+      : {}),
+    ...(cachedInputTokens !== undefined
+      ? { "gen_ai.usage.cache_read.input_tokens": cachedInputTokens }
+      : {}),
+    ...(cacheCreationTokens !== undefined
+      ? { "gen_ai.usage.cache_creation.input_tokens": cacheCreationTokens }
       : {}),
   };
 }

@@ -7,7 +7,7 @@
  * whether to display a breakdown or a single aggregate.
  */
 export interface AgentTurnUsage {
-  /** Non-cached input tokens (pi-ai subtracts cached tokens from this). */
+  /** Non-cached input tokens; OTel `gen_ai.usage.input_tokens` adds cache counters back in. */
   inputTokens?: number;
   /** Output tokens; pi-ai folds reasoning tokens into this for providers that report them. */
   outputTokens?: number;

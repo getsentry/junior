@@ -317,7 +317,7 @@ async function resolveUserAttachmentsWithDeps(
           },
           {
             "file.size": data.byteLength,
-            "file.mime_type": mediaType,
+            "app.file.mime_type": mediaType,
           },
           "Skipping user attachment that exceeds size limit",
         );
@@ -345,9 +345,9 @@ async function resolveUserAttachmentsWithDeps(
             modelId: botConfig.visionModelId ?? botConfig.modelId,
           },
           {
-            "error.message":
+            "exception.message":
               error instanceof Error ? error.message : String(error),
-            "file.mime_type": mediaType,
+            "app.file.mime_type": mediaType,
             ...(attachment.name ? { "file.name": attachment.name } : {}),
           },
           "Image attachment processing failed",
@@ -366,9 +366,9 @@ async function resolveUserAttachmentsWithDeps(
           modelId: botConfig.modelId,
         },
         {
-          "error.message":
+          "exception.message":
             error instanceof Error ? error.message : String(error),
-          "file.mime_type": mediaType,
+          "app.file.mime_type": mediaType,
         },
         "Failed to resolve user attachment",
       );
@@ -433,9 +433,10 @@ async function summarizeConversationImage(
         modelId: visionModelId,
       },
       {
-        "error.message": error instanceof Error ? error.message : String(error),
-        "file.id": args.fileId,
-        "file.mime_type": args.mimeType,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+        "app.file.id": args.fileId,
+        "app.file.mime_type": args.mimeType,
       },
       "Image analysis failed while hydrating conversation context",
     );
@@ -498,7 +499,8 @@ async function hydrateConversationVisionContextWithDeps(
         modelId: botConfig.modelId,
       },
       {
-        "error.message": error instanceof Error ? error.message : String(error),
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
       },
       "Failed to fetch thread replies for image context hydration",
     );
@@ -581,9 +583,9 @@ async function hydrateConversationVisionContextWithDeps(
             modelId: botConfig.modelId,
           },
           {
-            "file.id": fileId,
+            "app.file.id": fileId,
             "file.size": fileSize,
-            "file.mime_type": mimeType,
+            "app.file.mime_type": mimeType,
           },
           "Skipping thread image that exceeds size limit",
         );
@@ -612,10 +614,10 @@ async function hydrateConversationVisionContextWithDeps(
             modelId: botConfig.modelId,
           },
           {
-            "error.message":
+            "exception.message":
               error instanceof Error ? error.message : String(error),
-            "file.id": fileId,
-            "file.mime_type": mimeType,
+            "app.file.id": fileId,
+            "app.file.mime_type": mimeType,
           },
           "Failed to download thread image for context hydration",
         );
@@ -634,9 +636,9 @@ async function hydrateConversationVisionContextWithDeps(
             modelId: botConfig.modelId,
           },
           {
-            "file.id": fileId,
+            "app.file.id": fileId,
             "file.size": imageData.byteLength,
-            "file.mime_type": mimeType,
+            "app.file.mime_type": mimeType,
           },
           "Skipping downloaded thread image that exceeds size limit",
         );

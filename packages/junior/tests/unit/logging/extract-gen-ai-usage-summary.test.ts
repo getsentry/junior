@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { extractGenAiUsageSummary } from "@/chat/logging";
+import {
+  extractGenAiUsageAttributes,
+  extractGenAiUsageSummary,
+} from "@/chat/logging";
 
 describe("extractGenAiUsageSummary", () => {
   it("returns empty object for sources with no usage metadata", () => {
@@ -94,6 +97,22 @@ describe("extractGenAiUsageSummary", () => {
       cachedInputTokens: 0,
       cacheCreationTokens: 0,
       totalTokens: 12,
+    });
+  });
+
+  it("maps cache token counters to current GenAI semantic attributes", () => {
+    expect(
+      extractGenAiUsageAttributes({
+        inputTokens: 10,
+        outputTokens: 2,
+        cachedInputTokens: 4,
+        cacheCreationTokens: 1,
+      }),
+    ).toEqual({
+      "gen_ai.usage.input_tokens": 15,
+      "gen_ai.usage.output_tokens": 2,
+      "gen_ai.usage.cache_read.input_tokens": 4,
+      "gen_ai.usage.cache_creation.input_tokens": 1,
     });
   });
 });

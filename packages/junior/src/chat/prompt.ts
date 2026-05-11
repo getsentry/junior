@@ -70,7 +70,7 @@ function loadSoul(): string {
     "soul_load_fallback",
     {},
     {
-      "file.candidates": soulPathCandidates(),
+      "app.file.candidates": soulPathCandidates(),
     },
     "SOUL.md not found; using built-in default personality",
   );
@@ -89,7 +89,8 @@ export const JUNIOR_PERSONALITY = (() => {
       "soul_load_failed",
       {},
       {
-        "error.message": error instanceof Error ? error.message : String(error),
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
       },
       "Failed to load SOUL.md; using built-in default personality",
     );
@@ -105,7 +106,8 @@ export const JUNIOR_WORLD = (() => {
       "world_load_failed",
       {},
       {
-        "error.message": error instanceof Error ? error.message : String(error),
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
       },
       "Failed to load WORLD.md; omitting world prompt context",
     );

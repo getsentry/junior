@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-25
-- Last Edited: 2026-05-01
+- Last Edited: 2026-05-11
 
 ## Changelog
 
@@ -14,6 +14,7 @@
 - 2026-04-06: Added official GenAI finish-reasons, system-instructions, and tool-description tracing attributes.
 - 2026-04-28: Added MCP tool-call span attributes from the OpenTelemetry MCP semantic conventions.
 - 2026-05-01: Added `gen_ai.conversation.id` as required correlation context for GenAI spans when available.
+- 2026-05-11: Aligned exception details and GenAI cache token counters with OpenTelemetry 1.41.0.
 
 ## Status
 
@@ -75,6 +76,7 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 - `gen_ai.system_instructions` when provided separately from chat history and safely captured.
 - `gen_ai.input.messages` / `gen_ai.output.messages` when safely captured.
 - `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` when available from provider responses.
+- `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens` when available from provider responses.
 - `gen_ai.tool.description` when available on tool execution spans.
 - `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` on tool execution spans when captured.
 - Keep existing context keys aligned with `packages/junior/src/chat/logging.ts`.
@@ -82,7 +84,7 @@ Define the canonical tracing contract for span naming, boundaries, attributes, a
 ### Error Attributes
 
 - `error.type`
-- `error.message`
+- `exception.message`
 - `exception.stacktrace` (when captured and safe)
 
 ### MCP Tool Calls

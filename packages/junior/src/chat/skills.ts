@@ -329,7 +329,7 @@ async function readSkillDirectory(
         {},
         {
           "file.path": skillDir,
-          "error.message": parsed.error,
+          "exception.message": parsed.error,
         },
         "Invalid skill frontmatter",
       );
@@ -352,7 +352,8 @@ async function readSkillDirectory(
       {},
       {
         "file.path": skillDir,
-        "error.message": error instanceof Error ? error.message : String(error),
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
       },
       "Failed to read skill directory",
     );
@@ -399,7 +400,7 @@ export async function discoverSkills(
         {},
         {
           "file.directory": root,
-          "error.message":
+          "exception.message":
             error instanceof Error ? error.message : String(error),
         },
         "Failed to read skill root",

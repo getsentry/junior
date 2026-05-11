@@ -231,7 +231,7 @@ export async function completeText(params: {
           {},
           {
             ...baseAttributes,
-            "error.message": providerMessage,
+            "exception.message": providerMessage,
           },
           "AI completion returned provider error",
         );
@@ -259,7 +259,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
 }): Promise<{ object: z.infer<TSchema>; text: string }> {
-  const startedAt = Date.now();
   let text = "";
   try {
     ({ text } = await completeText({
@@ -287,7 +286,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
-        "app.ai.duration_ms": Date.now() - startedAt,
       },
       "AI object completion failed",
     );
@@ -305,7 +303,6 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
         "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
         "gen_ai.request.model": params.modelId,
-        "app.ai.duration_ms": Date.now() - startedAt,
         "app.ai.response_preview": preview,
       },
       "AI object completion schema parse failed",

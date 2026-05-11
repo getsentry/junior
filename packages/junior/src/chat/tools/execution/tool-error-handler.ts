@@ -54,7 +54,7 @@ export function handleToolExecutionError(
         "gen_ai.tool.name": toolName,
         ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
         "error.type": errorType,
-        "error.message": errorMessage,
+        "exception.message": errorMessage,
       },
       "Agent tool call failed",
     );

@@ -161,7 +161,7 @@ function logAssistantStatusFailure(args: {
       "app.slack.channel_id_raw": args.channelId,
       "app.slack.channel_id": args.normalizedChannelId,
       "app.slack.thread_ts": args.threadTs,
-      "error.message":
+      "exception.message":
         args.error instanceof Error ? args.error.message : String(args.error),
     },
     `Failed to update assistant status channel=${args.normalizedChannelId} raw=${args.channelId} thread=${args.threadTs}`,

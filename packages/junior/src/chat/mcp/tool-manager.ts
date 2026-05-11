@@ -377,7 +377,7 @@ export class McpToolManager {
           const errorAttributes = {
             ...baseAttributes,
             "error.type": getMcpAwareErrorType(error, "mcp_tool_error"),
-            "error.message": getMcpAwareErrorMessage(error),
+            "exception.message": getMcpAwareErrorMessage(error),
           };
           setSpanAttributes(errorAttributes);
           if (error instanceof McpToolError) {
