@@ -144,69 +144,6 @@ async function githubRequest<T>(
   return parsed as T;
 }
 
-/**
- * GitHub App permission scopes that plugin manifests may request.
- * Manifest capabilities follow `<plugin>.<scope>.<read|write>` where the
- * scope name uses dashes in capabilities and underscores in the GitHub API.
- */
-const KNOWN_SCOPES = new Set([
-  "actions",
-  "administration",
-  "checks",
-  "codespaces",
-  "contents",
-  "deployments",
-  "environments",
-  "issues",
-  "metadata",
-  "packages",
-  "pages",
-  "pull_requests",
-  "repository_hooks",
-  "repository_projects",
-  "secret_scanning_alerts",
-  "secrets",
-  "security_events",
-  "statuses",
-  "vulnerability_alerts",
-  "workflows",
-]);
-
-function capabilitiesToPermissions(
-  capabilities: string[],
-  pluginName: string,
-): Record<string, "read" | "write"> {
-  const permissions: Record<string, "read" | "write"> = {};
-  const prefix = `${pluginName}.`;
-  for (const capability of capabilities) {
-    if (!capability.startsWith(prefix)) {
-      throw new Error(`Unsupported GitHub capability: ${capability}`);
-    }
-    const suffix = capability.slice(prefix.length);
-
-    const lastDot = suffix.lastIndexOf(".");
-    if (lastDot === -1) {
-      throw new Error(`Unsupported GitHub capability: ${capability}`);
-    }
-    const scopeRaw = suffix.slice(0, lastDot);
-    const level = suffix.slice(lastDot + 1);
-    if (level !== "read" && level !== "write") {
-      throw new Error(`Unsupported GitHub capability: ${capability}`);
-    }
-
-    const scope = scopeRaw.replace(/-/g, "_");
-    if (!KNOWN_SCOPES.has(scope)) {
-      throw new Error(`Unsupported GitHub capability: ${capability}`);
-    }
-
-    const existing = permissions[scope];
-    permissions[scope] =
-      existing === "write" || level === "write" ? "write" : "read";
-  }
-
-  return permissions;
-}
-
 export function createGitHubAppBroker(
   manifest: PluginManifest,
   credentials: GitHubAppCredentials,
@@ -257,11 +194,6 @@ export function createGitHubAppBroker(
     return `Bearer ${token}`;
   }
 
-  const permissions = capabilitiesToPermissions(
-    manifest.capabilities,
-    provider,
-  );
-
   function resolveInstallationId(): number {
     const installationIdRaw = process.env[installationIdEnv]?.trim();
     if (!installationIdRaw) {
@@ -303,12 +235,6 @@ export function createGitHubAppBroker(
         };
       }
 
-      const tokenRequestBody: {
-        permissions: Record<string, "read" | "write">;
-      } = {
-        permissions,
-      };
-
       const appId = process.env[appIdEnv];
       if (!appId) {
         throw new Error(`Missing ${appIdEnv}`);
@@ -321,7 +247,6 @@ export function createGitHubAppBroker(
       }>(apiBase, `/app/installations/${installationId}/access_tokens`, {
         method: "POST",
         token: appJwt,
-        body: tokenRequestBody,
       });
 
       const providerExpiresAtMs = Date.parse(accessTokenResponse.expires_at);

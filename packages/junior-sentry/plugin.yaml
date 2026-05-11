@@ -24,6 +24,9 @@ oauth:
   token-endpoint: https://sentry.io/oauth/token/
   scope: "event:read org:read project:read team:read"
 
+command-proxies:
+  - sentry
+
 runtime-dependencies:
   - type: npm
     package: "sentry"

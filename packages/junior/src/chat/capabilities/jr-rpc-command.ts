@@ -275,7 +275,10 @@ function createJrRpcCommand(deps: JrRpcDeps) {
   });
 }
 
-export async function maybeExecuteJrRpcCustomCommand(
+/**
+ * Execute explicit jr-rpc commands on the host before sandbox bash starts.
+ */
+export async function maybeExecuteJrRpcHostCommand(
   command: string,
   deps: JrRpcDeps,
 ): Promise<

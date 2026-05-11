@@ -25,6 +25,9 @@ credentials:
   private-key-env: GITHUB_APP_PRIVATE_KEY
   installation-id-env: GITHUB_INSTALLATION_ID
 
+command-proxies:
+  - gh
+
 target:
   type: repo
   config-key: repo

@@ -5,6 +5,7 @@ import type {
   PluginEnvVarDeclaration,
   PluginMcpConfig,
   OAuthBearerCredentials,
+  PluginCommandProxy,
   PluginCredentials,
   PluginManifest,
   PluginNpmRuntimeDependency,
@@ -24,6 +25,7 @@ const ENV_PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
 const API_DOMAIN_RE =
   /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const RUNTIME_POSTINSTALL_CMD_RE = /^[A-Za-z0-9._/-]+$/;
+const COMMAND_PROXY_COMMAND_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
 const RESERVED_AUTHORIZE_PARAM_KEYS = new Set([
   "client_id",
   "scope",
@@ -269,6 +271,11 @@ const manifestSourceSchema = z
     "api-domains": apiDomainsSchema.optional(),
     "api-headers": stringMapSchema.optional(),
     "command-env": stringMapSchema.optional(),
+    "command-proxies": z
+      .array(z.unknown(), {
+        error: "must be an array",
+      })
+      .optional(),
     credentials: z
       .record(z.string(), z.unknown(), {
         error: "must be an object when provided",
@@ -649,6 +656,42 @@ function normalizeRuntimePostinstall(
   return parsed.length > 0 ? parsed : undefined;
 }
 
+function normalizeCommandProxies(
+  proxies: unknown[],
+  name: string,
+): PluginCommandProxy[] | undefined {
+  const parsed: PluginCommandProxy[] = [];
+  const seen = new Set<string>();
+
+  for (const proxy of proxies) {
+    if (typeof proxy !== "string") {
+      throw new Error(`Plugin ${name} command-proxies entries must be strings`);
+    }
+    const result = nonEmptyTrimmedString.safeParse(proxy);
+    if (!result.success) {
+      throw new Error(
+        issueMessage(result.error, `Plugin ${name} command-proxies`),
+      );
+    }
+
+    if (!COMMAND_PROXY_COMMAND_RE.test(result.data)) {
+      throw new Error(
+        `Plugin ${name} command-proxies command must be a single executable token starting with a letter or digit`,
+      );
+    }
+    if (seen.has(result.data)) {
+      continue;
+    }
+    seen.add(result.data);
+    parsed.push({
+      command: result.data,
+      provider: name,
+    });
+  }
+
+  return parsed.length > 0 ? parsed : undefined;
+}
+
 const envVarDeclarationSchema = z.preprocess(
   (value) => (value === null || value === undefined ? {} : value),
   z
@@ -810,6 +853,11 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
         `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} command-env must be an object when provided`,
       );
     }
+    if (path === "command-proxies") {
+      throw new Error(
+        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} command-proxies must be an array`,
+      );
+    }
     if (path === "credentials") {
       throw new Error(
         `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} credentials must be an object when provided`,
@@ -903,6 +951,14 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
   const runtimePostinstall = data["runtime-postinstall"]
     ? normalizeRuntimePostinstall(data["runtime-postinstall"], data.name)
     : undefined;
+  const commandProxies = data["command-proxies"]
+    ? normalizeCommandProxies(data["command-proxies"], data.name)
+    : undefined;
+  if (commandProxies && !credentials && !apiHeaders) {
+    throw new Error(
+      `Plugin ${data.name} command-proxies requires credentials or api-headers`,
+    );
+  }
   const mcp = data.mcp ? normalizeMcp(data.mcp, envVars, data.name) : undefined;
 
   const manifest: PluginManifest = {
@@ -915,6 +971,7 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
     ...(commandEnv ? { commandEnv } : {}),
     ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
     ...(credentials ? { credentials } : {}),
+    ...(commandProxies ? { commandProxies } : {}),
     ...(runtimeDependencies ? { runtimeDependencies } : {}),
     ...(runtimePostinstall ? { runtimePostinstall } : {}),
     ...(mcp ? { mcp } : {}),

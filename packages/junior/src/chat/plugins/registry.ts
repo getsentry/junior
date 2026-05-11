@@ -13,6 +13,7 @@ import type {
   PluginBrokerDeps,
   PluginDefinition,
   OAuthProviderConfig,
+  PluginCommandProxy,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
 } from "./types";
@@ -21,6 +22,7 @@ interface LoadedPluginState {
   capabilityToPlugin: Map<string, PluginDefinition>;
   packageSkillRoots: Set<string>;
   pluginConfigKeys: Set<string>;
+  commandProxyToPlugin: Map<string, PluginDefinition>;
   pluginDefinitions: PluginDefinition[];
   pluginsByName: Map<string, PluginDefinition>;
   signature: string;
@@ -47,6 +49,7 @@ function createLoadedPluginState(signature: string): LoadedPluginState {
     signature,
     pluginDefinitions: [],
     capabilityToPlugin: new Map(),
+    commandProxyToPlugin: new Map(),
     pluginConfigKeys: new Set(),
     pluginsByName: new Map(),
     packageSkillRoots: new Set(),
@@ -71,6 +74,14 @@ function registerPluginManifest(
       );
     }
   }
+  for (const proxy of manifest.commandProxies ?? []) {
+    const existing = state.commandProxyToPlugin.get(proxy.command);
+    if (existing) {
+      throw new Error(
+        `Duplicate command proxy "${proxy.command}" in plugins "${existing.manifest.name}" and "${manifest.name}"`,
+      );
+    }
+  }
 
   const definition: PluginDefinition = {
     manifest,
@@ -86,6 +97,9 @@ function registerPluginManifest(
   }
   for (const key of manifest.configKeys) {
     state.pluginConfigKeys.add(key);
+  }
+  for (const proxy of manifest.commandProxies ?? []) {
+    state.commandProxyToPlugin.set(proxy.command, definition);
   }
 }
 
@@ -366,6 +380,14 @@ export function getPluginRuntimePostinstall(): PluginRuntimePostinstallCommand[]
   }
 
   return commands;
+}
+
+/** Return plugin-declared command proxies for sandbox credential activation. */
+export function getPluginCommandProxies(): PluginCommandProxy[] {
+  const state = ensurePluginsLoaded();
+  return state.pluginDefinitions.flatMap((plugin) =>
+    (plugin.manifest.commandProxies ?? []).map((proxy) => ({ ...proxy })),
+  );
 }
 
 export function getPluginOAuthConfig(

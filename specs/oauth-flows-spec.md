@@ -61,7 +61,7 @@ User: asks Junior to do authenticated provider work in Slack
   ▼
 Agent: loads the matching plugin skill and runs the real provider command
   │
-  ├─ Runtime resolves provider from the loaded skill
+  ├─ Runtime resolves provider from the loaded skill or a plugin-declared command proxy
   ├─ Runtime keeps any provider defaults (for example a repo config) available for command construction
   ├─ Broker checks requester-bound stored tokens
   ├─ If auth is missing or stale:
@@ -117,8 +117,8 @@ Provider: redirects to /api/oauth/callback/mcp/<provider>?code=...&state=...
 
 After a user has connected their account:
 
-1. Agent runs an authenticated provider command under a loaded plugin-backed skill.
-2. Runtime resolves the provider from the loaded skill for the resumed turn.
+1. Agent runs an authenticated provider command under a loaded plugin-backed skill, or invokes a plugin-declared command proxy such as `sentry`.
+2. Runtime resolves the provider from the loaded skill or command proxy declaration for the resumed turn.
 3. Broker loads stored requester-bound tokens.
 4. If the token is near expiry, broker refreshes it server-side.
 5. Broker returns a short-lived `CredentialLease`.
@@ -199,6 +199,7 @@ Providers define OAuth through plugin manifests:
 - The runtime must not post the authorization URL into the public thread or add a second public thread note just to announce that a private link was sent.
 - Authorization URLs are never returned to the model.
 - Tokens are stored server-side and never appear in sandbox files or model-visible tool arguments.
+- Sandbox command proxies may receive non-secret provider-state flags, but they must never receive provider credentials or credential-minting tokens.
 - Leases are requester-bound and turn-scoped.
 - Target-aware providers may narrow leases to repo/project/org scope when available.
 

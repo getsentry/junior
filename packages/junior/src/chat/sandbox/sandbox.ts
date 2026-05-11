@@ -16,6 +16,7 @@ import {
   resolveHostSkillPath,
 } from "@/chat/sandbox/skill-sync";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import type { PluginCommandProxy } from "@/chat/plugins/types";
 import type { SkillMetadata } from "@/chat/skills";
 import { editFile } from "@/chat/tools/sandbox/edit-file";
 import { findFiles } from "@/chat/tools/sandbox/find-files";
@@ -35,7 +36,7 @@ export interface SandboxExecutionEnvelope<T = unknown> {
   result: T;
 }
 
-export interface BashCustomCommandResult {
+export interface HostBashCommandResult {
   ok: boolean;
   command: string;
   cwd: string;
@@ -138,9 +139,14 @@ export function createSandboxExecutor(options?: {
   timeoutMs?: number;
   traceContext?: LogContext;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
-  runBashCustomCommand?: (
+  commandProxies?: PluginCommandProxy[];
+  /**
+   * Host-only command handler for explicit pseudo-commands such as jr-rpc.
+   * Ordinary shell commands still execute inside Vercel Sandbox.
+   */
+  runHostBashCommand?: (
     command: string,
-  ) => Promise<{ handled: boolean; result?: BashCustomCommandResult }>;
+  ) => Promise<{ handled: boolean; result?: HostBashCommandResult }>;
 }): SandboxExecutor {
   let availableSkills: SkillMetadata[] = [];
   let referenceFiles: string[] = [];
@@ -151,6 +157,7 @@ export function createSandboxExecutor(options?: {
     timeoutMs: options?.timeoutMs,
     traceContext,
     onSandboxAcquired: options?.onSandboxAcquired,
+    commandProxies: options?.commandProxies,
   });
 
   const withSandboxSpan = <T>(
@@ -506,8 +513,8 @@ export function createSandboxExecutor(options?: {
       if (!bashCommand) {
         throw new Error("command is required");
       }
-      if (options?.runBashCustomCommand) {
-        const custom = await options.runBashCustomCommand(bashCommand);
+      if (options?.runHostBashCommand) {
+        const custom = await options.runHostBashCommand(bashCommand);
         if (custom.handled) {
           return { result: custom.result as T };
         }

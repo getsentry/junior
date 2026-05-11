@@ -5,6 +5,7 @@ import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
+import { getPluginCommandProxies } from "@/chat/plugins/registry";
 import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
@@ -28,6 +29,9 @@ export function createAgentTools(
   onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
+  const commandProxyProviders = Array.from(
+    new Set(getPluginCommandProxies().map((proxy) => proxy.provider)),
+  );
   return Object.entries(tools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
@@ -75,15 +79,28 @@ export function createAgentTools(
               toolName === "bash" && typeof parsed.command === "string"
                 ? parsed.command.trim()
                 : "";
+            const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
+            const isJrRpcCommand = /^jr-rpc(?:\s|$)/.test(bashCommand);
+            const commandProxyCredentialState =
+              isSandbox &&
+              bashCommand &&
+              !isJrRpcCommand &&
+              capabilityRuntime &&
+              commandProxyProviders.length > 0
+                ? await capabilityRuntime.enableCommandProxyCredentialsForTurn({
+                    providers: commandProxyProviders,
+                    reason: "sandbox:command-proxy",
+                  })
+                : undefined;
             const injection = resolveCredentialInjection(
               toolName,
               bashCommand,
               capabilityRuntime,
               sandbox,
+              commandProxyCredentialState,
             );
 
             const sandboxInput = buildSandboxInput(toolName, parsed);
-            const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
             const result = isSandbox
               ? await sandboxExecutor!.execute({
                   toolName,

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
+import { maybeExecuteJrRpcHostCommand } from "@/chat/capabilities/jr-rpc-command";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { Skill } from "@/chat/skills";
 
@@ -25,7 +25,7 @@ function makeChannelConfiguration() {
 }
 
 function expectHandled(
-  result: Awaited<ReturnType<typeof maybeExecuteJrRpcCustomCommand>>,
+  result: Awaited<ReturnType<typeof maybeExecuteJrRpcHostCommand>>,
 ) {
   expect(result.handled).toBe(true);
   if (!result.handled) {
@@ -34,20 +34,20 @@ function expectHandled(
   return result;
 }
 
-describe("jr-rpc custom command", () => {
+describe("jr-rpc host command", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
   it("does not handle non jr-rpc commands", async () => {
-    const result = await maybeExecuteJrRpcCustomCommand("echo hi", {
+    const result = await maybeExecuteJrRpcHostCommand("echo hi", {
       activeSkill,
     });
     expect(result).toEqual({ handled: false });
   });
 
   it("requires conversation context for config commands", async () => {
-    const result = await maybeExecuteJrRpcCustomCommand(
+    const result = await maybeExecuteJrRpcHostCommand(
       "jr-rpc config get github.repo",
       {
         activeSkill,
@@ -66,7 +66,7 @@ describe("jr-rpc custom command", () => {
     const configuration = makeChannelConfiguration();
     const onConfigurationValueChanged = vi.fn();
 
-    const setResult = await maybeExecuteJrRpcCustomCommand(
+    const setResult = await maybeExecuteJrRpcHostCommand(
       "jr-rpc config set github.repo getsentry/junior",
       {
         activeSkill,
@@ -81,7 +81,7 @@ describe("jr-rpc custom command", () => {
       "getsentry/junior",
     );
 
-    const getResult = await maybeExecuteJrRpcCustomCommand(
+    const getResult = await maybeExecuteJrRpcHostCommand(
       "jr-rpc config get github.repo",
       {
         activeSkill,
@@ -113,7 +113,7 @@ describe("jr-rpc custom command", () => {
       source: "test",
     });
 
-    const result = await maybeExecuteJrRpcCustomCommand(
+    const result = await maybeExecuteJrRpcHostCommand(
       "jr-rpc config list --prefix github.",
       {
         activeSkill,
@@ -145,7 +145,7 @@ describe("jr-rpc custom command", () => {
       source: "test",
     });
 
-    const result = await maybeExecuteJrRpcCustomCommand(
+    const result = await maybeExecuteJrRpcHostCommand(
       "jr-rpc config unset github.repo",
       {
         activeSkill,

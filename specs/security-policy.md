@@ -50,13 +50,15 @@ This policy applies to:
 
 ### Issuance and injection
 
-- Runtime issues short-lived provider credentials for loaded plugin-backed skills when authenticated commands require them.
-- Loaded skills and their plugin declarations determine which provider credentials may be injected into a turn.
+- Runtime issues short-lived provider credentials for loaded plugin-backed skills or available plugin-declared command proxy providers before sandbox bash commands run.
+- Loaded skills, plugin declarations, and command proxy declarations determine which provider credentials may be injected into a turn.
 - Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.
 - Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching API domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.
 - When CLI tools require tool-native sandbox auth env vars (for example `SENTRY_AUTH_TOKEN`, Pup's `DD_API_KEY`, or Pup's `DD_APP_KEY`), set them to non-secret placeholders so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
 - Plugin-declared command env may include non-secret placeholders and default-backed deployment values needed by the command process. It must not read or expose secret deployment env vars.
+- Plugin-declared command proxies may receive non-secret provider-state flags in sandbox env. They must never receive provider credentials or credential-minting tokens.
+- Host pseudo-command handlers may handle explicit commands such as `jr-rpc` before sandbox bash starts. Ordinary shell commands execute inside the sandbox.
 - Never inject real provider secrets into sandbox env vars, files, or command arguments.
 
 ### GitHub baseline
@@ -64,6 +66,7 @@ This policy applies to:
 - Use GitHub App installation auth.
 - Keep `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` on host only.
 - Sign App JWT on host, then exchange for installation token.
+- Mint installation tokens from the installation's approved permission grant, not from the full plugin manifest capability list.
 - Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
 - Inject `Authorization` header transform for `api.github.com` and `github.com` domains (the latter for git HTTPS operations).
 - Disable git credential helpers in sandbox env (`GIT_ASKPASS`, `credential.helper=`) so git never sends its own auth — the proxy header transform is the sole credential source.

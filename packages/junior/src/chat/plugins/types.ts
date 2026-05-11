@@ -64,6 +64,11 @@ export interface PluginRuntimePostinstallCommand {
   sudo?: boolean;
 }
 
+export interface PluginCommandProxy {
+  command: string;
+  provider: string;
+}
+
 export interface PluginMcpHttpConfig {
   transport: "http";
   url: string;
@@ -87,6 +92,7 @@ export interface PluginManifest {
   commandEnv?: Record<string, string>;
   envVars?: Record<string, PluginEnvVarDeclaration>;
   credentials?: PluginCredentials;
+  commandProxies?: PluginCommandProxy[];
   runtimeDependencies?: PluginRuntimeDependency[];
   runtimePostinstall?: PluginRuntimePostinstallCommand[];
   mcp?: PluginMcpConfig;

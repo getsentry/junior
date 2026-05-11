@@ -17,10 +17,6 @@ vi.mock("@vercel/sandbox", () => ({
   },
 }));
 
-vi.mock("bash-tool", () => ({
-  createBashTool: vi.fn(),
-}));
-
 const {
   resolveRuntimeDependencySnapshotMock,
   isSnapshotMissingErrorMock,
@@ -53,7 +49,6 @@ vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
 }));
 
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
-import { createBashTool } from "bash-tool";
 
 interface MockSandbox {
   sandboxId: string;
@@ -61,6 +56,12 @@ interface MockSandbox {
   writeFiles: ReturnType<typeof vi.fn>;
   readFileToBuffer: ReturnType<typeof vi.fn>;
   runCommand: ReturnType<typeof vi.fn>;
+  fs: {
+    readFile: ReturnType<typeof vi.fn>;
+    writeFile: ReturnType<typeof vi.fn>;
+    readdir: ReturnType<typeof vi.fn>;
+    stat: ReturnType<typeof vi.fn>;
+  };
   updateNetworkPolicy: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   extendTimeout: ReturnType<typeof vi.fn>;
@@ -92,6 +93,12 @@ function makeSandbox(
       stdout: async () => "",
       stderr: async () => "",
     })),
+    fs: {
+      readFile: vi.fn(async () => ""),
+      writeFile: vi.fn(async () => {}),
+      readdir: vi.fn(async () => []),
+      stat: vi.fn(async () => ({ isDirectory: () => false })),
+    },
     updateNetworkPolicy: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
     extendTimeout: vi.fn(async () => {}),
@@ -159,7 +166,6 @@ describe("createSandboxExecutor", () => {
   beforeEach(() => {
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
-    vi.mocked(createBashTool).mockReset();
     resolveRuntimeDependencySnapshotMock.mockReset();
     resolveRuntimeDependencySnapshotMock.mockResolvedValue({
       dependencyCount: 0,
@@ -342,12 +348,6 @@ describe("createSandboxExecutor", () => {
   it("applies and restores header transforms for bash commands", async () => {
     const sandbox = makeSandbox("sbx_headers");
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_headers" });
     executor.configureSkills([]);
@@ -409,12 +409,6 @@ describe("createSandboxExecutor", () => {
       },
     };
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_policy_merge" });
     executor.configureSkills([]);
@@ -465,12 +459,6 @@ describe("createSandboxExecutor", () => {
         throw new Error("restore failed");
       });
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_restore_failure",
@@ -507,12 +495,6 @@ describe("createSandboxExecutor", () => {
     sandboxCreateMock
       .mockResolvedValueOnce(firstSandbox)
       .mockResolvedValueOnce(secondSandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -552,16 +534,10 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("echo second");
   });
 
-  it("routes matching bash commands through custom command handler", async () => {
+  it("routes matching bash commands through the host command handler", async () => {
     const sandbox = makeSandbox("sbx_custom");
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
-    const runBashCustomCommand = vi.fn(async (command: string) =>
+    const runHostBashCommand = vi.fn(async (command: string) =>
       command === "jr-rpc config get github.repo"
         ? {
             handled: true,
@@ -583,7 +559,7 @@ describe("createSandboxExecutor", () => {
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_custom",
-      runBashCustomCommand,
+      runHostBashCommand,
     });
     executor.configureSkills([]);
 
@@ -594,7 +570,7 @@ describe("createSandboxExecutor", () => {
       },
     });
 
-    expect(runBashCustomCommand).toHaveBeenCalledWith(
+    expect(runHostBashCommand).toHaveBeenCalledWith(
       "jr-rpc config get github.repo",
     );
     expect(sandbox.runCommand).not.toHaveBeenCalled();
@@ -604,15 +580,9 @@ describe("createSandboxExecutor", () => {
     });
   });
 
-  it("syncs sandbox files once when the first tool call also initializes tool executors", async () => {
+  it("syncs sandbox files once when the first bash call boots a sandbox", async () => {
     const sandbox = makeSandbox("sbx_single_sync");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -626,19 +596,13 @@ describe("createSandboxExecutor", () => {
 
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(sandbox.writeFiles).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(createBashTool)).toHaveBeenCalledTimes(1);
+    expect(sandbox.runCommand).toHaveBeenCalledTimes(1);
   });
 
   it("extends sandbox keepalive for each tool execution", async () => {
     process.env.VERCEL_SANDBOX_KEEPALIVE_MS = "5000";
     const sandbox = makeSandbox("sbx_keepalive");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -664,12 +628,6 @@ describe("createSandboxExecutor", () => {
   it("does not re-sync skills when reusing a cached sandbox", async () => {
     const sandbox = makeSandbox("sbx_cached_once");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -722,12 +680,6 @@ describe("createSandboxExecutor", () => {
     sandboxCreateMock
       .mockResolvedValueOnce(firstSandbox)
       .mockResolvedValueOnce(secondSandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
 
     const executor = createSandboxExecutor();
     executor.configureSkills([]);
@@ -804,12 +756,7 @@ describe("createSandboxExecutor", () => {
     );
     const sandbox = makeSandbox("sbx_missing_virtual_skill_file");
     sandboxCreateMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "from sandbox" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
+    sandbox.fs.readFile.mockResolvedValueOnce("from sandbox");
 
     const executor = createSandboxExecutor();
     executor.configureSkills([
@@ -851,12 +798,7 @@ describe("createSandboxExecutor", () => {
     );
     const sandbox = makeSandbox("sbx_existing");
     sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "Sandbox note" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
+    sandbox.fs.readFile.mockResolvedValueOnce("Sandbox note");
 
     const executor = createSandboxExecutor({ sandboxId: "sbx_existing" });
     executor.configureSkills([
@@ -891,7 +833,9 @@ describe("createSandboxExecutor", () => {
     const sandbox = makeSandbox("sbx_eval_gh");
     sandboxCreateMock.mockResolvedValue(sandbox);
 
-    const executor = createSandboxExecutor();
+    const executor = createSandboxExecutor({
+      commandProxies: [{ command: "gh", provider: "github" }],
+    });
     executor.configureSkills([]);
 
     await executor.createSandbox();
@@ -907,6 +851,11 @@ describe("createSandboxExecutor", () => {
         }),
       ]),
     );
+    expect(
+      syncedFiles.filter(
+        (file) => file.path === "/vercel/sandbox/.junior/bin/gh",
+      ),
+    ).toHaveLength(1);
     const chmodCall = sandbox.runCommand.mock.calls.find(
       (call) =>
         call[0]?.cmd === "bash" &&
@@ -916,6 +865,52 @@ describe("createSandboxExecutor", () => {
         ),
     );
     expect(chmodCall).toBeDefined();
+  });
+
+  it("installs command proxy wrappers without sandbox-visible activation tokens", async () => {
+    const sandbox = makeSandbox("sbx_command_proxy");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    const commandProxies = [{ command: "gh", provider: "github" }];
+
+    const executor = createSandboxExecutor({
+      commandProxies,
+    });
+    executor.configureSkills([]);
+
+    await executor.createSandbox();
+
+    const syncedFiles = sandbox.writeFiles.mock.calls[0]?.[0] as Array<{
+      path: string;
+      content: Buffer;
+    }>;
+    expect(syncedFiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "/vercel/sandbox/.junior/bin/gh",
+        }),
+      ]),
+    );
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "gh issue view 319",
+      },
+    });
+
+    const bashInvocation = sandbox.runCommand.mock.calls.find(
+      (call) =>
+        call[0]?.cmd === "bash" &&
+        typeof call[0]?.args?.[1] === "string" &&
+        call[0].args[1].includes("gh issue view 319"),
+    )?.[0];
+    expect(bashInvocation?.args?.[1]).not.toContain(
+      "JUNIOR_COMMAND_PROXY_ENDPOINT",
+    );
+    expect(bashInvocation?.args?.[1]).not.toContain(
+      "JUNIOR_COMMAND_PROXY_TOKEN",
+    );
+    expect(sandbox.updateNetworkPolicy).not.toHaveBeenCalled();
   });
 
   it("creates fresh sandboxes from dependency snapshots when available", async () => {

@@ -8,6 +8,7 @@ import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import {
   getPluginDefinition,
+  getPluginCommandProxies,
   getPluginOAuthConfig,
 } from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
@@ -84,10 +85,32 @@ function isCommandAuthFailure(details: unknown): details is {
     /\binsufficient scope\b/,
     /\binvalid grant\b/,
     /\breauthoriz/,
+    /\bno [a-z0-9-]+ credentials available\b/,
+    /junior_command_proxy_auth_required/,
   ].some((pattern) => pattern.test(text));
 }
 
-function commandTargetsProvider(
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function commandUsesProxyProvider(provider: string, command: string): boolean {
+  const normalizedCommand = command.trim().toLowerCase();
+  if (!normalizedCommand) {
+    return false;
+  }
+
+  const proxyCommands = getPluginCommandProxies()
+    .filter((proxy) => proxy.provider === provider)
+    .map((proxy) => proxy.command.toLowerCase());
+  return proxyCommands.some((command) =>
+    new RegExp(`(^|[\\s;&|()])${escapeRegExp(command)}($|[\\s;&|()])`).test(
+      normalizedCommand,
+    ),
+  );
+}
+
+function commandFailureMatchesProvider(
   provider: string,
   command: string,
   details: {
@@ -100,7 +123,7 @@ function commandTargetsProvider(
     return false;
   }
 
-  if (provider === "github" && /^(gh|git)\b/.test(normalizedCommand)) {
+  if (commandUsesProxyProvider(provider, command)) {
     return true;
   }
 
@@ -120,6 +143,18 @@ function commandTargetsProvider(
 
   const combinedText = `${normalizedCommand}\n${details.stdout?.toLowerCase() ?? ""}\n${details.stderr?.toLowerCase() ?? ""}`;
   return [...candidates].some((candidate) => combinedText.includes(candidate));
+}
+
+function commandProxyAuthProvider(details: unknown): string | undefined {
+  if (!details || typeof details !== "object") {
+    return undefined;
+  }
+  const result = details as { stdout?: unknown; stderr?: unknown };
+  const text = `${typeof result.stdout === "string" ? result.stdout : ""}\n${typeof result.stderr === "string" ? result.stderr : ""}`;
+  const match = text.match(
+    /JUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=([a-z][a-z0-9-]*)/,
+  );
+  return match?.[1];
 }
 
 /**
@@ -223,15 +258,22 @@ export function createPluginAuthOrchestration(
   return {
     handleCredentialUnavailable,
     handleCommandFailure: async (input) => {
-      const provider = input.activeSkill?.pluginProvider;
+      const markerProvider = commandProxyAuthProvider(input.details);
+      const provider = markerProvider ?? input.activeSkill?.pluginProvider;
       if (
         !provider ||
         !deps.requesterId ||
         !deps.userTokenStore ||
         !getPluginOAuthConfig(provider) ||
-        !isCommandAuthFailure(input.details) ||
-        !commandTargetsProvider(provider, input.command, input.details)
+        !isCommandAuthFailure(input.details)
       ) {
+        return;
+      }
+
+      const commandUsesProvider = markerProvider
+        ? commandUsesProxyProvider(markerProvider, input.command)
+        : commandFailureMatchesProvider(provider, input.command, input.details);
+      if (!commandUsesProvider) {
         return;
       }
 

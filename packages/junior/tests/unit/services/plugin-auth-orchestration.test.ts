@@ -7,12 +7,14 @@ import type { Skill } from "@/chat/skills";
 
 const {
   formatProviderLabel,
+  getPluginCommandProxies,
   getPluginDefinition,
   getPluginOAuthConfig,
   startOAuthFlow,
   unlinkProvider,
 } = vi.hoisted(() => ({
   formatProviderLabel: vi.fn((provider: string) => provider),
+  getPluginCommandProxies: vi.fn(),
   getPluginDefinition: vi.fn(),
   getPluginOAuthConfig: vi.fn(),
   startOAuthFlow: vi.fn(),
@@ -25,6 +27,7 @@ vi.mock("@/chat/oauth-flow", () => ({
 }));
 
 vi.mock("@/chat/plugins/registry", () => ({
+  getPluginCommandProxies,
   getPluginDefinition,
   getPluginOAuthConfig,
 }));
@@ -54,6 +57,12 @@ const sentrySkill: Skill = {
 describe("createPluginAuthOrchestration", () => {
   beforeEach(() => {
     formatProviderLabel.mockClear();
+    getPluginCommandProxies.mockReset();
+    getPluginCommandProxies.mockReturnValue([
+      { command: "gh", provider: "github" },
+      { command: "git", provider: "github" },
+      { command: "sentry", provider: "sentry" },
+    ]);
     getPluginDefinition.mockReset();
     getPluginDefinition.mockImplementation((provider: string) => {
       if (provider === "github") {
@@ -131,6 +140,70 @@ describe("createPluginAuthOrchestration", () => {
       "sentry",
       userTokenStore,
     );
+  });
+
+  it("starts oauth recovery from command proxy auth markers without an active skill", async () => {
+    startOAuthFlow.mockResolvedValue({
+      ok: true,
+      delivery: { channelId: "D123" },
+    });
+
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "check Sentry from a generic skill",
+        userTokenStore: {} as any,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: null,
+        command: "cd /tmp && sentry issue list",
+        details: {
+          exit_code: 91,
+          stderr:
+            "No sentry credentials available.\nJUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=sentry",
+        },
+      }),
+    ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
+
+    expect(startOAuthFlow).toHaveBeenCalledWith(
+      "sentry",
+      expect.objectContaining({
+        requesterId: "U123",
+        userMessage: "check Sentry from a generic skill",
+      }),
+    );
+  });
+
+  it("ignores command proxy auth markers from unrelated commands", async () => {
+    startOAuthFlow.mockResolvedValue({
+      ok: true,
+      delivery: { channelId: "D123" },
+    });
+
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "check Sentry from a generic skill",
+        userTokenStore: {} as any,
+      },
+      vi.fn(),
+    );
+
+    await orchestration.handleCommandFailure({
+      activeSkill: null,
+      command:
+        "node -e \"process.stderr.write('JUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=sentry'); process.exit(91)\"",
+      details: {
+        exit_code: 91,
+        stderr: "JUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=sentry",
+      },
+    });
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
   });
 
   it("unlinks the stored token only after oauth restart is launched", async () => {

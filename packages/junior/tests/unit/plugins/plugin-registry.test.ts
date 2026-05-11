@@ -35,6 +35,7 @@ describe("plugin registry", () => {
 
     expect(registry.getPluginProviders()).toEqual([]);
     expect(registry.getPluginCapabilityProviders()).toEqual([]);
+    expect(registry.getPluginCommandProxies()).toEqual([]);
     expect(registry.getPluginSkillRoots()).toEqual([]);
     expect(registry.getPluginOAuthConfig("unknown")).toBeUndefined();
     expect(registry.isPluginProvider("sentry")).toBe(false);
@@ -77,7 +78,17 @@ describe("plugin registry", () => {
     await fs.mkdir(skillsRoot, { recursive: true });
     await fs.writeFile(
       path.join(pluginRoot, "plugin.yaml"),
-      ["name: demo", "description: Demo plugin"].join("\n"),
+      [
+        "name: demo",
+        "description: Demo plugin",
+        "credentials:",
+        "  type: oauth-bearer",
+        "  api-domains:",
+        "    - api.demo.test",
+        "  auth-token-env: DEMO_TOKEN",
+        "command-proxies:",
+        "  - demo",
+      ].join("\n"),
       "utf8",
     );
 
@@ -87,6 +98,9 @@ describe("plugin registry", () => {
 
     expect(registry.getPluginProviders()).toHaveLength(1);
     expect(registry.getPluginProviders()[0]?.manifest.name).toBe("demo");
+    expect(registry.getPluginCommandProxies()).toEqual([
+      { command: "demo", provider: "demo" },
+    ]);
     expect(registry.getPluginSkillRoots()).toContain(skillsRoot);
     expect(registry.isPluginProvider("demo")).toBe(true);
   });

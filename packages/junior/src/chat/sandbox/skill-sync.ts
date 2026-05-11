@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Sandbox } from "@vercel/sandbox";
+import { buildCommandProxyWrapper } from "@/chat/sandbox/command-proxy-wrapper";
 import { buildEvalGitHubCliStub } from "@/chat/sandbox/eval-gh-stub";
 import { buildEvalOauthCliStub } from "@/chat/sandbox/eval-oauth-stub";
 import { buildEvalSentryCliStub } from "@/chat/sandbox/eval-sentry-stub";
@@ -16,6 +17,7 @@ import {
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
 import type { SkillMetadata } from "@/chat/skills";
+import type { PluginCommandProxy } from "@/chat/plugins/types";
 
 interface SkillSyncFile {
   path: string;
@@ -52,6 +54,7 @@ async function buildSkillSyncFiles(
   availableSkills: SkillMetadata[],
   runtimeBinDir: string,
   referenceFiles?: string[],
+  commandProxies: PluginCommandProxy[] = [],
 ): Promise<SkillSyncFile[]> {
   const filesToWrite: SkillSyncFile[] = [];
   const index = {
@@ -97,7 +100,23 @@ async function buildSkillSyncFiles(
     }
   }
 
-  if (process.env.EVAL_ENABLE_TEST_CREDENTIALS === "1") {
+  const evalCredentialStubsEnabled =
+    process.env.EVAL_ENABLE_TEST_CREDENTIALS === "1";
+  const evalStubCommands = evalCredentialStubsEnabled
+    ? new Set(["gh", "sentry"])
+    : new Set<string>();
+
+  for (const proxy of commandProxies) {
+    if (evalStubCommands.has(proxy.command)) {
+      continue;
+    }
+    filesToWrite.push({
+      path: `${runtimeBinDir}/${proxy.command}`,
+      content: Buffer.from(buildCommandProxyWrapper(proxy), "utf8"),
+    });
+  }
+
+  if (evalCredentialStubsEnabled) {
     filesToWrite.push({
       path: `${runtimeBinDir}/gh`,
       content: Buffer.from(buildEvalGitHubCliStub(), "utf8"),
@@ -223,6 +242,7 @@ export async function syncSkillsToSandbox(params: {
   sandbox: Sandbox;
   skills: SkillMetadata[];
   referenceFiles?: string[];
+  commandProxies?: PluginCommandProxy[];
   withSpan: <T>(
     name: string,
     op: string,
@@ -245,6 +265,7 @@ export async function syncSkillsToSandbox(params: {
         params.skills,
         params.runtimeBinDir,
         params.referenceFiles,
+        params.commandProxies,
       );
       const bytesWritten = filesToWrite.reduce(
         (total, file) => total + file.content.length,

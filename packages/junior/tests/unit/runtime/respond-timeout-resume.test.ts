@@ -87,6 +87,10 @@ vi.mock("@/chat/config", async (importOriginal) => {
 vi.mock("@/chat/capabilities/factory", () => ({
   createSkillCapabilityRuntime: () => ({
     enableCredentialsForTurn: async () => undefined,
+    enableCommandProxyCredentialsForTurn: async () => ({
+      activeProviders: [],
+      authRequiredProviders: [],
+    }),
     getTurnHeaderTransforms: () => undefined,
     getTurnEnv: () => undefined,
   }),
@@ -98,7 +102,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
 }));
 
 vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
-  maybeExecuteJrRpcCustomCommand: async () => ({ handled: false }),
+  maybeExecuteJrRpcHostCommand: async () => ({ handled: false }),
 }));
 
 vi.mock("@/chat/pi/client", () => ({
@@ -150,6 +154,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
 vi.mock("@/chat/plugins/registry", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/plugins/registry")>()),
+  getPluginCommandProxies: () => [],
   getPluginMcpProviders: () => [],
   getPluginProviders: () => [],
 }));

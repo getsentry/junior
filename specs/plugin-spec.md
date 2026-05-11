@@ -190,6 +190,7 @@ command-env:
 | `api-domains`                        | `string[]`               | Optional domains for plugin-level API header injection. Required when `api-headers` is set.                                                                                                                                                                 |
 | `api-headers`                        | `Record<string, string>` | Optional headers injected for matching `api-domains`. Values may reference `${NAME}` placeholders declared in `env-vars`; referenced env vars must not declare defaults.                                                                                    |
 | `command-env`                        | `Record<string, string>` | Optional non-secret sandbox env vars injected when provider credentials or API headers are enabled. Requires `credentials` or `api-headers`. Values may reference `${NAME}` placeholders declared in `env-vars`; referenced env vars must declare defaults. |
+| `command-proxies`                    | `string[]`               | Optional CLI executable names that get sandbox wrappers and host-owned credential activation. Provider identity is derived from the declaring plugin name.                                                                                                  |
 | `credentials`                        | `object`                 | Credential delivery configuration.                                                                                                                                                                                                                          |
 | `credentials.type`                   | `string`                 | `"oauth-bearer"` or `"github-app"`.                                                                                                                                                                                                                         |
 | `credentials.api-domains`            | `string[]`               | Domains for token-backed header transforms. At least one required.                                                                                                                                                                                          |
@@ -312,6 +313,28 @@ command-env:
   EXAMPLE_READ_ONLY: "1"
 ```
 
+### Command proxies
+
+Plugin-level `command-proxies` declares CLI executable names that should
+activate a provider credential lease before the real binary runs. This is the
+provider-owned auto-detection surface for commands such as `gh` or `sentry`;
+generic skills do not need Junior-specific frontmatter to use them.
+
+```yaml
+command-proxies:
+  - gh
+```
+
+The runtime installs wrappers for these commands in the sandbox runtime bin
+directory. Before bash commands run, the host pre-activates available
+command-proxy providers derived from the declaring plugin name, applies sandbox
+network-policy header transforms, and injects only non-secret command env
+placeholders plus provider-state flags. A wrapper execs the real binary only
+when its provider is marked active. If the provider needs user authorization,
+the wrapper fails with the standard auth marker so the runtime can start the
+private OAuth flow. Real token values and credential-minting capabilities never
+enter the sandbox process.
+
 System runtime dependency execution environment:
 
 - Sandbox OS is Amazon Linux 2023.
@@ -325,6 +348,7 @@ System runtime dependency execution environment:
 | Value                     | Derivation                                                                                                              |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | OAuth callback path       | `/api/oauth/callback/<name>` — derived from plugin name.                                                                |
+| Command proxy wrappers    | `.junior/bin/<command>` — generated from `command-proxies`.                                                             |
 | Skill roots               | `plugins/<name>/skills/` and installed package `skills/` roots — auto-discovered.                                       |
 | Qualified capabilities    | `<name>.<capability>` — short names prefixed with plugin name.                                                          |
 | Qualified config keys     | `<name>.<key>` — short names prefixed with plugin name.                                                                 |
@@ -334,9 +358,12 @@ System runtime dependency execution environment:
 
 - Parse all manifests before registering any plugin. Fail startup on validation errors.
 - No two plugins may declare the same capability token.
+- No two plugins may declare the same command proxy executable name.
 - No two plugins may use the same `name`.
+- `command-proxies` entries are executable names. Provider identity is derived from the declaring plugin name.
 - If `target.config-key` is set, it must be listed in `config-keys`.
 - If `command-env` is set, the plugin must also declare credentials or API headers so a credential broker exists to deliver it.
+- If `command-proxies` is set, the plugin must also declare credentials or API headers so a credential broker exists to activate it.
 - If a plugin declares capabilities without credentials or API headers, manifest load succeeds and runtime credential enablement fails with an explicit no-broker error when an authenticated command needs that provider.
 - `plugin.yaml` remains the enforceable runtime authority. `loadSkill` re-resolves the skill's parent plugin from its path, rejects mismatched plugin metadata, rebuilds metadata from the current skill file, and prepends a host-owned runtime boundary before the skill body.
 
@@ -375,6 +402,7 @@ The registry provides `createPluginBroker(provider, deps)` which constructs the 
 ```typescript
 // Sync (available at module load)
 getPluginCapabilityProviders(): CapabilityProviderDefinition[]
+getPluginCommandProxies(): PluginCommandProxy[]
 getPluginProviders(): PluginDefinition[]
 getPluginOAuthConfig(provider): OAuthProviderConfig | undefined
 getPluginSkillRoots(): string[]
@@ -518,6 +546,7 @@ All existing security invariants from `security-policy.md` are preserved:
 
 - **Host-trusted code.** Plugin manifests are YAML files committed to the repository. No dynamic code loading.
 - **Credential delivery via header transforms only.** Token credentials, API keys, and plugin-level `api-headers` are delivered as host-managed header transforms for declared `api-domains`. Real secret values never enter sandbox env vars, files, or command arguments.
+- **Command proxy activation stays host-owned.** Sandbox wrappers receive only non-secret provider-state flags and placeholder env values. The host applies header transforms before command execution and never exposes real credentials or credential-minting tokens to the sandbox.
 - **Short-lived leases.** Lease behavior is unchanged. The `CredentialLease` contract enforces expiry timestamps.
 - **No env var leakage.** Only non-secret placeholder/default command env values are injected into the sandbox. Secret-bearing provider values are delivered through host-managed header transforms.
 - **OAuth privacy rules unchanged.** Authorization URLs are delivered privately. The agent never sees token values.
@@ -525,19 +554,20 @@ All existing security invariants from `security-policy.md` are preserved:
 
 ## What stays core (not plugins)
 
-| Component                                               | Reason                                         |
-| ------------------------------------------------------- | ---------------------------------------------- |
-| Agent loop (`Agent` runtime + harness)                  | Core orchestration, not provider-specific      |
-| Sandbox and container isolation                         | Security boundary, shared by all providers     |
-| `jr-rpc` command infrastructure                         | Generic RPC layer — reads config from registry |
-| Slack tools (canvas, list, channel, message)            | Platform tools, not provider integrations      |
-| Web tools (search, fetch)                               | General-purpose, not provider-specific         |
-| Skill infrastructure (discovery, frontmatter, loading)  | Framework — plugins contribute skills          |
-| `CredentialBroker` interface and `CredentialLease` type | Shared contract                                |
-| `ProviderCredentialRouter`                              | Generic router                                 |
-| `SkillCapabilityRuntime`                                | Generic runtime                                |
-| OAuth callback route (`/api/oauth/callback/[provider]`) | Shared HTTP handler                            |
-| `TestCredentialBroker`                                  | Eval infrastructure, not a plugin              |
+| Component                                               | Reason                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------- |
+| Agent loop (`Agent` runtime + harness)                  | Core orchestration, not provider-specific                           |
+| Sandbox and container isolation                         | Security boundary, shared by all providers                          |
+| Sandbox command proxy wrapper infrastructure            | Generic sandbox command shims with host-owned credential activation |
+| `jr-rpc` command infrastructure                         | Host-only pseudo-command parser — reads config from registry        |
+| Slack tools (canvas, list, channel, message)            | Platform tools, not provider integrations                           |
+| Web tools (search, fetch)                               | General-purpose, not provider-specific                              |
+| Skill infrastructure (discovery, frontmatter, loading)  | Framework — plugins contribute skills                               |
+| `CredentialBroker` interface and `CredentialLease` type | Shared contract                                                     |
+| `ProviderCredentialRouter`                              | Generic router                                                      |
+| `SkillCapabilityRuntime`                                | Generic runtime                                                     |
+| OAuth callback route (`/api/oauth/callback/[provider]`) | Shared HTTP handler                                                 |
+| `TestCredentialBroker`                                  | Eval infrastructure, not a plugin                                   |
 
 ## Example: adding a new provider (Linear)
 

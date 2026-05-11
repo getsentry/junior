@@ -141,9 +141,6 @@ importers:
       ai:
         specifier: ^6.0.175
         version: 6.0.175(zod@4.4.3)
-      bash-tool:
-        specifier: ^1.3.16
-        version: 1.3.16(@vercel/sandbox@1.10.0)(ai@6.0.175(zod@4.4.3))(just-bash@2.14.2)
       chat:
         specifier: 4.27.0
         version: 4.27.0
@@ -5149,22 +5146,6 @@ packages:
       {
         integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==,
       }
-
-  bash-tool@1.3.16:
-    resolution:
-      {
-        integrity: sha512-2xuprVBzUOYw4+QCpeSwvkuXuHkjKRtMzh+nTpEidROsNnglr5xRs3mdeOmwFVkjB4JhE/uZqIXE+tabbJI7QQ==,
-      }
-    engines: { node: ">=18" }
-    peerDependencies:
-      "@vercel/sandbox": "*"
-      ai: ^6.0.0
-      just-bash: ^2.9.3
-    peerDependenciesMeta:
-      "@vercel/sandbox":
-        optional: true
-      just-bash:
-        optional: true
 
   basic-ftp@5.2.0:
     resolution:
@@ -13343,7 +13324,6 @@ snapshots:
       "@vercel/functions": 3.5.0(@aws-sdk/credential-provider-web-identity@3.972.33)
       "@vercel/sandbox": 1.10.0
       ai: 6.0.175(zod@4.4.3)
-      bash-tool: 1.3.16(@vercel/sandbox@1.10.0)(ai@6.0.175(zod@4.4.3))(just-bash@2.14.2)
       chat: 4.27.0
       hono: 4.12.17
       just-bash: 2.14.2
@@ -13380,7 +13360,6 @@ snapshots:
       "@vercel/functions": 3.5.0(@aws-sdk/credential-provider-web-identity@3.972.33)
       "@vercel/sandbox": 1.10.0
       ai: 6.0.175(zod@4.4.3)
-      bash-tool: 1.3.16(@vercel/sandbox@1.10.0)(ai@6.0.175(zod@4.4.3))(just-bash@2.14.2)
       chat: 4.27.0
       hono: 4.12.17
       just-bash: 2.14.2
@@ -14747,16 +14726,6 @@ snapshots:
   base-64@1.0.0: {}
 
   base64-js@1.5.1: {}
-
-  bash-tool@1.3.16(@vercel/sandbox@1.10.0)(ai@6.0.175(zod@4.4.3))(just-bash@2.14.2):
-    dependencies:
-      ai: 6.0.175(zod@4.4.3)
-      fast-glob: 3.3.3
-      yaml: 2.8.4
-      zod: 3.25.76
-    optionalDependencies:
-      "@vercel/sandbox": 1.10.0
-      just-bash: 2.14.2
 
   basic-ftp@5.2.0: {}
 

@@ -297,6 +297,10 @@ vi.mock("@/chat/capabilities/factory", () => ({
       }
       return undefined;
     },
+    enableCommandProxyCredentialsForTurn: async () => ({
+      activeProviders: [],
+      authRequiredProviders: [],
+    }),
     getTurnHeaderTransforms: () => undefined,
     getTurnEnv: () => undefined,
   }),
@@ -308,10 +312,11 @@ vi.mock("@/chat/capabilities/factory", () => ({
 }));
 
 vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
-  maybeExecuteJrRpcCustomCommand: async () => ({ handled: false }),
+  maybeExecuteJrRpcHostCommand: async () => ({ handled: false }),
 }));
 
 vi.mock("@/chat/plugins/registry", () => ({
+  getPluginCommandProxies: () => [],
   getPluginMcpProviders: () => [],
   getPluginProviders: () => [],
 }));

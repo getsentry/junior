@@ -20,7 +20,7 @@ import {
   createSkillCapabilityRuntime,
   createUserTokenStore,
 } from "@/chat/capabilities/factory";
-import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
+import { maybeExecuteJrRpcHostCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
@@ -32,6 +32,7 @@ import {
   type Skill,
 } from "@/chat/skills";
 import {
+  getPluginCommandProxies,
   getPluginMcpProviders,
   getPluginProviders,
 } from "@/chat/plugins/registry";
@@ -500,19 +501,21 @@ export async function generateAssistantReply(
       requesterId: context.requester?.userId,
     });
     const userTokenStore = createUserTokenStore();
+    const commandProxies = getPluginCommandProxies();
     sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
+      commandProxies,
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =
           sandbox.sandboxDependencyProfileHash;
         await context.onSandboxAcquired?.(sandbox);
       },
-      runBashCustomCommand: async (command) => {
-        const result = await maybeExecuteJrRpcCustomCommand(command, {
+      runHostBashCommand: async (command) => {
+        const result = await maybeExecuteJrRpcHostCommand(command, {
           activeSkill: skillSandbox.getActiveSkill(),
           channelConfiguration: context.channelConfiguration,
           requesterId: context.requester?.userId,

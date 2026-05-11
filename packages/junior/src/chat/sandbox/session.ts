@@ -1,5 +1,4 @@
 import { Sandbox } from "@vercel/sandbox";
-import { createBashTool } from "bash-tool";
 import {
   logWarn,
   setSpanAttributes,
@@ -25,6 +24,7 @@ import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import type { SandboxCommandResult } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxFileSystem } from "@/chat/tools/sandbox/file-utils";
+import type { PluginCommandProxy } from "@/chat/plugins/types";
 
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const SANDBOX_RUNTIME = "node22";
@@ -42,13 +42,15 @@ interface NetworkPolicyAllowEntry {
   transform?: Array<{ headers: Record<string, string> }>;
 }
 
+type SandboxHeaderTransform = {
+  domain: string;
+  headers: Record<string, string>;
+};
+
 interface SandboxToolExecutors {
   bash: (input: {
     command: string;
-    headerTransforms?: Array<{
-      domain: string;
-      headers: Record<string, string>;
-    }>;
+    headerTransforms?: SandboxHeaderTransform[];
     env?: Record<string, string>;
     timeoutMs?: number;
   }) => Promise<{
@@ -159,6 +161,7 @@ export function createSandboxSessionManager(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
+  commandProxies?: PluginCommandProxy[];
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
     sandboxDependencyProfileHash?: string;
@@ -174,6 +177,7 @@ export function createSandboxSessionManager(options?: {
   const traceContext = options?.traceContext ?? {};
   const dependencyProfileHash =
     getRuntimeDependencyProfileHash(SANDBOX_RUNTIME);
+  const commandProxies = options?.commandProxies ?? [];
 
   const withSandboxSpan = <T>(
     name: string,
@@ -212,6 +216,7 @@ export function createSandboxSessionManager(options?: {
       referenceFiles: availableReferenceFiles,
       withSpan: withSandboxSpan,
       runtimeBinDir: SANDBOX_RUNTIME_BIN_DIR,
+      commandProxies,
     });
   };
 
@@ -615,28 +620,9 @@ export function createSandboxSessionManager(options?: {
   const buildToolExecutors = async (
     sandboxInstance: Sandbox,
   ): Promise<SandboxToolExecutors> => {
-    const toolkit = await withSandboxSpan(
-      "sandbox.bash_tool.init",
-      "sandbox.tool.init",
-      {
-        "app.sandbox.tool_name": "bash",
-        "app.sandbox.destination": SANDBOX_WORKSPACE_ROOT,
-      },
-      async () =>
-        await createBashTool({
-          sandbox: sandboxInstance,
-          destination: SANDBOX_WORKSPACE_ROOT,
-        }),
-    );
-
-    const executeReadFile = toolkit.tools.readFile.execute;
-    const executeWriteFile = toolkit.tools.writeFile.execute;
-    if (!executeReadFile || !executeWriteFile) {
-      throw new Error("bash-tool did not return executable tool handlers");
-    }
-
     return {
       bash: async (input) => {
+        // Production bash runs inside Vercel Sandbox; host hooks are handled before this executor.
         const script = buildNonInteractiveShellScript(input.command, {
           env: input.env,
           pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,
@@ -684,16 +670,17 @@ export function createSandboxSessionManager(options?: {
           },
         );
       },
-      readFile: async (input) =>
-        (await executeReadFile(input, {
-          toolCallId: "sandbox-read-file",
-          messages: [],
-        })) as { content: string },
-      writeFile: async (input) =>
-        (await executeWriteFile(input, {
-          toolCallId: "sandbox-write-file",
-          messages: [],
-        })) as { success: boolean },
+      readFile: async (input) => ({
+        content: await sandboxInstance.fs.readFile(input.path, {
+          encoding: "utf8",
+        }),
+      }),
+      writeFile: async (input) => {
+        await sandboxInstance.fs.writeFile(input.path, input.content, {
+          encoding: "utf8",
+        });
+        return { success: true };
+      },
       fs: sandboxInstance.fs as SandboxFileSystem,
     };
   };

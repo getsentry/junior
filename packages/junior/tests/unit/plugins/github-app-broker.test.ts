@@ -161,7 +161,7 @@ describe("github app credential broker", () => {
     expect(vi.mocked(globalThis.fetch).mock.calls).toHaveLength(1);
   });
 
-  it("requests the full plugin permission set when minting installation tokens", async () => {
+  it("does not request manifest permissions when minting installation tokens", async () => {
     setupValidEnv();
     mockGitHubApi();
 
@@ -171,13 +171,6 @@ describe("github app credential broker", () => {
     });
 
     const fetchCall = findAccessTokenCall();
-    const body = JSON.parse(fetchCall[1]?.body as string);
-    expect(body.permissions).toEqual({
-      issues: "write",
-      contents: "write",
-      actions: "write",
-      pull_requests: "write",
-    });
-    expect(body.repositories).toBeUndefined();
+    expect(fetchCall[1]?.body).toBeUndefined();
   });
 });

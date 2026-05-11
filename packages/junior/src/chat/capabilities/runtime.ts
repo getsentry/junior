@@ -5,6 +5,7 @@ import type {
   CredentialHeaderTransform,
   CredentialLease,
 } from "@/chat/credentials/broker";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { getPluginDefinition } from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
 
@@ -67,19 +68,16 @@ export class SkillCapabilityRuntime {
     this.requesterId = params.requesterId;
   }
 
-  async enableCredentialsForTurn(input: {
-    activeSkill: Skill | null;
+  private async enableProviderCredentialsForTurn(input: {
+    provider: string;
     reason: string;
+    skillName?: string;
   }): Promise<{ reused: boolean; expiresAt: string } | undefined> {
-    const provider = input.activeSkill?.pluginProvider;
-    if (!provider) {
-      return undefined;
-    }
-
     if (!this.requesterId) {
       throw new Error("Credential enablement requires requester context");
     }
 
+    const provider = input.provider;
     const plugin = getPluginDefinition(provider);
     if (!plugin?.manifest.credentials && !plugin?.manifest.apiHeaders) {
       return undefined;
@@ -98,7 +96,7 @@ export class SkillCapabilityRuntime {
       "credential_issue_request",
       {},
       {
-        "app.skill.name": input.activeSkill?.name,
+        ...(input.skillName ? { "app.skill.name": input.skillName } : {}),
         "app.credential.provider": provider,
       },
       "Issuing provider credential for current turn",
@@ -133,7 +131,7 @@ export class SkillCapabilityRuntime {
         "credential_issue_success",
         {},
         {
-          "app.skill.name": input.activeSkill?.name,
+          ...(input.skillName ? { "app.skill.name": input.skillName } : {}),
           "app.credential.provider": lease.provider,
           "app.credential.expires_at": lease.expiresAt,
           "app.credential.delivery": "header_transform",
@@ -142,19 +140,75 @@ export class SkillCapabilityRuntime {
       );
       return { reused: false, expiresAt: lease.expiresAt };
     } catch (error) {
-      logWarn(
-        "credential_issue_failed",
-        {},
-        {
-          "app.skill.name": input.activeSkill?.name,
-          "app.credential.provider": provider,
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        },
-        "Provider credential resolution failed",
-      );
+      if (!(error instanceof CredentialUnavailableError)) {
+        logWarn(
+          "credential_issue_failed",
+          {},
+          {
+            ...(input.skillName ? { "app.skill.name": input.skillName } : {}),
+            "app.credential.provider": provider,
+            "exception.message":
+              error instanceof Error ? error.message : String(error),
+          },
+          "Provider credential resolution failed",
+        );
+      }
       throw error;
     }
+  }
+
+  async enableCredentialsForTurn(input: {
+    activeSkill: Skill | null;
+    reason: string;
+  }): Promise<{ reused: boolean; expiresAt: string } | undefined> {
+    const provider = input.activeSkill?.pluginProvider;
+    if (!provider) {
+      return undefined;
+    }
+
+    return await this.enableProviderCredentialsForTurn({
+      provider,
+      reason: input.reason,
+      skillName: input.activeSkill?.name,
+    });
+  }
+
+  /**
+   * Enable all available command-proxy providers without exposing secrets.
+   */
+  async enableCommandProxyCredentialsForTurn(input: {
+    providers: string[];
+    reason: string;
+  }): Promise<{
+    activeProviders: string[];
+    authRequiredProviders: string[];
+  }> {
+    const activeProviders: string[] = [];
+    const authRequiredProviders: string[] = [];
+    const seen = new Set<string>();
+
+    for (const provider of input.providers) {
+      if (!provider || seen.has(provider)) {
+        continue;
+      }
+      seen.add(provider);
+      try {
+        const enabled = await this.enableProviderCredentialsForTurn({
+          provider,
+          reason: input.reason,
+        });
+        if (enabled) {
+          activeProviders.push(provider);
+        }
+      } catch (error) {
+        if (error instanceof CredentialUnavailableError) {
+          authRequiredProviders.push(provider);
+          continue;
+        }
+      }
+    }
+
+    return { activeProviders, authRequiredProviders };
   }
 
   getTurnHeaderTransforms(): CredentialHeaderTransform[] | undefined {
