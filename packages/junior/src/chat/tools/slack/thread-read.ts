@@ -1,23 +1,54 @@
 import { Type } from "@sinclair/typebox";
-import { SlackActionError } from "@/chat/slack/client";
-import { getChannelInfo, listThreadReplies } from "@/chat/slack/channel";
+import {
+  SlackActionError,
+  normalizeSlackConversationId,
+} from "@/chat/slack/client";
+import { listThreadReplies } from "@/chat/slack/channel";
 import { tool } from "@/chat/tools/definition";
-import { parseSlackMessageReference } from "@/chat/tools/slack/slack-message-url";
+import {
+  SLACK_TS_PATTERN,
+  parseSlackMessageReference,
+} from "@/chat/tools/slack/slack-message-url";
 import type { SlackThreadReply } from "@/chat/slack/channel";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 const MAX_THREAD_READ_CHARS = 40_000;
+
+/** Project a thread reply to safe output fields (strips url_private etc). */
+function sanitizeMessage(msg: SlackThreadReply) {
+  return {
+    ts: msg.ts,
+    user: msg.user,
+    text: msg.text,
+    thread_ts: msg.thread_ts,
+    subtype: msg.subtype,
+    bot_id: msg.bot_id,
+    type: msg.type,
+    ...(msg.files?.length
+      ? {
+          files: msg.files.map((f) => ({
+            id: f.id,
+            name: f.name,
+            mimetype: f.mimetype,
+            size: f.size,
+          })),
+        }
+      : {}),
+  };
+}
+
+type SanitizedMessage = ReturnType<typeof sanitizeMessage>;
 
 /**
  * Pick the subset of messages that fit within the character budget,
  * returning the count of messages omitted due to truncation.
  */
 function truncateMessages(
-  messages: SlackThreadReply[],
+  messages: SanitizedMessage[],
   maxChars: number,
-): { messages: SlackThreadReply[]; omitted: number } {
+): { messages: SanitizedMessage[]; omitted: number } {
   let chars = 0;
-  const kept: SlackThreadReply[] = [];
+  const kept: SanitizedMessage[] = [];
 
   for (const msg of messages) {
     const textLen = msg.text?.length ?? 0;
@@ -32,50 +63,46 @@ function truncateMessages(
 }
 
 /**
- * Check whether reading the target channel is allowed.
+ * Check whether reading the target channel is allowed using only local
+ * channel ID conventions — no Slack API call needed.
  *
- * Public channels are always readable. Private channels, DMs, and group DMs
- * are only allowed when the target channel matches the channel the user is
- * currently messaging from (proving they have access).
+ * Public channels (C-prefix) are always readable. Private channels (G-prefix)
+ * and DMs (D-prefix) are only allowed when the target matches the channel the
+ * user is currently messaging from.
  */
-async function checkChannelAccess(
+function checkChannelAccess(
   targetChannelId: string,
   currentChannelId: string | undefined,
-): Promise<{ allowed: true } | { allowed: false; error: string }> {
-  // Same channel as the conversation — user is clearly a member.
-  if (currentChannelId && targetChannelId === currentChannelId) {
+): { allowed: true } | { allowed: false; error: string } {
+  const target = normalizeSlackConversationId(targetChannelId);
+  const current = normalizeSlackConversationId(currentChannelId);
+
+  if (!target) {
+    return { allowed: false, error: "Invalid Slack channel ID." };
+  }
+
+  // Public channels — any workspace member can see.
+  if (target.startsWith("C")) {
     return { allowed: true };
   }
 
-  try {
-    const info = await getChannelInfo(targetChannelId);
-
-    if (!info.isPrivate) {
-      return { allowed: true };
-    }
-
-    return {
-      allowed: false,
-      error:
-        "Cannot read messages from a private channel, DM, or group DM that is not the current conversation. The bot cannot verify you have access to that channel.",
-    };
-  } catch (error) {
-    if (error instanceof SlackActionError) {
-      return {
-        allowed: false,
-        error:
-          "Could not verify channel access. The channel may not exist or the bot may not have access to it.",
-      };
-    }
-    throw error;
+  // Private channels / DMs — only if user is messaging from that channel.
+  if (target === current) {
+    return { allowed: true };
   }
+
+  return {
+    allowed: false,
+    error:
+      "Cannot read private channels or DMs unless the link is from the current conversation.",
+  };
 }
 
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
 export function createSlackThreadReadTool(context: ToolRuntimeContext) {
   return tool({
     description:
-      "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Returns the full thread if the bot has access to the channel.",
+      "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Public channel links can be read if the bot has access; private channels and DMs are only readable when they are the current conversation.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       url: Type.Optional(
@@ -128,6 +155,9 @@ export function createSlackThreadReadTool(context: ToolRuntimeContext) {
         messageTs = parsed.reference.messageTs;
         threadTs = parsed.reference.threadTs;
       } else if (channel_id && ts) {
+        if (!SLACK_TS_PATTERN.test(ts)) {
+          return { ok: false, error: "Invalid Slack message timestamp." };
+        }
         channelId = channel_id;
         messageTs = ts;
       } else {
@@ -138,9 +168,7 @@ export function createSlackThreadReadTool(context: ToolRuntimeContext) {
         };
       }
 
-      // Access control: public channels are fine, private channels only if
-      // the user is messaging from that same channel.
-      const access = await checkChannelAccess(channelId, context.channelId);
+      const access = checkChannelAccess(channelId, context.channelId);
       if (!access.allowed) {
         return {
           ok: false,
@@ -187,8 +215,9 @@ export function createSlackThreadReadTool(context: ToolRuntimeContext) {
       const resolvedThreadTs =
         threadTs ?? root?.thread_ts ?? root?.ts ?? lookupTs;
 
+      const sanitized = replies.map(sanitizeMessage);
       const { messages, omitted } = truncateMessages(
-        replies,
+        sanitized,
         MAX_THREAD_READ_CHARS,
       );
 

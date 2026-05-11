@@ -12,7 +12,6 @@ describe("parseSlackMessageReference", () => {
         channelId: "C0AHB7N2JCR",
         messageTs: "1700000000.123456",
         threadTs: undefined,
-        url: "https://sentry.slack.com/archives/C0AHB7N2JCR/p1700000000123456",
       },
     });
   });
@@ -27,7 +26,6 @@ describe("parseSlackMessageReference", () => {
         channelId: "C0AHB7N2JCR",
         messageTs: "1700000000.999999",
         threadTs: "1700000000.000000",
-        url: "https://sentry.slack.com/archives/C0AHB7N2JCR/p1700000000999999?thread_ts=1700000000.000000&cid=C0AHB7N2JCR",
       },
     });
   });
@@ -135,6 +133,36 @@ describe("parseSlackMessageReference", () => {
       reference: {
         messageTs: "1700000000.000100",
       },
+    });
+  });
+
+  it("rejects HTTP URLs (requires HTTPS)", () => {
+    const result = parseSlackMessageReference(
+      "http://sentry.slack.com/archives/C123/p1700000000100000",
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: "Slack archive URL must use HTTPS",
+    });
+  });
+
+  it("rejects channel IDs with invalid prefix", () => {
+    const result = parseSlackMessageReference(
+      "https://sentry.slack.com/archives/Z123ABC/p1700000000100000",
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: "URL path does not match Slack archive format",
+    });
+  });
+
+  it("rejects malformed thread_ts in query string", () => {
+    const result = parseSlackMessageReference(
+      "https://sentry.slack.com/archives/C123/p1700000000100000?thread_ts=garbage",
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: "Invalid thread timestamp in URL",
     });
   });
 });

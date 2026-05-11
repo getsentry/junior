@@ -4,7 +4,6 @@ export interface SlackMessageReference {
   channelId: string;
   messageTs: string;
   threadTs?: string;
-  url?: string;
 }
 
 type ParseResult =
@@ -12,8 +11,10 @@ type ParseResult =
   | { ok: false; error: string };
 
 const SLACK_HOST_PATTERN = /^[a-z0-9-]+\.slack(?:-gov)?\.com$/;
-const ARCHIVE_PATH_PATTERN =
-  /^\/archives\/([A-Z][A-Z0-9_]+)\/p(\d{10})(\d{6})$/;
+const ARCHIVE_PATH_PATTERN = /^\/archives\/([CDG][A-Z0-9]+)\/p(\d{10})(\d{6})$/;
+
+/** Slack message timestamp format: 10 digits, dot, 6 digits. */
+export const SLACK_TS_PATTERN = /^\d{10}\.\d{6}$/;
 
 /**
  * Convert a Slack `pNNNNNNNNNNMMMMMM` path segment into a Slack
@@ -49,6 +50,10 @@ export function parseSlackMessageReference(input: string): ParseResult {
     return { ok: false, error: "Input is not a valid URL" };
   }
 
+  if (parsed.protocol !== "https:") {
+    return { ok: false, error: "Slack archive URL must use HTTPS" };
+  }
+
   if (!SLACK_HOST_PATTERN.test(parsed.hostname)) {
     return { ok: false, error: "Not a Slack archive URL" };
   }
@@ -62,18 +67,15 @@ export function parseSlackMessageReference(input: string): ParseResult {
   const messageTs = pTimestampToTs(pathMatch[2]!, pathMatch[3]!);
 
   // Handle HTML-encoded ampersands from some Slack contexts.
-  const searchString = parsed.search.replace(/&amp;/g, "&");
-  const params = new URLSearchParams(searchString.replace(/^\?/, ""));
-
+  const params = new URLSearchParams(parsed.search.replace(/&amp;/g, "&"));
   const threadTs = params.get("thread_ts") || undefined;
+
+  if (threadTs && !SLACK_TS_PATTERN.test(threadTs)) {
+    return { ok: false, error: "Invalid thread timestamp in URL" };
+  }
 
   return {
     ok: true,
-    reference: {
-      channelId,
-      messageTs,
-      threadTs,
-      url: raw,
-    },
+    reference: { channelId, messageTs, threadTs },
   };
 }
