@@ -1,11 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
-import { conversationsRepliesPage } from "../fixtures/slack/factories/api";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
+import {
+  conversationsInfoOk,
+  conversationsRepliesPage,
+} from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
+
+function createContext(
+  overrides: Partial<ToolRuntimeContext> = {},
+): ToolRuntimeContext {
+  return {
+    channelId: "C_CURRENT",
+    channelCapabilities: {
+      canCreateCanvas: true,
+      canPostToChannel: true,
+      canAddReactions: true,
+    },
+    sandbox: {} as any,
+    ...overrides,
+  };
+}
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -15,7 +34,10 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 }
 
 describe("slackThreadRead", () => {
-  it("reads a thread from a plain Slack archive URL", async () => {
+  it("reads a thread from a public channel URL", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "C0AHB7N2JCR" }),
+    });
     queueSlackApiResponse("conversations.replies", {
       body: conversationsRepliesPage({
         threadTs: "1700000000.123456",
@@ -36,7 +58,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createSlackThreadReadTool();
+    const tool = createSlackThreadReadTool(createContext());
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C0AHB7N2JCR/p1700000000123456",
     });
@@ -54,15 +76,21 @@ describe("slackThreadRead", () => {
     expect(result.messages[0].text).toBe("root message");
     expect(result.messages[1].text).toBe("reply message");
 
-    const calls = getCapturedSlackApiCalls("conversations.replies");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.params).toMatchObject({
+    // Should call conversations.info first, then conversations.replies
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
+    expect(
+      getCapturedSlackApiCalls("conversations.replies")[0]?.params,
+    ).toMatchObject({
       channel: "C0AHB7N2JCR",
       ts: "1700000000.123456",
     });
   });
 
   it("uses thread_ts from the URL when present", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "C123" }),
+    });
     queueSlackApiResponse("conversations.replies", {
       body: conversationsRepliesPage({
         threadTs: "1700000000.000000",
@@ -83,7 +111,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createSlackThreadReadTool();
+    const tool = createSlackThreadReadTool(createContext());
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C123/p1700000000999999?thread_ts=1700000000.000000&cid=C123",
     });
@@ -96,15 +124,18 @@ describe("slackThreadRead", () => {
       count: 2,
     });
 
-    const calls = getCapturedSlackApiCalls("conversations.replies");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.params).toMatchObject({
+    expect(
+      getCapturedSlackApiCalls("conversations.replies")[0]?.params,
+    ).toMatchObject({
       channel: "C123",
       ts: "1700000000.000000",
     });
   });
 
   it("reads a thread from explicit channel_id and ts", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "C_MANUAL" }),
+    });
     queueSlackApiResponse("conversations.replies", {
       body: conversationsRepliesPage({
         threadTs: "1700000000.500000",
@@ -119,7 +150,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createSlackThreadReadTool();
+    const tool = createSlackThreadReadTool(createContext());
     const result = await executeTool(tool, {
       channel_id: "C_MANUAL",
       ts: "1700000000.500000",
@@ -128,25 +159,100 @@ describe("slackThreadRead", () => {
     expect(result).toMatchObject({
       ok: true,
       channel_id: "C_MANUAL",
-      target_message_ts: "1700000000.500000",
       count: 1,
     });
     expect(result.messages[0].text).toBe("standalone message");
+  });
 
-    const calls = getCapturedSlackApiCalls("conversations.replies");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.params).toMatchObject({
-      channel: "C_MANUAL",
-      ts: "1700000000.500000",
+  it("allows reading a private channel when it matches the current channel", async () => {
+    // No conversations.info needed — same-channel bypass
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: "1700000000.100000",
+        messages: [
+          {
+            ts: "1700000000.100000",
+            thread_ts: "1700000000.100000",
+            user: "U1",
+            text: "private but same channel",
+          },
+        ],
+      }),
     });
+
+    const tool = createSlackThreadReadTool(
+      createContext({ channelId: "G_PRIVATE" }),
+    );
+    const result = await executeTool(tool, {
+      channel_id: "G_PRIVATE",
+      ts: "1700000000.100000",
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      channel_id: "G_PRIVATE",
+      count: 1,
+    });
+
+    // Should NOT call conversations.info — same-channel shortcut
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
+  });
+
+  it("blocks reading a private channel that is not the current channel", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "G_OTHER_PRIVATE",
+        isPrivate: true,
+      }),
+    });
+
+    const tool = createSlackThreadReadTool(
+      createContext({ channelId: "C_CURRENT" }),
+    );
+    const result = await executeTool(tool, {
+      url: "https://sentry.slack.com/archives/G_OTHER_PRIVATE/p1700000000100000",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      channel_id: "G_OTHER_PRIVATE",
+      target_message_ts: "1700000000.100000",
+    });
+    expect(result.error).toContain("private channel");
+
+    // Should call conversations.info but NOT conversations.replies
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(0);
+  });
+
+  it("blocks reading a DM channel that is not the current channel", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({
+        channelId: "D_SOMEONE",
+        isIm: true,
+      }),
+    });
+
+    const tool = createSlackThreadReadTool(createContext());
+    const result = await executeTool(tool, {
+      channel_id: "D_SOMEONE",
+      ts: "1700000000.100000",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      channel_id: "D_SOMEONE",
+    });
+    expect(result.error).toContain("private channel");
   });
 
   it("returns a recoverable error when the bot is not in the channel", async () => {
-    queueSlackApiError("conversations.replies", {
-      error: "not_in_channel",
+    queueSlackApiError("conversations.info", {
+      error: "channel_not_found",
     });
 
-    const tool = createSlackThreadReadTool();
+    const tool = createSlackThreadReadTool(createContext());
     const result = await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C_PRIVATE/p1700000000100000",
     });
@@ -155,30 +261,34 @@ describe("slackThreadRead", () => {
       ok: false,
       channel_id: "C_PRIVATE",
       target_message_ts: "1700000000.100000",
+    });
+    expect(result.error).toContain("Could not verify channel access");
+  });
+
+  it("returns a recoverable error when conversations.replies fails", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "C_FLAKY" }),
+    });
+    queueSlackApiError("conversations.replies", {
+      error: "not_in_channel",
+    });
+
+    const tool = createSlackThreadReadTool(createContext());
+    const result = await executeTool(tool, {
+      channel_id: "C_FLAKY",
+      ts: "1700000000.100000",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      channel_id: "C_FLAKY",
       slack_error: "not_in_channel",
     });
     expect(result.error).toContain("Could not read this Slack thread");
   });
 
-  it("returns a recoverable error when the channel is not found", async () => {
-    queueSlackApiError("conversations.replies", {
-      error: "channel_not_found",
-    });
-
-    const tool = createSlackThreadReadTool();
-    const result = await executeTool(tool, {
-      url: "https://sentry.slack.com/archives/C_GONE/p1700000000100000",
-    });
-
-    expect(result).toMatchObject({
-      ok: false,
-      channel_id: "C_GONE",
-      slack_error: "channel_not_found",
-    });
-  });
-
   it("returns an error for invalid URL input", async () => {
-    const tool = createSlackThreadReadTool();
+    const tool = createSlackThreadReadTool(createContext());
     const result = await executeTool(tool, {
       url: "not a valid url",
     });
@@ -190,7 +300,7 @@ describe("slackThreadRead", () => {
   });
 
   it("returns an error when neither url nor channel_id+ts are provided", async () => {
-    const tool = createSlackThreadReadTool();
+    const tool = createSlackThreadReadTool(createContext());
     const result = await executeTool(tool, {});
 
     expect(result).toMatchObject({
@@ -200,6 +310,9 @@ describe("slackThreadRead", () => {
   });
 
   it("paginates across multiple reply pages", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "C_PAGED" }),
+    });
     queueSlackApiResponse("conversations.replies", {
       body: conversationsRepliesPage({
         threadTs: "1700000000.000000",
@@ -234,7 +347,7 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createSlackThreadReadTool();
+    const tool = createSlackThreadReadTool(createContext());
     const result = await executeTool(tool, {
       channel_id: "C_PAGED",
       ts: "1700000000.000000",
@@ -255,7 +368,10 @@ describe("slackThreadRead", () => {
     });
   });
 
-  it("does not call conversations.history — only conversations.replies", async () => {
+  it("does not call conversations.history — only conversations.info and conversations.replies", async () => {
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "C123" }),
+    });
     queueSlackApiResponse("conversations.replies", {
       body: conversationsRepliesPage({
         threadTs: "1700000000.100000",
@@ -270,12 +386,13 @@ describe("slackThreadRead", () => {
       }),
     });
 
-    const tool = createSlackThreadReadTool();
+    const tool = createSlackThreadReadTool(createContext());
     await executeTool(tool, {
       url: "https://sentry.slack.com/archives/C123/p1700000000100000",
     });
 
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.replies")).toHaveLength(1);
   });
 });

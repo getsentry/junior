@@ -1,9 +1,10 @@
 import { Type } from "@sinclair/typebox";
 import { SlackActionError } from "@/chat/slack/client";
-import { listThreadReplies } from "@/chat/slack/channel";
+import { getChannelInfo, listThreadReplies } from "@/chat/slack/channel";
 import { tool } from "@/chat/tools/definition";
 import { parseSlackMessageReference } from "@/chat/tools/slack/slack-message-url";
 import type { SlackThreadReply } from "@/chat/slack/channel";
+import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 const MAX_THREAD_READ_CHARS = 40_000;
 
@@ -30,8 +31,48 @@ function truncateMessages(
   return { messages: kept, omitted: messages.length - kept.length };
 }
 
+/**
+ * Check whether reading the target channel is allowed.
+ *
+ * Public channels are always readable. Private channels, DMs, and group DMs
+ * are only allowed when the target channel matches the channel the user is
+ * currently messaging from (proving they have access).
+ */
+async function checkChannelAccess(
+  targetChannelId: string,
+  currentChannelId: string | undefined,
+): Promise<{ allowed: true } | { allowed: false; error: string }> {
+  // Same channel as the conversation — user is clearly a member.
+  if (currentChannelId && targetChannelId === currentChannelId) {
+    return { allowed: true };
+  }
+
+  try {
+    const info = await getChannelInfo(targetChannelId);
+
+    if (!info.isPrivate) {
+      return { allowed: true };
+    }
+
+    return {
+      allowed: false,
+      error:
+        "Cannot read messages from a private channel, DM, or group DM that is not the current conversation. The bot cannot verify you have access to that channel.",
+    };
+  } catch (error) {
+    if (error instanceof SlackActionError) {
+      return {
+        allowed: false,
+        error:
+          "Could not verify channel access. The channel may not exist or the bot may not have access to it.",
+      };
+    }
+    throw error;
+  }
+}
+
 /** Create a tool that reads a Slack thread from a shared message URL or explicit coordinates. */
-export function createSlackThreadReadTool() {
+export function createSlackThreadReadTool(context: ToolRuntimeContext) {
   return tool({
     description:
       "Read a Slack thread from a shared Slack message archive URL or explicit channel + timestamp. Use when the user shares a Slack message link (https://*.slack.com/archives/...) and you need the referenced message and its thread context. Returns the full thread if the bot has access to the channel.",
@@ -94,6 +135,18 @@ export function createSlackThreadReadTool() {
           ok: false,
           error:
             "Provide either a Slack message `url` or both `channel_id` and `ts`.",
+        };
+      }
+
+      // Access control: public channels are fine, private channels only if
+      // the user is messaging from that same channel.
+      const access = await checkChannelAccess(channelId, context.channelId);
+      if (!access.allowed) {
+        return {
+          ok: false,
+          channel_id: channelId,
+          target_message_ts: messageTs,
+          error: access.error,
         };
       }
 

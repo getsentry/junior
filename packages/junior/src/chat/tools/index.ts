@@ -110,7 +110,7 @@ export function createTools(
     ),
     slackCanvasRead: createSlackCanvasReadTool(),
     slackCanvasUpdate: createSlackCanvasUpdateTool(state, context),
-    slackThreadRead: createSlackThreadReadTool(),
+    slackThreadRead: createSlackThreadReadTool(context),
     slackListCreate: createSlackListCreateTool(state),
     slackListAddItems: createSlackListAddItemsTool(state),
     slackListGetItems: createSlackListGetItemsTool(state),

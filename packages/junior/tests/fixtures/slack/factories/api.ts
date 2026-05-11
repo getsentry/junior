@@ -320,6 +320,41 @@ export function filesCompleteUploadOk(
   });
 }
 
+export function conversationsInfoOk(
+  input: {
+    channelId?: string;
+    isPrivate?: boolean;
+    isIm?: boolean;
+    isMpim?: boolean;
+    isGroup?: boolean;
+  } = {},
+): {
+  ok: true;
+  channel: {
+    id: string;
+    is_channel: boolean;
+    is_private: boolean;
+    is_im: boolean;
+    is_mpim: boolean;
+    is_group: boolean;
+  };
+} {
+  const isPrivate = input.isPrivate ?? false;
+  const isIm = input.isIm ?? false;
+  const isMpim = input.isMpim ?? false;
+  const isGroup = input.isGroup ?? false;
+  return slackOk({
+    channel: {
+      id: input.channelId ?? TEST_CHANNEL_ID,
+      is_channel: !isPrivate && !isIm && !isMpim && !isGroup,
+      is_private: isPrivate,
+      is_im: isIm,
+      is_mpim: isMpim,
+      is_group: isGroup,
+    },
+  });
+}
+
 export function usersInfoOk(
   input: {
     userId?: string;

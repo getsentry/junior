@@ -10,6 +10,7 @@ import {
   chatPostMessageOk,
   conversationsCanvasesCreateOk,
   conversationsHistoryPage,
+  conversationsInfoOk,
   conversationsRepliesPage,
   filesCompleteUploadOk,
   filesGetUploadUrlOk,
@@ -38,6 +39,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "reactions.add",
   "reactions.remove",
   "conversations.history",
+  "conversations.info",
   "conversations.replies",
   "canvases.access.set",
   "canvases.create",
@@ -197,6 +199,8 @@ function defaultSlackApiResponse(
       return { body: reactionsAddOk() };
     case "conversations.history":
       return { body: conversationsHistoryPage() };
+    case "conversations.info":
+      return { body: conversationsInfoOk() };
     case "conversations.replies":
       return { body: conversationsRepliesPage() };
     case "canvases.access.set":
