@@ -105,6 +105,7 @@ export async function listThreadReplies(input: {
       (value): value is string => typeof value === "string" && value.length > 0,
     ),
   );
+  const hasTargetMessages = pendingTargets.size > 0;
   const replies: SlackThreadReply[] = [];
   let cursor: string | undefined;
   let pages = 0;
@@ -132,7 +133,7 @@ export async function listThreadReplies(input: {
       }
     }
     cursor = response.response_metadata?.next_cursor || undefined;
-    if (!cursor || pendingTargets.size === 0) {
+    if (!cursor || (hasTargetMessages && pendingTargets.size === 0)) {
       break;
     }
   }
