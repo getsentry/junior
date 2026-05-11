@@ -103,10 +103,10 @@ function commandUsesProxyProvider(provider: string, command: string): boolean {
   const proxyCommands = getPluginCommandProxies()
     .filter((proxy) => proxy.provider === provider)
     .map((proxy) => proxy.command.toLowerCase());
-  return proxyCommands.some((command) =>
-    new RegExp(`(^|[\\s;&|()])${escapeRegExp(command)}($|[\\s;&|()])`).test(
-      normalizedCommand,
-    ),
+  return proxyCommands.some((proxyCommand) =>
+    new RegExp(
+      `(^|[\\s;&|()])${escapeRegExp(proxyCommand)}($|[\\s;&|()])`,
+    ).test(normalizedCommand),
   );
 }
 

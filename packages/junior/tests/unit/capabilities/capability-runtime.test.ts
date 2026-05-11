@@ -332,4 +332,23 @@ describe("skill capability runtime", () => {
       authRequiredProviders: ["sentry"],
     });
   });
+
+  it("rethrows unexpected command proxy credential errors", async () => {
+    const router: CredentialRouter = {
+      issue: async () => {
+        throw new Error("credential broker exploded");
+      },
+    };
+    const runtime = new SkillCapabilityRuntime({
+      router,
+      requesterId: "U123",
+    });
+
+    await expect(
+      runtime.enableCommandProxyCredentialsForTurn({
+        providers: ["github"],
+        reason: "sandbox:command-proxy",
+      }),
+    ).rejects.toThrow("credential broker exploded");
+  });
 });

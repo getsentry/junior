@@ -205,6 +205,7 @@ export class SkillCapabilityRuntime {
           authRequiredProviders.push(provider);
           continue;
         }
+        throw error;
       }
     }
 
