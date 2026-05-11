@@ -126,25 +126,18 @@ describe("McpToolManager", () => {
   it("activates plugin-scoped MCP tools once with collision-safe names", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);
-    const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
 
-    expect(
-      await manager.activateForSkill({
-        name: "demo-skill",
-        pluginProvider: undefined,
-      }),
-    ).toBe(false);
-    expect(await manager.activateForSkill(activeSkills[0]!)).toBe(true);
+    expect(await manager.activateProvider("demo")).toBe(true);
     expect(await manager.activateProvider("demo")).toBe(false);
     expect(manager.getActiveProviders()).toEqual(["demo"]);
 
-    const tools = manager.getActiveToolCatalog(activeSkills);
+    const tools = manager.getActiveToolCatalog();
     expect(tools).toHaveLength(1);
     expect(tools[0]?.name).toBe("mcp__demo__ping");
     expect(tools[0]?.rawName).toBe("ping");
     expect(tools[0]?.description).toBe("[demo] Ping the remote MCP server");
 
-    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    const resolvedTools = manager.getResolvedActiveTools();
     expect(resolvedTools).toHaveLength(1);
     const result = await resolvedTools[0]!.execute({ query: "hello" });
 
@@ -168,16 +161,15 @@ describe("McpToolManager", () => {
     expect(clientOptions).not.toContainEqual(
       expect.objectContaining({ sessionId: expect.any(String) }),
     );
-    expect(manager.getActiveToolCatalog(activeSkills)).toEqual([]);
+    expect(manager.getActiveToolCatalog()).toEqual([]);
   });
 
   it("annotates MCP tool spans with the MCP method name", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);
-    const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
     await manager.activateProvider("demo");
 
-    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    const resolvedTools = manager.getResolvedActiveTools();
     await expect(
       resolvedTools[0]!.execute({ query: "hello" }),
     ).resolves.toMatchObject({
@@ -195,7 +187,6 @@ describe("McpToolManager", () => {
   it("logs expected MCP tool errors with semantic context", async () => {
     const plugin = buildPlugin();
     const manager = new McpToolManager([plugin]);
-    const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
     await manager.activateProvider("demo");
     callToolMock.mockResolvedValueOnce({
       content: [
@@ -207,7 +198,7 @@ describe("McpToolManager", () => {
       isError: true,
     });
 
-    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    const resolvedTools = manager.getResolvedActiveTools();
     await expect(resolvedTools[0]!.execute({})).rejects.toThrow(
       "expected object, received undefined",
     );
@@ -232,13 +223,12 @@ describe("McpToolManager", () => {
     const manager = new McpToolManager([plugin], {
       onAuthorizationRequired: onAuthorizationRequiredMock,
     });
-    const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
     await manager.activateProvider("demo");
     callToolMock.mockRejectedValueOnce(
       new McpAuthorizationRequiredError("demo", "Auth required"),
     );
 
-    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    const resolvedTools = manager.getResolvedActiveTools();
     await expect(resolvedTools[0]!.execute({})).rejects.toBeInstanceOf(
       McpAuthorizationRequiredError,
     );
@@ -258,13 +248,12 @@ describe("McpToolManager", () => {
     const manager = new McpToolManager([plugin], {
       onAuthorizationRequired: onAuthorizationRequiredMock,
     });
-    const activeSkills = [{ name: "demo-skill", pluginProvider: "demo" }];
     await manager.activateProvider("demo");
     callToolMock.mockRejectedValueOnce(
       new McpAuthorizationRequiredError("demo", "Auth required"),
     );
 
-    const resolvedTools = manager.getResolvedActiveTools(activeSkills);
+    const resolvedTools = manager.getResolvedActiveTools();
     await expect(resolvedTools[0]!.execute({})).resolves.toEqual({
       content: [{ type: "text", text: "Authorization pending." }],
       details: {
@@ -372,12 +361,7 @@ describe("McpToolManager", () => {
     expect(closeMock).toHaveBeenNthCalledWith(1, alphaPlugin);
     expect(closeMock).toHaveBeenNthCalledWith(2, betaPlugin);
     expect(manager.getActiveProviders()).toEqual([]);
-    expect(
-      manager.getActiveToolCatalog([
-        { pluginProvider: "alpha" },
-        { pluginProvider: "beta" },
-      ]),
-    ).toEqual([]);
+    expect(manager.getActiveToolCatalog()).toEqual([]);
   });
 
   it("filters MCP tools to the provider allowlist", async () => {
@@ -408,14 +392,13 @@ describe("McpToolManager", () => {
     const manager = new McpToolManager([plugin]);
     await manager.activateProvider("notion");
 
-    expect(
-      manager
-        .getActiveToolCatalog([{ pluginProvider: "notion" }])
-        .map((tool) => tool.name),
-    ).toEqual(["mcp__notion__notion-search", "mcp__notion__notion-fetch"]);
+    expect(manager.getActiveToolCatalog().map((tool) => tool.name)).toEqual([
+      "mcp__notion__notion-search",
+      "mcp__notion__notion-fetch",
+    ]);
   });
 
-  it("exposes the provider tool catalog once a plugin skill is active", async () => {
+  it("exposes the provider tool catalog once a plugin provider is active", async () => {
     const plugin = buildPlugin("notion");
     listToolsMock.mockResolvedValue([
       {
@@ -439,24 +422,15 @@ describe("McpToolManager", () => {
     ]);
 
     const manager = new McpToolManager([plugin]);
-    const activeSkills = [
-      {
-        name: "notion",
-        pluginProvider: "notion",
-      },
-    ];
+    await manager.activateProvider("notion");
 
-    await manager.activateForSkill(activeSkills[0]!);
-
-    expect(
-      manager.getActiveToolCatalog(activeSkills).map((tool) => tool.name),
-    ).toEqual([
+    expect(manager.getActiveToolCatalog().map((tool) => tool.name)).toEqual([
       "mcp__notion__notion-search",
       "mcp__notion__notion-fetch",
       "mcp__notion__notion-create-pages",
     ]);
     const createPagesTool = manager
-      .getResolvedActiveTools(activeSkills)
+      .getResolvedActiveTools()
       .find((t) => t.name === "mcp__notion__notion-create-pages");
     await expect(createPagesTool!.execute({})).resolves.toMatchObject({
       details: {

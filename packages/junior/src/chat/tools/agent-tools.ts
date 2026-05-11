@@ -27,6 +27,11 @@ function commandMentionsProxy(command: string, proxyCommand: string): boolean {
   ).test(command.toLowerCase());
 }
 
+interface AgentToolExecutionHooks {
+  onPluginProviderActivated?: (provider: string) => void;
+  onToolCall?: (toolName: string, params: Record<string, unknown>) => void;
+}
+
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createAgentTools(
   tools: Record<string, ToolDefinition<any>>,
@@ -36,7 +41,7 @@ export function createAgentTools(
   sandboxExecutor?: SandboxExecutor,
   capabilityRuntime?: SkillCapabilityRuntime,
   pluginAuthOrchestration?: PluginAuthOrchestration,
-  onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
+  hooks: AgentToolExecutionHooks = {},
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
   const commandProxies = getPluginCommandProxies();
@@ -65,7 +70,7 @@ export function createAgentTools(
         spanContext,
         async () => {
           const parsed = params as Record<string, unknown>;
-          onToolCall?.(toolName, parsed);
+          hooks.onToolCall?.(toolName, parsed);
 
           try {
             if (typeof toolDef.execute !== "function") {
@@ -98,6 +103,11 @@ export function createAgentTools(
                   .map((proxy) => proxy.provider),
               ),
             );
+            if (isSandbox && bashCommand && !isJrRpcCommand) {
+              for (const provider of commandProxyProviders) {
+                hooks.onPluginProviderActivated?.(provider);
+              }
+            }
             const commandProxyCredentialState =
               isSandbox &&
               bashCommand &&
@@ -113,7 +123,6 @@ export function createAgentTools(
               toolName,
               bashCommand,
               capabilityRuntime,
-              sandbox,
               commandProxyCredentialState,
             );
 
@@ -139,8 +148,9 @@ export function createAgentTools(
 
             const normalized = normalizeToolResult(result, isSandbox);
             if (bashCommand && pluginAuthOrchestration) {
+              const activeSkill = sandbox.getActiveSkill();
               await pluginAuthOrchestration.handleCommandFailure({
-                activeSkill: sandbox.getActiveSkill(),
+                provider: activeSkill?.pluginProvider,
                 command: bashCommand,
                 details: normalized.details,
               });

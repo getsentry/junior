@@ -50,8 +50,8 @@ This policy applies to:
 
 ### Issuance and injection
 
-- Runtime issues short-lived provider credentials for loaded plugin-backed skills or matching plugin-declared command proxy providers before sandbox bash commands run.
-- Loaded skills, plugin declarations, and command proxy declarations determine which provider credentials may be injected into a turn.
+- Runtime issues short-lived provider credentials for active plugin providers before sandbox bash commands run.
+- Active plugin providers, plugin declarations, and command proxy declarations determine which provider credentials may be injected into a turn.
 - Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.
 - Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching API domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.

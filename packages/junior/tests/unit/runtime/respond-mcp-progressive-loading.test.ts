@@ -436,6 +436,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
     }),
     getTurnHeaderTransforms: () => undefined,
     getTurnEnv: () => undefined,
+    getEnabledProviders: () => [],
   }),
   createUserTokenStore: () => ({
     get: async () => undefined,
@@ -637,7 +638,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     vi.restoreAllMocks();
   });
 
-  it("persists loaded plugin skills across auth pause and resume", async () => {
+  it("persists active plugin providers across auth pause and resume", async () => {
     const context = makeReplyContext({
       conversationId: "conversation-1",
       threadTs: "1712345.0001",
@@ -661,7 +662,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(pausedCheckpoint).toMatchObject({
       state: "awaiting_resume",
-      loadedSkillNames: [DEMO_SKILL.name],
+      activePluginProviders: ["demo"],
       resumeReason: "auth",
     });
     expect(pausedCheckpoint?.piMessages.at(-1)).toMatchObject({
@@ -706,7 +707,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(resumedCheckpoint).toMatchObject({
       state: "completed",
-      loadedSkillNames: [DEMO_SKILL.name],
+      activePluginProviders: ["demo"],
     });
   });
 
@@ -748,7 +749,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(checkpoint).toMatchObject({
       state: "completed",
-      loadedSkillNames: [DEMO_SKILL.name],
+      activePluginProviders: ["demo"],
     });
   });
 
@@ -832,7 +833,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(pausedCheckpoint).toMatchObject({
       state: "awaiting_resume",
-      loadedSkillNames: [DEMO_SKILL.name],
+      activePluginProviders: ["demo"],
       resumeReason: "auth",
     });
 
@@ -846,7 +847,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(resumedCheckpoint).toMatchObject({
       state: "completed",
-      loadedSkillNames: [DEMO_SKILL.name],
+      activePluginProviders: ["demo"],
     });
   });
 
@@ -940,7 +941,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       sliceId: 1,
       state: "awaiting_resume",
       piMessages: priorMessages,
-      loadedSkillNames: ["demo-skill"],
+      activePluginProviders: ["demo"],
       resumeReason: "auth",
     });
 
@@ -974,7 +975,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
       sliceId: 2,
       resumedFromSliceId: 1,
       piMessages: expectedResumeMessages,
-      loadedSkillNames: ["demo-skill"],
+      activePluginProviders: ["demo"],
       resumeReason: "auth",
     });
   });
@@ -1000,7 +1001,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(pausedCheckpoint).toMatchObject({
       state: "awaiting_resume",
-      loadedSkillNames: ["demo-skill"],
+      activePluginProviders: ["demo"],
       resumeReason: "auth",
     });
     expect(pausedCheckpoint?.piMessages.at(-1)).toMatchObject({

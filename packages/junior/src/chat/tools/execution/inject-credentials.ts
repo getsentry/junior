@@ -1,6 +1,5 @@
 import { logInfo } from "@/chat/logging";
 import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
-import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   COMMAND_PROXY_ACTIVE_PROVIDERS_ENV,
   COMMAND_PROXY_AUTH_REQUIRED_PROVIDERS_ENV,
@@ -48,7 +47,6 @@ export function resolveCredentialInjection(
   toolName: string,
   command: string,
   capabilityRuntime: SkillCapabilityRuntime | undefined,
-  sandbox: SkillSandbox,
   commandProxyState?: CommandProxyCredentialState,
 ): CredentialInjection {
   if (toolName !== "bash" || !capabilityRuntime) {
@@ -72,16 +70,16 @@ export function resolveCredentialInjection(
     const headerDomains = (headerTransforms ?? []).map(
       (transform) => transform.domain,
     );
-    const skillName = sandbox.getActiveSkill()?.name;
+    const providers = capabilityRuntime.getEnabledProviders();
     logInfo(
       "credential_inject_start",
       {},
       {
-        "app.skill.name": skillName,
+        "app.credential.providers": providers,
         "app.credential.delivery": "header_transform",
         "app.credential.header_domains": headerDomains,
       },
-      `Injecting scoped credential headers for sandbox command (${skillName ?? "unknown skill"} → ${headerDomains.join(", ")})`,
+      `Injecting scoped credential headers for sandbox command (${providers.join(", ")} → ${headerDomains.join(", ")})`,
     );
   }
 

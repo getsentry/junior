@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { CredentialRouter } from "@/chat/capabilities/router";
 import type { CredentialBroker } from "@/chat/credentials/broker";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import type { Skill } from "@/chat/skills";
 
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginDefinition: (provider: string) =>
@@ -69,30 +68,6 @@ vi.mock("@/chat/plugins/registry", () => ({
 
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 
-const githubSkill: Skill = {
-  name: "github",
-  description: "Issue helper",
-  skillPath: "/tmp/github",
-  body: "instructions",
-  pluginProvider: "github",
-};
-
-const sentrySkill: Skill = {
-  name: "sentry",
-  description: "Sentry helper",
-  skillPath: "/tmp/sentry",
-  body: "instructions",
-  pluginProvider: "sentry",
-};
-
-const exampleSkill: Skill = {
-  name: "example",
-  description: "Example helper",
-  skillPath: "/tmp/example",
-  body: "instructions",
-  pluginProvider: "example",
-};
-
 describe("skill capability runtime", () => {
   it("issues turn-scoped transforms on first enable and reuses them within the turn", async () => {
     let issueCalls = 0;
@@ -123,7 +98,7 @@ describe("skill capability runtime", () => {
 
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: sentrySkill,
+        provider: "sentry",
         reason: "test:first",
       }),
     ).resolves.toMatchObject({ reused: false });
@@ -141,7 +116,7 @@ describe("skill capability runtime", () => {
 
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: sentrySkill,
+        provider: "sentry",
         reason: "test:second",
       }),
     ).resolves.toMatchObject({ reused: true });
@@ -177,13 +152,13 @@ describe("skill capability runtime", () => {
 
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: githubSkill,
+        provider: "github",
         reason: "test:first",
       }),
     ).resolves.toMatchObject({ reused: false });
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: githubSkill,
+        provider: "github",
         reason: "test:second",
       }),
     ).resolves.toMatchObject({ reused: true });
@@ -219,7 +194,7 @@ describe("skill capability runtime", () => {
 
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: githubSkill,
+        provider: "github",
         reason: "test:no-target",
       }),
     ).resolves.toMatchObject({ reused: false });
@@ -256,7 +231,7 @@ describe("skill capability runtime", () => {
 
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: exampleSkill,
+        provider: "example",
         reason: "test:api-headers",
       }),
     ).resolves.toMatchObject({ reused: false });

@@ -93,6 +93,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
     }),
     getTurnHeaderTransforms: () => undefined,
     getTurnEnv: () => undefined,
+    getEnabledProviders: () => [],
   }),
   createUserTokenStore: () => ({
     get: async () => undefined,
@@ -217,7 +218,7 @@ describe("generateAssistantReply timeout resume", () => {
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       sliceId: 2,
-      loadedSkillNames: [],
+      activePluginProviders: [],
     });
     expect(checkpoint?.piMessages).toEqual([
       expect.objectContaining({

@@ -3,7 +3,6 @@ import type {
   ManagedMcpToolDescriptor,
   McpToolManager,
 } from "@/chat/mcp/tool-manager";
-import type { Skill } from "@/chat/skills";
 import { tool } from "@/chat/tools/definition";
 import { toExposedToolSummary } from "@/chat/tools/skill/mcp-tool-summary";
 
@@ -109,10 +108,7 @@ function searchMcpCatalog(
 }
 
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
-export function createSearchMcpToolsTool(
-  mcpToolManager: McpToolManager,
-  getActiveSkills: () => Skill[],
-) {
+export function createSearchMcpToolsTool(mcpToolManager: McpToolManager) {
   return tool({
     description:
       "List or search active MCP tools and return full descriptors, including input/output schemas and annotations. Use after loadSkill when choosing a provider tool or when callMcpTool arguments are unclear.",
@@ -143,7 +139,6 @@ export function createSearchMcpToolsTool(
     ),
     execute: async ({ query, provider, max_results }) => {
       const catalog = mcpToolManager.getActiveToolCatalog(
-        getActiveSkills(),
         provider ? { provider } : {},
       );
       const maxResults = max_results ?? DEFAULT_MAX_RESULTS;

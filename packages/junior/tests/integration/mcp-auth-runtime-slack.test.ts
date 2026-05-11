@@ -374,7 +374,7 @@ describe("mcp auth runtime slack integration", () => {
       state: "awaiting_resume",
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      loadedSkillNames: [SKILL_NAME],
+      activePluginProviders: [EVAL_MCP_AUTH_PROVIDER],
     });
 
     const parkedState =
@@ -443,7 +443,7 @@ describe("mcp auth runtime slack integration", () => {
       sessionId: turnId,
       sliceId: 2,
       state: "completed",
-      loadedSkillNames: [SKILL_NAME],
+      activePluginProviders: [EVAL_MCP_AUTH_PROVIDER],
     });
 
     const resumedState =
@@ -555,7 +555,7 @@ describe("mcp auth runtime slack integration", () => {
       state: "awaiting_resume",
       resumeReason: "auth",
       resumedFromSliceId: 1,
-      loadedSkillNames: [SKILL_NAME],
+      activePluginProviders: [EVAL_MCP_AUTH_PROVIDER],
     });
 
     const parkedState =

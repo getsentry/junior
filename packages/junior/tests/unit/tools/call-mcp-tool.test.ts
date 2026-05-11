@@ -1,15 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
-import type { Skill } from "@/chat/skills";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
-
-const activeSkill: Skill = {
-  name: "demo",
-  description: "Demo skill",
-  skillPath: "/tmp/demo",
-  pluginProvider: "demo",
-  body: "instructions",
-};
 
 describe("callMcpTool", () => {
   it("executes an active MCP tool by disclosed tool_name", async () => {
@@ -29,7 +20,7 @@ describe("callMcpTool", () => {
         },
       ]),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(
@@ -59,7 +50,7 @@ describe("callMcpTool", () => {
         },
       ]),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(
@@ -91,7 +82,7 @@ describe("callMcpTool", () => {
         },
       ]),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(
@@ -121,7 +112,7 @@ describe("callMcpTool", () => {
         },
       ]),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(
@@ -138,7 +129,7 @@ describe("callMcpTool", () => {
     const manager = {
       getResolvedActiveTools: vi.fn(() => []),
     } as unknown as McpToolManager;
-    const callMcpTool = createCallMcpToolTool(manager, () => [activeSkill]);
+    const callMcpTool = createCallMcpToolTool(manager);
 
     await expect(
       callMcpTool.execute!(

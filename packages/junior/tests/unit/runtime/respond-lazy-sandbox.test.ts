@@ -5,8 +5,8 @@ const {
   createSandboxCallCount,
   activeSandboxVersion,
   attachFileReadVersions,
-  enabledCredentialSkillNames,
-  checkpointLoadedSkillNames,
+  enabledCredentialProviders,
+  checkpointActivePluginProviders,
   pendingWorkspaceRelease,
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
@@ -29,10 +29,10 @@ const {
   attachFileReadVersions: {
     value: [] as number[],
   },
-  enabledCredentialSkillNames: {
+  enabledCredentialProviders: {
     value: [] as string[],
   },
-  checkpointLoadedSkillNames: {
+  checkpointActivePluginProviders: {
     value: [] as string[],
   },
   pendingWorkspaceRelease: {
@@ -288,13 +288,8 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 
 vi.mock("@/chat/capabilities/factory", () => ({
   createSkillCapabilityRuntime: () => ({
-    enableCredentialsForTurn: async (input: {
-      activeSkill: { name?: string } | null;
-    }) => {
-      const skillName = input.activeSkill?.name;
-      if (skillName) {
-        enabledCredentialSkillNames.value.push(skillName);
-      }
+    enableCredentialsForTurn: async (input: { provider: string }) => {
+      enabledCredentialProviders.value.push(input.provider);
       return undefined;
     },
     enableCommandProxyCredentialsForTurn: async () => ({
@@ -303,6 +298,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
     }),
     getTurnHeaderTransforms: () => undefined,
     getTurnEnv: () => undefined,
+    getEnabledProviders: () => [...enabledCredentialProviders.value],
   }),
   createUserTokenStore: () => ({
     get: async () => undefined,
@@ -330,9 +326,9 @@ vi.mock("@/chat/services/turn-checkpoint", () => ({
     resumedFromCheckpoint: false,
     currentSliceId: 1,
     existingCheckpoint:
-      checkpointLoadedSkillNames.value.length > 0
+      checkpointActivePluginProviders.value.length > 0
         ? {
-            loadedSkillNames: [...checkpointLoadedSkillNames.value],
+            activePluginProviders: [...checkpointActivePluginProviders.value],
             piMessages: [],
           }
         : undefined,
@@ -529,8 +525,8 @@ describe("generateAssistantReply lazy sandbox boot", () => {
     createSandboxCallCount.value = 0;
     activeSandboxVersion.value = 1;
     attachFileReadVersions.value = [];
-    enabledCredentialSkillNames.value = [];
-    checkpointLoadedSkillNames.value = [];
+    enabledCredentialProviders.value = [];
+    checkpointActivePluginProviders.value = [];
     pendingWorkspaceRelease.value = undefined;
     selectedThinkingLevels.value = [];
   });
@@ -552,20 +548,20 @@ describe("generateAssistantReply lazy sandbox boot", () => {
 
     expect(reply.text).toBe("Loaded demo skill.");
     expect(createSandboxCallCount.value).toBe(0);
-    expect(enabledCredentialSkillNames.value).toEqual(["demo-skill"]);
+    expect(enabledCredentialProviders.value).toEqual(["demo"]);
     expect(reply.sandboxId).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual(["loadSkill"]);
     expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
 
-  it("reprovisions plugin credentials for checkpoint-loaded skills at turn start", async () => {
-    checkpointLoadedSkillNames.value = ["demo-skill"];
+  it("reprovisions plugin credentials for checkpoint-active providers at turn start", async () => {
+    checkpointActivePluginProviders.value = ["demo"];
 
     const reply = await generateAssistantReply("hello");
 
     expect(reply.text).toBe("Plain reply.");
     expect(createSandboxCallCount.value).toBe(0);
-    expect(enabledCredentialSkillNames.value).toEqual(["demo-skill"]);
+    expect(enabledCredentialProviders.value).toEqual(["demo"]);
     expect(reply.diagnostics.toolCalls).toEqual([]);
   });
 

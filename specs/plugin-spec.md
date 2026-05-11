@@ -57,9 +57,9 @@ Define a plugin model where provider integrations are self-contained directories
 3. The registry registers capabilities, config keys, OAuth config, and skill roots from each manifest.
 4. Credential brokers are created on demand only for plugins that declare credentials (`oauth-bearer` or `github-app` type) or plugin-level API headers.
 5. Skills in `plugins/<name>/skills/` are auto-discovered alongside existing skill roots.
-6. Plugin-declared MCP tools are host-managed and activated only after a skill from the same plugin is loaded for the turn.
-7. Pi sees stable native tools (`loadSkill`, `searchMcpTools`, and `callMcpTool`) at turn start. After a plugin-backed skill is loaded, the runtime activates that plugin's discovered MCP tools for search and execution.
-8. `loadSkill` activates the provider catalog and returns provider/count metadata once the MCP server is connected and `listTools` succeeds. If connection/listing needs MCP OAuth, `loadSkill` initiates the MCP auth pause and the resumed turn re-activates the catalog before the model continues. `searchMcpTools` returns focused descriptors, including input/output schema and annotations, for any available active-provider tool before `callMcpTool` executes it.
+6. Plugin-declared MCP tools are host-managed and activated for active plugin providers.
+7. Pi sees stable native tools (`loadSkill`, `searchMcpTools`, and `callMcpTool`) at turn start. After a plugin provider is active, the runtime activates that plugin's discovered MCP tools for search and execution.
+8. `loadSkill` activates the provider catalog and returns provider/count metadata once the MCP server is connected and `listTools` succeeds. If connection/listing needs MCP OAuth, `loadSkill` initiates the MCP auth pause and the resumed turn re-activates the active plugin provider before the model continues. `searchMcpTools` returns focused descriptors, including input/output schema and annotations, for any available active-provider tool before `callMcpTool` executes it.
 9. Runtime setup belongs to `plugin.yaml`: CLI packages, system packages, postinstall commands, MCP endpoints/tool allowlists, credential delivery, command env, OAuth, and provider config keys are manifest declarations, not skill instructions.
 10. Skills consume the plugin-provided runtime surface. They must not instruct the agent to install packages, bootstrap CLIs, configure MCP servers, create credentials, or repair sandbox package installation as part of normal workflow.
 

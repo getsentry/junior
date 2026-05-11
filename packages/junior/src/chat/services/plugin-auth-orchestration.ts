@@ -11,7 +11,6 @@ import {
   getPluginCommandProxies,
   getPluginOAuthConfig,
 } from "@/chat/plugins/registry";
-import type { Skill } from "@/chat/skills";
 
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
@@ -39,11 +38,11 @@ export interface PluginAuthOrchestrationDeps {
 
 export interface PluginAuthOrchestration {
   handleCredentialUnavailable: (input: {
-    activeSkill: Skill | null;
+    provider: string;
     error: CredentialUnavailableError;
   }) => Promise<never>;
   handleCommandFailure: (input: {
-    activeSkill: Skill | null;
+    provider?: string;
     command: string;
     details: unknown;
   }) => Promise<void>;
@@ -168,7 +167,6 @@ export function createPluginAuthOrchestration(
 
   const startAuthorizationPause = async (
     provider: string,
-    activeSkill: Skill | null,
     options?: {
       unlinkExistingProvider?: boolean;
     },
@@ -195,7 +193,6 @@ export function createPluginAuthOrchestration(
         threadTs: deps.threadTs,
         userMessage: deps.userMessage,
         channelConfiguration: deps.channelConfiguration,
-        activeSkillName: activeSkill?.name ?? undefined,
         resumeConversationId: deps.conversationId,
         resumeSessionId: deps.sessionId,
       });
@@ -238,28 +235,25 @@ export function createPluginAuthOrchestration(
   };
 
   const handleCredentialUnavailable = async (input: {
-    activeSkill: Skill | null;
+    provider: string;
     error: CredentialUnavailableError;
   }): Promise<never> => {
     if (pendingPause) {
       throw pendingPause;
     }
 
-    if (!deps.requesterId || !getPluginOAuthConfig(input.error.provider)) {
+    if (!deps.requesterId || !getPluginOAuthConfig(input.provider)) {
       throw input.error;
     }
 
-    return await startAuthorizationPause(
-      input.error.provider,
-      input.activeSkill,
-    );
+    return await startAuthorizationPause(input.provider);
   };
 
   return {
     handleCredentialUnavailable,
     handleCommandFailure: async (input) => {
       const markerProvider = commandProxyAuthProvider(input.details);
-      const provider = markerProvider ?? input.activeSkill?.pluginProvider;
+      const provider = markerProvider ?? input.provider;
       if (
         !provider ||
         !deps.requesterId ||
@@ -277,7 +271,7 @@ export function createPluginAuthOrchestration(
         return;
       }
 
-      await startAuthorizationPause(provider, input.activeSkill, {
+      await startAuthorizationPause(provider, {
         unlinkExistingProvider: true,
       });
     },

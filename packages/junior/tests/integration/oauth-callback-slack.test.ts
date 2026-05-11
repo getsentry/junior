@@ -176,7 +176,7 @@ describe("oauth callback slack integration", () => {
           timestamp: 1,
         },
       ],
-      loadedSkillNames: ["eval-oauth"],
+      activePluginProviders: ["eval-oauth"],
       resumeReason: "auth",
       resumedFromSliceId: 1,
     });
@@ -301,7 +301,7 @@ describe("oauth callback slack integration", () => {
       sliceId: 2,
       state: "superseded",
       piMessages: [],
-      loadedSkillNames: ["eval-oauth"],
+      activePluginProviders: ["eval-oauth"],
       resumeReason: "auth",
       resumedFromSliceId: 1,
     });

@@ -15,10 +15,10 @@ export type AgentTurnSessionStatus =
 export type AgentTurnResumeReason = "timeout" | "auth";
 
 export interface AgentTurnSessionCheckpoint {
+  activePluginProviders?: string[];
   checkpointVersion: number;
   conversationId: string;
   errorMessage?: string;
-  loadedSkillNames?: string[];
   piMessages: PiMessage[];
   resumeReason?: AgentTurnResumeReason;
   resumedFromSliceId?: number;
@@ -84,9 +84,9 @@ function parseAgentTurnSessionCheckpoint(
       piMessages: Array.isArray(parsed.piMessages)
         ? (parsed.piMessages as PiMessage[])
         : [],
-      ...(Array.isArray(parsed.loadedSkillNames)
+      ...(Array.isArray(parsed.activePluginProviders)
         ? {
-            loadedSkillNames: parsed.loadedSkillNames.filter(
+            activePluginProviders: parsed.activePluginProviders.filter(
               (value): value is string => typeof value === "string",
             ),
           }
@@ -124,7 +124,7 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   sliceId: number;
   state: AgentTurnSessionStatus;
   piMessages: PiMessage[];
-  loadedSkillNames?: string[];
+  activePluginProviders?: string[];
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
   resumedFromSliceId?: number;
@@ -145,9 +145,9 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
     state: args.state,
     updatedAtMs: Date.now(),
     piMessages: Array.isArray(args.piMessages) ? args.piMessages : [],
-    ...(Array.isArray(args.loadedSkillNames)
+    ...(Array.isArray(args.activePluginProviders)
       ? {
-          loadedSkillNames: args.loadedSkillNames.filter(
+          activePluginProviders: args.activePluginProviders.filter(
             (value): value is string => typeof value === "string",
           ),
         }
@@ -192,7 +192,7 @@ export async function supersedeAgentTurnSessionCheckpoint(args: {
     sliceId: existing.sliceId,
     state: "superseded",
     piMessages: existing.piMessages,
-    loadedSkillNames: existing.loadedSkillNames,
+    activePluginProviders: existing.activePluginProviders,
     resumeReason: existing.resumeReason,
     resumedFromSliceId: existing.resumedFromSliceId,
     errorMessage: args.errorMessage ?? existing.errorMessage,

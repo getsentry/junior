@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginDefinition } from "@/chat/plugins/types";
-import type { Skill } from "@/chat/skills";
 
 const createPluginBrokerMock = vi.fn();
 const getPluginProvidersMock = vi.fn<() => PluginDefinition[]>();
@@ -25,14 +24,6 @@ vi.mock("@/chat/state/adapter", () => ({
     delete: vi.fn(),
   }),
 }));
-
-const headerOnlySkill: Skill = {
-  name: "example",
-  description: "Example helper",
-  skillPath: "/tmp/example",
-  body: "instructions",
-  pluginProvider: "example",
-};
 
 describe("capability runtime factory", () => {
   afterEach(() => {
@@ -74,7 +65,7 @@ describe("capability runtime factory", () => {
 
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: headerOnlySkill,
+        provider: "example",
         reason: "test:api-headers",
       }),
     ).resolves.toMatchObject({ reused: false });

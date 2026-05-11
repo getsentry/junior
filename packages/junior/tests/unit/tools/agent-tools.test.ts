@@ -108,6 +108,7 @@ describe("createAgentTools", () => {
       getTurnEnv: () => ({
         GITHUB_TOKEN: "ghp_host_managed_credential",
       }),
+      getEnabledProviders: () => ["github"],
     } as any;
     const sandboxExecutor = {
       canExecute: (toolName: string) => toolName === "bash",
@@ -126,6 +127,7 @@ describe("createAgentTools", () => {
         },
       })),
     } as any;
+    const onPluginProviderActivated = vi.fn();
 
     const [bashTool] = createAgentTools(
       {
@@ -140,6 +142,8 @@ describe("createAgentTools", () => {
       undefined,
       sandboxExecutor,
       capabilityRuntime,
+      undefined,
+      { onPluginProviderActivated },
     );
 
     const result = await bashTool!.execute("tool-1", {
@@ -151,6 +155,7 @@ describe("createAgentTools", () => {
       providers: ["github"],
       reason: "sandbox:command-proxy",
     });
+    expect(onPluginProviderActivated).toHaveBeenCalledWith("github");
     expect(sandboxExecutor.execute).toHaveBeenCalledWith({
       toolName: "bash",
       input: {
@@ -190,6 +195,7 @@ describe("createAgentTools", () => {
       getTurnEnv: vi.fn(() => ({
         GITHUB_TOKEN: "ghp_host_managed_credential",
       })),
+      getEnabledProviders: () => ["github"],
     } as any;
     const sandboxExecutor = {
       canExecute: (toolName: string) => toolName === "bash",
@@ -323,6 +329,7 @@ describe("createAgentTools", () => {
       getTurnEnv: vi.fn(() => ({
         GITHUB_TOKEN: "ghp_host_managed_credential",
       })),
+      getEnabledProviders: () => ["github"],
     } as any;
     const sandboxExecutor = {
       canExecute: (toolName: string) => toolName === "bash",
@@ -422,7 +429,7 @@ describe("createAgentTools", () => {
       undefined,
       undefined,
       undefined,
-      onToolCall,
+      { onToolCall },
     );
 
     await bashTool!.execute("tool-bash", { command: "which gh" });
@@ -593,7 +600,7 @@ describe("createAgentTools", () => {
       bashTool!.execute("tool-2", { command: "gh issue view 123" }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
     expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith({
-      activeSkill: githubSkill,
+      provider: "github",
       command: "gh issue view 123",
       details: expect.any(Object),
     });

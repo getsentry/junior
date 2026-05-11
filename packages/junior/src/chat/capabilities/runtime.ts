@@ -7,7 +7,6 @@ import type {
 } from "@/chat/credentials/broker";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { getPluginDefinition } from "@/chat/plugins/registry";
-import type { Skill } from "@/chat/skills";
 
 // Spec: specs/skill-capabilities-spec.md (plugin-owned credential injection)
 // Spec: specs/security-policy.md (credential scope and lifecycle requirements)
@@ -34,6 +33,10 @@ function toHeaderTransforms(
       domain: transform.domain.trim(),
       headers: transform.headers,
     }));
+}
+
+function sortProviders(providers: Iterable<string>): string[] {
+  return [...providers].sort((left, right) => left.localeCompare(right));
 }
 
 export class SkillCapabilityRuntime {
@@ -68,16 +71,28 @@ export class SkillCapabilityRuntime {
     this.requesterId = params.requesterId;
   }
 
-  private async enableProviderCredentialsForTurn(input: {
+  private pruneExpiredProviders(): void {
+    const now = Date.now();
+    for (const [provider, entry] of this.enabledByProvider.entries()) {
+      if (!Number.isFinite(entry.expiresAtMs) || entry.expiresAtMs <= now) {
+        this.enabledByProvider.delete(provider);
+      }
+    }
+  }
+
+  async enableCredentialsForTurn(input: {
     provider: string;
     reason: string;
-    skillName?: string;
   }): Promise<{ reused: boolean; expiresAt: string } | undefined> {
     if (!this.requesterId) {
       throw new Error("Credential enablement requires requester context");
     }
 
     const provider = input.provider;
+    if (!provider) {
+      return undefined;
+    }
+
     const plugin = getPluginDefinition(provider);
     if (!plugin?.manifest.credentials && !plugin?.manifest.apiHeaders) {
       return undefined;
@@ -96,7 +111,6 @@ export class SkillCapabilityRuntime {
       "credential_issue_request",
       {},
       {
-        ...(input.skillName ? { "app.skill.name": input.skillName } : {}),
         "app.credential.provider": provider,
       },
       "Issuing provider credential for current turn",
@@ -131,7 +145,6 @@ export class SkillCapabilityRuntime {
         "credential_issue_success",
         {},
         {
-          ...(input.skillName ? { "app.skill.name": input.skillName } : {}),
           "app.credential.provider": lease.provider,
           "app.credential.expires_at": lease.expiresAt,
           "app.credential.delivery": "header_transform",
@@ -145,7 +158,6 @@ export class SkillCapabilityRuntime {
           "credential_issue_failed",
           {},
           {
-            ...(input.skillName ? { "app.skill.name": input.skillName } : {}),
             "app.credential.provider": provider,
             "exception.message":
               error instanceof Error ? error.message : String(error),
@@ -155,22 +167,6 @@ export class SkillCapabilityRuntime {
       }
       throw error;
     }
-  }
-
-  async enableCredentialsForTurn(input: {
-    activeSkill: Skill | null;
-    reason: string;
-  }): Promise<{ reused: boolean; expiresAt: string } | undefined> {
-    const provider = input.activeSkill?.pluginProvider;
-    if (!provider) {
-      return undefined;
-    }
-
-    return await this.enableProviderCredentialsForTurn({
-      provider,
-      reason: input.reason,
-      skillName: input.activeSkill?.name,
-    });
   }
 
   /**
@@ -193,7 +189,7 @@ export class SkillCapabilityRuntime {
       }
       seen.add(provider);
       try {
-        const enabled = await this.enableProviderCredentialsForTurn({
+        const enabled = await this.enableCredentialsForTurn({
           provider,
           reason: input.reason,
         });
@@ -212,27 +208,25 @@ export class SkillCapabilityRuntime {
     return { activeProviders, authRequiredProviders };
   }
 
+  /** Return providers with live credentials enabled for this turn. */
+  getEnabledProviders(): string[] {
+    this.pruneExpiredProviders();
+    return sortProviders(this.enabledByProvider.keys());
+  }
+
   getTurnHeaderTransforms(): CredentialHeaderTransform[] | undefined {
-    const now = Date.now();
+    this.pruneExpiredProviders();
     const headerTransforms: CredentialHeaderTransform[] = [];
-    for (const [provider, entry] of this.enabledByProvider.entries()) {
-      if (!Number.isFinite(entry.expiresAtMs) || entry.expiresAtMs <= now) {
-        this.enabledByProvider.delete(provider);
-        continue;
-      }
+    for (const entry of this.enabledByProvider.values()) {
       headerTransforms.push(...entry.transforms);
     }
     return headerTransforms.length > 0 ? headerTransforms : undefined;
   }
 
   getTurnEnv(): Record<string, string> | undefined {
-    const now = Date.now();
+    this.pruneExpiredProviders();
     const env: Record<string, string> = {};
-    for (const [provider, entry] of this.enabledByProvider.entries()) {
-      if (!Number.isFinite(entry.expiresAtMs) || entry.expiresAtMs <= now) {
-        this.enabledByProvider.delete(provider);
-        continue;
-      }
+    for (const entry of this.enabledByProvider.values()) {
       Object.assign(env, entry.env);
     }
     return Object.keys(env).length > 0 ? env : undefined;

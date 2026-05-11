@@ -26,14 +26,14 @@ Draft
 
 ## Purpose
 
-Define how Junior maps a loaded plugin-backed skill to host-managed credentials without exposing secrets or manual auth commands to the model.
+Define how Junior maps active plugin providers to host-managed credentials without exposing secrets or manual auth commands to the model.
 
 ## Core model
 
 1. Plugins own provider permissions in `plugin.yaml`.
 2. Skills do not declare capabilities or config keys.
-3. After a plugin-backed skill is loaded, the agent runs the real provider command.
-4. The runtime resolves the provider from the active skill, issues a provider lease, and injects credentials for the current turn only.
+3. A plugin provider becomes active when runtime/plugin-owned surfaces are used, including `loadSkill`, MCP activation, or a matching command proxy.
+4. The runtime issues provider leases by active provider name and injects credentials for the current turn only.
 5. If auth is missing or stale, the runtime starts a private OAuth flow and resumes the paused turn after authorization.
 6. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, command env, or MCP servers.
 
@@ -72,8 +72,8 @@ Rules:
 
 ### Lease issuance
 
-- Resolve provider from `activeSkill.pluginProvider`.
-- For sandbox bash commands, pre-activate matching providers that declare `credentials.command-proxies` instead of relying on the active skill. This lets generic skills use provider CLIs without Junior-specific skill metadata.
+- Resolve credentials from the active plugin provider, not from active skill identity.
+- For sandbox bash commands, pre-activate matching providers that declare `credentials.command-proxies`. This lets generic skills use provider CLIs without Junior-specific skill metadata.
 - Require requester context before issuing provider credentials.
 - Return short-lived leases only.
 - Keep lease reuse in memory only, keyed by provider for the active turn.
@@ -91,6 +91,7 @@ Rules:
 
 - Loaded plugin-backed skills include a host-owned boundary derived from the plugin manifest before the skill body.
 - `loadSkill` re-resolves plugin ownership from the skill path, rejects mismatched plugin metadata, and builds loaded metadata from the current `SKILL.md` frontmatter.
+- Turn checkpoints persist active plugin providers for MCP and credential resume. They do not persist active skill names for credential enablement.
 - CLI and system packages belong in `plugin.yaml` `runtime-dependencies`.
 - Postinstall/bootstrap commands belong in `plugin.yaml` `runtime-postinstall`.
 - MCP endpoints and allowed tool surfaces belong in `plugin.yaml` `mcp`.

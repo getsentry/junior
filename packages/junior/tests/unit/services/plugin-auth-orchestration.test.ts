@@ -3,7 +3,6 @@ import {
   createPluginAuthOrchestration,
   PluginAuthorizationPauseError,
 } from "@/chat/services/plugin-auth-orchestration";
-import type { Skill } from "@/chat/skills";
 
 const {
   formatProviderLabel,
@@ -35,24 +34,6 @@ vi.mock("@/chat/plugins/registry", () => ({
 vi.mock("@/chat/credentials/unlink-provider", () => ({
   unlinkProvider,
 }));
-
-const githubSkill: Skill = {
-  name: "github",
-  description: "GitHub helper",
-  skillPath: "/tmp/github",
-  body: "instructions",
-  pluginProvider: "github",
-  allowedTools: ["bash"],
-};
-
-const sentrySkill: Skill = {
-  name: "sentry",
-  description: "Sentry helper",
-  skillPath: "/tmp/sentry",
-  body: "instructions",
-  pluginProvider: "sentry",
-  allowedTools: ["bash"],
-};
 
 describe("createPluginAuthOrchestration", () => {
   beforeEach(() => {
@@ -119,7 +100,7 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        activeSkill: sentrySkill,
+        provider: "sentry",
         command: "sentry issue list",
         details: {
           exit_code: 1,
@@ -159,7 +140,6 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        activeSkill: null,
         command: "cd /tmp && sentry issue list",
         details: {
           exit_code: 91,
@@ -194,7 +174,6 @@ describe("createPluginAuthOrchestration", () => {
     );
 
     await orchestration.handleCommandFailure({
-      activeSkill: null,
       command:
         "node -e \"process.stderr.write('JUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=sentry'); process.exit(91)\"",
       details: {
@@ -233,7 +212,7 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        activeSkill: githubSkill,
+        provider: "github",
         command: "gh issue view 123",
         details: {
           exit_code: 1,
@@ -268,7 +247,7 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        activeSkill: githubSkill,
+        provider: "github",
         command: "gh issue view 123",
         details: {
           exit_code: 1,
@@ -292,7 +271,7 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        activeSkill: githubSkill,
+        provider: "github",
         command: "curl https://other-api.example.test",
         details: {
           exit_code: 1,

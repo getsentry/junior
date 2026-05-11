@@ -373,6 +373,12 @@ function isTurnContextPart(part: unknown, marker: string): boolean {
   );
 }
 
+function uniqueSortedStrings(values: Iterable<string | undefined>): string[] {
+  return [
+    ...new Set([...values].filter((value): value is string => !!value)),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
   messageText: string,
@@ -387,7 +393,7 @@ export async function generateAssistantReply(
   let lastKnownSandboxId: string | undefined = context.sandbox?.sandboxId;
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
-  let loadedSkillNamesForResume: string[] = [];
+  let activePluginProvidersForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
@@ -599,13 +605,11 @@ export async function generateAssistantReply(
         ).runCommand(input),
     };
 
-    // ── Preload skills from checkpoint ───────────────────────────────
-    for (const skillName of existingCheckpoint?.loadedSkillNames ?? []) {
-      const preloaded = await skillSandbox.loadSkill(skillName);
-      if (preloaded) {
-        upsertActiveSkill(activeSkills, preloaded);
-      }
-    }
+    // ── Preload direct skill invocation ──────────────────────────────
+    const activePluginProviders = [
+      ...(existingCheckpoint?.activePluginProviders ?? []),
+    ];
+    activePluginProvidersForResume = uniqueSortedStrings(activePluginProviders);
     if (invokedSkill) {
       const preloaded = await skillSandbox.loadSkill(invokedSkill.name);
       if (preloaded) {
@@ -706,21 +710,34 @@ export async function generateAssistantReply(
     const turnMcpToolManager = mcpToolManager;
     const getPendingAuthPause = () =>
       pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
-    const syncResumeState = () => {
-      loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
-    };
-    const enableSkillCredentials = async (
-      skill: Skill | null,
-      reason: string,
-    ): Promise<void> => {
-      if (!skill?.pluginProvider) {
+    const activatePluginProviderForTurn = (provider?: string): void => {
+      if (!provider || activePluginProviders.includes(provider)) {
         return;
       }
+      activePluginProviders.push(provider);
+    };
+    const getResumePluginProviders = () =>
+      uniqueSortedStrings([
+        ...activePluginProviders,
+        ...capabilityRuntime.getEnabledProviders(),
+      ]);
+    const syncResumeState = () => {
+      activePluginProvidersForResume = getResumePluginProviders();
+    };
+    const enableProviderCredentials = async (input: {
+      provider?: string;
+      reason: string;
+    }): Promise<void> => {
+      if (!input.provider) {
+        return;
+      }
+      activatePluginProviderForTurn(input.provider);
+      syncResumeState();
 
       try {
         await capabilityRuntime.enableCredentialsForTurn({
-          activeSkill: skill,
-          reason,
+          provider: input.provider,
+          reason: input.reason,
         });
       } catch (error) {
         if (
@@ -728,12 +745,13 @@ export async function generateAssistantReply(
           context.requester?.userId
         ) {
           await pluginAuth.handleCredentialUnavailable({
-            activeSkill: skill,
+            provider: input.provider,
             error,
           });
         }
         throw error;
       }
+      syncResumeState();
     };
 
     setTags({
@@ -775,18 +793,21 @@ export async function generateAssistantReply(
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
           upsertActiveSkill(activeSkills, effective);
+          activatePluginProviderForTurn(effective.pluginProvider);
           syncResumeState();
-          await turnMcpToolManager.activateForSkill(effective);
+          if (effective.pluginProvider) {
+            await turnMcpToolManager.activateProvider(effective.pluginProvider);
+          }
           syncResumeState();
           if (mcpAuth.getPendingPause()) {
             // Auth pause requested — suppress loadSkill failure and let the
             // aborted turn park cleanly.
             return undefined;
           }
-          await enableSkillCredentials(
-            effective,
-            `skill:${effective.name}:turn:load`,
-          );
+          await enableProviderCredentials({
+            provider: effective.pluginProvider,
+            reason: `skill:${effective.name}:turn:load`,
+          });
           if (!effective.pluginProvider) {
             return undefined;
           }
@@ -797,12 +818,9 @@ export async function generateAssistantReply(
           ) {
             return undefined;
           }
-          const availableToolCount = turnMcpToolManager.getActiveToolCatalog(
-            activeSkills,
-            {
-              provider: effective.pluginProvider,
-            },
-          ).length;
+          const availableToolCount = turnMcpToolManager.getActiveToolCatalog({
+            provider: effective.pluginProvider,
+          }).length;
           return {
             mcp_provider: effective.pluginProvider,
             available_tool_count: availableToolCount,
@@ -817,7 +835,6 @@ export async function generateAssistantReply(
         userText: userInput,
         artifactState: context.artifactState,
         configuration: configurationValues,
-        getActiveSkills: () => activeSkills,
         mcpToolManager: turnMcpToolManager,
         sandbox,
         advisor: {
@@ -837,21 +854,27 @@ export async function generateAssistantReply(
       promptSnippet: definition.promptSnippet,
     }));
 
-    syncResumeState();
     for (const skill of activeSkills) {
-      await turnMcpToolManager.activateForSkill(skill);
+      activatePluginProviderForTurn(skill.pluginProvider);
+    }
+    syncResumeState();
+    for (const provider of activePluginProviders) {
+      await turnMcpToolManager.activateProvider(provider);
       syncResumeState();
       if (mcpAuth.getPendingPause()) {
         timeoutResumeMessages = existingCheckpoint?.piMessages ?? [];
         throw mcpAuth.getPendingPause()!;
       }
-      await enableSkillCredentials(skill, `skill:${skill.name}:turn:resume`);
+      await enableProviderCredentials({
+        provider,
+        reason: `plugin:${provider}:turn:resume`,
+      });
     }
     syncResumeState();
 
     // ── Prompt context ───────────────────────────────────────────────
     const activeMcpCatalogs = toActiveMcpCatalogSummaries(
-      turnMcpToolManager.getActiveToolCatalog(activeSkills),
+      turnMcpToolManager.getActiveToolCatalog(),
     );
     baseInstructions = buildSystemPrompt();
     const turnContextPrompt = buildTurnContextPrompt({
@@ -914,7 +937,13 @@ export async function generateAssistantReply(
       sandboxExecutor,
       capabilityRuntime,
       pluginAuth,
-      onToolCall,
+      {
+        onToolCall,
+        onPluginProviderActivated: (provider) => {
+          activatePluginProviderForTurn(provider);
+          syncResumeState();
+        },
+      },
     );
     advisorTools = createAgentTools(
       createAdvisorToolDefinitions(tools),
@@ -924,7 +953,13 @@ export async function generateAssistantReply(
       sandboxExecutor,
       capabilityRuntime,
       pluginAuth,
-      onToolCall,
+      {
+        onToolCall,
+        onPluginProviderActivated: (provider) => {
+          activatePluginProviderForTurn(provider);
+          syncResumeState();
+        },
+      },
     );
     // Keep Pi's native tool schema static for the whole turn. Ideally this
     // would use provider-native tool loading/search APIs, but Pi's generic
@@ -1113,7 +1148,7 @@ export async function generateAssistantReply(
         sessionId,
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
-        loadedSkillNames: activeSkills.map((skill) => skill.name),
+        activePluginProviders: getResumePluginProviders(),
       });
     }
 
@@ -1147,7 +1182,7 @@ export async function generateAssistantReply(
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         messages: timeoutResumeMessages,
-        loadedSkillNames: loadedSkillNamesForResume,
+        activePluginProviders: activePluginProvidersForResume,
         errorMessage: error instanceof Error ? error.message : String(error),
         logContext: {
           threadId: context.correlation?.threadId,
@@ -1199,7 +1234,7 @@ export async function generateAssistantReply(
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         messages: timeoutResumeMessages,
-        loadedSkillNames: loadedSkillNamesForResume,
+        activePluginProviders: activePluginProvidersForResume,
         errorMessage: error.message,
         logContext: {
           threadId: context.correlation?.threadId,

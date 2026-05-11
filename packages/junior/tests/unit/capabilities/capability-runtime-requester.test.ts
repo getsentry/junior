@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CredentialBroker } from "@/chat/credentials/broker";
-import type { Skill } from "@/chat/skills";
 
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginDefinition: (provider: string) =>
@@ -23,14 +22,6 @@ vi.mock("@/chat/plugins/registry", () => ({
 
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 
-const sentrySkill: Skill = {
-  name: "sentry",
-  description: "Sentry helper",
-  skillPath: "/tmp/sentry",
-  body: "instructions",
-  pluginProvider: "sentry",
-};
-
 describe("skill capability runtime requester binding", () => {
   it("requires requester context before enabling provider credentials", async () => {
     const broker: CredentialBroker = {
@@ -42,7 +33,7 @@ describe("skill capability runtime requester binding", () => {
     const runtime = new SkillCapabilityRuntime({ broker });
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: sentrySkill,
+        provider: "sentry",
         reason: "test:missing-requester",
       }),
     ).rejects.toThrow("requires requester context");
@@ -73,13 +64,13 @@ describe("skill capability runtime requester binding", () => {
     const runtime = new SkillCapabilityRuntime({ broker, requesterId: "U123" });
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: sentrySkill,
+        provider: "sentry",
         reason: "test:first",
       }),
     ).resolves.toMatchObject({ reused: false });
     await expect(
       runtime.enableCredentialsForTurn({
-        activeSkill: sentrySkill,
+        provider: "sentry",
         reason: "test:second",
       }),
     ).resolves.toMatchObject({ reused: true });

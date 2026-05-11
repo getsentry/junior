@@ -1,7 +1,6 @@
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
-import type { SkillMetadata } from "@/chat/skills";
 import type { PluginDefinition } from "@/chat/plugins/types";
 import {
   McpAuthorizationRequiredError,
@@ -168,10 +167,6 @@ export interface ManagedMcpToolDescriptor {
   provider: string;
 }
 
-type ActiveMcpSkillScope = Pick<SkillMetadata, "pluginProvider">;
-
-type ActiveMcpSkill = Pick<SkillMetadata, "name" | "pluginProvider">;
-
 export interface ManagedMcpTool extends ManagedMcpToolDescriptor {
   execute: (args: Record<string, unknown>) => Promise<ManagedMcpToolResult>;
 }
@@ -198,14 +193,6 @@ export class McpToolManager {
     return [...this.activeProviders].sort((left, right) =>
       left.localeCompare(right),
     );
-  }
-
-  async activateForSkill(skill: ActiveMcpSkill): Promise<boolean> {
-    if (!skill.pluginProvider) {
-      return false;
-    }
-
-    return await this.activateProvider(skill.pluginProvider);
   }
 
   async activateProvider(provider: string): Promise<boolean> {
@@ -263,10 +250,9 @@ export class McpToolManager {
   }
 
   getActiveToolCatalog(
-    skills: ActiveMcpSkillScope[],
     options: { provider?: string } = {},
   ): ManagedMcpToolDescriptor[] {
-    return this.getResolvedActiveTools(skills, options).map((tool) =>
+    return this.getResolvedActiveTools(options).map((tool) =>
       this.toToolDescriptor(tool),
     );
   }
@@ -415,9 +401,8 @@ export class McpToolManager {
     return true;
   }
 
-  /** Return all active ManagedMcpTool objects for the given skill scope. */
+  /** Return all active ManagedMcpTool objects for active plugin providers. */
   getResolvedActiveTools(
-    skills: ActiveMcpSkillScope[],
     options: { provider?: string } = {},
   ): ManagedMcpTool[] {
     const resolved: ManagedMcpTool[] = [];
@@ -427,25 +412,15 @@ export class McpToolManager {
         continue;
       }
 
-      resolved.push(...this.resolveProviderTools(provider, skills));
+      resolved.push(...this.resolveProviderTools(provider));
     }
 
     return resolved;
   }
 
-  private resolveProviderTools(
-    provider: string,
-    skills: ActiveMcpSkillScope[],
-  ): ManagedMcpTool[] {
+  private resolveProviderTools(provider: string): ManagedMcpTool[] {
     const providerTools = this.toolsByProvider.get(provider) ?? [];
     if (providerTools.length === 0) {
-      return [];
-    }
-
-    const relevantSkills = skills.filter(
-      (skill) => skill.pluginProvider === provider,
-    );
-    if (relevantSkills.length === 0) {
       return [];
     }
     return providerTools;
