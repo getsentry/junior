@@ -96,4 +96,48 @@ describe("command proxy wrapper", () => {
       "319",
     ]);
   });
+
+  it("emits a provider marker when the real command fails", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "junior-proxy-"));
+    const wrapperDir = path.join(root, "wrapper");
+    const realDir = path.join(root, "real");
+    fs.mkdirSync(wrapperDir);
+    fs.mkdirSync(realDir);
+
+    const wrapperPath = path.join(wrapperDir, "gh");
+    const realPath = path.join(realDir, "gh");
+    fs.writeFileSync(
+      wrapperPath,
+      buildCommandProxyWrapper({
+        command: "gh",
+        provider: "github",
+      }),
+    );
+    fs.writeFileSync(
+      realPath,
+      [
+        "#!/usr/bin/env node",
+        'process.stderr.write("bad credentials\\n");',
+        "process.exit(1);",
+      ].join("\n"),
+    );
+    fs.chmodSync(realPath, 0o755);
+
+    const result = spawnSync(process.execPath, [wrapperPath], {
+      env: {
+        ...process.env,
+        [COMMAND_PROXY_ACTIVE_PROVIDERS_ENV]: "github",
+        PATH: [wrapperDir, realDir, process.env.PATH ?? ""].join(
+          path.delimiter,
+        ),
+      },
+      encoding: "utf8",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("bad credentials");
+    expect(result.stderr).toContain(
+      "JUNIOR_COMMAND_PROXY_PROVIDER provider=github",
+    );
+  });
 });

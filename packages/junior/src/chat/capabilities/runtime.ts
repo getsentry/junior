@@ -183,6 +183,10 @@ export class SkillCapabilityRuntime {
     const authRequiredProviders: string[] = [];
     const seen = new Set<string>();
 
+    if (!this.requesterId) {
+      return { activeProviders, authRequiredProviders };
+    }
+
     for (const provider of input.providers) {
       if (!provider || seen.has(provider)) {
         continue;

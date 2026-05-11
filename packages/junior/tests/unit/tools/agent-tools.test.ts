@@ -255,7 +255,7 @@ describe("createAgentTools", () => {
     });
   });
 
-  it("does not enable command-proxy credentials for unrelated bash commands", async () => {
+  it("prepares command-proxy credentials for sandbox bash commands", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const capabilityRuntime = {
       enableCommandProxyCredentialsForTurn: vi.fn(async () => ({
@@ -302,11 +302,17 @@ describe("createAgentTools", () => {
 
     expect(
       capabilityRuntime.enableCommandProxyCredentialsForTurn,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledWith({
+      providers: ["github"],
+      reason: "sandbox:command-proxy",
+    });
     expect(sandboxExecutor.execute).toHaveBeenCalledWith({
       toolName: "bash",
       input: {
         command: "pwd",
+        env: {
+          JUNIOR_COMMAND_PROXY_ACTIVE_PROVIDERS: "github",
+        },
       },
     });
   });
@@ -600,8 +606,6 @@ describe("createAgentTools", () => {
       bashTool!.execute("tool-2", { command: "gh issue view 123" }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
     expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith({
-      provider: "github",
-      command: "gh issue view 123",
       details: expect.any(Object),
     });
     expect(handleToolExecutionError).not.toHaveBeenCalled();

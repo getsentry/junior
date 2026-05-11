@@ -333,14 +333,14 @@ credentials:
 ```
 
 The runtime installs wrappers for these commands in the sandbox runtime bin
-directory. Before sandbox bash commands that mention a declared proxy run, the
-host pre-activates the matching provider derived from the declaring plugin name,
-applies sandbox network-policy header transforms, and injects only non-secret
-command env placeholders plus provider-state flags. A wrapper execs the real
-binary only when its provider is marked active. If the provider needs user
-authorization, the wrapper fails with the standard auth marker so the runtime
-can start the private OAuth flow. Real token values and credential-minting
-capabilities never enter the sandbox process.
+directory. Before sandbox bash starts, the host prepares providers declared by
+`credentials.command-proxies`, applies sandbox network-policy header transforms,
+and injects only non-secret command env placeholders plus provider-state flags.
+The host does not parse the shell command to detect proxy usage. A wrapper execs
+the real binary only when its provider is marked active. If the provider needs
+user authorization, the wrapper fails with the standard auth marker so the
+runtime can start the private OAuth flow. Real token values and
+credential-minting capabilities never enter the sandbox process.
 
 System runtime dependency execution environment:
 

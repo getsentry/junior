@@ -105,6 +105,11 @@ function requireActivatedProvider() {
   if (result.error) {
     fail(result.error.message);
   }
+  if ((result.status ?? 1) !== 0) {
+    process.stderr.write(
+      "\\nJUNIOR_COMMAND_PROXY_PROVIDER provider=" + provider + "\\n"
+    );
+  }
   process.exit(result.status ?? 1);
 })();
 `;

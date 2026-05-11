@@ -73,7 +73,7 @@ Rules:
 ### Lease issuance
 
 - Resolve credentials from the active plugin provider, not from active skill identity.
-- For sandbox bash commands, pre-activate matching providers that declare `credentials.command-proxies`. This lets generic skills use provider CLIs without Junior-specific skill metadata.
+- For sandbox bash commands, prepare providers that declare `credentials.command-proxies` before execution. Generated command wrappers, not host-side shell string matching, are the runtime signal that a provider CLI was actually invoked.
 - Require requester context before issuing provider credentials.
 - Return short-lived leases only.
 - Keep lease reuse in memory only, keyed by provider for the active turn.
@@ -96,7 +96,7 @@ Rules:
 - Postinstall/bootstrap commands belong in `plugin.yaml` `runtime-postinstall`.
 - MCP endpoints and allowed tool surfaces belong in `plugin.yaml` `mcp`.
 - CLI env placeholders and deployment defaults belong in `plugin.yaml` `command-env`.
-- CLI command auto-activation belongs in `plugin.yaml` `credentials.command-proxies`.
+- CLI command proxy ownership belongs in `plugin.yaml` `credentials.command-proxies`.
 - OAuth and static credential env names belong in `plugin.yaml` `oauth` and `credentials`.
 - Skill text may diagnose missing runtime surfaces, but must not tell the agent to install packages, run installer scripts, configure API keys, or repair sandbox package installation from inside a user workflow.
 

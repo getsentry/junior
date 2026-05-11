@@ -3,15 +3,10 @@ import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
-import { getCommandProxyProvidersForCommand } from "@/chat/plugins/command-proxy-match";
 import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
-import {
-  getPluginDefinition,
-  getPluginCommandProxies,
-  getPluginOAuthConfig,
-} from "@/chat/plugins/registry";
+import { getPluginOAuthConfig } from "@/chat/plugins/registry";
 
 export class PluginAuthorizationPauseError extends AuthorizationPauseError {
   constructor(
@@ -42,11 +37,7 @@ export interface PluginAuthOrchestration {
     provider: string;
     error: CredentialUnavailableError;
   }) => Promise<never>;
-  handleCommandFailure: (input: {
-    provider?: string;
-    command: string;
-    details: unknown;
-  }) => Promise<void>;
+  handleCommandFailure: (input: { details: unknown }) => Promise<void>;
   getPendingPause: () => PluginAuthorizationPauseError | undefined;
 }
 
@@ -90,48 +81,6 @@ function isCommandAuthFailure(details: unknown): details is {
   ].some((pattern) => pattern.test(text));
 }
 
-function commandUsesProxyProvider(provider: string, command: string): boolean {
-  return getCommandProxyProvidersForCommand(
-    command,
-    getPluginCommandProxies(),
-  ).includes(provider);
-}
-
-function commandFailureMatchesProvider(
-  provider: string,
-  command: string,
-  details: {
-    stdout?: string;
-    stderr?: string;
-  },
-): boolean {
-  const normalizedCommand = command.trim().toLowerCase();
-  if (!normalizedCommand) {
-    return false;
-  }
-
-  if (commandUsesProxyProvider(provider, command)) {
-    return true;
-  }
-
-  const plugin = getPluginDefinition(provider);
-  const candidates = new Set<string>([provider.toLowerCase()]);
-  const manifest = plugin?.manifest;
-  const credentials = manifest?.credentials;
-  if (credentials) {
-    candidates.add(credentials.authTokenEnv.toLowerCase());
-    for (const domain of credentials.apiDomains) {
-      candidates.add(domain.toLowerCase());
-    }
-  }
-  for (const domain of manifest?.apiDomains ?? []) {
-    candidates.add(domain.toLowerCase());
-  }
-
-  const combinedText = `${normalizedCommand}\n${details.stdout?.toLowerCase() ?? ""}\n${details.stderr?.toLowerCase() ?? ""}`;
-  return [...candidates].some((candidate) => combinedText.includes(candidate));
-}
-
 function commandProxyAuthProvider(details: unknown): string | undefined {
   if (!details || typeof details !== "object") {
     return undefined;
@@ -139,14 +88,12 @@ function commandProxyAuthProvider(details: unknown): string | undefined {
   const result = details as { stdout?: unknown; stderr?: unknown };
   const text = `${typeof result.stdout === "string" ? result.stdout : ""}\n${typeof result.stderr === "string" ? result.stderr : ""}`;
   const match = text.match(
-    /JUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=([a-z][a-z0-9-]*)/,
+    /JUNIOR_COMMAND_PROXY_(?:AUTH_REQUIRED|PROVIDER) provider=([a-z][a-z0-9-]*)/,
   );
   return match?.[1];
 }
 
-/**
- * Start plugin OAuth from an authenticated bash command and park the turn.
- */
+/** Start plugin OAuth from command-proxy failures and park the turn. */
 export function createPluginAuthOrchestration(
   deps: PluginAuthOrchestrationDeps,
   abortAgent: () => void,
@@ -240,8 +187,7 @@ export function createPluginAuthOrchestration(
   return {
     handleCredentialUnavailable,
     handleCommandFailure: async (input) => {
-      const markerProvider = commandProxyAuthProvider(input.details);
-      const provider = markerProvider ?? input.provider;
+      const provider = commandProxyAuthProvider(input.details);
       if (
         !provider ||
         !deps.requesterId ||
@@ -249,13 +195,6 @@ export function createPluginAuthOrchestration(
         !getPluginOAuthConfig(provider) ||
         !isCommandAuthFailure(input.details)
       ) {
-        return;
-      }
-
-      const commandUsesProvider = markerProvider
-        ? commandUsesProxyProvider(markerProvider, input.command)
-        : commandFailureMatchesProvider(provider, input.command, input.details);
-      if (!commandUsesProvider) {
         return;
       }
 

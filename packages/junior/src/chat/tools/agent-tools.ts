@@ -5,7 +5,6 @@ import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import { getCommandProxyProvidersForCommand } from "@/chat/plugins/command-proxy-match";
 import { getPluginCommandProxies } from "@/chat/plugins/registry";
 import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
@@ -35,7 +34,9 @@ export function createAgentTools(
   hooks: AgentToolExecutionHooks = {},
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
-  const commandProxies = getPluginCommandProxies();
+  const commandProxyProviders = [
+    ...new Set(getPluginCommandProxies().map((proxy) => proxy.provider)),
+  ];
   return Object.entries(tools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
@@ -85,15 +86,6 @@ export function createAgentTools(
                 : "";
             const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
             const isJrRpcCommand = /^jr-rpc(?:\s|$)/.test(bashCommand);
-            const commandProxyProviders = getCommandProxyProvidersForCommand(
-              bashCommand,
-              commandProxies,
-            );
-            if (isSandbox && bashCommand && !isJrRpcCommand) {
-              for (const provider of commandProxyProviders) {
-                hooks.onPluginProviderActivated?.(provider);
-              }
-            }
             const commandProxyCredentialState =
               isSandbox &&
               bashCommand &&
@@ -105,6 +97,10 @@ export function createAgentTools(
                     reason: "sandbox:command-proxy",
                   })
                 : undefined;
+            for (const provider of commandProxyCredentialState?.activeProviders ??
+              []) {
+              hooks.onPluginProviderActivated?.(provider);
+            }
             const injection = resolveCredentialInjection(
               toolName,
               bashCommand,
@@ -134,10 +130,7 @@ export function createAgentTools(
 
             const normalized = normalizeToolResult(result, isSandbox);
             if (bashCommand && pluginAuthOrchestration) {
-              const activeSkill = sandbox.getActiveSkill();
               await pluginAuthOrchestration.handleCommandFailure({
-                provider: activeSkill?.pluginProvider,
-                command: bashCommand,
                 details: normalized.details,
               });
             }

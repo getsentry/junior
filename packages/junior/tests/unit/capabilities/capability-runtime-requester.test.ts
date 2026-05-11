@@ -39,6 +39,25 @@ describe("skill capability runtime requester binding", () => {
     ).rejects.toThrow("requires requester context");
   });
 
+  it("does not issue command proxy credentials without requester context", async () => {
+    const broker: CredentialBroker = {
+      issue: async () => {
+        throw new Error("should not be called");
+      },
+    };
+
+    const runtime = new SkillCapabilityRuntime({ broker });
+    await expect(
+      runtime.enableCommandProxyCredentialsForTurn({
+        providers: ["sentry"],
+        reason: "sandbox:command-proxy",
+      }),
+    ).resolves.toEqual({
+      activeProviders: [],
+      authRequiredProviders: [],
+    });
+  });
+
   it("reuses a provider lease within the same turn", async () => {
     let issueCalls = 0;
     const broker: CredentialBroker = {

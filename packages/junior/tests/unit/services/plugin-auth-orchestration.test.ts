@@ -6,15 +6,11 @@ import {
 
 const {
   formatProviderLabel,
-  getPluginCommandProxies,
-  getPluginDefinition,
   getPluginOAuthConfig,
   startOAuthFlow,
   unlinkProvider,
 } = vi.hoisted(() => ({
   formatProviderLabel: vi.fn((provider: string) => provider),
-  getPluginCommandProxies: vi.fn(),
-  getPluginDefinition: vi.fn(),
   getPluginOAuthConfig: vi.fn(),
   startOAuthFlow: vi.fn(),
   unlinkProvider: vi.fn(),
@@ -26,8 +22,6 @@ vi.mock("@/chat/oauth-flow", () => ({
 }));
 
 vi.mock("@/chat/plugins/registry", () => ({
-  getPluginCommandProxies,
-  getPluginDefinition,
   getPluginOAuthConfig,
 }));
 
@@ -38,42 +32,6 @@ vi.mock("@/chat/credentials/unlink-provider", () => ({
 describe("createPluginAuthOrchestration", () => {
   beforeEach(() => {
     formatProviderLabel.mockClear();
-    getPluginCommandProxies.mockReset();
-    getPluginCommandProxies.mockReturnValue([
-      { command: "gh", provider: "github" },
-      { command: "git", provider: "github" },
-      { command: "sentry", provider: "sentry" },
-    ]);
-    getPluginDefinition.mockReset();
-    getPluginDefinition.mockImplementation((provider: string) => {
-      if (provider === "github") {
-        return {
-          manifest: {
-            name: "github",
-            credentials: {
-              type: "github-app",
-              apiDomains: ["api.github.com"],
-              authTokenEnv: "GITHUB_TOKEN",
-            },
-          },
-        };
-      }
-
-      if (provider === "sentry") {
-        return {
-          manifest: {
-            name: "sentry",
-            credentials: {
-              type: "oauth-bearer",
-              apiDomains: ["sentry.io"],
-              authTokenEnv: "SENTRY_AUTH_TOKEN",
-            },
-          },
-        };
-      }
-
-      return undefined;
-    });
     getPluginOAuthConfig.mockReset();
     getPluginOAuthConfig.mockImplementation((provider: string) =>
       provider === "github" || provider === "sentry" ? { provider } : undefined,
@@ -82,7 +40,7 @@ describe("createPluginAuthOrchestration", () => {
     unlinkProvider.mockReset();
   });
 
-  it("starts oauth recovery for sentry bash commands through provider matching", async () => {
+  it("starts oauth recovery from command proxy provider markers", async () => {
     startOAuthFlow.mockResolvedValue({
       ok: true,
       delivery: { channelId: "D123" },
@@ -100,11 +58,10 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        provider: "sentry",
-        command: "sentry issue list",
         details: {
           exit_code: 1,
-          stderr: "401 unauthorized",
+          stderr:
+            "401 unauthorized\nJUNIOR_COMMAND_PROXY_PROVIDER provider=sentry",
         },
       }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
@@ -140,7 +97,6 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        command: "cd /tmp && sentry issue list",
         details: {
           exit_code: 91,
           stderr:
@@ -158,7 +114,7 @@ describe("createPluginAuthOrchestration", () => {
     );
   });
 
-  it("ignores command proxy auth markers from unrelated commands", async () => {
+  it("ignores auth-like failures without command proxy markers", async () => {
     startOAuthFlow.mockResolvedValue({
       ok: true,
       delivery: { channelId: "D123" },
@@ -174,11 +130,9 @@ describe("createPluginAuthOrchestration", () => {
     );
 
     await orchestration.handleCommandFailure({
-      command:
-        "node -e \"process.stderr.write('JUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=sentry'); process.exit(91)\"",
       details: {
-        exit_code: 91,
-        stderr: "JUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=sentry",
+        exit_code: 1,
+        stderr: "401 unauthorized",
       },
     });
 
@@ -212,11 +166,10 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        provider: "github",
-        command: "gh issue view 123",
         details: {
           exit_code: 1,
-          stderr: "bad credentials",
+          stderr:
+            "bad credentials\nJUNIOR_COMMAND_PROXY_PROVIDER provider=github",
         },
       }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
@@ -247,11 +200,10 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        provider: "github",
-        command: "gh issue view 123",
         details: {
           exit_code: 1,
-          stderr: "bad credentials",
+          stderr:
+            "bad credentials\nJUNIOR_COMMAND_PROXY_PROVIDER provider=github",
         },
       }),
     ).rejects.toThrow("Missing base URL");
@@ -271,8 +223,6 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        provider: "github",
-        command: "curl https://other-api.example.test",
         details: {
           exit_code: 1,
           stderr: "401 unauthorized",

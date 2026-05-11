@@ -117,8 +117,8 @@ Provider: redirects to /api/oauth/callback/mcp/<provider>?code=...&state=...
 
 After a user has connected their account:
 
-1. Agent runs an authenticated provider command under a loaded plugin-backed skill, or invokes a plugin-declared command proxy such as `sentry`.
-2. Runtime resolves the provider from the loaded skill or command proxy declaration for the resumed turn.
+1. Agent invokes a plugin-declared command proxy such as `sentry`.
+2. Runtime resolves the provider from the command proxy declaration for the resumed turn.
 3. Broker loads stored requester-bound tokens.
 4. If the token is near expiry, broker refreshes it server-side.
 5. Broker returns a short-lived `CredentialLease`.
