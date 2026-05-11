@@ -14,6 +14,8 @@ credentials:
     - sentry.io
     - us.sentry.io
     - de.sentry.io
+  command-proxies:
+    - sentry
   auth-token-env: SENTRY_AUTH_TOKEN
   auth-token-placeholder: host_managed_credential
 
@@ -23,9 +25,6 @@ oauth:
   authorize-endpoint: https://sentry.io/oauth/authorize/
   token-endpoint: https://sentry.io/oauth/token/
   scope: "event:read org:read project:read team:read"
-
-command-proxies:
-  - sentry
 
 runtime-dependencies:
   - type: npm

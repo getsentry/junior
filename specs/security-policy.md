@@ -50,7 +50,7 @@ This policy applies to:
 
 ### Issuance and injection
 
-- Runtime issues short-lived provider credentials for loaded plugin-backed skills or available plugin-declared command proxy providers before sandbox bash commands run.
+- Runtime issues short-lived provider credentials for loaded plugin-backed skills or matching plugin-declared command proxy providers before sandbox bash commands run.
 - Loaded skills, plugin declarations, and command proxy declarations determine which provider credentials may be injected into a turn.
 - Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.

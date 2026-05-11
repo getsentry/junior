@@ -17,6 +17,16 @@ import { resolveCredentialInjection } from "@/chat/tools/execution/inject-creden
 import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function commandMentionsProxy(command: string, proxyCommand: string): boolean {
+  return new RegExp(
+    `(^|[\\s;&|()])${escapeRegExp(proxyCommand.toLowerCase())}($|[\\s;&|()])`,
+  ).test(command.toLowerCase());
+}
+
 /** Wrap tool definitions into Pi Agent tool objects with logging, validation, and sandbox execution. */
 export function createAgentTools(
   tools: Record<string, ToolDefinition<any>>,
@@ -29,9 +39,7 @@ export function createAgentTools(
   onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
-  const commandProxyProviders = Array.from(
-    new Set(getPluginCommandProxies().map((proxy) => proxy.provider)),
-  );
+  const commandProxies = getPluginCommandProxies();
   return Object.entries(tools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
@@ -81,6 +89,15 @@ export function createAgentTools(
                 : "";
             const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
             const isJrRpcCommand = /^jr-rpc(?:\s|$)/.test(bashCommand);
+            const commandProxyProviders = Array.from(
+              new Set(
+                commandProxies
+                  .filter((proxy) =>
+                    commandMentionsProxy(bashCommand, proxy.command),
+                  )
+                  .map((proxy) => proxy.provider),
+              ),
+            );
             const commandProxyCredentialState =
               isSandbox &&
               bashCommand &&

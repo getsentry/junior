@@ -85,9 +85,9 @@ describe("plugin registry", () => {
         "  type: oauth-bearer",
         "  api-domains:",
         "    - api.demo.test",
+        "  command-proxies:",
+        "    - demo",
         "  auth-token-env: DEMO_TOKEN",
-        "command-proxies:",
-        "  - demo",
       ].join("\n"),
       "utf8",
     );

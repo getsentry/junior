@@ -10,7 +10,10 @@ const {
   setSpanAttributesMock,
   withSpanMock,
 } = vi.hoisted(() => ({
-  getPluginCommandProxies: vi.fn(() => [{ command: "gh", provider: "github" }]),
+  getPluginCommandProxies: vi.fn(() => [
+    { command: "gh", provider: "github" },
+    { command: "git", provider: "github" },
+  ]),
   handleToolExecutionError: vi.fn((error: unknown) => {
     throw error;
   }),
@@ -144,7 +147,10 @@ describe("createAgentTools", () => {
     });
 
     expect(enableCredentialsForTurn).not.toHaveBeenCalled();
-    expect(enableCommandProxyCredentialsForTurn).toHaveBeenCalled();
+    expect(enableCommandProxyCredentialsForTurn).toHaveBeenCalledWith({
+      providers: ["github"],
+      reason: "sandbox:command-proxy",
+    });
     expect(sandboxExecutor.execute).toHaveBeenCalledWith({
       toolName: "bash",
       input: {
@@ -164,6 +170,138 @@ describe("createAgentTools", () => {
     expect(result.details).toMatchObject({
       ok: true,
       exit_code: 0,
+    });
+  });
+
+  it("enables command-proxy credentials for direct git commands", async () => {
+    const sandbox = new SkillSandbox([], []);
+    const enableCommandProxyCredentialsForTurn = vi.fn(async () => ({
+      activeProviders: ["github"],
+      authRequiredProviders: [],
+    }));
+    const capabilityRuntime = {
+      enableCommandProxyCredentialsForTurn,
+      getTurnHeaderTransforms: vi.fn(() => [
+        {
+          domain: "github.com",
+          headers: { Authorization: "Basic token-1" },
+        },
+      ]),
+      getTurnEnv: vi.fn(() => ({
+        GITHUB_TOKEN: "ghp_host_managed_credential",
+      })),
+    } as any;
+    const sandboxExecutor = {
+      canExecute: (toolName: string) => toolName === "bash",
+      execute: vi.fn(async ({ input }) => ({
+        result: {
+          ok: true,
+          command: (input as Record<string, unknown>).command,
+          cwd: "/vercel/sandbox",
+          exit_code: 0,
+          signal: null,
+          timed_out: false,
+          stdout: "ok",
+          stderr: "",
+          stdout_truncated: false,
+          stderr_truncated: false,
+        },
+      })),
+    } as any;
+
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      sandboxExecutor,
+      capabilityRuntime,
+    );
+
+    await bashTool!.execute("tool-1", {
+      command: "git fetch origin main",
+    });
+
+    expect(enableCommandProxyCredentialsForTurn).toHaveBeenCalledWith({
+      providers: ["github"],
+      reason: "sandbox:command-proxy",
+    });
+    expect(sandboxExecutor.execute).toHaveBeenCalledWith({
+      toolName: "bash",
+      input: expect.objectContaining({
+        command: "git fetch origin main",
+        env: expect.objectContaining({
+          JUNIOR_COMMAND_PROXY_ACTIVE_PROVIDERS: "github",
+        }),
+        headerTransforms: [
+          {
+            domain: "github.com",
+            headers: { Authorization: "Basic token-1" },
+          },
+        ],
+      }),
+    });
+  });
+
+  it("does not enable command-proxy credentials for unrelated bash commands", async () => {
+    const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
+    const capabilityRuntime = {
+      enableCommandProxyCredentialsForTurn: vi.fn(async () => ({
+        activeProviders: ["github"],
+        authRequiredProviders: [],
+      })),
+      getTurnHeaderTransforms: vi.fn(() => undefined),
+      getTurnEnv: vi.fn(() => undefined),
+    } as any;
+    const sandboxExecutor = {
+      canExecute: (toolName: string) => toolName === "bash",
+      execute: vi.fn(async ({ input }) => ({
+        result: {
+          ok: true,
+          command: (input as Record<string, unknown>).command,
+          cwd: "/vercel/sandbox",
+          exit_code: 0,
+          signal: null,
+          timed_out: false,
+          stdout: "ok",
+          stderr: "",
+          stdout_truncated: false,
+          stderr_truncated: false,
+        },
+      })),
+    } as any;
+
+    const [bashTool] = createAgentTools(
+      {
+        bash: {
+          description: "bash",
+          inputSchema: {} as any,
+          execute: async () => ({ ok: true }),
+        },
+      },
+      sandbox,
+      {},
+      undefined,
+      sandboxExecutor,
+      capabilityRuntime,
+    );
+
+    await bashTool!.execute("tool-1", { command: "pwd" });
+
+    expect(
+      capabilityRuntime.enableCommandProxyCredentialsForTurn,
+    ).not.toHaveBeenCalled();
+    expect(sandboxExecutor.execute).toHaveBeenCalledWith({
+      toolName: "bash",
+      input: {
+        command: "pwd",
+      },
     });
   });
 

@@ -170,6 +170,11 @@ const baseCredentialsSchema = z
   .object({
     "api-domains": apiDomainsSchema,
     "api-headers": stringMapSchema.optional(),
+    "command-proxies": z
+      .array(z.unknown(), {
+        error: "must be an array",
+      })
+      .optional(),
     "auth-token-env": envVarString,
     "auth-token-placeholder": nonEmptyTrimmedString.optional(),
   })
@@ -271,11 +276,7 @@ const manifestSourceSchema = z
     "api-domains": apiDomainsSchema.optional(),
     "api-headers": stringMapSchema.optional(),
     "command-env": stringMapSchema.optional(),
-    "command-proxies": z
-      .array(z.unknown(), {
-        error: "must be an array",
-      })
-      .optional(),
+    "command-proxies": z.unknown().optional(),
     credentials: z
       .record(z.string(), z.unknown(), {
         error: "must be an object when provided",
@@ -855,7 +856,7 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
     }
     if (path === "command-proxies") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} command-proxies must be an array`,
+        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} command-proxies belongs under credentials`,
       );
     }
     if (path === "credentials") {
@@ -940,6 +941,11 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
   const credentials = data.credentials
     ? normalizeCredentials(data.credentials, data.name)
     : undefined;
+  if (data["command-proxies"] !== undefined) {
+    throw new Error(
+      `Plugin ${data.name} command-proxies belongs under credentials`,
+    );
+  }
   if (commandEnv && !credentials && !apiHeaders) {
     throw new Error(
       `Plugin ${data.name} command-env requires credentials or api-headers`,
@@ -951,14 +957,13 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
   const runtimePostinstall = data["runtime-postinstall"]
     ? normalizeRuntimePostinstall(data["runtime-postinstall"], data.name)
     : undefined;
-  const commandProxies = data["command-proxies"]
-    ? normalizeCommandProxies(data["command-proxies"], data.name)
-    : undefined;
-  if (commandProxies && !credentials && !apiHeaders) {
-    throw new Error(
-      `Plugin ${data.name} command-proxies requires credentials or api-headers`,
-    );
-  }
+  const commandProxies =
+    data.credentials && "command-proxies" in data.credentials
+      ? normalizeCommandProxies(
+          data.credentials["command-proxies"] as unknown[],
+          data.name,
+        )
+      : undefined;
   const mcp = data.mcp ? normalizeMcp(data.mcp, envVars, data.name) : undefined;
 
   const manifest: PluginManifest = {

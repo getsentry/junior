@@ -104,6 +104,8 @@ credentials: # how tokens are delivered to the sandbox
     - sentry.io
     - us.sentry.io
     - de.sentry.io
+  command-proxies: # CLI executable names that trigger this credential provider
+    - sentry
   auth-token-env: SENTRY_AUTH_TOKEN # env var for static fallback + sandbox placeholder
   auth-token-placeholder: host_managed_credential # optional placeholder value for CLI env checks
 
@@ -190,11 +192,11 @@ command-env:
 | `api-domains`                        | `string[]`               | Optional domains for plugin-level API header injection. Required when `api-headers` is set.                                                                                                                                                                 |
 | `api-headers`                        | `Record<string, string>` | Optional headers injected for matching `api-domains`. Values may reference `${NAME}` placeholders declared in `env-vars`; referenced env vars must not declare defaults.                                                                                    |
 | `command-env`                        | `Record<string, string>` | Optional non-secret sandbox env vars injected when provider credentials or API headers are enabled. Requires `credentials` or `api-headers`. Values may reference `${NAME}` placeholders declared in `env-vars`; referenced env vars must declare defaults. |
-| `command-proxies`                    | `string[]`               | Optional CLI executable names that get sandbox wrappers and host-owned credential activation. Provider identity is derived from the declaring plugin name.                                                                                                  |
 | `credentials`                        | `object`                 | Credential delivery configuration.                                                                                                                                                                                                                          |
 | `credentials.type`                   | `string`                 | `"oauth-bearer"` or `"github-app"`.                                                                                                                                                                                                                         |
 | `credentials.api-domains`            | `string[]`               | Domains for token-backed header transforms. At least one required.                                                                                                                                                                                          |
 | `credentials.api-headers`            | `Record<string, string>` | Optional extra headers applied alongside runtime-managed `Authorization` for `oauth-bearer` and `github-app`; `Authorization` itself is reserved for those types. Prefer plugin-level `api-headers` for new manifests.                                      |
+| `credentials.command-proxies`        | `string[]`               | Optional CLI executable names that get sandbox wrappers and host-owned credential activation for this provider. Provider identity is derived from the declaring plugin name.                                                                                |
 | `credentials.auth-token-env`         | `string`                 | Env var name for static token fallback and sandbox placeholder. Required for `oauth-bearer` and `github-app`.                                                                                                                                               |
 | `credentials.auth-token-placeholder` | `string`                 | Optional non-secret placeholder injected into sandbox env for CLI compatibility. Applies to `oauth-bearer` and `github-app`.                                                                                                                                |
 | `credentials.app-id-env`             | `string`                 | Env var name for GitHub App ID. Required when `credentials.type` is `"github-app"`.                                                                                                                                                                         |
@@ -315,25 +317,30 @@ command-env:
 
 ### Command proxies
 
-Plugin-level `command-proxies` declares CLI executable names that should
-activate a provider credential lease before the real binary runs. This is the
-provider-owned auto-detection surface for commands such as `gh` or `sentry`;
-generic skills do not need Junior-specific frontmatter to use them.
+`credentials.command-proxies` declares CLI executable names that should activate
+that provider's credential lease before the real binary runs. This is the
+provider-owned auto-detection surface for commands such as `gh`, `git`, or
+`sentry`; generic skills do not need Junior-specific frontmatter to use them.
 
 ```yaml
-command-proxies:
-  - gh
+credentials:
+  type: github-app
+  api-domains:
+    - api.github.com
+  command-proxies:
+    - gh
+    - git
 ```
 
 The runtime installs wrappers for these commands in the sandbox runtime bin
-directory. Before bash commands run, the host pre-activates available
-command-proxy providers derived from the declaring plugin name, applies sandbox
-network-policy header transforms, and injects only non-secret command env
-placeholders plus provider-state flags. A wrapper execs the real binary only
-when its provider is marked active. If the provider needs user authorization,
-the wrapper fails with the standard auth marker so the runtime can start the
-private OAuth flow. Real token values and credential-minting capabilities never
-enter the sandbox process.
+directory. Before sandbox bash commands that mention a declared proxy run, the
+host pre-activates the matching provider derived from the declaring plugin name,
+applies sandbox network-policy header transforms, and injects only non-secret
+command env placeholders plus provider-state flags. A wrapper execs the real
+binary only when its provider is marked active. If the provider needs user
+authorization, the wrapper fails with the standard auth marker so the runtime
+can start the private OAuth flow. Real token values and credential-minting
+capabilities never enter the sandbox process.
 
 System runtime dependency execution environment:
 
@@ -348,7 +355,7 @@ System runtime dependency execution environment:
 | Value                     | Derivation                                                                                                              |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | OAuth callback path       | `/api/oauth/callback/<name>` — derived from plugin name.                                                                |
-| Command proxy wrappers    | `.junior/bin/<command>` — generated from `command-proxies`.                                                             |
+| Command proxy wrappers    | `.junior/bin/<command>` — generated from `credentials.command-proxies`.                                                 |
 | Skill roots               | `plugins/<name>/skills/` and installed package `skills/` roots — auto-discovered.                                       |
 | Qualified capabilities    | `<name>.<capability>` — short names prefixed with plugin name.                                                          |
 | Qualified config keys     | `<name>.<key>` — short names prefixed with plugin name.                                                                 |
@@ -360,10 +367,9 @@ System runtime dependency execution environment:
 - No two plugins may declare the same capability token.
 - No two plugins may declare the same command proxy executable name.
 - No two plugins may use the same `name`.
-- `command-proxies` entries are executable names. Provider identity is derived from the declaring plugin name.
+- `credentials.command-proxies` entries are executable names. Provider identity is derived from the declaring plugin name.
 - If `target.config-key` is set, it must be listed in `config-keys`.
 - If `command-env` is set, the plugin must also declare credentials or API headers so a credential broker exists to deliver it.
-- If `command-proxies` is set, the plugin must also declare credentials or API headers so a credential broker exists to activate it.
 - If a plugin declares capabilities without credentials or API headers, manifest load succeeds and runtime credential enablement fails with an explicit no-broker error when an authenticated command needs that provider.
 - `plugin.yaml` remains the enforceable runtime authority. `loadSkill` re-resolves the skill's parent plugin from its path, rejects mismatched plugin metadata, rebuilds metadata from the current skill file, and prepends a host-owned runtime boundary before the skill body.
 

@@ -73,7 +73,7 @@ Rules:
 ### Lease issuance
 
 - Resolve provider from `activeSkill.pluginProvider`.
-- For sandbox bash commands, pre-activate available providers that declare `command-proxies` instead of relying on the active skill. This lets generic skills use provider CLIs without Junior-specific skill metadata.
+- For sandbox bash commands, pre-activate matching providers that declare `credentials.command-proxies` instead of relying on the active skill. This lets generic skills use provider CLIs without Junior-specific skill metadata.
 - Require requester context before issuing provider credentials.
 - Return short-lived leases only.
 - Keep lease reuse in memory only, keyed by provider for the active turn.
@@ -84,7 +84,7 @@ Rules:
 - Delivery uses sandbox header transforms for matching domains.
 - Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
 - Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys or deployment defaults, but never real secrets.
-- Plugin manifests may define `command-proxies` for executable names that require host egress activation. The generated wrappers receive only non-secret provider-state flags and placeholder env values; real token values and credential-minting capabilities stay in host-managed network-policy transforms.
+- Plugin manifests may define `credentials.command-proxies` for executable names that require host egress activation. The generated wrappers receive only non-secret provider-state flags and placeholder env values; real token values and credential-minting capabilities stay in host-managed network-policy transforms.
 - Do not inject long-lived secrets into sandbox files.
 
 ### Runtime setup boundary
@@ -95,7 +95,7 @@ Rules:
 - Postinstall/bootstrap commands belong in `plugin.yaml` `runtime-postinstall`.
 - MCP endpoints and allowed tool surfaces belong in `plugin.yaml` `mcp`.
 - CLI env placeholders and deployment defaults belong in `plugin.yaml` `command-env`.
-- CLI command auto-activation belongs in `plugin.yaml` `command-proxies`.
+- CLI command auto-activation belongs in `plugin.yaml` `credentials.command-proxies`.
 - OAuth and static credential env names belong in `plugin.yaml` `oauth` and `credentials`.
 - Skill text may diagnose missing runtime surfaces, but must not tell the agent to install packages, run installer scripts, configure API keys, or repair sandbox package installation from inside a user workflow.
 

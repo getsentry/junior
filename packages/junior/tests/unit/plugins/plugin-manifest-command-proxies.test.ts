@@ -6,6 +6,9 @@ const githubCredentials = [
   "  type: github-app",
   "  api-domains:",
   "    - api.github.com",
+  "  command-proxies:",
+  "    - gh",
+  "    - git",
   "  auth-token-env: GITHUB_TOKEN",
   "  app-id-env: GITHUB_APP_ID",
   "  private-key-env: GITHUB_APP_PRIVATE_KEY",
@@ -15,14 +18,9 @@ const githubCredentials = [
 describe("plugin manifest command proxies", () => {
   it("parses command proxy declarations", () => {
     const manifest = parsePluginManifest(
-      [
-        "name: github",
-        "description: GitHub access",
-        ...githubCredentials,
-        "command-proxies:",
-        "  - gh",
-        "  - git",
-      ].join("\n"),
+      ["name: github", "description: GitHub access", ...githubCredentials].join(
+        "\n",
+      ),
       "/tmp/github",
     );
 
@@ -38,9 +36,16 @@ describe("plugin manifest command proxies", () => {
         [
           "name: github",
           "description: GitHub access",
-          ...githubCredentials,
-          "command-proxies:",
-          "  - gh --repo",
+          "credentials:",
+          "  type: github-app",
+          "  api-domains:",
+          "    - api.github.com",
+          "  command-proxies:",
+          "    - gh --repo",
+          "  auth-token-env: GITHUB_TOKEN",
+          "  app-id-env: GITHUB_APP_ID",
+          "  private-key-env: GITHUB_APP_PRIVATE_KEY",
+          "  installation-id-env: GITHUB_INSTALLATION_ID",
         ].join("\n"),
         "/tmp/github",
       ),
@@ -53,26 +58,19 @@ describe("plugin manifest command proxies", () => {
         [
           "name: github",
           "description: GitHub access",
-          ...githubCredentials,
-          "command-proxies:",
-          "  - command: gh",
+          "credentials:",
+          "  type: github-app",
+          "  api-domains:",
+          "    - api.github.com",
+          "  command-proxies:",
+          "    - command: gh",
+          "  auth-token-env: GITHUB_TOKEN",
+          "  app-id-env: GITHUB_APP_ID",
+          "  private-key-env: GITHUB_APP_PRIVATE_KEY",
+          "  installation-id-env: GITHUB_INSTALLATION_ID",
         ].join("\n"),
         "/tmp/github",
       ),
     ).toThrow("Plugin github command-proxies entries must be strings");
-  });
-
-  it("rejects command proxies without a credential broker", () => {
-    expect(() =>
-      parsePluginManifest(
-        [
-          "name: github",
-          "description: GitHub access",
-          "command-proxies:",
-          "  - gh",
-        ].join("\n"),
-        "/tmp/github",
-      ),
-    ).toThrow("Plugin github command-proxies requires credentials");
   });
 });
