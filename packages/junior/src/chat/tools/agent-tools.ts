@@ -5,6 +5,7 @@ import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
+import { getCommandProxyProvidersForCommand } from "@/chat/plugins/command-proxy-match";
 import { getPluginCommandProxies } from "@/chat/plugins/registry";
 import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
@@ -16,16 +17,6 @@ import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
 import { resolveCredentialInjection } from "@/chat/tools/execution/inject-credentials";
 import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function commandMentionsProxy(command: string, proxyCommand: string): boolean {
-  return new RegExp(
-    `(^|[\\s;&|()])${escapeRegExp(proxyCommand.toLowerCase())}($|[\\s;&|()])`,
-  ).test(command.toLowerCase());
-}
 
 interface AgentToolExecutionHooks {
   onPluginProviderActivated?: (provider: string) => void;
@@ -94,14 +85,9 @@ export function createAgentTools(
                 : "";
             const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
             const isJrRpcCommand = /^jr-rpc(?:\s|$)/.test(bashCommand);
-            const commandProxyProviders = Array.from(
-              new Set(
-                commandProxies
-                  .filter((proxy) =>
-                    commandMentionsProxy(bashCommand, proxy.command),
-                  )
-                  .map((proxy) => proxy.provider),
-              ),
+            const commandProxyProviders = getCommandProxyProvidersForCommand(
+              bashCommand,
+              commandProxies,
             );
             if (isSandbox && bashCommand && !isJrRpcCommand) {
               for (const provider of commandProxyProviders) {

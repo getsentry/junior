@@ -3,6 +3,7 @@ import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
+import { getCommandProxyProvidersForCommand } from "@/chat/plugins/command-proxy-match";
 import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
@@ -89,24 +90,11 @@ function isCommandAuthFailure(details: unknown): details is {
   ].some((pattern) => pattern.test(text));
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function commandUsesProxyProvider(provider: string, command: string): boolean {
-  const normalizedCommand = command.trim().toLowerCase();
-  if (!normalizedCommand) {
-    return false;
-  }
-
-  const proxyCommands = getPluginCommandProxies()
-    .filter((proxy) => proxy.provider === provider)
-    .map((proxy) => proxy.command.toLowerCase());
-  return proxyCommands.some((proxyCommand) =>
-    new RegExp(
-      `(^|[\\s;&|()])${escapeRegExp(proxyCommand)}($|[\\s;&|()])`,
-    ).test(normalizedCommand),
-  );
+  return getCommandProxyProvidersForCommand(
+    command,
+    getPluginCommandProxies(),
+  ).includes(provider);
 }
 
 function commandFailureMatchesProvider(

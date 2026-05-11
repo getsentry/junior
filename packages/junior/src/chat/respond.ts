@@ -606,9 +606,9 @@ export async function generateAssistantReply(
     };
 
     // ── Preload direct skill invocation ──────────────────────────────
-    const activePluginProviders = [
-      ...(existingCheckpoint?.activePluginProviders ?? []),
-    ];
+    const activePluginProviders = new Set(
+      existingCheckpoint?.activePluginProviders ?? [],
+    );
     activePluginProvidersForResume = uniqueSortedStrings(activePluginProviders);
     if (invokedSkill) {
       const preloaded = await skillSandbox.loadSkill(invokedSkill.name);
@@ -711,14 +711,14 @@ export async function generateAssistantReply(
     const getPendingAuthPause = () =>
       pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
     const activatePluginProviderForTurn = (provider?: string): void => {
-      if (!provider || activePluginProviders.includes(provider)) {
+      if (!provider) {
         return;
       }
-      activePluginProviders.push(provider);
+      activePluginProviders.add(provider);
     };
     const getResumePluginProviders = () =>
       uniqueSortedStrings([
-        ...activePluginProviders,
+        ...activePluginProviders.values(),
         ...capabilityRuntime.getEnabledProviders(),
       ]);
     const syncResumeState = () => {
@@ -858,7 +858,7 @@ export async function generateAssistantReply(
       activatePluginProviderForTurn(skill.pluginProvider);
     }
     syncResumeState();
-    for (const provider of activePluginProviders) {
+    for (const provider of activePluginProviders.values()) {
       await turnMcpToolManager.activateProvider(provider);
       syncResumeState();
       if (mcpAuth.getPendingPause()) {
