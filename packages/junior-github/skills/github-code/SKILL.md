@@ -59,6 +59,7 @@ Repository checkout, source-code investigation, and pull request operations via 
 ### Pull request inspection path
 
 - Use read-only `gh pr` commands from [references/api-surface.md](references/api-surface.md); skip branch resolution and push logic.
+- When inspecting PR comments or feedback, query both conversation comments (`--json comments`) and review comments (`gh api .../pulls/{number}/comments` and `.../reviews`). Bot review feedback lives in the review comments API, not conversation comments.
 - Return canonical PR URL, PR number when available, target repository, and the fields the user asked to inspect.
 - If the PR cannot be resolved, report the exact not-found or auth failure and stop.
 

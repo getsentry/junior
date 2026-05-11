@@ -35,6 +35,8 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | List pull requests                 | `gh pr list --repo owner/repo [--state open                                               | closed   | merged]`   |
 | Diff pull request                  | `gh pr diff NUMBER --repo owner/repo`                                                     |
 | Check pull request status          | `gh pr checks NUMBER --repo owner/repo`                                                   |
+| View PR review comments            | `gh api repos/{owner}/{repo}/pulls/{number}/comments`                                     |
+| View PR reviews                    | `gh api repos/{owner}/{repo}/pulls/{number}/reviews`                                      |
 | Dispatch workflow                  | `gh workflow run WORKFLOW -R owner/repo --ref REF [-f key=value ...]`                     |
 | List workflow runs                 | `gh run list -R owner/repo --workflow WORKFLOW [--limit N] [--json ...]`                  |
 | View workflow run                  | `gh run view RUN_ID -R owner/repo [--json ...] [--log-failed]`                            |
