@@ -4,6 +4,10 @@ import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
+import {
+  appendSlackLegacyAttachmentText,
+  renderSlackLegacyAttachmentText,
+} from "@/chat/slack/legacy-attachments";
 
 export interface AssistantLifecycleEvent {
   channelId: string;
@@ -360,10 +364,20 @@ export function createSlackTurnRuntime<
           async () => {
             // This path can compact context and run router/vision model calls
             // before replyToThread() opens the main reply span.
-            const rawUserText = message.text;
-            const userText = deps.stripLeadingBotMention(rawUserText, {
+            const legacyAttachmentText = renderSlackLegacyAttachmentText(
+              message.raw,
+            );
+            const rawUserText = appendSlackLegacyAttachmentText(
+              message.text,
+              message.raw,
+            );
+            const strippedUserText = deps.stripLeadingBotMention(message.text, {
               stripLeadingSlackMentionToken: Boolean(message.isMention),
             });
+            const userText = appendSlackLegacyAttachmentText(
+              strippedUserText,
+              message.raw,
+            );
             const context: ThreadContext = {
               threadId,
               requesterId: message.author.userId,
@@ -410,7 +424,8 @@ export function createSlackTurnRuntime<
               text: userText,
               conversationContext:
                 deps.getPreparedConversationContext(preparedState),
-              hasAttachments: message.attachments.length > 0,
+              hasAttachments:
+                message.attachments.length > 0 || legacyAttachmentText !== "",
               isExplicitMention: Boolean(message.isMention),
               context,
             });

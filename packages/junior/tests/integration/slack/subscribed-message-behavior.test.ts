@@ -463,6 +463,74 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(0);
   });
 
+  it("routes legacy attachment-only passive messages through the classifier", async () => {
+    let classifierCalled = false;
+    let replyCalled = false;
+
+    const { slackRuntime } = createRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async (args) => {
+            classifierCalled = true;
+            expect(args.prompt).toContain("Deploy failed");
+            expect(args.prompt).toContain("Service: checkout");
+            return {
+              object: {
+                should_reply: false,
+                confidence: 0.95,
+                reason: "passive legacy attachment",
+              },
+              text: '{"should_reply":false,"confidence":0.95,"reason":"passive legacy attachment"}',
+            } as never;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            replyCalled = true;
+            return {
+              text: "This should never be posted.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700002003.275" });
+    const message = createTestMessage({
+      id: "m-subscribed-legacy-attachment-only",
+      text: "",
+      isMention: false,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+      raw: {
+        channel: "C_BEHAVIOR",
+        ts: "1700002003.275",
+        thread_ts: "1700002003.275",
+        attachments: [
+          {
+            fallback: "Deploy failed",
+            fields: [{ title: "Service", value: "checkout" }],
+          },
+        ],
+      },
+    });
+
+    await slackRuntime.handleSubscribedMessage(thread, message);
+
+    expect(classifierCalled).toBe(true);
+    expect(replyCalled).toBe(false);
+    expect(thread.posts).toHaveLength(0);
+  });
+
   it("short-circuits generic immediate side-conversation questions without calling the classifier", async () => {
     let classifierCalled = false;
     let replyCalled = false;

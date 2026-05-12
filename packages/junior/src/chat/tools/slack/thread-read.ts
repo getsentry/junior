@@ -11,16 +11,12 @@ import {
 } from "@/chat/tools/slack/slack-message-url";
 import type { SlackThreadReply } from "@/chat/slack/channel";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import {
-  sanitizeSlackLegacyAttachments,
-  renderSlackLegacyAttachmentText,
-} from "@/chat/slack/legacy-attachments";
+import { renderSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 
 const MAX_THREAD_READ_CHARS = 40_000;
 
 /** Project a thread reply to safe output fields (strips url_private etc). */
 function sanitizeMessage(msg: SlackThreadReply) {
-  const sanitizedAttachments = sanitizeSlackLegacyAttachments(msg.attachments);
   const attachmentText = renderSlackLegacyAttachmentText(msg.attachments);
 
   return {
@@ -31,9 +27,6 @@ function sanitizeMessage(msg: SlackThreadReply) {
     subtype: msg.subtype,
     bot_id: msg.bot_id,
     type: msg.type,
-    ...(sanitizedAttachments.length > 0
-      ? { attachments: sanitizedAttachments }
-      : {}),
     ...(attachmentText ? { attachment_text: attachmentText } : {}),
     ...(msg.files?.length
       ? {

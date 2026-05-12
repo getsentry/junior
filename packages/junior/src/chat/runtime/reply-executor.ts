@@ -51,6 +51,7 @@ import {
 import { createSlackAdapterAssistantStatusSession } from "@/chat/slack/assistant-thread/status";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
+import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
 import type { TurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
@@ -145,10 +146,14 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         modelId: botConfig.modelId,
       },
       async () => {
-        const userText = stripLeadingBotMention(message.text, {
+        const strippedUserText = stripLeadingBotMention(message.text, {
           stripLeadingSlackMentionToken:
             options.explicitMention || Boolean(message.isMention),
         });
+        const userText = appendSlackLegacyAttachmentText(
+          strippedUserText,
+          message.raw,
+        );
 
         const preparedState =
           options.preparedState ??

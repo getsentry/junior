@@ -108,6 +108,65 @@ describe("Slack behavior: message content", () => {
     expect(calls[0]?.prompt).toContain("message <@U_ONCALL> after deploy");
   });
 
+  it("passes legacy attachment text into the current turn prompt", async () => {
+    const calls: CapturedCall[] = [];
+
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        replyExecutor: {
+          generateAssistantReply: async (prompt, context) => {
+            calls.push({
+              prompt,
+              contextConversation: context?.conversationContext,
+            });
+            return {
+              text: "Alert reviewed.",
+              diagnostics: {
+                assistantMessageCount: 1,
+                modelId: "fake-agent-model",
+                outcome: "success",
+                toolCalls: [],
+                toolErrorCount: 0,
+                toolResultCount: 0,
+                usedPrimaryText: true,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({ id: "slack:C_BEHAVIOR:1700005002.500" });
+    const message = createTestMessage({
+      id: "m-content-legacy-attachment",
+      text: "<@U_APP>",
+      isMention: true,
+      threadId: thread.id,
+      author: { userId: "U_TESTER" },
+      raw: {
+        channel: "C_BEHAVIOR",
+        ts: "1700005002.500",
+        thread_ts: "1700005002.500",
+        attachments: [
+          {
+            fallback: "Deploy failed on production",
+            title: "Production deploy",
+            text: "OOM on pod-42",
+            fields: [{ title: "Service", value: "checkout" }],
+            footer: "Datadog Monitor",
+          },
+        ],
+      },
+    });
+
+    await slackRuntime.handleNewMention(thread, message);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.prompt).toContain("Production deploy");
+    expect(calls[0]?.prompt).toContain("OOM on pod-42");
+    expect(calls[0]?.prompt).toContain("Service: checkout");
+  });
+
   it("does not invoke the agent for self-authored mention messages", async () => {
     let replyCalled = false;
 

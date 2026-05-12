@@ -1,19 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
-  sanitizeSlackLegacyAttachments,
   renderSlackLegacyAttachmentText,
   appendSlackLegacyAttachmentText,
 } from "@/chat/slack/legacy-attachments";
 
-describe("sanitizeSlackLegacyAttachments", () => {
-  it("returns empty array for non-array input", () => {
-    expect(sanitizeSlackLegacyAttachments(undefined)).toEqual([]);
-    expect(sanitizeSlackLegacyAttachments(null)).toEqual([]);
-    expect(sanitizeSlackLegacyAttachments("string")).toEqual([]);
-    expect(sanitizeSlackLegacyAttachments(42)).toEqual([]);
+describe("renderSlackLegacyAttachmentText", () => {
+  it("returns empty string for invalid payloads", () => {
+    expect(renderSlackLegacyAttachmentText(undefined)).toBe("");
+    expect(renderSlackLegacyAttachmentText(null)).toBe("");
+    expect(renderSlackLegacyAttachmentText("string")).toBe("");
+    expect(renderSlackLegacyAttachmentText(42)).toBe("");
   });
 
-  it("extracts text-bearing fields and drops noise", () => {
+  it("renders text-bearing fields and drops noise", () => {
     const raw = [
       {
         fallback: "Deploy failed",
@@ -32,45 +31,36 @@ describe("sanitizeSlackLegacyAttachments", () => {
       },
     ];
 
-    const result = sanitizeSlackLegacyAttachments(raw);
-    expect(result).toHaveLength(1);
-
-    const att = result[0]!;
-    expect(att.fallback).toBe("Deploy failed");
-    expect(att.title).toBe("Production deploy");
-    expect(att.title_link).toBe("https://example.com/deploy/123");
-    expect(att.text).toBe("OOM on pod-42");
-    expect(att.fields).toEqual([
-      { title: "Status", value: "Failed", short: true },
-      { title: "Owner", value: "Platform" },
-    ]);
-    expect(att.footer).toBe("Datadog Monitor");
-
-    // Should not include noise fields
-    expect(att).not.toHaveProperty("color");
-    expect(att).not.toHaveProperty("callback_id");
-    expect(att).not.toHaveProperty("actions");
-    expect(att).not.toHaveProperty("image_url");
+    const text = renderSlackLegacyAttachmentText(raw);
+    expect(text).toContain(
+      "Production deploy (https://example.com/deploy/123)",
+    );
+    expect(text).toContain("OOM on pod-42");
+    expect(text).toContain("Status: Failed");
+    expect(text).toContain("Owner: Platform");
+    expect(text).toContain("Datadog Monitor");
+    expect(text).not.toContain("should_be_dropped");
+    expect(text).not.toContain("Ack");
+    expect(text).not.toContain("chart.png");
   });
 
   it("skips attachments with no text content", () => {
     const raw = [{ color: "#36a64f" }, { fallback: "real content" }];
-    const result = sanitizeSlackLegacyAttachments(raw);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.fallback).toBe("real content");
+    expect(renderSlackLegacyAttachmentText(raw)).toBe(
+      "[attachment] real content",
+    );
   });
 
   it("caps at 10 attachments", () => {
     const raw = Array.from({ length: 15 }, (_, i) => ({
       fallback: `item-${i}`,
     }));
-    const result = sanitizeSlackLegacyAttachments(raw);
-    expect(result).toHaveLength(10);
+    const text = renderSlackLegacyAttachmentText(raw);
+    expect(text).toContain("item-9");
+    expect(text).not.toContain("item-10");
   });
-});
 
-describe("renderSlackLegacyAttachmentText", () => {
-  it("renders attachment with rich fields, deduplicating fallback", () => {
+  it("renders attachment with rich fields without fallback noise", () => {
     const raw = [
       {
         fallback: "Deploy failed on prod",
@@ -82,8 +72,8 @@ describe("renderSlackLegacyAttachmentText", () => {
       },
     ];
     const text = renderSlackLegacyAttachmentText(raw);
-    // fallback should be deduplicated when rich content exists
     expect(text).toContain("[attachment]");
+    expect(text).not.toContain("Deploy failed on prod");
     expect(text).toContain("Production deploy (https://example.com/deploy)");
     expect(text).toContain("OOM on pod-42");
     expect(text).toContain("Status: Failed");
@@ -100,6 +90,15 @@ describe("renderSlackLegacyAttachmentText", () => {
     expect(renderSlackLegacyAttachmentText(undefined)).toBe("");
     expect(renderSlackLegacyAttachmentText([])).toBe("");
   });
+
+  it("accepts raw Slack message payloads", () => {
+    const rawMessage = {
+      attachments: [{ fallback: "Alert: disk usage high" }],
+    };
+    expect(renderSlackLegacyAttachmentText(rawMessage)).toBe(
+      "[attachment] Alert: disk usage high",
+    );
+  });
 });
 
 describe("appendSlackLegacyAttachmentText", () => {
@@ -109,13 +108,13 @@ describe("appendSlackLegacyAttachmentText", () => {
   });
 
   it("returns attachment text when base is empty", () => {
-    const raw = [{ fallback: "Alert fired" }];
+    const raw = { attachments: [{ fallback: "Alert fired" }] };
     const result = appendSlackLegacyAttachmentText("", raw);
     expect(result).toBe("[attachment] Alert fired");
   });
 
   it("combines base text and attachment text", () => {
-    const raw = [{ fallback: "Alert fired" }];
+    const raw = { attachments: [{ fallback: "Alert fired" }] };
     const result = appendSlackLegacyAttachmentText("Check this out", raw);
     expect(result).toBe("Check this out\n[attachment] Alert fired");
   });

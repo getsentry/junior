@@ -76,12 +76,7 @@ function hasPendingImageHydration(
 function createConversationMessageFromSdkMessage(
   entry: Message,
 ): ConversationMessage | null {
-  const rawAttachments = (entry.raw as Record<string, unknown> | undefined)
-    ?.attachments;
-  const enrichedText = appendSlackLegacyAttachmentText(
-    entry.text,
-    rawAttachments,
-  );
+  const enrichedText = appendSlackLegacyAttachmentText(entry.text, entry.raw);
   const rawText = normalizeConversationText(enrichedText);
   if (!rawText) {
     return null;
