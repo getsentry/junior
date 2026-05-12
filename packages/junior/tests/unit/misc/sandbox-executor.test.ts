@@ -198,7 +198,10 @@ describe("createSandboxExecutor", () => {
     const sandbox = await executor.createSandbox();
 
     await expectWorkspaceToDelegate(sandbox, freshSandbox);
-    expect(sandboxGetMock).toHaveBeenCalledWith({ sandboxId: "sbx_stopped" });
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_stopped",
+      resume: true,
+    });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
     expect(stoppedSandbox.mkDir).toHaveBeenCalled();
     expect(freshSandbox.mkDir).toHaveBeenCalled();
@@ -267,7 +270,8 @@ describe("createSandboxExecutor", () => {
     await executor.createSandbox();
 
     expect(sandboxGetMock).toHaveBeenCalledWith({
-      sandboxId: "sbx_stopped",
+      name: "sbx_stopped",
+      resume: true,
       token: "sandbox-token",
       teamId: "team_123",
       projectId: "prj_123",
@@ -883,7 +887,10 @@ describe("createSandboxExecutor", () => {
       total_lines: 1,
       truncated: false,
     });
-    expect(sandboxGetMock).toHaveBeenCalledWith({ sandboxId: "sbx_existing" });
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_existing",
+      resume: true,
+    });
   });
 
   it("installs the eval gh shim when test credentials are enabled", async () => {

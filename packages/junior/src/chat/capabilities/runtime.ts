@@ -67,22 +67,24 @@ export class SkillCapabilityRuntime {
     this.requesterId = params.requesterId;
   }
 
-  async enableCredentialsForTurn(input: {
-    activeSkill: Skill | null;
+  private async enableProvider(input: {
+    provider: string;
     reason: string;
-  }): Promise<{ reused: boolean; expiresAt: string } | undefined> {
-    const provider = input.activeSkill?.pluginProvider;
-    if (!provider) {
-      return undefined;
-    }
-
+    skillName?: string;
+  }): Promise<{
+    reused: boolean;
+    expiresAt: string;
+    headerTransforms: CredentialHeaderTransform[];
+    env: Record<string, string>;
+  }> {
+    const provider = input.provider;
     if (!this.requesterId) {
       throw new Error("Credential enablement requires requester context");
     }
 
     const plugin = getPluginDefinition(provider);
     if (!plugin?.manifest.credentials && !plugin?.manifest.apiHeaders) {
-      return undefined;
+      throw new Error(`Provider "${provider}" has no credential surface`);
     }
 
     const existing = this.enabledByProvider.get(provider);
@@ -91,6 +93,8 @@ export class SkillCapabilityRuntime {
       return {
         reused: true,
         expiresAt: new Date(existing.expiresAtMs).toISOString(),
+        headerTransforms: existing.transforms,
+        env: existing.env,
       };
     }
 
@@ -98,7 +102,7 @@ export class SkillCapabilityRuntime {
       "credential_issue_request",
       {},
       {
-        "app.skill.name": input.activeSkill?.name,
+        ...(input.skillName ? { "app.skill.name": input.skillName } : {}),
         "app.credential.provider": provider,
       },
       "Issuing provider credential for current turn",
@@ -133,20 +137,25 @@ export class SkillCapabilityRuntime {
         "credential_issue_success",
         {},
         {
-          "app.skill.name": input.activeSkill?.name,
+          ...(input.skillName ? { "app.skill.name": input.skillName } : {}),
           "app.credential.provider": lease.provider,
           "app.credential.expires_at": lease.expiresAt,
           "app.credential.delivery": "header_transform",
         },
         "Issued provider credential lease",
       );
-      return { reused: false, expiresAt: lease.expiresAt };
+      return {
+        reused: false,
+        expiresAt: lease.expiresAt,
+        headerTransforms: transforms,
+        env: lease.env,
+      };
     } catch (error) {
       logWarn(
         "credential_issue_failed",
         {},
         {
-          "app.skill.name": input.activeSkill?.name,
+          ...(input.skillName ? { "app.skill.name": input.skillName } : {}),
           "app.credential.provider": provider,
           "exception.message":
             error instanceof Error ? error.message : String(error),
@@ -155,6 +164,34 @@ export class SkillCapabilityRuntime {
       );
       throw error;
     }
+  }
+
+  async enableCredentialsForTurn(input: {
+    activeSkill: Skill | null;
+    reason: string;
+  }): Promise<{ reused: boolean; expiresAt: string } | undefined> {
+    const provider = input.activeSkill?.pluginProvider;
+    if (!provider) {
+      return undefined;
+    }
+
+    return await this.enableProvider({
+      provider,
+      reason: input.reason,
+      skillName: input.activeSkill?.name,
+    });
+  }
+
+  async enableProviderCredentialsForTurn(input: {
+    provider: string;
+    reason: string;
+  }): Promise<{
+    reused: boolean;
+    expiresAt: string;
+    headerTransforms: CredentialHeaderTransform[];
+    env: Record<string, string>;
+  }> {
+    return await this.enableProvider(input);
   }
 
   getTurnHeaderTransforms(): CredentialHeaderTransform[] | undefined {

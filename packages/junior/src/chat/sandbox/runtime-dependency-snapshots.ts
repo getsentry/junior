@@ -502,7 +502,7 @@ async function createDependencySnapshot(
         );
       } finally {
         try {
-          await sandbox.stop({ blocking: true });
+          await sandbox.stop();
         } catch {
           // Snapshot creation may already finalize the sandbox; cleanup stays best-effort.
         }

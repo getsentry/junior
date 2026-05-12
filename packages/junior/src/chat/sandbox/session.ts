@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 import { createBashTool } from "bash-tool";
 import {
@@ -25,12 +26,19 @@ import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import type { SandboxCommandResult } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxFileSystem } from "@/chat/tools/sandbox/file-utils";
+import {
+  buildSandboxEgressNetworkPolicy,
+  getSandboxCommandEnvironment,
+  getSandboxEgressProviders,
+} from "@/chat/sandbox/egress-policy";
+import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
 
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const SANDBOX_RUNTIME = "node22";
 const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
+const SANDBOX_NAME_PREFIX = "junior-";
 
 interface SandboxCredentials {
   token?: string;
@@ -40,6 +48,7 @@ interface SandboxCredentials {
 
 interface NetworkPolicyAllowEntry {
   transform?: Array<{ headers: Record<string, string> }>;
+  forwardURL?: string;
 }
 
 interface SandboxToolExecutors {
@@ -159,6 +168,11 @@ export function createSandboxSessionManager(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
+  requesterId?: string;
+  conversationId?: string;
+  sessionId?: string;
+  sliceId?: number;
+  getAuthorizedProviderNames?: () => string[];
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
     sandboxDependencyProfileHash?: string;
@@ -174,6 +188,7 @@ export function createSandboxSessionManager(options?: {
   const traceContext = options?.traceContext ?? {};
   const dependencyProfileHash =
     getRuntimeDependencyProfileHash(SANDBOX_RUNTIME);
+  const sandboxCommandEnv = getSandboxCommandEnvironment();
 
   const withSandboxSpan = <T>(
     name: string,
@@ -188,16 +203,55 @@ export function createSandboxSessionManager(options?: {
     toolExecutors = undefined;
   };
 
+  const sandboxIdentifier = (targetSandbox: Sandbox): string | undefined => {
+    const sandboxLike = targetSandbox as Sandbox & {
+      name?: string;
+      sandboxId?: string;
+    };
+    return sandboxLike.sandboxId ?? sandboxLike.name;
+  };
+
+  const createSandboxName = (): string =>
+    `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
+
+  const authorizedEgressProviders = (): string[] => {
+    const available = new Set(
+      getSandboxEgressProviders().map((entry) => entry.provider),
+    );
+    return [...new Set(options?.getAuthorizedProviderNames?.() ?? [])]
+      .filter((provider) => available.has(provider))
+      .sort((left, right) => left.localeCompare(right));
+  };
+
+  const syncSandboxEgressSession = async (
+    acquiredSandboxId: string,
+  ): Promise<void> => {
+    await upsertSandboxEgressSession({
+      sandboxId: acquiredSandboxId,
+      requesterId: options?.requesterId,
+      providers: authorizedEgressProviders(),
+      conversationId: options?.conversationId,
+      sessionId: options?.sessionId,
+      sliceId: options?.sliceId,
+      ttlMs: timeoutMs,
+    });
+  };
+
   const rememberSandbox = async (nextSandbox: Sandbox): Promise<Sandbox> => {
     sandbox = nextSandbox;
-    sandboxIdHint = nextSandbox.sandboxId;
+    sandboxIdHint = sandboxIdentifier(nextSandbox);
     toolExecutors = undefined;
-    await options?.onSandboxAcquired?.({
-      sandboxId: nextSandbox.sandboxId,
+    if (!sandboxIdHint) {
+      throw new Error("Vercel Sandbox did not expose an identifier");
+    }
+    const acquired = {
+      sandboxId: sandboxIdHint,
       ...(dependencyProfileHash
         ? { sandboxDependencyProfileHash: dependencyProfileHash }
         : {}),
-    });
+    };
+    await syncSandboxEgressSession(acquired.sandboxId);
+    await options?.onSandboxAcquired?.(acquired);
     return nextSandbox;
   };
 
@@ -255,7 +309,7 @@ export function createSandboxSessionManager(options?: {
       "Sandbox network policy restore failed; discarding sandbox instance",
     );
     try {
-      await targetSandbox.stop({ blocking: true });
+      await targetSandbox.stop();
     } catch {
       // Best effort shutdown; we already dropped executor references.
     }
@@ -279,17 +333,24 @@ export function createSandboxSessionManager(options?: {
   const createSandboxFromSnapshot = async (
     snapshotId: string,
     sandboxCredentials: SandboxCredentials | undefined,
+    sandboxName: string,
   ): Promise<Sandbox> => {
+    const networkPolicy = options?.requesterId
+      ? buildSandboxEgressNetworkPolicy(sandboxName)
+      : undefined;
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       try {
         return await Sandbox.create({
           timeout: timeoutMs,
+          ...(networkPolicy
+            ? { name: sandboxName, persistent: false, networkPolicy }
+            : {}),
           source: {
             type: "snapshot",
             snapshotId,
           },
           ...(sandboxCredentials ?? {}),
-        });
+        } as Parameters<typeof Sandbox.create>[0]);
       } catch (error) {
         if (
           !isSnapshottingError(error) ||
@@ -327,21 +388,29 @@ export function createSandboxSessionManager(options?: {
     runtime: string;
     snapshot: RuntimeDependencySnapshot;
     sandboxCredentials: SandboxCredentials | undefined;
+    sandboxName: string;
   }): Promise<Sandbox> => {
-    const { runtime, snapshot, sandboxCredentials } = params;
+    const { runtime, snapshot, sandboxCredentials, sandboxName } = params;
 
     if (!snapshot.snapshotId) {
+      const networkPolicy = options?.requesterId
+        ? buildSandboxEgressNetworkPolicy(sandboxName)
+        : undefined;
       return await Sandbox.create({
         timeout: timeoutMs,
         runtime,
+        ...(networkPolicy
+          ? { name: sandboxName, persistent: false, networkPolicy }
+          : {}),
         ...(sandboxCredentials ?? {}),
-      });
+      } as Parameters<typeof Sandbox.create>[0]);
     }
 
     try {
       return await createSandboxFromSnapshot(
         snapshot.snapshotId,
         sandboxCredentials,
+        sandboxName,
       );
     } catch (error) {
       if (!isSnapshotMissingError(error)) {
@@ -364,6 +433,7 @@ export function createSandboxSessionManager(options?: {
       return await createSandboxFromSnapshot(
         rebuiltSnapshot.snapshotId,
         sandboxCredentials,
+        sandboxName,
       );
     }
   };
@@ -371,6 +441,7 @@ export function createSandboxSessionManager(options?: {
   const createFreshSandbox = async (): Promise<Sandbox> => {
     const runtime = SANDBOX_RUNTIME;
     const sandboxCredentials = getVercelSandboxCredentials();
+    const sandboxName = createSandboxName();
 
     let createdSandbox: Sandbox;
     try {
@@ -392,6 +463,7 @@ export function createSandboxSessionManager(options?: {
             runtime,
             snapshot,
             sandboxCredentials,
+            sandboxName,
           });
         },
       );
@@ -467,9 +539,10 @@ export function createSandboxSessionManager(options?: {
         },
         async () =>
           await Sandbox.get({
-            sandboxId: sandboxIdHint as string,
+            name: sandboxIdHint as string,
+            resume: true,
             ...(sandboxCredentials ?? {}),
-          }),
+          } as Parameters<typeof Sandbox.get>[0]),
       );
     } catch {
       return null;
@@ -637,8 +710,12 @@ export function createSandboxSessionManager(options?: {
 
     return {
       bash: async (input) => {
+        const activeSandboxId = sandboxIdentifier(sandboxInstance);
+        if (activeSandboxId) {
+          await syncSandboxEgressSession(activeSandboxId);
+        }
         const script = buildNonInteractiveShellScript(input.command, {
-          env: input.env,
+          env: { ...sandboxCommandEnv, ...(input.env ?? {}) },
           pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,
         });
         const controller =
@@ -723,7 +800,7 @@ export function createSandboxSessionManager(options?: {
       availableReferenceFiles = [...files];
     },
     getSandboxId() {
-      return sandbox?.sandboxId ?? sandboxIdHint;
+      return sandbox ? sandboxIdentifier(sandbox) : sandboxIdHint;
     },
     getDependencyProfileHash() {
       return dependencyProfileHash;
@@ -747,7 +824,7 @@ export function createSandboxSessionManager(options?: {
           "app.sandbox.stop.blocking": true,
         },
         async () => {
-          await activeSandbox.stop({ blocking: true });
+          await activeSandbox.stop();
         },
       );
 

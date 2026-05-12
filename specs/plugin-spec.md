@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-05-08
+- Last Edited: 2026-05-12
 
 ## Changelog
 
@@ -23,6 +23,7 @@
 - 2026-04-30: Added install-wide config defaults via `createApp({ configDefaults })` with channel-scoped override precedence.
 - 2026-05-03: Added plugin-level `api-headers` injection backed by declared deployment env vars.
 - 2026-05-08: Added plugin-level `command-env` for non-secret sandbox CLI placeholders and default-backed deployment values.
+- 2026-05-12: Clarified that credentialed provider HTTP traffic is authenticated through the sandbox egress proxy.
 
 ## Status
 
@@ -285,9 +286,9 @@ values fail when the provider's header transforms are issued.
 ### Command env
 
 Plugin-level `command-env` supports non-secret sandbox environment variables
-that are injected into provider command leases. It is intended for CLI
-compatibility values such as placeholder API keys, read-only mode toggles, or
-site defaults needed by the command process.
+that may be visible to sandbox commands before credentials are minted. It is
+intended for CLI compatibility values such as placeholder API keys, read-only
+mode toggles, or site defaults needed by the command process.
 
 Values may be literal strings, or `${NAME}` placeholders declared in
 `env-vars`. Placeholder references must declare `default`, because
@@ -517,7 +518,7 @@ Plugin skills are subject to the same frontmatter validation and name-deduplicat
 All existing security invariants from `security-policy.md` are preserved:
 
 - **Host-trusted code.** Plugin manifests are YAML files committed to the repository. No dynamic code loading.
-- **Credential delivery via header transforms only.** Token credentials, API keys, and plugin-level `api-headers` are delivered as host-managed header transforms for declared `api-domains`. Real secret values never enter sandbox env vars, files, or command arguments.
+- **Credential delivery via host-managed headers only.** Token credentials, API keys, and plugin-level `api-headers` are delivered by Junior for declared `api-domains`, preferably through the Vercel Sandbox egress proxy. Real secret values never enter sandbox env vars, files, or command arguments.
 - **Short-lived leases.** Lease behavior is unchanged. The `CredentialLease` contract enforces expiry timestamps.
 - **No env var leakage.** Only non-secret placeholder/default command env values are injected into the sandbox. Secret-bearing provider values are delivered through host-managed header transforms.
 - **OAuth privacy rules unchanged.** Authorization URLs are delivered privately. The agent never sees token values.

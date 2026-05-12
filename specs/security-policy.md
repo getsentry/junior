@@ -31,6 +31,9 @@ This policy applies to:
 ### Sandbox network policy
 
 - Production should use explicit network policy and minimal allowlists.
+- Credential-capable provider domains should route through the Junior sandbox egress proxy instead of receiving long-lived sandbox secrets.
+- Proxied sandbox egress requests must verify Vercel Sandbox OIDC, resolve the provider from the forwarded host, and require a requester-bound sandbox egress session for that provider.
+- The egress proxy may reject exact request replays with a short-lived fingerprint. Replay protection is a defense-in-depth check, not a substitute for requester-bound credential issuance.
 
 ### Harness-owned tool targeting
 
@@ -52,6 +55,7 @@ This policy applies to:
 
 - Runtime issues short-lived provider credentials for loaded plugin-backed skills when authenticated commands require them.
 - Loaded skills and their plugin declarations determine which provider credentials may be injected into a turn.
+- A loaded skill authorizes its provider for sandbox egress; it must not mint credentials at skill-load time.
 - Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.
 - Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching API domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.

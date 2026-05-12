@@ -23,7 +23,6 @@ import {
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   discoverSkills,
@@ -505,6 +504,14 @@ export async function generateAssistantReply(
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
+      requesterId: context.requester?.userId,
+      conversationId: sessionConversationId,
+      sessionId,
+      sliceId: currentSliceId,
+      getAuthorizedProviderNames: () =>
+        activeSkills
+          .map((skill) => skill.pluginProvider)
+          .filter((provider): provider is string => Boolean(provider)),
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =
@@ -706,33 +713,6 @@ export async function generateAssistantReply(
     const syncResumeState = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
     };
-    const enableSkillCredentials = async (
-      skill: Skill | null,
-      reason: string,
-    ): Promise<void> => {
-      if (!skill?.pluginProvider) {
-        return;
-      }
-
-      try {
-        await capabilityRuntime.enableCredentialsForTurn({
-          activeSkill: skill,
-          reason,
-        });
-      } catch (error) {
-        if (
-          error instanceof CredentialUnavailableError &&
-          context.requester?.userId
-        ) {
-          await pluginAuth.handleCredentialUnavailable({
-            activeSkill: skill,
-            error,
-          });
-        }
-        throw error;
-      }
-    };
-
     setTags({
       conversationId: spanContext.conversationId,
       slackThreadId: context.correlation?.threadId,
@@ -780,10 +760,6 @@ export async function generateAssistantReply(
             // aborted turn park cleanly.
             return undefined;
           }
-          await enableSkillCredentials(
-            effective,
-            `skill:${effective.name}:turn:load`,
-          );
           if (!effective.pluginProvider) {
             return undefined;
           }
@@ -842,7 +818,6 @@ export async function generateAssistantReply(
         timeoutResumeMessages = existingCheckpoint?.piMessages ?? [];
         throw mcpAuth.getPendingPause()!;
       }
-      await enableSkillCredentials(skill, `skill:${skill.name}:turn:resume`);
     }
     syncResumeState();
 

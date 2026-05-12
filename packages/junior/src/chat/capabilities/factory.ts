@@ -3,6 +3,7 @@ import { ProviderCredentialRouter } from "@/chat/capabilities/router";
 import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import type {
   CredentialBroker,
+  CredentialLease,
   CredentialHeaderTransform,
 } from "@/chat/credentials/broker";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
@@ -41,14 +42,7 @@ function resolveTestApiHeaderTransforms(
   return apiDomains.map((domain) => ({ domain, headers }));
 }
 
-// Encapsulation boundary for capability runtime construction.
-// Swap broker strategy here (provider router, test broker, etc.) without
-// changing agent orchestration code in respond.ts.
-export function createSkillCapabilityRuntime(
-  options: {
-    requesterId?: string;
-  } = {},
-): SkillCapabilityRuntime {
+function createProviderCredentialRouter(): ProviderCredentialRouter {
   logCapabilityCatalogLoadedOnce();
   const useTestBroker = process.env.EVAL_ENABLE_TEST_CREDENTIALS === "1";
   const userTokenStore = createUserTokenStore();
@@ -98,10 +92,28 @@ export function createSkillCapabilityRuntime(
       : createPluginBroker(name, { userTokenStore });
   }
 
-  const router = new ProviderCredentialRouter({ brokersByProvider });
+  return new ProviderCredentialRouter({ brokersByProvider });
+}
 
+// Encapsulation boundary for capability runtime construction.
+// Swap broker strategy here (provider router, test broker, etc.) without
+// changing agent orchestration code in respond.ts.
+export function createSkillCapabilityRuntime(
+  options: {
+    requesterId?: string;
+  } = {},
+): SkillCapabilityRuntime {
   return new SkillCapabilityRuntime({
-    router,
+    router: createProviderCredentialRouter(),
     requesterId: options.requesterId,
   });
+}
+
+/** Issue one provider credential lease for host-side sandbox egress proxying. */
+export async function issueProviderCredentialLease(input: {
+  provider: string;
+  requesterId?: string;
+  reason: string;
+}): Promise<CredentialLease> {
+  return await createProviderCredentialRouter().issue(input);
 }

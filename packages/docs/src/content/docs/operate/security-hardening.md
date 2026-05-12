@@ -26,8 +26,9 @@ session-wide sandbox state.
 
 - Use short-lived scoped credentials.
 - Let loaded skills and their plugin capabilities determine which credentials may be injected.
-- Fetch credentials per authenticated command and keep them bound to the requesting turn.
-- Inject scoped auth at host boundary instead of exposing raw tokens.
+- Fetch credentials from the host when sandbox traffic hits a declared provider domain.
+- Keep sandbox egress authorization bound to the requester, loaded skill provider, and current sandbox session.
+- Inject scoped auth at the host proxy boundary instead of exposing raw tokens.
 
 ## OAuth handling
 

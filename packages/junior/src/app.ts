@@ -7,6 +7,7 @@ import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
+import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
 import { POST as turnResumePOST } from "@/handlers/turn-resume";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -88,6 +89,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/internal/turn-resume", (c) => {
     return turnResumePOST(c.req.raw, waitUntil);
+  });
+
+  app.all("/api/internal/sandbox-egress/:sandboxId", (c) => {
+    return sandboxEgressProxyALL(c.req.raw, c.req.param("sandboxId"));
+  });
+  app.all("/api/internal/sandbox-egress/:sandboxId/*", (c) => {
+    return sandboxEgressProxyALL(c.req.raw, c.req.param("sandboxId"));
   });
 
   app.post("/api/webhooks/:platform", (c) => {

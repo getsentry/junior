@@ -12,14 +12,15 @@ related:
 ## Credential model
 
 Junior does not preload provider access for an entire chat session. When an
-authenticated command runs under a loaded skill, the runtime infers the
-narrowest declared plugin capability for that command, fetches a lease for the
-requesting turn, and injects auth at the host boundary.
+authenticated command runs under a loaded skill, sandbox HTTP requests to the
+plugin's declared provider domains are forwarded through Junior. Junior then
+fetches a requester-bound lease and injects auth at the host boundary.
 
 - Credentials are short-lived and scoped by capability and target context.
 - User-owned provider access is only activated for the author of the current message.
 - Loaded skills, through their plugin declarations, determine which credentials can be injected.
-- Sandbox receives scoped header injection and placeholder env vars, not raw long-lived tokens.
+- Sandbox receives placeholder env vars and proxied HTTP responses, not raw long-lived tokens.
+- Junior rejects proxied provider requests unless the provider is authorized by a loaded skill for that sandbox session.
 
 ## OAuth model
 

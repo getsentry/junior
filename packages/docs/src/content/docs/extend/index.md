@@ -158,7 +158,7 @@ runtime-postinstall:
 - `description`: short summary of what the plugin integrates
 - `capabilities`: actions the plugin’s skills may request, qualified as `<plugin>.<capability>`
 - `config-keys`: provider-specific configuration keys, qualified as `<plugin>.<key>`
-- `api-domains` and `api-headers`: optional host-managed HTTP headers injected for matching sandbox requests
+- `api-domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior
 - `command-env`: optional non-secret sandbox env vars injected when provider credentials or API headers are enabled; use it for CLI placeholders and deployment defaults
 - `credentials`: how token auth is delivered to tools; current types are `oauth-bearer` and `github-app`
 - `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`
@@ -189,7 +189,7 @@ The only supported placeholder form is `${NAME}` — replaced with `process.env[
 
 ### API headers
 
-Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. This can stand alone for header-authenticated providers or pair with token-backed credentials. When paired with token-backed credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
+Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a matching `api-domains` request. This can stand alone for header-authenticated providers or pair with token-backed credentials. When paired with token-backed credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
 
 ```yaml
 env-vars:
@@ -215,7 +215,7 @@ api-headers:
 
 ### Command env
 
-Use top-level `command-env` when a sandbox CLI needs non-secret env vars. This is commonly used for placeholder auth env vars so the CLI proceeds to make HTTP requests while Junior injects the real credentials as host-managed headers.
+Use top-level `command-env` when a sandbox CLI needs non-secret env vars. This is commonly used for placeholder auth env vars so the CLI proceeds to make HTTP requests while Junior injects the real credentials from the host.
 
 `command-env` values may be literals or `${NAME}` placeholders declared in `env-vars`. Referenced env vars must declare defaults, because command env values are visible inside the sandbox and must not depend on secret deployment env vars.
 

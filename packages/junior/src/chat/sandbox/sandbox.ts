@@ -120,8 +120,16 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
 }
 
 function createSandboxWorkspace(sandbox: Sandbox): SandboxWorkspace {
+  const sandboxLike = sandbox as Sandbox & {
+    name?: string;
+    sandboxId?: string;
+  };
+  const sandboxId = sandboxLike.sandboxId ?? sandboxLike.name;
+  if (!sandboxId) {
+    throw new Error("Vercel Sandbox did not expose an identifier");
+  }
   return {
-    sandboxId: sandbox.sandboxId,
+    sandboxId,
     readFileToBuffer(input) {
       return sandbox.readFileToBuffer(input);
     },
@@ -137,6 +145,11 @@ export function createSandboxExecutor(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
+  requesterId?: string;
+  conversationId?: string;
+  sessionId?: string;
+  sliceId?: number;
+  getAuthorizedProviderNames?: () => string[];
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,
@@ -150,6 +163,11 @@ export function createSandboxExecutor(options?: {
     sandboxDependencyProfileHash: options?.sandboxDependencyProfileHash,
     timeoutMs: options?.timeoutMs,
     traceContext,
+    requesterId: options?.requesterId,
+    conversationId: options?.conversationId,
+    sessionId: options?.sessionId,
+    sliceId: options?.sliceId,
+    getAuthorizedProviderNames: options?.getAuthorizedProviderNames,
     onSandboxAcquired: options?.onSandboxAcquired,
   });
 

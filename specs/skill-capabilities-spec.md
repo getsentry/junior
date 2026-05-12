@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-05-08
+- Last Edited: 2026-05-12
 
 ## Changelog
 
@@ -13,6 +13,7 @@
 - 2026-04-17: Removed skill-level capability declarations and explicit model-facing auth commands in favor of plugin-owned permission manifests plus runtime-owned implicit auth.
 - 2026-04-26: Added the plugin-owned runtime setup boundary for packages, MCP endpoints, OAuth, and credentials.
 - 2026-05-08: Added plugin-owned `command-env` as a non-secret CLI compatibility surface.
+- 2026-05-12: Added Vercel Sandbox egress proxy activation for request-time credential issuance.
 
 ## Status
 
@@ -32,10 +33,11 @@ Define how Junior maps a loaded plugin-backed skill to host-managed credentials 
 
 1. Plugins own provider permissions in `plugin.yaml`.
 2. Skills do not declare capabilities or config keys.
-3. After a plugin-backed skill is loaded, the agent runs the real provider command.
-4. The runtime resolves the provider from the active skill, issues a provider lease, and injects credentials for the current turn only.
-5. If auth is missing or stale, the runtime starts a private OAuth flow and resumes the paused turn after authorization.
-6. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, command env, or MCP servers.
+3. After a plugin-backed skill is loaded, its provider becomes eligible for the current sandbox egress session.
+4. The agent runs the real provider command.
+5. The runtime resolves the provider from the outgoing request host, issues a provider lease, and injects credentials for that request only.
+6. If auth is missing or stale, the runtime starts a private OAuth flow and resumes the paused turn after authorization.
+7. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, command env, or MCP servers.
 
 ## Plugin contract
 
@@ -72,18 +74,29 @@ Rules:
 
 ### Lease issuance
 
-- Resolve provider from `activeSkill.pluginProvider`.
+- Resolve provider from the Vercel Sandbox forwarded host for proxied sandbox egress.
 - Require requester context before issuing provider credentials.
 - Return short-lived leases only.
-- Keep lease reuse in memory only, keyed by provider for the active turn.
+- Keep direct turn-injection lease reuse in memory, keyed by provider for the active turn.
+- Keep any host-side egress lease cache bounded by the sandbox egress session expiry and lease expiry.
 
 ### Injection behavior
 
 - Enablement happens when the authenticated provider command runs, not at skill-load time.
-- Delivery uses sandbox header transforms for matching domains.
+- Delivery uses the Vercel Sandbox firewall request proxy for provider domains when available, with host-side header injection on the forwarded request.
+- Direct sandbox header transforms may still be used as an implementation detail, but they must follow the same requester and loaded-provider constraints.
 - Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
 - Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys or deployment defaults, but never real secrets.
 - Do not inject long-lived secrets into sandbox files.
+
+### Sandbox egress proxy
+
+- New sandbox sessions use a Vercel Sandbox network policy that forwards declared credential provider domains to Junior's internal egress route.
+- The internal egress route must verify the Vercel Sandbox OIDC token before proxying.
+- The egress route must reconstruct the upstream URL only from Vercel forwarded host/scheme/port headers and the request path.
+- The egress route must reject provider domains that are not authorized by the current sandbox session's loaded skills.
+- Exact replay fingerprints are claimed in shared state for a short window before proxying upstream.
+- The proxy must strip hop-by-hop and proxy-only headers before sending the upstream request.
 
 ### Runtime setup boundary
 

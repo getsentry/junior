@@ -547,20 +547,20 @@ describe("generateAssistantReply lazy sandbox boot", () => {
 
     expect(reply.text).toBe("Loaded demo skill.");
     expect(createSandboxCallCount.value).toBe(0);
-    expect(enabledCredentialSkillNames.value).toEqual(["demo-skill"]);
+    expect(enabledCredentialSkillNames.value).toEqual([]);
     expect(reply.sandboxId).toBeUndefined();
     expect(reply.diagnostics.toolCalls).toEqual(["loadSkill"]);
     expect(selectedThinkingLevels.value).toEqual(["medium"]);
   });
 
-  it("reprovisions plugin credentials for checkpoint-loaded skills at turn start", async () => {
+  it("does not preissue plugin credentials for checkpoint-loaded skills at turn start", async () => {
     checkpointLoadedSkillNames.value = ["demo-skill"];
 
     const reply = await generateAssistantReply("hello");
 
     expect(reply.text).toBe("Plain reply.");
     expect(createSandboxCallCount.value).toBe(0);
-    expect(enabledCredentialSkillNames.value).toEqual(["demo-skill"]);
+    expect(enabledCredentialSkillNames.value).toEqual([]);
     expect(reply.diagnostics.toolCalls).toEqual([]);
   });
 
