@@ -80,6 +80,20 @@ describe("renderSlackLegacyAttachmentText", () => {
     expect(text).toContain("Datadog");
   });
 
+  it("deduplicates bare title text when rendering linked titles", () => {
+    const text = renderSlackLegacyAttachmentText([
+      {
+        title: "Production deploy",
+        title_link: "https://example.com/deploy",
+        text: "Production deploy",
+      },
+    ]);
+
+    expect(text).toBe(
+      "[attachment] Production deploy (https://example.com/deploy)",
+    );
+  });
+
   it("uses fallback when no rich content exists", () => {
     const raw = [{ fallback: "Alert: CPU usage high" }];
     const text = renderSlackLegacyAttachmentText(raw);

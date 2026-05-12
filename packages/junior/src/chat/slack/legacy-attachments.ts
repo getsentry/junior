@@ -54,6 +54,7 @@ function renderAttachment(raw: unknown): string {
   add(authorName);
   if (title && titleLink) {
     add(`${title} (${titleLink})`);
+    seen.add(title.trim());
   } else {
     add(title);
   }
