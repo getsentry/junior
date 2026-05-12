@@ -26,6 +26,7 @@ import {
 } from "@/chat/services/vision-context";
 import { getChannelConfigurationService } from "@/chat/runtime/thread-state";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 
 const BACKFILL_MESSAGE_LIMIT = 80;
 
@@ -75,7 +76,13 @@ function hasPendingImageHydration(
 function createConversationMessageFromSdkMessage(
   entry: Message,
 ): ConversationMessage | null {
-  const rawText = normalizeConversationText(entry.text);
+  const rawAttachments = (entry.raw as Record<string, unknown> | undefined)
+    ?.attachments;
+  const enrichedText = appendSlackLegacyAttachmentText(
+    entry.text,
+    rawAttachments,
+  );
+  const rawText = normalizeConversationText(enrichedText);
   if (!rawText) {
     return null;
   }

@@ -12,6 +12,7 @@ export interface SlackChannelMessage {
   subtype?: string;
   bot_id?: string;
   type?: string;
+  attachments?: unknown[];
 }
 
 export interface SlackFileRef {
@@ -32,6 +33,7 @@ export interface SlackThreadReply {
   bot_id?: string;
   type?: string;
   files?: SlackFileRef[];
+  attachments?: unknown[];
 }
 
 export async function listChannelMessages(input: {
