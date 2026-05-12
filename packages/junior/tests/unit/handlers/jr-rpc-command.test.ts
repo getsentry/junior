@@ -124,11 +124,11 @@ describe("jr-rpc bridge command", () => {
     });
   });
 
-  it("sets quoted json configuration values", async () => {
+  it("sets compact json configuration values", async () => {
     const configuration = makeChannelConfiguration();
 
     const result = await maybeExecuteJrRpcBridgeCommand(
-      'jr-rpc config set github.defaults \'{"repo":"getsentry/junior"}\' --json',
+      'jr-rpc config set github.defaults {"repo":"getsentry/junior"} --json',
       {
         activeSkill,
         channelConfiguration: configuration,

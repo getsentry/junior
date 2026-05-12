@@ -261,7 +261,7 @@ type JrRpcParseResult =
   | { handled: true; args: string[] }
   | { handled: true; error: string };
 
-const JR_RPC_SHELL_OPERATORS = new Set([";", "|", "&", "<", ">", "(", ")"]);
+const JR_RPC_DISALLOWED_CHARS_RE = /[;&|<>()$`\\'\r\n]/;
 
 function parseStandaloneJrRpcArgs(command: string): JrRpcParseResult {
   const normalized = command.trim();
@@ -279,90 +279,14 @@ function parseStandaloneJrRpcArgs(command: string): JrRpcParseResult {
       : { handled: false };
   }
 
-  const args: string[] = [];
-  let current = "";
-  let quote: "'" | '"' | undefined;
-  let tokenStarted = false;
-
-  const pushToken = () => {
-    if (!tokenStarted) {
-      return;
-    }
-    args.push(current);
-    current = "";
-    tokenStarted = false;
-  };
-
-  for (let index = 0; index < normalized.length; index += 1) {
-    const char = normalized[index] as string;
-
-    if (char === "\n" || char === "\r") {
-      return {
-        handled: true,
-        error: "jr-rpc commands must be standalone\n",
-      };
-    }
-
-    if (quote) {
-      if (char === quote) {
-        quote = undefined;
-        tokenStarted = true;
-        continue;
-      }
-      if (quote === '"' && char === "\\") {
-        const next = normalized[index + 1];
-        if (next === undefined) {
-          return {
-            handled: true,
-            error: "jr-rpc commands contain an unterminated escape\n",
-          };
-        }
-        current += next;
-        tokenStarted = true;
-        index += 1;
-        continue;
-      }
-      current += char;
-      tokenStarted = true;
-      continue;
-    }
-
-    if (/\s/.test(char)) {
-      pushToken();
-      continue;
-    }
-
-    if (char === "'" || char === '"') {
-      quote = char;
-      tokenStarted = true;
-      continue;
-    }
-
-    if (
-      char === "\\" ||
-      char === "$" ||
-      char === "`" ||
-      JR_RPC_SHELL_OPERATORS.has(char)
-    ) {
-      return {
-        handled: true,
-        error: "jr-rpc commands must be standalone\n",
-      };
-    }
-
-    current += char;
-    tokenStarted = true;
-  }
-
-  if (quote) {
+  if (JR_RPC_DISALLOWED_CHARS_RE.test(normalized)) {
     return {
       handled: true,
-      error: "jr-rpc commands contain an unterminated quote\n",
+      error: "jr-rpc commands must be standalone\n",
     };
   }
 
-  pushToken();
-  return { handled: true, args };
+  return { handled: true, args: normalized.split(/\s+/) };
 }
 
 async function executeJrRpcCommand(
