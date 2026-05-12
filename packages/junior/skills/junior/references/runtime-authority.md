@@ -10,6 +10,7 @@ Skills describe behavior. Plugins declare authority.
 | Conversation or install defaults         | `config-keys` plus optional app `configDefaults` |
 | OAuth bearer delivery                    | `credentials` and `oauth`                        |
 | GitHub App delivery                      | `credentials`                                    |
+| CLI credential activation                | `credentials.command-proxies`                    |
 | Static or deployment-backed HTTP headers | `env-vars`, `api-domains`, `api-headers`         |
 | CLI or npm package availability          | `runtime-dependencies`                           |
 | System packages in the sandbox           | `runtime-dependencies`                           |

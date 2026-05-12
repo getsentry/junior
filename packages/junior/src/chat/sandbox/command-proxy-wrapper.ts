@@ -1,8 +1,8 @@
 import type { PluginCommandProxy } from "@/chat/plugins/types";
 import {
-  COMMAND_PROXY_ACTIVE_PROVIDERS_ENV,
-  COMMAND_PROXY_AUTH_REQUIRED_PROVIDERS_ENV,
-} from "@/chat/sandbox/command-proxy-env";
+  COMMAND_PROXY_ACTIVATE_PREFIX,
+  COMMAND_PROXY_ACTIVATION_TIMEOUT_MS,
+} from "@/chat/sandbox/command-proxy-protocol";
 
 function jsString(value: string): string {
   return JSON.stringify(value);
@@ -16,11 +16,12 @@ export function buildCommandProxyWrapper(proxy: PluginCommandProxy): string {
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const { randomUUID } = require("node:crypto");
 
 const command = ${jsString(proxy.command)};
 const provider = ${jsString(proxy.provider)};
-const activeProvidersEnv = ${jsString(COMMAND_PROXY_ACTIVE_PROVIDERS_ENV)};
-const authRequiredProvidersEnv = ${jsString(COMMAND_PROXY_AUTH_REQUIRED_PROVIDERS_ENV)};
+const activationPrefix = ${jsString(COMMAND_PROXY_ACTIVATE_PREFIX)};
+const activationTimeoutMs = ${COMMAND_PROXY_ACTIVATION_TIMEOUT_MS};
 const args = process.argv.slice(2);
 
 function fail(message, code = 126) {
@@ -62,53 +63,97 @@ function resolveRealCommand() {
   return undefined;
 }
 
-function providersFromEnv(name) {
-  return new Set(
-    (process.env[name] || "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function resolveAckDir() {
+  const selfPath = fs.realpathSync(process.argv[1]);
+  const selfDir = path.dirname(selfPath);
+  return path.join(path.dirname(selfDir), "run", "command-proxy");
+}
+
+function requestActivation() {
+  const id = randomUUID();
+  const ackDir = resolveAckDir();
+  const ackPath = path.join(ackDir, id + ".json");
+  fs.mkdirSync(ackDir, { recursive: true });
+  process.stderr.write(
+    activationPrefix + JSON.stringify({ id, provider, command }) + "\\n"
+  );
+
+  const deadline = Date.now() + activationTimeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const raw = fs.readFileSync(ackPath, "utf8");
+      try {
+        fs.unlinkSync(ackPath);
+      } catch {}
+      return JSON.parse(raw);
+    } catch (error) {
+      if (error && error.code !== "ENOENT") {
+        fail("Junior command proxy activation failed: " + error.message, 92);
+      }
+      sleep(50);
+    }
+  }
+
+  fail(
+    "Junior command proxy activation timed out for provider " + provider,
+    92
   );
 }
 
-function requireActivatedProvider() {
-  if (providersFromEnv(activeProvidersEnv).has(provider)) {
-    return;
+function envFromAck(ack) {
+  if (!ack || typeof ack !== "object" || !ack.env || typeof ack.env !== "object") {
+    return {};
   }
-  if (providersFromEnv(authRequiredProvidersEnv).has(provider)) {
+
+  const env = {};
+  for (const [key, value] of Object.entries(ack.env)) {
+    if (typeof value === "string") {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+function requireActivatedProvider() {
+  const ack = requestActivation();
+  if (!ack || typeof ack !== "object") {
+    fail("Junior command proxy activation returned an invalid response", 92);
+  }
+  if (ack.status === "ok") {
+    return envFromAck(ack);
+  }
+  if (ack.status === "auth_required") {
     fail(
-      "No " +
-        provider +
-        " credentials available. Connect " +
-        provider +
-        " and retry.\\nJUNIOR_COMMAND_PROXY_AUTH_REQUIRED provider=" +
-        provider,
+      typeof ack.message === "string" && ack.message
+        ? ack.message
+        : "No " + provider + " credentials available. Connect " + provider + " and retry.",
       91
     );
   }
   fail(
-    "Junior command proxy has no active host egress credentials for provider " +
-      provider
+    typeof ack.message === "string" && ack.message
+      ? ack.message
+      : "Junior command proxy activation failed for provider " + provider,
+    92
   );
 }
 
 (() => {
-  requireActivatedProvider();
   const realCommand = resolveRealCommand();
   if (!realCommand) {
     fail("Junior command proxy could not find real command: " + command);
   }
+  const activationEnv = requireActivatedProvider();
   const result = spawnSync(realCommand, args, {
     stdio: "inherit",
-    env: process.env,
+    env: { ...process.env, ...activationEnv },
   });
   if (result.error) {
     fail(result.error.message);
-  }
-  if ((result.status ?? 1) !== 0) {
-    process.stderr.write(
-      "\\nJUNIOR_COMMAND_PROXY_PROVIDER provider=" + provider + "\\n"
-    );
   }
   process.exit(result.status ?? 1);
 })();

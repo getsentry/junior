@@ -1,7 +1,4 @@
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import { unlinkProvider } from "@/chat/credentials/unlink-provider";
-import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
@@ -29,14 +26,9 @@ export interface PluginAuthOrchestrationDeps {
   onPendingAuth?: (
     pendingAuth: ConversationPendingAuthState,
   ) => void | Promise<void>;
-  userTokenStore?: UserTokenStore;
 }
 
 export interface PluginAuthOrchestration {
-  handleCredentialUnavailable: (input: {
-    provider: string;
-    error: CredentialUnavailableError;
-  }) => Promise<never>;
   handleCommandFailure: (details: unknown) => Promise<void>;
   getPendingPause: () => PluginAuthorizationPauseError | undefined;
 }
@@ -77,20 +69,30 @@ function isCommandAuthFailure(details: unknown): details is {
     /\binvalid grant\b/,
     /\breauthoriz/,
     /\bno [a-z0-9-]+ credentials available\b/,
-    /junior_command_proxy_auth_required/,
   ].some((pattern) => pattern.test(text));
 }
 
-function commandProxyAuthProvider(details: unknown): string | undefined {
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function commandProxyProviders(details: unknown): {
+  activated: string[];
+  authRequired: string[];
+} {
   if (!details || typeof details !== "object") {
-    return undefined;
+    return { activated: [], authRequired: [] };
   }
-  const result = details as { stdout?: unknown; stderr?: unknown };
-  const text = `${typeof result.stdout === "string" ? result.stdout : ""}\n${typeof result.stderr === "string" ? result.stderr : ""}`;
-  const match = text.match(
-    /JUNIOR_COMMAND_PROXY_(?:AUTH_REQUIRED|PROVIDER) provider=([a-z][a-z0-9-]*)/,
-  );
-  return match?.[1];
+  const result = details as {
+    command_proxy_providers?: unknown;
+    command_proxy_auth_required_providers?: unknown;
+  };
+  return {
+    activated: stringArray(result.command_proxy_providers),
+    authRequired: stringArray(result.command_proxy_auth_required_providers),
+  };
 }
 
 /** Start plugin OAuth from command-proxy failures and park the turn. */
@@ -100,12 +102,7 @@ export function createPluginAuthOrchestration(
 ): PluginAuthOrchestration {
   let pendingPause: PluginAuthorizationPauseError | undefined;
 
-  const startAuthorizationPause = async (
-    provider: string,
-    options?: {
-      unlinkExistingProvider?: boolean;
-    },
-  ): Promise<never> => {
+  const startAuthorizationPause = async (provider: string): Promise<never> => {
     if (pendingPause) {
       throw pendingPause;
     }
@@ -142,14 +139,6 @@ export function createPluginAuthOrchestration(
       }
     }
 
-    if (
-      options?.unlinkExistingProvider &&
-      deps.requesterId &&
-      deps.userTokenStore
-    ) {
-      await unlinkProvider(deps.requesterId, provider, deps.userTokenStore);
-    }
-
     if (deps.sessionId) {
       await deps.onPendingAuth?.({
         kind: "plugin",
@@ -169,38 +158,19 @@ export function createPluginAuthOrchestration(
     throw pendingPause;
   };
 
-  const handleCredentialUnavailable = async (input: {
-    provider: string;
-    error: CredentialUnavailableError;
-  }): Promise<never> => {
-    if (pendingPause) {
-      throw pendingPause;
-    }
-
-    if (!deps.requesterId || !getPluginOAuthConfig(input.provider)) {
-      throw input.error;
-    }
-
-    return await startAuthorizationPause(input.provider);
-  };
-
   return {
-    handleCredentialUnavailable,
     handleCommandFailure: async (details) => {
-      const provider = commandProxyAuthProvider(details);
-      if (
-        !provider ||
-        !deps.requesterId ||
-        !deps.userTokenStore ||
-        !getPluginOAuthConfig(provider) ||
-        !isCommandAuthFailure(details)
-      ) {
+      const providers = commandProxyProviders(details);
+      const provider =
+        providers.authRequired[0] ??
+        (providers.activated.length === 1 && isCommandAuthFailure(details)
+          ? providers.activated[0]
+          : undefined);
+      if (!provider || !deps.requesterId || !getPluginOAuthConfig(provider)) {
         return;
       }
 
-      await startAuthorizationPause(provider, {
-        unlinkExistingProvider: true,
-      });
+      await startAuthorizationPause(provider);
     },
     getPendingPause: () => pendingPause,
   };

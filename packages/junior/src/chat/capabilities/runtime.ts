@@ -169,49 +169,6 @@ export class SkillCapabilityRuntime {
     }
   }
 
-  /**
-   * Enable all available command-proxy providers without exposing secrets.
-   */
-  async enableCommandProxyCredentialsForTurn(input: {
-    providers: string[];
-    reason: string;
-  }): Promise<{
-    activeProviders: string[];
-    authRequiredProviders: string[];
-  }> {
-    const activeProviders: string[] = [];
-    const authRequiredProviders: string[] = [];
-    const seen = new Set<string>();
-
-    if (!this.requesterId) {
-      return { activeProviders, authRequiredProviders };
-    }
-
-    for (const provider of input.providers) {
-      if (!provider || seen.has(provider)) {
-        continue;
-      }
-      seen.add(provider);
-      try {
-        const enabled = await this.enableCredentialsForTurn({
-          provider,
-          reason: input.reason,
-        });
-        if (enabled) {
-          activeProviders.push(provider);
-        }
-      } catch (error) {
-        if (error instanceof CredentialUnavailableError) {
-          authRequiredProviders.push(provider);
-          continue;
-        }
-        throw error;
-      }
-    }
-
-    return { activeProviders, authRequiredProviders };
-  }
-
   /** Return providers with live credentials enabled for this turn. */
   getEnabledProviders(): string[] {
     this.pruneExpiredProviders();

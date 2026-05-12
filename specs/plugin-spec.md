@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-01
-- Last Edited: 2026-05-08
+- Last Edited: 2026-05-12
 
 ## Changelog
 
@@ -23,6 +23,7 @@
 - 2026-04-30: Added install-wide config defaults via `createApp({ configDefaults })` with channel-scoped override precedence.
 - 2026-05-03: Added plugin-level `api-headers` injection backed by declared deployment env vars.
 - 2026-05-08: Added plugin-level `command-env` for non-secret sandbox CLI placeholders and default-backed deployment values.
+- 2026-05-12: Made command proxy wrappers request host credential activation at invocation time instead of relying on bash preflight activation.
 
 ## Status
 
@@ -333,14 +334,18 @@ credentials:
 ```
 
 The runtime installs wrappers for these commands in the sandbox runtime bin
-directory. Before sandbox bash starts, the host prepares providers declared by
-`credentials.command-proxies`, applies sandbox network-policy header transforms,
-and injects only non-secret command env placeholders plus provider-state flags.
-The host does not parse the shell command to detect proxy usage. A wrapper execs
-the real binary only when its provider is marked active. If the provider needs
-user authorization, the wrapper fails with the standard auth marker so the
-runtime can start the private OAuth flow. Real token values and
-credential-minting capabilities never enter the sandbox process.
+directory. The host does not parse the shell command to detect proxy usage and
+does not pre-mint credentials before arbitrary bash. Instead, the wrapper emits
+a structured activation request for its declaring provider when the binary is
+invoked. The host validates that the command/provider pair came from
+`credentials.command-proxies`, issues the provider lease, applies sandbox
+network-policy header transforms, and writes an acknowledgement file containing
+only non-secret command env placeholders. A wrapper execs the real binary only
+after an `ok` acknowledgement. If the provider needs user authorization, the
+acknowledgement is `auth_required` and the runtime starts the private OAuth
+flow from trusted structured tool result fields, not from raw command output.
+Real token values and credential-minting capabilities never enter the sandbox
+process.
 
 System runtime dependency execution environment:
 
@@ -552,7 +557,7 @@ All existing security invariants from `security-policy.md` are preserved:
 
 - **Host-trusted code.** Plugin manifests are YAML files committed to the repository. No dynamic code loading.
 - **Credential delivery via header transforms only.** Token credentials, API keys, and plugin-level `api-headers` are delivered as host-managed header transforms for declared `api-domains`. Real secret values never enter sandbox env vars, files, or command arguments.
-- **Command proxy activation stays host-owned.** Sandbox wrappers receive only non-secret provider-state flags and placeholder env values. The host applies header transforms before command execution and never exposes real credentials or credential-minting tokens to the sandbox.
+- **Command proxy activation stays host-owned.** Sandbox wrappers request activation through a structured host bridge and receive only non-secret placeholder env values. The host applies header transforms before the real command executes and never exposes real credentials or credential-minting tokens to the sandbox.
 - **Short-lived leases.** Lease behavior is unchanged. The `CredentialLease` contract enforces expiry timestamps.
 - **No env var leakage.** Only non-secret placeholder/default command env values are injected into the sandbox. Secret-bearing provider values are delivered through host-managed header transforms.
 - **OAuth privacy rules unchanged.** Authorization URLs are delivered privately. The agent never sees token values.

@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-06
+- Last Edited: 2026-05-12
 
 ## Changelog
 
@@ -13,6 +13,7 @@
 - 2026-04-17: Removed explicit model-facing auth commands and documented implicit runtime-owned OAuth initiation for plugin-backed commands.
 - 2026-04-22: Reframed auth-blocked work as completed Slack turns plus persisted thread-local `pendingAuth` state, documented deduped re-prompts, and limited auto-resume to the latest still-relevant blocked request.
 - 2026-05-06: Removed the public thread-visible auth-pause note; the private auth-link delivery is the only immediate auth handoff.
+- 2026-05-12: Documented command-proxy activation acknowledgements as the trusted OAuth trigger for sandbox CLIs.
 
 ## Status
 
@@ -61,7 +62,8 @@ User: asks Junior to do authenticated provider work in Slack
   ▼
 Agent: loads the matching plugin skill and runs the real provider command
   │
-  ├─ Runtime resolves provider from the loaded skill or a plugin-declared command proxy
+  ├─ Plugin-declared command proxies request host activation when invoked
+  ├─ Runtime resolves provider from the validated command proxy declaration or MCP provider
   ├─ Runtime keeps any provider defaults (for example a repo config) available for command construction
   ├─ Broker checks requester-bound stored tokens
   ├─ If auth is missing or stale:
@@ -118,11 +120,13 @@ Provider: redirects to /api/oauth/callback/mcp/<provider>?code=...&state=...
 After a user has connected their account:
 
 1. Agent invokes a plugin-declared command proxy such as `sentry`.
-2. Runtime resolves the provider from the command proxy declaration for the resumed turn.
-3. Broker loads stored requester-bound tokens.
-4. If the token is near expiry, broker refreshes it server-side.
-5. Broker returns a short-lived `CredentialLease`.
-6. Runtime injects provider headers and placeholder env vars for the rest of the current turn only.
+2. The wrapper emits a structured activation request and waits for a host acknowledgement.
+3. Runtime validates the provider/command pair against `credentials.command-proxies`.
+4. Broker loads stored requester-bound tokens.
+5. If the token is near expiry, broker refreshes it server-side.
+6. Broker returns a short-lived `CredentialLease`.
+7. Runtime applies provider headers through host-managed network policy and acknowledges with placeholder env vars for that command process.
+8. If credentials are missing or stale, the acknowledgement is `auth_required`; the runtime starts OAuth from trusted structured tool result fields, not from raw stderr markers.
 
 ## State management
 
@@ -199,7 +203,7 @@ Providers define OAuth through plugin manifests:
 - The runtime must not post the authorization URL into the public thread or add a second public thread note just to announce that a private link was sent.
 - Authorization URLs are never returned to the model.
 - Tokens are stored server-side and never appear in sandbox files or model-visible tool arguments.
-- Sandbox command proxies may receive non-secret provider-state flags, but they must never receive provider credentials or credential-minting tokens.
+- Sandbox command proxies may receive non-secret placeholder env values, but they must never receive provider credentials or credential-minting tokens.
 - Leases are requester-bound and turn-scoped.
 - Target-aware providers may narrow leases to repo/project/org scope when available.
 

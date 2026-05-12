@@ -50,14 +50,14 @@ This policy applies to:
 
 ### Issuance and injection
 
-- Runtime issues short-lived provider credentials for active plugin providers before sandbox bash commands run.
+- Runtime issues short-lived provider credentials only when a provider runtime surface needs them, such as MCP activation or a plugin-declared command proxy invocation.
 - Active plugin providers, plugin declarations, and command proxy declarations determine which provider credentials may be injected into a turn.
 - Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.
 - Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching API domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.
 - When CLI tools require tool-native sandbox auth env vars (for example `SENTRY_AUTH_TOKEN`, Pup's `DD_API_KEY`, or Pup's `DD_APP_KEY`), set them to non-secret placeholders so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
 - Plugin-declared command env may include non-secret placeholders and default-backed deployment values needed by the command process. It must not read or expose secret deployment env vars.
-- Plugin-declared command proxies may receive non-secret provider-state flags in sandbox env. They must never receive provider credentials or credential-minting tokens.
+- Plugin-declared command proxies request activation through a host-handled structured bridge and may receive only non-secret placeholder env values. They must never receive provider credentials or credential-minting tokens.
 - Host-handled pseudo-command bridges may handle standalone commands such as `jr-rpc ...` before sandbox bash starts. They must parse explicit argv shapes only, must not invoke a host shell or virtual shell interpreter, and must reject chained, piped, redirected, escaped, single-quoted, or expanded shell syntax. Ordinary shell commands execute inside the sandbox.
 - Never inject real provider secrets into sandbox env vars, files, or command arguments.
 

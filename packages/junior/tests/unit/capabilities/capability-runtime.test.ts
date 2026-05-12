@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CredentialRouter } from "@/chat/capabilities/router";
 import type { CredentialBroker } from "@/chat/credentials/broker";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
 
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginDefinition: (provider: string) =>
@@ -245,85 +243,5 @@ describe("skill capability runtime", () => {
         },
       },
     ]);
-  });
-
-  it("enables command proxy credentials without an active skill", async () => {
-    const router: CredentialRouter = {
-      issue: async (input) => ({
-        id: "lease-1",
-        provider: input.provider,
-        env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
-        headerTransforms: [
-          {
-            domain: "api.github.com",
-            headers: {
-              Authorization: "Bearer token-1",
-            },
-          },
-        ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      }),
-    };
-    const runtime = new SkillCapabilityRuntime({
-      router,
-      requesterId: "U123",
-    });
-
-    await expect(
-      runtime.enableCommandProxyCredentialsForTurn({
-        providers: ["github"],
-        reason: "sandbox:command-proxy",
-      }),
-    ).resolves.toEqual({
-      activeProviders: ["github"],
-      authRequiredProviders: [],
-    });
-    expect(runtime.getTurnEnv()).toEqual({
-      GITHUB_TOKEN: "ghp_host_managed_credential",
-    });
-  });
-
-  it("reports unavailable command proxy credentials without throwing", async () => {
-    const router: CredentialRouter = {
-      issue: async () => {
-        throw new CredentialUnavailableError(
-          "sentry",
-          "No sentry credentials available",
-        );
-      },
-    };
-    const runtime = new SkillCapabilityRuntime({
-      router,
-      requesterId: "U123",
-    });
-
-    await expect(
-      runtime.enableCommandProxyCredentialsForTurn({
-        providers: ["sentry"],
-        reason: "sandbox:command-proxy",
-      }),
-    ).resolves.toEqual({
-      activeProviders: [],
-      authRequiredProviders: ["sentry"],
-    });
-  });
-
-  it("rethrows unexpected command proxy credential errors", async () => {
-    const router: CredentialRouter = {
-      issue: async () => {
-        throw new Error("credential broker exploded");
-      },
-    };
-    const runtime = new SkillCapabilityRuntime({
-      router,
-      requesterId: "U123",
-    });
-
-    await expect(
-      runtime.enableCommandProxyCredentialsForTurn({
-        providers: ["github"],
-        reason: "sandbox:command-proxy",
-      }),
-    ).rejects.toThrow("credential broker exploded");
   });
 });

@@ -5,15 +5,12 @@ import { GEN_AI_PROVIDER_NAME } from "@/chat/pi/client";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import { getPluginCommandProxies } from "@/chat/plugins/registry";
 import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
-import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
-import { resolveCredentialInjection } from "@/chat/tools/execution/inject-credentials";
 import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 
@@ -29,14 +26,10 @@ export function createAgentTools(
   spanContext: LogContext,
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
   sandboxExecutor?: SandboxExecutor,
-  capabilityRuntime?: SkillCapabilityRuntime,
   pluginAuthOrchestration?: PluginAuthOrchestration,
   hooks: AgentToolExecutionHooks = {},
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
-  const commandProxyProviders = [
-    ...new Set(getPluginCommandProxies().map((proxy) => proxy.provider)),
-  ];
   return Object.entries(tools).map(([toolName, toolDef]) => ({
     name: toolName,
     label: toolName,
@@ -88,41 +81,11 @@ export function createAgentTools(
             const isJrRpcCommand = /^jr-rpc(?:\s|$)/.test(bashCommand);
             const isSandboxBashCommand =
               isSandbox && Boolean(bashCommand) && !isJrRpcCommand;
-            const commandProxyCredentialState =
-              isSandboxBashCommand &&
-              capabilityRuntime &&
-              commandProxyProviders.length > 0
-                ? await capabilityRuntime.enableCommandProxyCredentialsForTurn({
-                    providers: commandProxyProviders,
-                    reason: "sandbox:command-proxy",
-                  })
-                : undefined;
-            for (const provider of commandProxyCredentialState?.activeProviders ??
-              []) {
-              hooks.onPluginProviderActivated?.(provider);
-            }
-            const injection = isSandboxBashCommand
-              ? resolveCredentialInjection(
-                  capabilityRuntime,
-                  commandProxyCredentialState,
-                )
-              : {};
-
             const sandboxInput = buildSandboxInput(toolName, parsed);
             const result = isSandbox
               ? await sandboxExecutor!.execute({
                   toolName,
-                  input:
-                    toolName === "bash" &&
-                    (injection.headerTransforms || injection.env)
-                      ? {
-                          ...sandboxInput,
-                          ...(injection.headerTransforms
-                            ? { headerTransforms: injection.headerTransforms }
-                            : {}),
-                          ...(injection.env ? { env: injection.env } : {}),
-                        }
-                      : sandboxInput,
+                  input: sandboxInput,
                 })
               : await toolDef.execute(parsed as never, {
                   experimental_context: sandbox,
@@ -130,6 +93,27 @@ export function createAgentTools(
 
             const normalized = normalizeToolResult(result, isSandbox);
             if (isSandboxBashCommand && pluginAuthOrchestration) {
+              const details = normalized.details as
+                | {
+                    command_proxy_providers?: unknown;
+                    command_proxy_auth_required_providers?: unknown;
+                  }
+                | undefined;
+              const activatedProviders = [
+                ...(Array.isArray(details?.command_proxy_providers)
+                  ? details.command_proxy_providers
+                  : []),
+                ...(Array.isArray(
+                  details?.command_proxy_auth_required_providers,
+                )
+                  ? details.command_proxy_auth_required_providers
+                  : []),
+              ].filter(
+                (provider): provider is string => typeof provider === "string",
+              );
+              for (const provider of new Set(activatedProviders)) {
+                hooks.onPluginProviderActivated?.(provider);
+              }
               await pluginAuthOrchestration.handleCommandFailure(
                 normalized.details,
               );

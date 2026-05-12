@@ -16,19 +16,20 @@ description: Internal provider workflows
 
 ## Optional
 
-| Field                  | Purpose                     | Rules                                              |
-| ---------------------- | --------------------------- | -------------------------------------------------- |
-| `capabilities`         | provider permissions        | short tokens, qualified as `<plugin>.<capability>` |
-| `config-keys`          | defaults/targets            | short tokens, qualified as `<plugin>.<key>`        |
-| `env-vars`             | allowed deployment env refs | keys match `[A-Z_][A-Z0-9_]*`                      |
-| `api-domains`          | header injection domains    | required with `api-headers`                        |
-| `api-headers`          | literal/env-backed headers  | values may use declared `${NAME}`                  |
-| `credentials`          | token delivery              | `oauth-bearer` or `github-app`                     |
-| `oauth`                | user OAuth                  | requires `credentials.type: oauth-bearer`          |
-| `target`               | target/config metadata      | `config-key` must be in `config-keys`              |
-| `runtime-dependencies` | sandbox packages            | `npm` or `system`                                  |
-| `runtime-postinstall`  | setup commands              | `cmd`, optional `args`, optional `sudo`            |
-| `mcp`                  | hosted HTTP MCP             | HTTPS `url`, optional `allowed-tools`              |
+| Field                         | Purpose                     | Rules                                              |
+| ----------------------------- | --------------------------- | -------------------------------------------------- |
+| `capabilities`                | provider permissions        | short tokens, qualified as `<plugin>.<capability>` |
+| `config-keys`                 | defaults/targets            | short tokens, qualified as `<plugin>.<key>`        |
+| `env-vars`                    | allowed deployment env refs | keys match `[A-Z_][A-Z0-9_]*`                      |
+| `api-domains`                 | header injection domains    | required with `api-headers`                        |
+| `api-headers`                 | literal/env-backed headers  | values may use declared `${NAME}`                  |
+| `credentials`                 | token delivery              | `oauth-bearer` or `github-app`                     |
+| `credentials.command-proxies` | CLI credential activation   | executable names only, no arguments                |
+| `oauth`                       | user OAuth                  | requires `credentials.type: oauth-bearer`          |
+| `target`                      | target/config metadata      | `config-key` must be in `config-keys`              |
+| `runtime-dependencies`        | sandbox packages            | `npm` or `system`                                  |
+| `runtime-postinstall`         | setup commands              | `cmd`, optional `args`, optional `sudo`            |
+| `mcp`                         | hosted HTTP MCP             | HTTPS `url`, optional `allowed-tools`              |
 
 ## OAuth bearer
 
@@ -37,6 +38,8 @@ credentials:
   type: oauth-bearer
   api-domains:
     - api.example.com
+  command-proxies:
+    - example
   auth-token-env: EXAMPLE_AUTH_TOKEN
   auth-token-placeholder: host_managed_credential
 
@@ -55,6 +58,9 @@ credentials:
   type: github-app
   api-domains:
     - api.github.com
+  command-proxies:
+    - gh
+    - git
   auth-token-env: GITHUB_TOKEN
   auth-token-placeholder: ghp_host_managed_credential
   app-id-env: GITHUB_APP_ID
@@ -90,6 +96,7 @@ mcp:
 - `mcp.url` env refs must be declared in `env-vars`.
 - API-header env refs must not declare defaults.
 - `Authorization` is reserved inside token-backed `credentials.api-headers`.
+- `command-proxies` belongs under `credentials` and contains executable names only.
 - `target.config-key` must be listed in `config-keys`.
 - System dependencies must not declare `version`.
 - System URL dependencies require HTTPS `url` plus 64-char hex `sha256`.

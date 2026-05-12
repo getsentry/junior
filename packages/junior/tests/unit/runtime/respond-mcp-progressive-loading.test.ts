@@ -430,10 +430,6 @@ vi.mock("@/chat/config", async (importOriginal) => {
 vi.mock("@/chat/capabilities/factory", () => ({
   createSkillCapabilityRuntime: () => ({
     enableCredentialsForTurn: async () => undefined,
-    enableCommandProxyCredentialsForTurn: async () => ({
-      activeProviders: [],
-      authRequiredProviders: [],
-    }),
     getTurnHeaderTransforms: () => undefined,
     getTurnEnv: () => undefined,
     getEnabledProviders: () => [],

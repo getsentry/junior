@@ -292,10 +292,6 @@ vi.mock("@/chat/capabilities/factory", () => ({
       enabledCredentialProviders.value.push(input.provider);
       return undefined;
     },
-    enableCommandProxyCredentialsForTurn: async () => ({
-      activeProviders: [],
-      authRequiredProviders: [],
-    }),
     getTurnHeaderTransforms: () => undefined,
     getTurnEnv: () => undefined,
     getEnabledProviders: () => [...enabledCredentialProviders.value],

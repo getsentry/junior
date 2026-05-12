@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { COMMAND_PROXY_ACTIVATE_PREFIX } from "@/chat/sandbox/command-proxy-protocol";
 import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 
@@ -59,6 +60,7 @@ interface MockSandbox {
   fs: {
     readFile: ReturnType<typeof vi.fn>;
     writeFile: ReturnType<typeof vi.fn>;
+    mkdir: ReturnType<typeof vi.fn>;
     readdir: ReturnType<typeof vi.fn>;
     stat: ReturnType<typeof vi.fn>;
   };
@@ -96,6 +98,7 @@ function makeSandbox(
     fs: {
       readFile: vi.fn(async () => ""),
       writeFile: vi.fn(async () => {}),
+      mkdir: vi.fn(async () => undefined),
       readdir: vi.fn(async () => []),
       stat: vi.fn(async () => ({ isDirectory: () => false })),
     },
@@ -129,6 +132,14 @@ function createApiError(
     },
     sandboxId: "sbx_test",
   });
+}
+
+function commandProxyActivationLine(input: {
+  id: string;
+  provider: string;
+  command: string;
+}): string {
+  return `${COMMAND_PROXY_ACTIVATE_PREFIX}${JSON.stringify(input)}\n`;
 }
 
 async function expectWorkspaceToDelegate(
@@ -345,17 +356,39 @@ describe("createSandboxExecutor", () => {
     });
   });
 
-  it("applies and restores header transforms for bash commands", async () => {
+  it("activates command proxy credentials during bash and restores policy", async () => {
     const sandbox = makeSandbox("sbx_headers");
+    sandbox.runCommand.mockImplementation(async (input) => {
+      if (!input.stderr) {
+        return {
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        };
+      }
+      input.stderr.write(
+        commandProxyActivationLine({
+          id: "activate1",
+          provider: "github",
+          command: "gh",
+        }),
+      );
+      input.stdout.write("ok\n");
+      return {
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => "",
+      };
+    });
     sandboxGetMock.mockResolvedValue(sandbox);
 
-    const executor = createSandboxExecutor({ sandboxId: "sbx_headers" });
-    executor.configureSkills([]);
-
-    await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo ok",
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_headers",
+      commandProxies: [{ command: "gh", provider: "github" }],
+      activateCommandProxy: async () => ({
+        status: "ok",
+        provider: "github",
+        env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
         headerTransforms: [
           {
             domain: "api.github.com",
@@ -364,6 +397,14 @@ describe("createSandboxExecutor", () => {
             },
           },
         ],
+      }),
+    });
+    executor.configureSkills([]);
+
+    const result = await executor.execute<{ stdout: string; stderr: string }>({
+      toolName: "bash",
+      input: {
+        command: "gh issue view 319",
       },
     });
 
@@ -383,7 +424,12 @@ describe("createSandboxExecutor", () => {
         ],
       },
     });
-    const invocation = sandbox.runCommand.mock.calls[0]?.[0];
+    const invocation = sandbox.runCommand.mock.calls.find(
+      (call) =>
+        call[0]?.cmd === "bash" &&
+        typeof call[0]?.args?.[1] === "string" &&
+        call[0].args[1].includes("gh issue view 319"),
+    )?.[0];
     expect(invocation).toMatchObject({
       cmd: "bash",
       cwd: "/vercel/sandbox",
@@ -397,8 +443,24 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("export GH_PROMPT_DISABLED='1'");
     expect(invocation.args?.[1]).toContain("export GIT_TERMINAL_PROMPT='0'");
     expect(invocation.args?.[1]).toContain("exec </dev/null");
-    expect(invocation.args?.[1]).toContain("echo ok");
+    expect(invocation.args?.[1]).toContain("gh issue view 319");
+    expect(invocation.args?.[1]).not.toContain("GITHUB_TOKEN");
+    expect(invocation.stderr).toBeDefined();
     expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(2, "allow-all");
+    expect(sandbox.fs.writeFile).toHaveBeenCalledWith(
+      "/vercel/sandbox/.junior/run/command-proxy/activate1.json",
+      JSON.stringify({
+        status: "ok",
+        provider: "github",
+        env: { GITHUB_TOKEN: "ghp_host_managed_credential" },
+      }),
+      "utf8",
+    );
+    expect(result.result.stdout).toBe("ok\n");
+    expect(result.result.stderr).toBe("");
+    expect(result.result).toMatchObject({
+      command_proxy_providers: ["github"],
+    });
   });
 
   it("merges header transforms into existing network policy allow rules", async () => {
@@ -408,15 +470,35 @@ describe("createSandboxExecutor", () => {
         "example.com": [{ transform: [{ headers: { "X-Existing": "1" } }] }],
       },
     };
+    sandbox.runCommand.mockImplementation(async (input) => {
+      if (!input.stderr) {
+        return {
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        };
+      }
+      input.stderr.write(
+        commandProxyActivationLine({
+          id: "activate2",
+          provider: "github",
+          command: "gh",
+        }),
+      );
+      return {
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => "",
+      };
+    });
     sandboxGetMock.mockResolvedValue(sandbox);
 
-    const executor = createSandboxExecutor({ sandboxId: "sbx_policy_merge" });
-    executor.configureSkills([]);
-
-    await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo ok",
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_policy_merge",
+      commandProxies: [{ command: "gh", provider: "github" }],
+      activateCommandProxy: async () => ({
+        status: "ok",
+        provider: "github",
         headerTransforms: [
           {
             domain: "api.github.com",
@@ -425,6 +507,14 @@ describe("createSandboxExecutor", () => {
             },
           },
         ],
+      }),
+    });
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "gh issue view 319",
       },
     });
 
@@ -450,9 +540,212 @@ describe("createSandboxExecutor", () => {
     );
   });
 
+  it("preserves deny-all policy when command proxy credentials activate", async () => {
+    const sandbox = makeSandbox("sbx_policy_deny_all");
+    sandbox.networkPolicy = "deny-all";
+    sandbox.runCommand.mockImplementation(async (input) => {
+      if (!input.stderr) {
+        return {
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        };
+      }
+      input.stderr.write(
+        commandProxyActivationLine({
+          id: "activate3",
+          provider: "github",
+          command: "gh",
+        }),
+      );
+      return {
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => "",
+      };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_policy_deny_all",
+      commandProxies: [{ command: "gh", provider: "github" }],
+      activateCommandProxy: async () => ({
+        status: "ok",
+        provider: "github",
+        headerTransforms: [
+          {
+            domain: "api.github.com",
+            headers: {
+              Authorization: "Bearer token-1",
+            },
+          },
+        ],
+      }),
+    });
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "gh issue view 319",
+      },
+    });
+
+    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(1, {
+      allow: {
+        "api.github.com": [
+          {
+            transform: [
+              {
+                headers: {
+                  Authorization: "Bearer token-1",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(2, "deny-all");
+  });
+
+  it("reports auth-required command proxy activation without widening network policy", async () => {
+    const sandbox = makeSandbox("sbx_auth_required");
+    sandbox.runCommand.mockImplementation(async (input) => {
+      if (!input.stderr) {
+        return {
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        };
+      }
+      input.stderr.write(
+        commandProxyActivationLine({
+          id: "authreq1",
+          provider: "sentry",
+          command: "sentry",
+        }),
+      );
+      input.stderr.write("No sentry credentials available.\n");
+      return {
+        exitCode: 91,
+        stdout: async () => "",
+        stderr: async () => "",
+      };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_auth_required",
+      commandProxies: [{ command: "sentry", provider: "sentry" }],
+      activateCommandProxy: async () => ({
+        status: "auth_required",
+        provider: "sentry",
+        message: "No sentry credentials available.",
+      }),
+    });
+    executor.configureSkills([]);
+
+    const result = await executor.execute<{ stderr: string }>({
+      toolName: "bash",
+      input: {
+        command: "sentry issues list",
+      },
+    });
+
+    expect(sandbox.updateNetworkPolicy).not.toHaveBeenCalled();
+    expect(sandbox.fs.writeFile).toHaveBeenCalledWith(
+      "/vercel/sandbox/.junior/run/command-proxy/authreq1.json",
+      JSON.stringify({
+        status: "auth_required",
+        provider: "sentry",
+        message: "No sentry credentials available.",
+      }),
+      "utf8",
+    );
+    expect(result.result.stderr).toBe("No sentry credentials available.\n");
+    expect(result.result).toMatchObject({
+      command_proxy_auth_required_providers: ["sentry"],
+    });
+    expect(result.result).not.toHaveProperty("command_proxy_providers");
+  });
+
+  it("rejects undeclared command proxy activation requests", async () => {
+    const sandbox = makeSandbox("sbx_unknown_proxy");
+    const activateCommandProxy = vi.fn();
+    sandbox.runCommand.mockImplementation(async (input) => {
+      if (!input.stderr) {
+        return {
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        };
+      }
+      input.stderr.write(
+        commandProxyActivationLine({
+          id: "unknown1",
+          provider: "github",
+          command: "gh",
+        }),
+      );
+      return {
+        exitCode: 92,
+        stdout: async () => "",
+        stderr: async () => "",
+      };
+    });
+    sandboxGetMock.mockResolvedValue(sandbox);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_unknown_proxy",
+      commandProxies: [{ command: "sentry", provider: "sentry" }],
+      activateCommandProxy,
+    });
+    executor.configureSkills([]);
+
+    const result = await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "gh issue view 319",
+      },
+    });
+
+    expect(activateCommandProxy).not.toHaveBeenCalled();
+    expect(sandbox.updateNetworkPolicy).not.toHaveBeenCalled();
+    expect(sandbox.fs.writeFile).toHaveBeenCalledWith(
+      "/vercel/sandbox/.junior/run/command-proxy/unknown1.json",
+      JSON.stringify({
+        status: "error",
+        provider: "github",
+        message: "Unknown Junior command proxy: gh",
+      }),
+      "utf8",
+    );
+    expect(result.result).not.toHaveProperty("command_proxy_providers");
+    expect(result.result).not.toHaveProperty(
+      "command_proxy_auth_required_providers",
+    );
+  });
+
   it("preserves command errors when network policy restore fails", async () => {
     const sandbox = makeSandbox("sbx_restore_failure");
-    sandbox.runCommand.mockRejectedValueOnce(new Error("command failed"));
+    sandbox.runCommand.mockImplementation(async (input) => {
+      if (!input.stderr) {
+        return {
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        };
+      }
+      input.stderr.write(
+        commandProxyActivationLine({
+          id: "activate4",
+          provider: "github",
+          command: "gh",
+        }),
+      );
+      throw new Error("command failed");
+    });
     sandbox.updateNetworkPolicy
       .mockImplementationOnce(async () => {})
       .mockImplementationOnce(async () => {
@@ -462,6 +755,19 @@ describe("createSandboxExecutor", () => {
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_restore_failure",
+      commandProxies: [{ command: "gh", provider: "github" }],
+      activateCommandProxy: async () => ({
+        status: "ok",
+        provider: "github",
+        headerTransforms: [
+          {
+            domain: "api.github.com",
+            headers: {
+              Authorization: "Bearer token-1",
+            },
+          },
+        ],
+      }),
     });
     executor.configureSkills([]);
 
@@ -469,15 +775,7 @@ describe("createSandboxExecutor", () => {
       executor.execute({
         toolName: "bash",
         input: {
-          command: "echo ok",
-          headerTransforms: [
-            {
-              domain: "api.github.com",
-              headers: {
-                Authorization: "Bearer token-1",
-              },
-            },
-          ],
+          command: "gh issue view 319",
         },
       }),
     ).rejects.toThrow("command failed");
@@ -486,6 +784,27 @@ describe("createSandboxExecutor", () => {
 
   it("discards the sandbox when network policy restore fails after a successful command", async () => {
     const firstSandbox = makeSandbox("sbx_restore_failure_first");
+    firstSandbox.runCommand.mockImplementation(async (input) => {
+      if (!input.stderr) {
+        return {
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        };
+      }
+      input.stderr.write(
+        commandProxyActivationLine({
+          id: "activate5",
+          provider: "github",
+          command: "gh",
+        }),
+      );
+      return {
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => "",
+      };
+    });
     firstSandbox.updateNetworkPolicy
       .mockImplementationOnce(async () => {})
       .mockImplementationOnce(async () => {
@@ -496,22 +815,28 @@ describe("createSandboxExecutor", () => {
       .mockResolvedValueOnce(firstSandbox)
       .mockResolvedValueOnce(secondSandbox);
 
-    const executor = createSandboxExecutor();
+    const executor = createSandboxExecutor({
+      commandProxies: [{ command: "gh", provider: "github" }],
+      activateCommandProxy: async () => ({
+        status: "ok",
+        provider: "github",
+        headerTransforms: [
+          {
+            domain: "api.github.com",
+            headers: {
+              Authorization: "Bearer token-1",
+            },
+          },
+        ],
+      }),
+    });
     executor.configureSkills([]);
 
     await expect(
       executor.execute({
         toolName: "bash",
         input: {
-          command: "echo ok",
-          headerTransforms: [
-            {
-              domain: "api.github.com",
-              headers: {
-                Authorization: "Bearer token-1",
-              },
-            },
-          ],
+          command: "gh issue view 319",
         },
       }),
     ).rejects.toThrow("restore failed");
@@ -525,7 +850,12 @@ describe("createSandboxExecutor", () => {
 
     expect(firstSandbox.stop).toHaveBeenCalledTimes(1);
     expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
-    const invocation = secondSandbox.runCommand.mock.calls[0]?.[0];
+    const invocation = secondSandbox.runCommand.mock.calls.find(
+      (call) =>
+        call[0]?.cmd === "bash" &&
+        typeof call[0]?.args?.[1] === "string" &&
+        call[0].args[1].includes("echo second"),
+    )?.[0];
     expect(invocation).toMatchObject({
       cmd: "bash",
       cwd: "/vercel/sandbox",
@@ -663,18 +993,24 @@ describe("createSandboxExecutor", () => {
       }
     });
     firstSandbox.runCommand
-      .mockResolvedValueOnce({
-        exitCode: 0,
-        stdout: async () => "first\n",
-        stderr: async () => "",
+      .mockImplementationOnce(async (input) => {
+        input.stdout.write("first\n");
+        return {
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        };
       })
       .mockRejectedValueOnce(new Error("expired sandbox should not be reused"));
 
     const secondSandbox = makeSandbox("sbx_cached_second");
-    secondSandbox.runCommand.mockResolvedValueOnce({
-      exitCode: 0,
-      stdout: async () => "second\n",
-      stderr: async () => "",
+    secondSandbox.runCommand.mockImplementationOnce(async (input) => {
+      input.stdout.write("second\n");
+      return {
+        exitCode: 0,
+        stdout: async () => "",
+        stderr: async () => "",
+      };
     });
 
     sandboxCreateMock

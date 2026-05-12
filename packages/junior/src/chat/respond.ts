@@ -16,10 +16,7 @@ import {
 } from "@/chat/logging";
 import { listReferenceFiles } from "@/chat/discovery";
 import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
-import {
-  createSkillCapabilityRuntime,
-  createUserTokenStore,
-} from "@/chat/capabilities/factory";
+import { createSkillCapabilityRuntime } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcBridgeCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
@@ -506,7 +503,6 @@ export async function generateAssistantReply(
     const capabilityRuntime = createSkillCapabilityRuntime({
       requesterId: context.requester?.userId,
     });
-    const userTokenStore = createUserTokenStore();
     const commandProxies = getPluginCommandProxies();
     sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
@@ -514,6 +510,36 @@ export async function generateAssistantReply(
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
       commandProxies,
+      activateCommandProxy: async ({ provider, command }) => {
+        try {
+          await capabilityRuntime.enableCredentialsForTurn({
+            provider,
+            reason: `command-proxy:${command}`,
+          });
+        } catch (error) {
+          if (error instanceof CredentialUnavailableError) {
+            return {
+              status: "auth_required",
+              provider,
+              message: error.message,
+            };
+          }
+          return {
+            status: "error",
+            provider,
+            message: error instanceof Error ? error.message : String(error),
+          };
+        }
+        const env = capabilityRuntime.getTurnEnv();
+        const headerTransforms = capabilityRuntime.getTurnHeaderTransforms();
+
+        return {
+          status: "ok",
+          provider,
+          ...(env ? { env } : {}),
+          ...(headerTransforms ? { headerTransforms } : {}),
+        };
+      },
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =
@@ -698,7 +724,6 @@ export async function generateAssistantReply(
         channelConfiguration: context.channelConfiguration,
         currentPendingAuth: context.pendingAuth,
         onPendingAuth: context.onAuthPending,
-        userTokenStore,
       },
       () => agent?.abort(),
     );
@@ -724,36 +749,6 @@ export async function generateAssistantReply(
     const syncResumeState = () => {
       activePluginProvidersForResume = getResumePluginProviders();
     };
-    const enableProviderCredentials = async (input: {
-      provider?: string;
-      reason: string;
-    }): Promise<void> => {
-      if (!input.provider) {
-        return;
-      }
-      activatePluginProviderForTurn(input.provider);
-      syncResumeState();
-
-      try {
-        await capabilityRuntime.enableCredentialsForTurn({
-          provider: input.provider,
-          reason: input.reason,
-        });
-      } catch (error) {
-        if (
-          error instanceof CredentialUnavailableError &&
-          context.requester?.userId
-        ) {
-          await pluginAuth.handleCredentialUnavailable({
-            provider: input.provider,
-            error,
-          });
-        }
-        throw error;
-      }
-      syncResumeState();
-    };
-
     setTags({
       conversationId: spanContext.conversationId,
       slackThreadId: context.correlation?.threadId,
@@ -804,10 +799,6 @@ export async function generateAssistantReply(
             // aborted turn park cleanly.
             return undefined;
           }
-          await enableProviderCredentials({
-            provider: effective.pluginProvider,
-            reason: `skill:${effective.name}:turn:load`,
-          });
           if (!effective.pluginProvider) {
             return undefined;
           }
@@ -865,10 +856,6 @@ export async function generateAssistantReply(
         timeoutResumeMessages = existingCheckpoint?.piMessages ?? [];
         throw mcpAuth.getPendingPause()!;
       }
-      await enableProviderCredentials({
-        provider,
-        reason: `plugin:${provider}:turn:resume`,
-      });
     }
     syncResumeState();
 
@@ -935,7 +922,6 @@ export async function generateAssistantReply(
       spanContext,
       context.onStatus,
       sandboxExecutor,
-      capabilityRuntime,
       pluginAuth,
       {
         onToolCall,
@@ -951,7 +937,6 @@ export async function generateAssistantReply(
       spanContext,
       context.onStatus,
       sandboxExecutor,
-      capabilityRuntime,
       pluginAuth,
       {
         onToolCall,

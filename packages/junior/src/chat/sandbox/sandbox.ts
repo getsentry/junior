@@ -17,6 +17,10 @@ import {
 } from "@/chat/sandbox/skill-sync";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { PluginCommandProxy } from "@/chat/plugins/types";
+import type {
+  CommandProxyActivationInput,
+  CommandProxyActivationResult,
+} from "@/chat/sandbox/command-proxy-protocol";
 import type { SkillMetadata } from "@/chat/skills";
 import { editFile } from "@/chat/tools/sandbox/edit-file";
 import { findFiles } from "@/chat/tools/sandbox/find-files";
@@ -77,37 +81,6 @@ const SANDBOX_TOOL_NAMES = new Set([
   "writeFile",
 ]);
 
-function parseHeaderTransforms(
-  raw: unknown,
-): Array<{ domain: string; headers: Record<string, string> }> | undefined {
-  if (!Array.isArray(raw)) {
-    return undefined;
-  }
-
-  return raw
-    .filter((value): value is Record<string, unknown> =>
-      Boolean(value && typeof value === "object"),
-    )
-    .map((transform) => ({
-      domain: String(transform.domain ?? "").trim(),
-      headers:
-        transform.headers &&
-        typeof transform.headers === "object" &&
-        !Array.isArray(transform.headers)
-          ? Object.fromEntries(
-              Object.entries(transform.headers as Record<string, unknown>)
-                .filter(([, value]) => typeof value === "string")
-                .map(([key, value]) => [key, value as string]),
-            )
-          : {},
-    }))
-    .filter(
-      (transform) =>
-        transform.domain.length > 0 &&
-        Object.keys(transform.headers).length > 0,
-    );
-}
-
 function parseEnv(raw: unknown): Record<string, string> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return undefined;
@@ -140,6 +113,9 @@ export function createSandboxExecutor(options?: {
   traceContext?: LogContext;
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   commandProxies?: PluginCommandProxy[];
+  activateCommandProxy?: (
+    input: CommandProxyActivationInput,
+  ) => Promise<CommandProxyActivationResult>;
   /**
    * Host-handled bridge for explicit pseudo-commands such as jr-rpc.
    * This must not spawn a host shell. Ordinary shell commands execute inside Vercel Sandbox.
@@ -158,6 +134,7 @@ export function createSandboxExecutor(options?: {
     traceContext,
     onSandboxAcquired: options?.onSandboxAcquired,
     commandProxies: options?.commandProxies,
+    activateCommandProxy: options?.activateCommandProxy,
   });
 
   const withSandboxSpan = <T>(
@@ -190,7 +167,6 @@ export function createSandboxExecutor(options?: {
     rawInput: Record<string, unknown>,
     command: string,
   ): Promise<SandboxExecutionEnvelope<T>> => {
-    const headerTransforms = parseHeaderTransforms(rawInput.headerTransforms);
     const env = parseEnv(rawInput.env);
     const timeoutMs = positiveInteger(rawInput.timeoutMs);
     logSandboxBootRequest("tool.bash", {
@@ -207,7 +183,6 @@ export function createSandboxExecutor(options?: {
         try {
           const response = await executeBash({
             command,
-            ...(headerTransforms ? { headerTransforms } : {}),
             ...(env ? { env } : {}),
             ...(timeoutMs ? { timeoutMs } : {}),
           });
@@ -250,6 +225,19 @@ export function createSandboxExecutor(options?: {
         stderr: result.stderr,
         stdout_truncated: result.stdoutTruncated,
         stderr_truncated: result.stderrTruncated,
+        ...(result.commandProxyProviders &&
+        result.commandProxyProviders.length > 0
+          ? {
+              command_proxy_providers: result.commandProxyProviders,
+            }
+          : {}),
+        ...(result.commandProxyAuthRequiredProviders &&
+        result.commandProxyAuthRequiredProviders.length > 0
+          ? {
+              command_proxy_auth_required_providers:
+                result.commandProxyAuthRequiredProviders,
+            }
+          : {}),
       } as T,
     };
   };

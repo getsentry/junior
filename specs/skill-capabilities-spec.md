@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-02-26
-- Last Edited: 2026-05-08
+- Last Edited: 2026-05-12
 
 ## Changelog
 
@@ -13,6 +13,7 @@
 - 2026-04-17: Removed skill-level capability declarations and explicit model-facing auth commands in favor of plugin-owned permission manifests plus runtime-owned implicit auth.
 - 2026-04-26: Added the plugin-owned runtime setup boundary for packages, MCP endpoints, OAuth, and credentials.
 - 2026-05-08: Added plugin-owned `command-env` as a non-secret CLI compatibility surface.
+- 2026-05-12: Made command proxy wrappers the credential activation trigger instead of pre-enabling proxy credentials before sandbox bash.
 
 ## Status
 
@@ -32,7 +33,7 @@ Define how Junior maps active plugin providers to host-managed credentials witho
 
 1. Plugins own provider permissions in `plugin.yaml`.
 2. Skills do not declare capabilities or config keys.
-3. A plugin provider becomes active when runtime/plugin-owned surfaces are used, including `loadSkill`, MCP activation, or a matching command proxy.
+3. A plugin provider becomes active when runtime/plugin-owned surfaces are used, including `loadSkill` for MCP/catalog activation, MCP auth activation, or a matching command proxy. `loadSkill` alone does not issue credentials.
 4. The runtime issues provider leases by active provider name and injects credentials for the current turn only.
 5. If auth is missing or stale, the runtime starts a private OAuth flow and resumes the paused turn after authorization.
 6. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, command env, or MCP servers.
@@ -73,18 +74,18 @@ Rules:
 ### Lease issuance
 
 - Resolve credentials from the active plugin provider, not from active skill identity.
-- For sandbox bash commands, prepare providers that declare `credentials.command-proxies` before execution. Generated command wrappers, not host-side shell string matching, are the runtime signal that a provider CLI was actually invoked.
+- For sandbox bash commands, generated command wrappers request host activation when the wrapped executable is invoked. The host must not pre-enable all command-proxy providers before arbitrary bash, and must not infer provider usage from shell string matching.
 - Require requester context before issuing provider credentials.
 - Return short-lived leases only.
 - Keep lease reuse in memory only, keyed by provider for the active turn.
 
 ### Injection behavior
 
-- Enablement happens before sandbox bash command execution, not at skill-load time.
+- Enablement happens when a provider runtime surface is used, not at skill-load time.
 - Delivery uses sandbox header transforms for matching domains.
 - Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
 - Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys or deployment defaults, but never real secrets.
-- Plugin manifests may define `credentials.command-proxies` for executable names that require host egress activation. The generated wrappers receive only non-secret provider-state flags and placeholder env values; real token values and credential-minting capabilities stay in host-managed network-policy transforms.
+- Plugin manifests may define `credentials.command-proxies` for executable names that require host egress activation. The generated wrappers emit a structured activation request for their declaring provider and wait for a host acknowledgement. The acknowledgement may contain only non-secret placeholder env values; real token values and credential-minting capabilities stay in host-managed network-policy transforms.
 - Do not inject long-lived secrets into sandbox files.
 
 ### Runtime setup boundary

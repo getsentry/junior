@@ -22,6 +22,7 @@ export function createBashTool() {
       },
       { additionalProperties: false },
     ),
+    executionMode: "sequential",
     execute: async () => {
       throw new Error("bash can only run when sandbox execution is enabled.");
     },

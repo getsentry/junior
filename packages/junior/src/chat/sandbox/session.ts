@@ -1,3 +1,4 @@
+import { Writable } from "node:stream";
 import { Sandbox } from "@vercel/sandbox";
 import {
   logWarn,
@@ -21,10 +22,16 @@ import {
   type RuntimeDependencySnapshot,
 } from "@/chat/sandbox/runtime-dependency-snapshots";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
-import type { SandboxCommandResult } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxFileSystem } from "@/chat/tools/sandbox/file-utils";
 import type { PluginCommandProxy } from "@/chat/plugins/types";
+import {
+  COMMAND_PROXY_ACTIVATE_PREFIX,
+  COMMAND_PROXY_ACK_DIR,
+  commandProxyAckPath,
+  type CommandProxyActivationInput,
+  type CommandProxyActivationResult,
+} from "@/chat/sandbox/command-proxy-protocol";
 
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const SANDBOX_RUNTIME = "node22";
@@ -42,15 +49,9 @@ interface NetworkPolicyAllowEntry {
   transform?: Array<{ headers: Record<string, string> }>;
 }
 
-type SandboxHeaderTransform = {
-  domain: string;
-  headers: Record<string, string>;
-};
-
 interface SandboxToolExecutors {
   bash: (input: {
     command: string;
-    headerTransforms?: SandboxHeaderTransform[];
     env?: Record<string, string>;
     timeoutMs?: number;
   }) => Promise<{
@@ -60,6 +61,8 @@ interface SandboxToolExecutors {
     stdoutTruncated: boolean;
     stderrTruncated: boolean;
     timedOut?: boolean;
+    commandProxyProviders?: string[];
+    commandProxyAuthRequiredProviders?: string[];
   }>;
   readFile: (input: { path: string }) => Promise<{ content: string }>;
   writeFile: (input: {
@@ -97,21 +100,31 @@ function mergeNetworkPolicyWithHeaderTransforms(
       : {};
 
   const existingAllowRaw = basePolicy.allow;
-  const existingAllow: Record<string, NetworkPolicyAllowEntry[]> =
+  let existingAllow: Record<string, NetworkPolicyAllowEntry[]>;
+  if (networkPolicy === "allow-all") {
+    existingAllow = { "*": [] };
+  } else if (Array.isArray(existingAllowRaw)) {
+    existingAllow = Object.fromEntries(
+      existingAllowRaw
+        .filter((domain): domain is string => typeof domain === "string")
+        .map((domain) => [domain, []]),
+    );
+  } else if (
     existingAllowRaw &&
     typeof existingAllowRaw === "object" &&
     !Array.isArray(existingAllowRaw)
-      ? Object.fromEntries(
-          Object.entries(existingAllowRaw as Record<string, unknown>).map(
-            ([domain, rules]) => [
-              domain,
-              Array.isArray(rules)
-                ? ([...rules] as NetworkPolicyAllowEntry[])
-                : [],
-            ],
-          ),
-        )
-      : { "*": [] };
+  ) {
+    existingAllow = Object.fromEntries(
+      Object.entries(existingAllowRaw as Record<string, unknown>).map(
+        ([domain, rules]) => [
+          domain,
+          Array.isArray(rules) ? ([...rules] as NetworkPolicyAllowEntry[]) : [],
+        ],
+      ),
+    );
+  } else {
+    existingAllow = {};
+  }
 
   for (const transform of headerTransforms) {
     const currentRules = existingAllow[transform.domain] ?? [];
@@ -141,6 +154,121 @@ function truncateOutput(
   };
 }
 
+interface CommandProxyActivationRequest {
+  id: string;
+  provider: string;
+  command: string;
+}
+
+interface CommandProxyRunState {
+  providers: Set<string>;
+  authRequiredProviders: Set<string>;
+}
+
+class CommandOutputCapture extends Writable {
+  private buffered = "";
+  private readonly chunks: string[] = [];
+
+  constructor(private readonly onLine: (line: string) => Promise<boolean>) {
+    super();
+  }
+
+  get output(): string {
+    return this.chunks.join("");
+  }
+
+  override _write(
+    chunk: Buffer | string,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ): void {
+    const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
+    void this.writeText(text).then(() => callback(), callback);
+  }
+
+  override _final(callback: (error?: Error | null) => void): void {
+    void this.flushBuffered().then(() => callback(), callback);
+  }
+
+  private async writeText(text: string): Promise<void> {
+    this.buffered += text;
+    while (true) {
+      const newlineIndex = this.buffered.indexOf("\n");
+      if (newlineIndex < 0) {
+        return;
+      }
+      const line = this.buffered.slice(0, newlineIndex + 1);
+      this.buffered = this.buffered.slice(newlineIndex + 1);
+      await this.handleLine(line);
+    }
+  }
+
+  private async flushBuffered(): Promise<void> {
+    if (!this.buffered) {
+      return;
+    }
+    const line = this.buffered;
+    this.buffered = "";
+    await this.handleLine(line);
+  }
+
+  private async handleLine(lineWithEnding: string): Promise<void> {
+    const line = lineWithEnding.replace(/\r?\n$/, "");
+    if (await this.onLine(line)) {
+      return;
+    }
+    this.chunks.push(lineWithEnding);
+  }
+}
+
+function parseCommandProxyActivationLine(
+  line: string,
+): CommandProxyActivationRequest | undefined {
+  if (!line.startsWith(COMMAND_PROXY_ACTIVATE_PREFIX)) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line.slice(COMMAND_PROXY_ACTIVATE_PREFIX.length));
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return undefined;
+  }
+
+  const request = parsed as {
+    id?: unknown;
+    provider?: unknown;
+    command?: unknown;
+  };
+  if (
+    typeof request.id !== "string" ||
+    !/^[A-Za-z0-9_-]{8,80}$/.test(request.id) ||
+    typeof request.provider !== "string" ||
+    typeof request.command !== "string"
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: request.id,
+    provider: request.provider,
+    command: request.command,
+  };
+}
+
+function isDeclaredCommandProxy(
+  request: CommandProxyActivationRequest,
+  commandProxies: PluginCommandProxy[],
+): boolean {
+  return commandProxies.some(
+    (proxy) =>
+      proxy.provider === request.provider && proxy.command === request.command,
+  );
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -162,6 +290,9 @@ export function createSandboxSessionManager(options?: {
   timeoutMs?: number;
   traceContext?: LogContext;
   commandProxies?: PluginCommandProxy[];
+  activateCommandProxy?: (
+    input: CommandProxyActivationInput,
+  ) => Promise<CommandProxyActivationResult>;
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
     sandboxDependencyProfileHash?: string;
@@ -529,70 +660,199 @@ export function createSandboxSessionManager(options?: {
       : DEFAULT_MAX_OUTPUT_LENGTH;
   };
 
-  const readCommandOutput = async (
-    commandResult: SandboxCommandResult,
-  ): Promise<{
+  const formatCommandOutput = (input: {
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+  }): {
     stdout: string;
     stderr: string;
     exitCode: number;
     stdoutTruncated: boolean;
     stderrTruncated: boolean;
-  }> => {
+  } => {
     const boundedOutputLength = getMaxOutputLength();
-    const stdoutRaw = await commandResult.stdout();
-    const stderrRaw = await commandResult.stderr();
-    const stdout = truncateOutput(stdoutRaw, boundedOutputLength);
-    const stderr = truncateOutput(stderrRaw, boundedOutputLength);
+    const stdout = truncateOutput(input.stdout, boundedOutputLength);
+    const stderr = truncateOutput(input.stderr, boundedOutputLength);
     return {
       stdout: stdout.value,
       stderr: stderr.value,
-      exitCode: commandResult.exitCode,
+      exitCode: input.exitCode,
       stdoutTruncated: stdout.truncated,
       stderrTruncated: stderr.truncated,
     };
   };
 
-  const withTemporaryHeaderTransforms = async <T>(
+  const withCommandProxyActivation = async <T extends { exitCode: number }>(
     sandboxInstance: Sandbox,
-    headerTransforms:
-      | Array<{ domain: string; headers: Record<string, string> }>
-      | undefined,
-    callback: () => Promise<T>,
-  ): Promise<T> => {
-    if (!headerTransforms || headerTransforms.length === 0) {
-      return await callback();
+    callback: (streams: { stdout: Writable; stderr: Writable }) => Promise<T>,
+  ): Promise<
+    T & {
+      stdout: string;
+      stderr: string;
+      stdoutTruncated: boolean;
+      stderrTruncated: boolean;
+      commandProxyProviders?: string[];
+      commandProxyAuthRequiredProviders?: string[];
     }
-
+  > => {
     const restoreNetworkPolicy = sandboxInstance.networkPolicy ?? "allow-all";
-    const policy = mergeNetworkPolicyWithHeaderTransforms(
-      restoreNetworkPolicy,
-      headerTransforms,
-    );
-    await sandboxInstance.updateNetworkPolicy(policy);
+    const state: CommandProxyRunState = {
+      providers: new Set<string>(),
+      authRequiredProviders: new Set<string>(),
+    };
+    let policyChanged = false;
 
-    let callbackError: unknown;
+    const writeAck = async (
+      request: CommandProxyActivationRequest,
+      ack: unknown,
+    ): Promise<void> => {
+      await sandboxInstance.fs.mkdir(COMMAND_PROXY_ACK_DIR, {
+        recursive: true,
+      });
+      await sandboxInstance.fs.writeFile(
+        commandProxyAckPath(request.id),
+        JSON.stringify(ack),
+        "utf8",
+      );
+    };
+
+    const handleActivation = async (
+      request: CommandProxyActivationRequest,
+    ): Promise<void> => {
+      if (!isDeclaredCommandProxy(request, commandProxies)) {
+        await writeAck(request, {
+          status: "error",
+          provider: request.provider,
+          message: `Unknown Junior command proxy: ${request.command}`,
+        });
+        return;
+      }
+
+      if (!options?.activateCommandProxy) {
+        await writeAck(request, {
+          status: "error",
+          provider: request.provider,
+          message: `No Junior command proxy activator registered for provider ${request.provider}`,
+        });
+        return;
+      }
+
+      try {
+        const activation = await options.activateCommandProxy({
+          provider: request.provider,
+          command: request.command,
+        });
+
+        if (activation.status === "ok") {
+          state.providers.add(request.provider);
+          if (
+            activation.headerTransforms &&
+            activation.headerTransforms.length > 0
+          ) {
+            const policy = mergeNetworkPolicyWithHeaderTransforms(
+              restoreNetworkPolicy,
+              activation.headerTransforms,
+            );
+            await sandboxInstance.updateNetworkPolicy(policy);
+            policyChanged = true;
+          }
+          await writeAck(request, {
+            status: "ok",
+            provider: request.provider,
+            ...(activation.env ? { env: activation.env } : {}),
+          });
+          return;
+        }
+
+        if (activation.status === "auth_required") {
+          state.authRequiredProviders.add(request.provider);
+        }
+        await writeAck(request, {
+          status: activation.status,
+          provider: request.provider,
+          message: activation.message,
+        });
+      } catch (error) {
+        await writeAck(request, {
+          status: "error",
+          provider: request.provider,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+
+    const onLine = async (line: string): Promise<boolean> => {
+      if (!line.startsWith(COMMAND_PROXY_ACTIVATE_PREFIX)) {
+        return false;
+      }
+      const request = parseCommandProxyActivationLine(line);
+      if (request) {
+        await handleActivation(request);
+      }
+      return true;
+    };
+
+    const stdout = new CommandOutputCapture(onLine);
+    const stderr = new CommandOutputCapture(onLine);
+    const endStream = (stream: Writable): Promise<void> =>
+      new Promise((resolve, reject) => {
+        stream.once("error", reject);
+        stream.end(() => {
+          stream.off("error", reject);
+          resolve();
+        });
+      });
+
+    let streamError: unknown;
     let restoreError: unknown;
     let result: T | undefined;
 
     try {
-      result = await callback();
-    } catch (error) {
-      callbackError = error;
-      throw error;
+      result = await callback({ stdout, stderr });
     } finally {
       try {
-        await sandboxInstance.updateNetworkPolicy(restoreNetworkPolicy);
+        await Promise.all([endStream(stdout), endStream(stderr)]);
       } catch (error) {
-        restoreError = error;
-        await invalidateSandboxInstance(sandboxInstance, error);
+        streamError = error;
+      }
+      if (policyChanged) {
+        try {
+          await sandboxInstance.updateNetworkPolicy(restoreNetworkPolicy);
+        } catch (error) {
+          restoreError = error;
+          await invalidateSandboxInstance(sandboxInstance, error);
+        }
       }
     }
 
-    if (restoreError && !callbackError) {
+    if (streamError) {
+      throw streamError;
+    }
+    if (restoreError) {
       throw restoreError;
     }
 
-    return result as T;
+    const output = formatCommandOutput({
+      stdout: stdout.output,
+      stderr: stderr.output,
+      exitCode: result!.exitCode,
+    });
+    const providers = [...state.providers].sort((left, right) =>
+      left.localeCompare(right),
+    );
+    const authRequiredProviders = [...state.authRequiredProviders].sort(
+      (left, right) => left.localeCompare(right),
+    );
+
+    return {
+      ...result!,
+      ...output,
+      ...(providers.length > 0 ? { commandProxyProviders: providers } : {}),
+      ...(authRequiredProviders.length > 0
+        ? { commandProxyAuthRequiredProviders: authRequiredProviders }
+        : {}),
+    };
   };
 
   const extendKeepAlive = async (activeSandbox: Sandbox): Promise<void> => {
@@ -638,26 +898,26 @@ export function createSandboxSessionManager(options?: {
               controller.abort();
             }, input.timeoutMs)
           : undefined;
-        return await withTemporaryHeaderTransforms(
+        return await withCommandProxyActivation(
           sandboxInstance,
-          input.headerTransforms,
-          async () => {
+          async (streams) => {
             try {
               const commandResult = await sandboxInstance.runCommand({
                 cmd: "bash",
                 args: ["-c", script],
                 cwd: SANDBOX_WORKSPACE_ROOT,
+                stdout: streams.stdout,
+                stderr: streams.stderr,
                 ...(controller ? { signal: controller.signal } : {}),
               });
-              return await readCommandOutput(commandResult);
+              return { exitCode: commandResult.exitCode };
             } catch (error) {
               if (timedOut) {
+                streams.stderr.write(
+                  `Command timed out after ${input.timeoutMs}ms`,
+                );
                 return {
-                  stdout: "",
-                  stderr: `Command timed out after ${input.timeoutMs}ms`,
                   exitCode: 124,
-                  stdoutTruncated: false,
-                  stderrTruncated: false,
                   timedOut: true,
                 };
               }

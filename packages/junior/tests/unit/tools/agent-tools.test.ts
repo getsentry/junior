@@ -4,30 +4,22 @@ import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { createAgentTools } from "@/chat/tools/agent-tools";
 import type { Skill } from "@/chat/skills";
 
-const {
-  getPluginCommandProxies,
-  handleToolExecutionError,
-  setSpanAttributesMock,
-  withSpanMock,
-} = vi.hoisted(() => ({
-  getPluginCommandProxies: vi.fn(() => [
-    { command: "gh", provider: "github" },
-    { command: "git", provider: "github" },
-  ]),
-  handleToolExecutionError: vi.fn((error: unknown) => {
-    throw error;
-  }),
-  setSpanAttributesMock: vi.fn(),
-  withSpanMock: vi.fn(
-    async (
-      _name: string,
-      _op: string,
-      _context: Record<string, unknown>,
-      callback: () => Promise<unknown>,
-      _attributes?: Record<string, unknown>,
-    ) => callback(),
-  ),
-}));
+const { handleToolExecutionError, setSpanAttributesMock, withSpanMock } =
+  vi.hoisted(() => ({
+    handleToolExecutionError: vi.fn((error: unknown) => {
+      throw error;
+    }),
+    setSpanAttributesMock: vi.fn(),
+    withSpanMock: vi.fn(
+      async (
+        _name: string,
+        _op: string,
+        _context: Record<string, unknown>,
+        callback: () => Promise<unknown>,
+        _attributes?: Record<string, unknown>,
+      ) => callback(),
+    ),
+  }));
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/logging")>()),
@@ -37,10 +29,6 @@ vi.mock("@/chat/logging", async (importOriginal) => ({
 
 vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
   handleToolExecutionError,
-}));
-
-vi.mock("@/chat/plugins/registry", () => ({
-  getPluginCommandProxies,
 }));
 
 const githubSkill: Skill = {
@@ -54,7 +42,6 @@ const githubSkill: Skill = {
 
 describe("createAgentTools", () => {
   beforeEach(() => {
-    getPluginCommandProxies.mockClear();
     handleToolExecutionError.mockClear();
     setSpanAttributesMock.mockClear();
     withSpanMock.mockClear();
@@ -89,27 +76,8 @@ describe("createAgentTools", () => {
     expect(onStatus).toHaveBeenCalledWith({ text: "Reviewing results" });
   });
 
-  it("injects already-enabled provider credentials into bash", async () => {
+  it("does not infer command proxy providers from sandbox bash text", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
-    const enableCredentialsForTurn = vi.fn(async () => {});
-    const enableCommandProxyCredentialsForTurn = vi.fn(async () => ({
-      activeProviders: ["github"],
-      authRequiredProviders: [],
-    }));
-    const capabilityRuntime = {
-      enableCredentialsForTurn,
-      enableCommandProxyCredentialsForTurn,
-      getTurnHeaderTransforms: () => [
-        {
-          domain: "api.github.com",
-          headers: { Authorization: "Bearer token-1" },
-        },
-      ],
-      getTurnEnv: () => ({
-        GITHUB_TOKEN: "ghp_host_managed_credential",
-      }),
-      getEnabledProviders: () => ["github"],
-    } as any;
     const sandboxExecutor = {
       canExecute: (toolName: string) => toolName === "bash",
       execute: vi.fn(async ({ input }) => ({
@@ -141,7 +109,6 @@ describe("createAgentTools", () => {
       {},
       undefined,
       sandboxExecutor,
-      capabilityRuntime,
       undefined,
       { onPluginProviderActivated },
     );
@@ -150,26 +117,11 @@ describe("createAgentTools", () => {
       command: "gh issue view 123 --repo getsentry/junior",
     });
 
-    expect(enableCredentialsForTurn).not.toHaveBeenCalled();
-    expect(enableCommandProxyCredentialsForTurn).toHaveBeenCalledWith({
-      providers: ["github"],
-      reason: "sandbox:command-proxy",
-    });
-    expect(onPluginProviderActivated).toHaveBeenCalledWith("github");
+    expect(onPluginProviderActivated).not.toHaveBeenCalled();
     expect(sandboxExecutor.execute).toHaveBeenCalledWith({
       toolName: "bash",
       input: {
         command: "gh issue view 123 --repo getsentry/junior",
-        env: {
-          GITHUB_TOKEN: "ghp_host_managed_credential",
-          JUNIOR_COMMAND_PROXY_ACTIVE_PROVIDERS: "github",
-        },
-        headerTransforms: [
-          {
-            domain: "api.github.com",
-            headers: { Authorization: "Bearer token-1" },
-          },
-        ],
       },
     });
     expect(result.details).toMatchObject({
@@ -178,15 +130,11 @@ describe("createAgentTools", () => {
     });
   });
 
-  it("prepares command-proxy credentials for sandbox bash commands", async () => {
+  it("reports trusted command proxy providers after sandbox execution", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
-    const capabilityRuntime = {
-      enableCommandProxyCredentialsForTurn: vi.fn(async () => ({
-        activeProviders: ["github"],
-        authRequiredProviders: [],
-      })),
-      getTurnHeaderTransforms: vi.fn(() => undefined),
-      getTurnEnv: vi.fn(() => undefined),
+    const onPluginProviderActivated = vi.fn();
+    const pluginAuthOrchestration = {
+      handleCommandFailure: vi.fn(async () => undefined),
     } as any;
     const sandboxExecutor = {
       canExecute: (toolName: string) => toolName === "bash",
@@ -202,6 +150,7 @@ describe("createAgentTools", () => {
           stderr: "",
           stdout_truncated: false,
           stderr_truncated: false,
+          command_proxy_providers: ["github"],
         },
       })),
     } as any;
@@ -218,47 +167,24 @@ describe("createAgentTools", () => {
       {},
       undefined,
       sandboxExecutor,
-      capabilityRuntime,
+      pluginAuthOrchestration,
+      { onPluginProviderActivated },
     );
 
     await bashTool!.execute("tool-1", { command: "pwd" });
 
-    expect(
-      capabilityRuntime.enableCommandProxyCredentialsForTurn,
-    ).toHaveBeenCalledWith({
-      providers: ["github"],
-      reason: "sandbox:command-proxy",
-    });
-    expect(sandboxExecutor.execute).toHaveBeenCalledWith({
-      toolName: "bash",
-      input: {
-        command: "pwd",
-        env: {
-          JUNIOR_COMMAND_PROXY_ACTIVE_PROVIDERS: "github",
-        },
-      },
-    });
+    expect(onPluginProviderActivated).toHaveBeenCalledWith("github");
+    expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command_proxy_providers: ["github"],
+      }),
+    );
   });
 
   it("does not inject provider credentials into jr-rpc bridge commands", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
-    const enableCommandProxyCredentialsForTurn = vi.fn(async () => ({
-      activeProviders: ["github"],
-      authRequiredProviders: [],
-    }));
-    const capabilityRuntime = {
-      enableCredentialsForTurn: vi.fn(async () => {}),
-      enableCommandProxyCredentialsForTurn,
-      getTurnHeaderTransforms: vi.fn(() => [
-        {
-          domain: "api.github.com",
-          headers: { Authorization: "Bearer token-1" },
-        },
-      ]),
-      getTurnEnv: vi.fn(() => ({
-        GITHUB_TOKEN: "ghp_host_managed_credential",
-      })),
-      getEnabledProviders: () => ["github"],
+    const pluginAuthOrchestration = {
+      handleCommandFailure: vi.fn(async () => undefined),
     } as any;
     const sandboxExecutor = {
       canExecute: (toolName: string) => toolName === "bash",
@@ -290,55 +216,20 @@ describe("createAgentTools", () => {
       {},
       undefined,
       sandboxExecutor,
-      capabilityRuntime,
+      pluginAuthOrchestration,
     );
 
     await bashTool!.execute("tool-1", {
       command: "jr-rpc config get github.repo",
     });
 
-    expect(enableCommandProxyCredentialsForTurn).not.toHaveBeenCalled();
-    expect(capabilityRuntime.getTurnHeaderTransforms).not.toHaveBeenCalled();
-    expect(capabilityRuntime.getTurnEnv).not.toHaveBeenCalled();
+    expect(pluginAuthOrchestration.handleCommandFailure).not.toHaveBeenCalled();
     expect(sandboxExecutor.execute).toHaveBeenCalledWith({
       toolName: "bash",
       input: {
         command: "jr-rpc config get github.repo",
       },
     });
-  });
-
-  it("does not enable command-proxy credentials for non-sandbox bash tools", async () => {
-    const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
-    const capabilityRuntime = {
-      enableCredentialsForTurn: vi.fn(async () => {}),
-      enableCommandProxyCredentialsForTurn: vi.fn(async () => ({
-        activeProviders: ["github"],
-        authRequiredProviders: [],
-      })),
-      getTurnHeaderTransforms: vi.fn(() => undefined),
-      getTurnEnv: vi.fn(() => undefined),
-    } as any;
-    const [bashTool] = createAgentTools(
-      {
-        bash: {
-          description: "bash",
-          inputSchema: {} as any,
-          execute: async () => ({ ok: true }),
-        },
-      },
-      sandbox,
-      {},
-      undefined,
-      undefined,
-      capabilityRuntime,
-    );
-
-    await bashTool!.execute("tool-1", { command: "gh issue view 123" });
-
-    expect(
-      capabilityRuntime.enableCommandProxyCredentialsForTurn,
-    ).not.toHaveBeenCalled();
   });
 
   it("reports tool call parameters to the caller", async () => {
@@ -354,7 +245,6 @@ describe("createAgentTools", () => {
       },
       sandbox,
       {},
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -477,15 +367,6 @@ describe("createAgentTools", () => {
 
   it("rethrows plugin auth pauses without reporting a tool failure", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
-    const capabilityRuntime = {
-      enableCredentialsForTurn: vi.fn(async () => undefined),
-      enableCommandProxyCredentialsForTurn: vi.fn(async () => ({
-        activeProviders: [],
-        authRequiredProviders: [],
-      })),
-      getTurnHeaderTransforms: () => undefined,
-      getTurnEnv: () => undefined,
-    } as any;
     const pluginAuthOrchestration = {
       handleCommandFailure: vi.fn(async () => {
         throw new PluginAuthorizationPauseError("github", "link_sent");
@@ -521,7 +402,6 @@ describe("createAgentTools", () => {
       {},
       undefined,
       sandboxExecutor,
-      capabilityRuntime,
       pluginAuthOrchestration,
     );
 
