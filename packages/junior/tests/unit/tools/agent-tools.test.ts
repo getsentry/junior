@@ -240,7 +240,7 @@ describe("createAgentTools", () => {
     });
   });
 
-  it("does not inject provider credentials into jr-rpc host commands", async () => {
+  it("does not inject provider credentials into jr-rpc bridge commands", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
     const enableCommandProxyCredentialsForTurn = vi.fn(async () => ({
       activeProviders: ["github"],

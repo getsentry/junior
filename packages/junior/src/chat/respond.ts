@@ -20,7 +20,7 @@ import {
   createSkillCapabilityRuntime,
   createUserTokenStore,
 } from "@/chat/capabilities/factory";
-import { maybeExecuteJrRpcHostCommand } from "@/chat/capabilities/jr-rpc-command";
+import { maybeExecuteJrRpcBridgeCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
@@ -520,8 +520,8 @@ export async function generateAssistantReply(
           sandbox.sandboxDependencyProfileHash;
         await context.onSandboxAcquired?.(sandbox);
       },
-      runHostBashCommand: async (command) => {
-        const result = await maybeExecuteJrRpcHostCommand(command, {
+      runPseudoCommand: async (command) => {
+        const result = await maybeExecuteJrRpcBridgeCommand(command, {
           activeSkill: skillSandbox.getActiveSkill(),
           channelConfiguration: context.channelConfiguration,
           requesterId: context.requester?.userId,

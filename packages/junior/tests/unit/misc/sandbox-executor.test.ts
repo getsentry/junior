@@ -534,10 +534,10 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("echo second");
   });
 
-  it("routes matching bash commands through the host command handler", async () => {
+  it("routes matching bash commands through the pseudo-command bridge", async () => {
     const sandbox = makeSandbox("sbx_custom");
     sandboxGetMock.mockResolvedValue(sandbox);
-    const runHostBashCommand = vi.fn(async (command: string) =>
+    const runPseudoCommand = vi.fn(async (command: string) =>
       command === "jr-rpc config get github.repo"
         ? {
             handled: true,
@@ -559,7 +559,7 @@ describe("createSandboxExecutor", () => {
 
     const executor = createSandboxExecutor({
       sandboxId: "sbx_custom",
-      runHostBashCommand,
+      runPseudoCommand,
     });
     executor.configureSkills([]);
 
@@ -570,7 +570,7 @@ describe("createSandboxExecutor", () => {
       },
     });
 
-    expect(runHostBashCommand).toHaveBeenCalledWith(
+    expect(runPseudoCommand).toHaveBeenCalledWith(
       "jr-rpc config get github.repo",
     );
     expect(sandbox.runCommand).not.toHaveBeenCalled();

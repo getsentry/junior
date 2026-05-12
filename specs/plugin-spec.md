@@ -560,20 +560,20 @@ All existing security invariants from `security-policy.md` are preserved:
 
 ## What stays core (not plugins)
 
-| Component                                               | Reason                                                              |
-| ------------------------------------------------------- | ------------------------------------------------------------------- |
-| Agent loop (`Agent` runtime + harness)                  | Core orchestration, not provider-specific                           |
-| Sandbox and container isolation                         | Security boundary, shared by all providers                          |
-| Sandbox command proxy wrapper infrastructure            | Generic sandbox command shims with host-owned credential activation |
-| `jr-rpc` command infrastructure                         | Host-only pseudo-command parser — reads config from registry        |
-| Slack tools (canvas, list, channel, message)            | Platform tools, not provider integrations                           |
-| Web tools (search, fetch)                               | General-purpose, not provider-specific                              |
-| Skill infrastructure (discovery, frontmatter, loading)  | Framework — plugins contribute skills                               |
-| `CredentialBroker` interface and `CredentialLease` type | Shared contract                                                     |
-| `ProviderCredentialRouter`                              | Generic router                                                      |
-| `SkillCapabilityRuntime`                                | Generic runtime                                                     |
-| OAuth callback route (`/api/oauth/callback/[provider]`) | Shared HTTP handler                                                 |
-| `TestCredentialBroker`                                  | Eval infrastructure, not a plugin                                   |
+| Component                                               | Reason                                                                |
+| ------------------------------------------------------- | --------------------------------------------------------------------- |
+| Agent loop (`Agent` runtime + harness)                  | Core orchestration, not provider-specific                             |
+| Sandbox and container isolation                         | Security boundary, shared by all providers                            |
+| Sandbox command proxy wrapper infrastructure            | Generic sandbox command shims with host-owned credential activation   |
+| `jr-rpc` command infrastructure                         | Host-handled standalone pseudo-command parser for config reads/writes |
+| Slack tools (canvas, list, channel, message)            | Platform tools, not provider integrations                             |
+| Web tools (search, fetch)                               | General-purpose, not provider-specific                                |
+| Skill infrastructure (discovery, frontmatter, loading)  | Framework — plugins contribute skills                                 |
+| `CredentialBroker` interface and `CredentialLease` type | Shared contract                                                       |
+| `ProviderCredentialRouter`                              | Generic router                                                        |
+| `SkillCapabilityRuntime`                                | Generic runtime                                                       |
+| OAuth callback route (`/api/oauth/callback/[provider]`) | Shared HTTP handler                                                   |
+| `TestCredentialBroker`                                  | Eval infrastructure, not a plugin                                     |
 
 ## Example: adding a new provider (Linear)
 

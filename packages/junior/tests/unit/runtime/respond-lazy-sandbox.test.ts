@@ -308,7 +308,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
 }));
 
 vi.mock("@/chat/capabilities/jr-rpc-command", () => ({
-  maybeExecuteJrRpcHostCommand: async () => ({ handled: false }),
+  maybeExecuteJrRpcBridgeCommand: async () => ({ handled: false }),
 }));
 
 vi.mock("@/chat/plugins/registry", () => ({

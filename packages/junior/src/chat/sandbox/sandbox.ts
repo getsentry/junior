@@ -36,7 +36,7 @@ export interface SandboxExecutionEnvelope<T = unknown> {
   result: T;
 }
 
-export interface HostBashCommandResult {
+export interface PseudoCommandResult {
   ok: boolean;
   command: string;
   cwd: string;
@@ -141,12 +141,12 @@ export function createSandboxExecutor(options?: {
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   commandProxies?: PluginCommandProxy[];
   /**
-   * Host-only command handler for explicit pseudo-commands such as jr-rpc.
-   * Ordinary shell commands still execute inside Vercel Sandbox.
+   * Host-handled bridge for explicit pseudo-commands such as jr-rpc.
+   * This must not spawn a host shell. Ordinary shell commands execute inside Vercel Sandbox.
    */
-  runHostBashCommand?: (
+  runPseudoCommand?: (
     command: string,
-  ) => Promise<{ handled: boolean; result?: HostBashCommandResult }>;
+  ) => Promise<{ handled: boolean; result?: PseudoCommandResult }>;
 }): SandboxExecutor {
   let availableSkills: SkillMetadata[] = [];
   let referenceFiles: string[] = [];
@@ -513,8 +513,8 @@ export function createSandboxExecutor(options?: {
       if (!bashCommand) {
         throw new Error("command is required");
       }
-      if (options?.runHostBashCommand) {
-        const custom = await options.runHostBashCommand(bashCommand);
+      if (options?.runPseudoCommand) {
+        const custom = await options.runPseudoCommand(bashCommand);
         if (custom.handled) {
           return { result: custom.result as T };
         }

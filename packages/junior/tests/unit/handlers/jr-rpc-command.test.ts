@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { maybeExecuteJrRpcHostCommand } from "@/chat/capabilities/jr-rpc-command";
+import { maybeExecuteJrRpcBridgeCommand } from "@/chat/capabilities/jr-rpc-command";
 import { createChannelConfigurationService } from "@/chat/configuration/service";
 import type { Skill } from "@/chat/skills";
 
@@ -25,7 +25,7 @@ function makeChannelConfiguration() {
 }
 
 function expectHandled(
-  result: Awaited<ReturnType<typeof maybeExecuteJrRpcHostCommand>>,
+  result: Awaited<ReturnType<typeof maybeExecuteJrRpcBridgeCommand>>,
 ) {
   expect(result.handled).toBe(true);
   if (!result.handled) {
@@ -34,20 +34,46 @@ function expectHandled(
   return result;
 }
 
-describe("jr-rpc host command", () => {
+describe("jr-rpc bridge command", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
   it("does not handle non jr-rpc commands", async () => {
-    const result = await maybeExecuteJrRpcHostCommand("echo hi", {
+    const result = await maybeExecuteJrRpcBridgeCommand("echo hi", {
       activeSkill,
     });
     expect(result).toEqual({ handled: false });
   });
 
+  it("rejects shell syntax instead of interpreting it", async () => {
+    const configuration = makeChannelConfiguration();
+    await configuration.set({
+      key: "github.repo",
+      value: "getsentry/junior",
+      updatedBy: "U123",
+      source: "test",
+    });
+
+    const result = await maybeExecuteJrRpcBridgeCommand(
+      "jr-rpc config get github.repo; echo virtual",
+      {
+        activeSkill,
+        channelConfiguration: configuration,
+        requesterId: "U123",
+      },
+    );
+
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(2);
+    expect(handled.result.stderr).toContain(
+      "jr-rpc commands must be standalone",
+    );
+    expect(handled.result.stdout).not.toContain("virtual");
+  });
+
   it("requires conversation context for config commands", async () => {
-    const result = await maybeExecuteJrRpcHostCommand(
+    const result = await maybeExecuteJrRpcBridgeCommand(
       "jr-rpc config get github.repo",
       {
         activeSkill,
@@ -66,7 +92,7 @@ describe("jr-rpc host command", () => {
     const configuration = makeChannelConfiguration();
     const onConfigurationValueChanged = vi.fn();
 
-    const setResult = await maybeExecuteJrRpcHostCommand(
+    const setResult = await maybeExecuteJrRpcBridgeCommand(
       "jr-rpc config set github.repo getsentry/junior",
       {
         activeSkill,
@@ -81,7 +107,7 @@ describe("jr-rpc host command", () => {
       "getsentry/junior",
     );
 
-    const getResult = await maybeExecuteJrRpcHostCommand(
+    const getResult = await maybeExecuteJrRpcBridgeCommand(
       "jr-rpc config get github.repo",
       {
         activeSkill,
@@ -95,6 +121,27 @@ describe("jr-rpc host command", () => {
       ok: true,
       key: "github.repo",
       value: "getsentry/junior",
+    });
+  });
+
+  it("sets quoted json configuration values", async () => {
+    const configuration = makeChannelConfiguration();
+
+    const result = await maybeExecuteJrRpcBridgeCommand(
+      'jr-rpc config set github.defaults \'{"repo":"getsentry/junior"}\' --json',
+      {
+        activeSkill,
+        channelConfiguration: configuration,
+        requesterId: "U123",
+      },
+    );
+
+    const handled = expectHandled(result);
+    expect(handled.result.exit_code).toBe(0);
+    expect(JSON.parse(handled.result.stdout)).toMatchObject({
+      ok: true,
+      key: "github.defaults",
+      value: { repo: "getsentry/junior" },
     });
   });
 
@@ -113,7 +160,7 @@ describe("jr-rpc host command", () => {
       source: "test",
     });
 
-    const result = await maybeExecuteJrRpcHostCommand(
+    const result = await maybeExecuteJrRpcBridgeCommand(
       "jr-rpc config list --prefix github.",
       {
         activeSkill,
@@ -145,7 +192,7 @@ describe("jr-rpc host command", () => {
       source: "test",
     });
 
-    const result = await maybeExecuteJrRpcHostCommand(
+    const result = await maybeExecuteJrRpcBridgeCommand(
       "jr-rpc config unset github.repo",
       {
         activeSkill,

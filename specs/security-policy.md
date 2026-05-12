@@ -58,7 +58,7 @@ This policy applies to:
 - When CLI tools require tool-native sandbox auth env vars (for example `SENTRY_AUTH_TOKEN`, Pup's `DD_API_KEY`, or Pup's `DD_APP_KEY`), set them to non-secret placeholders so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
 - Plugin-declared command env may include non-secret placeholders and default-backed deployment values needed by the command process. It must not read or expose secret deployment env vars.
 - Plugin-declared command proxies may receive non-secret provider-state flags in sandbox env. They must never receive provider credentials or credential-minting tokens.
-- Host pseudo-command handlers may handle explicit commands such as `jr-rpc` before sandbox bash starts. Ordinary shell commands execute inside the sandbox.
+- Host-handled pseudo-command bridges may handle standalone commands such as `jr-rpc ...` before sandbox bash starts. They must parse explicit argv shapes only, must not invoke a host shell or virtual shell interpreter, and must reject chained, piped, redirected, or expanded shell syntax. Ordinary shell commands execute inside the sandbox.
 - Never inject real provider secrets into sandbox env vars, files, or command arguments.
 
 ### GitHub baseline
