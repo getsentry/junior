@@ -14,7 +14,7 @@ import {
   createPluginBroker,
   getPluginProviders,
 } from "@/chat/plugins/registry";
-import type { PluginManifest } from "@/chat/plugins/types";
+import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const ENV_PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
@@ -47,6 +47,30 @@ function resolveTestApiHeaderTransforms(
   return apiDomains.map((domain) => ({ domain, headers }));
 }
 
+function createTestBroker(plugin: PluginDefinition): TestCredentialBroker {
+  const { apiHeaders, commandEnv, credentials, name } = plugin.manifest;
+  return new TestCredentialBroker({
+    provider: name,
+    ...(credentials
+      ? {
+          domains: credentials.apiDomains,
+          ...(credentials.apiHeaders
+            ? { apiHeaders: credentials.apiHeaders }
+            : {}),
+          envKey: credentials.authTokenEnv,
+          placeholder: resolveAuthTokenPlaceholder(credentials),
+        }
+      : {}),
+    ...(apiHeaders
+      ? {
+          headerTransforms: () =>
+            resolveTestApiHeaderTransforms(plugin.manifest),
+        }
+      : {}),
+    ...(commandEnv ? { env: commandEnv } : {}),
+  });
+}
+
 function createProviderCredentialRouter(
   userTokenStore: UserTokenStore,
 ): ProviderCredentialRouter {
@@ -55,46 +79,13 @@ function createProviderCredentialRouter(
 
   const brokersByProvider: Record<string, CredentialBroker> = {};
 
-  // Plugin providers
   for (const plugin of getPluginProviders()) {
-    const { apiHeaders, credentials, name } = plugin.manifest;
-    if (!credentials && !apiHeaders) {
+    const { name } = plugin.manifest;
+    if (!plugin.manifest.credentials && !plugin.manifest.apiHeaders) {
       continue;
     }
-    if (!credentials) {
-      brokersByProvider[name] = useTestBroker
-        ? new TestCredentialBroker({
-            provider: name,
-            headerTransforms: () =>
-              resolveTestApiHeaderTransforms(plugin.manifest),
-            ...(plugin.manifest.commandEnv
-              ? { env: plugin.manifest.commandEnv }
-              : {}),
-          })
-        : createPluginBroker(name, { userTokenStore });
-      continue;
-    }
-
-    const placeholder = resolveAuthTokenPlaceholder(credentials);
     brokersByProvider[name] = useTestBroker
-      ? new TestCredentialBroker({
-          provider: name,
-          domains: credentials.apiDomains,
-          ...(credentials.apiHeaders
-            ? { apiHeaders: credentials.apiHeaders }
-            : {}),
-          ...(apiHeaders
-            ? {
-                headerTransforms: () =>
-                  resolveTestApiHeaderTransforms(plugin.manifest),
-              }
-            : {}),
-          ...(plugin.manifest.commandEnv
-            ? { env: plugin.manifest.commandEnv }
-            : {}),
-          envKey: credentials.authTokenEnv,
-          placeholder,
-        })
+      ? createTestBroker(plugin)
       : createPluginBroker(name, { userTokenStore });
   }
 

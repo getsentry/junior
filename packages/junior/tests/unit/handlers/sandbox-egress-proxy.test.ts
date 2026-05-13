@@ -67,6 +67,71 @@ import {
   verifyVercelSandboxOidcToken,
 } from "@/handlers/sandbox-egress-proxy";
 
+const SANDBOX_ID = "junior-sbx";
+const REQUESTER_ID = "U123";
+
+async function authorizeSandboxEgress(
+  providers: string[] = ["sentry"],
+): Promise<void> {
+  await upsertSandboxEgressSession({
+    sandboxId: SANDBOX_ID,
+    requesterId: REQUESTER_ID,
+    providers,
+    ttlMs: 60_000,
+  });
+}
+
+function mockSentryLease(domain = "sentry.io"): void {
+  issueProviderCredentialLeaseMock.mockResolvedValue({
+    id: "lease-1",
+    provider: "sentry",
+    env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+    headerTransforms: [
+      {
+        domain,
+        headers: { Authorization: "Bearer sentry-token" },
+      },
+    ],
+    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+}
+
+function egressRequest(
+  input: {
+    host?: string;
+    path?: string;
+    scheme?: string;
+    port?: string;
+    headers?: Record<string, string>;
+  } = {},
+): Request {
+  return new Request(
+    `https://junior.example.com/api/internal/sandbox-egress/${SANDBOX_ID}${input.path ?? "/api/0/issues/"}`,
+    {
+      method: "GET",
+      headers: {
+        "vercel-forwarded-host": input.host ?? "sentry.io",
+        "vercel-sandbox-oidc-token": "signed-token",
+        ...(input.scheme ? { "vercel-forwarded-scheme": input.scheme } : {}),
+        ...(input.port ? { "vercel-forwarded-port": input.port } : {}),
+        ...(input.headers ?? {}),
+      },
+    },
+  );
+}
+
+function proxy(
+  request: Request,
+  fetchMock: typeof fetch = vi.fn(
+    async () => new Response("ok"),
+  ) as typeof fetch,
+): Promise<Response> {
+  return proxySandboxEgressRequest(request, SANDBOX_ID, {
+    fetch: fetchMock,
+    verifyOidc: async () => ({ sub: "sandbox" }),
+  });
+}
+
 describe("sandbox egress proxy", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -93,19 +158,17 @@ describe("sandbox egress proxy", () => {
     expect(matchesSandboxEgressDomain("eu.sentry.io", "*.sentry.io")).toBe(
       true,
     );
-    expect(buildSandboxEgressNetworkPolicy("junior-sbx")).toEqual({
+    expect(buildSandboxEgressNetworkPolicy(SANDBOX_ID)).toEqual({
       allow: {
         "*": [],
         "sentry.io": [
           {
-            forwardURL:
-              "https://junior.example.com/api/internal/sandbox-egress/junior-sbx",
+            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${SANDBOX_ID}`,
           },
         ],
         "*.sentry.io": [
           {
-            forwardURL:
-              "https://junior.example.com/api/internal/sandbox-egress/junior-sbx",
+            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${SANDBOX_ID}`,
           },
         ],
       },
@@ -113,30 +176,9 @@ describe("sandbox egress proxy", () => {
   });
 
   it("forwards authorized sandbox requests with provider headers and rejects exact replays", async () => {
-    await upsertSandboxEgressSession({
-      sandboxId: "junior-sbx",
-      requesterId: "U123",
-      providers: ["sentry"],
-      ttlMs: 60_000,
-    });
-    await upsertSandboxEgressSession({
-      sandboxId: "junior-sbx",
-      requesterId: "U123",
-      providers: [],
-      ttlMs: 60_000,
-    });
-    issueProviderCredentialLeaseMock.mockResolvedValue({
-      id: "lease-1",
-      provider: "sentry",
-      env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-      headerTransforms: [
-        {
-          domain: "sentry.io",
-          headers: { Authorization: "Bearer sentry-token" },
-        },
-      ],
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    });
+    await authorizeSandboxEgress();
+    await authorizeSandboxEgress([]);
+    mockSentryLease();
 
     const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
       expect(String(url)).toBe("https://sentry.io/api/0/issues/?query=foo");
@@ -148,42 +190,28 @@ describe("sandbox egress proxy", () => {
       return new Response("ok", { status: 200 });
     });
 
-    const request = new Request(
-      "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/?query=foo",
-      {
-        method: "GET",
-        headers: {
-          "vercel-forwarded-host": "sentry.io",
-          "vercel-forwarded-scheme": "https",
-          "vercel-sandbox-oidc-token": "signed-token",
-          host: "junior.example.com",
-        },
-      },
-    );
-
-    const response = await proxySandboxEgressRequest(request, "junior-sbx", {
-      fetch: fetchMock as typeof fetch,
-      verifyOidc: async () => ({ sub: "sandbox" }),
+    const request = egressRequest({
+      path: "/api/0/issues/?query=foo",
+      scheme: "https",
+      headers: { host: "junior.example.com" },
     });
+
+    const response = await proxy(request, fetchMock as typeof fetch);
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe("ok");
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
       provider: "sentry",
-      requesterId: "U123",
+      requesterId: REQUESTER_ID,
       reason: "sandbox-egress:sentry",
     });
 
-    const replay = await proxySandboxEgressRequest(
+    const replay = await proxy(
       new Request(request.url, {
         method: "GET",
         headers: request.headers,
       }),
-      "junior-sbx",
-      {
-        fetch: fetchMock as typeof fetch,
-        verifyOidc: async () => ({ sub: "sandbox" }),
-      },
+      fetchMock as typeof fetch,
     );
 
     expect(replay.status).toBe(409);
@@ -191,24 +219,8 @@ describe("sandbox egress proxy", () => {
   });
 
   it("applies wildcard provider header transforms to matching upstream hosts", async () => {
-    await upsertSandboxEgressSession({
-      sandboxId: "junior-sbx",
-      requesterId: "U123",
-      providers: ["sentry"],
-      ttlMs: 60_000,
-    });
-    issueProviderCredentialLeaseMock.mockResolvedValue({
-      id: "lease-1",
-      provider: "sentry",
-      env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-      headerTransforms: [
-        {
-          domain: "*.sentry.io",
-          headers: { Authorization: "Bearer sentry-token" },
-        },
-      ],
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    });
+    await authorizeSandboxEgress();
+    mockSentryLease("*.sentry.io");
 
     const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("authorization")).toBe(
@@ -217,22 +229,9 @@ describe("sandbox egress proxy", () => {
       return new Response("ok", { status: 200 });
     });
 
-    const response = await proxySandboxEgressRequest(
-      new Request(
-        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
-        {
-          method: "GET",
-          headers: {
-            "vercel-forwarded-host": "eu.sentry.io",
-            "vercel-sandbox-oidc-token": "signed-token",
-          },
-        },
-      ),
-      "junior-sbx",
-      {
-        fetch: fetchMock as typeof fetch,
-        verifyOidc: async () => ({ sub: "sandbox" }),
-      },
+    const response = await proxy(
+      egressRequest({ host: "eu.sentry.io" }),
+      fetchMock as typeof fetch,
     );
 
     expect(response.status).toBe(200);
@@ -240,47 +239,18 @@ describe("sandbox egress proxy", () => {
   });
 
   it("preserves repeated upstream response headers", async () => {
-    await upsertSandboxEgressSession({
-      sandboxId: "junior-sbx",
-      requesterId: "U123",
-      providers: ["sentry"],
-      ttlMs: 60_000,
-    });
-    issueProviderCredentialLeaseMock.mockResolvedValue({
-      id: "lease-1",
-      provider: "sentry",
-      env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
-      headerTransforms: [
-        {
-          domain: "sentry.io",
-          headers: { Authorization: "Bearer sentry-token" },
-        },
-      ],
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-    });
+    await authorizeSandboxEgress();
+    mockSentryLease();
 
     const upstreamHeaders = new Headers();
     upstreamHeaders.append("set-cookie", "a=1; Path=/");
     upstreamHeaders.append("set-cookie", "b=2; Path=/");
 
-    const response = await proxySandboxEgressRequest(
-      new Request(
-        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
-        {
-          method: "GET",
-          headers: {
-            "vercel-forwarded-host": "sentry.io",
-            "vercel-sandbox-oidc-token": "signed-token",
-          },
-        },
-      ),
-      "junior-sbx",
-      {
-        fetch: vi.fn(
-          async () => new Response("ok", { headers: upstreamHeaders }),
-        ) as typeof fetch,
-        verifyOidc: async () => ({ sub: "sandbox" }),
-      },
+    const response = await proxy(
+      egressRequest(),
+      vi.fn(
+        async () => new Response("ok", { headers: upstreamHeaders }),
+      ) as typeof fetch,
     );
 
     expect(response.status).toBe(200);
@@ -296,23 +266,9 @@ describe("sandbox egress proxy", () => {
   it("rejects forwarded hosts with embedded ports", async () => {
     const fetchMock = vi.fn();
 
-    const response = await proxySandboxEgressRequest(
-      new Request(
-        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
-        {
-          method: "GET",
-          headers: {
-            "vercel-forwarded-host": "sentry.io:8080",
-            "vercel-forwarded-port": "443",
-            "vercel-sandbox-oidc-token": "signed-token",
-          },
-        },
-      ),
-      "junior-sbx",
-      {
-        fetch: fetchMock as typeof fetch,
-        verifyOidc: async () => ({ sub: "sandbox" }),
-      },
+    const response = await proxy(
+      egressRequest({ host: "sentry.io:8080", port: "443" }),
+      fetchMock as typeof fetch,
     );
 
     expect(response.status).toBe(400);
@@ -322,23 +278,9 @@ describe("sandbox egress proxy", () => {
   it("rejects plaintext forwarded schemes before credential injection", async () => {
     const fetchMock = vi.fn();
 
-    const response = await proxySandboxEgressRequest(
-      new Request(
-        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
-        {
-          method: "GET",
-          headers: {
-            "vercel-forwarded-host": "sentry.io",
-            "vercel-forwarded-scheme": "http",
-            "vercel-sandbox-oidc-token": "signed-token",
-          },
-        },
-      ),
-      "junior-sbx",
-      {
-        fetch: fetchMock as typeof fetch,
-        verifyOidc: async () => ({ sub: "sandbox" }),
-      },
+    const response = await proxy(
+      egressRequest({ scheme: "http" }),
+      fetchMock as typeof fetch,
     );
 
     expect(response.status).toBe(400);
@@ -347,12 +289,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("returns a command-readable auth marker when provider credentials are missing", async () => {
-    await upsertSandboxEgressSession({
-      sandboxId: "junior-sbx",
-      requesterId: "U123",
-      providers: ["sentry"],
-      ttlMs: 60_000,
-    });
+    await authorizeSandboxEgress();
     issueProviderCredentialLeaseMock.mockRejectedValue(
       new CredentialUnavailableError(
         "sentry",
@@ -360,23 +297,7 @@ describe("sandbox egress proxy", () => {
       ),
     );
 
-    const response = await proxySandboxEgressRequest(
-      new Request(
-        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
-        {
-          method: "GET",
-          headers: {
-            "vercel-forwarded-host": "sentry.io",
-            "vercel-sandbox-oidc-token": "signed-token",
-          },
-        },
-      ),
-      "junior-sbx",
-      {
-        fetch: vi.fn() as typeof fetch,
-        verifyOidc: async () => ({ sub: "sandbox" }),
-      },
-    );
+    const response = await proxy(egressRequest());
 
     expect(response.status).toBe(401);
     await expect(response.text()).resolves.toContain(
@@ -385,30 +306,9 @@ describe("sandbox egress proxy", () => {
   });
 
   it("rejects provider requests when the sandbox session did not authorize that provider", async () => {
-    await upsertSandboxEgressSession({
-      sandboxId: "junior-sbx",
-      requesterId: "U123",
-      providers: ["github"],
-      ttlMs: 60_000,
-    });
+    await authorizeSandboxEgress(["github"]);
 
-    const response = await proxySandboxEgressRequest(
-      new Request(
-        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
-        {
-          method: "GET",
-          headers: {
-            "vercel-forwarded-host": "sentry.io",
-            "vercel-sandbox-oidc-token": "signed-token",
-          },
-        },
-      ),
-      "junior-sbx",
-      {
-        fetch: vi.fn() as typeof fetch,
-        verifyOidc: async () => ({ sub: "sandbox" }),
-      },
-    );
+    const response = await proxy(egressRequest());
 
     expect(response.status).toBe(403);
     expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
@@ -423,9 +323,9 @@ describe("sandbox egress proxy", () => {
         {
           owner_id: "team_123",
           project_id: "prj_123",
-          sandbox_id: "junior-sbx",
+          sandbox_id: SANDBOX_ID,
         },
-        "junior-sbx",
+        SANDBOX_ID,
       ),
     ).not.toThrow();
 
@@ -434,9 +334,9 @@ describe("sandbox egress proxy", () => {
         {
           owner_id: "team_123",
           project_id: "prj_other",
-          sandbox_id: "junior-sbx",
+          sandbox_id: SANDBOX_ID,
         },
-        "junior-sbx",
+        SANDBOX_ID,
       ),
     ).toThrow("different project");
 
@@ -447,7 +347,7 @@ describe("sandbox egress proxy", () => {
           project_id: "prj_123",
           sandbox_id: "other-sandbox",
         },
-        "junior-sbx",
+        SANDBOX_ID,
       ),
     ).toThrow("different sandbox");
   });
@@ -460,7 +360,7 @@ describe("sandbox egress proxy", () => {
     jwtVerifyMock.mockResolvedValue({
       payload: {
         project_id: "prj_123",
-        sandbox_id: "junior-sbx",
+        sandbox_id: SANDBOX_ID,
       },
     });
     const fetchMock = vi.fn(async () =>
@@ -470,8 +370,8 @@ describe("sandbox egress proxy", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await verifyVercelSandboxOidcToken("signed-token-1", "junior-sbx");
-    await verifyVercelSandboxOidcToken("signed-token-2", "junior-sbx");
+    await verifyVercelSandboxOidcToken("signed-token-1", SANDBOX_ID);
+    await verifyVercelSandboxOidcToken("signed-token-2", SANDBOX_ID);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1);

@@ -61,10 +61,8 @@ interface MockSandbox {
   writeFiles: ReturnType<typeof vi.fn>;
   readFileToBuffer: ReturnType<typeof vi.fn>;
   runCommand: ReturnType<typeof vi.fn>;
-  updateNetworkPolicy: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   extendTimeout: ReturnType<typeof vi.fn>;
-  networkPolicy?: unknown;
 }
 
 function makeSandbox(
@@ -92,10 +90,8 @@ function makeSandbox(
       stdout: async () => "",
       stderr: async () => "",
     })),
-    updateNetworkPolicy: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
     extendTimeout: vi.fn(async () => {}),
-    networkPolicy: "allow-all",
   };
 }
 
@@ -343,8 +339,8 @@ describe("createSandboxExecutor", () => {
     });
   });
 
-  it("applies and restores header transforms for bash commands", async () => {
-    const sandbox = makeSandbox("sbx_headers");
+  it("runs bash commands through a noninteractive shell", async () => {
+    const sandbox = makeSandbox("sbx_bash");
     sandboxGetMock.mockResolvedValue(sandbox);
     vi.mocked(createBashTool).mockResolvedValue({
       tools: {
@@ -353,40 +349,16 @@ describe("createSandboxExecutor", () => {
       },
     } as never);
 
-    const executor = createSandboxExecutor({ sandboxId: "sbx_headers" });
+    const executor = createSandboxExecutor({ sandboxId: "sbx_bash" });
     executor.configureSkills([]);
 
     await executor.execute({
       toolName: "bash",
       input: {
         command: "echo ok",
-        headerTransforms: [
-          {
-            domain: "api.github.com",
-            headers: {
-              Authorization: "Bearer token-1",
-            },
-          },
-        ],
       },
     });
 
-    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(1, {
-      allow: {
-        "*": [],
-        "api.github.com": [
-          {
-            transform: [
-              {
-                headers: {
-                  Authorization: "Bearer token-1",
-                },
-              },
-            ],
-          },
-        ],
-      },
-    });
     const invocation = sandbox.runCommand.mock.calls[0]?.[0];
     expect(invocation).toMatchObject({
       cmd: "bash",
@@ -402,158 +374,6 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("export GIT_TERMINAL_PROMPT='0'");
     expect(invocation.args?.[1]).toContain("exec </dev/null");
     expect(invocation.args?.[1]).toContain("echo ok");
-    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(2, "allow-all");
-  });
-
-  it("merges header transforms into existing network policy allow rules", async () => {
-    const sandbox = makeSandbox("sbx_policy_merge");
-    sandbox.networkPolicy = {
-      allow: {
-        "example.com": [{ transform: [{ headers: { "X-Existing": "1" } }] }],
-      },
-    };
-    sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
-
-    const executor = createSandboxExecutor({ sandboxId: "sbx_policy_merge" });
-    executor.configureSkills([]);
-
-    await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo ok",
-        headerTransforms: [
-          {
-            domain: "api.github.com",
-            headers: {
-              Authorization: "Bearer token-1",
-            },
-          },
-        ],
-      },
-    });
-
-    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(1, {
-      allow: {
-        "example.com": [{ transform: [{ headers: { "X-Existing": "1" } }] }],
-        "api.github.com": [
-          {
-            transform: [
-              {
-                headers: {
-                  Authorization: "Bearer token-1",
-                },
-              },
-            ],
-          },
-        ],
-      },
-    });
-    expect(sandbox.updateNetworkPolicy).toHaveBeenNthCalledWith(
-      2,
-      sandbox.networkPolicy,
-    );
-  });
-
-  it("preserves command errors when network policy restore fails", async () => {
-    const sandbox = makeSandbox("sbx_restore_failure");
-    sandbox.runCommand.mockRejectedValueOnce(new Error("command failed"));
-    sandbox.updateNetworkPolicy
-      .mockImplementationOnce(async () => {})
-      .mockImplementationOnce(async () => {
-        throw new Error("restore failed");
-      });
-    sandboxGetMock.mockResolvedValue(sandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
-
-    const executor = createSandboxExecutor({
-      sandboxId: "sbx_restore_failure",
-    });
-    executor.configureSkills([]);
-
-    await expect(
-      executor.execute({
-        toolName: "bash",
-        input: {
-          command: "echo ok",
-          headerTransforms: [
-            {
-              domain: "api.github.com",
-              headers: {
-                Authorization: "Bearer token-1",
-              },
-            },
-          ],
-        },
-      }),
-    ).rejects.toThrow("command failed");
-    expect(sandbox.updateNetworkPolicy).toHaveBeenCalledTimes(2);
-  });
-
-  it("discards the sandbox when network policy restore fails after a successful command", async () => {
-    const firstSandbox = makeSandbox("sbx_restore_failure_first");
-    firstSandbox.updateNetworkPolicy
-      .mockImplementationOnce(async () => {})
-      .mockImplementationOnce(async () => {
-        throw new Error("restore failed");
-      });
-    const secondSandbox = makeSandbox("sbx_restore_failure_second");
-    sandboxCreateMock
-      .mockResolvedValueOnce(firstSandbox)
-      .mockResolvedValueOnce(secondSandbox);
-    vi.mocked(createBashTool).mockResolvedValue({
-      tools: {
-        readFile: { execute: vi.fn(async () => ({ content: "" })) },
-        writeFile: { execute: vi.fn(async () => ({ success: true })) },
-      },
-    } as never);
-
-    const executor = createSandboxExecutor();
-    executor.configureSkills([]);
-
-    await expect(
-      executor.execute({
-        toolName: "bash",
-        input: {
-          command: "echo ok",
-          headerTransforms: [
-            {
-              domain: "api.github.com",
-              headers: {
-                Authorization: "Bearer token-1",
-              },
-            },
-          ],
-        },
-      }),
-    ).rejects.toThrow("restore failed");
-
-    await executor.execute({
-      toolName: "bash",
-      input: {
-        command: "echo second",
-      },
-    });
-
-    expect(firstSandbox.stop).toHaveBeenCalledTimes(1);
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(2);
-    const invocation = secondSandbox.runCommand.mock.calls[0]?.[0];
-    expect(invocation).toMatchObject({
-      cmd: "bash",
-      cwd: "/vercel/sandbox",
-    });
-    expect(invocation.args?.[1]).toContain("exec </dev/null");
-    expect(invocation.args?.[1]).toContain("echo second");
   });
 
   it("routes matching bash commands through custom command handler", async () => {

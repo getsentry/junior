@@ -83,37 +83,6 @@ const SANDBOX_TOOL_NAMES = new Set([
   "writeFile",
 ]);
 
-function parseHeaderTransforms(
-  raw: unknown,
-): Array<{ domain: string; headers: Record<string, string> }> | undefined {
-  if (!Array.isArray(raw)) {
-    return undefined;
-  }
-
-  return raw
-    .filter((value): value is Record<string, unknown> =>
-      Boolean(value && typeof value === "object"),
-    )
-    .map((transform) => ({
-      domain: String(transform.domain ?? "").trim(),
-      headers:
-        transform.headers &&
-        typeof transform.headers === "object" &&
-        !Array.isArray(transform.headers)
-          ? Object.fromEntries(
-              Object.entries(transform.headers as Record<string, unknown>)
-                .filter(([, value]) => typeof value === "string")
-                .map(([key, value]) => [key, value as string]),
-            )
-          : {},
-    }))
-    .filter(
-      (transform) =>
-        transform.domain.length > 0 &&
-        Object.keys(transform.headers).length > 0,
-    );
-}
-
 function parseEnv(raw: unknown): Record<string, string> | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return undefined;
@@ -236,7 +205,6 @@ export function createSandboxExecutor(options?: {
     rawInput: Record<string, unknown>,
     command: string,
   ): Promise<SandboxExecutionEnvelope<T>> => {
-    const headerTransforms = parseHeaderTransforms(rawInput.headerTransforms);
     const env = parseEnv(rawInput.env);
     const timeoutMs = positiveInteger(rawInput.timeoutMs);
     logSandboxBootRequest("tool.bash", {
@@ -253,7 +221,6 @@ export function createSandboxExecutor(options?: {
         try {
           const response = await executeBash({
             command,
-            ...(headerTransforms ? { headerTransforms } : {}),
             ...(env ? { env } : {}),
             ...(timeoutMs ? { timeoutMs } : {}),
           });
