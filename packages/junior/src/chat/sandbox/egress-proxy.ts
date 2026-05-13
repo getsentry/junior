@@ -36,15 +36,6 @@ const PROXY_ONLY_HEADERS = new Set([
   FORWARDED_SCHEME_HEADER,
   FORWARDED_PORT_HEADER,
 ]);
-const SANDBOX_SUPPLIED_AUTH_HEADERS = new Set([
-  "api-key",
-  "authorization",
-  "cookie",
-  "private-token",
-  "x-api-key",
-  "x-auth-token",
-  "x-access-token",
-]);
 const UPSTREAM_CREDENTIAL_RESPONSE_HEADERS = new Set([
   "set-cookie",
   "set-cookie2",
@@ -155,9 +146,7 @@ function requestHeaders(
     const normalized = key.toLowerCase();
     if (
       HOP_BY_HOP_HEADERS.has(normalized) ||
-      PROXY_ONLY_HEADERS.has(normalized) ||
-      SANDBOX_SUPPLIED_AUTH_HEADERS.has(normalized) ||
-      normalized.startsWith("x-forwarded-")
+      PROXY_ONLY_HEADERS.has(normalized)
     ) {
       return;
     }

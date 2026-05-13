@@ -194,7 +194,7 @@ describe("sandbox egress proxy", () => {
     });
   });
 
-  it("forwards repeated authorized sandbox requests with provider headers", async () => {
+  it("forwards repeated authorized sandbox requests with credential headers", async () => {
     await authorizeSandboxEgress();
     await authorizeSandboxEgress([]);
     mockSentryLease();
@@ -205,9 +205,15 @@ describe("sandbox egress proxy", () => {
       expect(new Headers(init?.headers).get("authorization")).toBe(
         "Bearer sentry-token",
       );
-      expect(new Headers(init?.headers).get("cookie")).toBeNull();
-      expect(new Headers(init?.headers).get("x-api-key")).toBeNull();
+      expect(new Headers(init?.headers).get("cookie")).toBe("session=sandbox");
+      expect(new Headers(init?.headers).get("x-api-key")).toBe("sandbox-key");
+      expect(new Headers(init?.headers).get("x-forwarded-for")).toBe(
+        "127.0.0.1",
+      );
       expect(new Headers(init?.headers).get("host")).toBeNull();
+      expect(
+        new Headers(init?.headers).get("vercel-sandbox-oidc-token"),
+      ).toBeNull();
       return new Response("ok", { status: 200 });
     });
 
@@ -219,6 +225,7 @@ describe("sandbox egress proxy", () => {
         cookie: "session=sandbox",
         host: "junior.example.com",
         "x-api-key": "sandbox-key",
+        "x-forwarded-for": "127.0.0.1",
       },
     });
 
