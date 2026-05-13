@@ -1,3 +1,4 @@
+import type { StateAdapter } from "chat";
 import { logCapabilityCatalogLoadedOnce } from "@/chat/capabilities/catalog";
 import { ProviderCredentialRouter } from "@/chat/capabilities/router";
 import type {
@@ -17,7 +18,12 @@ import type { PluginManifest } from "@/chat/plugins/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const ENV_PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
-let sandboxEgressRouter: ProviderCredentialRouter | undefined;
+let sandboxEgressRouter:
+  | {
+      router: ProviderCredentialRouter;
+      stateAdapter: StateAdapter;
+    }
+  | undefined;
 
 /** Create the user token store used by OAuth-backed credential brokers. */
 export function createUserTokenStore(): UserTokenStore {
@@ -43,10 +49,11 @@ function resolveTestApiHeaderTransforms(
   return apiDomains.map((domain) => ({ domain, headers }));
 }
 
-function createProviderCredentialRouter(): ProviderCredentialRouter {
+function createProviderCredentialRouter(
+  userTokenStore: UserTokenStore,
+): ProviderCredentialRouter {
   logCapabilityCatalogLoadedOnce();
   const useTestBroker = process.env.EVAL_ENABLE_TEST_CREDENTIALS === "1";
-  const userTokenStore = createUserTokenStore();
 
   const brokersByProvider: Record<string, CredentialBroker> = {};
 
@@ -96,12 +103,24 @@ function createProviderCredentialRouter(): ProviderCredentialRouter {
   return new ProviderCredentialRouter({ brokersByProvider });
 }
 
+function getSandboxEgressRouter(): ProviderCredentialRouter {
+  const stateAdapter = getStateAdapter();
+  if (sandboxEgressRouter?.stateAdapter !== stateAdapter) {
+    sandboxEgressRouter = {
+      router: createProviderCredentialRouter(
+        new StateAdapterTokenStore(stateAdapter),
+      ),
+      stateAdapter,
+    };
+  }
+  return sandboxEgressRouter.router;
+}
+
 /** Issue one provider credential lease for host-side sandbox egress proxying. */
 export async function issueProviderCredentialLease(input: {
   provider: string;
   requesterId?: string;
   reason: string;
 }): Promise<CredentialLease> {
-  sandboxEgressRouter ??= createProviderCredentialRouter();
-  return await sandboxEgressRouter.issue(input);
+  return await getSandboxEgressRouter().issue(input);
 }

@@ -20,7 +20,10 @@ export function matchesSandboxEgressDomain(
   const normalizedDomain = domain.toLowerCase();
   if (normalizedDomain.startsWith("*.")) {
     const suffix = normalizedDomain.slice(1);
-    return normalizedHost.endsWith(suffix);
+    return (
+      normalizedHost === normalizedDomain.slice(2) ||
+      normalizedHost.endsWith(suffix)
+    );
   }
   return normalizedHost === normalizedDomain;
 }
@@ -37,13 +40,20 @@ function githubNeedsGitHost(plugin: PluginDefinition): boolean {
   );
 }
 
+function addProviderDomain(domains: Set<string>, domain: string): void {
+  domains.add(domain);
+  if (domain.startsWith("*.")) {
+    domains.add(domain.slice(2));
+  }
+}
+
 function pluginDomains(plugin: PluginDefinition): string[] {
   const domains = new Set<string>();
   for (const domain of plugin.manifest.credentials?.apiDomains ?? []) {
-    domains.add(domain);
+    addProviderDomain(domains, domain);
   }
   for (const domain of plugin.manifest.apiDomains ?? []) {
-    domains.add(domain);
+    addProviderDomain(domains, domain);
   }
   if (githubNeedsGitHost(plugin)) {
     domains.add("github.com");

@@ -40,7 +40,10 @@ vi.mock("@/chat/capabilities/factory", () => ({
   issueProviderCredentialLease: issueProviderCredentialLeaseMock,
 }));
 
-import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress-policy";
+import {
+  buildSandboxEgressNetworkPolicy,
+  matchesSandboxEgressDomain,
+} from "@/chat/sandbox/egress-policy";
 import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
@@ -67,6 +70,10 @@ describe("sandbox egress proxy", () => {
   });
 
   it("builds provider forwarding policy for sandbox egress", () => {
+    expect(matchesSandboxEgressDomain("sentry.io", "*.sentry.io")).toBe(true);
+    expect(matchesSandboxEgressDomain("eu.sentry.io", "*.sentry.io")).toBe(
+      true,
+    );
     expect(buildSandboxEgressNetworkPolicy("junior-sbx")).toEqual({
       allow: {
         "*": [],
@@ -91,6 +98,12 @@ describe("sandbox egress proxy", () => {
       sandboxId: "junior-sbx",
       requesterId: "U123",
       providers: ["sentry"],
+      ttlMs: 60_000,
+    });
+    await upsertSandboxEgressSession({
+      sandboxId: "junior-sbx",
+      requesterId: "U123",
+      providers: [],
       ttlMs: 60_000,
     });
     issueProviderCredentialLeaseMock.mockResolvedValue({
