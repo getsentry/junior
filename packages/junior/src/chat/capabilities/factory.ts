@@ -18,12 +18,10 @@ import type { PluginManifest } from "@/chat/plugins/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const ENV_PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
-let sandboxEgressRouter:
-  | {
-      router: ProviderCredentialRouter;
-      stateAdapter: StateAdapter;
-    }
-  | undefined;
+const sandboxEgressRouters = new WeakMap<
+  StateAdapter,
+  ProviderCredentialRouter
+>();
 
 /** Create the user token store used by OAuth-backed credential brokers. */
 export function createUserTokenStore(): UserTokenStore {
@@ -105,15 +103,14 @@ function createProviderCredentialRouter(
 
 function getSandboxEgressRouter(): ProviderCredentialRouter {
   const stateAdapter = getStateAdapter();
-  if (sandboxEgressRouter?.stateAdapter !== stateAdapter) {
-    sandboxEgressRouter = {
-      router: createProviderCredentialRouter(
-        new StateAdapterTokenStore(stateAdapter),
-      ),
-      stateAdapter,
-    };
+  let router = sandboxEgressRouters.get(stateAdapter);
+  if (!router) {
+    router = createProviderCredentialRouter(
+      new StateAdapterTokenStore(stateAdapter),
+    );
+    sandboxEgressRouters.set(stateAdapter, router);
   }
-  return sandboxEgressRouter.router;
+  return router;
 }
 
 /** Issue one provider credential lease for host-side sandbox egress proxying. */

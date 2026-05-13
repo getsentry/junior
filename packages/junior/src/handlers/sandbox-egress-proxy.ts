@@ -43,6 +43,8 @@ const PROXY_ONLY_HEADERS = new Set([
   FORWARDED_SCHEME_HEADER,
   FORWARDED_PORT_HEADER,
 ]);
+const OIDC_DISCOVERY_CACHE_TTL_MS = 60 * 60 * 1000;
+const OIDC_DISCOVERY_CACHE_MAX_ENTRIES = 8;
 
 interface OidcConfiguration {
   jwks_uri?: string;
@@ -53,8 +55,12 @@ interface ProxyDeps {
   verifyOidc?: (token: string, sandboxId: string) => Promise<JWTPayload>;
 }
 
-const jwksByUri = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
-const jwksByIssuer = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+interface OidcDiscoveryCacheEntry {
+  jwks: ReturnType<typeof createRemoteJWKSet>;
+  expiresAtMs: number;
+}
+
+const jwksByIssuer = new Map<string, OidcDiscoveryCacheEntry>();
 
 function jsonError(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
@@ -106,9 +112,13 @@ function buildDiscoveryUrl(issuer: string): URL {
 async function getJwks(
   issuer: string,
 ): Promise<ReturnType<typeof createRemoteJWKSet>> {
+  const now = Date.now();
   const cached = jwksByIssuer.get(issuer);
+  if (cached && cached.expiresAtMs > now) {
+    return cached.jwks;
+  }
   if (cached) {
-    return cached;
+    jwksByIssuer.delete(issuer);
   }
 
   const discoveryUrl = buildDiscoveryUrl(issuer);
@@ -120,12 +130,20 @@ async function getJwks(
   if (!config.jwks_uri) {
     throw new Error("Vercel OIDC discovery metadata did not include jwks_uri");
   }
-  let jwks = jwksByUri.get(config.jwks_uri);
-  if (!jwks) {
-    jwks = createRemoteJWKSet(new URL(config.jwks_uri));
-    jwksByUri.set(config.jwks_uri, jwks);
+  const jwks = createRemoteJWKSet(new URL(config.jwks_uri));
+  if (
+    !jwksByIssuer.has(issuer) &&
+    jwksByIssuer.size >= OIDC_DISCOVERY_CACHE_MAX_ENTRIES
+  ) {
+    const oldestIssuer = jwksByIssuer.keys().next().value;
+    if (oldestIssuer) {
+      jwksByIssuer.delete(oldestIssuer);
+    }
   }
-  jwksByIssuer.set(issuer, jwks);
+  jwksByIssuer.set(issuer, {
+    jwks,
+    expiresAtMs: now + OIDC_DISCOVERY_CACHE_TTL_MS,
+  });
   return jwks;
 }
 
