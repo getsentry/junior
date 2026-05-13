@@ -28,18 +28,6 @@ export function matchesSandboxEgressDomain(
   return normalizedHost === normalizedDomain;
 }
 
-function githubNeedsGitHost(plugin: PluginDefinition): boolean {
-  if (plugin.manifest.name !== "github") {
-    return false;
-  }
-
-  return plugin.manifest.capabilities.some(
-    (capability) =>
-      capability === "github.contents.read" ||
-      capability === "github.contents.write",
-  );
-}
-
 function addProviderDomain(domains: Set<string>, domain: string): void {
   domains.add(domain);
   if (domain.startsWith("*.")) {
@@ -54,9 +42,6 @@ function pluginDomains(plugin: PluginDefinition): string[] {
   }
   for (const domain of plugin.manifest.apiDomains ?? []) {
     addProviderDomain(domains, domain);
-  }
-  if (githubNeedsGitHost(plugin)) {
-    domains.add("github.com");
   }
   return [...domains].sort((left, right) => left.localeCompare(right));
 }

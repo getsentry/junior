@@ -11,7 +11,7 @@ const ORIGINAL_FETCH = globalThis.fetch;
 
 const TEST_CREDENTIALS: GitHubAppCredentials = {
   type: "github-app",
-  apiDomains: ["api.github.com"],
+  apiDomains: ["api.github.com", "github.com"],
   authTokenEnv: "GITHUB_TOKEN",
   appIdEnv: "GITHUB_APP_ID",
   privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",

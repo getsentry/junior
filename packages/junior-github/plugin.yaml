@@ -19,6 +19,7 @@ credentials:
   type: github-app
   api-domains:
     - api.github.com
+    - github.com
   auth-token-env: GITHUB_TOKEN
   auth-token-placeholder: ghp_host_managed_credential
   app-id-env: GITHUB_APP_ID

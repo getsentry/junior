@@ -69,7 +69,9 @@ This policy applies to:
 - Keep `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` on host only.
 - Sign App JWT on host, then exchange for installation token.
 - Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
-- Inject `Authorization` header transform for `api.github.com` and `github.com` domains (the latter for git HTTPS operations).
+- Declare both `api.github.com` and `github.com` in the GitHub plugin manifest
+  so the egress proxy forwards REST API and git HTTPS traffic through
+  host-managed credential transforms.
 - Disable git credential helpers in sandbox env (`GIT_ASKPASS`, `credential.helper=`) so git never sends its own auth — the proxy header transform is the sole credential source.
 - Set `GITHUB_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
 - Keep explicit `--repo owner/repo` and remote targets for command correctness and wrong-repo protection; they are not a credential-scoping boundary.
