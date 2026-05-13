@@ -33,7 +33,8 @@ This policy applies to:
 - Production should use explicit network policy and minimal allowlists.
 - Credential-capable provider domains should route through the Junior sandbox egress proxy instead of receiving long-lived sandbox secrets.
 - Proxied sandbox egress requests must verify Vercel Sandbox OIDC, resolve the provider from the forwarded host, and require a requester-bound sandbox egress session for that provider.
-- The egress proxy must not reject duplicate method/URL/body requests solely as replay unless Vercel exposes a stable per-request nonce; ordinary HTTP clients may retry identical requests. Requester-bound credential issuance is the security boundary.
+- The public egress route must verify Vercel Sandbox OIDC before returning configuration, provider, or session-specific responses.
+- The egress proxy must not reject duplicate method/URL/body requests as replay; duplicate request shapes can be legitimate retries. Requester-bound credential issuance is the security boundary.
 
 ### Harness-owned tool targeting
 

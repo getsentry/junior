@@ -7,7 +7,6 @@ import {
 import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
-  hasSandboxEgressNetworkPolicyConfig,
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
 } from "@/chat/sandbox/egress-policy";
@@ -457,8 +456,5 @@ export async function ALL(
   request: Request,
   sandboxId: string,
 ): Promise<Response> {
-  if (!hasSandboxEgressNetworkPolicyConfig()) {
-    return jsonError("Sandbox egress proxy is not configured", 503);
-  }
   return await proxySandboxEgressRequest(request, sandboxId);
 }

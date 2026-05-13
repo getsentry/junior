@@ -56,13 +56,13 @@ vi.mock("@/chat/capabilities/factory", () => ({
 
 import {
   buildSandboxEgressNetworkPolicy,
-  hasSandboxEgressNetworkPolicyConfig,
   matchesSandboxEgressDomain,
 } from "@/chat/sandbox/egress-policy";
 import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
+  ALL,
   proxySandboxEgressRequest,
   validateVercelSandboxOidcClaims,
   verifyVercelSandboxOidcToken,
@@ -175,7 +175,22 @@ describe("sandbox egress proxy", () => {
         ],
       },
     });
-    expect(hasSandboxEgressNetworkPolicyConfig()).toBe(true);
+  });
+
+  it("requires OIDC before route configuration details", async () => {
+    delete process.env.JUNIOR_BASE_URL;
+
+    const response = await ALL(
+      new Request(
+        `https://junior.example.com/api/internal/sandbox-egress/${SANDBOX_ID}`,
+      ),
+      SANDBOX_ID,
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Missing Vercel Sandbox OIDC token",
+    });
   });
 
   it("forwards repeated authorized sandbox requests with provider headers", async () => {
