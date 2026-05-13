@@ -187,6 +187,7 @@ describe("sandbox egress proxy", () => {
       expect(new Headers(init?.headers).get("authorization")).toBe(
         "Bearer sentry-token",
       );
+      expect(new Headers(init?.headers).get("cookie")).toBeNull();
       expect(new Headers(init?.headers).get("host")).toBeNull();
       return new Response("ok", { status: 200 });
     });
@@ -194,7 +195,11 @@ describe("sandbox egress proxy", () => {
     const request = egressRequest({
       path: "/api/0/issues/?query=foo",
       scheme: "HTTPS",
-      headers: { host: "junior.example.com" },
+      headers: {
+        authorization: "Bearer sandbox-token",
+        cookie: "session=sandbox",
+        host: "junior.example.com",
+      },
     });
 
     const response = await proxy(request, fetchMock as typeof fetch);
@@ -424,7 +429,7 @@ describe("sandbox egress proxy", () => {
         sandbox_id: SANDBOX_ID,
       },
     });
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_url: URL | string, _init?: RequestInit) =>
       Response.json({
         jwks_uri: "https://oidc.vercel.com/cache-test/jwks",
       }),
@@ -435,6 +440,27 @@ describe("sandbox egress proxy", () => {
     await verifyVercelSandboxOidcToken("signed-token-2", SANDBOX_ID);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual({ redirect: "error" });
     expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects non-HTTPS Vercel OIDC JWKS metadata", async () => {
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+    decodeJwtMock.mockReturnValue({
+      iss: "https://oidc.vercel.com/bad-jwks",
+    });
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        jwks_uri: "http://oidc.vercel.com/bad-jwks/jwks",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      verifyVercelSandboxOidcToken("signed-token", SANDBOX_ID),
+    ).rejects.toThrow("jwks_uri");
+
+    expect(createRemoteJWKSetMock).not.toHaveBeenCalled();
+    expect(jwtVerifyMock).not.toHaveBeenCalled();
   });
 });

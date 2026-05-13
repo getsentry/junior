@@ -43,6 +43,7 @@ const PROXY_ONLY_HEADERS = new Set([
   FORWARDED_SCHEME_HEADER,
   FORWARDED_PORT_HEADER,
 ]);
+const SANDBOX_SUPPLIED_AUTH_HEADERS = new Set(["authorization", "cookie"]);
 const OIDC_DISCOVERY_CACHE_TTL_MS = 60 * 60 * 1000;
 const OIDC_DISCOVERY_CACHE_MAX_ENTRIES = 8;
 
@@ -109,6 +110,14 @@ function buildDiscoveryUrl(issuer: string): URL {
   return url;
 }
 
+function buildJwksUrl(value: string): URL {
+  const url = new URL(value);
+  if (url.protocol !== "https:") {
+    throw new Error("Vercel OIDC discovery jwks_uri must use HTTPS");
+  }
+  return url;
+}
+
 async function getJwks(
   issuer: string,
 ): Promise<ReturnType<typeof createRemoteJWKSet>> {
@@ -122,7 +131,7 @@ async function getJwks(
   }
 
   const discoveryUrl = buildDiscoveryUrl(issuer);
-  const response = await fetch(discoveryUrl);
+  const response = await fetch(discoveryUrl, { redirect: "error" });
   if (!response.ok) {
     throw new Error("Unable to load Vercel OIDC discovery metadata");
   }
@@ -130,7 +139,7 @@ async function getJwks(
   if (!config.jwks_uri) {
     throw new Error("Vercel OIDC discovery metadata did not include jwks_uri");
   }
-  const jwks = createRemoteJWKSet(new URL(config.jwks_uri));
+  const jwks = createRemoteJWKSet(buildJwksUrl(config.jwks_uri));
   if (
     !jwksByIssuer.has(issuer) &&
     jwksByIssuer.size >= OIDC_DISCOVERY_CACHE_MAX_ENTRIES
@@ -297,6 +306,7 @@ function requestHeaders(
     if (
       HOP_BY_HOP_HEADERS.has(normalized) ||
       PROXY_ONLY_HEADERS.has(normalized) ||
+      SANDBOX_SUPPLIED_AUTH_HEADERS.has(normalized) ||
       normalized.startsWith("x-forwarded-")
     ) {
       return;
