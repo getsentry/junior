@@ -52,6 +52,11 @@ export function getSandboxEgressProviderNames(): string[] {
   return providerEntries().map((entry) => entry.provider);
 }
 
+/** Indicate whether Junior has enough host configuration to enable sandbox egress proxying. */
+export function hasSandboxEgressNetworkPolicyConfig(): boolean {
+  return Boolean(resolveBaseUrl()) && providerEntries().length > 0;
+}
+
 /** Resolve the plugin provider responsible for an outbound sandbox host. */
 export function resolveSandboxEgressProviderForHost(
   host: string,

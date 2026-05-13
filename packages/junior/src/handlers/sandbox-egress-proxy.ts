@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   createRemoteJWKSet,
   decodeJwt,
@@ -8,12 +7,11 @@ import {
 import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
-  buildSandboxEgressNetworkPolicy,
+  hasSandboxEgressNetworkPolicyConfig,
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
 } from "@/chat/sandbox/egress-policy";
 import {
-  claimSandboxEgressReplayFingerprint,
   getSandboxEgressCredentialLease,
   getSandboxEgressSession,
   setSandboxEgressCredentialLease,
@@ -72,6 +70,8 @@ interface OidcDiscoveryCacheEntry {
   jwks: ReturnType<typeof createRemoteJWKSet>;
   expiresAtMs: number;
 }
+
+type UpstreamUrlResult = { ok: true; url: URL } | { ok: false; error: string };
 
 const jwksByIssuer = new Map<string, OidcDiscoveryCacheEntry>();
 
@@ -251,22 +251,31 @@ function upstreamPath(request: Request, sandboxId: string): string {
 function buildUpstreamUrl(
   request: Request,
   sandboxId: string,
-): URL | undefined {
-  const host = normalizeHost(request.headers.get(FORWARDED_HOST_HEADER) ?? "");
+): UpstreamUrlResult {
+  const forwardedHost = request.headers.get(FORWARDED_HOST_HEADER);
+  if (!forwardedHost?.trim()) {
+    return { ok: false, error: "Missing forwarded host" };
+  }
+  const host = normalizeHost(forwardedHost);
   if (!host) {
-    return undefined;
+    return { ok: false, error: "Invalid forwarded host" };
   }
   const scheme = normalizeScheme(request.headers.get(FORWARDED_SCHEME_HEADER));
   if (!scheme) {
-    return undefined;
+    return { ok: false, error: "Forwarded scheme must be https" };
   }
-  const port = normalizePort(request.headers.get(FORWARDED_PORT_HEADER));
+  const forwardedPort = request.headers.get(FORWARDED_PORT_HEADER);
+  const port = normalizePort(forwardedPort);
+  if (forwardedPort && !port) {
+    return { ok: false, error: "Invalid forwarded port" };
+  }
   try {
-    return new URL(
+    const url = new URL(
       `${scheme}://${host}${port ? `:${port}` : ""}${upstreamPath(request, sandboxId)}`,
     );
+    return { ok: true, url };
   } catch {
-    return undefined;
+    return { ok: false, error: "Invalid forwarded URL" };
   }
 }
 
@@ -277,34 +286,6 @@ async function requestBodyBytes(
     return undefined;
   }
   return await request.arrayBuffer();
-}
-
-function bodyHash(body: ArrayBuffer | undefined): string {
-  return createHash("sha256")
-    .update(Buffer.from(body ?? new ArrayBuffer(0)))
-    .digest("hex");
-}
-
-function oidcTokenHash(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-function replayFingerprint(
-  oidcToken: string,
-  method: string,
-  upstreamUrl: URL,
-  body: ArrayBuffer | undefined,
-): string {
-  return createHash("sha256")
-    .update(
-      JSON.stringify({
-        token: oidcTokenHash(oidcToken),
-        method,
-        url: upstreamUrl.toString(),
-        body: bodyHash(body),
-      }),
-    )
-    .digest("hex");
 }
 
 function requestHeaders(
@@ -420,10 +401,11 @@ export async function proxySandboxEgressRequest(
     return jsonError("Invalid Vercel Sandbox OIDC token", 401);
   }
 
-  const upstreamUrl = buildUpstreamUrl(request, sandboxId);
-  if (!upstreamUrl) {
-    return jsonError("Missing forwarded host", 400);
+  const upstreamResult = buildUpstreamUrl(request, sandboxId);
+  if (!upstreamResult.ok) {
+    return jsonError(upstreamResult.error, 400);
   }
+  const upstreamUrl = upstreamResult.url;
 
   const provider = resolveSandboxEgressProviderForHost(upstreamUrl.hostname);
   if (!provider) {
@@ -436,16 +418,6 @@ export async function proxySandboxEgressRequest(
   }
 
   const body = await requestBodyBytes(request);
-  const fingerprint = replayFingerprint(
-    oidcToken,
-    request.method,
-    upstreamUrl,
-    body,
-  );
-  if (!(await claimSandboxEgressReplayFingerprint(fingerprint))) {
-    return jsonError("Duplicate sandbox egress request", 409);
-  }
-
   let lease: SandboxEgressCredentialLease;
   try {
     lease = await credentialLease(sandboxId, provider, session);
@@ -485,7 +457,7 @@ export async function ALL(
   request: Request,
   sandboxId: string,
 ): Promise<Response> {
-  if (!buildSandboxEgressNetworkPolicy(sandboxId)) {
+  if (!hasSandboxEgressNetworkPolicyConfig()) {
     return jsonError("Sandbox egress proxy is not configured", 503);
   }
   return await proxySandboxEgressRequest(request, sandboxId);

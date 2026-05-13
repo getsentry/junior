@@ -56,6 +56,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
 
 import {
   buildSandboxEgressNetworkPolicy,
+  hasSandboxEgressNetworkPolicyConfig,
   matchesSandboxEgressDomain,
 } from "@/chat/sandbox/egress-policy";
 import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
@@ -174,9 +175,10 @@ describe("sandbox egress proxy", () => {
         ],
       },
     });
+    expect(hasSandboxEgressNetworkPolicyConfig()).toBe(true);
   });
 
-  it("forwards authorized sandbox requests with provider headers and rejects exact replays", async () => {
+  it("forwards repeated authorized sandbox requests with provider headers", async () => {
     await authorizeSandboxEgress();
     await authorizeSandboxEgress([]);
     mockSentryLease();
@@ -214,7 +216,7 @@ describe("sandbox egress proxy", () => {
       reason: "sandbox-egress:sentry",
     });
 
-    const replay = await proxy(
+    const repeated = await proxy(
       new Request(request.url, {
         method: "GET",
         headers: request.headers,
@@ -222,8 +224,10 @@ describe("sandbox egress proxy", () => {
       fetchMock as typeof fetch,
     );
 
-    expect(replay.status).toBe(409);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(repeated.status).toBe(200);
+    await expect(repeated.text()).resolves.toBe("ok");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
   });
 
   it("scopes cached credential leases to the requester", async () => {
@@ -335,6 +339,24 @@ describe("sandbox egress proxy", () => {
     );
 
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid forwarded host",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid forwarded ports", async () => {
+    const fetchMock = vi.fn();
+
+    const response = await proxy(
+      egressRequest({ port: "65536" }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid forwarded port",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -347,6 +369,9 @@ describe("sandbox egress proxy", () => {
     );
 
     expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Forwarded scheme must be https",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
   });

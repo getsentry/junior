@@ -3,9 +3,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 
 const SANDBOX_EGRESS_SESSION_PREFIX = "sandbox-egress-session";
 const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
-const SANDBOX_EGRESS_REPLAY_PREFIX = "sandbox-egress-replay";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
-const REPLAY_WINDOW_MS = 10_000;
 
 export interface SandboxEgressSession {
   sandboxId: string;
@@ -34,10 +32,6 @@ function leaseKey(
   requesterId: string,
 ): string {
   return `${SANDBOX_EGRESS_LEASE_PREFIX}:${sandboxId}:${provider}:${requesterId}`;
-}
-
-function replayKey(fingerprint: string): string {
-  return `${SANDBOX_EGRESS_REPLAY_PREFIX}:${fingerprint}`;
 }
 
 function parseSession(value: unknown): SandboxEgressSession | undefined {
@@ -217,18 +211,5 @@ export async function getSandboxEgressCredentialLease(
   await state.connect();
   return parseLease(
     await state.get(leaseKey(sandboxId, provider, requesterId)),
-  );
-}
-
-/** Claim a short-lived request fingerprint so exact proxy request replays are rejected. */
-export async function claimSandboxEgressReplayFingerprint(
-  fingerprint: string,
-): Promise<boolean> {
-  const state = getStateAdapter();
-  await state.connect();
-  return await state.setIfNotExists(
-    replayKey(fingerprint),
-    { claimedAtMs: Date.now() },
-    REPLAY_WINDOW_MS,
   );
 }
