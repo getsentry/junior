@@ -64,6 +64,7 @@ describe("persistAuthPauseCheckpoint", () => {
       sliceId: 1,
       state: "awaiting_resume",
       piMessages: priorMessages,
+      activePluginProviders: ["demo"],
       loadedSkillNames: ["demo-skill"],
       resumeReason: "auth",
       errorMessage: "initial auth pause",
@@ -74,6 +75,7 @@ describe("persistAuthPauseCheckpoint", () => {
       sessionId: "turn-1",
       currentSliceId: 1,
       messages: [],
+      activePluginProviders: ["demo"],
       loadedSkillNames: ["demo-skill"],
       errorMessage: "plugin auth pause",
       logContext: {
@@ -91,6 +93,7 @@ describe("persistAuthPauseCheckpoint", () => {
       state: "awaiting_resume",
       sliceId: 2,
       resumedFromSliceId: 1,
+      activePluginProviders: ["demo"],
       loadedSkillNames: ["demo-skill"],
       resumeReason: "auth",
       errorMessage: "plugin auth pause",

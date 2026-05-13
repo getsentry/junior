@@ -43,6 +43,7 @@ export interface PluginAuthOrchestration {
   }) => Promise<never>;
   handleCommandFailure: (input: {
     activeSkill: Skill | null;
+    activeProviders: string[];
     command: string;
     details: unknown;
   }) => Promise<void>;
@@ -88,13 +89,34 @@ function isCommandAuthFailure(details: unknown): details is {
   ].some((pattern) => pattern.test(text));
 }
 
+function commandText(details: unknown): string {
+  if (!details || typeof details !== "object") {
+    return "";
+  }
+  const result = details as {
+    stdout?: unknown;
+    stderr?: unknown;
+  };
+  return `${typeof result.stdout === "string" ? result.stdout : ""}\n${typeof result.stderr === "string" ? result.stderr : ""}`;
+}
+
+function explicitAuthRequiredProvider(details: unknown): string | undefined {
+  const match = /\bjunior-auth-required\s+provider=([a-z0-9-]+)\b/.exec(
+    commandText(details).toLowerCase(),
+  );
+  return match?.[1];
+}
+
+function uniqueProviders(values: Iterable<string | undefined>): string[] {
+  return [
+    ...new Set([...values].filter((value): value is string => !!value)),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
 function commandTargetsProvider(
   provider: string,
   command: string,
-  details: {
-    stdout?: string;
-    stderr?: string;
-  },
+  details: unknown,
 ): boolean {
   const normalizedCommand = command.trim().toLowerCase();
   if (!normalizedCommand) {
@@ -119,7 +141,7 @@ function commandTargetsProvider(
     candidates.add(domain.toLowerCase());
   }
 
-  const combinedText = `${normalizedCommand}\n${details.stdout?.toLowerCase() ?? ""}\n${details.stderr?.toLowerCase() ?? ""}`;
+  const combinedText = `${normalizedCommand}\n${commandText(details).toLowerCase()}`;
   return [...candidates].some((candidate) => combinedText.includes(candidate));
 }
 
@@ -224,7 +246,23 @@ export function createPluginAuthOrchestration(
   return {
     handleCredentialUnavailable,
     handleCommandFailure: async (input) => {
-      const provider = input.activeSkill?.pluginProvider;
+      const activeProviders = uniqueProviders(input.activeProviders);
+      const authFailure = isCommandAuthFailure(input.details);
+      const explicitProvider = explicitAuthRequiredProvider(input.details);
+      const provider =
+        authFailure &&
+        explicitProvider &&
+        activeProviders.includes(explicitProvider)
+          ? explicitProvider
+          : activeProviders.find(
+              (activeProvider) =>
+                authFailure &&
+                commandTargetsProvider(
+                  activeProvider,
+                  input.command,
+                  input.details,
+                ),
+            );
       if (
         !provider ||
         !deps.requesterId ||

@@ -23,6 +23,7 @@ export function createAgentTools(
   sandboxExecutor?: SandboxExecutor,
   pluginAuthOrchestration?: PluginAuthOrchestration,
   onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
+  getActivePluginProviders?: () => string[],
 ): AgentTool[] {
   const shouldTrace = shouldEmitDevAgentTrace();
   return Object.entries(tools).map(([toolName, toolDef]) => ({
@@ -88,6 +89,7 @@ export function createAgentTools(
             if (bashCommand && pluginAuthOrchestration) {
               await pluginAuthOrchestration.handleCommandFailure({
                 activeSkill: sandbox.getActiveSkill(),
+                activeProviders: getActivePluginProviders?.() ?? [],
                 command: bashCommand,
                 details: normalized.details,
               });

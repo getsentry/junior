@@ -205,6 +205,86 @@ describe("sandbox egress proxy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves repeated upstream response headers", async () => {
+    await upsertSandboxEgressSession({
+      sandboxId: "junior-sbx",
+      requesterId: "U123",
+      providers: ["sentry"],
+      ttlMs: 60_000,
+    });
+    issueProviderCredentialLeaseMock.mockResolvedValue({
+      id: "lease-1",
+      provider: "sentry",
+      env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+      headerTransforms: [
+        {
+          domain: "sentry.io",
+          headers: { Authorization: "Bearer sentry-token" },
+        },
+      ],
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const upstreamHeaders = new Headers();
+    upstreamHeaders.append("set-cookie", "a=1; Path=/");
+    upstreamHeaders.append("set-cookie", "b=2; Path=/");
+
+    const response = await proxySandboxEgressRequest(
+      new Request(
+        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
+        {
+          method: "GET",
+          headers: {
+            "vercel-forwarded-host": "sentry.io",
+            "vercel-sandbox-oidc-token": "signed-token",
+          },
+        },
+      ),
+      "junior-sbx",
+      {
+        fetch: vi.fn(
+          async () => new Response("ok", { headers: upstreamHeaders }),
+        ) as typeof fetch,
+        verifyOidc: async () => ({ sub: "sandbox" }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      (
+        response.headers as Headers & {
+          getSetCookie?: () => string[];
+        }
+      ).getSetCookie?.(),
+    ).toEqual(["a=1; Path=/", "b=2; Path=/"]);
+  });
+
+  it("rejects forwarded hosts with embedded ports", async () => {
+    const fetchMock = vi.fn();
+
+    const response = await proxySandboxEgressRequest(
+      new Request(
+        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
+        {
+          method: "GET",
+          headers: {
+            "vercel-forwarded-host": "sentry.io:8080",
+            "vercel-forwarded-port": "443",
+            "vercel-sandbox-oidc-token": "signed-token",
+          },
+        },
+      ),
+      "junior-sbx",
+      {
+        fetch: fetchMock as typeof fetch,
+        verifyOidc: async () => ({ sub: "sandbox" }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("returns a command-readable auth marker when provider credentials are missing", async () => {
     await upsertSandboxEgressSession({
       sandboxId: "junior-sbx",

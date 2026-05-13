@@ -111,6 +111,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: sentrySkill,
+        activeProviders: ["sentry"],
         command: "sentry issue list",
         details: {
           exit_code: 1,
@@ -161,6 +162,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
+        activeProviders: ["github"],
         command: "gh issue view 123",
         details: {
           exit_code: 1,
@@ -196,6 +198,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
+        activeProviders: ["github"],
         command: "gh issue view 123",
         details: {
           exit_code: 1,
@@ -220,6 +223,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
+        activeProviders: ["github"],
         command: "curl https://other-api.example.test",
         details: {
           exit_code: 1,
@@ -230,5 +234,67 @@ describe("createPluginAuthOrchestration", () => {
 
     expect(startOAuthFlow).not.toHaveBeenCalled();
     expect(unlinkProvider).not.toHaveBeenCalled();
+  });
+
+  it("does not activate oauth recovery from the active skill alone", async () => {
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "check GitHub",
+        userTokenStore: {} as any,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: githubSkill,
+        activeProviders: [],
+        command: "gh issue view 123",
+        details: {
+          exit_code: 1,
+          stderr: "bad credentials",
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+    expect(unlinkProvider).not.toHaveBeenCalled();
+  });
+
+  it("starts oauth recovery from an explicit provider marker without an active skill", async () => {
+    startOAuthFlow.mockResolvedValue({
+      ok: true,
+      delivery: { channelId: "D123" },
+    });
+
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "check Sentry",
+        userTokenStore: {} as any,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: null,
+        activeProviders: ["sentry"],
+        command: "curl https://sentry.io/api/0/issues/",
+        details: {
+          exit_code: 1,
+          stderr: "junior-auth-required provider=sentry 401 unauthorized",
+        },
+      }),
+    ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
+
+    expect(startOAuthFlow).toHaveBeenCalledWith(
+      "sentry",
+      expect.objectContaining({
+        requesterId: "U123",
+        activeSkillName: undefined,
+      }),
+    );
   });
 });

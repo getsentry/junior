@@ -14,6 +14,7 @@ import {
   isSnapshottingError,
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
+import { sandboxIdentifier } from "@/chat/sandbox/identifier";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import {
@@ -201,14 +202,6 @@ export function createSandboxSessionManager(options?: {
     sandbox = null;
     sandboxIdHint = undefined;
     toolExecutors = undefined;
-  };
-
-  const sandboxIdentifier = (targetSandbox: Sandbox): string | undefined => {
-    const sandboxLike = targetSandbox as Sandbox & {
-      name?: string;
-      sandboxId?: string;
-    };
-    return sandboxLike.sandboxId ?? sandboxLike.name;
   };
 
   const createSandboxName = (): string =>

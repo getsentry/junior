@@ -60,7 +60,12 @@ function jsonError(message: string, status: number): Response {
 
 function normalizeHost(value: string): string | undefined {
   const trimmed = value.trim().toLowerCase();
-  if (!trimmed || trimmed.includes("/") || trimmed.includes("\\")) {
+  if (
+    !trimmed ||
+    trimmed.includes("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes(":")
+  ) {
     return undefined;
   }
   return trimmed.replace(/\.$/, "");
@@ -78,7 +83,11 @@ function normalizePort(value: string | null): string | undefined {
     return undefined;
   }
   const trimmed = value.trim();
-  return /^\d{1,5}$/.test(trimmed) ? trimmed : undefined;
+  if (!/^\d{1,5}$/.test(trimmed)) {
+    return undefined;
+  }
+  const port = Number.parseInt(trimmed, 10);
+  return port >= 1 && port <= 65_535 ? trimmed : undefined;
 }
 
 function buildDiscoveryUrl(issuer: string): URL {
@@ -203,9 +212,13 @@ function buildUpstreamUrl(
   const scheme =
     normalizeScheme(request.headers.get(FORWARDED_SCHEME_HEADER)) ?? "https";
   const port = normalizePort(request.headers.get(FORWARDED_PORT_HEADER));
-  return new URL(
-    `${scheme}://${host}${port ? `:${port}` : ""}${upstreamPath(request, sandboxId)}`,
-  );
+  try {
+    return new URL(
+      `${scheme}://${host}${port ? `:${port}` : ""}${upstreamPath(request, sandboxId)}`,
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 async function requestBodyBytes(
@@ -260,7 +273,7 @@ function requestHeaders(
     ) {
       return;
     }
-    headers.set(key, value);
+    headers.append(key, value);
   });
 
   for (const transform of lease.headerTransforms) {
@@ -278,7 +291,7 @@ function responseHeaders(upstream: Response): Headers {
   const headers = new Headers();
   upstream.headers.forEach((value, key) => {
     if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
-      headers.set(key, value);
+      headers.append(key, value);
     }
   });
   return headers;

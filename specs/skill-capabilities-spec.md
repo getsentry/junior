@@ -28,13 +28,13 @@ Draft
 
 ## Purpose
 
-Define how Junior maps a loaded plugin-backed skill to host-managed credentials without exposing secrets or manual auth commands to the model.
+Define how Junior maps active plugin providers to host-managed credentials without exposing secrets or manual auth commands to the model.
 
 ## Core model
 
 1. Plugins own provider permissions in `plugin.yaml`.
 2. Skills do not declare capabilities or config keys.
-3. After a plugin-backed skill is loaded, its provider becomes eligible for the current sandbox egress session.
+3. Runtime tracks active plugin providers for the current turn; provider activation may come from loading a plugin-backed skill, MCP authorization, or resumed turn state.
 4. The agent runs the real provider command.
 5. The runtime resolves the provider from the outgoing request host, issues a provider lease, and injects credentials for that request only.
 6. If auth is missing or stale, the proxy returns a command-readable auth-required response and the command failure path starts a private OAuth flow, then resumes the paused turn after authorization.
@@ -93,7 +93,7 @@ Rules:
 - New sandbox sessions use a Vercel Sandbox network policy that forwards declared credential provider domains to Junior's internal egress route.
 - The internal egress route must verify the Vercel Sandbox OIDC token before proxying.
 - The egress route must reconstruct the upstream URL only from Vercel forwarded host/scheme/port headers and the request path.
-- The egress route must reject provider domains that are not authorized by the current sandbox session's loaded skills.
+- The egress route must reject provider domains that are not authorized by the current sandbox session's active plugin providers.
 - Exact replay fingerprints are claimed in shared state for a short window before proxying upstream.
 - The proxy must strip hop-by-hop and proxy-only headers before sending the upstream request.
 
@@ -101,6 +101,7 @@ Rules:
 
 - Loaded plugin-backed skills include a host-owned boundary derived from the plugin manifest before the skill body.
 - `loadSkill` re-resolves plugin ownership from the skill path, rejects mismatched plugin metadata, and builds loaded metadata from the current `SKILL.md` frontmatter.
+- Turn checkpoints persist active plugin providers for credential and MCP resume.
 - CLI and system packages belong in `plugin.yaml` `runtime-dependencies`.
 - Postinstall/bootstrap commands belong in `plugin.yaml` `runtime-postinstall`.
 - MCP endpoints and allowed tool surfaces belong in `plugin.yaml` `mcp`.

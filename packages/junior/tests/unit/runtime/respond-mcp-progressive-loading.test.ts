@@ -627,7 +627,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     vi.restoreAllMocks();
   });
 
-  it("persists loaded plugin skills across auth pause and resume", async () => {
+  it("persists active plugin providers across auth pause and resume", async () => {
     const context = makeReplyContext({
       conversationId: "conversation-1",
       threadTs: "1712345.0001",
@@ -651,6 +651,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(pausedCheckpoint).toMatchObject({
       state: "awaiting_resume",
+      activePluginProviders: ["demo"],
       loadedSkillNames: [DEMO_SKILL.name],
       resumeReason: "auth",
     });
@@ -696,6 +697,7 @@ describe("generateAssistantReply progressive MCP loading", () => {
     );
     expect(resumedCheckpoint).toMatchObject({
       state: "completed",
+      activePluginProviders: ["demo"],
       loadedSkillNames: [DEMO_SKILL.name],
     });
   });

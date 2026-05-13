@@ -8,6 +8,7 @@ import {
   type LogContext,
 } from "@/chat/logging";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
+import { sandboxIdentifier } from "@/chat/sandbox/identifier";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import {
@@ -120,11 +121,7 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
 }
 
 function createSandboxWorkspace(sandbox: Sandbox): SandboxWorkspace {
-  const sandboxLike = sandbox as Sandbox & {
-    name?: string;
-    sandboxId?: string;
-  };
-  const sandboxId = sandboxLike.sandboxId ?? sandboxLike.name;
+  const sandboxId = sandboxIdentifier(sandbox);
   if (!sandboxId) {
     throw new Error("Vercel Sandbox did not expose an identifier");
   }

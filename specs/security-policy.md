@@ -53,9 +53,9 @@ This policy applies to:
 
 ### Issuance and injection
 
-- Runtime issues short-lived provider credentials for loaded plugin-backed skills when authenticated commands require them.
-- Loaded skills and their plugin declarations determine which provider credentials may be injected into a turn.
-- A loaded skill authorizes its provider for sandbox egress; it must not mint credentials at skill-load time.
+- Runtime issues short-lived provider credentials for active plugin providers when authenticated commands require them.
+- Active plugin providers and their declarations determine which provider credentials may be injected into a turn.
+- An active provider authorizes its declared domains for sandbox egress; provider activation must not mint credentials by itself.
 - Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.
 - Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching API domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.

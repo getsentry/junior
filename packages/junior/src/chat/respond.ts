@@ -368,6 +368,12 @@ function isTurnContextPart(part: unknown, marker: string): boolean {
   );
 }
 
+function uniqueSortedStrings(values: Iterable<string | undefined>): string[] {
+  return [
+    ...new Set([...values].filter((value): value is string => !!value)),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */
 export async function generateAssistantReply(
   messageText: string,
@@ -383,6 +389,7 @@ export async function generateAssistantReply(
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
   let loadedSkillNamesForResume: string[] = [];
+  let activePluginProvidersForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
@@ -490,6 +497,17 @@ export async function generateAssistantReply(
       ...(context.configuration ?? {}),
       ...persistedConfigurationValues,
     };
+    const activePluginProviders = new Set(
+      existingCheckpoint?.activePluginProviders ?? [],
+    );
+    const activatePluginProviderForTurn = (provider?: string): void => {
+      if (provider) {
+        activePluginProviders.add(provider);
+      }
+    };
+    const getResumePluginProviders = () =>
+      uniqueSortedStrings(activePluginProviders);
+    activePluginProvidersForResume = getResumePluginProviders();
 
     // ── Sandbox ──────────────────────────────────────────────────────
     const userTokenStore = createUserTokenStore();
@@ -502,10 +520,7 @@ export async function generateAssistantReply(
       conversationId: sessionConversationId,
       sessionId,
       sliceId: currentSliceId,
-      getAuthorizedProviderNames: () =>
-        activeSkills
-          .map((skill) => skill.pluginProvider)
-          .filter((provider): provider is string => Boolean(provider)),
+      getAuthorizedProviderNames: getResumePluginProviders,
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =
@@ -602,12 +617,14 @@ export async function generateAssistantReply(
       const preloaded = await skillSandbox.loadSkill(skillName);
       if (preloaded) {
         upsertActiveSkill(activeSkills, preloaded);
+        activatePluginProviderForTurn(preloaded.pluginProvider);
       }
     }
     if (invokedSkill) {
       const preloaded = await skillSandbox.loadSkill(invokedSkill.name);
       if (preloaded) {
         upsertActiveSkill(activeSkills, preloaded);
+        activatePluginProviderForTurn(preloaded.pluginProvider);
       }
     }
 
@@ -706,6 +723,7 @@ export async function generateAssistantReply(
       pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
     const syncResumeState = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
+      activePluginProvidersForResume = getResumePluginProviders();
     };
     setTags({
       conversationId: spanContext.conversationId,
@@ -746,6 +764,7 @@ export async function generateAssistantReply(
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
           upsertActiveSkill(activeSkills, effective);
+          activatePluginProviderForTurn(effective.pluginProvider);
           syncResumeState();
           await turnMcpToolManager.activateForSkill(effective);
           syncResumeState();
@@ -806,6 +825,7 @@ export async function generateAssistantReply(
 
     syncResumeState();
     for (const skill of activeSkills) {
+      activatePluginProviderForTurn(skill.pluginProvider);
       await turnMcpToolManager.activateForSkill(skill);
       syncResumeState();
       if (mcpAuth.getPendingPause()) {
@@ -880,6 +900,7 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
+      getResumePluginProviders,
     );
     advisorTools = createAgentTools(
       createAdvisorToolDefinitions(tools),
@@ -889,6 +910,7 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
+      getResumePluginProviders,
     );
     // Keep Pi's native tool schema static for the whole turn. Ideally this
     // would use provider-native tool loading/search APIs, but Pi's generic
@@ -1077,6 +1099,7 @@ export async function generateAssistantReply(
         sessionId,
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
+        activePluginProviders: getResumePluginProviders(),
         loadedSkillNames: activeSkills.map((skill) => skill.name),
       });
     }
@@ -1111,6 +1134,7 @@ export async function generateAssistantReply(
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         messages: timeoutResumeMessages,
+        activePluginProviders: activePluginProvidersForResume,
         loadedSkillNames: loadedSkillNamesForResume,
         errorMessage: error instanceof Error ? error.message : String(error),
         logContext: {
@@ -1163,6 +1187,7 @@ export async function generateAssistantReply(
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         messages: timeoutResumeMessages,
+        activePluginProviders: activePluginProvidersForResume,
         loadedSkillNames: loadedSkillNamesForResume,
         errorMessage: error.message,
         logContext: {
