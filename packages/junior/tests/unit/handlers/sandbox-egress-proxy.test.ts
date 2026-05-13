@@ -1,7 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { issueProviderCredentialLeaseMock } = vi.hoisted(() => ({
+const {
+  createRemoteJWKSetMock,
+  decodeJwtMock,
+  issueProviderCredentialLeaseMock,
+  jwtVerifyMock,
+} = vi.hoisted(() => ({
+  createRemoteJWKSetMock: vi.fn(() => async () => null),
+  decodeJwtMock: vi.fn(),
   issueProviderCredentialLeaseMock: vi.fn(),
+  jwtVerifyMock: vi.fn(),
+}));
+
+vi.mock("jose", () => ({
+  createRemoteJWKSet: createRemoteJWKSetMock,
+  decodeJwt: decodeJwtMock,
+  jwtVerify: jwtVerifyMock,
 }));
 
 vi.mock("@/chat/config", async (importOriginal) => {
@@ -50,13 +64,18 @@ import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
   proxySandboxEgressRequest,
   validateVercelSandboxOidcClaims,
+  verifyVercelSandboxOidcToken,
 } from "@/handlers/sandbox-egress-proxy";
 
 describe("sandbox egress proxy", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    createRemoteJWKSetMock.mockClear();
+    createRemoteJWKSetMock.mockReturnValue(async () => null);
+    decodeJwtMock.mockReset();
     issueProviderCredentialLeaseMock.mockReset();
+    jwtVerifyMock.mockReset();
     await disconnectStateAdapter();
   });
 
@@ -300,6 +319,33 @@ describe("sandbox egress proxy", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects plaintext forwarded schemes before credential injection", async () => {
+    const fetchMock = vi.fn();
+
+    const response = await proxySandboxEgressRequest(
+      new Request(
+        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
+        {
+          method: "GET",
+          headers: {
+            "vercel-forwarded-host": "sentry.io",
+            "vercel-forwarded-scheme": "http",
+            "vercel-sandbox-oidc-token": "signed-token",
+          },
+        },
+      ),
+      "junior-sbx",
+      {
+        fetch: fetchMock as typeof fetch,
+        verifyOidc: async () => ({ sub: "sandbox" }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
+  });
+
   it("returns a command-readable auth marker when provider credentials are missing", async () => {
     await upsertSandboxEgressSession({
       sandboxId: "junior-sbx",
@@ -404,5 +450,30 @@ describe("sandbox egress proxy", () => {
         "junior-sbx",
       ),
     ).toThrow("different sandbox");
+  });
+
+  it("caches Vercel OIDC discovery metadata by issuer", async () => {
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+    decodeJwtMock.mockReturnValue({
+      iss: "https://oidc.vercel.com/cache-test",
+    });
+    jwtVerifyMock.mockResolvedValue({
+      payload: {
+        project_id: "prj_123",
+        sandbox_id: "junior-sbx",
+      },
+    });
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        jwks_uri: "https://oidc.vercel.com/cache-test/jwks",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await verifyVercelSandboxOidcToken("signed-token-1", "junior-sbx");
+    await verifyVercelSandboxOidcToken("signed-token-2", "junior-sbx");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1);
   });
 });

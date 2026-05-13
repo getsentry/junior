@@ -54,6 +54,7 @@ interface ProxyDeps {
 }
 
 const jwksByUri = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+const jwksByIssuer = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
 function jsonError(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
@@ -72,11 +73,11 @@ function normalizeHost(value: string): string | undefined {
   return trimmed.replace(/\.$/, "");
 }
 
-function normalizeScheme(value: string | null): "http" | "https" | undefined {
-  if (value === "http" || value === "https") {
-    return value;
+function normalizeScheme(value: string | null): "https" | undefined {
+  if (!value) {
+    return "https";
   }
-  return undefined;
+  return value === "https" ? "https" : undefined;
 }
 
 function normalizePort(value: string | null): string | undefined {
@@ -105,6 +106,11 @@ function buildDiscoveryUrl(issuer: string): URL {
 async function getJwks(
   issuer: string,
 ): Promise<ReturnType<typeof createRemoteJWKSet>> {
+  const cached = jwksByIssuer.get(issuer);
+  if (cached) {
+    return cached;
+  }
+
   const discoveryUrl = buildDiscoveryUrl(issuer);
   const response = await fetch(discoveryUrl);
   if (!response.ok) {
@@ -119,6 +125,7 @@ async function getJwks(
     jwks = createRemoteJWKSet(new URL(config.jwks_uri));
     jwksByUri.set(config.jwks_uri, jwks);
   }
+  jwksByIssuer.set(issuer, jwks);
   return jwks;
 }
 
@@ -210,8 +217,10 @@ function buildUpstreamUrl(
   if (!host) {
     return undefined;
   }
-  const scheme =
-    normalizeScheme(request.headers.get(FORWARDED_SCHEME_HEADER)) ?? "https";
+  const scheme = normalizeScheme(request.headers.get(FORWARDED_SCHEME_HEADER));
+  if (!scheme) {
+    return undefined;
+  }
   const port = normalizePort(request.headers.get(FORWARDED_PORT_HEADER));
   try {
     return new URL(
