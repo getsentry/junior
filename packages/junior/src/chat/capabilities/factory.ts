@@ -18,6 +18,7 @@ import type { PluginManifest } from "@/chat/plugins/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 
 const ENV_PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+let sandboxEgressRouter: ProviderCredentialRouter | undefined;
 
 export function createUserTokenStore(): UserTokenStore {
   return new StateAdapterTokenStore(getStateAdapter());
@@ -115,5 +116,6 @@ export async function issueProviderCredentialLease(input: {
   requesterId?: string;
   reason: string;
 }): Promise<CredentialLease> {
-  return await createProviderCredentialRouter().issue(input);
+  sandboxEgressRouter ??= createProviderCredentialRouter();
+  return await sandboxEgressRouter.issue(input);
 }

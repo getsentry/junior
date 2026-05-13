@@ -48,7 +48,7 @@ interface OidcConfiguration {
 
 interface ProxyDeps {
   fetch?: typeof fetch;
-  verifyOidc?: (token: string) => Promise<JWTPayload>;
+  verifyOidc?: (token: string, sandboxId: string) => Promise<JWTPayload>;
 }
 
 const jwksByUri = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
@@ -111,28 +111,61 @@ async function getJwks(
   return jwks;
 }
 
-function assertExpectedVercelClaims(payload: JWTPayload): void {
+function sandboxClaimMatches(payload: JWTPayload, sandboxId: string): boolean {
+  for (const claim of [
+    "sandbox_id",
+    "sandboxId",
+    "sandbox",
+    "sandbox_name",
+    "sandboxName",
+    "name",
+  ]) {
+    if (payload[claim] === sandboxId) {
+      return true;
+    }
+  }
+
+  if (typeof payload.sub !== "string") {
+    return false;
+  }
+  const parts = payload.sub.split(":");
+  return parts.some(
+    (part, index) => part === "sandbox" && parts[index + 1] === sandboxId,
+  );
+}
+
+/** Validate deployment and sandbox binding claims in a verified Vercel Sandbox OIDC payload. */
+export function validateVercelSandboxOidcClaims(
+  payload: JWTPayload,
+  sandboxId: string,
+): void {
   const expectedTeamId = process.env.VERCEL_TEAM_ID?.trim();
   const expectedProjectId = process.env.VERCEL_PROJECT_ID?.trim();
+  if (!expectedProjectId) {
+    throw new Error("VERCEL_PROJECT_ID is required for sandbox egress OIDC");
+  }
   if (
     expectedTeamId &&
-    typeof payload.owner_id === "string" &&
-    payload.owner_id !== expectedTeamId
+    (typeof payload.owner_id !== "string" ||
+      payload.owner_id !== expectedTeamId)
   ) {
     throw new Error("Vercel OIDC token belongs to a different team");
   }
   if (
-    expectedProjectId &&
-    typeof payload.project_id === "string" &&
+    typeof payload.project_id !== "string" ||
     payload.project_id !== expectedProjectId
   ) {
     throw new Error("Vercel OIDC token belongs to a different project");
+  }
+  if (!sandboxClaimMatches(payload, sandboxId)) {
+    throw new Error("Vercel OIDC token belongs to a different sandbox");
   }
 }
 
 /** Verify the Vercel-issued OIDC token attached to a sandbox firewall proxy request. */
 export async function verifyVercelSandboxOidcToken(
   token: string,
+  sandboxId: string,
 ): Promise<JWTPayload> {
   const unverified = decodeJwt(token);
   if (typeof unverified.iss !== "string") {
@@ -142,7 +175,7 @@ export async function verifyVercelSandboxOidcToken(
   const verified = await jwtVerify(token, jwks, {
     issuer: unverified.iss,
   });
-  assertExpectedVercelClaims(verified.payload);
+  validateVercelSandboxOidcClaims(verified.payload, sandboxId);
   return verified.payload;
 }
 
@@ -309,7 +342,10 @@ export async function proxySandboxEgressRequest(
   }
 
   try {
-    await (deps.verifyOidc ?? verifyVercelSandboxOidcToken)(oidcToken);
+    await (deps.verifyOidc ?? verifyVercelSandboxOidcToken)(
+      oidcToken,
+      sandboxId,
+    );
   } catch {
     return jsonError("Invalid Vercel Sandbox OIDC token", 401);
   }

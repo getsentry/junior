@@ -43,7 +43,10 @@ vi.mock("@/chat/capabilities/factory", () => ({
 import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress-policy";
 import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { proxySandboxEgressRequest } from "@/handlers/sandbox-egress-proxy";
+import {
+  proxySandboxEgressRequest,
+  validateVercelSandboxOidcClaims,
+} from "@/handlers/sandbox-egress-proxy";
 
 describe("sandbox egress proxy", () => {
   beforeEach(async () => {
@@ -57,6 +60,8 @@ describe("sandbox egress proxy", () => {
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
     delete process.env.JUNIOR_BASE_URL;
+    delete process.env.VERCEL_PROJECT_ID;
+    delete process.env.VERCEL_TEAM_ID;
     vi.restoreAllMocks();
   });
 
@@ -172,5 +177,43 @@ describe("sandbox egress proxy", () => {
 
     expect(response.status).toBe(403);
     expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it("requires OIDC claims to match the Vercel project and sandbox", () => {
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+    process.env.VERCEL_TEAM_ID = "team_123";
+
+    expect(() =>
+      validateVercelSandboxOidcClaims(
+        {
+          owner_id: "team_123",
+          project_id: "prj_123",
+          sandbox_id: "junior-sbx",
+        },
+        "junior-sbx",
+      ),
+    ).not.toThrow();
+
+    expect(() =>
+      validateVercelSandboxOidcClaims(
+        {
+          owner_id: "team_123",
+          project_id: "prj_other",
+          sandbox_id: "junior-sbx",
+        },
+        "junior-sbx",
+      ),
+    ).toThrow("different project");
+
+    expect(() =>
+      validateVercelSandboxOidcClaims(
+        {
+          owner_id: "team_123",
+          project_id: "prj_123",
+          sandbox_id: "other-sandbox",
+        },
+        "junior-sbx",
+      ),
+    ).toThrow("different sandbox");
   });
 });

@@ -182,18 +182,6 @@ export class SkillCapabilityRuntime {
     });
   }
 
-  async enableProviderCredentialsForTurn(input: {
-    provider: string;
-    reason: string;
-  }): Promise<{
-    reused: boolean;
-    expiresAt: string;
-    headerTransforms: CredentialHeaderTransform[];
-    env: Record<string, string>;
-  }> {
-    return await this.enableProvider(input);
-  }
-
   getTurnHeaderTransforms(): CredentialHeaderTransform[] | undefined {
     const now = Date.now();
     const headerTransforms: CredentialHeaderTransform[] = [];
