@@ -45,7 +45,7 @@ describe("capability factory", () => {
           description: "Example",
           capabilities: ["example.api"],
           configKeys: [],
-          apiDomains: ["api.example.com"],
+          domains: ["api.example.com"],
           apiHeaders: {
             Authorization: "Bearer ${EXAMPLE_API_HEADER}",
             "X-Api-Version": "2026-01-01",

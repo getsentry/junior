@@ -214,22 +214,22 @@ export function createGitHubAppBroker(
   const tokenCache = new Map<string, CachedInstallationToken>();
   const provider = manifest.name;
   const {
-    apiDomains,
+    domains,
     apiHeaders,
     authTokenEnv,
     appIdEnv,
     privateKeyEnv,
     installationIdEnv,
   } = credentials;
-  const apiDomain = apiDomains[0];
+  const apiDomain = domains[0];
   if (!apiDomain) {
-    throw new Error(`GitHub App provider "${provider}" requires apiDomains`);
+    throw new Error(`GitHub App provider "${provider}" requires domains`);
   }
   const apiBase = `https://${apiDomain}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
   const pluginHeaderTransforms = () => resolveApiHeaderTransforms(manifest);
 
-  const leaseDomains = [...new Set(apiDomains)];
+  const leaseDomains = [...new Set(domains)];
 
   /**
    * Build the correct Authorization header for a domain.

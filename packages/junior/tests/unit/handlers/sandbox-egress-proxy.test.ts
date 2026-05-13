@@ -41,7 +41,7 @@ vi.mock("@/chat/plugins/registry", () => ({
         configKeys: [],
         credentials: {
           type: "oauth-bearer",
-          apiDomains: ["sentry.io", "*.sentry.io"],
+          domains: ["sentry.io", "*.sentry.io"],
           authTokenEnv: "SENTRY_AUTH_TOKEN",
           authTokenPlaceholder: "host_managed_credential",
         },

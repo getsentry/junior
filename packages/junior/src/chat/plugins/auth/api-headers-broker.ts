@@ -34,12 +34,12 @@ function resolveHeaders(
 export function resolveApiHeaderTransforms(
   manifest: PluginManifest,
 ): CredentialHeaderTransform[] {
-  const { apiDomains, apiHeaders } = manifest;
-  if (!apiDomains || !apiHeaders) {
+  const { domains, apiHeaders } = manifest;
+  if (!domains || !apiHeaders) {
     return [];
   }
   const resolvedHeaders = resolveHeaders(manifest.name, apiHeaders);
-  return apiDomains.map((domain) => ({
+  return domains.map((domain) => ({
     domain,
     headers: resolvedHeaders,
   }));

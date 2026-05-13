@@ -137,7 +137,7 @@ const stringMapSchema = z
     return result;
   });
 
-const apiDomainsSchema = z
+const domainsSchema = z
   .array(z.unknown())
   .min(1, {
     error: "must be a non-empty array of strings",
@@ -166,7 +166,8 @@ const apiDomainsSchema = z
 
 const baseCredentialsSchema = z
   .object({
-    "api-domains": apiDomainsSchema,
+    domains: domainsSchema.optional(),
+    "api-domains": domainsSchema.optional(),
     "api-headers": stringMapSchema.optional(),
     "auth-token-env": envVarString,
     "auth-token-placeholder": nonEmptyTrimmedString.optional(),
@@ -266,7 +267,8 @@ const manifestSourceSchema = z
         error: "must be an array when provided",
       })
       .optional(),
-    "api-domains": apiDomainsSchema.optional(),
+    domains: domainsSchema.optional(),
+    "api-domains": domainsSchema.optional(),
     "api-headers": stringMapSchema.optional(),
     "command-env": stringMapSchema.optional(),
     credentials: z
@@ -429,6 +431,20 @@ function normalizeCommandEnv(
   );
 }
 
+function getDomainDeclaration(
+  data: { domains?: string[]; "api-domains"?: string[] },
+  prefix: string,
+): string[] {
+  if (data.domains && data["api-domains"]) {
+    throw new Error(`${prefix} cannot declare both domains and api-domains`);
+  }
+  const domains = data.domains ?? data["api-domains"];
+  if (!domains) {
+    throw new Error(`${prefix} requires domains`);
+  }
+  return domains;
+}
+
 function normalizeCredentials(
   data: Record<string, unknown>,
   name: string,
@@ -451,6 +467,11 @@ function normalizeCredentials(
     throw new Error(issueMessage(result.error, `Plugin ${name} credentials`));
   }
 
+  const domains = getDomainDeclaration(
+    result.data,
+    `Plugin ${name} credentials`,
+  );
+
   if (result.data.type === "oauth-bearer") {
     const apiHeaders = result.data["api-headers"]
       ? normalizeStringMap(
@@ -462,7 +483,7 @@ function normalizeCredentials(
 
     return {
       type: "oauth-bearer",
-      apiDomains: result.data["api-domains"],
+      domains,
       ...(apiHeaders ? { apiHeaders } : {}),
       authTokenEnv: result.data["auth-token-env"],
       ...(result.data["auth-token-placeholder"]
@@ -481,7 +502,7 @@ function normalizeCredentials(
 
   return {
     type: "github-app",
-    apiDomains: result.data["api-domains"],
+    domains,
     ...(apiHeaders ? { apiHeaders } : {}),
     authTokenEnv: result.data["auth-token-env"],
     ...(result.data["auth-token-placeholder"]
@@ -795,9 +816,9 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
         `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} config-keys must be an array when provided`,
       );
     }
-    if (path === "api-domains") {
+    if (path === "domains" || path === "api-domains") {
       throw new Error(
-        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} api-domains must be a non-empty array of domains`,
+        `Plugin ${(parsedYaml as { name?: string }).name ?? "unknown"} ${path} must be a non-empty array of domains`,
       );
     }
     if (path === "api-headers") {
@@ -875,11 +896,17 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
         envVars,
       )
     : undefined;
-  if (apiHeaders && !data["api-domains"]) {
-    throw new Error(`Plugin ${data.name} api-headers requires api-domains`);
+  if (data.domains && data["api-domains"]) {
+    throw new Error(
+      `Plugin ${data.name} cannot declare both domains and api-domains`,
+    );
   }
-  if (data["api-domains"] && !apiHeaders) {
-    throw new Error(`Plugin ${data.name} api-domains requires api-headers`);
+  const domains = data.domains ?? data["api-domains"];
+  if (apiHeaders && !domains) {
+    throw new Error(`Plugin ${data.name} api-headers requires domains`);
+  }
+  if (domains && !apiHeaders) {
+    throw new Error(`Plugin ${data.name} domains requires api-headers`);
   }
   const commandEnv = data["command-env"]
     ? normalizeCommandEnv(
@@ -910,7 +937,7 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
     description: data.description,
     capabilities,
     configKeys,
-    ...(data["api-domains"] ? { apiDomains: data["api-domains"] } : {}),
+    ...(domains ? { domains } : {}),
     ...(apiHeaders ? { apiHeaders } : {}),
     ...(commandEnv ? { commandEnv } : {}),
     ...(Object.keys(envVars).length > 0 ? { envVars } : {}),

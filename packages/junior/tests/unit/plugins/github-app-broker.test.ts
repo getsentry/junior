@@ -11,7 +11,7 @@ const ORIGINAL_FETCH = globalThis.fetch;
 
 const TEST_CREDENTIALS: GitHubAppCredentials = {
   type: "github-app",
-  apiDomains: ["api.github.com", "github.com"],
+  domains: ["api.github.com", "github.com"],
   authTokenEnv: "GITHUB_TOKEN",
   appIdEnv: "GITHUB_APP_ID",
   privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
@@ -153,7 +153,7 @@ describe("github app credential broker", () => {
     });
     const credentials: GitHubAppCredentials = {
       ...TEST_CREDENTIALS,
-      apiDomains: ["api.github.example", "github.example"],
+      domains: ["api.github.example", "github.example"],
     };
 
     const broker = createGitHubAppBroker(

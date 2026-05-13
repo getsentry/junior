@@ -40,7 +40,7 @@ async function writePackagedPlugin(tempRoot: string): Promise<void> {
       "  - org",
       "credentials:",
       "  type: oauth-bearer",
-      "  api-domains:",
+      "  domains:",
       "    - api.example.com",
       "  auth-token-env: DEMO_AUTH_TOKEN",
     ].join("\n"),
@@ -70,7 +70,7 @@ async function writePackagedPluginWithImplicitLatest(
       "  - org",
       "credentials:",
       "  type: oauth-bearer",
-      "  api-domains:",
+      "  domains:",
       "    - api.example.com",
       "  auth-token-env: DEMO_AUTH_TOKEN",
       "runtime-dependencies:",
@@ -133,7 +133,7 @@ async function writePackagedPluginWithRuntimePostinstall(
   );
 }
 
-async function writePackagedPluginWithInvalidApiDomain(
+async function writePackagedPluginWithInvalidDomain(
   tempRoot: string,
 ): Promise<void> {
   const packageRoot = path.join(
@@ -155,7 +155,7 @@ async function writePackagedPluginWithInvalidApiDomain(
       "  - org",
       "credentials:",
       "  type: oauth-bearer",
-      "  api-domains:",
+      "  domains:",
       "    - '*'",
       "  auth-token-env: DEMO_AUTH_TOKEN",
     ].join("\n"),
@@ -185,7 +185,7 @@ async function writePackagedPluginWithInvalidAuthTokenEnv(
       "  - org",
       "credentials:",
       "  type: oauth-bearer",
-      "  api-domains:",
+      "  domains:",
       "    - api.example.com",
       "  auth-token-env: demo_token",
     ].join("\n"),
@@ -236,7 +236,7 @@ async function writePackagedPluginWithInvalidOauthEndpoint(
       "  - api",
       "credentials:",
       "  type: oauth-bearer",
-      "  api-domains:",
+      "  domains:",
       "    - api.example.com",
       "  auth-token-env: DEMO_AUTH_TOKEN",
       "oauth:",
@@ -270,7 +270,7 @@ async function writePackagedPluginWithOauthOverrides(
       "  - api.read",
       "credentials:",
       "  type: oauth-bearer",
-      "  api-domains:",
+      "  domains:",
       "    - api.example.com",
       "  api-headers:",
       '    X-Api-Version: "2026-01-01"',
@@ -311,7 +311,7 @@ async function writePackagedPluginWithForbiddenApiHeader(
       "  - api",
       "credentials:",
       "  type: oauth-bearer",
-      "  api-domains:",
+      "  domains:",
       "    - api.example.com",
       "  api-headers:",
       "    Authorization: Bearer nope",
@@ -667,11 +667,11 @@ describe("plugin registry package discovery", () => {
     ]);
   });
 
-  it("rejects credentials with invalid api-domains values", async () => {
+  it("rejects credentials with invalid domains values", async () => {
     const tempRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-plugin-package-"),
     );
-    await writePackagedPluginWithInvalidApiDomain(tempRoot);
+    await writePackagedPluginWithInvalidDomain(tempRoot);
     await fs.writeFile(
       path.join(tempRoot, "package.json"),
       JSON.stringify({
@@ -693,7 +693,7 @@ describe("plugin registry package discovery", () => {
 
     await expectRegistryLoadFailure(
       ["@acme/junior-plugin-invalid-domain"],
-      "credentials.api-domains entries must be valid domain names",
+      "credentials.domains entries must be valid domain names",
     );
   });
 

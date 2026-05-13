@@ -128,11 +128,11 @@ function commandTargetsProvider(
   const credentials = manifest?.credentials;
   if (credentials) {
     candidates.add(credentials.authTokenEnv.toLowerCase());
-    for (const domain of credentials.apiDomains) {
+    for (const domain of credentials.domains) {
       candidates.add(domain.toLowerCase());
     }
   }
-  for (const domain of manifest?.apiDomains ?? []) {
+  for (const domain of manifest?.domains ?? []) {
     candidates.add(domain.toLowerCase());
   }
 

@@ -21,7 +21,7 @@ const SENTRY_MANIFEST: PluginManifest = {
   configKeys: ["sentry.org", "sentry.project"],
   credentials: {
     type: "oauth-bearer",
-    apiDomains: ["sentry.io", "us.sentry.io", "de.sentry.io"],
+    domains: ["sentry.io", "us.sentry.io", "de.sentry.io"],
     authTokenEnv: "SENTRY_AUTH_TOKEN",
   },
   oauth: {
@@ -133,7 +133,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     process.env.SENTRY_EXTRA_AUTH = "PluginManaged value";
     const manifest: PluginManifest = {
       ...SENTRY_MANIFEST,
-      apiDomains: ["uploads.sentry.io", "sentry.io"],
+      domains: ["uploads.sentry.io", "sentry.io"],
       apiHeaders: {
         Authorization: "${SENTRY_EXTRA_AUTH}",
         "X-Sentry-Mode": "sandbox",

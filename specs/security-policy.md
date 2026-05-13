@@ -58,7 +58,7 @@ This policy applies to:
 - An active provider authorizes its declared domains for sandbox egress; provider activation must not mint credentials by itself.
 - Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.
-- Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching API domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.
+- Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching provider domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.
 - When CLI tools require tool-native sandbox auth env vars (for example `SENTRY_AUTH_TOKEN`, Pup's `DD_API_KEY`, or Pup's `DD_APP_KEY`), set them to non-secret placeholders so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
 - Plugin-declared command env may include non-secret placeholders and default-backed deployment values needed by the command process. It must not read or expose secret deployment env vars.
 - Never inject real provider secrets into sandbox env vars, files, or command arguments.

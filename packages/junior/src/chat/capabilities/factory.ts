@@ -31,8 +31,8 @@ export function createUserTokenStore(): UserTokenStore {
 function resolveTestApiHeaderTransforms(
   manifest: PluginManifest,
 ): CredentialHeaderTransform[] {
-  const { apiDomains, apiHeaders } = manifest;
-  if (!apiDomains || !apiHeaders) {
+  const { domains, apiHeaders } = manifest;
+  if (!domains || !apiHeaders) {
     return [];
   }
   // Eval mode must not read deployment secrets; placeholders become dummy values.
@@ -44,7 +44,7 @@ function resolveTestApiHeaderTransforms(
       }),
     ]),
   );
-  return apiDomains.map((domain) => ({ domain, headers }));
+  return domains.map((domain) => ({ domain, headers }));
 }
 
 function createTestBroker(plugin: PluginDefinition): TestCredentialBroker {
@@ -53,7 +53,7 @@ function createTestBroker(plugin: PluginDefinition): TestCredentialBroker {
     provider: name,
     ...(credentials
       ? {
-          domains: credentials.apiDomains,
+          domains: credentials.domains,
           ...(credentials.apiHeaders
             ? { apiHeaders: credentials.apiHeaders }
             : {}),

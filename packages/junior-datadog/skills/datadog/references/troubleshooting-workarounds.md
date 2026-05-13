@@ -12,7 +12,7 @@ Use this reference when Pup commands fail or return unexpected results.
 ## Authentication errors
 
 - A `401 Unauthorized`, `missing API key`, or `missing application key` error usually means `DATADOG_API_KEY` or `DATADOG_APP_KEY` is missing from the Junior deployment env, or the key was revoked.
-- Pup receives placeholder env values in the sandbox so it will make HTTP requests; the host injects the real `DD-API-KEY` and `DD-APPLICATION-KEY` headers for Datadog API domains.
+- Pup receives placeholder env values in the sandbox so it will make HTTP requests; the host injects the real `DD-API-KEY` and `DD-APPLICATION-KEY` headers for Datadog provider domains.
 - Do not ask the user to paste keys into Slack or the sandbox. Tell the operator to fix the deployment env and retry.
 
 ## Rate limits

@@ -54,7 +54,7 @@ env-vars:
   ACME_REGION:
     default: us
 
-api-domains:
+domains:
   - api.acme.example
 api-headers:
   Authorization: ${ACME_AUTH_HEADER}
@@ -129,7 +129,7 @@ config-keys:
 
 credentials:
   type: oauth-bearer
-  api-domains:
+  domains:
     - api.acme.example
   auth-token-env: ACME_AUTH_TOKEN
   auth-token-placeholder: host_managed_credential

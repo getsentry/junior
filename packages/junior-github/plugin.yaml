@@ -17,7 +17,7 @@ config-keys:
 
 credentials:
   type: github-app
-  api-domains:
+  domains:
     - api.github.com
     - github.com
   auth-token-env: GITHUB_TOKEN

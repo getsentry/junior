@@ -21,7 +21,7 @@ description: Internal provider workflows
 | `capabilities`         | provider permissions        | short tokens, qualified as `<plugin>.<capability>` |
 | `config-keys`          | defaults/targets            | short tokens, qualified as `<plugin>.<key>`        |
 | `env-vars`             | allowed deployment env refs | keys match `[A-Z_][A-Z0-9_]*`                      |
-| `api-domains`          | header injection domains    | required with `api-headers`                        |
+| `domains`              | header injection domains    | required with `api-headers`                        |
 | `api-headers`          | literal/env-backed headers  | values may use declared `${NAME}`                  |
 | `credentials`          | token delivery              | `oauth-bearer` or `github-app`                     |
 | `oauth`                | user OAuth                  | requires `credentials.type: oauth-bearer`          |
@@ -35,7 +35,7 @@ description: Internal provider workflows
 ```yaml
 credentials:
   type: oauth-bearer
-  api-domains:
+  domains:
     - api.example.com
   auth-token-env: EXAMPLE_AUTH_TOKEN
   auth-token-placeholder: host_managed_credential
@@ -53,7 +53,7 @@ oauth:
 ```yaml
 credentials:
   type: github-app
-  api-domains:
+  domains:
     - api.github.com
     - github.com
   auth-token-env: GITHUB_TOKEN
@@ -71,7 +71,7 @@ env-vars:
     default: example.com
   EXAMPLE_AUTH_HEADER:
 
-api-domains:
+domains:
   - api.example.com
 api-headers:
   Authorization: ${EXAMPLE_AUTH_HEADER}
@@ -85,8 +85,8 @@ mcp:
 
 ## Parser traps
 
-- `api-headers` requires `api-domains`.
-- `api-domains` requires `api-headers`.
+- `api-headers` requires `domains`.
+- `domains` requires `api-headers`.
 - `oauth` requires `credentials.type: oauth-bearer`.
 - `mcp.url` env refs must be declared in `env-vars`.
 - API-header env refs must not declare defaults.

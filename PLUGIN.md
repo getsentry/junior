@@ -59,7 +59,7 @@ config-keys:
 
 credentials:
   type: oauth-bearer
-  api-domains:
+  domains:
     - api.linear.app
   auth-token-env: LINEAR_API_TOKEN
   auth-token-placeholder: host_managed_credential
@@ -134,6 +134,7 @@ pnpm add @your-scope/junior-plugin-linear
 ```
 
 2. Deploy as normal. Junior auto-detects installed dependencies that contain:
+
 - `plugin.yaml` at package root
 - `plugins/` directory
 - `skills/` directory

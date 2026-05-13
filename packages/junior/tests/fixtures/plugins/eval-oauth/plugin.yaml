@@ -6,7 +6,7 @@ capabilities:
 
 credentials:
   type: oauth-bearer
-  api-domains:
+  domains:
     - eval-oauth.example.test
   auth-token-env: EVAL_OAUTH_ACCESS_TOKEN
 

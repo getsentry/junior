@@ -19,7 +19,7 @@ env-vars:
   DATADOG_SITE:
     default: datadoghq.com
 
-api-domains:
+domains:
   - api.datadoghq.com
   - api.us3.datadoghq.com
   - api.us5.datadoghq.com

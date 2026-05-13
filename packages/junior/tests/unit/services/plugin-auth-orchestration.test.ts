@@ -62,7 +62,7 @@ describe("createPluginAuthOrchestration", () => {
             name: "github",
             credentials: {
               type: "github-app",
-              apiDomains: ["api.github.com"],
+              domains: ["api.github.com"],
               authTokenEnv: "GITHUB_TOKEN",
             },
           },
@@ -75,7 +75,7 @@ describe("createPluginAuthOrchestration", () => {
             name: "sentry",
             credentials: {
               type: "oauth-bearer",
-              apiDomains: ["sentry.io"],
+              domains: ["sentry.io"],
               authTokenEnv: "SENTRY_AUTH_TOKEN",
             },
           },

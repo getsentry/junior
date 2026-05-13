@@ -115,14 +115,14 @@ config-keys:
   - org
   - project
 
-api-domains:
+domains:
   - api.example.com
 api-headers:
   X-Api-Version: "2026-01-01"
 
 credentials:
   type: oauth-bearer
-  api-domains:
+  domains:
     - api.example.com
   auth-token-env: EXAMPLE_AUTH_TOKEN
   auth-token-placeholder: host_managed_credential
@@ -158,7 +158,7 @@ runtime-postinstall:
 - `description`: short summary of what the plugin integrates
 - `capabilities`: actions the plugin’s skills may request, qualified as `<plugin>.<capability>`
 - `config-keys`: provider-specific configuration keys, qualified as `<plugin>.<key>`
-- `api-domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior
+- `domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior
 - `command-env`: optional non-secret sandbox env vars injected when provider credentials or API headers are enabled; use it for CLI placeholders and deployment defaults
 - `credentials`: how token auth is delivered to tools; current types are `oauth-bearer` and `github-app`
 - `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`
@@ -189,13 +189,15 @@ The only supported placeholder form is `${NAME}` — replaced with `process.env[
 
 ### API headers
 
-Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a matching `api-domains` request. This can stand alone for header-authenticated providers or pair with token-backed credentials. When paired with token-backed credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
+Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a request to a matching `domains` entry. This can stand alone for header-authenticated providers or pair with token-backed credentials. When paired with token-backed credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
+
+`api-domains` is still accepted as a deprecated alias for existing manifests. New manifests should use `domains`.
 
 ```yaml
 env-vars:
   EXAMPLE_AUTH_HEADER:
 
-api-domains:
+domains:
   - api.example.com
 
 api-headers:
@@ -206,7 +208,7 @@ api-headers:
 Literal headers are also valid:
 
 ```yaml
-api-domains:
+domains:
   - api.example.com
 
 api-headers:
@@ -227,7 +229,7 @@ env-vars:
   EXAMPLE_SITE:
     default: example.com
 
-api-domains:
+domains:
   - api.example.com
 api-headers:
   Authorization: ${EXAMPLE_AUTH_HEADER}

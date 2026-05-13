@@ -9,7 +9,7 @@ const MANIFEST: PluginManifest = {
   description: "Example API access",
   capabilities: ["example.query"],
   configKeys: [],
-  apiDomains: ["api.example.com"],
+  domains: ["api.example.com"],
   apiHeaders: {
     Authorization: "${EXAMPLE_AUTH_HEADER}",
     "Content-Type": "text/plain",

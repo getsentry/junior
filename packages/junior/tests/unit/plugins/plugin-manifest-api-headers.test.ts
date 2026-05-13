@@ -11,7 +11,7 @@ describe("plugin manifest API headers", () => {
         "description: Example API access",
         "env-vars:",
         "  EXAMPLE_AUTH_HEADER:",
-        "api-domains:",
+        "domains:",
         "  - api.example.com",
         "api-headers:",
         '  Authorization: "${EXAMPLE_AUTH_HEADER}"',
@@ -21,11 +21,33 @@ describe("plugin manifest API headers", () => {
     );
 
     expect(manifest.credentials).toBeUndefined();
-    expect(manifest.apiDomains).toEqual(["api.example.com"]);
+    expect(manifest.domains).toEqual(["api.example.com"]);
     expect(manifest.apiHeaders).toEqual({
       Authorization: "${EXAMPLE_AUTH_HEADER}",
       "Content-Type": "text/plain",
     });
+  });
+
+  it("accepts deprecated api-domains aliases", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "description: Example API access",
+        "api-domains:",
+        "  - api.example.com",
+        "api-headers:",
+        '  X-Example: "enabled"',
+        "credentials:",
+        "  type: oauth-bearer",
+        "  api-domains:",
+        "    - auth.example.com",
+        "  auth-token-env: EXAMPLE_TOKEN",
+      ].join("\n"),
+      "/tmp/example",
+    );
+
+    expect(manifest.domains).toEqual(["api.example.com"]);
+    expect(manifest.credentials?.domains).toEqual(["auth.example.com"]);
   });
 
   it("parses command env with literals and default-backed env references", () => {
@@ -37,7 +59,7 @@ describe("plugin manifest API headers", () => {
         "  EXAMPLE_AUTH_HEADER:",
         "  EXAMPLE_SITE:",
         "    default: example.com",
-        "api-domains:",
+        "domains:",
         "  - api.example.com",
         "api-headers:",
         '  Authorization: "${EXAMPLE_AUTH_HEADER}"',
@@ -111,7 +133,7 @@ describe("plugin manifest API headers", () => {
     ).toThrow("Plugin example command-env requires credentials or api-headers");
   });
 
-  it("rejects API headers without API domains", () => {
+  it("rejects API headers without domains", () => {
     expect(() =>
       parsePluginManifest(
         [
@@ -122,7 +144,7 @@ describe("plugin manifest API headers", () => {
         ].join("\n"),
         "/tmp/example",
       ),
-    ).toThrow("Plugin example api-headers requires api-domains");
+    ).toThrow("Plugin example api-headers requires domains");
   });
 
   it("rejects empty API headers", () => {
@@ -131,7 +153,7 @@ describe("plugin manifest API headers", () => {
         [
           "name: example",
           "description: Example API access",
-          "api-domains:",
+          "domains:",
           "  - api.example.com",
           "api-headers: {}",
         ].join("\n"),
@@ -146,7 +168,7 @@ describe("plugin manifest API headers", () => {
         [
           "name: example",
           "description: Example API access",
-          "api-domains:",
+          "domains:",
           "  - api.example.com",
           "api-headers:",
           '  Authorization: "${EXAMPLE_AUTH_HEADER}"',
@@ -167,7 +189,7 @@ describe("plugin manifest API headers", () => {
           "env-vars:",
           "  EXAMPLE_AUTH_HEADER:",
           '    default: "Basic abc123"',
-          "api-domains:",
+          "domains:",
           "  - api.example.com",
           "api-headers:",
           '  Authorization: "${EXAMPLE_AUTH_HEADER}"',

@@ -30,8 +30,8 @@ function withApex(domain: string): string[] {
 function manifestDomains(manifest: PluginManifest): string[] {
   const domains = new Set(
     [
-      ...(manifest.credentials?.apiDomains ?? []),
-      ...(manifest.apiDomains ?? []),
+      ...(manifest.credentials?.domains ?? []),
+      ...(manifest.domains ?? []),
     ].flatMap(withApex),
   );
   return [...domains].sort((left, right) => left.localeCompare(right));

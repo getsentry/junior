@@ -72,7 +72,7 @@ export function createOAuthBearerBroker(
   deps: { userTokenStore: UserTokenStore },
 ): CredentialBroker {
   const provider = manifest.name;
-  const { apiDomains, apiHeaders, authTokenEnv } = credentials;
+  const { domains, apiHeaders, authTokenEnv } = credentials;
   const authTokenPlaceholder = resolveAuthTokenPlaceholder(credentials);
   const pluginHeaderTransforms = () => resolveApiHeaderTransforms(manifest);
 
@@ -90,7 +90,7 @@ export function createOAuthBearerBroker(
       },
       headerTransforms: mergeHeaderTransforms([
         ...pluginHeaderTransforms(),
-        ...apiDomains.map((domain) => ({
+        ...domains.map((domain) => ({
           domain,
           headers: { ...(apiHeaders ?? {}), Authorization: `Bearer ${token}` },
         })),

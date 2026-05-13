@@ -17,7 +17,7 @@ export interface OAuthProviderConfig extends PluginOAuthConfig {
 
 export interface OAuthBearerCredentials {
   type: "oauth-bearer";
-  apiDomains: string[];
+  domains: string[];
   apiHeaders?: Record<string, string>;
   authTokenEnv: string;
   authTokenPlaceholder?: string;
@@ -25,7 +25,7 @@ export interface OAuthBearerCredentials {
 
 export interface GitHubAppCredentials {
   type: "github-app";
-  apiDomains: string[];
+  domains: string[];
   apiHeaders?: Record<string, string>;
   authTokenEnv: string;
   authTokenPlaceholder?: string;
@@ -82,7 +82,7 @@ export interface PluginManifest {
   description: string;
   capabilities: string[];
   configKeys: string[];
-  apiDomains?: string[];
+  domains?: string[];
   apiHeaders?: Record<string, string>;
   commandEnv?: Record<string, string>;
   envVars?: Record<string, PluginEnvVarDeclaration>;
