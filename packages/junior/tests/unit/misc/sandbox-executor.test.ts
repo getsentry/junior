@@ -53,6 +53,7 @@ vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
 }));
 
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
+import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import { createBashTool } from "bash-tool";
 
 interface MockSandbox {
@@ -63,6 +64,7 @@ interface MockSandbox {
   runCommand: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   extendTimeout: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
 }
 
 function makeSandbox(
@@ -92,6 +94,7 @@ function makeSandbox(
     })),
     stop: vi.fn(async () => {}),
     extendTimeout: vi.fn(async () => {}),
+    update: vi.fn(async () => {}),
   };
 }
 
@@ -240,6 +243,31 @@ describe("createSandboxExecutor", () => {
     expect(onSandboxAcquired).toHaveBeenCalledWith({
       sandboxId: "sbx_restored",
     });
+  });
+
+  it("refreshes network policy when restoring from a sandbox id hint", async () => {
+    const restoredSandbox = makeSandbox("sbx_restored");
+    const networkPolicy = {
+      allow: {
+        "*": [],
+        "api.example.com": [
+          {
+            forwardURL: "https://junior.example.com/api/internal/proxy",
+          },
+        ],
+      },
+    };
+    sandboxGetMock.mockResolvedValue(restoredSandbox);
+
+    const manager = createSandboxSessionManager({
+      sandboxId: "sbx_restored",
+      createNetworkPolicy: vi.fn(() => networkPolicy),
+    });
+    manager.configureSkills([]);
+
+    await manager.createSandbox();
+
+    expect(restoredSandbox.update).toHaveBeenCalledWith({ networkPolicy });
   });
 
   it("passes token-based Vercel Sandbox credentials to the sandbox SDK", async () => {

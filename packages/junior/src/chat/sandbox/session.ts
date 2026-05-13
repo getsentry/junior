@@ -164,6 +164,27 @@ export function createSandboxSessionManager(options?: {
     });
   };
 
+  const refreshNetworkPolicy = async (
+    targetSandbox: Sandbox,
+  ): Promise<void> => {
+    const networkPolicy = options?.createNetworkPolicy?.(targetSandbox.name);
+    if (!networkPolicy) {
+      return;
+    }
+
+    await withSandboxSpan(
+      "sandbox.network_policy.update",
+      "sandbox.update",
+      {
+        "app.sandbox.reused": true,
+        "app.sandbox.source": "id_hint",
+      },
+      async () => {
+        await targetSandbox.update({ networkPolicy });
+      },
+    );
+  };
+
   const ensureSandboxReachable = async (
     targetSandbox: Sandbox,
     source: "memory" | "id_hint",
@@ -417,6 +438,7 @@ export function createSandboxSessionManager(options?: {
     }
 
     try {
+      await refreshNetworkPolicy(hintedSandbox);
       await syncSkills(hintedSandbox);
       return await rememberSandbox(hintedSandbox);
     } catch (error) {
