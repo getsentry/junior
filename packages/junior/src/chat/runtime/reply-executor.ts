@@ -54,7 +54,7 @@ import { maybeUpdateAssistantTitle } from "@/chat/slack/assistant-thread/title";
 import { appendSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";
 import { type ThreadArtifactsState } from "@/chat/state/artifacts";
 import { lookupSlackUser } from "@/chat/slack/user";
-import type { TurnTimeoutResumeRequest } from "@/chat/services/timeout-resume";
+import type { TurnContinuationRequest } from "@/chat/services/timeout-resume";
 import { canScheduleTurnTimeoutResume } from "@/chat/services/timeout-resume";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
@@ -66,13 +66,18 @@ import {
   finalizeFailedTurnReply,
   getAgentTurnDiagnosticsAttributes,
 } from "@/chat/services/turn-failure-response";
+import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
   generateThreadTitle: ConversationMemoryService["generateThreadTitle"];
+  getAwaitingTurnContinuationRequest: (args: {
+    conversationId: string;
+    sessionId: string;
+  }) => Promise<TurnContinuationRequest | undefined>;
   lookupSlackUser: typeof lookupSlackUser;
   scheduleTurnTimeoutResume: (
-    request: TurnTimeoutResumeRequest,
+    request: TurnContinuationRequest,
   ) => Promise<void>;
 }
 
@@ -174,11 +179,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
 
         const slackMessageTs = getSlackMessageTs(message);
         const turnId = buildDeterministicTurnId(message.id);
-        startActiveTurn({
-          conversation: preparedState.conversation,
-          nextTurnId: turnId,
-          updateConversationStats,
-        });
         const turnTraceContext = {
           conversationId,
           slackThreadId: threadId,
@@ -188,6 +188,82 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           assistantUserName: botConfig.userName,
           modelId: botConfig.modelId,
         };
+        let beforeFirstResponsePostCalled = false;
+        const beforeFirstResponsePost = async (): Promise<void> => {
+          if (beforeFirstResponsePostCalled) {
+            return;
+          }
+          beforeFirstResponsePostCalled = true;
+          await options.beforeFirstResponsePost?.();
+        };
+        const postTurnContinuationNotice = async (): Promise<void> => {
+          try {
+            await beforeFirstResponsePost();
+            await thread.post(
+              buildSlackOutputMessage(buildTurnContinuationResponse()),
+            );
+          } catch (error) {
+            logException(
+              error,
+              "slack_turn_continuation_notice_post_failed",
+              turnTraceContext,
+              {
+                "app.slack.reply_stage":
+                  "thread_reply_turn_continuation_notice",
+                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                ...getSlackErrorObservabilityAttributes(error),
+              },
+              "Failed to post turn continuation notice",
+            );
+            throw error;
+          }
+        };
+        const activeTurnId = preparedState.conversation.processing.activeTurnId;
+        if (conversationId && activeTurnId) {
+          const resumeRequest =
+            await deps.services.getAwaitingTurnContinuationRequest({
+              conversationId,
+              sessionId: activeTurnId,
+            });
+          if (resumeRequest) {
+            try {
+              await deps.services.scheduleTurnTimeoutResume(resumeRequest);
+            } catch (error) {
+              logException(
+                error,
+                "agent_turn_continuation_retry_schedule_failed",
+                turnTraceContext,
+                {
+                  "app.ai.resume_checkpoint_version":
+                    resumeRequest.expectedCheckpointVersion,
+                  "app.ai.resume_session_id": resumeRequest.sessionId,
+                  ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                },
+                "Failed to reschedule active turn continuation",
+              );
+              throw error;
+            }
+
+            await postTurnContinuationNotice();
+            markConversationMessage(
+              preparedState.conversation,
+              preparedState.userMessageId,
+              {
+                replied: true,
+                skippedReason: undefined,
+              },
+            );
+            await persistThreadState(thread, {
+              conversation: preparedState.conversation,
+            });
+            return;
+          }
+        }
+        startActiveTurn({
+          conversation: preparedState.conversation,
+          nextTurnId: turnId,
+          updateConversationStats,
+        });
         setTags({
           conversationId,
         });
@@ -235,14 +311,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           threadTs: assistantThreadContext?.threadTs,
           getSlackAdapter: deps.getSlackAdapter,
         });
-        let beforeFirstResponsePostCalled = false;
-        const beforeFirstResponsePost = async (): Promise<void> => {
-          if (beforeFirstResponsePostCalled) {
-            return;
-          }
-          beforeFirstResponsePostCalled = true;
-          await options.beforeFirstResponsePost?.();
-        };
         const postThreadReply = async (
           payload: Parameters<typeof thread.post>[0],
           stage: PlannedSlackReplyStage,
@@ -549,7 +617,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   expectedCheckpointVersion: checkpointVersion,
                 });
                 shouldPersistFailureState = false;
-                return;
               } catch (scheduleError) {
                 logException(
                   scheduleError,
@@ -561,7 +628,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   },
                   "Failed to schedule timeout resume callback",
                 );
+                shouldPersistFailureState = true;
+                throw scheduleError;
               }
+              await postTurnContinuationNotice();
+              return;
             } else if (
               conversationIdForResume &&
               sessionIdForResume &&

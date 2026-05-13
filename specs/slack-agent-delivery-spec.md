@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-05-06
+- Last Edited: 2026-05-13
 
 ## Changelog
 
@@ -21,6 +21,7 @@
 - 2026-04-22: Required explicit progress messages to be written as proper sentence fragments (capitalized first letter, present-participle verb).
 - 2026-04-22: Reframed auth-blocked requests as completed thread replies plus thread-local pending-auth state, and removed the public OAuth "connected, continuing..." preamble from automatic resumes.
 - 2026-05-06: Removed the public thread-visible auth-pause note; private auth-link delivery is the only immediate user-facing auth handoff before callback resume.
+- 2026-05-13: Added the turn-continuation acknowledgement and follow-up retry contract for awaiting continuation checkpoints.
 
 ## Status
 
@@ -222,6 +223,9 @@ Current rules:
 6. When a turn blocks on OAuth/MCP auth, Junior must end that live turn after privately delivering the auth link, clear `activeTurnId`, and persist thread-local pending-auth state. Do not post a second public thread reply just to say a private link was sent.
 7. Automatic auth resumes must not post a separate public "account connected, continuing..." banner before the real resumed answer. The resumed answer itself is the visible continuation.
 8. If auth completes after a newer thread message already superseded the blocked request, Junior stores the credentials but does not post a stale resumed answer.
+9. When a turn checkpoint is scheduled for automatic continuation, Junior must post a durable thread acknowledgement that the turn is continuing in the background. Assistant status alone is not sufficient because it is best effort and expires independently of thread history.
+10. If a user follow-up or duplicate delivery hits the same awaiting continuation, Junior should acknowledge the existing continuation instead of creating a second visible turn. Checkpoint rescheduling mechanics belong to `./agent-session-resumability-spec.md`.
+11. Turn-continuation acknowledgements are not final assistant replies. They do not mark the original turn completed, and the final resumed answer must still be delivered through the normal finalized-reply path.
 
 ### 11. Testing Contract
 

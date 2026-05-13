@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSlackSigningSecret } from "@/chat/config";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
 
 const TURN_TIMEOUT_RESUME_PATH = "/api/internal/turn-resume";
 const TURN_TIMEOUT_RESUME_SIGNATURE_VERSION = "v1";
@@ -9,11 +10,13 @@ const TURN_TIMEOUT_RESUME_TIMESTAMP_HEADER = "x-junior-resume-timestamp";
 const TURN_TIMEOUT_RESUME_SIGNATURE_HEADER = "x-junior-resume-signature";
 const MAX_TURN_TIMEOUT_RESUME_SLICE_ID = 5;
 
-export interface TurnTimeoutResumeRequest {
+export interface TurnContinuationRequest {
   conversationId: string;
   expectedCheckpointVersion: number;
   sessionId: string;
 }
+
+export type TurnTimeoutResumeRequest = TurnContinuationRequest;
 
 /** Bound automatic timeout continuation so one bad turn cannot loop forever. */
 export function canScheduleTurnTimeoutResume(
@@ -24,6 +27,31 @@ export function canScheduleTurnTimeoutResume(
     nextSliceId > 1 &&
     nextSliceId <= MAX_TURN_TIMEOUT_RESUME_SLICE_ID
   );
+}
+
+/** Build the callback request for an awaiting automatic turn continuation. */
+export async function getAwaitingTurnContinuationRequest(args: {
+  conversationId: string;
+  sessionId: string;
+}): Promise<TurnContinuationRequest | undefined> {
+  const checkpoint = await getAgentTurnSessionCheckpoint(
+    args.conversationId,
+    args.sessionId,
+  );
+  if (
+    !checkpoint ||
+    checkpoint.state !== "awaiting_resume" ||
+    checkpoint.resumeReason !== "timeout" ||
+    !canScheduleTurnTimeoutResume(checkpoint.sliceId)
+  ) {
+    return undefined;
+  }
+
+  return {
+    conversationId: args.conversationId,
+    sessionId: args.sessionId,
+    expectedCheckpointVersion: checkpoint.checkpointVersion,
+  };
 }
 
 function getTurnTimeoutResumeSecret(): string | undefined {
@@ -60,7 +88,7 @@ function timingSafeMatch(expected: string, actual: string): boolean {
 
 function parseTurnTimeoutResumeRequest(
   value: unknown,
-): TurnTimeoutResumeRequest | undefined {
+): TurnContinuationRequest | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }
@@ -83,7 +111,7 @@ function parseTurnTimeoutResumeRequest(
 
 /** Schedule an authenticated internal callback to resume a timed-out turn. */
 export async function scheduleTurnTimeoutResume(
-  request: TurnTimeoutResumeRequest,
+  request: TurnContinuationRequest,
 ): Promise<void> {
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
@@ -124,7 +152,7 @@ export async function scheduleTurnTimeoutResume(
 /** Verify and parse an authenticated timeout resume callback request. */
 export async function verifyTurnTimeoutResumeRequest(
   request: Request,
-): Promise<TurnTimeoutResumeRequest | undefined> {
+): Promise<TurnContinuationRequest | undefined> {
   const timestamp =
     request.headers.get(TURN_TIMEOUT_RESUME_TIMESTAMP_HEADER)?.trim() ?? "";
   const signature =

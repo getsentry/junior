@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-06
+- Last Edited: 2026-05-13
 
 ## Changelog
 
@@ -16,6 +16,7 @@
 - 2026-04-16: Added canonical Slack write contract spec.
 - 2026-04-28: Added canonical agent prompt spec.
 - 2026-05-06: Added draft advisor tool spec.
+- 2026-05-13: Added ownership map for chat, agent session, and Slack delivery specs.
 
 ## Status
 
@@ -63,6 +64,15 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/providers/catalog-spec.md`
 - `specs/logging/index.md`
 - `specs/testing/index.md`
+
+## Ownership Map
+
+For chat/agent/Slack turn behavior:
+
+- `specs/chat-architecture-spec.md` owns the end-to-end turn data flow, data authority map, and module boundaries.
+- `specs/agent-session-resumability-spec.md` owns checkpoint schema, Pi session continuation, timeout callbacks, and slice lifecycle.
+- `specs/slack-agent-delivery-spec.md` owns Slack entry surfaces, progress UX, continuation acknowledgements, and final reply delivery.
+- `specs/slack-outbound-contract-spec.md` owns Slack API write formatting, file uploads, reactions, retries, and error mapping.
 
 ## Domain Indexes
 

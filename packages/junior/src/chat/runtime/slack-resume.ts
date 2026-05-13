@@ -15,6 +15,7 @@ import {
   finalizeFailedTurnReply,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
+import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import {
   createSlackWebApiAssistantStatusSession,
@@ -161,6 +162,29 @@ async function postResumeFailureReply(args: {
   }
 }
 
+async function postTurnContinuationNoticeBestEffort(args: {
+  lockKey: string;
+  resumeArgs: ResumeSlackTurnArgs;
+}): Promise<void> {
+  try {
+    await postSlackApiMessage({
+      channelId: args.resumeArgs.channelId,
+      threadTs: args.resumeArgs.threadTs,
+      text: buildTurnContinuationResponse(),
+    });
+  } catch (error) {
+    logException(
+      error,
+      "slack_turn_continuation_notice_post_failed",
+      getResumeLogContext(args.resumeArgs, args.lockKey),
+      {
+        "app.slack.reply_stage": "thread_reply_turn_continuation_notice",
+      },
+      "Failed to post turn continuation notice",
+    );
+  }
+}
+
 async function handleResumeFailure(args: {
   body: string;
   error: unknown;
@@ -257,6 +281,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     channelId: args.channelId,
     threadTs: args.threadTs,
   });
+  let deferredPauseKind: "auth" | "timeout" | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
   try {
@@ -321,6 +346,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
         isRetryableTurnError(error, "plugin_auth_resume")) &&
       onAuthPause
     ) {
+      deferredPauseKind = "auth";
       deferredPauseHandler = async () => {
         await onAuthPause(error);
       };
@@ -328,6 +354,7 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
       isRetryableTurnError(error, "turn_timeout_resume") &&
       onTimeoutPause
     ) {
+      deferredPauseKind = "timeout";
       deferredPauseHandler = async () => {
         await onTimeoutPause(error);
       };
@@ -349,6 +376,12 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
   if (deferredPauseHandler) {
     try {
       await deferredPauseHandler();
+      if (deferredPauseKind === "timeout") {
+        await postTurnContinuationNoticeBestEffort({
+          lockKey,
+          resumeArgs: args,
+        });
+      }
       return;
     } catch (pauseError) {
       await handleResumeFailure({

@@ -37,6 +37,7 @@ vi.mock("@/chat/runtime/slack-resume", async (importOriginal) => ({
 }));
 
 import { RetryableTurnError } from "@/chat/runtime/turn";
+import { ResumeTurnBusyError } from "@/chat/runtime/slack-resume";
 import * as threadStateModule from "@/chat/runtime/thread-state";
 import {
   getPersistedThreadState,
@@ -65,6 +66,7 @@ describe("turn resume handler", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
     vi.restoreAllMocks();
@@ -172,6 +174,87 @@ describe("turn resume handler", () => {
       sessionId,
       expectedCheckpointVersion: checkpoint.checkpointVersion + 1,
     });
+  });
+
+  it("retries when the timeout-resume callback races the active thread lock", async () => {
+    vi.useFakeTimers();
+    const conversationId = "slack:C123:1712345.0005";
+    const sessionId = "turn_msg_5";
+    const checkpoint = await upsertAgentTurnSessionCheckpoint({
+      conversationId,
+      sessionId,
+      sliceId: 2,
+      state: "awaiting_resume",
+      piMessages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "hello" }],
+          timestamp: 1,
+        },
+      ],
+      loadedSkillNames: ["demo-skill"],
+      resumeReason: "timeout",
+      resumedFromSliceId: 1,
+      errorMessage: "Agent turn timed out",
+    });
+
+    await persistThreadStateById(conversationId, {
+      artifacts: {
+        listColumnMap: {},
+      },
+      conversation: {
+        schemaVersion: 1,
+        backfill: {},
+        compactions: [],
+        piMessages: [],
+        messages: [
+          {
+            id: "msg.5",
+            role: "user",
+            text: "resume this request",
+            createdAtMs: 1,
+            author: {
+              userId: "U123",
+            },
+          },
+        ],
+        processing: {
+          activeTurnId: sessionId,
+        },
+        stats: {
+          compactedMessageCount: 0,
+          estimatedContextTokens: 0,
+          totalMessageCount: 1,
+          updatedAtMs: 1,
+        },
+        vision: {
+          byFileId: {},
+        },
+      },
+    });
+
+    verifyTurnTimeoutResumeRequestMock.mockResolvedValue({
+      conversationId,
+      sessionId,
+      expectedCheckpointVersion: checkpoint.checkpointVersion,
+    });
+    resumeSlackTurnMock
+      .mockRejectedValueOnce(new ResumeTurnBusyError(conversationId))
+      .mockResolvedValueOnce(undefined);
+
+    const response = await POST(
+      new Request("https://example.com/api/internal/turn-resume", {
+        method: "POST",
+      }),
+      testWaitUntil,
+    );
+
+    expect(response.status).toBe(202);
+    const task = waitUntilCallbacks[0]?.();
+    await vi.runOnlyPendingTimersAsync();
+    await task;
+
+    expect(resumeSlackTurnMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not mutate persisted state when completion persistence fails afterward", async () => {
