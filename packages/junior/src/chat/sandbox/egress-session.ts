@@ -184,41 +184,39 @@ export async function getSandboxEgressSession(
 }
 
 /** Cache a short-lived credential lease for repeated proxied requests in one sandbox session. */
-export async function setSandboxEgressCredentialLease(input: {
-  sandboxId: string;
-  requesterId: string;
-  lease: SandboxEgressCredentialLease;
-  sessionExpiresAtMs: number;
-}): Promise<void> {
-  const leaseExpiresAtMs = Date.parse(input.lease.expiresAt);
+export async function setSandboxEgressCredentialLease(
+  sandboxId: string,
+  requesterId: string,
+  lease: SandboxEgressCredentialLease,
+  sessionExpiresAtMs: number,
+): Promise<void> {
+  const leaseExpiresAtMs = Date.parse(lease.expiresAt);
   if (!Number.isFinite(leaseExpiresAtMs) || leaseExpiresAtMs <= Date.now()) {
     return;
   }
   const ttlMs = Math.max(
     1,
-    Math.min(leaseExpiresAtMs, input.sessionExpiresAtMs) - Date.now(),
+    Math.min(leaseExpiresAtMs, sessionExpiresAtMs) - Date.now(),
   );
   const state = getStateAdapter();
   await state.connect();
   await state.set(
-    leaseKey(input.sandboxId, input.lease.provider, input.requesterId),
-    input.lease,
+    leaseKey(sandboxId, lease.provider, requesterId),
+    lease,
     ttlMs,
   );
 }
 
 /** Load a cached egress credential lease for a sandbox/provider pair. */
-export async function getSandboxEgressCredentialLease(input: {
-  sandboxId: string;
-  provider: string;
-  requesterId: string;
-}): Promise<SandboxEgressCredentialLease | undefined> {
+export async function getSandboxEgressCredentialLease(
+  sandboxId: string,
+  provider: string,
+  requesterId: string,
+): Promise<SandboxEgressCredentialLease | undefined> {
   const state = getStateAdapter();
   await state.connect();
   return parseLease(
-    await state.get(
-      leaseKey(input.sandboxId, input.provider, input.requesterId),
-    ),
+    await state.get(leaseKey(sandboxId, provider, requesterId)),
   );
 }
 

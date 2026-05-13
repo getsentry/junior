@@ -1,13 +1,8 @@
 import type { NetworkPolicy, NetworkPolicyRule } from "@vercel/sandbox";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { getPluginProviders } from "@/chat/plugins/registry";
-import type { PluginDefinition } from "@/chat/plugins/types";
+import type { PluginManifest } from "@/chat/plugins/types";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
-
-export interface SandboxEgressProvider {
-  provider: string;
-  domains: string[];
-}
 
 const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
 
@@ -28,53 +23,45 @@ export function matchesSandboxEgressDomain(
   return normalizedHost === normalizedDomain;
 }
 
-function addProviderDomain(domains: Set<string>, domain: string): void {
-  domains.add(domain);
-  if (domain.startsWith("*.")) {
-    domains.add(domain.slice(2));
-  }
+function withApex(domain: string): string[] {
+  return domain.startsWith("*.") ? [domain, domain.slice(2)] : [domain];
 }
 
-function pluginDomains(plugin: PluginDefinition): string[] {
-  const domains = new Set<string>();
-  for (const domain of plugin.manifest.credentials?.apiDomains ?? []) {
-    addProviderDomain(domains, domain);
-  }
-  for (const domain of plugin.manifest.apiDomains ?? []) {
-    addProviderDomain(domains, domain);
-  }
+function manifestDomains(manifest: PluginManifest): string[] {
+  const domains = new Set(
+    [
+      ...(manifest.credentials?.apiDomains ?? []),
+      ...(manifest.apiDomains ?? []),
+    ].flatMap(withApex),
+  );
   return [...domains].sort((left, right) => left.localeCompare(right));
 }
 
-/** Return credential-capable plugin providers and the domains routed through the sandbox egress proxy. */
-export function getSandboxEgressProviders(): SandboxEgressProvider[] {
+function providerEntries(): Array<{ provider: string; domains: string[] }> {
   return getPluginProviders()
     .map((plugin) => ({
       provider: plugin.manifest.name,
-      domains: pluginDomains(plugin),
+      domains: manifestDomains(plugin.manifest),
     }))
     .filter((entry) => entry.domains.length > 0)
     .sort((left, right) => left.provider.localeCompare(right.provider));
+}
+
+/** Return plugin provider names that can route sandbox egress through Junior. */
+export function getSandboxEgressProviderNames(): string[] {
+  return providerEntries().map((entry) => entry.provider);
 }
 
 /** Resolve the plugin provider responsible for an outbound sandbox host. */
 export function resolveSandboxEgressProviderForHost(
   host: string,
 ): string | undefined {
-  for (const entry of getSandboxEgressProviders()) {
-    if (
-      entry.domains.some((domain) => matchesSandboxEgressDomain(host, domain))
-    ) {
-      return entry.provider;
-    }
-  }
-  return undefined;
+  return providerEntries().find((entry) =>
+    entry.domains.some((domain) => matchesSandboxEgressDomain(host, domain)),
+  )?.provider;
 }
 
-/** Build the proxy URL Vercel Sandbox firewall should forward matching egress requests to. */
-export function buildSandboxEgressProxyUrl(
-  sandboxId: string,
-): string | undefined {
+function proxyUrl(sandboxId: string): string | undefined {
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
     return undefined;
@@ -90,19 +77,19 @@ export function buildSandboxEgressProxyUrl(
 export function buildSandboxEgressNetworkPolicy(
   sandboxId: string,
 ): NetworkPolicy | undefined {
-  const forwardURL = buildSandboxEgressProxyUrl(sandboxId);
+  const forwardURL = proxyUrl(sandboxId);
   if (!forwardURL) {
     return undefined;
   }
-  const providers = getSandboxEgressProviders();
-  if (providers.length === 0) {
+  const entries = providerEntries();
+  if (entries.length === 0) {
     return undefined;
   }
 
   const allow: Record<string, NetworkPolicyRule[]> = {
     "*": [],
   };
-  for (const entry of providers) {
+  for (const entry of entries) {
     for (const domain of entry.domains) {
       allow[domain] = [{ forwardURL }];
     }

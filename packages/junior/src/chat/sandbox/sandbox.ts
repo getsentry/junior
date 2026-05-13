@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import type { NetworkPolicy, Sandbox } from "@vercel/sandbox";
+import type { Sandbox } from "@vercel/sandbox";
 import {
   logInfo,
   setSpanAttributes,
@@ -10,7 +10,7 @@ import {
 import {
   buildSandboxEgressNetworkPolicy,
   getSandboxCommandEnvironment,
-  getSandboxEgressProviders,
+  getSandboxEgressProviderNames,
 } from "@/chat/sandbox/egress-policy";
 import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
@@ -130,36 +130,23 @@ export function createSandboxExecutor(options?: {
   let referenceFiles: string[] = [];
   const traceContext = options?.traceContext ?? {};
   const credentialEgress = options?.credentialEgress;
-  const authorizedEgressProviders = (): string[] => {
-    if (!credentialEgress) {
-      return [];
-    }
-    const available = new Set(
-      getSandboxEgressProviders().map((entry) => entry.provider),
-    );
-    return uniqueSortedStrings(
-      credentialEgress
-        .getAuthorizedProviderNames()
-        .filter((provider) => available.has(provider)),
-    );
-  };
-  const syncSandboxEgressSession = async (sandboxId: string): Promise<void> => {
-    if (!credentialEgress) {
-      return;
-    }
-    await upsertSandboxEgressSession({
-      sandboxId,
-      requesterId: credentialEgress.requesterId,
-      providers: authorizedEgressProviders(),
-      conversationId: credentialEgress.conversationId,
-      sessionId: credentialEgress.sessionId,
-      sliceId: credentialEgress.sliceId,
-      ttlMs: options?.timeoutMs,
-    });
-  };
-  const createCredentialEgressPolicy = credentialEgress?.requesterId
-    ? (sandboxId: string): NetworkPolicy | undefined =>
-        buildSandboxEgressNetworkPolicy(sandboxId)
+  const syncSandboxEgressSession = credentialEgress
+    ? async (sandboxId: string): Promise<void> => {
+        const available = new Set(getSandboxEgressProviderNames());
+        await upsertSandboxEgressSession({
+          sandboxId,
+          requesterId: credentialEgress.requesterId,
+          providers: uniqueSortedStrings(
+            credentialEgress
+              .getAuthorizedProviderNames()
+              .filter((provider) => available.has(provider)),
+          ),
+          conversationId: credentialEgress.conversationId,
+          sessionId: credentialEgress.sessionId,
+          sliceId: credentialEgress.sliceId,
+          ttlMs: options?.timeoutMs,
+        });
+      }
     : undefined;
   const sessionManager = createSandboxSessionManager({
     sandboxId: options?.sandboxId,
@@ -167,10 +154,12 @@ export function createSandboxExecutor(options?: {
     timeoutMs: options?.timeoutMs,
     traceContext,
     commandEnv: credentialEgress ? getSandboxCommandEnvironment() : undefined,
-    createNetworkPolicy: createCredentialEgressPolicy,
-    beforeCommand: credentialEgress ? syncSandboxEgressSession : undefined,
+    createNetworkPolicy: credentialEgress?.requesterId
+      ? buildSandboxEgressNetworkPolicy
+      : undefined,
+    beforeCommand: syncSandboxEgressSession,
     onSandboxAcquired: async (sandbox) => {
-      await syncSandboxEgressSession(sandbox.sandboxId);
+      await syncSandboxEgressSession?.(sandbox.sandboxId);
       await options?.onSandboxAcquired?.(sandbox);
     },
   });

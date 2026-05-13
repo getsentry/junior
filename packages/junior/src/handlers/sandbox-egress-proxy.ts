@@ -268,19 +268,19 @@ function oidcTokenHash(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function replayFingerprint(input: {
-  oidcToken: string;
-  method: string;
-  upstreamUrl: URL;
-  body: ArrayBuffer | undefined;
-}): string {
+function replayFingerprint(
+  oidcToken: string,
+  method: string,
+  upstreamUrl: URL,
+  body: ArrayBuffer | undefined,
+): string {
   return createHash("sha256")
     .update(
       JSON.stringify({
-        token: oidcTokenHash(input.oidcToken),
-        method: input.method,
-        url: input.upstreamUrl.toString(),
-        body: bodyHash(input.body),
+        token: oidcTokenHash(oidcToken),
+        method,
+        url: upstreamUrl.toString(),
+        body: bodyHash(body),
       }),
     )
     .digest("hex");
@@ -325,43 +325,43 @@ function responseHeaders(upstream: Response): Headers {
   return headers;
 }
 
-async function credentialLease(input: {
-  sandboxId: string;
-  provider: string;
-  session: SandboxEgressSession;
-}): Promise<SandboxEgressCredentialLease> {
-  const cached = await getSandboxEgressCredentialLease({
-    sandboxId: input.sandboxId,
-    provider: input.provider,
-    requesterId: input.session.requesterId,
-  });
+async function credentialLease(
+  sandboxId: string,
+  provider: string,
+  session: SandboxEgressSession,
+): Promise<SandboxEgressCredentialLease> {
+  const cached = await getSandboxEgressCredentialLease(
+    sandboxId,
+    provider,
+    session.requesterId,
+  );
   if (cached) {
     return cached;
   }
 
   const lease = await issueProviderCredentialLease({
-    provider: input.provider,
-    requesterId: input.session.requesterId,
-    reason: `sandbox-egress:${input.provider}`,
+    provider,
+    requesterId: session.requesterId,
+    reason: `sandbox-egress:${provider}`,
   });
   const headerTransforms = lease.headerTransforms ?? [];
   if (headerTransforms.length === 0) {
     throw new Error(
-      `Credential lease for ${input.provider} did not include header transforms`,
+      `Credential lease for ${provider} did not include header transforms`,
     );
   }
 
   const cachedLease: SandboxEgressCredentialLease = {
-    provider: input.provider,
+    provider,
     expiresAt: lease.expiresAt,
     headerTransforms,
   };
-  await setSandboxEgressCredentialLease({
-    sandboxId: input.sandboxId,
-    requesterId: input.session.requesterId,
-    lease: cachedLease,
-    sessionExpiresAtMs: input.session.expiresAtMs,
-  });
+  await setSandboxEgressCredentialLease(
+    sandboxId,
+    session.requesterId,
+    cachedLease,
+    session.expiresAtMs,
+  );
   return cachedLease;
 }
 
@@ -410,19 +410,19 @@ export async function proxySandboxEgressRequest(
   }
 
   const body = await requestBodyBytes(request);
-  const fingerprint = replayFingerprint({
+  const fingerprint = replayFingerprint(
     oidcToken,
-    method: request.method,
+    request.method,
     upstreamUrl,
     body,
-  });
+  );
   if (!(await claimSandboxEgressReplayFingerprint(fingerprint))) {
     return jsonError("Duplicate sandbox egress request", 409);
   }
 
   let lease: SandboxEgressCredentialLease;
   try {
-    lease = await credentialLease({ sandboxId, provider, session });
+    lease = await credentialLease(sandboxId, provider, session);
   } catch (error) {
     if (error instanceof CredentialUnavailableError) {
       return new Response(
