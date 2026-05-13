@@ -511,11 +511,13 @@ export async function generateAssistantReply(
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
-      requesterId: context.requester?.userId,
-      conversationId: sessionConversationId,
-      sessionId,
-      sliceId: currentSliceId,
-      getAuthorizedProviderNames: getResumePluginProviders,
+      credentialEgress: {
+        requesterId: context.requester?.userId,
+        conversationId: sessionConversationId,
+        sessionId,
+        sliceId: currentSliceId,
+        getAuthorizedProviderNames: getResumePluginProviders,
+      },
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =

@@ -56,7 +56,7 @@ import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
 import { createBashTool } from "bash-tool";
 
 interface MockSandbox {
-  sandboxId: string;
+  name: string;
   mkDir: ReturnType<typeof vi.fn>;
   writeFiles: ReturnType<typeof vi.fn>;
   readFileToBuffer: ReturnType<typeof vi.fn>;
@@ -68,14 +68,14 @@ interface MockSandbox {
 }
 
 function makeSandbox(
-  sandboxId: string,
+  name: string,
   options: {
     mkDirError?: unknown;
     writeFilesError?: unknown;
   } = {},
 ): MockSandbox {
   return {
-    sandboxId,
+    name,
     mkDir: vi.fn(async () => {
       if (options.mkDirError) {
         throw options.mkDirError;
@@ -128,7 +128,7 @@ async function expectWorkspaceToDelegate(
   workspace: SandboxWorkspace,
   sandbox: MockSandbox,
 ): Promise<void> {
-  expect(workspace.sandboxId).toBe(sandbox.sandboxId);
+  expect(workspace.sandboxId).toBe(sandbox.name);
   const fileBuffer = Buffer.from("workspace file");
   const commandResult = {
     exitCode: 0,

@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import type { Sandbox } from "@vercel/sandbox";
+import type { NetworkPolicy, Sandbox } from "@vercel/sandbox";
 import {
   logInfo,
   setSpanAttributes,
@@ -7,8 +7,13 @@ import {
   withSpan,
   type LogContext,
 } from "@/chat/logging";
+import {
+  buildSandboxEgressNetworkPolicy,
+  getSandboxCommandEnvironment,
+  getSandboxEgressProviders,
+} from "@/chat/sandbox/egress-policy";
+import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
-import { sandboxIdentifier } from "@/chat/sandbox/identifier";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
 import {
@@ -24,6 +29,7 @@ import { positiveInteger } from "@/chat/tools/sandbox/file-utils";
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 import { listDir } from "@/chat/tools/sandbox/list-dir";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
+import { uniqueSortedStrings } from "@/chat/string-list";
 
 // Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
 // Spec: specs/logging/tracing-spec.md (required sandbox span semantics)
@@ -121,10 +127,7 @@ function parseEnv(raw: unknown): Record<string, string> | undefined {
 }
 
 function createSandboxWorkspace(sandbox: Sandbox): SandboxWorkspace {
-  const sandboxId = sandboxIdentifier(sandbox);
-  if (!sandboxId) {
-    throw new Error("Vercel Sandbox did not expose an identifier");
-  }
+  const sandboxId = sandbox.name;
   return {
     sandboxId,
     readFileToBuffer(input) {
@@ -142,11 +145,13 @@ export function createSandboxExecutor(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
-  requesterId?: string;
-  conversationId?: string;
-  sessionId?: string;
-  sliceId?: number;
-  getAuthorizedProviderNames?: () => string[];
+  credentialEgress?: {
+    requesterId?: string;
+    conversationId?: string;
+    sessionId?: string;
+    sliceId?: number;
+    getAuthorizedProviderNames: () => string[];
+  };
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
     command: string,
@@ -155,17 +160,50 @@ export function createSandboxExecutor(options?: {
   let availableSkills: SkillMetadata[] = [];
   let referenceFiles: string[] = [];
   const traceContext = options?.traceContext ?? {};
+  const credentialEgress = options?.credentialEgress;
+  const authorizedEgressProviders = (): string[] => {
+    if (!credentialEgress) {
+      return [];
+    }
+    const available = new Set(
+      getSandboxEgressProviders().map((entry) => entry.provider),
+    );
+    return uniqueSortedStrings(
+      credentialEgress
+        .getAuthorizedProviderNames()
+        .filter((provider) => available.has(provider)),
+    );
+  };
+  const syncSandboxEgressSession = async (sandboxId: string): Promise<void> => {
+    if (!credentialEgress) {
+      return;
+    }
+    await upsertSandboxEgressSession({
+      sandboxId,
+      requesterId: credentialEgress.requesterId,
+      providers: authorizedEgressProviders(),
+      conversationId: credentialEgress.conversationId,
+      sessionId: credentialEgress.sessionId,
+      sliceId: credentialEgress.sliceId,
+      ttlMs: options?.timeoutMs,
+    });
+  };
+  const createCredentialEgressPolicy = credentialEgress?.requesterId
+    ? (sandboxId: string): NetworkPolicy | undefined =>
+        buildSandboxEgressNetworkPolicy(sandboxId)
+    : undefined;
   const sessionManager = createSandboxSessionManager({
     sandboxId: options?.sandboxId,
     sandboxDependencyProfileHash: options?.sandboxDependencyProfileHash,
     timeoutMs: options?.timeoutMs,
     traceContext,
-    requesterId: options?.requesterId,
-    conversationId: options?.conversationId,
-    sessionId: options?.sessionId,
-    sliceId: options?.sliceId,
-    getAuthorizedProviderNames: options?.getAuthorizedProviderNames,
-    onSandboxAcquired: options?.onSandboxAcquired,
+    commandEnv: credentialEgress ? getSandboxCommandEnvironment() : undefined,
+    createNetworkPolicy: createCredentialEgressPolicy,
+    beforeCommand: credentialEgress ? syncSandboxEgressSession : undefined,
+    onSandboxAcquired: async (sandbox) => {
+      await syncSandboxEgressSession(sandbox.sandboxId);
+      await options?.onSandboxAcquired?.(sandbox);
+    },
   });
 
   const withSandboxSpan = <T>(
