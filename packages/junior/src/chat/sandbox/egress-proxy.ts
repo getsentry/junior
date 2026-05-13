@@ -36,11 +36,6 @@ const PROXY_ONLY_HEADERS = new Set([
   FORWARDED_SCHEME_HEADER,
   FORWARDED_PORT_HEADER,
 ]);
-const UPSTREAM_CREDENTIAL_RESPONSE_HEADERS = new Set([
-  "set-cookie",
-  "set-cookie2",
-]);
-
 interface ProxyDeps {
   fetch?: typeof fetch;
   verifyOidc?: (token: string, sandboxId: string) => Promise<unknown>;
@@ -168,10 +163,7 @@ function responseHeaders(upstream: Response): Headers {
   const headers = new Headers();
   upstream.headers.forEach((value, key) => {
     const normalized = key.toLowerCase();
-    if (
-      !HOP_BY_HOP_HEADERS.has(normalized) &&
-      !UPSTREAM_CREDENTIAL_RESPONSE_HEADERS.has(normalized)
-    ) {
+    if (!HOP_BY_HOP_HEADERS.has(normalized)) {
       headers.append(key, value);
     }
   });

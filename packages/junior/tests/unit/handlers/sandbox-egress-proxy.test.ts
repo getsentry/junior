@@ -333,7 +333,7 @@ describe("sandbox egress proxy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("strips upstream credential response headers", async () => {
+  it("forwards upstream response headers to the sandbox", async () => {
     await authorizeSandboxEgress();
     mockSentryLease();
 
@@ -349,7 +349,7 @@ describe("sandbox egress proxy", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(response.headers.get("set-cookie")).toBe("session=provider; Path=/");
     expect(response.headers.get("x-request-id")).toBe("req-123");
   });
 
