@@ -112,6 +112,7 @@ describe("sandbox egress proxy", () => {
       expect(new Headers(init?.headers).get("authorization")).toBe(
         "Bearer sentry-token",
       );
+      expect(new Headers(init?.headers).get("host")).toBeNull();
       return new Response("ok", { status: 200 });
     });
 
@@ -123,6 +124,7 @@ describe("sandbox egress proxy", () => {
           "vercel-forwarded-host": "sentry.io",
           "vercel-forwarded-scheme": "https",
           "vercel-sandbox-oidc-token": "signed-token",
+          host: "junior.example.com",
         },
       },
     );

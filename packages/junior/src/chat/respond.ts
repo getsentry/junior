@@ -20,6 +20,7 @@ import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
+import { uniqueSortedStrings } from "@/chat/string-list";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   discoverSkills,
@@ -366,12 +367,6 @@ function isTurnContextPart(part: unknown, marker: string): boolean {
     typeof (part as { text?: unknown }).text === "string" &&
     (part as { text: string }).text.startsWith(marker)
   );
-}
-
-function uniqueSortedStrings(values: Iterable<string | undefined>): string[] {
-  return [
-    ...new Set([...values].filter((value): value is string => !!value)),
-  ].sort((left, right) => left.localeCompare(right));
 }
 
 /** Run a full agent turn: discover skills, execute tools, and return the assistant reply. */

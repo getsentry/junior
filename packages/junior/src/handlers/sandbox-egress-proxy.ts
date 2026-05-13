@@ -28,6 +28,7 @@ const FORWARDED_PORT_HEADER = "vercel-forwarded-port";
 const ROUTE_PREFIX = "/api/internal/sandbox-egress";
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
+  "host",
   "keep-alive",
   "proxy-authenticate",
   "proxy-authorization",

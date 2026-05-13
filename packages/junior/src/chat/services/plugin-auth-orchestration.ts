@@ -6,6 +6,7 @@ import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
+import { uniqueSortedStrings } from "@/chat/string-list";
 import {
   getPluginDefinition,
   getPluginOAuthConfig,
@@ -105,12 +106,6 @@ function explicitAuthRequiredProvider(details: unknown): string | undefined {
     commandText(details).toLowerCase(),
   );
   return match?.[1];
-}
-
-function uniqueProviders(values: Iterable<string | undefined>): string[] {
-  return [
-    ...new Set([...values].filter((value): value is string => !!value)),
-  ].sort((left, right) => left.localeCompare(right));
 }
 
 function commandTargetsProvider(
@@ -246,30 +241,27 @@ export function createPluginAuthOrchestration(
   return {
     handleCredentialUnavailable,
     handleCommandFailure: async (input) => {
-      const activeProviders = uniqueProviders(input.activeProviders);
+      const activeProviders = uniqueSortedStrings(input.activeProviders);
       const authFailure = isCommandAuthFailure(input.details);
+      if (!authFailure) {
+        return;
+      }
       const explicitProvider = explicitAuthRequiredProvider(input.details);
       const provider =
-        authFailure &&
-        explicitProvider &&
-        activeProviders.includes(explicitProvider)
+        explicitProvider && activeProviders.includes(explicitProvider)
           ? explicitProvider
-          : activeProviders.find(
-              (activeProvider) =>
-                authFailure &&
-                commandTargetsProvider(
-                  activeProvider,
-                  input.command,
-                  input.details,
-                ),
+          : activeProviders.find((activeProvider) =>
+              commandTargetsProvider(
+                activeProvider,
+                input.command,
+                input.details,
+              ),
             );
       if (
         !provider ||
         !deps.requesterId ||
         !deps.userTokenStore ||
-        !getPluginOAuthConfig(provider) ||
-        !isCommandAuthFailure(input.details) ||
-        !commandTargetsProvider(provider, input.command, input.details)
+        !getPluginOAuthConfig(provider)
       ) {
         return;
       }
