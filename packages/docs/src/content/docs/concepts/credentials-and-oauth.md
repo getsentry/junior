@@ -16,7 +16,7 @@ authenticated command runs under a loaded skill, sandbox HTTP requests to the
 plugin's declared provider domains are forwarded through Junior. Junior then
 fetches a requester-bound lease and injects auth at the host boundary.
 
-- Credentials are short-lived and scoped by capability and target context.
+- Credentials are short-lived and scoped to the requester, active provider, and turn.
 - User-owned provider access is only activated for the author of the current message.
 - Loaded skills, through their plugin declarations, determine which credentials can be injected.
 - Sandbox receives placeholder env vars and proxied HTTP responses, not raw long-lived tokens.

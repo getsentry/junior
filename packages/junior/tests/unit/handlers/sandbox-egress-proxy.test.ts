@@ -188,6 +188,7 @@ describe("sandbox egress proxy", () => {
         "Bearer sentry-token",
       );
       expect(new Headers(init?.headers).get("cookie")).toBeNull();
+      expect(new Headers(init?.headers).get("x-api-key")).toBeNull();
       expect(new Headers(init?.headers).get("host")).toBeNull();
       return new Response("ok", { status: 200 });
     });
@@ -199,6 +200,7 @@ describe("sandbox egress proxy", () => {
         authorization: "Bearer sandbox-token",
         cookie: "session=sandbox",
         host: "junior.example.com",
+        "x-api-key": "sandbox-key",
       },
     });
 
@@ -304,13 +306,13 @@ describe("sandbox egress proxy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves repeated upstream response headers", async () => {
+  it("strips upstream credential response headers", async () => {
     await authorizeSandboxEgress();
     mockSentryLease();
 
     const upstreamHeaders = new Headers();
-    upstreamHeaders.append("set-cookie", "a=1; Path=/");
-    upstreamHeaders.append("set-cookie", "b=2; Path=/");
+    upstreamHeaders.append("set-cookie", "session=provider; Path=/");
+    upstreamHeaders.append("x-request-id", "req-123");
 
     const response = await proxy(
       egressRequest(),
@@ -320,13 +322,8 @@ describe("sandbox egress proxy", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(
-      (
-        response.headers as Headers & {
-          getSetCookie?: () => string[];
-        }
-      ).getSetCookie?.(),
-    ).toEqual(["a=1; Path=/", "b=2; Path=/"]);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(response.headers.get("x-request-id")).toBe("req-123");
   });
 
   it("rejects forwarded hosts with embedded ports", async () => {

@@ -43,7 +43,19 @@ const PROXY_ONLY_HEADERS = new Set([
   FORWARDED_SCHEME_HEADER,
   FORWARDED_PORT_HEADER,
 ]);
-const SANDBOX_SUPPLIED_AUTH_HEADERS = new Set(["authorization", "cookie"]);
+const SANDBOX_SUPPLIED_AUTH_HEADERS = new Set([
+  "api-key",
+  "authorization",
+  "cookie",
+  "private-token",
+  "x-api-key",
+  "x-auth-token",
+  "x-access-token",
+]);
+const UPSTREAM_CREDENTIAL_RESPONSE_HEADERS = new Set([
+  "set-cookie",
+  "set-cookie2",
+]);
 const OIDC_DISCOVERY_CACHE_TTL_MS = 60 * 60 * 1000;
 const OIDC_DISCOVERY_CACHE_MAX_ENTRIES = 8;
 
@@ -328,7 +340,11 @@ function requestHeaders(
 function responseHeaders(upstream: Response): Headers {
   const headers = new Headers();
   upstream.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+    const normalized = key.toLowerCase();
+    if (
+      !HOP_BY_HOP_HEADERS.has(normalized) &&
+      !UPSTREAM_CREDENTIAL_RESPONSE_HEADERS.has(normalized)
+    ) {
       headers.append(key, value);
     }
   });

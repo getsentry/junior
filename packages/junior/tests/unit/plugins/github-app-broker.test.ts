@@ -141,6 +141,46 @@ describe("github app credential broker", () => {
     expect(lease.env.GITHUB_TOKEN).toBe("github_host_managed_credential");
   });
 
+  it("derives REST and git auth modes from configured domains", async () => {
+    setupValidEnv();
+    mockGitHubApi({
+      token: "enterprise-token",
+      onRequest: (url) => {
+        expect(url).toBe(
+          "https://api.github.example/app/installations/42/access_tokens",
+        );
+      },
+    });
+    const credentials: GitHubAppCredentials = {
+      ...TEST_CREDENTIALS,
+      apiDomains: ["api.github.example", "github.example"],
+    };
+
+    const broker = createGitHubAppBroker(
+      {
+        ...TEST_MANIFEST,
+        credentials,
+      },
+      credentials,
+    );
+    const lease = await broker.issue({
+      reason: "test:configured-domains",
+    });
+
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "api.github.example",
+        headers: { Authorization: "Bearer enterprise-token" },
+      },
+      {
+        domain: "github.example",
+        headers: {
+          Authorization: `Basic ${Buffer.from("x-access-token:enterprise-token").toString("base64")}`,
+        },
+      },
+    ]);
+  });
+
   it("reuses cached leases for the same installation", async () => {
     setupValidEnv();
     mockGitHubApi({ token: "cached-token" });

@@ -221,23 +221,24 @@ export function createGitHubAppBroker(
     privateKeyEnv,
     installationIdEnv,
   } = credentials;
-  const apiBase = `https://${apiDomains[0]}`;
+  const apiDomain = apiDomains[0];
+  if (!apiDomain) {
+    throw new Error(`GitHub App provider "${provider}" requires apiDomains`);
+  }
+  const apiBase = `https://${apiDomain}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
   const pluginHeaderTransforms = () => resolveApiHeaderTransforms(manifest);
 
-  const GIT_DOMAIN = "github.com";
   const leaseDomains = [...new Set(apiDomains)];
 
   /**
    * Build the correct Authorization header for a domain.
    *
-   * GitHub's REST API (api.github.com) accepts Bearer tokens, but its git
-   * smart-HTTP transport (github.com) only accepts HTTP Basic auth with
-   * `x-access-token` as the username. This matches how `actions/checkout`
-   * and the `gh` credential helper authenticate git operations.
+   * The first manifest domain is the GitHub REST API host. Additional domains
+   * are git smart-HTTP hosts, which require Basic auth with `x-access-token`.
    */
   function authorizationFor(domain: string, token: string): string {
-    if (domain === GIT_DOMAIN) {
+    if (domain !== apiDomain) {
       return `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
     }
     return `Bearer ${token}`;

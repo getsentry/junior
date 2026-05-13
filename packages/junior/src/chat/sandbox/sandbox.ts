@@ -153,7 +153,9 @@ export function createSandboxExecutor(options?: {
     sandboxDependencyProfileHash: options?.sandboxDependencyProfileHash,
     timeoutMs: options?.timeoutMs,
     traceContext,
-    commandEnv: credentialEgress ? getSandboxCommandEnvironment() : undefined,
+    commandEnv: credentialEgress?.requesterId
+      ? getSandboxCommandEnvironment()
+      : undefined,
     createNetworkPolicy: credentialEgress?.requesterId
       ? buildSandboxEgressNetworkPolicy
       : undefined,
