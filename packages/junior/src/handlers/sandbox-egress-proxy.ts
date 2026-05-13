@@ -9,6 +9,7 @@ import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
   buildSandboxEgressNetworkPolicy,
+  matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
 } from "@/chat/sandbox/egress-policy";
 import {
@@ -263,7 +264,7 @@ function requestHeaders(
   });
 
   for (const transform of lease.headerTransforms) {
-    if (transform.domain.toLowerCase() !== upstreamHost.toLowerCase()) {
+    if (!matchesSandboxEgressDomain(upstreamHost, transform.domain)) {
       continue;
     }
     for (const [key, value] of Object.entries(transform.headers)) {
@@ -325,8 +326,8 @@ function hasTransformForHost(
   lease: SandboxEgressCredentialLease,
   host: string,
 ): boolean {
-  return lease.headerTransforms.some(
-    (transform) => transform.domain.toLowerCase() === host.toLowerCase(),
+  return lease.headerTransforms.some((transform) =>
+    matchesSandboxEgressDomain(host, transform.domain),
   );
 }
 

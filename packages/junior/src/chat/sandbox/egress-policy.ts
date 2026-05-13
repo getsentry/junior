@@ -11,7 +11,11 @@ export interface SandboxEgressProvider {
 
 const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
 
-function domainMatches(host: string, domain: string): boolean {
+/** Return whether an outbound host is covered by a sandbox egress domain rule. */
+export function matchesSandboxEgressDomain(
+  host: string,
+  domain: string,
+): boolean {
   const normalizedHost = host.toLowerCase();
   const normalizedDomain = domain.toLowerCase();
   if (normalizedDomain.startsWith("*.")) {
@@ -63,7 +67,9 @@ export function resolveSandboxEgressProviderForHost(
   host: string,
 ): string | undefined {
   for (const entry of getSandboxEgressProviders()) {
-    if (entry.domains.some((domain) => domainMatches(host, domain))) {
+    if (
+      entry.domains.some((domain) => matchesSandboxEgressDomain(host, domain))
+    ) {
       return entry.provider;
     }
   }
