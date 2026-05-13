@@ -1,6 +1,5 @@
 import { logCapabilityCatalogLoadedOnce } from "@/chat/capabilities/catalog";
 import { ProviderCredentialRouter } from "@/chat/capabilities/router";
-import { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import type {
   CredentialBroker,
   CredentialLease,
@@ -20,6 +19,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 const ENV_PLACEHOLDER_RE = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
 let sandboxEgressRouter: ProviderCredentialRouter | undefined;
 
+/** Create the user token store used by OAuth-backed credential brokers. */
 export function createUserTokenStore(): UserTokenStore {
   return new StateAdapterTokenStore(getStateAdapter());
 }
@@ -94,20 +94,6 @@ function createProviderCredentialRouter(): ProviderCredentialRouter {
   }
 
   return new ProviderCredentialRouter({ brokersByProvider });
-}
-
-// Encapsulation boundary for capability runtime construction.
-// Swap broker strategy here (provider router, test broker, etc.) without
-// changing agent orchestration code in respond.ts.
-export function createSkillCapabilityRuntime(
-  options: {
-    requesterId?: string;
-  } = {},
-): SkillCapabilityRuntime {
-  return new SkillCapabilityRuntime({
-    router: createProviderCredentialRouter(),
-    requesterId: options.requesterId,
-  });
 }
 
 /** Issue one provider credential lease for host-side sandbox egress proxying. */

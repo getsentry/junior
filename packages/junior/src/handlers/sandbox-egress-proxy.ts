@@ -382,7 +382,13 @@ export async function proxySandboxEgressRequest(
     lease = await credentialLease({ sandboxId, provider, session });
   } catch (error) {
     if (error instanceof CredentialUnavailableError) {
-      return new Response(error.message, { status: 401 });
+      return new Response(
+        `junior-auth-required provider=${error.provider} 401 unauthorized\n${error.message}`,
+        {
+          status: 401,
+          headers: { "content-type": "text/plain; charset=utf-8" },
+        },
+      );
     }
     throw error;
   }

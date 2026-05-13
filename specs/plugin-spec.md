@@ -338,7 +338,7 @@ System runtime dependency execution environment:
 - No two plugins may use the same `name`.
 - If `target.config-key` is set, it must be listed in `config-keys`.
 - If `command-env` is set, the plugin must also declare credentials or API headers so a credential broker exists to deliver it.
-- If a plugin declares capabilities without credentials or API headers, manifest load succeeds and runtime credential enablement fails with an explicit no-broker error when an authenticated command needs that provider.
+- If a plugin declares capabilities without credentials or API headers, manifest load succeeds and sandbox egress credential activation fails with an explicit no-broker error when an authenticated command needs that provider.
 - `plugin.yaml` remains the enforceable runtime authority. `loadSkill` re-resolves the skill's parent plugin from its path, rejects mismatched plugin metadata, rebuilds metadata from the current skill file, and prepends a host-owned runtime boundary before the skill body.
 
 ## Discovery and loading
@@ -347,7 +347,7 @@ System runtime dependency execution environment:
 
 **Sync phase** (module load): Read `plugin.yaml` manifests via `readFileSync`, register capabilities, config keys, OAuth config, and skill roots. This keeps `catalog.ts` sync-compatible.
 
-**On-demand phase**: Create credential brokers when `factory.ts` constructs the runtime for plugins that declare credentials or API headers. The generic `oauth-bearer` broker is created from manifest config — no dynamic imports needed.
+**On-demand phase**: Create credential brokers when the sandbox egress proxy requests a lease for plugins that declare credentials or API headers. The generic `oauth-bearer` broker is created from manifest config — no dynamic imports needed.
 
 ### Load sequence
 
@@ -536,7 +536,6 @@ All existing security invariants from `security-policy.md` are preserved:
 | Skill infrastructure (discovery, frontmatter, loading)  | Framework — plugins contribute skills          |
 | `CredentialBroker` interface and `CredentialLease` type | Shared contract                                |
 | `ProviderCredentialRouter`                              | Generic router                                 |
-| `SkillCapabilityRuntime`                                | Generic runtime                                |
 | OAuth callback route (`/api/oauth/callback/[provider]`) | Shared HTTP handler                            |
 | `TestCredentialBroker`                                  | Eval infrastructure, not a plugin              |
 

@@ -76,21 +76,8 @@ describe("createAgentTools", () => {
     expect(onStatus).toHaveBeenCalledWith({ text: "Reviewing results" });
   });
 
-  it("injects already-enabled provider credentials into bash", async () => {
+  it("executes sandbox bash without host credential injection", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
-    const enableCredentialsForTurn = vi.fn(async () => {});
-    const capabilityRuntime = {
-      enableCredentialsForTurn,
-      getTurnHeaderTransforms: () => [
-        {
-          domain: "api.github.com",
-          headers: { Authorization: "Bearer token-1" },
-        },
-      ],
-      getTurnEnv: () => ({
-        GITHUB_TOKEN: "ghp_host_managed_credential",
-      }),
-    } as any;
     const sandboxExecutor = {
       canExecute: (toolName: string) => toolName === "bash",
       execute: vi.fn(async ({ input }) => ({
@@ -121,27 +108,16 @@ describe("createAgentTools", () => {
       {},
       undefined,
       sandboxExecutor,
-      capabilityRuntime,
     );
 
     const result = await bashTool!.execute("tool-1", {
       command: "gh issue view 123 --repo getsentry/junior",
     });
 
-    expect(enableCredentialsForTurn).not.toHaveBeenCalled();
     expect(sandboxExecutor.execute).toHaveBeenCalledWith({
       toolName: "bash",
       input: {
         command: "gh issue view 123 --repo getsentry/junior",
-        env: {
-          GITHUB_TOKEN: "ghp_host_managed_credential",
-        },
-        headerTransforms: [
-          {
-            domain: "api.github.com",
-            headers: { Authorization: "Bearer token-1" },
-          },
-        ],
       },
     });
     expect(result.details).toMatchObject({
@@ -163,7 +139,6 @@ describe("createAgentTools", () => {
       },
       sandbox,
       {},
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -286,11 +261,6 @@ describe("createAgentTools", () => {
 
   it("rethrows plugin auth pauses without reporting a tool failure", async () => {
     const sandbox = new SkillSandbox([githubSkill], [githubSkill]);
-    const capabilityRuntime = {
-      enableCredentialsForTurn: vi.fn(async () => undefined),
-      getTurnHeaderTransforms: () => undefined,
-      getTurnEnv: () => undefined,
-    } as any;
     const pluginAuthOrchestration = {
       handleCommandFailure: vi.fn(async () => {
         throw new PluginAuthorizationPauseError("github", "link_sent");
@@ -326,7 +296,6 @@ describe("createAgentTools", () => {
       {},
       undefined,
       sandboxExecutor,
-      capabilityRuntime,
       pluginAuthOrchestration,
     );
 

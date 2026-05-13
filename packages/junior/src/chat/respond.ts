@@ -16,10 +16,7 @@ import {
 } from "@/chat/logging";
 import { listReferenceFiles } from "@/chat/discovery";
 import { buildSystemPrompt, buildTurnContextPrompt } from "@/chat/prompt";
-import {
-  createSkillCapabilityRuntime,
-  createUserTokenStore,
-} from "@/chat/capabilities/factory";
+import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
@@ -495,9 +492,6 @@ export async function generateAssistantReply(
     };
 
     // ── Sandbox ──────────────────────────────────────────────────────
-    const capabilityRuntime = createSkillCapabilityRuntime({
-      requesterId: context.requester?.userId,
-    });
     const userTokenStore = createUserTokenStore();
     sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
@@ -884,7 +878,6 @@ export async function generateAssistantReply(
       spanContext,
       context.onStatus,
       sandboxExecutor,
-      capabilityRuntime,
       pluginAuth,
       onToolCall,
     );
@@ -894,7 +887,6 @@ export async function generateAssistantReply(
       spanContext,
       context.onStatus,
       sandboxExecutor,
-      capabilityRuntime,
       pluginAuth,
       onToolCall,
     );

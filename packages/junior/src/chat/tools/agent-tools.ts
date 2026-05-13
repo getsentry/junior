@@ -7,12 +7,10 @@ import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
-import type { SkillCapabilityRuntime } from "@/chat/capabilities/runtime";
 import type { SandboxExecutor } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
-import { resolveCredentialInjection } from "@/chat/tools/execution/inject-credentials";
 import { normalizeToolResult } from "@/chat/tools/execution/normalize-result";
 import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
 
@@ -23,7 +21,6 @@ export function createAgentTools(
   spanContext: LogContext,
   onStatus?: (status: AssistantStatusSpec) => void | Promise<void>,
   sandboxExecutor?: SandboxExecutor,
-  capabilityRuntime?: SkillCapabilityRuntime,
   pluginAuthOrchestration?: PluginAuthOrchestration,
   onToolCall?: (toolName: string, params: Record<string, unknown>) => void,
 ): AgentTool[] {
@@ -75,29 +72,13 @@ export function createAgentTools(
               toolName === "bash" && typeof parsed.command === "string"
                 ? parsed.command.trim()
                 : "";
-            const injection = resolveCredentialInjection(
-              toolName,
-              bashCommand,
-              capabilityRuntime,
-              sandbox,
-            );
 
             const sandboxInput = buildSandboxInput(toolName, parsed);
             const isSandbox = Boolean(sandboxExecutor?.canExecute(toolName));
             const result = isSandbox
               ? await sandboxExecutor!.execute({
                   toolName,
-                  input:
-                    toolName === "bash" &&
-                    (injection.headerTransforms || injection.env)
-                      ? {
-                          ...sandboxInput,
-                          ...(injection.headerTransforms
-                            ? { headerTransforms: injection.headerTransforms }
-                            : {}),
-                          ...(injection.env ? { env: injection.env } : {}),
-                        }
-                      : sandboxInput,
+                  input: sandboxInput,
                 })
               : await toolDef.execute(parsed as never, {
                   experimental_context: sandbox,

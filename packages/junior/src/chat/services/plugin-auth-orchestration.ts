@@ -74,6 +74,7 @@ function isCommandAuthFailure(details: unknown): details is {
   }
 
   return [
+    /\bjunior-auth-required\b/,
     /\b401\b/,
     /\bunauthorized\b/,
     /\bbad credentials\b/,

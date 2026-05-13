@@ -43,6 +43,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
 import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress-policy";
 import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import {
   proxySandboxEgressRequest,
   validateVercelSandboxOidcClaims,
@@ -202,6 +203,44 @@ describe("sandbox egress proxy", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a command-readable auth marker when provider credentials are missing", async () => {
+    await upsertSandboxEgressSession({
+      sandboxId: "junior-sbx",
+      requesterId: "U123",
+      providers: ["sentry"],
+      ttlMs: 60_000,
+    });
+    issueProviderCredentialLeaseMock.mockRejectedValue(
+      new CredentialUnavailableError(
+        "sentry",
+        "No sentry credentials available.",
+      ),
+    );
+
+    const response = await proxySandboxEgressRequest(
+      new Request(
+        "https://junior.example.com/api/internal/sandbox-egress/junior-sbx/api/0/issues/",
+        {
+          method: "GET",
+          headers: {
+            "vercel-forwarded-host": "sentry.io",
+            "vercel-sandbox-oidc-token": "signed-token",
+          },
+        },
+      ),
+      "junior-sbx",
+      {
+        fetch: vi.fn() as typeof fetch,
+        verifyOidc: async () => ({ sub: "sandbox" }),
+      },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.text()).resolves.toContain(
+      "junior-auth-required provider=sentry 401 unauthorized",
+    );
   });
 
   it("rejects provider requests when the sandbox session did not authorize that provider", async () => {

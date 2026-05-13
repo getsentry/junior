@@ -162,8 +162,8 @@ interface PluginCatalog {
   getOAuthConfig(provider): OAuthConfig | undefined;
 }
 
-interface CapabilityRuntimeFactory {
-  create(args): SkillCapabilityRuntime;
+interface ProviderCredentialIssuer {
+  issueLease(args): Promise<CredentialLease>;
 }
 ```
 

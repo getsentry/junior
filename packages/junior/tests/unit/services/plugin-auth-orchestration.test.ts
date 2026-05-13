@@ -114,7 +114,7 @@ describe("createPluginAuthOrchestration", () => {
         command: "sentry issue list",
         details: {
           exit_code: 1,
-          stderr: "401 unauthorized",
+          stderr: "junior-auth-required provider=sentry",
         },
       }),
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);

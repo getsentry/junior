@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginDefinition } from "@/chat/plugins/types";
-import type { Skill } from "@/chat/skills";
 
 const createPluginBrokerMock = vi.fn();
 const getPluginProvidersMock = vi.fn<() => PluginDefinition[]>();
@@ -26,15 +25,7 @@ vi.mock("@/chat/state/adapter", () => ({
   }),
 }));
 
-const headerOnlySkill: Skill = {
-  name: "example",
-  description: "Example helper",
-  skillPath: "/tmp/example",
-  body: "instructions",
-  pluginProvider: "example",
-};
-
-describe("capability runtime factory", () => {
+describe("capability factory", () => {
   afterEach(() => {
     delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
     createPluginBrokerMock.mockReset();
@@ -68,22 +59,19 @@ describe("capability runtime factory", () => {
       },
     ]);
 
-    const { createSkillCapabilityRuntime } =
+    const { issueProviderCredentialLease } =
       await import("@/chat/capabilities/factory");
-    const runtime = createSkillCapabilityRuntime({ requesterId: "U123" });
-
-    await expect(
-      runtime.enableCredentialsForTurn({
-        activeSkill: headerOnlySkill,
-        reason: "test:api-headers",
-      }),
-    ).resolves.toMatchObject({ reused: false });
+    const lease = await issueProviderCredentialLease({
+      provider: "example",
+      requesterId: "U123",
+      reason: "test:api-headers",
+    });
 
     expect(createPluginBrokerMock).not.toHaveBeenCalled();
-    expect(runtime.getTurnEnv()).toEqual({
+    expect(lease.env).toEqual({
       EXAMPLE_API_KEY: "host_managed_credential",
     });
-    expect(runtime.getTurnHeaderTransforms()).toEqual([
+    expect(lease.headerTransforms).toEqual([
       {
         domain: "api.example.com",
         headers: {
