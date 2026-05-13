@@ -6,6 +6,7 @@ import {
 } from "jose";
 import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import { logWarn } from "@/chat/logging";
 import {
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
@@ -411,7 +412,16 @@ export async function proxySandboxEgressRequest(
       oidcToken,
       sandboxId,
     );
-  } catch {
+  } catch (error) {
+    logWarn(
+      "sandbox_egress_oidc_verification_failed",
+      {},
+      {
+        "app.sandbox.oidc_error":
+          error instanceof Error ? error.message : String(error),
+      },
+      "Sandbox egress OIDC verification failed",
+    );
     return jsonError("Invalid Vercel Sandbox OIDC token", 401);
   }
 
