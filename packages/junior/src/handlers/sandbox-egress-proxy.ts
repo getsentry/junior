@@ -83,7 +83,7 @@ function normalizeScheme(value: string | null): "https" | undefined {
   if (!value) {
     return "https";
   }
-  return value === "https" ? "https" : undefined;
+  return value.trim().toLowerCase() === "https" ? "https" : undefined;
 }
 
 function normalizePort(value: string | null): string | undefined {
@@ -333,6 +333,7 @@ async function credentialLease(input: {
   const cached = await getSandboxEgressCredentialLease({
     sandboxId: input.sandboxId,
     provider: input.provider,
+    requesterId: input.session.requesterId,
   });
   if (cached) {
     return cached;
@@ -357,6 +358,7 @@ async function credentialLease(input: {
   };
   await setSandboxEgressCredentialLease({
     sandboxId: input.sandboxId,
+    requesterId: input.session.requesterId,
     lease: cachedLease,
     sessionExpiresAtMs: input.session.expiresAtMs,
   });

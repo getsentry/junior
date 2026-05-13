@@ -72,16 +72,17 @@ const REQUESTER_ID = "U123";
 
 async function authorizeSandboxEgress(
   providers: string[] = ["sentry"],
+  requesterId = REQUESTER_ID,
 ): Promise<void> {
   await upsertSandboxEgressSession({
     sandboxId: SANDBOX_ID,
-    requesterId: REQUESTER_ID,
+    requesterId,
     providers,
     ttlMs: 60_000,
   });
 }
 
-function mockSentryLease(domain = "sentry.io"): void {
+function mockSentryLease(domain = "sentry.io", token = "sentry-token"): void {
   issueProviderCredentialLeaseMock.mockResolvedValue({
     id: "lease-1",
     provider: "sentry",
@@ -89,7 +90,7 @@ function mockSentryLease(domain = "sentry.io"): void {
     headerTransforms: [
       {
         domain,
-        headers: { Authorization: "Bearer sentry-token" },
+        headers: { Authorization: `Bearer ${token}` },
       },
     ],
     expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -192,7 +193,7 @@ describe("sandbox egress proxy", () => {
 
     const request = egressRequest({
       path: "/api/0/issues/?query=foo",
-      scheme: "https",
+      scheme: "HTTPS",
       headers: { host: "junior.example.com" },
     });
 
@@ -216,6 +217,66 @@ describe("sandbox egress proxy", () => {
 
     expect(replay.status).toBe(409);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("scopes cached credential leases to the requester", async () => {
+    await authorizeSandboxEgress();
+    issueProviderCredentialLeaseMock
+      .mockResolvedValueOnce({
+        id: "lease-1",
+        provider: "sentry",
+        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer token-u123" },
+          },
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })
+      .mockResolvedValueOnce({
+        id: "lease-2",
+        provider: "sentry",
+        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer token-u456" },
+          },
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+
+    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
+      return new Response(new Headers(init?.headers).get("authorization"));
+    });
+
+    const firstResponse = await proxy(
+      egressRequest({ path: "/api/0/issues/1" }),
+      fetchMock as typeof fetch,
+    );
+    await expect(firstResponse.text()).resolves.toBe("Bearer token-u123");
+
+    await authorizeSandboxEgress(["sentry"], "U456");
+    const secondResponse = await proxy(
+      egressRequest({
+        path: "/api/0/issues/2",
+        headers: { "vercel-sandbox-oidc-token": "signed-token-2" },
+      }),
+      fetchMock as typeof fetch,
+    );
+    await expect(secondResponse.text()).resolves.toBe("Bearer token-u456");
+
+    expect(issueProviderCredentialLeaseMock).toHaveBeenNthCalledWith(1, {
+      provider: "sentry",
+      requesterId: REQUESTER_ID,
+      reason: "sandbox-egress:sentry",
+    });
+    expect(issueProviderCredentialLeaseMock).toHaveBeenNthCalledWith(2, {
+      provider: "sentry",
+      requesterId: "U456",
+      reason: "sandbox-egress:sentry",
+    });
   });
 
   it("applies wildcard provider header transforms to matching upstream hosts", async () => {

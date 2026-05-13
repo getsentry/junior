@@ -28,8 +28,12 @@ function sessionKey(sandboxId: string): string {
   return `${SANDBOX_EGRESS_SESSION_PREFIX}:${sandboxId}`;
 }
 
-function leaseKey(sandboxId: string, provider: string): string {
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${sandboxId}:${provider}`;
+function leaseKey(
+  sandboxId: string,
+  provider: string,
+  requesterId: string,
+): string {
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${sandboxId}:${provider}:${requesterId}`;
 }
 
 function replayKey(fingerprint: string): string {
@@ -182,6 +186,7 @@ export async function getSandboxEgressSession(
 /** Cache a short-lived credential lease for repeated proxied requests in one sandbox session. */
 export async function setSandboxEgressCredentialLease(input: {
   sandboxId: string;
+  requesterId: string;
   lease: SandboxEgressCredentialLease;
   sessionExpiresAtMs: number;
 }): Promise<void> {
@@ -196,7 +201,7 @@ export async function setSandboxEgressCredentialLease(input: {
   const state = getStateAdapter();
   await state.connect();
   await state.set(
-    leaseKey(input.sandboxId, input.lease.provider),
+    leaseKey(input.sandboxId, input.lease.provider, input.requesterId),
     input.lease,
     ttlMs,
   );
@@ -206,10 +211,15 @@ export async function setSandboxEgressCredentialLease(input: {
 export async function getSandboxEgressCredentialLease(input: {
   sandboxId: string;
   provider: string;
+  requesterId: string;
 }): Promise<SandboxEgressCredentialLease | undefined> {
   const state = getStateAdapter();
   await state.connect();
-  return parseLease(await state.get(leaseKey(input.sandboxId, input.provider)));
+  return parseLease(
+    await state.get(
+      leaseKey(input.sandboxId, input.provider, input.requesterId),
+    ),
+  );
 }
 
 /** Claim a short-lived request fingerprint so exact proxy request replays are rejected. */
