@@ -147,6 +147,20 @@ describe("plugin manifest API headers", () => {
     ).toThrow("Plugin example api-headers requires domains");
   });
 
+  it("reports the deprecated api-domains field when headers are missing", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "description: Example API access",
+          "api-domains:",
+          "  - api.example.com",
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow("Plugin example api-domains requires api-headers");
+  });
+
   it("rejects empty API headers", () => {
     expect(() =>
       parsePluginManifest(

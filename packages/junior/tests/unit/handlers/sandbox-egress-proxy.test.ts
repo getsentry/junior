@@ -459,6 +459,7 @@ describe("sandbox egress proxy", () => {
     process.env.VERCEL_PROJECT_ID = "prj_123";
     decodeJwtMock.mockReturnValue({
       iss: "https://oidc.vercel.com/cache-test",
+      owner: "cache-test",
     });
     jwtVerifyMock.mockResolvedValue({
       payload: {
@@ -481,10 +482,45 @@ describe("sandbox egress proxy", () => {
     expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1);
   });
 
+  it("verifies Vercel OIDC audience for the issuing team", async () => {
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+    decodeJwtMock.mockReturnValue({
+      iss: "https://oidc.vercel.com/acme",
+      owner: "acme",
+    });
+    jwtVerifyMock.mockResolvedValue({
+      payload: {
+        owner: "acme",
+        project_id: "prj_123",
+        sandbox_id: SANDBOX_ID,
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          jwks_uri: "https://oidc.vercel.com/acme/jwks",
+        }),
+      ),
+    );
+
+    await verifyVercelSandboxOidcToken("signed-token", SANDBOX_ID);
+
+    expect(jwtVerifyMock).toHaveBeenCalledWith(
+      "signed-token",
+      expect.anything(),
+      {
+        issuer: "https://oidc.vercel.com/acme",
+        audience: "https://vercel.com/acme",
+      },
+    );
+  });
+
   it("rejects non-HTTPS Vercel OIDC JWKS metadata", async () => {
     process.env.VERCEL_PROJECT_ID = "prj_123";
     decodeJwtMock.mockReturnValue({
       iss: "https://oidc.vercel.com/bad-jwks",
+      owner: "bad-jwks",
     });
     const fetchMock = vi.fn(async () =>
       Response.json({

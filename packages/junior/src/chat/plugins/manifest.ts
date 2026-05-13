@@ -902,11 +902,12 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
     );
   }
   const domains = data.domains ?? data["api-domains"];
+  const domainField = data.domains ? "domains" : "api-domains";
   if (apiHeaders && !domains) {
     throw new Error(`Plugin ${data.name} api-headers requires domains`);
   }
   if (domains && !apiHeaders) {
-    throw new Error(`Plugin ${data.name} domains requires api-headers`);
+    throw new Error(`Plugin ${data.name} ${domainField} requires api-headers`);
   }
   const commandEnv = data["command-env"]
     ? normalizeCommandEnv(

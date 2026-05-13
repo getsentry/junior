@@ -190,6 +190,20 @@ function sandboxClaimMatches(payload: JWTPayload, sandboxId: string): boolean {
   );
 }
 
+function expectedVercelOidcAudience(payload: JWTPayload): string {
+  if (typeof payload.iss === "string") {
+    const issuer = new URL(payload.iss);
+    const teamSlug = issuer.pathname.split("/").filter(Boolean)[0];
+    if (teamSlug) {
+      return `https://vercel.com/${teamSlug}`;
+    }
+  }
+  if (typeof payload.owner !== "string" || !payload.owner.trim()) {
+    throw new Error("Vercel OIDC token did not include an owner");
+  }
+  return `https://vercel.com/${payload.owner.trim()}`;
+}
+
 /** Validate deployment and sandbox binding claims in a verified Vercel Sandbox OIDC payload. */
 export function validateVercelSandboxOidcClaims(
   payload: JWTPayload,
@@ -230,6 +244,7 @@ export async function verifyVercelSandboxOidcToken(
   const jwks = await getJwks(unverified.iss);
   const verified = await jwtVerify(token, jwks, {
     issuer: unverified.iss,
+    audience: expectedVercelOidcAudience(unverified),
   });
   validateVercelSandboxOidcClaims(verified.payload, sandboxId);
   return verified.payload;
