@@ -60,10 +60,7 @@ function normalizeHost(value: string): string | undefined {
   return trimmed.replace(/\.$/, "");
 }
 
-function normalizeScheme(value: string | null): "https" | undefined {
-  if (!value) {
-    return "https";
-  }
+function normalizeScheme(value: string): "https" | undefined {
   return value.trim().toLowerCase() === "https" ? "https" : undefined;
 }
 
@@ -103,7 +100,11 @@ function buildUpstreamUrl(
   if (!host) {
     return { ok: false, error: "Invalid forwarded host" };
   }
-  const scheme = normalizeScheme(request.headers.get(FORWARDED_SCHEME_HEADER));
+  const forwardedScheme = request.headers.get(FORWARDED_SCHEME_HEADER);
+  if (!forwardedScheme?.trim()) {
+    return { ok: false, error: "Missing forwarded scheme" };
+  }
+  const scheme = normalizeScheme(forwardedScheme);
   if (!scheme) {
     return { ok: false, error: "Forwarded scheme must be https" };
   }

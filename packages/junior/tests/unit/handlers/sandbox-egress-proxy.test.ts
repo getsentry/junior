@@ -102,7 +102,7 @@ function egressRequest(
   input: {
     host?: string;
     path?: string;
-    scheme?: string;
+    scheme?: string | null;
     port?: string;
     headers?: Record<string, string>;
   } = {},
@@ -113,8 +113,10 @@ function egressRequest(
       method: "GET",
       headers: {
         "vercel-forwarded-host": input.host ?? "sentry.io",
+        ...(input.scheme === null
+          ? {}
+          : { "vercel-forwarded-scheme": input.scheme ?? "https" }),
         "vercel-sandbox-oidc-token": "signed-token",
-        ...(input.scheme ? { "vercel-forwarded-scheme": input.scheme } : {}),
         ...(input.port ? { "vercel-forwarded-port": input.port } : {}),
         ...(input.headers ?? {}),
       },
@@ -394,6 +396,22 @@ describe("sandbox egress proxy", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "Forwarded scheme must be https",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it("requires the Vercel forwarded scheme header", async () => {
+    const fetchMock = vi.fn();
+
+    const response = await proxy(
+      egressRequest({ scheme: null }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Missing forwarded scheme",
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();

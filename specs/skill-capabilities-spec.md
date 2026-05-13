@@ -95,8 +95,8 @@ Rules:
 - The egress route must reconstruct the upstream URL only from Vercel forwarded host/scheme/port headers and the request path.
 - The egress route must reject provider domains that are not authorized by the current sandbox session's active plugin providers.
 - The proxy must not use method/URL/body-only replay fingerprints as an authorization boundary because duplicate request shapes can be legitimate client retries.
-- The proxy must strip hop-by-hop, proxy-only, and sandbox-supplied auth headers before sending the upstream request.
-- The proxy must not reflect upstream credential response headers such as `Set-Cookie` back into the sandbox.
+- The proxy must strip hop-by-hop and proxy-control headers before sending the upstream request.
+- Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, requester-bound session state, and provider authorization have been verified.
 
 ### Runtime setup boundary
 
