@@ -9,7 +9,6 @@ export interface SandboxEgressSession {
   sandboxId: string;
   requesterId: string;
   providers: string[];
-  createdAtMs: number;
   expiresAtMs: number;
   conversationId?: string;
   sessionId?: string;
@@ -43,7 +42,6 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
     typeof record.sandboxId !== "string" ||
     typeof record.requesterId !== "string" ||
     !Array.isArray(record.providers) ||
-    typeof record.createdAtMs !== "number" ||
     typeof record.expiresAtMs !== "number"
   ) {
     return undefined;
@@ -57,7 +55,6 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
     providers: record.providers.filter(
       (provider): provider is string => typeof provider === "string",
     ),
-    createdAtMs: record.createdAtMs,
     expiresAtMs: record.expiresAtMs,
     ...(typeof record.conversationId === "string"
       ? { conversationId: record.conversationId }
@@ -103,27 +100,10 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   };
 }
 
-function sameTurnScope(
-  session: SandboxEgressSession,
-  input: {
-    conversationId?: string;
-    requesterId?: string;
-    sessionId?: string;
-    sliceId?: number;
-  },
-): boolean {
-  return (
-    session.requesterId === input.requesterId &&
-    session.conversationId === input.conversationId &&
-    session.sessionId === input.sessionId &&
-    session.sliceId === input.sliceId
-  );
-}
-
 /** Persist the turn-scoped authorization context for sandbox egress credential activation. */
 export async function upsertSandboxEgressSession(input: {
   sandboxId: string;
-  requesterId?: string;
+  requesterId: string;
   providers: string[];
   conversationId?: string;
   sessionId?: string;
@@ -132,25 +112,12 @@ export async function upsertSandboxEgressSession(input: {
 }): Promise<SandboxEgressSession | undefined> {
   const state = getStateAdapter();
   await state.connect();
-  if (!input.requesterId) {
-    await state.delete(sessionKey(input.sandboxId));
-    return undefined;
-  }
   const ttlMs = Math.max(1, input.ttlMs ?? DEFAULT_SESSION_TTL_MS);
   const now = Date.now();
   const providers = [...new Set(input.providers)].sort((left, right) =>
     left.localeCompare(right),
   );
   if (providers.length === 0) {
-    const existing = parseSession(await state.get(sessionKey(input.sandboxId)));
-    if (existing && sameTurnScope(existing, input)) {
-      const refreshed = {
-        ...existing,
-        expiresAtMs: now + ttlMs,
-      };
-      await state.set(sessionKey(input.sandboxId), refreshed, ttlMs);
-      return refreshed;
-    }
     await state.delete(sessionKey(input.sandboxId));
     return undefined;
   }
@@ -158,7 +125,6 @@ export async function upsertSandboxEgressSession(input: {
     sandboxId: input.sandboxId,
     requesterId: input.requesterId,
     providers,
-    createdAtMs: now,
     expiresAtMs: now + ttlMs,
     ...(input.conversationId ? { conversationId: input.conversationId } : {}),
     ...(input.sessionId ? { sessionId: input.sessionId } : {}),

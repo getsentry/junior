@@ -76,7 +76,7 @@ function normalizePort(value: string | null): string | undefined {
   return port >= 1 && port <= 65_535 ? trimmed : undefined;
 }
 
-function upstreamPath(request: Request, sandboxId: string): string {
+function upstreamPath(request: Request, sandboxId: string): string | undefined {
   const url = new URL(request.url);
   const prefix = `${ROUTE_PREFIX}/${encodeURIComponent(sandboxId)}`;
   if (url.pathname === prefix) {
@@ -85,7 +85,7 @@ function upstreamPath(request: Request, sandboxId: string): string {
   if (url.pathname.startsWith(`${prefix}/`)) {
     return `${url.pathname.slice(prefix.length)}${url.search}`;
   }
-  return `${url.pathname}${url.search}`;
+  return undefined;
 }
 
 function buildUpstreamUrl(
@@ -113,10 +113,12 @@ function buildUpstreamUrl(
   if (forwardedPort && !port) {
     return { ok: false, error: "Invalid forwarded port" };
   }
+  const path = upstreamPath(request, sandboxId);
+  if (!path) {
+    return { ok: false, error: "Invalid egress route" };
+  }
   try {
-    const url = new URL(
-      `${scheme}://${host}${port ? `:${port}` : ""}${upstreamPath(request, sandboxId)}`,
-    );
+    const url = new URL(`${scheme}://${host}${port ? `:${port}` : ""}${path}`);
     return { ok: true, url };
   } catch {
     return { ok: false, error: "Invalid forwarded URL" };

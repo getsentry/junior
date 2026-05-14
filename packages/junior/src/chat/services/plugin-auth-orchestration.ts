@@ -1,5 +1,4 @@
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
@@ -38,10 +37,6 @@ export interface PluginAuthOrchestrationDeps {
 }
 
 export interface PluginAuthOrchestration {
-  handleCredentialUnavailable: (input: {
-    activeSkill: Skill | null;
-    error: CredentialUnavailableError;
-  }) => Promise<never>;
   handleCommandFailure: (input: {
     activeSkill: Skill | null;
     activeProviders: string[];
@@ -220,26 +215,7 @@ export function createPluginAuthOrchestration(
     throw pendingPause;
   };
 
-  const handleCredentialUnavailable = async (input: {
-    activeSkill: Skill | null;
-    error: CredentialUnavailableError;
-  }): Promise<never> => {
-    if (pendingPause) {
-      throw pendingPause;
-    }
-
-    if (!deps.requesterId || !getPluginOAuthConfig(input.error.provider)) {
-      throw input.error;
-    }
-
-    return await startAuthorizationPause(
-      input.error.provider,
-      input.activeSkill,
-    );
-  };
-
   return {
-    handleCredentialUnavailable,
     handleCommandFailure: async (input) => {
       const activeProviders = uniqueSortedStrings(input.activeProviders);
       const authFailure = isCommandAuthFailure(input.details);

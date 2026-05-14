@@ -191,8 +191,6 @@ The only supported placeholder form is `${NAME}` — replaced with `process.env[
 
 Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a request to a matching `domains` entry. This can stand alone for header-authenticated providers or pair with token-backed credentials. When paired with token-backed credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
 
-`api-domains` is still accepted as a deprecated alias for existing manifests. New manifests should use `domains`.
-
 ```yaml
 env-vars:
   EXAMPLE_AUTH_HEADER:

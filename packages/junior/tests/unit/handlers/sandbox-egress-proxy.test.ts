@@ -198,7 +198,6 @@ describe("sandbox egress proxy", () => {
 
   it("forwards repeated authorized sandbox requests with credential headers", async () => {
     await authorizeSandboxEgress();
-    await authorizeSandboxEgress([]);
     mockSentryLease();
 
     const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
@@ -385,6 +384,28 @@ describe("sandbox egress proxy", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects requests outside the sandbox egress route", async () => {
+    const fetchMock = vi.fn();
+
+    const response = await proxy(
+      new Request(`https://junior.example.com/not-egress/${SANDBOX_ID}`, {
+        headers: {
+          "vercel-forwarded-host": "sentry.io",
+          "vercel-forwarded-scheme": "https",
+          "vercel-sandbox-oidc-token": "signed-token",
+        },
+      }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid egress route",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
+  });
+
   it("rejects plaintext forwarded schemes before credential injection", async () => {
     const fetchMock = vi.fn();
 
@@ -436,6 +457,16 @@ describe("sandbox egress proxy", () => {
 
   it("rejects provider requests when the sandbox session did not authorize that provider", async () => {
     await authorizeSandboxEgress(["github"]);
+
+    const response = await proxy(egressRequest());
+
+    expect(response.status).toBe(403);
+    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
+  });
+
+  it("clears egress authorization when no providers are active", async () => {
+    await authorizeSandboxEgress();
+    await authorizeSandboxEgress([]);
 
     const response = await proxy(egressRequest());
 

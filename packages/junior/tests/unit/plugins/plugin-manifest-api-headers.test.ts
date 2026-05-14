@@ -28,28 +28,6 @@ describe("plugin manifest API headers", () => {
     });
   });
 
-  it("accepts deprecated api-domains aliases", () => {
-    const manifest = parsePluginManifest(
-      [
-        "name: example",
-        "description: Example API access",
-        "api-domains:",
-        "  - api.example.com",
-        "api-headers:",
-        '  X-Example: "enabled"',
-        "credentials:",
-        "  type: oauth-bearer",
-        "  api-domains:",
-        "    - auth.example.com",
-        "  auth-token-env: EXAMPLE_TOKEN",
-      ].join("\n"),
-      "/tmp/example",
-    );
-
-    expect(manifest.domains).toEqual(["api.example.com"]);
-    expect(manifest.credentials?.domains).toEqual(["auth.example.com"]);
-  });
-
   it("parses command env with literals and default-backed env references", () => {
     const manifest = parsePluginManifest(
       [
@@ -147,18 +125,18 @@ describe("plugin manifest API headers", () => {
     ).toThrow("Plugin example api-headers requires domains");
   });
 
-  it("reports the deprecated api-domains field when headers are missing", () => {
+  it("reports domains when headers are missing", () => {
     expect(() =>
       parsePluginManifest(
         [
           "name: example",
           "description: Example API access",
-          "api-domains:",
+          "domains:",
           "  - api.example.com",
         ].join("\n"),
         "/tmp/example",
       ),
-    ).toThrow("Plugin example api-domains requires api-headers");
+    ).toThrow("Plugin example domains requires api-headers");
   });
 
   it("rejects empty API headers", () => {
