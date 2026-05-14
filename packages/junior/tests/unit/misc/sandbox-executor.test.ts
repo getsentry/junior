@@ -270,6 +270,47 @@ describe("createSandboxExecutor", () => {
     expect(restoredSandbox.update).toHaveBeenCalledWith({ networkPolicy });
   });
 
+  it("refreshes changed network policy when reusing a cached sandbox", async () => {
+    const sandbox = makeSandbox("sbx_cached_policy");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    let providerDomain = "api.first.example";
+    const createNetworkPolicy = vi.fn((sandboxId: string) => ({
+      allow: {
+        "*": [],
+        [providerDomain]: [
+          {
+            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${sandboxId}`,
+          },
+        ],
+      },
+    }));
+
+    const manager = createSandboxSessionManager({ createNetworkPolicy });
+    manager.configureSkills([]);
+
+    await manager.createSandbox();
+    await manager.createSandbox();
+    expect(sandbox.update).not.toHaveBeenCalled();
+
+    providerDomain = "api.second.example";
+    await manager.createSandbox();
+
+    expect(sandbox.update).toHaveBeenCalledTimes(1);
+    expect(sandbox.update).toHaveBeenCalledWith({
+      networkPolicy: {
+        allow: {
+          "*": [],
+          "api.second.example": [
+            {
+              forwardURL:
+                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy",
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("passes token-based Vercel Sandbox credentials to the sandbox SDK", async () => {
     process.env.VERCEL_TOKEN = "sandbox-token";
     process.env.VERCEL_TEAM_ID = "team_123";

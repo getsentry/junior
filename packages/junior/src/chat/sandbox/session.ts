@@ -113,6 +113,7 @@ export function createSandboxSessionManager(options?: {
   let availableSkills: SkillMetadata[] = [];
   let availableReferenceFiles: string[] = [];
   let toolExecutors: SandboxToolExecutors | undefined;
+  let appliedNetworkPolicyKey: string | undefined;
 
   const timeoutMs = options?.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options?.traceContext ?? {};
@@ -132,6 +133,7 @@ export function createSandboxSessionManager(options?: {
     sandbox = null;
     sandboxIdHint = undefined;
     toolExecutors = undefined;
+    appliedNetworkPolicyKey = undefined;
   };
 
   const createSandboxName = (): string =>
@@ -148,6 +150,10 @@ export function createSandboxSessionManager(options?: {
         : {}),
     };
     await options?.onSandboxAcquired?.(acquired);
+    const networkPolicy = options?.createNetworkPolicy?.(nextSandbox.name);
+    appliedNetworkPolicyKey = networkPolicy
+      ? JSON.stringify(networkPolicy)
+      : undefined;
     return nextSandbox;
   };
 
@@ -172,6 +178,10 @@ export function createSandboxSessionManager(options?: {
     if (!networkPolicy) {
       return;
     }
+    const networkPolicyKey = JSON.stringify(networkPolicy);
+    if (appliedNetworkPolicyKey === networkPolicyKey) {
+      return;
+    }
 
     await withSandboxSpan(
       "sandbox.network_policy.update",
@@ -184,6 +194,7 @@ export function createSandboxSessionManager(options?: {
         await targetSandbox.update({ networkPolicy });
       },
     );
+    appliedNetworkPolicyKey = networkPolicyKey;
   };
 
   const ensureSandboxReachable = async (
@@ -403,6 +414,7 @@ export function createSandboxSessionManager(options?: {
 
     try {
       await ensureSandboxReachable(cachedSandbox, "memory");
+      await refreshNetworkPolicy(cachedSandbox);
       return cachedSandbox;
     } catch (error) {
       if (isSandboxUnavailableError(error)) {

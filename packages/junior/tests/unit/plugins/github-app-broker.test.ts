@@ -242,6 +242,42 @@ describe("github app credential broker", () => {
     ]);
   });
 
+  it("resolves the REST API domain independent of manifest ordering", async () => {
+    setupValidEnv();
+    mockGitHubApi({ token: "reordered-token" });
+    const credentials: GitHubAppCredentials = {
+      ...TEST_CREDENTIALS,
+      domains: ["github.com", "api.github.com"],
+    };
+
+    const broker = createGitHubAppBroker(
+      {
+        ...TEST_MANIFEST,
+        credentials,
+      },
+      credentials,
+    );
+    const lease = await broker.issue({
+      reason: "test:reordered-domains",
+    });
+
+    expect(String(findAccessTokenCall()[0])).toBe(
+      "https://api.github.com/app/installations/42/access_tokens",
+    );
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "github.com",
+        headers: {
+          Authorization: `Basic ${Buffer.from("x-access-token:reordered-token").toString("base64")}`,
+        },
+      },
+      {
+        domain: "api.github.com",
+        headers: { Authorization: "Bearer reordered-token" },
+      },
+    ]);
+  });
+
   it("reuses cached leases for the same installation", async () => {
     setupValidEnv();
     mockGitHubApi({ token: "cached-token" });

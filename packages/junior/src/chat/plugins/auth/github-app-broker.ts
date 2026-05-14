@@ -175,17 +175,27 @@ function buildGitIdentityEnv(botName: string, botId: number) {
   };
 }
 
+function resolveGitHubApiDomain(credentials: GitHubAppCredentials): string {
+  const apiDomain = credentials.domains.find((domain) => {
+    const normalizedDomain = domain.toLowerCase();
+    return (
+      normalizedDomain === "api.github.com" ||
+      normalizedDomain.startsWith("api.")
+    );
+  });
+  if (!apiDomain) {
+    throw new Error("GitHub App provider requires an API domain");
+  }
+  return apiDomain;
+}
+
 /**
  * Resolve the Git author identity for commits made with a GitHub App installation.
  */
 export async function resolveGitHubAppGitIdentityEnv(
   credentials: GitHubAppCredentials,
 ): Promise<Record<string, string>> {
-  const apiDomain = credentials.domains[0];
-  if (!apiDomain) {
-    throw new Error("GitHub App provider requires domains");
-  }
-
+  const apiDomain = resolveGitHubApiDomain(credentials);
   const apiBase = `https://${apiDomain}`;
   const appId = resolveAppId(credentials.appIdEnv);
   const cacheKey = `${apiBase}:${appId}:${credentials.privateKeyEnv}`;
@@ -303,10 +313,7 @@ export function createGitHubAppBroker(
     privateKeyEnv,
     installationIdEnv,
   } = credentials;
-  const apiDomain = domains[0];
-  if (!apiDomain) {
-    throw new Error(`GitHub App provider "${provider}" requires domains`);
-  }
+  const apiDomain = resolveGitHubApiDomain(credentials);
   const apiBase = `https://${apiDomain}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
   const pluginHeaderTransforms = () => resolveApiHeaderTransforms(manifest);
