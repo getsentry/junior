@@ -26,6 +26,7 @@ import {
   createSlackListUpdateItemTool,
 } from "@/chat/tools/slack/list-tools";
 import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
+import { createSlackUserLookupTool } from "@/chat/tools/slack/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createAdvisorTool } from "@/chat/tools/advisor/tool";
 import type { ToolDefinition } from "@/chat/tools/definition";
@@ -111,6 +112,7 @@ export function createTools(
     slackCanvasRead: createSlackCanvasReadTool(),
     slackCanvasUpdate: createSlackCanvasUpdateTool(state, context),
     slackThreadRead: createSlackThreadReadTool(context),
+    slackUserLookup: createSlackUserLookupTool(),
     slackListCreate: createSlackListCreateTool(state),
     slackListAddItems: createSlackListAddItemsTool(state),
     slackListGetItems: createSlackListGetItemsTool(state),

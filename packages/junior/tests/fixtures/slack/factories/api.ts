@@ -361,25 +361,98 @@ export function usersInfoOk(
     userName?: string;
     realName?: string;
     displayName?: string;
+    title?: string;
+    email?: string;
+    statusText?: string;
+    statusEmoji?: string;
+    isBot?: boolean;
+    deleted?: boolean;
+    tz?: string;
+    fields?: Record<string, { value?: string; alt?: string; label?: string }>;
   } = {},
 ): {
   ok: true;
-  user: {
-    id: string;
-    name: string;
-    real_name: string;
-    profile: { display_name: string; real_name: string };
-  };
+  user: Record<string, unknown>;
 } {
   return slackOk({
     user: {
       id: input.userId ?? TEST_USER_ID,
       name: input.userName ?? "testuser",
       real_name: input.realName ?? "Test User",
+      deleted: input.deleted ?? false,
+      is_bot: input.isBot ?? false,
+      tz: input.tz ?? "America/Los_Angeles",
       profile: {
         display_name: input.displayName ?? "Test User",
         real_name: input.realName ?? "Test User",
+        title: input.title ?? "",
+        email: input.email ?? "testuser@example.com",
+        status_text: input.statusText ?? "",
+        status_emoji: input.statusEmoji ?? "",
+        ...(input.fields ? { fields: input.fields } : {}),
       },
+    },
+  });
+}
+
+export function usersLookupByEmailOk(
+  input: {
+    userId?: string;
+    userName?: string;
+    realName?: string;
+    displayName?: string;
+    email?: string;
+    fields?: Record<string, { value?: string; alt?: string; label?: string }>;
+  } = {},
+): {
+  ok: true;
+  user: Record<string, unknown>;
+} {
+  return usersInfoOk({
+    ...input,
+    email: input.email ?? "testuser@example.com",
+  });
+}
+
+export function usersListPage(
+  input: {
+    members?: Array<{
+      id?: string;
+      name?: string;
+      realName?: string;
+      displayName?: string;
+      deleted?: boolean;
+      isBot?: boolean;
+      fields?: Record<string, { value?: string; alt?: string; label?: string }>;
+    }>;
+    nextCursor?: string;
+  } = {},
+): {
+  ok: true;
+  members: Array<Record<string, unknown>>;
+  response_metadata: { next_cursor: string };
+} {
+  const members = (input.members ?? []).map((m) => ({
+    id: m.id ?? TEST_USER_ID,
+    name: m.name ?? "testuser",
+    real_name: m.realName ?? "Test User",
+    deleted: m.deleted ?? false,
+    is_bot: m.isBot ?? false,
+    profile: {
+      display_name: m.displayName ?? m.name ?? "Test User",
+      real_name: m.realName ?? "Test User",
+      title: "",
+      email: "",
+      status_text: "",
+      status_emoji: "",
+      ...(m.fields ? { fields: m.fields } : {}),
+    },
+  }));
+
+  return slackOk({
+    members,
+    response_metadata: {
+      next_cursor: input.nextCursor ?? "",
     },
   });
 }

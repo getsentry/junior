@@ -22,6 +22,8 @@ import {
   slackListsItemsListPage,
   slackListsItemsUpdateOk,
   usersInfoOk,
+  usersListPage,
+  usersLookupByEmailOk,
 } from "../../fixtures/slack/factories/api";
 
 const EXTERNAL_UPLOAD_KEY = "__files.upload.external__";
@@ -54,6 +56,8 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "files.getUploadURLExternal",
   "files.completeUploadExternal",
   "users.info",
+  "users.list",
+  "users.lookupByEmail",
 ] as const;
 
 export type SlackApiMethod = (typeof SUPPORTED_SLACK_API_METHODS)[number];
@@ -229,6 +233,10 @@ function defaultSlackApiResponse(
       return { body: filesCompleteUploadOk() };
     case "users.info":
       return { body: usersInfoOk() };
+    case "users.list":
+      return { body: usersListPage() };
+    case "users.lookupByEmail":
+      return { body: usersLookupByEmailOk() };
     default:
       return {
         status: 400,
