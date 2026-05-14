@@ -24,7 +24,8 @@ type GitHubUserResponse = {
   id?: unknown;
 };
 
-const githubAppGitIdentityCache = new Map<
+const githubAppGitIdentityCache = new Map<string, Record<string, string>>();
+const githubAppGitIdentityRequests = new Map<
   string,
   Promise<Record<string, string>>
 >();
@@ -201,7 +202,11 @@ export async function resolveGitHubAppGitIdentityEnv(
   const cacheKey = `${apiBase}:${appId}:${credentials.privateKeyEnv}`;
   const cached = githubAppGitIdentityCache.get(cacheKey);
   if (cached) {
-    return await cached;
+    return cached;
+  }
+  const pending = githubAppGitIdentityRequests.get(cacheKey);
+  if (pending) {
+    return await pending;
   }
 
   const identityPromise = (async () => {
@@ -226,12 +231,13 @@ export async function resolveGitHubAppGitIdentityEnv(
     return buildGitIdentityEnv(botName, user.id);
   })();
 
-  githubAppGitIdentityCache.set(cacheKey, identityPromise);
+  githubAppGitIdentityRequests.set(cacheKey, identityPromise);
   try {
-    return await identityPromise;
-  } catch (error) {
-    githubAppGitIdentityCache.delete(cacheKey);
-    throw error;
+    const identity = await identityPromise;
+    githubAppGitIdentityCache.set(cacheKey, identity);
+    return identity;
+  } finally {
+    githubAppGitIdentityRequests.delete(cacheKey);
   }
 }
 

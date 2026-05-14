@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
-import { createGitHubAppBroker } from "@/chat/plugins/auth/github-app-broker";
+import {
+  createGitHubAppBroker,
+  resolveGitHubAppGitIdentityEnv,
+} from "@/chat/plugins/auth/github-app-broker";
 import type {
   GitHubAppCredentials,
   PluginManifest,
@@ -299,6 +302,45 @@ describe("github app credential broker", () => {
       .mocked(globalThis.fetch)
       .mock.calls.filter(([url]) => String(url).includes("/access_tokens"));
     expect(accessTokenCalls).toHaveLength(1);
+  });
+
+  it("does not cache failed GitHub App identity lookups", async () => {
+    setupValidEnv();
+    process.env.GITHUB_APP_ID = "67890";
+    let appRequestCount = 0;
+    globalThis.fetch = vi.fn(async (input) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : String(input);
+
+      if (url.endsWith("/app")) {
+        appRequestCount += 1;
+        if (appRequestCount === 1) {
+          return {
+            ok: false,
+            status: 500,
+            text: async () => JSON.stringify({ message: "temporary failure" }),
+          };
+        }
+        return mockJsonResponse({ slug: "sentry-junior" });
+      }
+      if (url.endsWith("/users/sentry-junior%5Bbot%5D")) {
+        return mockJsonResponse({ id: 264270552 });
+      }
+
+      throw new Error(`Unexpected fetch request: ${url}`);
+    }) as unknown as typeof fetch;
+
+    await expect(
+      resolveGitHubAppGitIdentityEnv(TEST_CREDENTIALS),
+    ).rejects.toThrow("temporary failure");
+    await expect(
+      resolveGitHubAppGitIdentityEnv(TEST_CREDENTIALS),
+    ).resolves.toEqual(TEST_GIT_IDENTITY_ENV);
+    expect(appRequestCount).toBe(2);
   });
 
   it("requests the full plugin permission set when minting installation tokens", async () => {

@@ -125,7 +125,32 @@ describe("plugin manifest API headers", () => {
     ).toThrow("Plugin example api-headers requires domains");
   });
 
-  it("reports domains when headers are missing", () => {
+  it("accepts credential-backed top-level domains without API headers", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "description: Example API access",
+        "domains:",
+        "  - uploads.example.com",
+        "credentials:",
+        "  type: oauth-bearer",
+        "  domains:",
+        "    - api.example.com",
+        "  auth-token-env: EXAMPLE_TOKEN",
+      ].join("\n"),
+      "/tmp/example",
+    );
+
+    expect(manifest.domains).toEqual(["uploads.example.com"]);
+    expect(manifest.apiHeaders).toBeUndefined();
+    expect(manifest.credentials).toMatchObject({
+      type: "oauth-bearer",
+      domains: ["api.example.com"],
+      authTokenEnv: "EXAMPLE_TOKEN",
+    });
+  });
+
+  it("reports domains when credentials and headers are missing", () => {
     expect(() =>
       parsePluginManifest(
         [
@@ -136,7 +161,7 @@ describe("plugin manifest API headers", () => {
         ].join("\n"),
         "/tmp/example",
       ),
-    ).toThrow("Plugin example domains requires api-headers");
+    ).toThrow("Plugin example domains requires credentials or api-headers");
   });
 
   it("rejects empty API headers", () => {

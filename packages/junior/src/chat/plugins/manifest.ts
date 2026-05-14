@@ -884,8 +884,10 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
   if (apiHeaders && !domains) {
     throw new Error(`Plugin ${data.name} api-headers requires domains`);
   }
-  if (domains && !apiHeaders) {
-    throw new Error(`Plugin ${data.name} domains requires api-headers`);
+  if (domains && !apiHeaders && !data.credentials) {
+    throw new Error(
+      `Plugin ${data.name} domains requires credentials or api-headers`,
+    );
   }
   const commandEnv = data["command-env"]
     ? normalizeCommandEnv(
