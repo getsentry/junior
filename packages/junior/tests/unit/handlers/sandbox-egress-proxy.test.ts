@@ -48,7 +48,7 @@ vi.mock("@/chat/plugins/registry", () => ({
         },
         credentials: {
           type: "oauth-bearer",
-          domains: ["sentry.io", "*.sentry.io"],
+          domains: ["sentry.io", "us.sentry.io"],
           authTokenEnv: "SENTRY_AUTH_TOKEN",
           authTokenPlaceholder: "host_managed_credential",
         },
@@ -169,10 +169,8 @@ describe("sandbox egress proxy", () => {
   });
 
   it("builds provider forwarding policy for sandbox egress", () => {
-    expect(matchesSandboxEgressDomain("sentry.io", "*.sentry.io")).toBe(false);
-    expect(matchesSandboxEgressDomain("eu.sentry.io", "*.sentry.io")).toBe(
-      true,
-    );
+    expect(matchesSandboxEgressDomain("SENTRY.IO", "sentry.io")).toBe(true);
+    expect(matchesSandboxEgressDomain("eu.sentry.io", "sentry.io")).toBe(false);
     expect(buildSandboxEgressNetworkPolicy(SANDBOX_ID)).toEqual({
       allow: {
         "*": [],
@@ -181,7 +179,7 @@ describe("sandbox egress proxy", () => {
             forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${SANDBOX_ID}`,
           },
         ],
-        "*.sentry.io": [
+        "us.sentry.io": [
           {
             forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${SANDBOX_ID}`,
           },
@@ -360,9 +358,60 @@ describe("sandbox egress proxy", () => {
     });
   });
 
-  it("applies wildcard provider header transforms to matching upstream hosts", async () => {
+  it("clears cached credential leases after upstream auth rejection", async () => {
     await authorizeSandboxEgress();
-    mockSentryLease("*.sentry.io");
+    issueProviderCredentialLeaseMock
+      .mockResolvedValueOnce({
+        id: "lease-1",
+        provider: "sentry",
+        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer stale-token" },
+          },
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })
+      .mockResolvedValueOnce({
+        id: "lease-2",
+        provider: "sentry",
+        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer fresh-token" },
+          },
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("Bad credentials", { status: 401 }))
+      .mockImplementationOnce(
+        async (_url: URL | string, init?: RequestInit) =>
+          new Response(new Headers(init?.headers).get("authorization")),
+      );
+
+    const firstResponse = await proxy(
+      egressRequest({ path: "/api/0/issues/1" }),
+      fetchMock as typeof fetch,
+    );
+    expect(firstResponse.status).toBe(401);
+
+    const secondResponse = await proxy(
+      egressRequest({ path: "/api/0/issues/2" }),
+      fetchMock as typeof fetch,
+    );
+    await expect(secondResponse.text()).resolves.toBe("Bearer fresh-token");
+
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("applies provider header transforms to matching upstream hosts", async () => {
+    await authorizeSandboxEgress();
+    mockSentryLease("us.sentry.io");
 
     const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("authorization")).toBe(
@@ -372,7 +421,7 @@ describe("sandbox egress proxy", () => {
     });
 
     const response = await proxy(
-      egressRequest({ host: "eu.sentry.io" }),
+      egressRequest({ host: "us.sentry.io" }),
       fetchMock as typeof fetch,
     );
 
@@ -380,9 +429,9 @@ describe("sandbox egress proxy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not apply wildcard transforms to the apex host", async () => {
+  it("does not apply subdomain transforms to the apex host", async () => {
     await authorizeSandboxEgress();
-    mockSentryLease("*.sentry.io");
+    mockSentryLease("us.sentry.io");
 
     const fetchMock = vi.fn();
 

@@ -138,6 +138,7 @@ async function validateSkillDirectory(
 async function validatePluginDirectory(
   pluginDir: string,
   duplicatePluginNames: Map<string, string>,
+  duplicateProviderDomains: Map<string, string>,
 ): Promise<{
   manifestPath: string;
   manifest?: PluginManifest;
@@ -148,17 +149,34 @@ async function validatePluginDirectory(
   try {
     const raw = await fs.readFile(manifestPath, "utf8");
     const manifest = parsePluginManifest(raw, pluginDir);
+    const errors: string[] = [];
     const firstSeen = duplicatePluginNames.get(manifest.name);
     if (firstSeen) {
-      return {
-        manifestPath,
-        manifest,
-        errors: [
-          `${manifestPath}: duplicate plugin name "${manifest.name}" (already defined in ${firstSeen})`,
-        ],
-      };
+      errors.push(
+        `${manifestPath}: duplicate plugin name "${manifest.name}" (already defined in ${firstSeen})`,
+      );
+    }
+    const domains = [
+      ...new Set([
+        ...(manifest.credentials?.domains ?? []),
+        ...(manifest.domains ?? []),
+      ]),
+    ];
+    for (const domain of domains) {
+      const firstDomainSeen = duplicateProviderDomains.get(domain);
+      if (firstDomainSeen) {
+        errors.push(
+          `${manifestPath}: duplicate provider domain "${domain}" (already defined in ${firstDomainSeen})`,
+        );
+      }
+    }
+    if (errors.length > 0) {
+      return { manifestPath, manifest, errors };
     }
     duplicatePluginNames.set(manifest.name, manifestPath);
+    for (const domain of domains) {
+      duplicateProviderDomains.set(domain, manifestPath);
+    }
     return { manifestPath, manifest, errors: [] };
   } catch (error) {
     return {
@@ -405,6 +423,7 @@ export async function runCheck(
   ].sort((left, right) => left.localeCompare(right));
   const duplicateSkillNames = new Map<string, string>();
   const duplicatePluginNames = new Map<string, string>();
+  const duplicateProviderDomains = new Map<string, string>();
   const warnings: string[] = [];
   const errors: string[] = [];
   const pluginResults: PluginValidationResult[] = [];
@@ -414,6 +433,7 @@ export async function runCheck(
     const result = await validatePluginDirectory(
       pluginDir,
       duplicatePluginNames,
+      duplicateProviderDomains,
     );
     pluginResults.push({
       pluginDir,

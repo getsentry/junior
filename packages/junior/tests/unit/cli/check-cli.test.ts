@@ -281,4 +281,41 @@ describe("check cli", () => {
       ),
     ).toBe(true);
   });
+
+  it("fails when local plugins share a provider domain", async () => {
+    const repoRoot = makeTempDir("junior-validate-duplicate-domain-");
+    writeAppFiles(repoRoot);
+    for (const pluginName of ["alpha", "beta"]) {
+      writeFile(
+        path.join(repoRoot, "app", "plugins", pluginName, "plugin.yaml"),
+        [
+          `name: ${pluginName}`,
+          `${pluginName === "alpha" ? "description: Alpha" : "description: Beta"} plugin`,
+          "credentials:",
+          "  type: oauth-bearer",
+          "  domains:",
+          "    - api.example.com",
+          `  auth-token-env: ${pluginName.toUpperCase()}_AUTH_TOKEN`,
+          "",
+        ].join("\n"),
+      );
+    }
+
+    const lines: string[] = [];
+    await expect(
+      runCheck(repoRoot, {
+        info: (line) => lines.push(line),
+        warn: (line) => lines.push(line),
+        error: (line) => lines.push(line),
+      }),
+    ).rejects.toThrow(
+      "Validation failed (1 error, 2 plugin manifests, 0 skill directories checked).",
+    );
+
+    expect(
+      lines.some((line) =>
+        line.includes('duplicate provider domain "api.example.com"'),
+      ),
+    ).toBe(true);
+  });
 });

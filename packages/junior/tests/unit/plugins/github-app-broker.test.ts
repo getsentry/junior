@@ -252,27 +252,45 @@ describe("github app credential broker", () => {
     ]);
   });
 
-  it("reuses cached leases for the same installation", async () => {
+  it("mints fresh installation tokens on each broker issue", async () => {
     setupValidEnv();
-    mockGitHubApi({ token: "cached-token" });
+    const issuedTokens = ["first-token", "second-token"];
+    globalThis.fetch = vi.fn(async (input) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : String(input);
+      if (url.includes("/access_tokens")) {
+        return mockJsonResponse({
+          token: issuedTokens.shift(),
+          expires_at: "2099-01-01T00:00:00Z",
+        });
+      }
+      throw new Error(`Unexpected fetch request: ${url}`);
+    }) as unknown as typeof fetch;
 
     const broker = createGitHubAppBroker(TEST_MANIFEST, TEST_CREDENTIALS);
     const firstLease = await broker.issue({
-      reason: "test:cache-prime",
+      reason: "test:first-token",
     });
-
-    delete process.env.GITHUB_APP_ID;
-    delete process.env.GITHUB_APP_PRIVATE_KEY;
-
     const secondLease = await broker.issue({
-      reason: "test:cache-hit",
+      reason: "test:second-token",
     });
 
-    expect(secondLease.headerTransforms).toEqual(firstLease.headerTransforms);
+    expect(firstLease.headerTransforms?.[0]).toEqual({
+      domain: "api.github.com",
+      headers: { Authorization: "Bearer first-token" },
+    });
+    expect(secondLease.headerTransforms?.[0]).toEqual({
+      domain: "api.github.com",
+      headers: { Authorization: "Bearer second-token" },
+    });
     const accessTokenCalls = vi
       .mocked(globalThis.fetch)
       .mock.calls.filter(([url]) => String(url).includes("/access_tokens"));
-    expect(accessTokenCalls).toHaveLength(1);
+    expect(accessTokenCalls).toHaveLength(2);
   });
 
   it("requests the full plugin permission set when minting installation tokens", async () => {

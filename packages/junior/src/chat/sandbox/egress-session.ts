@@ -35,7 +35,8 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
   const record = value as Partial<SandboxEgressSession>;
   if (
     typeof record.requesterId !== "string" ||
-    typeof record.expiresAtMs !== "number"
+    typeof record.expiresAtMs !== "number" ||
+    !Number.isFinite(record.expiresAtMs)
   ) {
     return undefined;
   }
@@ -60,7 +61,8 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   ) {
     return undefined;
   }
-  if (Date.parse(record.expiresAt) <= Date.now()) {
+  const expiresAtMs = Date.parse(record.expiresAt);
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
     return undefined;
   }
   const headerTransforms = record.headerTransforms.filter(
@@ -143,4 +145,15 @@ export async function getSandboxEgressCredentialLease(
   return parseLease(
     await state.get(leaseKey(sandboxId, provider, requesterId)),
   );
+}
+
+/** Clear a cached egress credential lease after the provider rejects its headers. */
+export async function clearSandboxEgressCredentialLease(
+  sandboxId: string,
+  provider: string,
+  requesterId: string,
+): Promise<void> {
+  const state = getStateAdapter();
+  await state.connect();
+  await state.delete(leaseKey(sandboxId, provider, requesterId));
 }

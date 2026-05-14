@@ -7,6 +7,7 @@ import {
 } from "@/chat/sandbox/egress-policy";
 import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress-oidc";
 import {
+  clearSandboxEgressCredentialLease,
   getSandboxEgressCredentialLease,
   getSandboxEgressSession,
   setSandboxEgressCredentialLease,
@@ -36,6 +37,7 @@ const PROXY_ONLY_HEADERS = new Set([
   FORWARDED_SCHEME_HEADER,
   FORWARDED_PORT_HEADER,
 ]);
+const AUTH_REJECTION_STATUS = new Set([401, 403]);
 interface ProxyDeps {
   fetch?: typeof fetch;
   verifyOidc?: (token: string, sandboxId: string) => Promise<unknown>;
@@ -298,6 +300,13 @@ export async function proxySandboxEgressRequest(
     ...(body ? { body } : {}),
     redirect: "manual",
   });
+  if (AUTH_REJECTION_STATUS.has(upstream.status)) {
+    await clearSandboxEgressCredentialLease(
+      sandboxId,
+      provider,
+      session.requesterId,
+    );
+  }
 
   return new Response(upstream.body, {
     status: upstream.status,

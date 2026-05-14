@@ -128,10 +128,11 @@ Rules:
 ### Lease behavior
 
 - Header transforms target the domains declared by the GitHub plugin manifest.
-- The first declared domain is the GitHub API host used for App token exchange.
+- The GitHub API host is the declared `api.github.com` or `api.*` domain, independent of manifest order.
 - The built-in GitHub plugin declares `api.github.com` for REST API calls and
   `github.com` for git smart-HTTP.
-- Runtime cache may reuse a lease in memory for repeated GitHub commands in the same turn.
+- Runtime may reuse a short-lived sandbox egress lease for repeated GitHub commands in the same turn.
+- Provider `401`/`403` responses discard the cached sandbox egress lease so resumed auth can mint from current provider state.
 
 ## Sentry profile
 

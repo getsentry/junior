@@ -11,12 +11,6 @@ import type { GitHubAppCredentials, PluginManifest } from "../types";
 
 const MAX_LEASE_MS = 60 * 60 * 1000;
 
-type CachedInstallationToken = {
-  installationId: number;
-  token: string;
-  expiresAt: number;
-};
-
 function base64Url(input: string): string {
   return Buffer.from(input)
     .toString("base64")
@@ -235,7 +229,6 @@ export function createGitHubAppBroker(
   manifest: PluginManifest,
   credentials: GitHubAppCredentials,
 ): CredentialBroker {
-  const tokenCache = new Map<string, CachedInstallationToken>();
   const provider = manifest.name;
   const {
     domains,
@@ -326,18 +319,6 @@ export function createGitHubAppBroker(
   return {
     async issue(input: { reason: string }): Promise<CredentialLease> {
       const installationId = resolveInstallationId();
-      const cacheKey = String(installationId);
-      const cached = tokenCache.get(cacheKey);
-      const now = Date.now();
-      if (cached && cached.expiresAt - now > 2 * 60 * 1000) {
-        return createLease({
-          installationId: cached.installationId,
-          token: cached.token,
-          expiresAtMs: cached.expiresAt,
-          reason: input.reason,
-        });
-      }
-
       const tokenRequestBody: {
         permissions: Record<string, "read" | "write">;
       } = {
@@ -361,11 +342,6 @@ export function createGitHubAppBroker(
         providerExpiresAtMs,
         Date.now() + MAX_LEASE_MS,
       );
-      tokenCache.set(cacheKey, {
-        installationId,
-        token: accessTokenResponse.token,
-        expiresAt: expiresAtMs,
-      });
 
       return createLease({
         installationId,

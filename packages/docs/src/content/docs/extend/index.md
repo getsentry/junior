@@ -158,8 +158,8 @@ runtime-postinstall:
 - `description`: short summary of what the plugin integrates
 - `capabilities`: actions the plugin’s skills may request, qualified as `<plugin>.<capability>`
 - `config-keys`: provider-specific configuration keys, qualified as `<plugin>.<key>`
-- `domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior
-- `command-env`: optional non-secret sandbox env vars injected when provider credentials or API headers are enabled; use it for CLI placeholders, deployment defaults, and public install metadata
+- `domains` and `api-headers`: optional host-managed HTTP headers applied when matching sandbox requests are proxied through Junior; each provider domain can belong to only one plugin
+- `command-env`: optional non-secret sandbox env vars injected for registered credential/header providers; use it for CLI placeholders, deployment defaults, and public install metadata
 - `credentials`: how token auth is delivered to tools; current types are `oauth-bearer` and `github-app`
 - `oauth`: user OAuth setup; use it with `credentials.type: oauth-bearer`
 - `target`: optional credential target scope tied to a declared config key
@@ -221,7 +221,7 @@ Use top-level `command-env` when a sandbox CLI needs non-secret env vars. This i
 
 Only expose non-secret values. For example, GitHub App bot names and noreply emails are safe to expose so git commits can be attributed correctly, but API keys and tokens belong in `api-headers` or credential brokers.
 
-Manifests with `command-env` must also declare `credentials` or `api-headers`, since command env is delivered with the provider credential lease.
+Manifests with `command-env` must also declare `credentials` or `api-headers`, so sandbox env exposure stays tied to a credential/header provider.
 
 ```yaml
 env-vars:

@@ -19,6 +19,7 @@ import type {
 
 interface LoadedPluginState {
   capabilityToPlugin: Map<string, PluginDefinition>;
+  domainToPlugin: Map<string, string>;
   packageSkillRoots: Set<string>;
   pluginConfigKeys: Set<string>;
   pluginDefinitions: PluginDefinition[];
@@ -47,10 +48,20 @@ function createLoadedPluginState(signature: string): LoadedPluginState {
     signature,
     pluginDefinitions: [],
     capabilityToPlugin: new Map(),
+    domainToPlugin: new Map(),
     pluginConfigKeys: new Set(),
     pluginsByName: new Map(),
     packageSkillRoots: new Set(),
   };
+}
+
+function providerDomains(manifest: PluginDefinition["manifest"]): string[] {
+  return [
+    ...new Set([
+      ...(manifest.credentials?.domains ?? []),
+      ...(manifest.domains ?? []),
+    ]),
+  ].sort((left, right) => left.localeCompare(right));
 }
 
 function registerPluginManifest(
@@ -61,13 +72,22 @@ function registerPluginManifest(
   const manifest = parsePluginManifest(raw, pluginDir);
 
   if (state.pluginsByName.has(manifest.name)) {
-    return;
+    throw new Error(`Duplicate plugin name "${manifest.name}"`);
   }
 
   for (const cap of manifest.capabilities) {
     if (state.capabilityToPlugin.has(cap)) {
       throw new Error(
         `Duplicate capability "${cap}" in plugin "${manifest.name}"`,
+      );
+    }
+  }
+
+  for (const domain of providerDomains(manifest)) {
+    const owner = state.domainToPlugin.get(domain);
+    if (owner) {
+      throw new Error(
+        `Duplicate provider domain "${domain}" in plugin "${manifest.name}" already declared by plugin "${owner}"`,
       );
     }
   }
@@ -86,6 +106,9 @@ function registerPluginManifest(
   }
   for (const key of manifest.configKeys) {
     state.pluginConfigKeys.add(key);
+  }
+  for (const domain of providerDomains(manifest)) {
+    state.domainToPlugin.set(domain, manifest.name);
   }
 }
 

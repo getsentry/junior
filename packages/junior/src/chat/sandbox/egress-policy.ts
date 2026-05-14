@@ -12,26 +12,14 @@ export function matchesSandboxEgressDomain(
   host: string,
   domain: string,
 ): boolean {
-  const normalizedHost = host.toLowerCase();
-  const normalizedDomain = domain.toLowerCase();
-  if (normalizedDomain.startsWith("*.")) {
-    const suffix = normalizedDomain.slice(1);
-    return normalizedHost.endsWith(suffix);
-  }
-  return normalizedHost === normalizedDomain;
-}
-
-function withApex(domain: string): string[] {
-  return domain.startsWith("*.") ? [domain, domain.slice(2)] : [domain];
+  return host.toLowerCase() === domain.toLowerCase();
 }
 
 function manifestDomains(manifest: PluginManifest): string[] {
-  const domains = new Set(
-    [
-      ...(manifest.credentials?.domains ?? []),
-      ...(manifest.domains ?? []),
-    ].flatMap(withApex),
-  );
+  const domains = new Set([
+    ...(manifest.credentials?.domains ?? []),
+    ...(manifest.domains ?? []),
+  ]);
   return [...domains].sort((left, right) => left.localeCompare(right));
 }
 
