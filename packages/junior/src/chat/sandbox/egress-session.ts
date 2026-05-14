@@ -10,9 +10,6 @@ export interface SandboxEgressSession {
   requesterId: string;
   providers: string[];
   expiresAtMs: number;
-  conversationId?: string;
-  sessionId?: string;
-  sliceId?: number;
 }
 
 export interface SandboxEgressCredentialLease {
@@ -56,13 +53,6 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
       (provider): provider is string => typeof provider === "string",
     ),
     expiresAtMs: record.expiresAtMs,
-    ...(typeof record.conversationId === "string"
-      ? { conversationId: record.conversationId }
-      : {}),
-    ...(typeof record.sessionId === "string"
-      ? { sessionId: record.sessionId }
-      : {}),
-    ...(typeof record.sliceId === "number" ? { sliceId: record.sliceId } : {}),
   };
 }
 
@@ -105,9 +95,6 @@ export async function upsertSandboxEgressSession(input: {
   sandboxId: string;
   requesterId: string;
   providers: string[];
-  conversationId?: string;
-  sessionId?: string;
-  sliceId?: number;
   ttlMs?: number;
 }): Promise<SandboxEgressSession | undefined> {
   const state = getStateAdapter();
@@ -126,9 +113,6 @@ export async function upsertSandboxEgressSession(input: {
     requesterId: input.requesterId,
     providers,
     expiresAtMs: now + ttlMs,
-    ...(input.conversationId ? { conversationId: input.conversationId } : {}),
-    ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-    ...(typeof input.sliceId === "number" ? { sliceId: input.sliceId } : {}),
   };
   await state.set(sessionKey(input.sandboxId), session, ttlMs);
   return session;

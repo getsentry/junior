@@ -160,7 +160,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("builds provider forwarding policy for sandbox egress", () => {
-    expect(matchesSandboxEgressDomain("sentry.io", "*.sentry.io")).toBe(true);
+    expect(matchesSandboxEgressDomain("sentry.io", "*.sentry.io")).toBe(false);
     expect(matchesSandboxEgressDomain("eu.sentry.io", "*.sentry.io")).toBe(
       true,
     );
@@ -344,6 +344,21 @@ describe("sandbox egress proxy", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not apply wildcard transforms to the apex host", async () => {
+    await authorizeSandboxEgress();
+    mockSentryLease("*.sentry.io");
+
+    const fetchMock = vi.fn();
+
+    const response = await proxy(egressRequest(), fetchMock as typeof fetch);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Credential lease does not cover forwarded host",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("forwards upstream response headers to the sandbox", async () => {

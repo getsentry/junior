@@ -116,9 +116,6 @@ export function createSandboxExecutor(options?: {
   traceContext?: LogContext;
   credentialEgress?: {
     requesterId: string;
-    conversationId?: string;
-    sessionId?: string;
-    sliceId?: number;
     getAuthorizedProviderNames: () => string[];
   };
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
@@ -141,9 +138,6 @@ export function createSandboxExecutor(options?: {
               .getAuthorizedProviderNames()
               .filter((provider) => available.has(provider)),
           ),
-          conversationId: credentialEgress.conversationId,
-          sessionId: credentialEgress.sessionId,
-          sliceId: credentialEgress.sliceId,
           ttlMs: options?.timeoutMs,
         });
       }

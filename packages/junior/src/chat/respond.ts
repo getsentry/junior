@@ -515,9 +515,6 @@ export async function generateAssistantReply(
       credentialEgress: requesterId
         ? {
             requesterId,
-            conversationId: sessionConversationId,
-            sessionId,
-            sliceId: currentSliceId,
             getAuthorizedProviderNames: getResumePluginProviders,
           }
         : undefined,
