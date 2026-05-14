@@ -1014,6 +1014,65 @@ describe("createSandboxExecutor", () => {
     });
   });
 
+  it("uses a fresh sandbox name when retrying snapshot boot with network policy", async () => {
+    const snapshotSandbox = makeSandbox("sbx_snapshot_policy_ready");
+    resolveRuntimeDependencySnapshotMock.mockResolvedValue({
+      snapshotId: "snap_policy_retry",
+      profileHash: "hash_policy_retry",
+      dependencyCount: 2,
+      cacheHit: true,
+      resolveOutcome: "cache_hit",
+    });
+    const snapshottingError = createApiError(
+      422,
+      "Unprocessable Entity",
+      "sandbox_snapshotting",
+      "Sandbox is creating a snapshot and will be stopped shortly.",
+    );
+    sandboxCreateMock
+      .mockRejectedValueOnce(snapshottingError)
+      .mockResolvedValueOnce(snapshotSandbox);
+    const createNetworkPolicy = vi.fn((sandboxId: string) => ({
+      allow: {
+        "*": [],
+        "api.example.com": [
+          {
+            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${sandboxId}`,
+          },
+        ],
+      },
+    }));
+
+    const manager = createSandboxSessionManager({ createNetworkPolicy });
+    manager.configureSkills([]);
+
+    await manager.createSandbox();
+
+    const firstCreate = sandboxCreateMock.mock.calls[0]?.[0] as {
+      name?: string;
+      networkPolicy?: unknown;
+    };
+    const secondCreate = sandboxCreateMock.mock.calls[1]?.[0] as {
+      name?: string;
+      networkPolicy?: unknown;
+    };
+    expect(firstCreate.name).toMatch(/^junior-/);
+    expect(secondCreate.name).toMatch(/^junior-/);
+    expect(secondCreate.name).not.toBe(firstCreate.name);
+    expect(createNetworkPolicy).toHaveBeenNthCalledWith(1, firstCreate.name);
+    expect(createNetworkPolicy).toHaveBeenNthCalledWith(2, secondCreate.name);
+    expect(secondCreate.networkPolicy).toEqual({
+      allow: {
+        "*": [],
+        "api.example.com": [
+          {
+            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${secondCreate.name}`,
+          },
+        ],
+      },
+    });
+  });
+
   it("wraps snapshot resolution failures as sandbox setup errors", async () => {
     resolveRuntimeDependencySnapshotMock.mockRejectedValueOnce(
       new Error("lock timeout"),

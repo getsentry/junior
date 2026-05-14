@@ -248,10 +248,12 @@ export function createSandboxSessionManager(options?: {
   const createSandboxFromSnapshot = async (
     snapshotId: string,
     sandboxCredentials: SandboxCredentials | undefined,
-    sandboxName: string,
+    initialSandboxName: string,
   ): Promise<Sandbox> => {
-    const networkPolicy = options?.createNetworkPolicy?.(sandboxName);
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
+      const sandboxName =
+        attempt === 0 ? initialSandboxName : createSandboxName();
+      const networkPolicy = options?.createNetworkPolicy?.(sandboxName);
       try {
         return await Sandbox.create({
           timeout: timeoutMs,
