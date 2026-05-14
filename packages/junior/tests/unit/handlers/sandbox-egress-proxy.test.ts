@@ -358,6 +358,58 @@ describe("sandbox egress proxy", () => {
     });
   });
 
+  it("does not reuse cached credential leases across renewed egress sessions", async () => {
+    await authorizeSandboxEgress();
+    issueProviderCredentialLeaseMock
+      .mockResolvedValueOnce({
+        id: "lease-1",
+        provider: "sentry",
+        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer token-first-session" },
+          },
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })
+      .mockResolvedValueOnce({
+        id: "lease-2",
+        provider: "sentry",
+        env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer token-second-session" },
+          },
+        ],
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      });
+
+    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
+      return new Response(new Headers(init?.headers).get("authorization"));
+    });
+
+    const firstResponse = await proxy(
+      egressRequest({ path: "/api/0/issues/1" }),
+      fetchMock as typeof fetch,
+    );
+    await expect(firstResponse.text()).resolves.toBe(
+      "Bearer token-first-session",
+    );
+
+    await authorizeSandboxEgress();
+    const secondResponse = await proxy(
+      egressRequest({ path: "/api/0/issues/2" }),
+      fetchMock as typeof fetch,
+    );
+    await expect(secondResponse.text()).resolves.toBe(
+      "Bearer token-second-session",
+    );
+
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
+  });
+
   it("clears cached credential leases after upstream auth rejection", async () => {
     await authorizeSandboxEgress();
     issueProviderCredentialLeaseMock

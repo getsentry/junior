@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { CredentialHeaderTransform } from "@/chat/credentials/broker";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -8,6 +9,7 @@ const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 export interface SandboxEgressSession {
   requesterId: string;
   expiresAtMs: number;
+  activationId: string;
 }
 
 export interface SandboxEgressCredentialLease {
@@ -23,9 +25,9 @@ function sessionKey(sandboxId: string): string {
 function leaseKey(
   sandboxId: string,
   provider: string,
-  requesterId: string,
+  session: SandboxEgressSession,
 ): string {
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${sandboxId}:${provider}:${requesterId}`;
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${sandboxId}:${provider}:${session.requesterId}:${session.activationId}`;
 }
 
 function parseSession(value: unknown): SandboxEgressSession | undefined {
@@ -36,7 +38,9 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
   if (
     typeof record.requesterId !== "string" ||
     typeof record.expiresAtMs !== "number" ||
-    !Number.isFinite(record.expiresAtMs)
+    !Number.isFinite(record.expiresAtMs) ||
+    typeof record.activationId !== "string" ||
+    !record.activationId
   ) {
     return undefined;
   }
@@ -46,6 +50,7 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
   return {
     requesterId: record.requesterId,
     expiresAtMs: record.expiresAtMs,
+    activationId: record.activationId,
   };
 }
 
@@ -97,8 +102,18 @@ export async function upsertSandboxEgressSession(input: {
   const session: SandboxEgressSession = {
     requesterId: input.requesterId,
     expiresAtMs: now + ttlMs,
+    activationId: randomUUID(),
   };
   await state.set(sessionKey(input.sandboxId), session, ttlMs);
+}
+
+/** Clear the active requester-bound authorization context for a sandbox. */
+export async function clearSandboxEgressSession(
+  sandboxId: string,
+): Promise<void> {
+  const state = getStateAdapter();
+  await state.connect();
+  await state.delete(sessionKey(sandboxId));
 }
 
 /** Load the active egress authorization session for a sandbox. */
@@ -113,9 +128,8 @@ export async function getSandboxEgressSession(
 /** Cache a short-lived credential lease for repeated proxied requests in one sandbox session. */
 export async function setSandboxEgressCredentialLease(
   sandboxId: string,
-  requesterId: string,
+  session: SandboxEgressSession,
   lease: SandboxEgressCredentialLease,
-  sessionExpiresAtMs: number,
 ): Promise<void> {
   const leaseExpiresAtMs = Date.parse(lease.expiresAt);
   if (!Number.isFinite(leaseExpiresAtMs) || leaseExpiresAtMs <= Date.now()) {
@@ -123,37 +137,31 @@ export async function setSandboxEgressCredentialLease(
   }
   const ttlMs = Math.max(
     1,
-    Math.min(leaseExpiresAtMs, sessionExpiresAtMs) - Date.now(),
+    Math.min(leaseExpiresAtMs, session.expiresAtMs) - Date.now(),
   );
   const state = getStateAdapter();
   await state.connect();
-  await state.set(
-    leaseKey(sandboxId, lease.provider, requesterId),
-    lease,
-    ttlMs,
-  );
+  await state.set(leaseKey(sandboxId, lease.provider, session), lease, ttlMs);
 }
 
 /** Load a cached egress credential lease for a sandbox/provider pair. */
 export async function getSandboxEgressCredentialLease(
   sandboxId: string,
   provider: string,
-  requesterId: string,
+  session: SandboxEgressSession,
 ): Promise<SandboxEgressCredentialLease | undefined> {
   const state = getStateAdapter();
   await state.connect();
-  return parseLease(
-    await state.get(leaseKey(sandboxId, provider, requesterId)),
-  );
+  return parseLease(await state.get(leaseKey(sandboxId, provider, session)));
 }
 
 /** Clear a cached egress credential lease after the provider rejects its headers. */
 export async function clearSandboxEgressCredentialLease(
   sandboxId: string,
   provider: string,
-  requesterId: string,
+  session: SandboxEgressSession,
 ): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
-  await state.delete(leaseKey(sandboxId, provider, requesterId));
+  await state.delete(leaseKey(sandboxId, provider, session));
 }

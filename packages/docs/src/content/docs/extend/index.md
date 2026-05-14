@@ -219,7 +219,7 @@ Use top-level `command-env` when a sandbox CLI needs non-secret env vars. This i
 
 `command-env` values may be literals or `${NAME}` placeholders declared in `env-vars`. References with defaults expand at manifest load. References without defaults are read from host env when sandbox command env is resolved and are skipped when unset.
 
-Only expose non-secret values. For example, GitHub App bot names and noreply emails are safe to expose so git commits can be attributed correctly, but API keys and tokens belong in `api-headers` or credential brokers.
+Only expose non-secret values. `command-env` placeholders cannot reuse env vars that back `api-headers`, credential config, or OAuth config. For example, GitHub App bot names and noreply emails are safe to expose so git commits can be attributed correctly, but API keys and tokens belong in `api-headers` or credential brokers.
 
 Manifests with `command-env` must also declare `credentials` or `api-headers`, so sandbox env exposure stays tied to a credential/header provider.
 

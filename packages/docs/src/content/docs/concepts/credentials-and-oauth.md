@@ -16,11 +16,11 @@ plugin providers are available to sandbox commands, and sandbox HTTP requests to
 declared provider domains are forwarded through Junior. Junior then fetches a
 requester-bound lease and injects auth at the host boundary.
 
-- Credentials are short-lived and scoped to the requester, registered provider, and turn.
+- Credentials are short-lived and scoped to the requester, registered provider, and current sandbox command.
 - User-owned provider access is only activated for the author of the current message.
 - Plugin declarations determine which credentials can be injected for matching provider domains.
 - Sandbox receives placeholder env vars and proxied HTTP responses, not raw long-lived tokens.
-- Junior rejects proxied provider requests unless the sandbox session is requester-bound and the forwarded host matches a registered provider domain.
+- Junior rejects proxied provider requests unless the sandbox command has an active requester-bound egress session and the forwarded host matches a registered provider domain.
 
 ## OAuth model
 

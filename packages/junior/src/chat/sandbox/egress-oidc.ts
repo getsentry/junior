@@ -77,29 +77,6 @@ async function getJwks(
   return jwks;
 }
 
-function sandboxClaimMatches(payload: JWTPayload, sandboxId: string): boolean {
-  for (const claim of [
-    "sandbox_id",
-    "sandboxId",
-    "sandbox",
-    "sandbox_name",
-    "sandboxName",
-    "name",
-  ]) {
-    if (payload[claim] === sandboxId) {
-      return true;
-    }
-  }
-
-  if (typeof payload.sub !== "string") {
-    return false;
-  }
-  const parts = payload.sub.split(":");
-  return parts.some(
-    (part, index) => part === "sandbox" && parts[index + 1] === sandboxId,
-  );
-}
-
 function expectedVercelOidcAudience(): string {
   const audience = process.env.VERCEL_OIDC_AUDIENCE?.trim();
   if (!audience) {
@@ -131,7 +108,7 @@ export function validateVercelSandboxOidcClaims(
   ) {
     throw new Error("Vercel OIDC token belongs to a different project");
   }
-  if (!sandboxClaimMatches(payload, sandboxId)) {
+  if (payload.sandbox_id !== sandboxId) {
     throw new Error("Vercel OIDC token belongs to a different sandbox");
   }
 }

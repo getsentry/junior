@@ -298,6 +298,9 @@ Placeholder references without defaults are copied from host env at command-env
 resolution time and are skipped when unset.
 Use `api-headers` for secret-bearing provider values and `command-env` only
 for placeholders, defaults, or public install metadata safe to expose.
+`command-env` placeholders must not reference env vars used by plugin-level
+`api-headers`, credential config, or OAuth config; those env vars stay
+host-only.
 
 ```yaml
 env-vars:

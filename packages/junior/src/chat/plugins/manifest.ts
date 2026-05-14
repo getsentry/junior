@@ -4,6 +4,7 @@ import type {
   GitHubAppCredentials,
   PluginEnvVarDeclaration,
   PluginMcpConfig,
+  PluginOAuthConfig,
   OAuthBearerCredentials,
   PluginCredentials,
   PluginManifest,
@@ -349,13 +350,18 @@ function normalizeStringMap(
   return value;
 }
 
+function envReferences(value: string): string[] {
+  return Array.from(value.matchAll(ENV_PLACEHOLDER_RE), (match) => {
+    return match[1] as string;
+  });
+}
+
 function assertDeclaredEnvReferences(
   value: string,
   envVars: Record<string, PluginEnvVarDeclaration>,
   context: string,
 ): void {
-  for (const match of value.matchAll(ENV_PLACEHOLDER_RE)) {
-    const name = match[1] as string;
+  for (const name of envReferences(value)) {
     if (!Object.prototype.hasOwnProperty.call(envVars, name)) {
       throw new Error(
         `${context} references env var ${name} which is not declared in env-vars`,
@@ -389,8 +395,7 @@ function assertCommandEnvReferencesDeclared(
   envVars: Record<string, PluginEnvVarDeclaration>,
   context: string,
 ): void {
-  for (const match of value.matchAll(ENV_PLACEHOLDER_RE)) {
-    const name = match[1] as string;
+  for (const name of envReferences(value)) {
     if (!Object.prototype.hasOwnProperty.call(envVars, name)) {
       throw new Error(
         `${context} references env var ${name} which is not declared in env-vars`,
@@ -437,6 +442,47 @@ function normalizeCommandEnv(
       expandCommandEnvPlaceholders(envValue, envVars, `${prefix}.${key}`),
     ]),
   );
+}
+
+function assertCommandEnvDoesNotExposeHostSecretRefs(
+  commandEnv: Record<string, string> | undefined,
+  apiHeaders: Record<string, string> | undefined,
+  credentials: PluginCredentials | undefined,
+  oauth: PluginOAuthConfig | undefined,
+  pluginName: string,
+): void {
+  if (!commandEnv) {
+    return;
+  }
+
+  const hostOnlyRefs = new Set<string>();
+  for (const value of Object.values(apiHeaders ?? {})) {
+    for (const name of envReferences(value)) {
+      hostOnlyRefs.add(name);
+    }
+  }
+  if (credentials) {
+    hostOnlyRefs.add(credentials.authTokenEnv);
+    if (credentials.type === "github-app") {
+      hostOnlyRefs.add(credentials.appIdEnv);
+      hostOnlyRefs.add(credentials.privateKeyEnv);
+      hostOnlyRefs.add(credentials.installationIdEnv);
+    }
+  }
+  if (oauth) {
+    hostOnlyRefs.add(oauth.clientIdEnv);
+    hostOnlyRefs.add(oauth.clientSecretEnv);
+  }
+
+  for (const [key, value] of Object.entries(commandEnv)) {
+    for (const name of envReferences(value)) {
+      if (hostOnlyRefs.has(name)) {
+        throw new Error(
+          `Plugin ${pluginName} command-env.${key} references env var ${name}, but credential/API header env vars must stay host-only`,
+        );
+      }
+    }
+  }
 }
 
 function normalizeCredentials(
@@ -670,7 +716,7 @@ const envVarDeclarationSchema = z.preprocess(
     .object({
       default: z.string().optional(),
     })
-    .passthrough(),
+    .strict(),
 );
 
 function normalizeEnvVars(
@@ -985,6 +1031,14 @@ export function parsePluginManifest(raw: string, dir: string): PluginManifest {
       ...(tokenExtraHeaders ? { tokenExtraHeaders } : {}),
     };
   }
+
+  assertCommandEnvDoesNotExposeHostSecretRefs(
+    data["command-env"],
+    apiHeaders,
+    credentials,
+    manifest.oauth,
+    data.name,
+  );
 
   if (data.target) {
     const result = targetSourceSchema.safeParse(data.target);

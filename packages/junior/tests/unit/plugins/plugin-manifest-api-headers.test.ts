@@ -148,6 +148,101 @@ describe("plugin manifest API headers", () => {
     });
   });
 
+  it("rejects unknown env var declaration fields", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "description: Example API access",
+          "env-vars:",
+          "  EXAMPLE_BOT_EMAIL:",
+          "    expose-to-command-env: true",
+          "credentials:",
+          "  type: oauth-bearer",
+          "  domains:",
+          "    - api.example.com",
+          "  auth-token-env: EXAMPLE_TOKEN",
+          "command-env:",
+          '  GIT_AUTHOR_EMAIL: "${EXAMPLE_BOT_EMAIL}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow("Plugin example env-vars.EXAMPLE_BOT_EMAIL");
+  });
+
+  it("rejects command env references that reuse API header env vars", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "description: Example API access",
+          "env-vars:",
+          "  EXAMPLE_AUTH_HEADER:",
+          "domains:",
+          "  - api.example.com",
+          "api-headers:",
+          '  Authorization: "${EXAMPLE_AUTH_HEADER}"',
+          "command-env:",
+          '  EXAMPLE_TOKEN: "${EXAMPLE_AUTH_HEADER}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example command-env.EXAMPLE_TOKEN references env var EXAMPLE_AUTH_HEADER, but credential/API header env vars must stay host-only",
+    );
+  });
+
+  it("rejects command env references that reuse credential env vars", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "description: Example API access",
+          "env-vars:",
+          "  EXAMPLE_TOKEN:",
+          "credentials:",
+          "  type: oauth-bearer",
+          "  domains:",
+          "    - api.example.com",
+          "  auth-token-env: EXAMPLE_TOKEN",
+          "command-env:",
+          '  EXAMPLE_TOKEN: "${EXAMPLE_TOKEN}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example command-env.EXAMPLE_TOKEN references env var EXAMPLE_TOKEN, but credential/API header env vars must stay host-only",
+    );
+  });
+
+  it("rejects command env references that reuse OAuth env vars", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "description: Example API access",
+          "env-vars:",
+          "  EXAMPLE_CLIENT_SECRET:",
+          "credentials:",
+          "  type: oauth-bearer",
+          "  domains:",
+          "    - api.example.com",
+          "  auth-token-env: EXAMPLE_TOKEN",
+          "oauth:",
+          "  client-id-env: EXAMPLE_CLIENT_ID",
+          "  client-secret-env: EXAMPLE_CLIENT_SECRET",
+          "  authorize-endpoint: https://example.com/oauth/authorize",
+          "  token-endpoint: https://example.com/oauth/token",
+          "command-env:",
+          '  EXAMPLE_SECRET: "${EXAMPLE_CLIENT_SECRET}"',
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example command-env.EXAMPLE_SECRET references env var EXAMPLE_CLIENT_SECRET, but credential/API header env vars must stay host-only",
+    );
+  });
+
   it("rejects command env without credentials or API headers", () => {
     expect(() =>
       parsePluginManifest(

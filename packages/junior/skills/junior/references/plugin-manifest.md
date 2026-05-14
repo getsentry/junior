@@ -90,6 +90,7 @@ mcp:
 - `oauth` requires `credentials.type: oauth-bearer`.
 - `mcp.url` env refs must be declared in `env-vars`.
 - API-header env refs must not declare defaults.
+- `command-env` env refs must not reuse API-header, credential, or OAuth env vars.
 - `Authorization` is reserved inside token-backed `credentials.api-headers`.
 - `target.config-key` must be listed in `config-keys`.
 - System dependencies must not declare `version`.

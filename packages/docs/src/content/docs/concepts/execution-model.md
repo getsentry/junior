@@ -17,7 +17,7 @@ related:
 3. Thread work is enqueued to `junior-thread-message`.
 4. `/api/queue/callback` processes queued work.
 5. Agent turn runs with configured tools, loaded skills, and capability gates.
-6. If an authenticated command reaches a declared provider domain, the sandbox egress proxy fetches requester-bound credentials and injects them at the host boundary.
+6. If an authenticated command reaches a declared provider domain, the sandbox egress proxy fetches command-scoped requester credentials and injects them at the host boundary.
 7. If OAuth is required, Junior sends the link privately to the requesting user and resumes the blocked request after the callback.
 8. Reply is posted back to the original Slack thread.
 
@@ -30,7 +30,7 @@ related:
 ## Core invariants
 
 - Webhook ingress and queue callback are both required for production.
-- Tool and credential usage is capability-gated, requester-bound, and turn-scoped.
+- Tool usage is turn-scoped; sandbox credential leases are requester-bound and command-scoped.
 - Registered plugin providers determine which provider credentials can be injected for matching provider domains.
 - Failure states are logged and surfaced for operator recovery.
 

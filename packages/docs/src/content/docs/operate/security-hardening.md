@@ -27,7 +27,7 @@ session-wide sandbox state.
 - Use short-lived scoped credentials.
 - Let registered plugin providers determine which credentials may be injected for matching domains.
 - Fetch credentials from the host when sandbox traffic hits a declared provider domain.
-- Keep sandbox egress authorization bound to the requester and current sandbox session.
+- Keep sandbox egress authorization bound to the requester and current sandbox command.
 - Inject scoped auth at the host proxy boundary instead of exposing raw tokens.
 
 ## OAuth handling
@@ -40,7 +40,7 @@ session-wide sandbox state.
 
 1. Confirm no token values in logs/traces/output.
 2. Confirm OAuth links were not publicly posted and the callback state matched the requesting user.
-3. Confirm credential injection happened only for the expected turn and target.
+3. Confirm credential injection happened only for the expected command and target.
 4. Confirm sandbox session never received raw auth secrets or reusable long-lived tokens.
 
 ## Next step

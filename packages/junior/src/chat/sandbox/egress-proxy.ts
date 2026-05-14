@@ -187,7 +187,7 @@ async function credentialLease(
   const cached = await getSandboxEgressCredentialLease(
     sandboxId,
     provider,
-    session.requesterId,
+    session,
   );
   if (cached) {
     return cached;
@@ -210,12 +210,7 @@ async function credentialLease(
     expiresAt: lease.expiresAt,
     headerTransforms,
   };
-  await setSandboxEgressCredentialLease(
-    sandboxId,
-    session.requesterId,
-    cachedLease,
-    session.expiresAtMs,
-  );
+  await setSandboxEgressCredentialLease(sandboxId, session, cachedLease);
   return cachedLease;
 }
 
@@ -301,11 +296,7 @@ export async function proxySandboxEgressRequest(
     redirect: "manual",
   });
   if (AUTH_REJECTION_STATUS.has(upstream.status)) {
-    await clearSandboxEgressCredentialLease(
-      sandboxId,
-      provider,
-      session.requesterId,
-    );
+    await clearSandboxEgressCredentialLease(sandboxId, provider, session);
   }
 
   return new Response(upstream.body, {

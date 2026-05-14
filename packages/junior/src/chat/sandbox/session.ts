@@ -103,6 +103,7 @@ export function createSandboxSessionManager(options?: {
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (sandboxId: string) => NetworkPolicy | undefined;
   beforeCommand?: (sandboxId: string) => void | Promise<void>;
+  afterCommand?: (sandboxId: string) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
     sandboxDependencyProfileHash?: string;
@@ -583,29 +584,39 @@ export function createSandboxSessionManager(options?: {
     return {
       bash: async (input) => {
         await options?.beforeCommand?.(sandboxInstance.name);
-        const sandboxCommandEnv = await resolveCommandEnv();
-        const script = buildNonInteractiveShellScript(input.command, {
-          env: { ...sandboxCommandEnv, ...(input.env ?? {}) },
-          pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,
-        });
-        const controller =
-          input.timeoutMs && input.timeoutMs > 0
-            ? new AbortController()
-            : undefined;
         let timedOut = false;
-        const timeoutId = controller
-          ? setTimeout(() => {
-              timedOut = true;
-              controller.abort();
-            }, input.timeoutMs)
-          : undefined;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let commandFinished = false;
+        const finishCommand = async (): Promise<void> => {
+          if (commandFinished) {
+            return;
+          }
+          commandFinished = true;
+          await options?.afterCommand?.(sandboxInstance.name);
+        };
         try {
+          const sandboxCommandEnv = await resolveCommandEnv();
+          const script = buildNonInteractiveShellScript(input.command, {
+            env: { ...sandboxCommandEnv, ...(input.env ?? {}) },
+            pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,
+          });
+          const controller =
+            input.timeoutMs && input.timeoutMs > 0
+              ? new AbortController()
+              : undefined;
+          timeoutId = controller
+            ? setTimeout(() => {
+                timedOut = true;
+                controller.abort();
+              }, input.timeoutMs)
+            : undefined;
           const commandResult = await sandboxInstance.runCommand({
             cmd: "bash",
             args: ["-c", script],
             cwd: SANDBOX_WORKSPACE_ROOT,
             ...(controller ? { signal: controller.signal } : {}),
           });
+          await finishCommand();
           return await readCommandOutput(commandResult);
         } catch (error) {
           if (timedOut) {
@@ -623,6 +634,7 @@ export function createSandboxSessionManager(options?: {
           if (timeoutId) {
             clearTimeout(timeoutId);
           }
+          await finishCommand();
         }
       },
       readFile: async (input) =>

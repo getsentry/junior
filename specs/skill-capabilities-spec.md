@@ -36,7 +36,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 2. Skills do not declare capabilities or config keys.
 3. Registered providers are always available to sandbox commands.
 4. The agent runs the real provider command.
-5. The runtime resolves the provider from the outgoing request host, issues a provider lease, and injects credentials for that request only.
+5. The runtime resolves the provider from the outgoing request host, issues a command-scoped provider lease, and injects credentials for that request only.
 6. If auth is missing or stale, the proxy returns a command-readable auth-required response and the command failure path starts a private OAuth flow, then resumes the paused turn after authorization.
 7. Plugin manifests own runtime setup. Skills do not instruct the agent to install packages, bootstrap CLIs, configure provider credentials, command env, or MCP servers.
 
@@ -96,7 +96,7 @@ Rules:
 - The egress route must reject forwarded hosts that do not match a registered provider domain.
 - The proxy must not use method/URL/body-only replay fingerprints as an authorization boundary because duplicate request shapes can be legitimate client retries.
 - The proxy must strip hop-by-hop and proxy-control headers before sending the upstream request.
-- Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, requester-bound session state, and provider-domain ownership have been verified.
+- Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, command-scoped requester session state, and provider-domain ownership have been verified.
 
 ### Runtime setup boundary
 

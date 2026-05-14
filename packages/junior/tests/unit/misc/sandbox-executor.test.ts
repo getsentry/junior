@@ -527,6 +527,64 @@ describe("createSandboxExecutor", () => {
     );
   });
 
+  it("runs sandbox command hooks around each bash command", async () => {
+    const sandbox = makeSandbox("sbx_command_hooks");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+    const beforeCommand = vi.fn();
+    const afterCommand = vi.fn();
+
+    const manager = createSandboxSessionManager({
+      sandboxId: "sbx_command_hooks",
+      beforeCommand,
+      afterCommand,
+    });
+    const bash = (await manager.ensureToolExecutors()).bash;
+
+    await bash({ command: "echo ok" });
+
+    expect(beforeCommand).toHaveBeenCalledWith("sbx_command_hooks");
+    expect(afterCommand).toHaveBeenCalledWith("sbx_command_hooks");
+    expect(beforeCommand.mock.invocationCallOrder[0]).toBeLessThan(
+      sandbox.runCommand.mock.invocationCallOrder[0] as number,
+    );
+    expect(afterCommand.mock.invocationCallOrder[0]).toBeGreaterThan(
+      sandbox.runCommand.mock.invocationCallOrder[0] as number,
+    );
+  });
+
+  it("clears sandbox command hooks when command env resolution fails", async () => {
+    const sandbox = makeSandbox("sbx_command_env_failure");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+    const afterCommand = vi.fn();
+
+    const manager = createSandboxSessionManager({
+      sandboxId: "sbx_command_env_failure",
+      beforeCommand: vi.fn(),
+      afterCommand,
+      commandEnv: vi.fn(async () => {
+        throw new Error("env failed");
+      }),
+    });
+    const bash = (await manager.ensureToolExecutors()).bash;
+
+    await expect(bash({ command: "echo ok" })).rejects.toThrow("env failed");
+
+    expect(afterCommand).toHaveBeenCalledWith("sbx_command_env_failure");
+    expect(sandbox.runCommand).not.toHaveBeenCalled();
+  });
+
   it("routes matching bash commands through custom command handler", async () => {
     const sandbox = makeSandbox("sbx_custom");
     sandboxGetMock.mockResolvedValue(sandbox);

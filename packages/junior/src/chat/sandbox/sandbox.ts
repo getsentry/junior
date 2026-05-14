@@ -11,7 +11,10 @@ import {
   buildSandboxEgressNetworkPolicy,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
-import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
+import {
+  clearSandboxEgressSession,
+  upsertSandboxEgressSession,
+} from "@/chat/sandbox/egress-session";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
@@ -133,6 +136,11 @@ export function createSandboxExecutor(options?: {
         });
       }
     : undefined;
+  const clearSandboxEgressSessionForCommand = credentialEgress
+    ? async (sandboxId: string): Promise<void> => {
+        await clearSandboxEgressSession(sandboxId);
+      }
+    : undefined;
   const sessionManager = createSandboxSessionManager({
     sandboxId: options?.sandboxId,
     sandboxDependencyProfileHash: options?.sandboxDependencyProfileHash,
@@ -145,8 +153,8 @@ export function createSandboxExecutor(options?: {
       ? buildSandboxEgressNetworkPolicy
       : undefined,
     beforeCommand: syncSandboxEgressSession,
+    afterCommand: clearSandboxEgressSessionForCommand,
     onSandboxAcquired: async (sandbox) => {
-      await syncSandboxEgressSession?.(sandbox.sandboxId);
       await options?.onSandboxAcquired?.(sandbox);
     },
   });

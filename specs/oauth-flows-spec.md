@@ -199,7 +199,7 @@ Providers define OAuth through plugin manifests:
 - The runtime must not post the authorization URL into the public thread or add a second public thread note just to announce that a private link was sent.
 - Authorization URLs are never returned to the model.
 - Tokens are stored server-side and never appear in sandbox files or model-visible tool arguments.
-- Leases are requester-bound and turn-scoped.
+- Leases are requester-bound; sandbox egress leases are scoped to one command activation.
 - Target-aware providers may narrow leases to repo/project/org scope when available.
 
 ## Disconnect behavior
