@@ -85,7 +85,7 @@ Rules:
 - Enablement happens when sandbox traffic reaches a registered provider domain, not at skill-load time.
 - Delivery uses the Vercel Sandbox firewall request proxy for provider domains when available, with host-side header injection on the forwarded request.
 - Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
-- Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys, deployment defaults, or explicitly exposed public host env vars, but never real secrets.
+- Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys, deployment defaults, or explicit public host env bindings, but never real secrets.
 - Do not inject long-lived secrets into sandbox files.
 
 ### Sandbox egress proxy

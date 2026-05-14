@@ -54,14 +54,13 @@ describe("plugin manifest API headers", () => {
     });
   });
 
-  it("parses command env with explicitly exposed host env references", () => {
+  it("parses command env with host env references", () => {
     const manifest = parsePluginManifest(
       [
         "name: example",
         "description: Example API access",
         "env-vars:",
         "  EXAMPLE_BOT_EMAIL:",
-        "    expose-to-command-env: true",
         "credentials:",
         "  type: oauth-bearer",
         "  domains:",
@@ -73,9 +72,7 @@ describe("plugin manifest API headers", () => {
       "/tmp/example",
     );
 
-    expect(manifest.envVars?.EXAMPLE_BOT_EMAIL).toEqual({
-      exposeToCommandEnv: true,
-    });
+    expect(manifest.envVars?.EXAMPLE_BOT_EMAIL).toEqual({});
     expect(manifest.commandEnv).toEqual({
       GIT_AUTHOR_EMAIL: "${EXAMPLE_BOT_EMAIL}",
     });
@@ -117,8 +114,8 @@ describe("plugin manifest API headers", () => {
     );
 
     expect(manifest.envVars).toMatchObject({
-      GITHUB_APP_BOT_NAME: { exposeToCommandEnv: true },
-      GITHUB_APP_BOT_EMAIL: { exposeToCommandEnv: true },
+      GITHUB_APP_BOT_NAME: {},
+      GITHUB_APP_BOT_EMAIL: {},
     });
     expect(manifest.commandEnv).toMatchObject({
       GIT_AUTHOR_NAME: "${GITHUB_APP_BOT_NAME}",
@@ -128,61 +125,27 @@ describe("plugin manifest API headers", () => {
     });
   });
 
-  it("rejects command env references without defaults", () => {
-    expect(() =>
-      parsePluginManifest(
-        [
-          "name: example",
-          "description: Example API access",
-          "env-vars:",
-          "  EXAMPLE_SECRET:",
-          "command-env:",
-          '  EXAMPLE_TOKEN: "${EXAMPLE_SECRET}"',
-        ].join("\n"),
-        "/tmp/example",
-      ),
-    ).toThrow(
-      "Plugin example command-env.EXAMPLE_TOKEN references env var EXAMPLE_SECRET, but command-env env vars must declare defaults or expose-to-command-env",
+  it("leaves defaultless command env references for runtime host binding", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "description: Example API access",
+        "env-vars:",
+        "  EXAMPLE_BOT_EMAIL:",
+        "credentials:",
+        "  type: oauth-bearer",
+        "  domains:",
+        "    - api.example.com",
+        "  auth-token-env: EXAMPLE_TOKEN",
+        "command-env:",
+        '  GIT_AUTHOR_EMAIL: "${EXAMPLE_BOT_EMAIL}"',
+      ].join("\n"),
+      "/tmp/example",
     );
-  });
 
-  it("rejects exposed command env vars in API headers", () => {
-    expect(() =>
-      parsePluginManifest(
-        [
-          "name: example",
-          "description: Example API access",
-          "env-vars:",
-          "  EXAMPLE_SECRET:",
-          "    expose-to-command-env: true",
-          "domains:",
-          "  - api.example.com",
-          "api-headers:",
-          '  Authorization: "${EXAMPLE_SECRET}"',
-        ].join("\n"),
-        "/tmp/example",
-      ),
-    ).toThrow(
-      "Plugin example api-headers.Authorization references env var EXAMPLE_SECRET, but API header env vars must not expose to command-env",
-    );
-  });
-
-  it("rejects env vars with both defaults and command-env exposure", () => {
-    expect(() =>
-      parsePluginManifest(
-        [
-          "name: example",
-          "description: Example API access",
-          "env-vars:",
-          "  EXAMPLE_PUBLIC:",
-          "    default: example",
-          "    expose-to-command-env: true",
-        ].join("\n"),
-        "/tmp/example",
-      ),
-    ).toThrow(
-      "Plugin example env-vars.EXAMPLE_PUBLIC must not declare both default and expose-to-command-env",
-    );
+    expect(manifest.commandEnv).toEqual({
+      GIT_AUTHOR_EMAIL: "${EXAMPLE_BOT_EMAIL}",
+    });
   });
 
   it("rejects command env without credentials or API headers", () => {

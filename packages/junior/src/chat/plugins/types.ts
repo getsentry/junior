@@ -75,7 +75,6 @@ export type PluginMcpConfig = PluginMcpHttpConfig;
 
 export interface PluginEnvVarDeclaration {
   default?: string;
-  exposeToCommandEnv?: boolean;
 }
 
 export interface PluginManifest {

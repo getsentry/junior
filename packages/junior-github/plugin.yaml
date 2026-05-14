@@ -17,9 +17,7 @@ config-keys:
 
 env-vars:
   GITHUB_APP_BOT_NAME:
-    expose-to-command-env: true
   GITHUB_APP_BOT_EMAIL:
-    expose-to-command-env: true
 
 credentials:
   type: github-app

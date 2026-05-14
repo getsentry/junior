@@ -40,7 +40,7 @@ vi.mock("@/chat/plugins/registry", () => ({
         capabilities: ["sentry.api"],
         configKeys: [],
         envVars: {
-          SENTRY_BOT_EMAIL: { exposeToCommandEnv: true },
+          SENTRY_BOT_EMAIL: {},
         },
         commandEnv: {
           SENTRY_AUTHOR_EMAIL: "${SENTRY_BOT_EMAIL}",
@@ -195,7 +195,7 @@ describe("sandbox egress proxy", () => {
     });
   });
 
-  it("resolves explicitly exposed host env for sandbox commands", async () => {
+  it("resolves host env bindings for sandbox commands", async () => {
     process.env.SENTRY_BOT_EMAIL = "123+sentry[bot]@users.noreply.github.com";
 
     await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({

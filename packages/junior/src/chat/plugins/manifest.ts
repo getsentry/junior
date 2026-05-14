@@ -366,11 +366,6 @@ function assertDeclaredEnvReferences(
         `${context} references env var ${name}, but API header env vars must not declare defaults`,
       );
     }
-    if (envVars[name]?.exposeToCommandEnv === true) {
-      throw new Error(
-        `${context} references env var ${name}, but API header env vars must not expose to command-env`,
-      );
-    }
   }
 }
 
@@ -389,7 +384,7 @@ function normalizeRequiredApiHeaders(
   return apiHeaders;
 }
 
-function assertCommandEnvReferencesArePublic(
+function assertCommandEnvReferencesDeclared(
   value: string,
   envVars: Record<string, PluginEnvVarDeclaration>,
   context: string,
@@ -399,15 +394,6 @@ function assertCommandEnvReferencesArePublic(
     if (!Object.prototype.hasOwnProperty.call(envVars, name)) {
       throw new Error(
         `${context} references env var ${name} which is not declared in env-vars`,
-      );
-    }
-    const declaration = envVars[name];
-    if (
-      declaration?.default === undefined &&
-      declaration?.exposeToCommandEnv !== true
-    ) {
-      throw new Error(
-        `${context} references env var ${name}, but command-env env vars must declare defaults or expose-to-command-env`,
       );
     }
   }
@@ -421,7 +407,7 @@ function expandCommandEnvPlaceholders(
   return template.replace(ENV_PLACEHOLDER_RE, (match, name) => {
     const varName = name as string;
     const declaration = envVars[varName] as PluginEnvVarDeclaration | undefined;
-    if (declaration?.exposeToCommandEnv) {
+    if (declaration?.default === undefined) {
       return match;
     }
     return expandEnvPlaceholders(match, envVars, context);
@@ -442,7 +428,7 @@ function normalizeCommandEnv(
     if (!ENV_VAR_NAME_RE.test(key)) {
       throw new Error(`${prefix}.${key} must be an uppercase env var name`);
     }
-    assertCommandEnvReferencesArePublic(envValue, envVars, `${prefix}.${key}`);
+    assertCommandEnvReferencesDeclared(envValue, envVars, `${prefix}.${key}`);
   }
 
   return Object.fromEntries(
@@ -683,7 +669,6 @@ const envVarDeclarationSchema = z.preprocess(
   z
     .object({
       default: z.string().optional(),
-      "expose-to-command-env": z.boolean().optional(),
     })
     .passthrough(),
 );
@@ -709,14 +694,6 @@ function normalizeEnvVars(
     const decl: PluginEnvVarDeclaration = {};
     if (parsed.data.default !== undefined) {
       decl.default = parsed.data.default;
-    }
-    if (parsed.data["expose-to-command-env"] === true) {
-      if (parsed.data.default !== undefined) {
-        throw new Error(
-          `Plugin ${pluginName} env-vars.${name} must not declare both default and expose-to-command-env`,
-        );
-      }
-      decl.exposeToCommandEnv = true;
     }
     normalized[name] = decl;
   }

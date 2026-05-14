@@ -10,7 +10,7 @@ function resolveValue(
   const resolved = value.replace(ENV_PLACEHOLDER_RE, (match, name) => {
     const envName = name as string;
     const declaration = manifest.envVars?.[envName];
-    if (!declaration?.exposeToCommandEnv) {
+    if (!declaration || declaration.default !== undefined) {
       return match;
     }
     const hostValue = process.env[envName];

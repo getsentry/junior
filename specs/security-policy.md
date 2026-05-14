@@ -61,7 +61,7 @@ This policy applies to:
 - Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.
 - Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching provider domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.
 - When CLI tools require tool-native sandbox auth env vars (for example `SENTRY_AUTH_TOKEN`, Pup's `DD_API_KEY`, or Pup's `DD_APP_KEY`), set them to non-secret placeholders so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
-- Plugin-declared command env may include non-secret placeholders, default-backed deployment values, and explicitly exposed non-secret host env vars needed by the command process. It must not read or expose secret deployment env vars.
+- Plugin-declared command env may include non-secret placeholders, default-backed deployment values, and explicit non-secret host env bindings needed by the command process. It must not read or expose secret deployment env vars.
 - Never inject real provider secrets into sandbox env vars, files, or command arguments.
 
 ### GitHub baseline

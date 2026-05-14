@@ -166,7 +166,7 @@ runtime-postinstall:
 - `runtime-dependencies`: sandbox dependencies required by the plugin’s tools
 - `runtime-postinstall`: commands that run after dependency install and before snapshot capture
 - `mcp`: optional MCP server configuration for provider-scoped tool sources; `mcp.url` implies hosted HTTP transport, so `mcp.transport: http` is optional
-- `env-vars`: optional map of deployment env vars the manifest may reference from `mcp.url`, `api-headers`, or `command-env`. Each key names an env var (uppercase, `[A-Z_][A-Z0-9_]*`) and may declare a `default` for `mcp.url` and `command-env`, or `expose-to-command-env: true` for public host values copied into sandbox commands; API header references cannot use either.
+- `env-vars`: optional map of deployment env vars the manifest may reference from `mcp.url`, `api-headers`, or `command-env`. Each key names an env var (uppercase, `[A-Z_][A-Z0-9_]*`) and may declare a `default` for `mcp.url` and `command-env`. Command-env references without defaults bind from host env when command env is resolved; API header references cannot use defaults.
 - `mcp.url`: supports `${VAR}` placeholders that must be declared in `env-vars`. This lets region-pinned providers pick the right host at deploy time without a manifest fork.
 - `mcp.allowed-tools`: optional raw MCP tool-name allowlist when a plugin should expose only part of a provider's tool surface
 
@@ -189,7 +189,7 @@ The only supported placeholder form is `${NAME}` — replaced with `process.env[
 
 ### API headers
 
-Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a request to a matching `domains` entry. This can stand alone for header-authenticated providers or pair with token-backed credentials. When paired with token-backed credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults or `expose-to-command-env` because they may carry secrets.
+Use top-level `api-headers` when a provider needs additional HTTP headers in sandbox requests. Junior applies these headers from the host when the sandbox egress proxy forwards a request to a matching `domains` entry. This can stand alone for header-authenticated providers or pair with token-backed credentials. When paired with token-backed credentials, the credential broker owns token headers such as `Authorization`; if both sources set the same header for the same domain, the credential header wins. Env-backed values use `${NAME}` placeholders declared in `env-vars`; unlike `mcp.url`, API header env vars cannot declare defaults because they may carry secrets.
 
 ```yaml
 env-vars:
@@ -217,7 +217,7 @@ api-headers:
 
 Use top-level `command-env` when a sandbox CLI needs non-secret env vars. This is commonly used for placeholder auth env vars so the CLI proceeds to make HTTP requests while Junior injects the real credentials from the host.
 
-`command-env` values may be literals or `${NAME}` placeholders declared in `env-vars`. Referenced env vars must declare either `default` or `expose-to-command-env: true`. Exposed values are read from host env when sandbox command env is resolved and are skipped when unset.
+`command-env` values may be literals or `${NAME}` placeholders declared in `env-vars`. References with defaults expand at manifest load. References without defaults are read from host env when sandbox command env is resolved and are skipped when unset.
 
 Only expose non-secret values. For example, GitHub App bot names and noreply emails are safe to expose so git commits can be attributed correctly, but API keys and tokens belong in `api-headers` or credential brokers.
 
@@ -229,7 +229,6 @@ env-vars:
   EXAMPLE_SITE:
     default: example.com
   EXAMPLE_BOT_EMAIL:
-    expose-to-command-env: true
 
 domains:
   - api.example.com
