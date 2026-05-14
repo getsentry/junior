@@ -102,16 +102,18 @@ function mockSentryLease(domain = "sentry.io", token = "sentry-token"): void {
 function egressRequest(
   input: {
     host?: string;
+    method?: string;
     path?: string;
     scheme?: string | null;
     port?: string;
+    body?: BodyInit;
     headers?: Record<string, string>;
   } = {},
 ): Request {
   return new Request(
     `https://junior.example.com/api/internal/sandbox-egress/${SANDBOX_ID}${input.path ?? "/api/0/issues/"}`,
     {
-      method: "GET",
+      method: input.method ?? "GET",
       headers: {
         "vercel-forwarded-host": input.host ?? "sentry.io",
         ...(input.scheme === null
@@ -121,6 +123,7 @@ function egressRequest(
         ...(input.port ? { "vercel-forwarded-port": input.port } : {}),
         ...(input.headers ?? {}),
       },
+      ...(input.body === undefined ? {} : { body: input.body }),
     },
   );
 }
@@ -264,6 +267,25 @@ describe("sandbox egress proxy", () => {
     await expect(repeated.text()).resolves.toBe("ok");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not synthesize an empty body for bodyless methods", async () => {
+    await authorizeSandboxEgress();
+    mockSentryLease();
+
+    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
+      expect(init?.method).toBe("DELETE");
+      expect(init).not.toHaveProperty("body");
+      return new Response("ok", { status: 200 });
+    });
+
+    const response = await proxy(
+      egressRequest({ method: "DELETE" }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("scopes cached credential leases to the requester", async () => {

@@ -139,7 +139,18 @@ export function createSandboxSessionManager(options?: {
   const createSandboxName = (): string =>
     `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
 
-  const rememberSandbox = async (nextSandbox: Sandbox): Promise<Sandbox> => {
+  const rememberNetworkPolicy = (
+    networkPolicy: NetworkPolicy | undefined,
+  ): void => {
+    appliedNetworkPolicyKey = networkPolicy
+      ? JSON.stringify(networkPolicy)
+      : undefined;
+  };
+
+  const rememberSandbox = async (
+    nextSandbox: Sandbox,
+    rememberOptions?: { recordNetworkPolicy?: boolean },
+  ): Promise<Sandbox> => {
     sandbox = nextSandbox;
     sandboxIdHint = nextSandbox.name;
     toolExecutors = undefined;
@@ -150,10 +161,9 @@ export function createSandboxSessionManager(options?: {
         : {}),
     };
     await options?.onSandboxAcquired?.(acquired);
-    const networkPolicy = options?.createNetworkPolicy?.(nextSandbox.name);
-    appliedNetworkPolicyKey = networkPolicy
-      ? JSON.stringify(networkPolicy)
-      : undefined;
+    if (rememberOptions?.recordNetworkPolicy) {
+      rememberNetworkPolicy(options?.createNetworkPolicy?.(nextSandbox.name));
+    }
     return nextSandbox;
   };
 
@@ -378,7 +388,7 @@ export function createSandboxSessionManager(options?: {
       return failSetup(error);
     }
 
-    return await rememberSandbox(createdSandbox);
+    return await rememberSandbox(createdSandbox, { recordNetworkPolicy: true });
   };
 
   const discardHintIfProfileChanged = (): void => {

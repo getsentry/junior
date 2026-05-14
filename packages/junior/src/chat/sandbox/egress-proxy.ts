@@ -128,7 +128,11 @@ function buildUpstreamUrl(
 async function requestBodyBytes(
   request: Request,
 ): Promise<ArrayBuffer | undefined> {
-  if (request.method === "GET" || request.method === "HEAD") {
+  if (
+    request.method === "GET" ||
+    request.method === "HEAD" ||
+    request.body === null
+  ) {
     return undefined;
   }
   return await request.arrayBuffer();

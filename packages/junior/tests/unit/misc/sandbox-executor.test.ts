@@ -270,6 +270,52 @@ describe("createSandboxExecutor", () => {
     expect(restoredSandbox.update).toHaveBeenCalledWith({ networkPolicy });
   });
 
+  it("keeps restored sandbox policy tracking tied to the applied policy", async () => {
+    const restoredSandbox = makeSandbox("sbx_restored_policy");
+    const firstPolicy = {
+      allow: {
+        "*": [],
+        "api.first.example": [
+          {
+            forwardURL: "https://junior.example.com/api/internal/proxy",
+          },
+        ],
+      },
+    };
+    const secondPolicy = {
+      allow: {
+        "*": [],
+        "api.second.example": [
+          {
+            forwardURL: "https://junior.example.com/api/internal/proxy",
+          },
+        ],
+      },
+    };
+    const createNetworkPolicy = vi
+      .fn()
+      .mockReturnValueOnce(firstPolicy)
+      .mockReturnValueOnce(secondPolicy);
+    sandboxGetMock.mockResolvedValue(restoredSandbox);
+
+    const manager = createSandboxSessionManager({
+      sandboxId: "sbx_restored_policy",
+      createNetworkPolicy,
+    });
+    manager.configureSkills([]);
+
+    await manager.createSandbox();
+    await manager.createSandbox();
+
+    expect(restoredSandbox.update).toHaveBeenNthCalledWith(1, {
+      networkPolicy: firstPolicy,
+    });
+    expect(restoredSandbox.update).toHaveBeenNthCalledWith(2, {
+      networkPolicy: secondPolicy,
+    });
+    expect(createNetworkPolicy).toHaveBeenCalledTimes(2);
+  });
+
   it("refreshes changed network policy when reusing a cached sandbox", async () => {
     const sandbox = makeSandbox("sbx_cached_policy");
     sandboxCreateMock.mockResolvedValue(sandbox);
