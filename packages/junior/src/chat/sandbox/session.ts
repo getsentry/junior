@@ -100,7 +100,7 @@ export function createSandboxSessionManager(options?: {
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: LogContext;
-  commandEnv?: Record<string, string>;
+  commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (sandboxId: string) => NetworkPolicy | undefined;
   beforeCommand?: (sandboxId: string) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: {
@@ -118,7 +118,8 @@ export function createSandboxSessionManager(options?: {
   const traceContext = options?.traceContext ?? {};
   const dependencyProfileHash =
     getRuntimeDependencyProfileHash(SANDBOX_RUNTIME);
-  const sandboxCommandEnv = options?.commandEnv ?? {};
+  const resolveCommandEnv =
+    options?.commandEnv ?? (async () => ({}) as Record<string, string>);
 
   const withSandboxSpan = <T>(
     name: string,
@@ -558,6 +559,7 @@ export function createSandboxSessionManager(options?: {
     return {
       bash: async (input) => {
         await options?.beforeCommand?.(sandboxInstance.name);
+        const sandboxCommandEnv = await resolveCommandEnv();
         const script = buildNonInteractiveShellScript(input.command, {
           env: { ...sandboxCommandEnv, ...(input.env ?? {}) },
           pathPrefix: `${SANDBOX_RUNTIME_BIN_DIR}:$PATH`,

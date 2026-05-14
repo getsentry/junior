@@ -404,6 +404,42 @@ describe("createSandboxExecutor", () => {
     expect(invocation.args?.[1]).toContain("echo ok");
   });
 
+  it("resolves sandbox command environment for each bash command", async () => {
+    const sandbox = makeSandbox("sbx_dynamic_env");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+    const commandEnv = vi
+      .fn<() => Promise<Record<string, string>>>()
+      .mockResolvedValueOnce({
+        GIT_AUTHOR_NAME: "first-bot",
+      })
+      .mockResolvedValueOnce({
+        GIT_AUTHOR_NAME: "second-bot",
+      });
+
+    const manager = createSandboxSessionManager({
+      sandboxId: "sbx_dynamic_env",
+      commandEnv,
+    });
+    const bash = (await manager.ensureToolExecutors()).bash;
+
+    await bash({ command: "git commit --allow-empty -m first" });
+    await bash({ command: "git commit --allow-empty -m second" });
+
+    expect(commandEnv).toHaveBeenCalledTimes(2);
+    expect(sandbox.runCommand.mock.calls[0]?.[0].args?.[1]).toContain(
+      "export GIT_AUTHOR_NAME='first-bot'",
+    );
+    expect(sandbox.runCommand.mock.calls[1]?.[0].args?.[1]).toContain(
+      "export GIT_AUTHOR_NAME='second-bot'",
+    );
+  });
+
   it("routes matching bash commands through custom command handler", async () => {
     const sandbox = makeSandbox("sbx_custom");
     sandboxGetMock.mockResolvedValue(sandbox);

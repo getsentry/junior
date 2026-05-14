@@ -16,6 +16,19 @@ type CachedInstallationToken = {
   expiresAt: number;
 };
 
+type GitHubAppResponse = {
+  slug?: unknown;
+};
+
+type GitHubUserResponse = {
+  id?: unknown;
+};
+
+const githubAppGitIdentityCache = new Map<
+  string,
+  Promise<Record<string, string>>
+>();
+
 function base64Url(input: string): string {
   return Buffer.from(input)
     .toString("base64")
@@ -100,6 +113,14 @@ function createAppJwt(appId: string, privateKeyEnv: string): string {
   return `${signingInput}.${signature}`;
 }
 
+function resolveAppId(appIdEnv: string): string {
+  const appId = process.env[appIdEnv]?.trim();
+  if (!appId) {
+    throw new Error(`Missing ${appIdEnv}`);
+  }
+  return appId;
+}
+
 async function githubRequest<T>(
   apiBase: string,
   path: string,
@@ -142,6 +163,66 @@ async function githubRequest<T>(
   }
 
   return parsed as T;
+}
+
+function buildGitIdentityEnv(botName: string, botId: number) {
+  const email = `${botId}+${botName}@users.noreply.github.com`;
+  return {
+    GIT_AUTHOR_NAME: botName,
+    GIT_AUTHOR_EMAIL: email,
+    GIT_COMMITTER_NAME: botName,
+    GIT_COMMITTER_EMAIL: email,
+  };
+}
+
+/**
+ * Resolve the Git author identity for commits made with a GitHub App installation.
+ */
+export async function resolveGitHubAppGitIdentityEnv(
+  credentials: GitHubAppCredentials,
+): Promise<Record<string, string>> {
+  const apiDomain = credentials.domains[0];
+  if (!apiDomain) {
+    throw new Error("GitHub App provider requires domains");
+  }
+
+  const apiBase = `https://${apiDomain}`;
+  const appId = resolveAppId(credentials.appIdEnv);
+  const cacheKey = `${apiBase}:${appId}:${credentials.privateKeyEnv}`;
+  const cached = githubAppGitIdentityCache.get(cacheKey);
+  if (cached) {
+    return await cached;
+  }
+
+  const identityPromise = (async () => {
+    const appJwt = createAppJwt(appId, credentials.privateKeyEnv);
+    const app = await githubRequest<GitHubAppResponse>(apiBase, "/app", {
+      token: appJwt,
+    });
+    if (typeof app.slug !== "string" || app.slug.length === 0) {
+      throw new Error("GitHub App response did not include a slug");
+    }
+
+    const botName = `${app.slug}[bot]`;
+    const user = await githubRequest<GitHubUserResponse>(
+      apiBase,
+      `/users/${encodeURIComponent(botName)}`,
+      { token: appJwt },
+    );
+    if (typeof user.id !== "number" || !Number.isFinite(user.id)) {
+      throw new Error(`GitHub bot user ${botName} did not include an id`);
+    }
+
+    return buildGitIdentityEnv(botName, user.id);
+  })();
+
+  githubAppGitIdentityCache.set(cacheKey, identityPromise);
+  try {
+    return await identityPromise;
+  } catch (error) {
+    githubAppGitIdentityCache.delete(cacheKey);
+    throw error;
+  }
 }
 
 /**
@@ -207,6 +288,7 @@ function capabilitiesToPermissions(
   return permissions;
 }
 
+/** Create a broker that keeps GitHub App tokens on the host while authorizing provider traffic. */
 export function createGitHubAppBroker(
   manifest: PluginManifest,
   credentials: GitHubAppCredentials,
@@ -228,6 +310,7 @@ export function createGitHubAppBroker(
   const apiBase = `https://${apiDomain}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
   const pluginHeaderTransforms = () => resolveApiHeaderTransforms(manifest);
+  let gitIdentityEnvPromise: Promise<Record<string, string>> | undefined;
 
   const leaseDomains = [...new Set(domains)];
 
@@ -249,6 +332,51 @@ export function createGitHubAppBroker(
     provider,
   );
 
+  async function resolveBrokerGitIdentityEnv(): Promise<
+    Record<string, string>
+  > {
+    gitIdentityEnvPromise ??= resolveGitHubAppGitIdentityEnv(credentials);
+    try {
+      return await gitIdentityEnvPromise;
+    } catch (error) {
+      gitIdentityEnvPromise = undefined;
+      throw error;
+    }
+  }
+
+  async function createLease(params: {
+    installationId: number;
+    token: string;
+    expiresAtMs: number;
+    reason: string;
+  }): Promise<CredentialLease> {
+    const gitIdentityEnv = await resolveBrokerGitIdentityEnv();
+    return {
+      id: randomUUID(),
+      provider,
+      env: {
+        ...(manifest.commandEnv ?? {}),
+        ...gitIdentityEnv,
+        [authTokenEnv]: placeholder,
+      },
+      headerTransforms: mergeHeaderTransforms([
+        ...pluginHeaderTransforms(),
+        ...leaseDomains.map((domain) => ({
+          domain,
+          headers: {
+            ...(apiHeaders ?? {}),
+            Authorization: authorizationFor(domain, params.token),
+          },
+        })),
+      ]),
+      expiresAt: new Date(params.expiresAtMs).toISOString(),
+      metadata: {
+        installationId: String(params.installationId),
+        reason: params.reason,
+      },
+    };
+  }
+
   function resolveInstallationId(): number {
     const installationIdRaw = process.env[installationIdEnv]?.trim();
     if (!installationIdRaw) {
@@ -268,26 +396,12 @@ export function createGitHubAppBroker(
       const cached = tokenCache.get(cacheKey);
       const now = Date.now();
       if (cached && cached.expiresAt - now > 2 * 60 * 1000) {
-        return {
-          id: randomUUID(),
-          provider,
-          env: { ...(manifest.commandEnv ?? {}), [authTokenEnv]: placeholder },
-          headerTransforms: mergeHeaderTransforms([
-            ...pluginHeaderTransforms(),
-            ...leaseDomains.map((domain) => ({
-              domain,
-              headers: {
-                ...(apiHeaders ?? {}),
-                Authorization: authorizationFor(domain, cached.token),
-              },
-            })),
-          ]),
-          expiresAt: new Date(cached.expiresAt).toISOString(),
-          metadata: {
-            installationId: String(cached.installationId),
-            reason: input.reason,
-          },
-        };
+        return await createLease({
+          installationId: cached.installationId,
+          token: cached.token,
+          expiresAtMs: cached.expiresAt,
+          reason: input.reason,
+        });
       }
 
       const tokenRequestBody: {
@@ -296,10 +410,7 @@ export function createGitHubAppBroker(
         permissions,
       };
 
-      const appId = process.env[appIdEnv];
-      if (!appId) {
-        throw new Error(`Missing ${appIdEnv}`);
-      }
+      const appId = resolveAppId(appIdEnv);
       const appJwt = createAppJwt(appId, privateKeyEnv);
 
       const accessTokenResponse = await githubRequest<{
@@ -322,29 +433,12 @@ export function createGitHubAppBroker(
         expiresAt: expiresAtMs,
       });
 
-      return {
-        id: randomUUID(),
-        provider,
-        env: { ...(manifest.commandEnv ?? {}), [authTokenEnv]: placeholder },
-        headerTransforms: mergeHeaderTransforms([
-          ...pluginHeaderTransforms(),
-          ...leaseDomains.map((domain) => ({
-            domain,
-            headers: {
-              ...(apiHeaders ?? {}),
-              Authorization: authorizationFor(
-                domain,
-                accessTokenResponse.token,
-              ),
-            },
-          })),
-        ]),
-        expiresAt: new Date(expiresAtMs).toISOString(),
-        metadata: {
-          installationId: String(installationId),
-          reason: input.reason,
-        },
-      };
+      return await createLease({
+        installationId,
+        token: accessTokenResponse.token,
+        expiresAtMs,
+        reason: input.reason,
+      });
     },
   };
 }

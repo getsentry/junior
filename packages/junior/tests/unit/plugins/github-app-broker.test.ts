@@ -40,6 +40,13 @@ const TEST_MANIFEST: PluginManifest = {
   },
 };
 
+const TEST_GIT_IDENTITY_ENV = {
+  GIT_AUTHOR_NAME: "sentry-junior[bot]",
+  GIT_AUTHOR_EMAIL: "264270552+sentry-junior[bot]@users.noreply.github.com",
+  GIT_COMMITTER_NAME: "sentry-junior[bot]",
+  GIT_COMMITTER_EMAIL: "264270552+sentry-junior[bot]@users.noreply.github.com",
+};
+
 function setupValidEnv() {
   const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
     .privateKey.export({ type: "pkcs8", format: "pem" })
@@ -59,9 +66,13 @@ function mockJsonResponse(body: unknown) {
 
 function mockGitHubApi(options?: {
   token?: string;
+  appSlug?: string;
+  botId?: number;
   onRequest?: (url: string, init?: RequestInit) => void;
 }) {
   const token = options?.token ?? "issued-token";
+  const appSlug = options?.appSlug ?? "sentry-junior";
+  const botId = options?.botId ?? 264270552;
   globalThis.fetch = vi.fn(async (input, init) => {
     const url =
       typeof input === "string"
@@ -76,6 +87,12 @@ function mockGitHubApi(options?: {
         token,
         expires_at: "2099-01-01T00:00:00Z",
       });
+    }
+    if (url.endsWith("/app")) {
+      return mockJsonResponse({ slug: appSlug });
+    }
+    if (url.endsWith(`/users/${encodeURIComponent(`${appSlug}[bot]`)}`)) {
+      return mockJsonResponse({ id: botId });
     }
 
     throw new Error(`Unexpected fetch request: ${url}`);
@@ -107,7 +124,10 @@ describe("github app credential broker", () => {
     });
 
     expect(lease.provider).toBe("github");
-    expect(lease.env).toEqual({ GITHUB_TOKEN: "ghp_host_managed_credential" });
+    expect(lease.env).toEqual({
+      ...TEST_GIT_IDENTITY_ENV,
+      GITHUB_TOKEN: "ghp_host_managed_credential",
+    });
     expect(lease.headerTransforms).toEqual([
       {
         domain: "api.github.com",
@@ -124,6 +144,14 @@ describe("github app credential broker", () => {
       installationId: "42",
       reason: "test:lease-shape",
     });
+    expect(
+      vi.mocked(globalThis.fetch).mock.calls.map(([url]) => String(url)),
+    ).toEqual(
+      expect.arrayContaining([
+        "https://api.github.com/app",
+        "https://api.github.com/users/sentry-junior%5Bbot%5D",
+      ]),
+    );
   });
 
   it("uses the configured auth token placeholder when provided", async () => {
@@ -143,14 +171,7 @@ describe("github app credential broker", () => {
 
   it("derives REST and git auth modes from configured domains", async () => {
     setupValidEnv();
-    mockGitHubApi({
-      token: "enterprise-token",
-      onRequest: (url) => {
-        expect(url).toBe(
-          "https://api.github.example/app/installations/42/access_tokens",
-        );
-      },
-    });
+    mockGitHubApi({ token: "enterprise-token" });
     const credentials: GitHubAppCredentials = {
       ...TEST_CREDENTIALS,
       domains: ["api.github.example", "github.example"],
@@ -167,6 +188,9 @@ describe("github app credential broker", () => {
       reason: "test:configured-domains",
     });
 
+    expect(String(findAccessTokenCall()[0])).toBe(
+      "https://api.github.example/app/installations/42/access_tokens",
+    );
     expect(lease.headerTransforms).toEqual([
       {
         domain: "api.github.example",
@@ -198,7 +222,10 @@ describe("github app credential broker", () => {
     });
 
     expect(secondLease.headerTransforms).toEqual(firstLease.headerTransforms);
-    expect(vi.mocked(globalThis.fetch).mock.calls).toHaveLength(1);
+    const accessTokenCalls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(([url]) => String(url).includes("/access_tokens"));
+    expect(accessTokenCalls).toHaveLength(1);
   });
 
   it("requests the full plugin permission set when minting installation tokens", async () => {

@@ -9,8 +9,8 @@ import {
 } from "@/chat/logging";
 import {
   buildSandboxEgressNetworkPolicy,
-  getSandboxCommandEnvironment,
   getSandboxEgressProviderNames,
+  resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
 import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
 import { throwSandboxOperationError } from "@/chat/sandbox/errors";
@@ -153,7 +153,12 @@ export function createSandboxExecutor(options?: {
     sandboxDependencyProfileHash: options?.sandboxDependencyProfileHash,
     timeoutMs: options?.timeoutMs,
     traceContext,
-    commandEnv: credentialEgress ? getSandboxCommandEnvironment() : undefined,
+    commandEnv: credentialEgress
+      ? async () =>
+          await resolveSandboxCommandEnvironment(
+            credentialEgress.getAuthorizedProviderNames(),
+          )
+      : undefined,
     createNetworkPolicy: credentialEgress
       ? buildSandboxEgressNetworkPolicy
       : undefined,

@@ -57,6 +57,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
 import {
   buildSandboxEgressNetworkPolicy,
   matchesSandboxEgressDomain,
+  resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
 import {
   validateVercelSandboxOidcClaims,
@@ -178,6 +179,17 @@ describe("sandbox egress proxy", () => {
         ],
       },
     });
+  });
+
+  it("resolves command env only for active sandbox providers", async () => {
+    await expect(
+      resolveSandboxCommandEnvironment(["unknown"]),
+    ).resolves.toEqual({});
+    await expect(resolveSandboxCommandEnvironment(["sentry"])).resolves.toEqual(
+      {
+        SENTRY_AUTH_TOKEN: "host_managed_credential",
+      },
+    );
   });
 
   it("requires OIDC before route configuration details", async () => {
