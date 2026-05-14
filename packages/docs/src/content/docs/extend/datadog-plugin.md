@@ -100,7 +100,7 @@ Set `DATADOG_SITE` in your Junior deployment env (for example Vercel project set
 | AP2          | `ap2.datadoghq.com`                  |
 | GovCloud     | `ddog-gov.com`                       |
 
-The packaged API allowlist covers those standard Datadog sites. Custom or staging Datadog domains require a manifest change so Junior is allowed to inject headers for that host.
+The packaged domain declarations cover those standard Datadog sites. Custom or staging Datadog domains require a manifest change before Junior can inject headers for that host.
 
 ## Verify
 

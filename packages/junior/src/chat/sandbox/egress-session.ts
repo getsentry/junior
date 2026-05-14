@@ -6,7 +6,6 @@ const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 
 export interface SandboxEgressSession {
-  sandboxId: string;
   requesterId: string;
   expiresAtMs: number;
 }
@@ -35,7 +34,6 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
   }
   const record = value as Partial<SandboxEgressSession>;
   if (
-    typeof record.sandboxId !== "string" ||
     typeof record.requesterId !== "string" ||
     typeof record.expiresAtMs !== "number"
   ) {
@@ -45,7 +43,6 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
     return undefined;
   }
   return {
-    sandboxId: record.sandboxId,
     requesterId: record.requesterId,
     expiresAtMs: record.expiresAtMs,
   };
@@ -90,18 +87,16 @@ export async function upsertSandboxEgressSession(input: {
   sandboxId: string;
   requesterId: string;
   ttlMs?: number;
-}): Promise<SandboxEgressSession> {
+}): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
   const ttlMs = Math.max(1, input.ttlMs ?? DEFAULT_SESSION_TTL_MS);
   const now = Date.now();
   const session: SandboxEgressSession = {
-    sandboxId: input.sandboxId,
     requesterId: input.requesterId,
     expiresAtMs: now + ttlMs,
   };
   await state.set(sessionKey(input.sandboxId), session, ttlMs);
-  return session;
 }
 
 /** Load the active egress authorization session for a sandbox. */

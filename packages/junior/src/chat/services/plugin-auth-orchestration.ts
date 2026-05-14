@@ -5,9 +5,9 @@ import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { canReusePendingAuthLink } from "@/chat/services/pending-auth";
 import { AuthorizationPauseError } from "@/chat/services/auth-pause";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
-import { uniqueSortedStrings } from "@/chat/string-list";
 import {
   getPluginDefinition,
+  getPluginProviders,
   getPluginOAuthConfig,
 } from "@/chat/plugins/registry";
 import type { Skill } from "@/chat/skills";
@@ -39,7 +39,6 @@ export interface PluginAuthOrchestrationDeps {
 export interface PluginAuthOrchestration {
   handleCommandFailure: (input: {
     activeSkill: Skill | null;
-    availableProviders: string[];
     command: string;
     details: unknown;
   }) => Promise<void>;
@@ -101,6 +100,20 @@ function explicitAuthRequiredProvider(details: unknown): string | undefined {
     commandText(details).toLowerCase(),
   );
   return match?.[1];
+}
+
+function registeredProviderNames(): string[] {
+  const providers = new Set<string>();
+  for (const plugin of getPluginProviders()) {
+    const domains = [
+      ...(plugin.manifest.credentials?.domains ?? []),
+      ...(plugin.manifest.domains ?? []),
+    ];
+    if (domains.length > 0) {
+      providers.add(plugin.manifest.name);
+    }
+  }
+  return [...providers].sort((left, right) => left.localeCompare(right));
 }
 
 function commandTargetsProvider(
@@ -217,16 +230,16 @@ export function createPluginAuthOrchestration(
 
   return {
     handleCommandFailure: async (input) => {
-      const availableProviders = uniqueSortedStrings(input.availableProviders);
+      const providers = registeredProviderNames();
       const authFailure = isCommandAuthFailure(input.details);
       if (!authFailure) {
         return;
       }
       const explicitProvider = explicitAuthRequiredProvider(input.details);
       const provider =
-        explicitProvider && availableProviders.includes(explicitProvider)
+        explicitProvider && providers.includes(explicitProvider)
           ? explicitProvider
-          : availableProviders.find((availableProvider) =>
+          : providers.find((availableProvider) =>
               commandTargetsProvider(
                 availableProvider,
                 input.command,

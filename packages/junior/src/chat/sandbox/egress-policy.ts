@@ -45,11 +45,6 @@ function providerEntries(): Array<{ provider: string; domains: string[] }> {
     .sort((left, right) => left.provider.localeCompare(right.provider));
 }
 
-/** Return plugin provider names that can route sandbox egress through Junior. */
-export function getSandboxEgressProviderNames(): string[] {
-  return providerEntries().map((entry) => entry.provider);
-}
-
 /** Resolve the plugin provider responsible for an outbound sandbox host. */
 export function resolveSandboxEgressProviderForHost(
   host: string,

@@ -8,12 +8,14 @@ import type { Skill } from "@/chat/skills";
 const {
   formatProviderLabel,
   getPluginDefinition,
+  getPluginProviders,
   getPluginOAuthConfig,
   startOAuthFlow,
   unlinkProvider,
 } = vi.hoisted(() => ({
   formatProviderLabel: vi.fn((provider: string) => provider),
   getPluginDefinition: vi.fn(),
+  getPluginProviders: vi.fn(),
   getPluginOAuthConfig: vi.fn(),
   startOAuthFlow: vi.fn(),
   unlinkProvider: vi.fn(),
@@ -26,6 +28,7 @@ vi.mock("@/chat/oauth-flow", () => ({
 
 vi.mock("@/chat/plugins/registry", () => ({
   getPluginDefinition,
+  getPluginProviders,
   getPluginOAuthConfig,
 }));
 
@@ -84,6 +87,12 @@ describe("createPluginAuthOrchestration", () => {
 
       return undefined;
     });
+    getPluginProviders.mockReset();
+    getPluginProviders.mockImplementation(() =>
+      ["github", "sentry"]
+        .map((provider) => getPluginDefinition(provider))
+        .filter(Boolean),
+    );
     getPluginOAuthConfig.mockReset();
     getPluginOAuthConfig.mockImplementation((provider: string) =>
       provider === "github" || provider === "sentry" ? { provider } : undefined,
@@ -111,7 +120,6 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: sentrySkill,
-        availableProviders: ["sentry"],
         command: "sentry issue list",
         details: {
           exit_code: 1,
@@ -162,7 +170,6 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
-        availableProviders: ["github"],
         command: "gh issue view 123",
         details: {
           exit_code: 1,
@@ -198,7 +205,6 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
-        availableProviders: ["github"],
         command: "gh issue view 123",
         details: {
           exit_code: 1,
@@ -223,7 +229,6 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
-        availableProviders: ["github"],
         command: "curl https://other-api.example.test",
         details: {
           exit_code: 1,
@@ -236,11 +241,11 @@ describe("createPluginAuthOrchestration", () => {
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 
-  it("does not activate oauth recovery from the active skill alone", async () => {
+  it("ignores explicit auth markers for unregistered providers", async () => {
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
-        userMessage: "check GitHub",
+        userMessage: "check Linear",
         userTokenStore: {} as any,
       },
       vi.fn(),
@@ -249,11 +254,10 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
-        availableProviders: [],
-        command: "gh issue view 123",
+        command: "curl https://linear.app/api",
         details: {
           exit_code: 1,
-          stderr: "bad credentials",
+          stderr: "junior-auth-required provider=linear 401 unauthorized",
         },
       }),
     ).resolves.toBeUndefined();
@@ -280,7 +284,6 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: null,
-        availableProviders: ["sentry"],
         command: "curl https://sentry.io/api/0/issues/",
         details: {
           exit_code: 1,

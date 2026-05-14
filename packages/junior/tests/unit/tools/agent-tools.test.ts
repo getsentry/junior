@@ -298,7 +298,6 @@ describe("createAgentTools", () => {
       sandboxExecutor,
       pluginAuthOrchestration,
       undefined,
-      () => ["github"],
     );
 
     await expect(
@@ -306,7 +305,6 @@ describe("createAgentTools", () => {
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
     expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith({
       activeSkill: githubSkill,
-      availableProviders: ["github"],
       command: "gh issue view 123",
       details: expect.any(Object),
     });

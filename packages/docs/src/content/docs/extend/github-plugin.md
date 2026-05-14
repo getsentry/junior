@@ -92,9 +92,9 @@ Then confirm:
 ## Security model
 
 - Junior mints GitHub App installation tokens on the host, not in the sandbox.
-- When the GitHub skill runs authenticated `gh` or `git` commands, the runtime automatically injects the narrowest repo-scoped credential it can infer for that command.
-- Repo-aware credential requests narrow tokens to the target repository when `owner/repo` is known.
-- The injected lease is turn-scoped; it is not exposed as reusable long-lived auth inside the sandbox.
+- When the GitHub skill runs authenticated `gh` or `git` commands, sandbox traffic to `api.github.com` and `github.com` is forwarded through Junior for host-side auth.
+- The GitHub App installation determines which repositories are reachable. Repo context guides command flags; it does not narrow the installation token.
+- The host-side lease is bounded by the sandbox session and token expiry. It is not exposed as reusable long-lived auth inside the sandbox.
 - Capability scoping is mainly an accident-prevention layer: it keeps routine issue, contents, and pull-request workflows from minting broader write access than they need.
 - It is not a full containment boundary. The agent can still request broader GitHub capabilities when a task genuinely needs them, so operators should treat GitHub App installation scope as the real trust boundary.
 

@@ -52,7 +52,6 @@ import {
   type SandboxAcquiredState,
   type SandboxExecutor,
 } from "@/chat/sandbox/sandbox";
-import { getSandboxEgressProviderNames } from "@/chat/sandbox/egress-policy";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
@@ -878,7 +877,6 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
-      getSandboxEgressProviderNames,
     );
     advisorTools = createAgentTools(
       createAdvisorToolDefinitions(tools),
@@ -888,7 +886,6 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
-      getSandboxEgressProviderNames,
     );
     // Keep Pi's native tool schema static for the whole turn. Ideally this
     // would use provider-native tool loading/search APIs, but Pi's generic
