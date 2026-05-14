@@ -265,7 +265,6 @@ export async function proxySandboxEgressRequest(
     return jsonError("Sandbox egress session is not authorized", 403);
   }
 
-  const body = await requestBodyBytes(request);
   let lease: SandboxEgressCredentialLease;
   try {
     lease = await credentialLease(sandboxId, provider, session);
@@ -286,6 +285,7 @@ export async function proxySandboxEgressRequest(
     return jsonError("Credential lease does not cover forwarded host", 403);
   }
 
+  const body = await requestBodyBytes(request);
   const upstream = await (deps.fetch ?? fetch)(upstreamUrl, {
     method: request.method,
     headers: requestHeaders(request, lease, upstreamUrl.hostname),

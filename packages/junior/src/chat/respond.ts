@@ -505,19 +505,22 @@ export async function generateAssistantReply(
     activePluginProvidersForResume = getResumePluginProviders();
 
     // ── Sandbox ──────────────────────────────────────────────────────
+    const requesterId = context.requester?.userId;
     const userTokenStore = createUserTokenStore();
     sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
-      credentialEgress: {
-        requesterId: context.requester?.userId,
-        conversationId: sessionConversationId,
-        sessionId,
-        sliceId: currentSliceId,
-        getAuthorizedProviderNames: getResumePluginProviders,
-      },
+      credentialEgress: requesterId
+        ? {
+            requesterId,
+            conversationId: sessionConversationId,
+            sessionId,
+            sliceId: currentSliceId,
+            getAuthorizedProviderNames: getResumePluginProviders,
+          }
+        : undefined,
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =

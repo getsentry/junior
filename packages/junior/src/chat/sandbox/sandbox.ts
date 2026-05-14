@@ -115,7 +115,7 @@ export function createSandboxExecutor(options?: {
   timeoutMs?: number;
   traceContext?: LogContext;
   credentialEgress?: {
-    requesterId?: string;
+    requesterId: string;
     conversationId?: string;
     sessionId?: string;
     sliceId?: number;
@@ -153,10 +153,8 @@ export function createSandboxExecutor(options?: {
     sandboxDependencyProfileHash: options?.sandboxDependencyProfileHash,
     timeoutMs: options?.timeoutMs,
     traceContext,
-    commandEnv: credentialEgress?.requesterId
-      ? getSandboxCommandEnvironment()
-      : undefined,
-    createNetworkPolicy: credentialEgress?.requesterId
+    commandEnv: credentialEgress ? getSandboxCommandEnvironment() : undefined,
+    createNetworkPolicy: credentialEgress
       ? buildSandboxEgressNetworkPolicy
       : undefined,
     beforeCommand: syncSandboxEgressSession,
