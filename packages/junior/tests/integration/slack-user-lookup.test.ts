@@ -50,7 +50,6 @@ describe("slackUserLookup", () => {
           email: "david@sentry.io",
           is_bot: false,
           is_deleted: false,
-          github: "dcramer",
         },
       });
 
@@ -87,7 +86,6 @@ describe("slackUserLookup", () => {
         },
       });
       expect(result.user.profile_fields).toBeUndefined();
-      expect(result.user.github).toBeUndefined();
     });
 
     it("handles user not found", async () => {
@@ -337,8 +335,8 @@ describe("slackUserLookup", () => {
     });
   });
 
-  describe("github extraction", () => {
-    it("extracts GitHub handle from profile URL field", async () => {
+  describe("custom profile fields", () => {
+    it("returns custom profile fields as-is", async () => {
       queueSlackApiResponse("users.info", {
         body: usersInfoOk({
           userId: "U_GH",
@@ -357,27 +355,12 @@ describe("slackUserLookup", () => {
       const tool = createSlackUserLookupTool();
       const result = await executeTool(tool, { user_id: "U_GH" });
 
-      expect(result.user.github).toBe("untitaker");
-    });
-
-    it("extracts GitHub handle from a non-labeled field with github.com URL", async () => {
-      queueSlackApiResponse("users.info", {
-        body: usersInfoOk({
-          userId: "U_GH2",
-          fields: {
-            Xf099: {
-              value: "https://github.com/someuser",
-              alt: "",
-              label: "",
-            },
-          },
-        }),
+      expect(result.user.profile_fields).toHaveLength(1);
+      expect(result.user.profile_fields[0]).toMatchObject({
+        id: "Xf042GITHUB",
+        label: "GitHub",
+        value: "https://github.com/untitaker",
       });
-
-      const tool = createSlackUserLookupTool();
-      const result = await executeTool(tool, { user_id: "U_GH2" });
-
-      expect(result.user.github).toBe("someuser");
     });
   });
 });

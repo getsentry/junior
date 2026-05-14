@@ -11,7 +11,7 @@ import { tool } from "@/chat/tools/definition";
 export function createSlackUserLookupTool() {
   return tool({
     description:
-      "Look up Slack user profiles by user ID, email, or name search. Use when you need to identify a user, find their GitHub handle, resolve cross-platform identity, or look up profile details like title or status. Returns profile fields including custom fields (e.g. GitHub URL). For user ID lookup, pass a Slack user ID (e.g. U039RR91S). For search, pass a name query.",
+      "Look up Slack user profiles by user ID, email, or name search. Use when you need to identify a user, resolve cross-platform identity, or look up profile details like title or status. Returns profile fields including custom fields. For user ID lookup, pass a Slack user ID (e.g. U039RR91S). For search, pass a name query.",
     annotations: { readOnlyHint: true, destructiveHint: false },
     inputSchema: Type.Object({
       user_id: Type.Optional(

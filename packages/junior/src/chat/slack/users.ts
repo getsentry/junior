@@ -20,7 +20,6 @@ export interface SlackUserProfile {
     value?: string;
     alt?: string;
   }>;
-  github?: string;
 }
 
 interface SlackProfileFieldRaw {
@@ -46,39 +45,6 @@ interface SlackUserRaw {
     status_emoji?: string;
     fields?: Record<string, SlackProfileFieldRaw> | null;
   };
-}
-
-const GITHUB_URL_PATTERN = /github\.com\/([a-z0-9-]+)/i;
-
-/** Extract a GitHub handle from custom profile fields by scanning labels and values. */
-function extractGitHub(
-  fields: Array<{ id: string; label?: string; value?: string; alt?: string }>,
-): string | undefined {
-  for (const field of fields) {
-    const label = field.label?.toLowerCase() ?? "";
-    const value = field.value ?? "";
-    const alt = field.alt ?? "";
-
-    const isGitHubField =
-      label.includes("github") ||
-      value.includes("github.com") ||
-      alt.includes("github.com");
-
-    if (!isGitHubField) continue;
-
-    // Try to extract a handle from a URL
-    const urlMatch = value.match(GITHUB_URL_PATTERN);
-    if (urlMatch?.[1]) return urlMatch[1];
-
-    const altUrlMatch = alt.match(GITHUB_URL_PATTERN);
-    if (altUrlMatch?.[1]) return altUrlMatch[1];
-
-    // If the field label says GitHub and value looks like a handle, use it directly
-    if (label.includes("github") && value && !value.includes(" ")) {
-      return value;
-    }
-  }
-  return undefined;
 }
 
 /** Normalize a raw Slack user object into a clean profile. */
@@ -112,7 +78,6 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
     is_deleted: raw.deleted ?? false,
     timezone: raw.tz || undefined,
     ...(profileFields.length > 0 ? { profile_fields: profileFields } : {}),
-    github: profileFields.length > 0 ? extractGitHub(profileFields) : undefined,
   };
 }
 
