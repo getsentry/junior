@@ -1,26 +1,11 @@
 import path from "node:path";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
+import type { SandboxFileSystem } from "@/chat/sandbox/workspace";
+
+export type { SandboxFileSystem };
 
 export const MAX_TEXT_CHARS = 60_000;
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
-
-interface SandboxFileStat {
-  isDirectory(): boolean;
-}
-
-export interface SandboxFileSystem {
-  readFile(
-    filePath: string,
-    options: { encoding: BufferEncoding },
-  ): Promise<string>;
-  writeFile(
-    filePath: string,
-    content: string,
-    options?: { encoding?: BufferEncoding },
-  ): Promise<void>;
-  readdir(filePath: string): Promise<string[]>;
-  stat(filePath: string): Promise<SandboxFileStat>;
-}
 
 export interface TextSearchResultDetails {
   ok: true;

@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Sandbox } from "@vercel/sandbox";
 import { buildEvalGitHubCliStub } from "@/chat/sandbox/eval-gh-stub";
 import { buildEvalOauthCliStub } from "@/chat/sandbox/eval-oauth-stub";
 import { buildEvalSentryCliStub } from "@/chat/sandbox/eval-sentry-stub";
@@ -15,6 +14,7 @@ import {
   isAlreadyExistsError,
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
+import type { SandboxInstance } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 
 interface SkillSyncFile {
@@ -220,7 +220,7 @@ export function isHostFileMissingError(error: unknown): boolean {
 
 /** Copy the current skill set and reference files into a sandbox and mark runtime shims executable. */
 export async function syncSkillsToSandbox(params: {
-  sandbox: Sandbox;
+  sandbox: SandboxInstance;
   skills: SkillMetadata[];
   referenceFiles?: string[];
   withSpan: <T>(

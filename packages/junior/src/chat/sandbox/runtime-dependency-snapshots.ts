@@ -7,6 +7,10 @@ import {
 } from "@/chat/plugins/registry";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
+import {
+  createSandboxInstance,
+  type SandboxInstance,
+} from "@/chat/sandbox/workspace";
 import type {
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
@@ -206,7 +210,7 @@ async function withSnapshotSpan<T>(
 }
 
 async function runOrThrow(
-  sandbox: Sandbox,
+  sandbox: SandboxInstance,
   params: {
     cmd: string;
     args?: string[];
@@ -226,7 +230,7 @@ async function runOrThrow(
 }
 
 async function tryRun(
-  sandbox: Sandbox,
+  sandbox: SandboxInstance,
   params: {
     cmd: string;
     args?: string[];
@@ -243,7 +247,7 @@ async function tryRun(
   return { ok: false, detail: stderr || stdout || "command failed" };
 }
 
-async function installGhCliViaDnf(sandbox: Sandbox): Promise<void> {
+async function installGhCliViaDnf(sandbox: SandboxInstance): Promise<void> {
   const direct = await tryRun(sandbox, {
     cmd: "dnf",
     args: ["install", "-y", "gh"],
@@ -316,7 +320,7 @@ function runtimeDependencyFilePath(url: string, sha256: string): string {
 }
 
 async function installRuntimeDependencies(
-  sandbox: Sandbox,
+  sandbox: SandboxInstance,
   deps: PluginRuntimeDependency[],
 ): Promise<void> {
   const systemDeps = deps.filter(
@@ -431,7 +435,7 @@ async function installRuntimeDependencies(
 }
 
 async function runRuntimePostinstall(
-  sandbox: Sandbox,
+  sandbox: SandboxInstance,
   commands: PluginRuntimePostinstallCommand[],
 ): Promise<void> {
   if (commands.length === 0) {
@@ -480,11 +484,13 @@ async function createDependencySnapshot(
     },
     async () => {
       const sandboxCredentials = getVercelSandboxCredentials();
-      const sandbox = await Sandbox.create({
-        timeout: timeoutMs,
-        runtime,
-        ...(sandboxCredentials ?? {}),
-      });
+      const sandbox = createSandboxInstance(
+        await Sandbox.create({
+          timeout: timeoutMs,
+          runtime,
+          ...(sandboxCredentials ?? {}),
+        }),
+      );
 
       try {
         await installRuntimeDependencies(sandbox, profile.dependencies);

@@ -1,3 +1,9 @@
+import type {
+  SandboxCommandInput,
+  SandboxCommandResult,
+  SandboxWorkspace,
+} from "@/chat/sandbox/workspace";
+
 interface NonInteractiveShellOptions {
   env?: Record<string, string>;
   pathPrefix?: string;
@@ -9,14 +15,6 @@ interface NonInteractiveCommandInput extends NonInteractiveShellOptions {
   cwd?: string;
   login?: boolean;
   sudo?: boolean;
-}
-
-interface CommandRunner {
-  runCommand(input: any): Promise<{
-    exitCode: number;
-    stderr(): Promise<string>;
-    stdout(): Promise<string>;
-  }>;
 }
 
 const NON_INTERACTIVE_ENV: Readonly<Record<string, string>> = {
@@ -97,16 +95,13 @@ function buildNonInteractiveCommand(input: NonInteractiveCommandInput): {
 
 /** Run a subprocess through one enforced non-interactive entrypoint. */
 export async function runNonInteractiveCommand(
-  runner: CommandRunner,
+  sandbox: Pick<SandboxWorkspace, "runCommand">,
   input: NonInteractiveCommandInput,
-): Promise<{
-  exitCode: number;
-  stderr(): Promise<string>;
-  stdout(): Promise<string>;
-}> {
-  return await runner.runCommand({
+): Promise<SandboxCommandResult> {
+  const command: SandboxCommandInput = {
     ...buildNonInteractiveCommand(input),
     ...(input.cwd ? { cwd: input.cwd } : {}),
     ...(input.sudo !== undefined ? { sudo: input.sudo } : {}),
-  });
+  };
+  return await sandbox.runCommand(command);
 }

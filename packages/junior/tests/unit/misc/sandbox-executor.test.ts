@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
-import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import type { SandboxInstance } from "@/chat/sandbox/workspace";
 
 const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
   sandboxGetMock: vi.fn(),
@@ -58,12 +58,19 @@ import { createBashTool } from "bash-tool";
 
 interface MockSandbox {
   name: string;
+  fs: {
+    readFile: ReturnType<typeof vi.fn>;
+    writeFile: ReturnType<typeof vi.fn>;
+    readdir: ReturnType<typeof vi.fn>;
+    stat: ReturnType<typeof vi.fn>;
+  };
   mkDir: ReturnType<typeof vi.fn>;
   writeFiles: ReturnType<typeof vi.fn>;
   readFileToBuffer: ReturnType<typeof vi.fn>;
   runCommand: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   extendTimeout: ReturnType<typeof vi.fn>;
+  snapshot: ReturnType<typeof vi.fn>;
   update: ReturnType<typeof vi.fn>;
 }
 
@@ -76,6 +83,12 @@ function makeSandbox(
 ): MockSandbox {
   return {
     name,
+    fs: {
+      readFile: vi.fn(async () => ""),
+      writeFile: vi.fn(async () => {}),
+      readdir: vi.fn(async () => []),
+      stat: vi.fn(async () => ({ isDirectory: () => false })),
+    },
     mkDir: vi.fn(async () => {
       if (options.mkDirError) {
         throw options.mkDirError;
@@ -94,6 +107,7 @@ function makeSandbox(
     })),
     stop: vi.fn(async () => {}),
     extendTimeout: vi.fn(async () => {}),
+    snapshot: vi.fn(async () => ({ snapshotId: "snap_test" })),
     update: vi.fn(async () => {}),
   };
 }
@@ -124,7 +138,7 @@ function createApiError(
 }
 
 async function expectWorkspaceToDelegate(
-  workspace: SandboxWorkspace,
+  workspace: SandboxInstance,
   sandbox: MockSandbox,
 ): Promise<void> {
   expect(workspace.sandboxId).toBe(sandbox.name);
@@ -583,6 +597,41 @@ describe("createSandboxExecutor", () => {
 
     expect(afterCommand).toHaveBeenCalledWith("sbx_command_env_failure");
     expect(sandbox.runCommand).not.toHaveBeenCalled();
+  });
+
+  it("does not mask command timeout results when command cleanup fails", async () => {
+    const sandbox = makeSandbox("sbx_timeout_cleanup_failure");
+    sandbox.runCommand.mockImplementation(
+      async (input: { signal?: AbortSignal }) =>
+        await new Promise((_resolve, reject) => {
+          input.signal?.addEventListener("abort", () => {
+            reject(new Error("aborted"));
+          });
+        }),
+    );
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const manager = createSandboxSessionManager({
+      sandboxId: "sbx_timeout_cleanup_failure",
+      afterCommand: vi.fn(async () => {
+        throw new Error("cleanup failed");
+      }),
+    });
+    const bash = (await manager.ensureToolExecutors()).bash;
+
+    await expect(
+      bash({ command: "sleep 10", timeoutMs: 1 }),
+    ).resolves.toMatchObject({
+      exitCode: 124,
+      timedOut: true,
+      stderr: "Command timed out after 1ms",
+    });
   });
 
   it("routes matching bash commands through custom command handler", async () => {
