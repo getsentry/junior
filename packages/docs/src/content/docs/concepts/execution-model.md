@@ -31,7 +31,7 @@ related:
 
 - Webhook ingress and queue callback are both required for production.
 - Tool and credential usage is capability-gated, requester-bound, and turn-scoped.
-- Loaded skill plugins determine which provider credentials can be injected at all.
+- Registered plugin providers determine which provider credentials can be injected for matching provider domains.
 - Failure states are logged and surfaced for operator recovery.
 
 ## Where to go next

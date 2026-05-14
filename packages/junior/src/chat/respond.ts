@@ -20,7 +20,6 @@ import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { maybeExecuteJrRpcCustomCommand } from "@/chat/capabilities/jr-rpc-command";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import type { ChannelConfigurationService } from "@/chat/configuration/types";
-import { uniqueSortedStrings } from "@/chat/string-list";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   discoverSkills,
@@ -53,6 +52,7 @@ import {
   type SandboxAcquiredState,
   type SandboxExecutor,
 } from "@/chat/sandbox/sandbox";
+import { getSandboxEgressProviderNames } from "@/chat/sandbox/egress-policy";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
@@ -384,7 +384,6 @@ export async function generateAssistantReply(
   let lastKnownSandboxDependencyProfileHash: string | undefined =
     context.sandbox?.sandboxDependencyProfileHash;
   let loadedSkillNamesForResume: string[] = [];
-  let activePluginProvidersForResume: string[] = [];
   let mcpToolManager: McpToolManager | undefined;
   let sandboxExecutor: SandboxExecutor | undefined;
   let timedOut = false;
@@ -492,18 +491,6 @@ export async function generateAssistantReply(
       ...(context.configuration ?? {}),
       ...persistedConfigurationValues,
     };
-    const activePluginProviders = new Set(
-      existingCheckpoint?.activePluginProviders ?? [],
-    );
-    const activatePluginProviderForTurn = (provider?: string): void => {
-      if (provider) {
-        activePluginProviders.add(provider);
-      }
-    };
-    const getResumePluginProviders = () =>
-      uniqueSortedStrings(activePluginProviders);
-    activePluginProvidersForResume = getResumePluginProviders();
-
     // ── Sandbox ──────────────────────────────────────────────────────
     const requesterId = context.requester?.userId;
     const userTokenStore = createUserTokenStore();
@@ -515,7 +502,6 @@ export async function generateAssistantReply(
       credentialEgress: requesterId
         ? {
             requesterId,
-            getAuthorizedProviderNames: getResumePluginProviders,
           }
         : undefined,
       onSandboxAcquired: async (sandbox) => {
@@ -614,14 +600,12 @@ export async function generateAssistantReply(
       const preloaded = await skillSandbox.loadSkill(skillName);
       if (preloaded) {
         upsertActiveSkill(activeSkills, preloaded);
-        activatePluginProviderForTurn(preloaded.pluginProvider);
       }
     }
     if (invokedSkill) {
       const preloaded = await skillSandbox.loadSkill(invokedSkill.name);
       if (preloaded) {
         upsertActiveSkill(activeSkills, preloaded);
-        activatePluginProviderForTurn(preloaded.pluginProvider);
       }
     }
 
@@ -720,7 +704,6 @@ export async function generateAssistantReply(
       pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
     const syncResumeState = () => {
       loadedSkillNamesForResume = activeSkills.map((skill) => skill.name);
-      activePluginProvidersForResume = getResumePluginProviders();
     };
     setTags({
       conversationId: spanContext.conversationId,
@@ -761,7 +744,6 @@ export async function generateAssistantReply(
           const resolvedSkill = await skillSandbox.loadSkill(loadedSkill.name);
           const effective = resolvedSkill ?? loadedSkill;
           upsertActiveSkill(activeSkills, effective);
-          activatePluginProviderForTurn(effective.pluginProvider);
           syncResumeState();
           await turnMcpToolManager.activateForSkill(effective);
           syncResumeState();
@@ -822,7 +804,6 @@ export async function generateAssistantReply(
 
     syncResumeState();
     for (const skill of activeSkills) {
-      activatePluginProviderForTurn(skill.pluginProvider);
       await turnMcpToolManager.activateForSkill(skill);
       syncResumeState();
       if (mcpAuth.getPendingPause()) {
@@ -897,7 +878,7 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
-      getResumePluginProviders,
+      getSandboxEgressProviderNames,
     );
     advisorTools = createAgentTools(
       createAdvisorToolDefinitions(tools),
@@ -907,7 +888,7 @@ export async function generateAssistantReply(
       sandboxExecutor,
       pluginAuth,
       onToolCall,
-      getResumePluginProviders,
+      getSandboxEgressProviderNames,
     );
     // Keep Pi's native tool schema static for the whole turn. Ideally this
     // would use provider-native tool loading/search APIs, but Pi's generic
@@ -1096,7 +1077,6 @@ export async function generateAssistantReply(
         sessionId,
         sliceId: currentSliceId,
         allMessages: agent.state.messages,
-        activePluginProviders: getResumePluginProviders(),
         loadedSkillNames: activeSkills.map((skill) => skill.name),
       });
     }
@@ -1131,7 +1111,6 @@ export async function generateAssistantReply(
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         messages: timeoutResumeMessages,
-        activePluginProviders: activePluginProvidersForResume,
         loadedSkillNames: loadedSkillNamesForResume,
         errorMessage: error instanceof Error ? error.message : String(error),
         logContext: {
@@ -1184,7 +1163,6 @@ export async function generateAssistantReply(
         sessionId: timeoutResumeSessionId,
         currentSliceId: timeoutResumeSliceId,
         messages: timeoutResumeMessages,
-        activePluginProviders: activePluginProvidersForResume,
         loadedSkillNames: loadedSkillNamesForResume,
         errorMessage: error.message,
         logContext: {

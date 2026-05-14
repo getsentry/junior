@@ -15,7 +15,6 @@ export type AgentTurnSessionStatus =
 export type AgentTurnResumeReason = "timeout" | "auth";
 
 export interface AgentTurnSessionCheckpoint {
-  activePluginProviders?: string[];
   checkpointVersion: number;
   conversationId: string;
   errorMessage?: string;
@@ -85,13 +84,6 @@ function parseAgentTurnSessionCheckpoint(
       piMessages: Array.isArray(parsed.piMessages)
         ? (parsed.piMessages as PiMessage[])
         : [],
-      ...(Array.isArray(parsed.activePluginProviders)
-        ? {
-            activePluginProviders: parsed.activePluginProviders.filter(
-              (value): value is string => typeof value === "string",
-            ),
-          }
-        : {}),
       ...(Array.isArray(parsed.loadedSkillNames)
         ? {
             loadedSkillNames: parsed.loadedSkillNames.filter(
@@ -132,7 +124,6 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
   sliceId: number;
   state: AgentTurnSessionStatus;
   piMessages: PiMessage[];
-  activePluginProviders?: string[];
   loadedSkillNames?: string[];
   resumeReason?: AgentTurnResumeReason;
   errorMessage?: string;
@@ -154,13 +145,6 @@ export async function upsertAgentTurnSessionCheckpoint(args: {
     state: args.state,
     updatedAtMs: Date.now(),
     piMessages: Array.isArray(args.piMessages) ? args.piMessages : [],
-    ...(Array.isArray(args.activePluginProviders)
-      ? {
-          activePluginProviders: args.activePluginProviders.filter(
-            (value): value is string => typeof value === "string",
-          ),
-        }
-      : {}),
     ...(Array.isArray(args.loadedSkillNames)
       ? {
           loadedSkillNames: args.loadedSkillNames.filter(
@@ -208,7 +192,6 @@ export async function supersedeAgentTurnSessionCheckpoint(args: {
     sliceId: existing.sliceId,
     state: "superseded",
     piMessages: existing.piMessages,
-    activePluginProviders: existing.activePluginProviders,
     loadedSkillNames: existing.loadedSkillNames,
     resumeReason: existing.resumeReason,
     resumedFromSliceId: existing.resumedFromSliceId,

@@ -1,6 +1,6 @@
 import type { NetworkPolicy, NetworkPolicyRule } from "@vercel/sandbox";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
-import { resolveGitHubAppGitIdentityEnv } from "@/chat/plugins/auth/github-app-broker";
+import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import type { PluginManifest } from "@/chat/plugins/types";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
@@ -96,24 +96,17 @@ export function buildSandboxEgressNetworkPolicy(
   return { allow };
 }
 
-/** Resolve non-secret command environment values for active sandbox providers. */
-export async function resolveSandboxCommandEnvironment(
-  providers: string[],
-): Promise<Record<string, string>> {
-  const activeProviders = new Set(providers);
+/** Resolve non-secret command environment values for registered sandbox providers. */
+export async function resolveSandboxCommandEnvironment(): Promise<
+  Record<string, string>
+> {
   const env: Record<string, string> = {};
   for (const plugin of getPluginProviders().sort((left, right) =>
     left.manifest.name.localeCompare(right.manifest.name),
   )) {
-    if (!activeProviders.has(plugin.manifest.name)) {
-      continue;
-    }
-    Object.assign(env, plugin.manifest.commandEnv ?? {});
+    Object.assign(env, resolvePluginCommandEnv(plugin.manifest));
     const credentials = plugin.manifest.credentials;
     if (credentials) {
-      if (credentials.type === "github-app") {
-        Object.assign(env, await resolveGitHubAppGitIdentityEnv(credentials));
-      }
       env[credentials.authTokenEnv] = resolveAuthTokenPlaceholder(credentials);
     }
   }

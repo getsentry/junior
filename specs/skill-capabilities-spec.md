@@ -28,13 +28,13 @@ Draft
 
 ## Purpose
 
-Define how Junior maps active plugin providers to host-managed credentials without exposing secrets or manual auth commands to the model.
+Define how Junior maps registered plugin provider domains to host-managed credentials without exposing secrets or manual auth commands to the model.
 
 ## Core model
 
 1. Plugins own provider permissions in `plugin.yaml`.
 2. Skills do not declare capabilities or config keys.
-3. Runtime tracks active plugin providers for the current turn; provider activation may come from loading a plugin-backed skill, MCP authorization, or resumed turn state.
+3. Registered providers are always available to sandbox commands.
 4. The agent runs the real provider command.
 5. The runtime resolves the provider from the outgoing request host, issues a provider lease, and injects credentials for that request only.
 6. If auth is missing or stale, the proxy returns a command-readable auth-required response and the command failure path starts a private OAuth flow, then resumes the paused turn after authorization.
@@ -82,10 +82,10 @@ Rules:
 
 ### Injection behavior
 
-- Enablement happens when the authenticated provider command runs, not at skill-load time.
+- Enablement happens when sandbox traffic reaches a registered provider domain, not at skill-load time.
 - Delivery uses the Vercel Sandbox firewall request proxy for provider domains when available, with host-side header injection on the forwarded request.
 - Plugin credentials may define a provider-specific `auth-token-placeholder` for CLI compatibility.
-- Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys or deployment defaults, but never real secrets.
+- Plugin manifests may define non-secret `command-env` values for CLI compatibility. These may include placeholder API keys, deployment defaults, or explicitly exposed public host env vars, but never real secrets.
 - Do not inject long-lived secrets into sandbox files.
 
 ### Sandbox egress proxy
@@ -93,20 +93,20 @@ Rules:
 - New sandbox sessions use a Vercel Sandbox network policy that forwards declared credential provider domains to Junior's internal egress route.
 - The internal egress route must verify the Vercel Sandbox OIDC token before proxying.
 - The egress route must reconstruct the upstream URL only from Vercel forwarded host/scheme/port headers and the request path.
-- The egress route must reject provider domains that are not authorized by the current sandbox session's active plugin providers.
+- The egress route must reject forwarded hosts that do not match a registered provider domain.
 - The proxy must not use method/URL/body-only replay fingerprints as an authorization boundary because duplicate request shapes can be legitimate client retries.
 - The proxy must strip hop-by-hop and proxy-control headers before sending the upstream request.
-- Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, requester-bound session state, and provider authorization have been verified.
+- Sandbox-supplied request headers and upstream response state may pass through once Vercel OIDC, requester-bound session state, and provider-domain ownership have been verified.
 
 ### Runtime setup boundary
 
 - Loaded plugin-backed skills include a host-owned boundary derived from the plugin manifest before the skill body.
 - `loadSkill` re-resolves plugin ownership from the skill path, rejects mismatched plugin metadata, and builds loaded metadata from the current `SKILL.md` frontmatter.
-- Turn checkpoints persist active plugin providers for credential and MCP resume.
+- Turn checkpoints persist loaded skill names for MCP resume; sandbox credential availability comes from registered providers, not checkpointed active-provider state.
 - CLI and system packages belong in `plugin.yaml` `runtime-dependencies`.
 - Postinstall/bootstrap commands belong in `plugin.yaml` `runtime-postinstall`.
 - MCP endpoints and allowed tool surfaces belong in `plugin.yaml` `mcp`.
-- CLI env placeholders and deployment defaults belong in `plugin.yaml` `command-env`.
+- CLI env placeholders, deployment defaults, and public host-env bindings belong in `plugin.yaml` `command-env`.
 - OAuth and static credential env names belong in `plugin.yaml` `oauth` and `credentials`.
 - Skill text may diagnose missing runtime surfaces, but must not tell the agent to install packages, run installer scripts, configure API keys, or repair sandbox package installation from inside a user workflow.
 

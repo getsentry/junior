@@ -49,7 +49,6 @@ export async function persistCompletedCheckpoint(args: {
   sessionId: string;
   sliceId: number;
   allMessages: PiMessage[];
-  activePluginProviders?: string[];
   loadedSkillNames: string[];
 }): Promise<void> {
   await upsertAgentTurnSessionCheckpoint({
@@ -58,7 +57,6 @@ export async function persistCompletedCheckpoint(args: {
     sliceId: args.sliceId,
     state: "completed",
     piMessages: args.allMessages,
-    activePluginProviders: args.activePluginProviders,
     loadedSkillNames: args.loadedSkillNames,
   });
 }
@@ -72,7 +70,6 @@ export async function persistAuthPauseCheckpoint(args: {
   sessionId: string;
   currentSliceId: number;
   messages: PiMessage[];
-  activePluginProviders?: string[];
   loadedSkillNames: string[];
   errorMessage: string;
   logContext: {
@@ -101,7 +98,6 @@ export async function persistAuthPauseCheckpoint(args: {
       sliceId: nextSliceId,
       state: "awaiting_resume",
       piMessages,
-      activePluginProviders: args.activePluginProviders,
       loadedSkillNames: args.loadedSkillNames,
       resumeReason: "auth",
       resumedFromSliceId: args.currentSliceId,
@@ -140,7 +136,6 @@ export async function persistTimeoutCheckpoint(args: {
   sessionId: string;
   currentSliceId: number;
   messages: PiMessage[];
-  activePluginProviders?: string[];
   loadedSkillNames: string[];
   errorMessage: string;
   logContext: {
@@ -170,7 +165,6 @@ export async function persistTimeoutCheckpoint(args: {
       sliceId: nextSliceId,
       state: "awaiting_resume",
       piMessages,
-      activePluginProviders: args.activePluginProviders,
       loadedSkillNames: args.loadedSkillNames,
       resumeReason: "timeout",
       resumedFromSliceId: args.currentSliceId,

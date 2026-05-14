@@ -9,7 +9,6 @@ import {
 } from "@/chat/logging";
 import {
   buildSandboxEgressNetworkPolicy,
-  getSandboxEgressProviderNames,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
 import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
@@ -29,7 +28,6 @@ import { positiveInteger } from "@/chat/tools/sandbox/file-utils";
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 import { listDir } from "@/chat/tools/sandbox/list-dir";
 import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
-import { uniqueSortedStrings } from "@/chat/string-list";
 
 // Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
 // Spec: specs/logging/tracing-spec.md (required sandbox span semantics)
@@ -116,7 +114,6 @@ export function createSandboxExecutor(options?: {
   traceContext?: LogContext;
   credentialEgress?: {
     requesterId: string;
-    getAuthorizedProviderNames: () => string[];
   };
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
@@ -129,15 +126,9 @@ export function createSandboxExecutor(options?: {
   const credentialEgress = options?.credentialEgress;
   const syncSandboxEgressSession = credentialEgress
     ? async (sandboxId: string): Promise<void> => {
-        const available = new Set(getSandboxEgressProviderNames());
         await upsertSandboxEgressSession({
           sandboxId,
           requesterId: credentialEgress.requesterId,
-          providers: uniqueSortedStrings(
-            credentialEgress
-              .getAuthorizedProviderNames()
-              .filter((provider) => available.has(provider)),
-          ),
           ttlMs: options?.timeoutMs,
         });
       }
@@ -148,10 +139,7 @@ export function createSandboxExecutor(options?: {
     timeoutMs: options?.timeoutMs,
     traceContext,
     commandEnv: credentialEgress
-      ? async () =>
-          await resolveSandboxCommandEnvironment(
-            credentialEgress.getAuthorizedProviderNames(),
-          )
+      ? async () => await resolveSandboxCommandEnvironment()
       : undefined,
     createNetworkPolicy: credentialEgress
       ? buildSandboxEgressNetworkPolicy

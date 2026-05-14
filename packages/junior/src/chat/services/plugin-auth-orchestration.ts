@@ -39,7 +39,7 @@ export interface PluginAuthOrchestrationDeps {
 export interface PluginAuthOrchestration {
   handleCommandFailure: (input: {
     activeSkill: Skill | null;
-    activeProviders: string[];
+    availableProviders: string[];
     command: string;
     details: unknown;
   }) => Promise<void>;
@@ -217,18 +217,18 @@ export function createPluginAuthOrchestration(
 
   return {
     handleCommandFailure: async (input) => {
-      const activeProviders = uniqueSortedStrings(input.activeProviders);
+      const availableProviders = uniqueSortedStrings(input.availableProviders);
       const authFailure = isCommandAuthFailure(input.details);
       if (!authFailure) {
         return;
       }
       const explicitProvider = explicitAuthRequiredProvider(input.details);
       const provider =
-        explicitProvider && activeProviders.includes(explicitProvider)
+        explicitProvider && availableProviders.includes(explicitProvider)
           ? explicitProvider
-          : activeProviders.find((activeProvider) =>
+          : availableProviders.find((availableProvider) =>
               commandTargetsProvider(
-                activeProvider,
+                availableProvider,
                 input.command,
                 input.details,
               ),

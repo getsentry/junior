@@ -111,7 +111,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: sentrySkill,
-        activeProviders: ["sentry"],
+        availableProviders: ["sentry"],
         command: "sentry issue list",
         details: {
           exit_code: 1,
@@ -162,7 +162,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
-        activeProviders: ["github"],
+        availableProviders: ["github"],
         command: "gh issue view 123",
         details: {
           exit_code: 1,
@@ -198,7 +198,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
-        activeProviders: ["github"],
+        availableProviders: ["github"],
         command: "gh issue view 123",
         details: {
           exit_code: 1,
@@ -223,7 +223,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
-        activeProviders: ["github"],
+        availableProviders: ["github"],
         command: "curl https://other-api.example.test",
         details: {
           exit_code: 1,
@@ -249,7 +249,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
-        activeProviders: [],
+        availableProviders: [],
         command: "gh issue view 123",
         details: {
           exit_code: 1,
@@ -280,7 +280,7 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: null,
-        activeProviders: ["sentry"],
+        availableProviders: ["sentry"],
         command: "curl https://sentry.io/api/0/issues/",
         details: {
           exit_code: 1,

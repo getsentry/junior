@@ -267,7 +267,7 @@ export async function proxySandboxEgressRequest(
   }
 
   const session = await getSandboxEgressSession(sandboxId);
-  if (!session || !session.providers.includes(provider)) {
+  if (!session) {
     return jsonError("Sandbox egress session is not authorized", 403);
   }
 

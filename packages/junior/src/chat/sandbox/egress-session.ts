@@ -8,7 +8,6 @@ const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 export interface SandboxEgressSession {
   sandboxId: string;
   requesterId: string;
-  providers: string[];
   expiresAtMs: number;
 }
 
@@ -38,7 +37,6 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
   if (
     typeof record.sandboxId !== "string" ||
     typeof record.requesterId !== "string" ||
-    !Array.isArray(record.providers) ||
     typeof record.expiresAtMs !== "number"
   ) {
     return undefined;
@@ -49,9 +47,6 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
   return {
     sandboxId: record.sandboxId,
     requesterId: record.requesterId,
-    providers: record.providers.filter(
-      (provider): provider is string => typeof provider === "string",
-    ),
     expiresAtMs: record.expiresAtMs,
   };
 }
@@ -90,28 +85,19 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   };
 }
 
-/** Persist the turn-scoped authorization context for sandbox egress credential activation. */
+/** Persist the requester-bound authorization context for sandbox egress credential activation. */
 export async function upsertSandboxEgressSession(input: {
   sandboxId: string;
   requesterId: string;
-  providers: string[];
   ttlMs?: number;
-}): Promise<SandboxEgressSession | undefined> {
+}): Promise<SandboxEgressSession> {
   const state = getStateAdapter();
   await state.connect();
   const ttlMs = Math.max(1, input.ttlMs ?? DEFAULT_SESSION_TTL_MS);
   const now = Date.now();
-  const providers = [...new Set(input.providers)].sort((left, right) =>
-    left.localeCompare(right),
-  );
-  if (providers.length === 0) {
-    await state.delete(sessionKey(input.sandboxId));
-    return undefined;
-  }
   const session: SandboxEgressSession = {
     sandboxId: input.sandboxId,
     requesterId: input.requesterId,
-    providers,
     expiresAtMs: now + ttlMs,
   };
   await state.set(sessionKey(input.sandboxId), session, ttlMs);

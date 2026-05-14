@@ -32,7 +32,7 @@ This policy applies to:
 
 - Production should use explicit network policy and minimal allowlists.
 - Credential-capable provider domains should route through the Junior sandbox egress proxy instead of receiving long-lived sandbox secrets.
-- Proxied sandbox egress requests must verify Vercel Sandbox OIDC audience from trusted deployment configuration, project, and sandbox claims, resolve the provider from the forwarded host, and require a requester-bound sandbox egress session for that provider.
+- Proxied sandbox egress requests must verify Vercel Sandbox OIDC audience from trusted deployment configuration, project, and sandbox claims, resolve the provider from the forwarded host, and require a requester-bound sandbox egress session.
 - The public egress route must verify Vercel Sandbox OIDC before returning configuration, provider, or session-specific responses.
 - The egress proxy must not reject duplicate method/URL/body requests as replay; duplicate request shapes can be legitimate retries. Requester-bound credential issuance is the security boundary.
 
@@ -54,14 +54,14 @@ This policy applies to:
 
 ### Issuance and injection
 
-- Runtime issues short-lived provider credentials for active plugin providers when authenticated commands require them.
-- Active plugin providers and their declarations determine which provider credentials may be injected into a turn.
-- An active provider authorizes its declared domains for sandbox egress; provider activation must not mint credentials by itself.
+- Runtime issues short-lived provider credentials when sandbox traffic reaches a registered provider domain.
+- Registered plugin provider declarations determine which provider credentials may be injected into a turn.
+- A registered provider authorizes its declared domains for sandbox egress; registration must not mint credentials by itself.
 - Credential issuance for user-owned provider access must be requester-bound; runtime paths without requester context must fail instead of issuing reusable credentials.
 - Even for host-managed integrations, credentials are activated only inside the requesting turn and must not carry over to later turns or different message authors.
 - Real provider secrets are delivered exclusively via host-level header transforms — the host proxies auth headers for matching provider domains (e.g. `Authorization` for `api.github.com`/`sentry.io` or provider-specific API key headers). The sandbox never sees real secret values.
 - When CLI tools require tool-native sandbox auth env vars (for example `SENTRY_AUTH_TOKEN`, Pup's `DD_API_KEY`, or Pup's `DD_APP_KEY`), set them to non-secret placeholders so the tool proceeds to make HTTP requests. Placeholder values may be provider-specific via plugin manifest config. The host authenticates those requests via header transforms.
-- Plugin-declared command env may include non-secret placeholders and default-backed deployment values needed by the command process. It must not read or expose secret deployment env vars.
+- Plugin-declared command env may include non-secret placeholders, default-backed deployment values, and explicitly exposed non-secret host env vars needed by the command process. It must not read or expose secret deployment env vars.
 - Never inject real provider secrets into sandbox env vars, files, or command arguments.
 
 ### GitHub baseline
@@ -70,13 +70,16 @@ This policy applies to:
 - Keep `GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` on host only.
 - Sign App JWT on host, then exchange for installation token.
 - Require `GITHUB_INSTALLATION_ID` for deterministic installation selection.
+- Configure `GITHUB_APP_BOT_NAME` and `GITHUB_APP_BOT_EMAIL` as host env vars.
+  They are public git author metadata, not credentials.
 - Declare both `api.github.com` and `github.com` in the GitHub plugin manifest
   so the egress proxy forwards REST API and git HTTPS traffic through
   host-managed credential transforms.
 - Disable git credential helpers in sandbox env (`GIT_ASKPASS`, `credential.helper=`) so git never sends its own auth — the proxy header transform is the sole credential source.
 - Set `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, and
-  `GIT_COMMITTER_EMAIL` from the GitHub App bot identity so sandbox commits
-  are attributed to the installation bot, not a user named like the app slug.
+  `GIT_COMMITTER_EMAIL` from the configured GitHub App bot identity so
+  sandbox commits are attributed to the installation bot, not a user named
+  like the app slug.
 - Set `GITHUB_TOKEN` in lease env to a placeholder — real token never enters the sandbox.
 - Keep explicit `--repo owner/repo` and remote targets for command correctness and wrong-repo protection; they are not a credential-scoping boundary.
 

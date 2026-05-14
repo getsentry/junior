@@ -39,6 +39,13 @@ vi.mock("@/chat/plugins/registry", () => ({
         description: "Sentry",
         capabilities: ["sentry.api"],
         configKeys: [],
+        envVars: {
+          SENTRY_BOT_EMAIL: { exposeToCommandEnv: true },
+        },
+        commandEnv: {
+          SENTRY_AUTHOR_EMAIL: "${SENTRY_BOT_EMAIL}",
+          SENTRY_READ_ONLY: "1",
+        },
         credentials: {
           type: "oauth-bearer",
           domains: ["sentry.io", "*.sentry.io"],
@@ -73,13 +80,11 @@ const SANDBOX_ID = "junior-sbx";
 const REQUESTER_ID = "U123";
 
 async function authorizeSandboxEgress(
-  providers: string[] = ["sentry"],
   requesterId = REQUESTER_ID,
 ): Promise<void> {
   await upsertSandboxEgressSession({
     sandboxId: SANDBOX_ID,
     requesterId,
-    providers,
     ttlMs: 60_000,
   });
 }
@@ -159,6 +164,7 @@ describe("sandbox egress proxy", () => {
     delete process.env.VERCEL_OIDC_AUDIENCE;
     delete process.env.VERCEL_PROJECT_ID;
     delete process.env.VERCEL_TEAM_ID;
+    delete process.env.SENTRY_BOT_EMAIL;
     vi.restoreAllMocks();
   });
 
@@ -184,15 +190,21 @@ describe("sandbox egress proxy", () => {
     });
   });
 
-  it("resolves command env only for active sandbox providers", async () => {
-    await expect(
-      resolveSandboxCommandEnvironment(["unknown"]),
-    ).resolves.toEqual({});
-    await expect(resolveSandboxCommandEnvironment(["sentry"])).resolves.toEqual(
-      {
-        SENTRY_AUTH_TOKEN: "host_managed_credential",
-      },
-    );
+  it("resolves command env for registered sandbox providers", async () => {
+    await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
+      SENTRY_READ_ONLY: "1",
+      SENTRY_AUTH_TOKEN: "host_managed_credential",
+    });
+  });
+
+  it("resolves explicitly exposed host env for sandbox commands", async () => {
+    process.env.SENTRY_BOT_EMAIL = "123+sentry[bot]@users.noreply.github.com";
+
+    await expect(resolveSandboxCommandEnvironment()).resolves.toEqual({
+      SENTRY_AUTHOR_EMAIL: "123+sentry[bot]@users.noreply.github.com",
+      SENTRY_READ_ONLY: "1",
+      SENTRY_AUTH_TOKEN: "host_managed_credential",
+    });
   });
 
   it("requires OIDC before route configuration details", async () => {
@@ -326,7 +338,7 @@ describe("sandbox egress proxy", () => {
     );
     await expect(firstResponse.text()).resolves.toBe("Bearer token-u123");
 
-    await authorizeSandboxEgress(["sentry"], "U456");
+    await authorizeSandboxEgress("U456");
     const secondResponse = await proxy(
       egressRequest({
         path: "/api/0/issues/2",
@@ -504,18 +516,8 @@ describe("sandbox egress proxy", () => {
     );
   });
 
-  it("rejects provider requests when the sandbox session did not authorize that provider", async () => {
-    await authorizeSandboxEgress(["github"]);
-
-    const response = await proxy(egressRequest());
-
-    expect(response.status).toBe(403);
-    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
-  });
-
-  it("clears egress authorization when no providers are active", async () => {
-    await authorizeSandboxEgress();
-    await authorizeSandboxEgress([]);
+  it("requires a requester-bound sandbox egress session", async () => {
+    mockSentryLease();
 
     const response = await proxy(egressRequest());
 

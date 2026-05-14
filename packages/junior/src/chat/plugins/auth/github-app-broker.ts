@@ -4,6 +4,7 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
+import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { resolveApiHeaderTransforms } from "./api-headers-broker";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
 import type { GitHubAppCredentials, PluginManifest } from "../types";
@@ -15,20 +16,6 @@ type CachedInstallationToken = {
   token: string;
   expiresAt: number;
 };
-
-type GitHubAppResponse = {
-  slug?: unknown;
-};
-
-type GitHubUserResponse = {
-  id?: unknown;
-};
-
-const githubAppGitIdentityCache = new Map<string, Record<string, string>>();
-const githubAppGitIdentityRequests = new Map<
-  string,
-  Promise<Record<string, string>>
->();
 
 function base64Url(input: string): string {
   return Buffer.from(input)
@@ -166,16 +153,6 @@ async function githubRequest<T>(
   return parsed as T;
 }
 
-function buildGitIdentityEnv(botName: string, botId: number) {
-  const email = `${botId}+${botName}@users.noreply.github.com`;
-  return {
-    GIT_AUTHOR_NAME: botName,
-    GIT_AUTHOR_EMAIL: email,
-    GIT_COMMITTER_NAME: botName,
-    GIT_COMMITTER_EMAIL: email,
-  };
-}
-
 function resolveGitHubApiDomain(credentials: GitHubAppCredentials): string {
   const apiDomain = credentials.domains.find((domain) => {
     const normalizedDomain = domain.toLowerCase();
@@ -188,57 +165,6 @@ function resolveGitHubApiDomain(credentials: GitHubAppCredentials): string {
     throw new Error("GitHub App provider requires an API domain");
   }
   return apiDomain;
-}
-
-/**
- * Resolve the Git author identity for commits made with a GitHub App installation.
- */
-export async function resolveGitHubAppGitIdentityEnv(
-  credentials: GitHubAppCredentials,
-): Promise<Record<string, string>> {
-  const apiDomain = resolveGitHubApiDomain(credentials);
-  const apiBase = `https://${apiDomain}`;
-  const appId = resolveAppId(credentials.appIdEnv);
-  const cacheKey = `${apiBase}:${appId}:${credentials.privateKeyEnv}`;
-  const cached = githubAppGitIdentityCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-  const pending = githubAppGitIdentityRequests.get(cacheKey);
-  if (pending) {
-    return await pending;
-  }
-
-  const identityPromise = (async () => {
-    const appJwt = createAppJwt(appId, credentials.privateKeyEnv);
-    const app = await githubRequest<GitHubAppResponse>(apiBase, "/app", {
-      token: appJwt,
-    });
-    if (typeof app.slug !== "string" || app.slug.length === 0) {
-      throw new Error("GitHub App response did not include a slug");
-    }
-
-    const botName = `${app.slug}[bot]`;
-    const user = await githubRequest<GitHubUserResponse>(
-      apiBase,
-      `/users/${encodeURIComponent(botName)}`,
-      { token: appJwt },
-    );
-    if (typeof user.id !== "number" || !Number.isFinite(user.id)) {
-      throw new Error(`GitHub bot user ${botName} did not include an id`);
-    }
-
-    return buildGitIdentityEnv(botName, user.id);
-  })();
-
-  githubAppGitIdentityRequests.set(cacheKey, identityPromise);
-  try {
-    const identity = await identityPromise;
-    githubAppGitIdentityCache.set(cacheKey, identity);
-    return identity;
-  } finally {
-    githubAppGitIdentityRequests.delete(cacheKey);
-  }
 }
 
 /**
@@ -323,7 +249,6 @@ export function createGitHubAppBroker(
   const apiBase = `https://${apiDomain}`;
   const placeholder = resolveAuthTokenPlaceholder(credentials);
   const pluginHeaderTransforms = () => resolveApiHeaderTransforms(manifest);
-  let gitIdentityEnvPromise: Promise<Record<string, string>> | undefined;
 
   const leaseDomains = [...new Set(domains)];
 
@@ -355,31 +280,17 @@ export function createGitHubAppBroker(
     provider,
   );
 
-  async function resolveBrokerGitIdentityEnv(): Promise<
-    Record<string, string>
-  > {
-    gitIdentityEnvPromise ??= resolveGitHubAppGitIdentityEnv(credentials);
-    try {
-      return await gitIdentityEnvPromise;
-    } catch (error) {
-      gitIdentityEnvPromise = undefined;
-      throw error;
-    }
-  }
-
-  async function createLease(params: {
+  function createLease(params: {
     installationId: number;
     token: string;
     expiresAtMs: number;
     reason: string;
-  }): Promise<CredentialLease> {
-    const gitIdentityEnv = await resolveBrokerGitIdentityEnv();
+  }): CredentialLease {
     return {
       id: randomUUID(),
       provider,
       env: {
-        ...(manifest.commandEnv ?? {}),
-        ...gitIdentityEnv,
+        ...resolvePluginCommandEnv(manifest),
         [authTokenEnv]: placeholder,
       },
       headerTransforms: mergeHeaderTransforms([
@@ -419,7 +330,7 @@ export function createGitHubAppBroker(
       const cached = tokenCache.get(cacheKey);
       const now = Date.now();
       if (cached && cached.expiresAt - now > 2 * 60 * 1000) {
-        return await createLease({
+        return createLease({
           installationId: cached.installationId,
           token: cached.token,
           expiresAtMs: cached.expiresAt,
@@ -456,7 +367,7 @@ export function createGitHubAppBroker(
         expiresAt: expiresAtMs,
       });
 
-      return await createLease({
+      return createLease({
         installationId,
         token: accessTokenResponse.token,
         expiresAtMs,

@@ -10,5 +10,5 @@ Examples:
 
 Rules:
 
-- For normal authenticated operations, run the real provider command under the loaded skill and let the runtime inject credentials automatically.
+- For normal authenticated operations, run the real provider command and let the runtime inject credentials automatically when requests reach registered provider domains.
 - Do not guess config-key names; choose them from the provider catalog.

@@ -10,6 +10,7 @@ import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-s
 import { TestCredentialBroker } from "@/chat/credentials/test-broker";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
+import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import {
   createPluginBroker,
   getPluginProviders,
@@ -48,7 +49,8 @@ function resolveTestApiHeaderTransforms(
 }
 
 function createTestBroker(plugin: PluginDefinition): TestCredentialBroker {
-  const { apiHeaders, commandEnv, credentials, name } = plugin.manifest;
+  const { apiHeaders, credentials, name } = plugin.manifest;
+  const commandEnv = resolvePluginCommandEnv(plugin.manifest);
   return new TestCredentialBroker({
     provider: name,
     ...(credentials
@@ -67,7 +69,7 @@ function createTestBroker(plugin: PluginDefinition): TestCredentialBroker {
             resolveTestApiHeaderTransforms(plugin.manifest),
         }
       : {}),
-    ...(commandEnv ? { env: commandEnv } : {}),
+    ...(Object.keys(commandEnv).length > 0 ? { env: commandEnv } : {}),
   });
 }
 

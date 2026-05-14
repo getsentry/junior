@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync } from "node:crypto";
-import {
-  createGitHubAppBroker,
-  resolveGitHubAppGitIdentityEnv,
-} from "@/chat/plugins/auth/github-app-broker";
+import { createGitHubAppBroker } from "@/chat/plugins/auth/github-app-broker";
 import type {
   GitHubAppCredentials,
   PluginManifest,
@@ -43,13 +40,6 @@ const TEST_MANIFEST: PluginManifest = {
   },
 };
 
-const TEST_GIT_IDENTITY_ENV = {
-  GIT_AUTHOR_NAME: "sentry-junior[bot]",
-  GIT_AUTHOR_EMAIL: "264270552+sentry-junior[bot]@users.noreply.github.com",
-  GIT_COMMITTER_NAME: "sentry-junior[bot]",
-  GIT_COMMITTER_EMAIL: "264270552+sentry-junior[bot]@users.noreply.github.com",
-};
-
 function setupValidEnv() {
   const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
     .privateKey.export({ type: "pkcs8", format: "pem" })
@@ -69,13 +59,9 @@ function mockJsonResponse(body: unknown) {
 
 function mockGitHubApi(options?: {
   token?: string;
-  appSlug?: string;
-  botId?: number;
   onRequest?: (url: string, init?: RequestInit) => void;
 }) {
   const token = options?.token ?? "issued-token";
-  const appSlug = options?.appSlug ?? "sentry-junior";
-  const botId = options?.botId ?? 264270552;
   globalThis.fetch = vi.fn(async (input, init) => {
     const url =
       typeof input === "string"
@@ -91,13 +77,6 @@ function mockGitHubApi(options?: {
         expires_at: "2099-01-01T00:00:00Z",
       });
     }
-    if (url.endsWith("/app")) {
-      return mockJsonResponse({ slug: appSlug });
-    }
-    if (url.endsWith(`/users/${encodeURIComponent(`${appSlug}[bot]`)}`)) {
-      return mockJsonResponse({ id: botId });
-    }
-
     throw new Error(`Unexpected fetch request: ${url}`);
   }) as unknown as typeof fetch;
 }
@@ -128,7 +107,6 @@ describe("github app credential broker", () => {
 
     expect(lease.provider).toBe("github");
     expect(lease.env).toEqual({
-      ...TEST_GIT_IDENTITY_ENV,
       GITHUB_TOKEN: "ghp_host_managed_credential",
     });
     expect(lease.headerTransforms).toEqual([
@@ -147,14 +125,7 @@ describe("github app credential broker", () => {
       installationId: "42",
       reason: "test:lease-shape",
     });
-    expect(
-      vi.mocked(globalThis.fetch).mock.calls.map(([url]) => String(url)),
-    ).toEqual(
-      expect.arrayContaining([
-        "https://api.github.com/app",
-        "https://api.github.com/users/sentry-junior%5Bbot%5D",
-      ]),
-    );
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
   });
 
   it("uses the configured auth token placeholder when provided", async () => {
@@ -302,45 +273,6 @@ describe("github app credential broker", () => {
       .mocked(globalThis.fetch)
       .mock.calls.filter(([url]) => String(url).includes("/access_tokens"));
     expect(accessTokenCalls).toHaveLength(1);
-  });
-
-  it("does not cache failed GitHub App identity lookups", async () => {
-    setupValidEnv();
-    process.env.GITHUB_APP_ID = "67890";
-    let appRequestCount = 0;
-    globalThis.fetch = vi.fn(async (input) => {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : String(input);
-
-      if (url.endsWith("/app")) {
-        appRequestCount += 1;
-        if (appRequestCount === 1) {
-          return {
-            ok: false,
-            status: 500,
-            text: async () => JSON.stringify({ message: "temporary failure" }),
-          };
-        }
-        return mockJsonResponse({ slug: "sentry-junior" });
-      }
-      if (url.endsWith("/users/sentry-junior%5Bbot%5D")) {
-        return mockJsonResponse({ id: 264270552 });
-      }
-
-      throw new Error(`Unexpected fetch request: ${url}`);
-    }) as unknown as typeof fetch;
-
-    await expect(
-      resolveGitHubAppGitIdentityEnv(TEST_CREDENTIALS),
-    ).rejects.toThrow("temporary failure");
-    await expect(
-      resolveGitHubAppGitIdentityEnv(TEST_CREDENTIALS),
-    ).resolves.toEqual(TEST_GIT_IDENTITY_ENV);
-    expect(appRequestCount).toBe(2);
   });
 
   it("requests the full plugin permission set when minting installation tokens", async () => {

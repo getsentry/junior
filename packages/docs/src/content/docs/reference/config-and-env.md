@@ -34,11 +34,13 @@ If your build command runs `junior snapshot create`:
 
 ## GitHub plugin
 
-| Variable                 | Required | Purpose                             |
-| ------------------------ | -------- | ----------------------------------- |
-| `GITHUB_APP_ID`          | Yes      | GitHub App identity.                |
-| `GITHUB_APP_PRIVATE_KEY` | Yes      | GitHub App signing key.             |
-| `GITHUB_INSTALLATION_ID` | Yes      | Repository/org installation target. |
+| Variable                 | Required | Purpose                                         |
+| ------------------------ | -------- | ----------------------------------------------- |
+| `GITHUB_APP_ID`          | Yes      | GitHub App identity.                            |
+| `GITHUB_APP_PRIVATE_KEY` | Yes      | GitHub App signing key.                         |
+| `GITHUB_INSTALLATION_ID` | Yes      | Repository/org installation target.             |
+| `GITHUB_APP_BOT_NAME`    | Yes      | Git author name, for example `<app-slug>[bot]`. |
+| `GITHUB_APP_BOT_EMAIL`   | Yes      | Git author noreply email for the App bot user.  |
 
 ## Sentry plugin
 

@@ -4,6 +4,7 @@ import type {
   CredentialHeaderTransform,
   CredentialLease,
 } from "@/chat/credentials/broker";
+import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import type { PluginManifest } from "@/chat/plugins/types";
 
 const MAX_LEASE_MS = 60 * 60 * 1000;
@@ -60,7 +61,7 @@ export function createApiHeadersBroker(
       return {
         id: randomUUID(),
         provider,
-        env: { ...(manifest.commandEnv ?? {}) },
+        env: resolvePluginCommandEnv(manifest),
         headerTransforms,
         expiresAt: new Date(Date.now() + MAX_LEASE_MS).toISOString(),
         metadata: {

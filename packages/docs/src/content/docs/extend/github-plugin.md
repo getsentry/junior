@@ -38,14 +38,21 @@ Set these values in the host environment:
 | `GITHUB_APP_ID`          | Yes      | GitHub App identity.                            |
 | `GITHUB_APP_PRIVATE_KEY` | Yes      | GitHub App signing key.                         |
 | `GITHUB_INSTALLATION_ID` | Yes      | Repository or organization installation target. |
+| `GITHUB_APP_BOT_NAME`    | Yes      | Git author name, for example `<app-slug>[bot]`. |
+| `GITHUB_APP_BOT_EMAIL`   | Yes      | Git author noreply email for the App bot user.  |
 
 `GITHUB_INSTALLATION_ID` selects the GitHub App installation for the deployment.
+`GITHUB_APP_BOT_EMAIL` uses the GitHub noreply format
+`<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. Get the bot user id
+from `https://api.github.com/users/<app-slug>%5Bbot%5D`.
 
 Vercel example:
 
 ```bash
 vercel env add GITHUB_APP_ID production
 vercel env add GITHUB_INSTALLATION_ID production
+vercel env add GITHUB_APP_BOT_NAME production
+vercel env add GITHUB_APP_BOT_EMAIL production
 vercel env add GITHUB_APP_PRIVATE_KEY production --sensitive < ./github-app-private-key.pem
 ```
 
@@ -62,7 +69,7 @@ Create and install a GitHub App before you verify GitHub workflows:
    - Pull requests: Read and write
    - Metadata: Read
 4. Install the app on the repository or organization Junior should access.
-5. Copy the App ID and installation ID into your deployment environment.
+5. Copy the App ID, installation ID, bot name, and bot noreply email into your deployment environment.
 
 If your team works across multiple repositories, have users include `owner/repo` in their GitHub request whenever the target is not obvious from the conversation.
 That only helps when those repositories are covered by the same GitHub App installation ID.

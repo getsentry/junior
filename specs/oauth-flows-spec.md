@@ -61,7 +61,7 @@ User: asks Junior to do authenticated provider work in Slack
   ▼
 Agent: loads the matching plugin skill and runs the real provider command
   │
-  ├─ Runtime resolves provider from the loaded skill
+  ├─ Runtime resolves provider from the proxied sandbox request host
   ├─ Runtime keeps any provider defaults (for example a repo config) available for command construction
   ├─ Broker checks requester-bound stored tokens
   ├─ If auth is missing or stale:
@@ -117,8 +117,8 @@ Provider: redirects to /api/oauth/callback/mcp/<provider>?code=...&state=...
 
 After a user has connected their account:
 
-1. Agent runs an authenticated provider command under a loaded plugin-backed skill.
-2. Runtime resolves the provider from the loaded skill for the resumed turn.
+1. Agent runs an authenticated provider command.
+2. Runtime resolves the provider from the proxied sandbox request host.
 3. Broker loads stored requester-bound tokens.
 4. If the token is near expiry, broker refreshes it server-side.
 5. Broker returns a short-lived `CredentialLease`.

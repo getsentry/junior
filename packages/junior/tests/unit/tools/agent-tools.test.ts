@@ -306,7 +306,7 @@ describe("createAgentTools", () => {
     ).rejects.toBeInstanceOf(PluginAuthorizationPauseError);
     expect(pluginAuthOrchestration.handleCommandFailure).toHaveBeenCalledWith({
       activeSkill: githubSkill,
-      activeProviders: ["github"],
+      availableProviders: ["github"],
       command: "gh issue view 123",
       details: expect.any(Object),
     });
