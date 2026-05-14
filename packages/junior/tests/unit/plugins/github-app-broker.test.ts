@@ -205,6 +205,43 @@ describe("github app credential broker", () => {
     ]);
   });
 
+  it("uses bearer auth for non-git GitHub service domains", async () => {
+    setupValidEnv();
+    mockGitHubApi({ token: "service-token" });
+    const credentials: GitHubAppCredentials = {
+      ...TEST_CREDENTIALS,
+      domains: ["api.github.com", "github.com", "uploads.github.com"],
+    };
+
+    const broker = createGitHubAppBroker(
+      {
+        ...TEST_MANIFEST,
+        credentials,
+      },
+      credentials,
+    );
+    const lease = await broker.issue({
+      reason: "test:service-domains",
+    });
+
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "api.github.com",
+        headers: { Authorization: "Bearer service-token" },
+      },
+      {
+        domain: "github.com",
+        headers: {
+          Authorization: `Basic ${Buffer.from("x-access-token:service-token").toString("base64")}`,
+        },
+      },
+      {
+        domain: "uploads.github.com",
+        headers: { Authorization: "Bearer service-token" },
+      },
+    ]);
+  });
+
   it("reuses cached leases for the same installation", async () => {
     setupValidEnv();
     mockGitHubApi({ token: "cached-token" });

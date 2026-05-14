@@ -317,14 +317,24 @@ export function createGitHubAppBroker(
   /**
    * Build the correct Authorization header for a domain.
    *
-   * The first manifest domain is the GitHub REST API host. Additional domains
-   * are git smart-HTTP hosts, which require Basic auth with `x-access-token`.
+   * Git smart-HTTP hosts require Basic auth with `x-access-token`. Other
+   * GitHub service hosts use the same Bearer installation token as REST API.
    */
   function authorizationFor(domain: string, token: string): string {
-    if (domain !== apiDomain) {
+    if (isGitSmartHttpDomain(domain)) {
       return `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
     }
     return `Bearer ${token}`;
+  }
+
+  function isGitSmartHttpDomain(domain: string): boolean {
+    const normalizedDomain = domain.toLowerCase();
+    const normalizedApiDomain = apiDomain.toLowerCase();
+    return (
+      normalizedDomain === "github.com" ||
+      (normalizedApiDomain.startsWith("api.") &&
+        normalizedDomain === normalizedApiDomain.slice("api.".length))
+    );
   }
 
   const permissions = capabilitiesToPermissions(
