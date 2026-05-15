@@ -106,14 +106,14 @@ importers:
         specifier: ^3.0.110
         version: 3.0.110(zod@4.4.3)
       "@chat-adapter/slack":
-        specifier: 4.27.0
-        version: 4.27.0
+        specifier: 4.28.1
+        version: 4.28.1
       "@chat-adapter/state-memory":
-        specifier: 4.27.0
-        version: 4.27.0
+        specifier: 4.28.1
+        version: 4.28.1
       "@chat-adapter/state-redis":
-        specifier: 4.27.0
-        version: 4.27.0(@opentelemetry/api@1.9.1)
+        specifier: 4.28.1
+        version: 4.28.1(@opentelemetry/api@1.9.1)
       "@logtape/logtape":
         specifier: ^2.0.7
         version: 2.0.7
@@ -145,8 +145,8 @@ importers:
         specifier: ^1.3.16
         version: 1.3.16(@vercel/sandbox@2.0.0-beta.19)(ai@6.0.175(zod@4.4.3))(just-bash@2.14.2)
       chat:
-        specifier: 4.27.0
-        version: 4.27.0
+        specifier: 4.28.1
+        version: 4.28.1
       hono:
         specifier: ^4.12.6
         version: 4.12.17
@@ -213,8 +213,8 @@ importers:
         specifier: workspace:*
         version: link:../junior-sentry
       chat:
-        specifier: 4.27.0
-        version: 4.27.0
+        specifier: 4.28.1
+        version: 4.28.1
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -666,28 +666,28 @@ packages:
       }
     engines: { node: ">=18" }
 
-  "@chat-adapter/shared@4.27.0":
+  "@chat-adapter/shared@4.28.1":
     resolution:
       {
-        integrity: sha512-Wz+YZ8Mp2/qcxxJ+rU0ofZQSEtOF/4toEh7wbA+q+uLlPrLue+7hImWluJpQUZqGjSwsUoXhjSNwgFv3hz20aQ==,
+        integrity: sha512-v7AcZMrvS2gxFlRiUO1o9Nta2iipnnmV54Gie8e3nQTQvnghENfSf7j7nimA5DOUWCgj+e4DV7LE0x1pakNtkA==,
       }
 
-  "@chat-adapter/slack@4.27.0":
+  "@chat-adapter/slack@4.28.1":
     resolution:
       {
-        integrity: sha512-Hx9tahCY/gA6EDydGdXcaz5r28sJOAAwnUP/j48Wv9U4LylsT4hXtLBoSmxb8gRvom2FypxD9Ry/SwzPnwnpBw==,
+        integrity: sha512-JxgV7+cRXXeKpj0MzS7nzG3JvpnfhIgnPo9r/sdEIzeWhIb8tUcT2PbLl/fpSu/cb+WkICS0bCENn1I0PS39Hg==,
       }
 
-  "@chat-adapter/state-memory@4.27.0":
+  "@chat-adapter/state-memory@4.28.1":
     resolution:
       {
-        integrity: sha512-kl6LilKa6pBGQroIDQy79CPfgkVcUS2Qr13JGvunU/gA1gtLpleoxXHOye9PTRvpv6URCN54Yy5UmgAI9uzXKg==,
+        integrity: sha512-KMKrPPU9inr+GVH5pIL81aSW0+LXulxZMktSzf5JOgE6C8WHmUAcGN9B0C80edyeC5qeXOyl0Vl3ZecPZsWDqQ==,
       }
 
-  "@chat-adapter/state-redis@4.27.0":
+  "@chat-adapter/state-redis@4.28.1":
     resolution:
       {
-        integrity: sha512-kmfCzNUQOCZ6MxBmd0azdJAmbAbgJ87JkW0/kQWEZ9vmlf8F5VlmRSfvn9jWhh4R90ThpLeflmIaHX8iK4x2dA==,
+        integrity: sha512-LA2UHXA4prF+ZKGdHjPQ4X/2hAxU2FI1XCCC4jl9LK93YNNOtV76RfyNp2TewvtygfUjAxH5b/Fk6oFuMUcK2Q==,
       }
 
   "@ctrl/tinycolor@4.2.0":
@@ -5379,10 +5379,10 @@ packages:
         integrity: sha512-iBZ4F4wRbyORVsu0jPV7gXkOsGYjGHPmAyv+HiHG8gi5PtC9KI2j1+v8/tlibRvjoWX027ypmG/n0HtO5t7unw==,
       }
 
-  chat@4.27.0:
+  chat@4.28.1:
     resolution:
       {
-        integrity: sha512-PrL4k263DSIlckhX8eHLT84RdTSznOBxCCfaDc5JVJtWaS0lJkCNctm/g3gIrI41AcDHcpc/3WDoUHVrbh0W4w==,
+        integrity: sha512-oKBeLQ746rSmHWGoXmPgDOqMVdIe9cWFQBQ1G2pw0l2vV4sAsZgfEJmc1UYqSJR4kYy4PxKgRFy31pe4RJ644Q==,
       }
 
   chokidar@4.0.0:
@@ -11902,33 +11902,33 @@ snapshots:
     dependencies:
       fontkitten: 1.0.3
 
-  "@chat-adapter/shared@4.27.0":
+  "@chat-adapter/shared@4.28.1":
     dependencies:
-      chat: 4.27.0
+      chat: 4.28.1
     transitivePeerDependencies:
       - supports-color
 
-  "@chat-adapter/slack@4.27.0":
+  "@chat-adapter/slack@4.28.1":
     dependencies:
-      "@chat-adapter/shared": 4.27.0
+      "@chat-adapter/shared": 4.28.1
       "@slack/socket-mode": 2.0.7
       "@slack/web-api": 7.15.2
-      chat: 4.27.0
+      chat: 4.28.1
     transitivePeerDependencies:
       - bufferutil
       - debug
       - supports-color
       - utf-8-validate
 
-  "@chat-adapter/state-memory@4.27.0":
+  "@chat-adapter/state-memory@4.28.1":
     dependencies:
-      chat: 4.27.0
+      chat: 4.28.1
     transitivePeerDependencies:
       - supports-color
 
-  "@chat-adapter/state-redis@4.27.0(@opentelemetry/api@1.9.1)":
+  "@chat-adapter/state-redis@4.28.1(@opentelemetry/api@1.9.1)":
     dependencies:
-      chat: 4.27.0
+      chat: 4.28.1
       redis: 5.12.1(@opentelemetry/api@1.9.1)
     transitivePeerDependencies:
       - "@node-rs/xxhash"
@@ -13333,9 +13333,9 @@ snapshots:
   "@sentry/junior@file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.33)(@opentelemetry/api@1.9.1)(@sentry/node@10.50.0-alpha.0)":
     dependencies:
       "@ai-sdk/gateway": 3.0.110(zod@4.4.3)
-      "@chat-adapter/slack": 4.27.0
-      "@chat-adapter/state-memory": 4.27.0
-      "@chat-adapter/state-redis": 4.27.0(@opentelemetry/api@1.9.1)
+      "@chat-adapter/slack": 4.28.1
+      "@chat-adapter/state-memory": 4.28.1
+      "@chat-adapter/state-redis": 4.28.1(@opentelemetry/api@1.9.1)
       "@logtape/logtape": 2.0.7
       "@mariozechner/pi-agent-core": 0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.0)(zod@4.4.3)
       "@mariozechner/pi-ai": 0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.0)(zod@4.4.3)
@@ -13347,7 +13347,7 @@ snapshots:
       "@vercel/sandbox": 2.0.0-beta.19
       ai: 6.0.175(zod@4.4.3)
       bash-tool: 1.3.16(@vercel/sandbox@2.0.0-beta.19)(ai@6.0.175(zod@4.4.3))(just-bash@2.14.2)
-      chat: 4.27.0
+      chat: 4.28.1
       hono: 4.12.17
       jose: 6.2.2
       just-bash: 2.14.2
@@ -13371,9 +13371,9 @@ snapshots:
   "@sentry/junior@file:packages/junior(@aws-sdk/credential-provider-web-identity@3.972.33)(@opentelemetry/api@1.9.1)(@sentry/node@10.51.0)":
     dependencies:
       "@ai-sdk/gateway": 3.0.110(zod@4.4.3)
-      "@chat-adapter/slack": 4.27.0
-      "@chat-adapter/state-memory": 4.27.0
-      "@chat-adapter/state-redis": 4.27.0(@opentelemetry/api@1.9.1)
+      "@chat-adapter/slack": 4.28.1
+      "@chat-adapter/state-memory": 4.28.1
+      "@chat-adapter/state-redis": 4.28.1(@opentelemetry/api@1.9.1)
       "@logtape/logtape": 2.0.7
       "@mariozechner/pi-agent-core": 0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.0)(zod@4.4.3)
       "@mariozechner/pi-ai": 0.73.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.0)(zod@4.4.3)
@@ -13385,7 +13385,7 @@ snapshots:
       "@vercel/sandbox": 2.0.0-beta.19
       ai: 6.0.175(zod@4.4.3)
       bash-tool: 1.3.16(@vercel/sandbox@2.0.0-beta.19)(ai@6.0.175(zod@4.4.3))(just-bash@2.14.2)
-      chat: 4.27.0
+      chat: 4.28.1
       hono: 4.12.17
       jose: 6.2.2
       just-bash: 2.14.2
@@ -14883,7 +14883,7 @@ snapshots:
 
   character-reference-invalid@2.0.1: {}
 
-  chat@4.27.0:
+  chat@4.28.1:
     dependencies:
       "@workflow/serde": 4.1.0-beta.2
       mdast-util-to-string: 4.0.0
