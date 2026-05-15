@@ -34,14 +34,13 @@ If your build command runs `junior snapshot create`:
 
 ## Sandbox credential egress
 
-If enabled plugins use host-managed credentials inside Vercel Sandbox, Junior forwards registered provider domains through its credential egress proxy. The deployment must be able to verify that each proxied request came from the expected Vercel project before it injects credentials.
+If enabled plugins use host-managed credentials inside Vercel Sandbox, Junior forwards registered provider domains through its credential egress proxy. The proxy verifies each Vercel-signed sandbox request and requires an active egress session before it injects credentials.
 
-| Variable               | Required    | Purpose                                                                      |
-| ---------------------- | ----------- | ---------------------------------------------------------------------------- |
-| `JUNIOR_BASE_URL`      | Conditional | Public URL for the credential egress proxy, unless Vercel URL envs cover it. |
-| `VERCEL_OIDC_AUDIENCE` | Conditional | Expected Vercel OIDC audience, usually `https://vercel.com/<team-slug>`.     |
-| `VERCEL_PROJECT_ID`    | Conditional | Expected Vercel project ID for sandbox egress proxy requests.                |
-| `VERCEL_TEAM_ID`       | No          | Optional team ID check for sandbox egress proxy requests.                    |
+The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request and binds them to the active VM session used in the forwarding route. No separate audience, project, or team env vars are required for the proxy.
+
+| Variable          | Required    | Purpose                                                                      |
+| ----------------- | ----------- | ---------------------------------------------------------------------------- |
+| `JUNIOR_BASE_URL` | Conditional | Public URL for the credential egress proxy, unless Vercel URL envs cover it. |
 
 ## GitHub plugin
 

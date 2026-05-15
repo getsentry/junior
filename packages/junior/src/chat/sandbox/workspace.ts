@@ -43,6 +43,7 @@ export interface SandboxWorkspace {
 
 export interface SandboxInstance extends SandboxWorkspace {
   readonly sandboxId: string;
+  readonly sandboxEgressId: string;
   readonly fs: SandboxFileSystem;
   extendTimeout(duration: number): Promise<void>;
   mkDir(path: string): Promise<void>;
@@ -62,6 +63,9 @@ export interface SandboxInstance extends SandboxWorkspace {
 export function createSandboxInstance(sandbox: VercelSandbox): SandboxInstance {
   return {
     sandboxId: sandbox.name,
+    // Vercel Sandbox v2 names the persistent sandbox separately from the
+    // running VM session identified by firewall proxy OIDC tokens.
+    sandboxEgressId: sandbox.currentSession().sessionId,
     fs: sandbox.fs as SandboxFileSystem,
     extendTimeout(duration) {
       return sandbox.extendTimeout(duration);

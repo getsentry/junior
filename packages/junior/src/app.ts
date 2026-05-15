@@ -91,11 +91,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     return turnResumePOST(c.req.raw, waitUntil);
   });
 
-  app.all("/api/internal/sandbox-egress/:sandboxId", (c) => {
-    return sandboxEgressProxyALL(c.req.raw, c.req.param("sandboxId"));
+  app.all("/api/internal/sandbox-egress/:egressId", (c) => {
+    return sandboxEgressProxyALL(c.req.raw, c.req.param("egressId"));
   });
-  app.all("/api/internal/sandbox-egress/:sandboxId/*", (c) => {
-    return sandboxEgressProxyALL(c.req.raw, c.req.param("sandboxId"));
+  app.all("/api/internal/sandbox-egress/:egressId/*", (c) => {
+    return sandboxEgressProxyALL(c.req.raw, c.req.param("egressId"));
   });
 
   app.post("/api/webhooks/:platform", (c) => {

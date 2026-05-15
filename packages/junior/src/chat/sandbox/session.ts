@@ -145,9 +145,9 @@ export function createSandboxSessionManager(options?: {
   timeoutMs?: number;
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
-  createNetworkPolicy?: (sandboxId: string) => NetworkPolicy | undefined;
-  beforeCommand?: (sandboxId: string) => void | Promise<void>;
-  afterCommand?: (sandboxId: string) => void | Promise<void>;
+  createNetworkPolicy?: (egressId: string) => NetworkPolicy | undefined;
+  beforeCommand?: (egressId: string) => void | Promise<void>;
+  afterCommand?: (egressId: string) => void | Promise<void>;
   onSandboxAcquired?: (sandbox: {
     sandboxId: string;
     sandboxDependencyProfileHash?: string;
@@ -184,17 +184,16 @@ export function createSandboxSessionManager(options?: {
   const createSandboxName = (): string =>
     `${SANDBOX_NAME_PREFIX}${randomUUID()}`;
 
-  const rememberNetworkPolicy = (
-    networkPolicy: NetworkPolicy | undefined,
-  ): void => {
-    appliedNetworkPolicyKey = networkPolicy
-      ? JSON.stringify(networkPolicy)
-      : undefined;
+  const preflightNetworkPolicy = (
+    sandboxName: string,
+  ): NetworkPolicy | undefined => {
+    // Build once before boot so missing proxy config fails before sandbox work.
+    // The final route is rebound to the Vercel session id after creation.
+    return options?.createNetworkPolicy?.(sandboxName);
   };
 
   const rememberSandbox = async (
     nextSandbox: SandboxInstance,
-    rememberOptions?: { recordNetworkPolicy?: boolean },
   ): Promise<SandboxInstance> => {
     sandbox = nextSandbox;
     sandboxIdHint = nextSandbox.sandboxId;
@@ -206,11 +205,6 @@ export function createSandboxSessionManager(options?: {
         : {}),
     };
     await options?.onSandboxAcquired?.(acquired);
-    if (rememberOptions?.recordNetworkPolicy) {
-      rememberNetworkPolicy(
-        options?.createNetworkPolicy?.(nextSandbox.sandboxId),
-      );
-    }
     return nextSandbox;
   };
 
@@ -232,7 +226,7 @@ export function createSandboxSessionManager(options?: {
     targetSandbox: SandboxInstance,
   ): Promise<void> => {
     const networkPolicy = options?.createNetworkPolicy?.(
-      targetSandbox.sandboxId,
+      targetSandbox.sandboxEgressId,
     );
     if (!networkPolicy) {
       return;
@@ -302,7 +296,7 @@ export function createSandboxSessionManager(options?: {
     for (let attempt = 0; attempt < SNAPSHOT_BOOT_RETRY_COUNT; attempt += 1) {
       const sandboxName =
         attempt === 0 ? initialSandboxName : createSandboxName();
-      const networkPolicy = options?.createNetworkPolicy?.(sandboxName);
+      const networkPolicy = preflightNetworkPolicy(sandboxName);
       try {
         return createSandboxInstance(
           await Sandbox.create({
@@ -359,7 +353,7 @@ export function createSandboxSessionManager(options?: {
     const { runtime, snapshot, sandboxCredentials, sandboxName } = params;
 
     if (!snapshot.snapshotId) {
-      const networkPolicy = options?.createNetworkPolicy?.(sandboxName);
+      const networkPolicy = preflightNetworkPolicy(sandboxName);
       return createSandboxInstance(
         await Sandbox.create({
           timeout: timeoutMs,
@@ -438,12 +432,13 @@ export function createSandboxSessionManager(options?: {
     }
 
     try {
+      await refreshNetworkPolicy(createdSandbox);
       await syncSkills(createdSandbox);
     } catch (error) {
       return failSetup(error);
     }
 
-    return await rememberSandbox(createdSandbox, { recordNetworkPolicy: true });
+    return await rememberSandbox(createdSandbox);
   };
 
   const discardHintIfProfileChanged = (): void => {
@@ -618,6 +613,7 @@ export function createSandboxSessionManager(options?: {
     sandboxInstance: SandboxInstance,
   ): Promise<SandboxToolExecutors> => {
     const activeSandboxId = sandboxInstance.sandboxId;
+    const activeEgressId = sandboxInstance.sandboxEgressId;
     const toolkit = await withSandboxSpan(
       "sandbox.bash_tool.init",
       "sandbox.tool.init",
@@ -640,7 +636,7 @@ export function createSandboxSessionManager(options?: {
 
     return {
       bash: async (input) => {
-        await options?.beforeCommand?.(activeSandboxId);
+        await options?.beforeCommand?.(activeEgressId);
         let timedOut = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let commandFinished = false;
@@ -649,7 +645,7 @@ export function createSandboxSessionManager(options?: {
             return;
           }
           commandFinished = true;
-          await options?.afterCommand?.(activeSandboxId);
+          await options?.afterCommand?.(activeEgressId);
         };
         const finishCommandBestEffort = async (): Promise<void> => {
           try {

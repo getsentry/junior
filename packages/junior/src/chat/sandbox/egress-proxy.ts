@@ -40,7 +40,7 @@ const PROXY_ONLY_HEADERS = new Set([
 const AUTH_REJECTION_STATUS = new Set([401, 403]);
 interface ProxyDeps {
   fetch?: typeof fetch;
-  verifyOidc?: (token: string, sandboxId: string) => Promise<unknown>;
+  verifyOidc?: (token: string, egressId: string) => Promise<unknown>;
 }
 
 type UpstreamUrlResult = { ok: true; url: URL } | { ok: false; error: string };
@@ -78,9 +78,9 @@ function normalizePort(value: string | null): string | undefined {
   return port >= 1 && port <= 65_535 ? trimmed : undefined;
 }
 
-function upstreamPath(request: Request, sandboxId: string): string | undefined {
+function upstreamPath(request: Request, egressId: string): string | undefined {
   const url = new URL(request.url);
-  const prefix = `${ROUTE_PREFIX}/${encodeURIComponent(sandboxId)}`;
+  const prefix = `${ROUTE_PREFIX}/${encodeURIComponent(egressId)}`;
   if (url.pathname === prefix) {
     return `/${url.search}`;
   }
@@ -92,7 +92,7 @@ function upstreamPath(request: Request, sandboxId: string): string | undefined {
 
 function buildUpstreamUrl(
   request: Request,
-  sandboxId: string,
+  egressId: string,
 ): UpstreamUrlResult {
   const forwardedHost = request.headers.get(FORWARDED_HOST_HEADER);
   if (!forwardedHost?.trim()) {
@@ -115,7 +115,7 @@ function buildUpstreamUrl(
   if (forwardedPort && !port) {
     return { ok: false, error: "Invalid forwarded port" };
   }
-  const path = upstreamPath(request, sandboxId);
+  const path = upstreamPath(request, egressId);
   if (!path) {
     return { ok: false, error: "Invalid egress route" };
   }
@@ -180,12 +180,12 @@ function responseHeaders(upstream: Response): Headers {
 }
 
 async function credentialLease(
-  sandboxId: string,
+  egressId: string,
   provider: string,
   session: SandboxEgressSession,
 ): Promise<SandboxEgressCredentialLease> {
   const cached = await getSandboxEgressCredentialLease(
-    sandboxId,
+    egressId,
     provider,
     session,
   );
@@ -210,7 +210,7 @@ async function credentialLease(
     expiresAt: lease.expiresAt,
     headerTransforms,
   };
-  await setSandboxEgressCredentialLease(sandboxId, session, cachedLease);
+  await setSandboxEgressCredentialLease(egressId, session, cachedLease);
   return cachedLease;
 }
 
@@ -226,7 +226,7 @@ function hasTransformForHost(
 /** Proxy one Vercel Sandbox firewall egress request through Junior credential activation. */
 export async function proxySandboxEgressRequest(
   request: Request,
-  sandboxId: string,
+  egressId: string,
   deps: ProxyDeps = {},
 ): Promise<Response> {
   const oidcToken = request.headers.get(OIDC_TOKEN_HEADER)?.trim();
@@ -237,7 +237,7 @@ export async function proxySandboxEgressRequest(
   try {
     await (deps.verifyOidc ?? verifyVercelSandboxOidcToken)(
       oidcToken,
-      sandboxId,
+      egressId,
     );
   } catch (error) {
     logWarn(
@@ -252,7 +252,7 @@ export async function proxySandboxEgressRequest(
     return jsonError("Invalid Vercel Sandbox OIDC token", 401);
   }
 
-  const upstreamResult = buildUpstreamUrl(request, sandboxId);
+  const upstreamResult = buildUpstreamUrl(request, egressId);
   if (!upstreamResult.ok) {
     return jsonError(upstreamResult.error, 400);
   }
@@ -263,14 +263,16 @@ export async function proxySandboxEgressRequest(
     return jsonError("No provider owns forwarded host", 403);
   }
 
-  const session = await getSandboxEgressSession(sandboxId);
+  // Vercel OIDC authenticates the forwarded VM session; Junior's egress
+  // session authorizes credential activation for the current requester.
+  const session = await getSandboxEgressSession(egressId);
   if (!session) {
     return jsonError("Sandbox egress session is not authorized", 403);
   }
 
   let lease: SandboxEgressCredentialLease;
   try {
-    lease = await credentialLease(sandboxId, provider, session);
+    lease = await credentialLease(egressId, provider, session);
   } catch (error) {
     if (error instanceof CredentialUnavailableError) {
       return new Response(
@@ -296,7 +298,7 @@ export async function proxySandboxEgressRequest(
     redirect: "manual",
   });
   if (AUTH_REJECTION_STATUS.has(upstream.status)) {
-    await clearSandboxEgressCredentialLease(sandboxId, provider, session);
+    await clearSandboxEgressCredentialLease(egressId, provider, session);
   }
 
   return new Response(upstream.body, {

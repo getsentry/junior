@@ -114,17 +114,17 @@ export function createSandboxExecutor(options?: {
   const traceContext = options?.traceContext ?? {};
   const credentialEgress = options?.credentialEgress;
   const syncSandboxEgressSession = credentialEgress
-    ? async (sandboxId: string): Promise<void> => {
+    ? async (egressId: string): Promise<void> => {
         await upsertSandboxEgressSession({
-          sandboxId,
+          egressId,
           requesterId: credentialEgress.requesterId,
           ttlMs: options?.timeoutMs,
         });
       }
     : undefined;
   const clearSandboxEgressSessionForCommand = credentialEgress
-    ? async (sandboxId: string): Promise<void> => {
-        await clearSandboxEgressSession(sandboxId);
+    ? async (egressId: string): Promise<void> => {
+        await clearSandboxEgressSession(egressId);
       }
     : undefined;
   const sessionManager = createSandboxSessionManager({

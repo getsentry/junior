@@ -72,6 +72,8 @@ function makeSandbox(
   }>,
 ) {
   return {
+    name: `sbx_${snapshotId}`,
+    currentSession: vi.fn(() => ({ sessionId: `sbx_${snapshotId}_session` })),
     runCommand: vi.fn(
       runCommandImpl ??
         (async () => ({

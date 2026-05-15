@@ -15,6 +15,9 @@ import { createSandboxSessionManager } from "@/chat/sandbox/session";
 function makeSandbox() {
   return {
     name: "sbx_adapter_contract",
+    currentSession: vi.fn(() => ({
+      sessionId: "sbx_adapter_contract_session",
+    })),
     mkDir: vi.fn(async () => {}),
     writeFiles: vi.fn(async () => {}),
     readFileToBuffer: vi.fn(async () => Buffer.from("file content")),

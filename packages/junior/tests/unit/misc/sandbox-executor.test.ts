@@ -58,6 +58,7 @@ import { createBashTool } from "bash-tool";
 
 interface MockSandbox {
   name: string;
+  currentSession: ReturnType<typeof vi.fn>;
   fs: {
     readFile: ReturnType<typeof vi.fn>;
     writeFile: ReturnType<typeof vi.fn>;
@@ -83,6 +84,7 @@ function makeSandbox(
 ): MockSandbox {
   return {
     name,
+    currentSession: vi.fn(() => ({ sessionId: `${name}_session` })),
     fs: {
       readFile: vi.fn(async () => ""),
       writeFile: vi.fn(async () => {}),
@@ -142,6 +144,7 @@ async function expectWorkspaceToDelegate(
   sandbox: MockSandbox,
 ): Promise<void> {
   expect(workspace.sandboxId).toBe(sandbox.name);
+  expect(workspace.sandboxEgressId).toBe(`${sandbox.name}_session`);
   const fileBuffer = Buffer.from("workspace file");
   const commandResult = {
     exitCode: 0,
@@ -350,20 +353,33 @@ describe("createSandboxExecutor", () => {
 
     await manager.createSandbox();
     await manager.createSandbox();
-    expect(sandbox.update).not.toHaveBeenCalled();
+    expect(sandbox.update).toHaveBeenCalledTimes(1);
+    expect(sandbox.update).toHaveBeenCalledWith({
+      networkPolicy: {
+        allow: {
+          "*": [],
+          "api.first.example": [
+            {
+              forwardURL:
+                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy_session",
+            },
+          ],
+        },
+      },
+    });
 
     providerDomain = "api.second.example";
     await manager.createSandbox();
 
-    expect(sandbox.update).toHaveBeenCalledTimes(1);
-    expect(sandbox.update).toHaveBeenCalledWith({
+    expect(sandbox.update).toHaveBeenCalledTimes(2);
+    expect(sandbox.update).toHaveBeenLastCalledWith({
       networkPolicy: {
         allow: {
           "*": [],
           "api.second.example": [
             {
               forwardURL:
-                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy",
+                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy_session",
             },
           ],
         },
@@ -562,8 +578,8 @@ describe("createSandboxExecutor", () => {
 
     await bash({ command: "echo ok" });
 
-    expect(beforeCommand).toHaveBeenCalledWith("sbx_command_hooks");
-    expect(afterCommand).toHaveBeenCalledWith("sbx_command_hooks");
+    expect(beforeCommand).toHaveBeenCalledWith("sbx_command_hooks_session");
+    expect(afterCommand).toHaveBeenCalledWith("sbx_command_hooks_session");
     expect(beforeCommand.mock.invocationCallOrder[0]).toBeLessThan(
       sandbox.runCommand.mock.invocationCallOrder[0] as number,
     );
@@ -595,7 +611,9 @@ describe("createSandboxExecutor", () => {
 
     await expect(bash({ command: "echo ok" })).rejects.toThrow("env failed");
 
-    expect(afterCommand).toHaveBeenCalledWith("sbx_command_env_failure");
+    expect(afterCommand).toHaveBeenCalledWith(
+      "sbx_command_env_failure_session",
+    );
     expect(sandbox.runCommand).not.toHaveBeenCalled();
   });
 
@@ -1168,6 +1186,10 @@ describe("createSandboxExecutor", () => {
     expect(secondCreate.name).not.toBe(firstCreate.name);
     expect(createNetworkPolicy).toHaveBeenNthCalledWith(1, firstCreate.name);
     expect(createNetworkPolicy).toHaveBeenNthCalledWith(2, secondCreate.name);
+    expect(createNetworkPolicy).toHaveBeenNthCalledWith(
+      3,
+      "sbx_snapshot_policy_ready_session",
+    );
     expect(secondCreate.networkPolicy).toEqual({
       allow: {
         "*": [],
@@ -1176,6 +1198,19 @@ describe("createSandboxExecutor", () => {
             forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${secondCreate.name}`,
           },
         ],
+      },
+    });
+    expect(snapshotSandbox.update).toHaveBeenCalledWith({
+      networkPolicy: {
+        allow: {
+          "*": [],
+          "api.example.com": [
+            {
+              forwardURL:
+                "https://junior.example.com/api/internal/sandbox-egress/sbx_snapshot_policy_ready_session",
+            },
+          ],
+        },
       },
     });
   });

@@ -4,7 +4,6 @@ import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import type { PluginManifest } from "@/chat/plugins/types";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
-import { requireVercelSandboxOidcConfig } from "@/chat/sandbox/egress-oidc";
 
 const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
 
@@ -43,33 +42,34 @@ export function resolveSandboxEgressProviderForHost(
   )?.provider;
 }
 
-function proxyUrl(sandboxId: string): string | undefined {
+function proxyUrl(egressId: string): string | undefined {
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
     return undefined;
   }
   const url = new URL(
-    `${SANDBOX_EGRESS_PROXY_PATH}/${encodeURIComponent(sandboxId)}`,
+    `${SANDBOX_EGRESS_PROXY_PATH}/${encodeURIComponent(egressId)}`,
     baseUrl,
   );
   return url.toString();
 }
 
-/** Build the Vercel Sandbox network policy that forwards credentialed provider domains to Junior. */
+/** Build the forwarding policy that keeps provider credentials outside the sandbox. */
 export function buildSandboxEgressNetworkPolicy(
-  sandboxId: string,
+  egressId: string,
 ): NetworkPolicy | undefined {
   const entries = providerEntries();
   if (entries.length === 0) {
     return undefined;
   }
-  const forwardURL = proxyUrl(sandboxId);
+  const forwardURL = proxyUrl(egressId);
   if (!forwardURL) {
+    // Credential placeholders must not reach real provider domains. If Junior
+    // cannot receive forwarded requests, fail setup before running commands.
     throw new Error(
       "Cannot determine base URL for sandbox credential egress (set JUNIOR_BASE_URL or deploy to Vercel)",
     );
   }
-  requireVercelSandboxOidcConfig();
 
   const allow: Record<string, NetworkPolicyRule[]> = {
     "*": [],
