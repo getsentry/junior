@@ -10,6 +10,7 @@ import {
   getMcpAwareErrorType,
   McpToolError,
 } from "@/chat/mcp/errors";
+import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { SlackActionError } from "@/chat/slack/client";
 
 function getToolErrorAttributes(
@@ -60,8 +61,11 @@ export function handleToolExecutionError(
     );
   }
 
-  // MCP tool errors are expected outcomes — log as warning, not Sentry exception.
-  if (!(error instanceof McpToolError)) {
+  // MCP and plugin credential errors are expected outcomes — log as warnings, not Sentry exceptions.
+  if (
+    !(error instanceof McpToolError) &&
+    !(error instanceof PluginCredentialFailureError)
+  ) {
     logException(
       error,
       "agent_tool_call_failed",
