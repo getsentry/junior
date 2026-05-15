@@ -95,3 +95,4 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 - Do not overwrite issue fields unless explicitly requested. Prefer partial updates over full body replacement.
 - For `bug` issues, do not present a fix as definitive unless root-cause evidence is explicit.
 - If repository or installation access is missing, stop and return a concrete remediation message.
+- GitHub App auth is host-managed; do not ask the user to reconnect a GitHub account.
