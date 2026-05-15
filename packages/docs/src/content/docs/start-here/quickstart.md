@@ -13,6 +13,7 @@ related:
 - Node.js 20+
 - pnpm
 - A Slack app with signing secret + bot token
+- (Optional) A GitHub App for inbound mention webhooks
 - Redis URL
 - A Vercel account
 
@@ -49,6 +50,14 @@ Required:
 - `SLACK_BOT_TOKEN`
 - `REDIS_URL`
 
+Optional for GitHub mention webhook ingress (V1):
+
+- `GITHUB_APP_ID`
+- `GITHUB_APP_PRIVATE_KEY`
+- `GITHUB_INSTALLATION_ID`
+- `GITHUB_WEBHOOK_SECRET`
+- `GITHUB_BOT_USERNAME`
+
 Recommended:
 
 - `JUNIOR_BOT_NAME`
@@ -73,6 +82,7 @@ Check the health route first, then verify a real Slack thread.
 - `GET http://localhost:3000/health` returns JSON with `status: "ok"`.
 - Set your Slack Event Subscriptions and Interactivity URLs to `http://<your-tunnel-or-dev-host>/api/webhooks/slack`.
 - Mention the bot in Slack and confirm it replies in the same thread.
+- If GitHub ingress is enabled, set your GitHub App webhook URL to `http://<your-tunnel-or-dev-host>/api/webhooks/github`, then post an explicit `@<bot>` mention in an issue/PR/review comment and confirm one final reply comment.
 
 ## Add plugins
 
@@ -184,6 +194,7 @@ Optional:
 
 - `JUNIOR_BASE_URL`
 - `AI_GATEWAY_API_KEY`
+- GitHub mention webhook env vars listed earlier (only if GitHub ingress is enabled)
 
 ### Configure Slack request URL
 
@@ -193,10 +204,30 @@ Set Event Subscriptions and Interactivity URLs to:
 https://<your-domain>/api/webhooks/slack
 ```
 
+### Configure GitHub webhook URL (optional, mention-only V1)
+
+Set your GitHub App webhook URL to:
+
+```text
+https://<your-domain>/api/webhooks/github
+```
+
+Subscribe to:
+
+- `issue_comment`
+- `pull_request_review_comment`
+
+V1 behavior:
+
+- Junior runs only on explicit `@<bot>` mentions in those comment surfaces.
+- Untagged comments are ignored.
+- Delivery is one final GitHub comment reply (no streaming/status surface).
+
 ### Verify in production
 
 - `GET https://<your-domain>/health` succeeds.
 - A Slack mention produces a thread reply.
+- If GitHub ingress is enabled, an explicit GitHub mention in a supported comment surface produces one final reply comment.
 - Queue callback logs show successful processing.
 
 ## Common failures

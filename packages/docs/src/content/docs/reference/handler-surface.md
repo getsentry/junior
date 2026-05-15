@@ -24,13 +24,16 @@ Handled `GET` routes:
 Handled `POST` routes:
 
 - `/api/internal/turn-resume`
-- `/api/webhooks/:platform` (Slack path is `/api/webhooks/slack`)
+- `/api/webhooks/:platform`
+  - Slack: `/api/webhooks/slack`
+  - GitHub mention webhook (V1): `/api/webhooks/github`
 
 ## Expected behavior
 
 - Unknown routes return `404`.
 - Queue callback validates queue topic and processes thread work.
 - Webhook handler logs and surfaces non-success behavior for operators.
+- GitHub webhook entry is mention-only in V1: explicit `@<bot>` tags in issue/PR/review comments trigger one turn; untagged comments are ignored.
 
 ## Next step
 

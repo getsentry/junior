@@ -25,6 +25,20 @@ related:
 | `JUNIOR_BASE_URL`                           | No       | Canonical base URL for callback/auth URL generation.                                                                                                 |
 | `AI_GATEWAY_API_KEY`                        | No       | AI gateway auth if used in your setup.                                                                                                               |
 
+## GitHub mention webhook (optional, V1)
+
+Enable this when you want inbound GitHub mentions to run Junior through `/api/webhooks/github`.
+
+| Variable                 | Required | Purpose                                                                |
+| ------------------------ | -------- | ---------------------------------------------------------------------- |
+| `GITHUB_APP_ID`          | Yes      | GitHub App identity.                                                   |
+| `GITHUB_APP_PRIVATE_KEY` | Yes      | GitHub App signing key used for GitHub API calls.                      |
+| `GITHUB_INSTALLATION_ID` | Yes      | Initial single-installation target for V1 mention handling.            |
+| `GITHUB_WEBHOOK_SECRET`  | Yes      | Verifies GitHub webhook signatures (`x-hub-signature-256`).            |
+| `GITHUB_BOT_USERNAME`    | Yes      | Mention handle Junior listens for in issue/PR/review comment webhooks. |
+
+V1 behavior is mention-only. Untagged GitHub comments do not trigger a turn.
+
 ## Build-time snapshot warmup
 
 If your build command runs `junior snapshot create`:
@@ -82,6 +96,7 @@ Keys must be registered plugin config keys. Channel-scoped overrides (`jr-rpc co
 - Validate required variables exist in deployment environment.
 - Redeploy after variable changes.
 - Run one end-to-end Slack thread action per enabled integration.
+- If GitHub webhook mode is enabled, send one explicit `@<bot>` mention in a supported GitHub comment and confirm one final comment reply.
 
 ## Next step
 
