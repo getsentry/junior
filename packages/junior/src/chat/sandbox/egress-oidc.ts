@@ -83,30 +83,37 @@ interface VercelSandboxOidcConfig {
   teamId?: string;
 }
 
-/** Require the verifier inputs before enabling host-brokered sandbox egress. */
-export function requireVercelSandboxOidcConfig(): VercelSandboxOidcConfig {
-  const audience = process.env.VERCEL_OIDC_AUDIENCE?.trim();
-  if (!audience) {
-    throw new Error("VERCEL_OIDC_AUDIENCE is required for sandbox egress OIDC");
-  }
+type VercelSandboxOidcClaimConfig = Omit<VercelSandboxOidcConfig, "audience">;
+
+function requireVercelSandboxOidcClaimConfig(): VercelSandboxOidcClaimConfig {
   const expectedTeamId = process.env.VERCEL_TEAM_ID?.trim();
   const expectedProjectId = process.env.VERCEL_PROJECT_ID?.trim();
   if (!expectedProjectId) {
     throw new Error("VERCEL_PROJECT_ID is required for sandbox egress OIDC");
   }
   return {
-    audience,
     projectId: expectedProjectId,
     ...(expectedTeamId ? { teamId: expectedTeamId } : {}),
   };
 }
 
-/** Validate deployment and sandbox binding claims in a verified Vercel Sandbox OIDC payload. */
-export function validateVercelSandboxOidcClaims(
+/** Require the verifier inputs before enabling host-brokered sandbox egress. */
+export function requireVercelSandboxOidcConfig(): VercelSandboxOidcConfig {
+  const audience = process.env.VERCEL_OIDC_AUDIENCE?.trim();
+  if (!audience) {
+    throw new Error("VERCEL_OIDC_AUDIENCE is required for sandbox egress OIDC");
+  }
+  return {
+    audience,
+    ...requireVercelSandboxOidcClaimConfig(),
+  };
+}
+
+function validateClaimsWithConfig(
   payload: JWTPayload,
   sandboxId: string,
+  expected: VercelSandboxOidcClaimConfig,
 ): void {
-  const expected = requireVercelSandboxOidcConfig();
   if (
     expected.teamId &&
     (typeof payload.owner_id !== "string" ||
@@ -125,6 +132,18 @@ export function validateVercelSandboxOidcClaims(
   }
 }
 
+/** Validate deployment and sandbox binding claims in a verified Vercel Sandbox OIDC payload. */
+export function validateVercelSandboxOidcClaims(
+  payload: JWTPayload,
+  sandboxId: string,
+): void {
+  validateClaimsWithConfig(
+    payload,
+    sandboxId,
+    requireVercelSandboxOidcClaimConfig(),
+  );
+}
+
 /** Verify the Vercel-issued OIDC token attached to a sandbox firewall proxy request. */
 export async function verifyVercelSandboxOidcToken(
   token: string,
@@ -134,12 +153,12 @@ export async function verifyVercelSandboxOidcToken(
   if (typeof unverified.iss !== "string") {
     throw new Error("Vercel OIDC token did not include an issuer");
   }
-  const { audience } = requireVercelSandboxOidcConfig();
+  const expected = requireVercelSandboxOidcConfig();
   const jwks = await getJwks(unverified.iss);
   const verified = await jwtVerify(token, jwks, {
     issuer: unverified.iss,
-    audience,
+    audience: expected.audience,
   });
-  validateVercelSandboxOidcClaims(verified.payload, sandboxId);
+  validateClaimsWithConfig(verified.payload, sandboxId, expected);
   return verified.payload;
 }

@@ -656,7 +656,6 @@ describe("sandbox egress proxy", () => {
   });
 
   it("requires OIDC claims to match the Vercel project and sandbox", () => {
-    process.env.VERCEL_OIDC_AUDIENCE = "https://vercel.com/acme";
     process.env.VERCEL_PROJECT_ID = "prj_123";
     process.env.VERCEL_TEAM_ID = "team_123";
 
