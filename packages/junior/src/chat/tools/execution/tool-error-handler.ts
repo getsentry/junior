@@ -1,5 +1,6 @@
 import {
   logException,
+  logInfo,
   logWarn,
   setSpanAttributes,
   type LogContext,
@@ -43,7 +44,29 @@ export function handleToolExecutionError(
   const errorMessage = getMcpAwareErrorMessage(error);
   setSpanAttributes({
     "error.type": errorType,
+    ...(error instanceof PluginCredentialFailureError
+      ? { "app.credential.provider": error.provider }
+      : {}),
   });
+
+  if (error instanceof PluginCredentialFailureError) {
+    if (shouldTrace) {
+      logInfo(
+        "plugin_credential_rejected",
+        traceContext,
+        {
+          "app.credential.provider": error.provider,
+          "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+          "gen_ai.operation.name": "execute_tool",
+          "gen_ai.tool.name": toolName,
+          ...(toolCallId ? { "gen_ai.tool.call.id": toolCallId } : {}),
+          "error.type": errorType,
+        },
+        "Plugin credentials were rejected during tool execution",
+      );
+    }
+    throw error;
+  }
 
   if (shouldTrace) {
     logWarn(
@@ -61,11 +84,8 @@ export function handleToolExecutionError(
     );
   }
 
-  // MCP and plugin credential errors are expected outcomes — log as warnings, not Sentry exceptions.
-  if (
-    !(error instanceof McpToolError) &&
-    !(error instanceof PluginCredentialFailureError)
-  ) {
+  // MCP tool errors are expected outcomes — log as warnings, not Sentry exceptions.
+  if (!(error instanceof McpToolError)) {
     logException(
       error,
       "agent_tool_call_failed",
