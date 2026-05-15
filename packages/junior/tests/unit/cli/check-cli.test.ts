@@ -121,6 +121,116 @@ describe("check cli", () => {
     ]);
   });
 
+  it("validates installed packaged plugin manifests and skills", async () => {
+    const repoRoot = makeTempDir("junior-validate-packaged-plugin-");
+    writeFile(
+      path.join(repoRoot, "package.json"),
+      JSON.stringify(
+        {
+          dependencies: {
+            "@acme/junior-demo": "1.0.0",
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    const packageRoot = path.join(
+      repoRoot,
+      "node_modules",
+      "@acme",
+      "junior-demo",
+    );
+    writeFile(
+      path.join(packageRoot, "package.json"),
+      JSON.stringify({ name: "@acme/junior-demo", version: "1.0.0" }),
+    );
+    writeFile(
+      path.join(packageRoot, "plugin.yaml"),
+      [
+        "name: demo",
+        "description: Demo packaged plugin",
+        "capabilities:",
+        "  - issues.read",
+        "",
+      ].join("\n"),
+    );
+    writeFile(
+      path.join(packageRoot, "skills", "demo-helper", "SKILL.md"),
+      [
+        "---",
+        "name: demo-helper",
+        "description: Help with packaged demo tasks.",
+        "---",
+        "",
+        "Use this skill.",
+        "",
+      ].join("\n"),
+    );
+
+    const lines: string[] = [];
+    await runCheck(repoRoot, {
+      info: (line) => lines.push(line),
+      warn: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+
+    expect(lines).toEqual([
+      `Checking ${repoRoot}`,
+      "✓ packaged plugin demo (@acme/junior-demo)",
+      "  └─ ✓ skill demo-helper",
+      "✓ Validation passed (1 plugin manifest, 1 skill directory checked).",
+    ]);
+  });
+
+  it("warns when official plugin package versions differ from core", async () => {
+    const repoRoot = makeTempDir("junior-validate-version-skew-");
+    writeFile(
+      path.join(repoRoot, "package.json"),
+      JSON.stringify(
+        {
+          dependencies: {
+            "@sentry/junior": "^0.43.0",
+            "@sentry/junior-github": "^0.42.0",
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    writeFile(
+      path.join(repoRoot, "node_modules", "@sentry", "junior", "package.json"),
+      JSON.stringify({ name: "@sentry/junior", version: "0.43.0" }),
+    );
+    writeFile(
+      path.join(
+        repoRoot,
+        "node_modules",
+        "@sentry",
+        "junior-github",
+        "package.json",
+      ),
+      JSON.stringify({ name: "@sentry/junior-github", version: "0.42.0" }),
+    );
+    fs.mkdirSync(
+      path.join(repoRoot, "node_modules", "@sentry", "junior-github", "skills"),
+      { recursive: true },
+    );
+
+    const lines: string[] = [];
+    await runCheck(repoRoot, {
+      info: (line) => lines.push(line),
+      warn: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+
+    expect(lines).toEqual([
+      `Checking ${repoRoot}`,
+      `⚠ warning: ${path.join(repoRoot, "package.json")}: @sentry/junior-github version 0.42.0 does not match @sentry/junior version 0.43.0`,
+      "✓ Validation passed (0 plugin manifests, 0 skill directories checked).",
+    ]);
+  });
+
   it("skips app file validation for unrelated app directories", async () => {
     const repoRoot = makeTempDir("junior-validate-empty-app-");
     fs.mkdirSync(path.join(repoRoot, "app"), { recursive: true });

@@ -151,11 +151,14 @@ The scaffold includes a build script that runs snapshot warmup:
 ```json title="package.json"
 {
   "scripts": {
+    "check": "junior check",
     "dev": "vite dev",
     "build": "junior snapshot create && vite build"
   }
 }
 ```
+
+Run `pnpm check` after updating Junior or plugin packages to validate local app files and installed plugin content.
 
 ### Configure production environment
 

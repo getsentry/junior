@@ -49,6 +49,7 @@ describe("init cli", () => {
     expect(pkg.devDependencies.vite).toBeDefined();
     expect(pkg.devDependencies.vercel).toBeUndefined();
     expect(pkg.scripts.dev).toBe("vite dev");
+    expect(pkg.scripts.check).toBe("junior check");
     expect(pkg.scripts.build).toBe("junior snapshot create && vite build");
   });
 

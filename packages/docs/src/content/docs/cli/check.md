@@ -11,7 +11,7 @@ related:
   - /cli/snapshot-create/
 ---
 
-`junior check` validates the same `app/` content layout that the runtime loads. It ignores legacy top-level `plugins/` and `skills/` directories, and it only runs app-file checks when the target already looks like a Junior app.
+`junior check` validates local app content and installed plugin package content before build or deploy. It ignores legacy top-level `plugins/` and `skills/` directories, and it only runs app-file checks when the target already looks like a Junior app.
 
 ## Usage
 
@@ -39,6 +39,12 @@ The command accepts zero or one directory argument.
 - `app/plugins/<plugin>/skills/<skill>/SKILL.md`
 - `app/skills/<skill>/SKILL.md`
 
+It also checks installed package dependencies that contain Junior plugin content:
+
+- `node_modules/<package>/plugin.yaml`
+- `node_modules/<package>/plugins/<plugin>/plugin.yaml`
+- package `skills/` directories
+
 For each file it validates:
 
 - Plugin manifest schema
@@ -46,6 +52,8 @@ For each file it validates:
 - Skill name matches the containing directory
 - Duplicate plugin names
 - Duplicate skill names across app and plugin skill roots
+
+For official `@sentry/junior-*` plugin packages, the command warns when the installed package version differs from `@sentry/junior`. This catches partial updates without requiring migration-specific checks.
 
 When the target already contains Junior app markers such as `app/SOUL.md`, `app/WORLD.md`, `app/DESCRIPTION.md`, `app/skills/`, or `app/plugins/`, the command also checks the app-root Markdown files:
 

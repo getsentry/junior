@@ -27,9 +27,25 @@ interface SkillValidationResult {
 interface PluginValidationResult {
   pluginDir: string;
   manifestPath: string;
+  packageName?: string;
   manifest?: PluginManifest;
   errors: string[];
   skillResults: SkillValidationResult[];
+}
+
+interface PackagedPluginDirectory {
+  pluginDir: string;
+  packageName: string;
+}
+
+interface PackagedSkillRoot {
+  root: string;
+  packageName: string;
+}
+
+interface DeclaredPackage {
+  name: string;
+  spec: string;
 }
 
 type Status = "ok" | "warn" | "error";
@@ -85,6 +101,119 @@ async function pathIsFile(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function readJsonFile<T>(targetPath: string): Promise<T | undefined> {
+  try {
+    return JSON.parse(await fs.readFile(targetPath, "utf8")) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+interface PackageJson {
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  version?: string;
+}
+
+async function readRootPackageJson(
+  rootDir: string,
+): Promise<PackageJson | undefined> {
+  return await readJsonFile<PackageJson>(path.join(rootDir, "package.json"));
+}
+
+function packageInstallDir(rootDir: string, packageName: string): string {
+  return path.join(rootDir, "node_modules", ...packageName.split("/"));
+}
+
+function declaredPackages(pkg: PackageJson | undefined): DeclaredPackage[] {
+  if (!pkg) {
+    return [];
+  }
+  const packages = new Map<string, string>();
+  for (const deps of [
+    pkg.dependencies,
+    pkg.optionalDependencies,
+    pkg.devDependencies,
+  ]) {
+    for (const [name, spec] of Object.entries(deps ?? {})) {
+      if (!packages.has(name)) {
+        packages.set(name, spec);
+      }
+    }
+  }
+  return [...packages.entries()]
+    .map(([name, spec]) => ({ name, spec }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+async function readInstalledPackageVersion(
+  rootDir: string,
+  packageName: string,
+): Promise<string | undefined> {
+  return (
+    await readJsonFile<PackageJson>(
+      path.join(packageInstallDir(rootDir, packageName), "package.json"),
+    )
+  )?.version;
+}
+
+async function packageHasPluginContent(
+  rootDir: string,
+  packageName: string,
+): Promise<boolean> {
+  const packageDir = packageInstallDir(rootDir, packageName);
+  return (
+    (await pathIsFile(path.join(packageDir, "plugin.yaml"))) ||
+    (await pathIsDirectory(path.join(packageDir, "plugins"))) ||
+    (await pathIsDirectory(path.join(packageDir, "skills")))
+  );
+}
+
+function comparableVersion(version: string | undefined): string | undefined {
+  return version?.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/)?.[0];
+}
+
+async function collectPackageWarnings(
+  rootDir: string,
+  packages: DeclaredPackage[],
+): Promise<string[]> {
+  const warnings: string[] = [];
+  const packageSpecByName = new Map(
+    packages.map((declaredPackage) => [
+      declaredPackage.name,
+      declaredPackage.spec,
+    ]),
+  );
+  const coreVersion = comparableVersion(
+    (await readInstalledPackageVersion(rootDir, "@sentry/junior")) ??
+      packageSpecByName.get("@sentry/junior"),
+  );
+  if (!coreVersion) {
+    return warnings;
+  }
+
+  for (const declaredPackage of packages) {
+    if (!declaredPackage.name.startsWith("@sentry/junior-")) {
+      continue;
+    }
+    if (!(await packageHasPluginContent(rootDir, declaredPackage.name))) {
+      continue;
+    }
+    const pluginVersion = comparableVersion(
+      (await readInstalledPackageVersion(rootDir, declaredPackage.name)) ??
+        declaredPackage.spec,
+    );
+    if (pluginVersion && pluginVersion !== coreVersion) {
+      warnings.push(
+        `${path.join(rootDir, "package.json")}: ${declaredPackage.name} version ${pluginVersion} does not match @sentry/junior version ${coreVersion}`,
+      );
+    }
+  }
+
+  return warnings;
 }
 
 async function validateSkillDirectory(
@@ -214,6 +343,76 @@ async function collectPluginDirectories(rootDir: string): Promise<string[]> {
   return pluginDirs.sort((left, right) => left.localeCompare(right));
 }
 
+async function collectPackagedContent(
+  rootDir: string,
+  packages: DeclaredPackage[],
+): Promise<{
+  pluginDirs: PackagedPluginDirectory[];
+  skillRoots: PackagedSkillRoot[];
+}> {
+  const pluginDirs: PackagedPluginDirectory[] = [];
+  const skillRoots: PackagedSkillRoot[] = [];
+
+  for (const declaredPackage of packages) {
+    const packageDir = packageInstallDir(rootDir, declaredPackage.name);
+    if (!(await pathIsDirectory(packageDir))) {
+      continue;
+    }
+
+    const rootManifestPath = path.join(packageDir, "plugin.yaml");
+    const hasRootManifest = await pathIsFile(rootManifestPath);
+    const packageSkillsRoot = path.join(packageDir, "skills");
+
+    if (hasRootManifest) {
+      pluginDirs.push({
+        pluginDir: packageDir,
+        packageName: declaredPackage.name,
+      });
+    } else if (await pathIsDirectory(packageSkillsRoot)) {
+      skillRoots.push({
+        root: packageSkillsRoot,
+        packageName: declaredPackage.name,
+      });
+    }
+
+    const nestedPluginsRoot = path.join(packageDir, "plugins");
+    let nestedEntries;
+    try {
+      nestedEntries = await fs.readdir(nestedPluginsRoot, {
+        withFileTypes: true,
+      });
+    } catch {
+      continue;
+    }
+
+    for (const entry of nestedEntries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const pluginDir = path.join(nestedPluginsRoot, entry.name);
+      if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
+        pluginDirs.push({
+          pluginDir,
+          packageName: declaredPackage.name,
+        });
+      }
+    }
+  }
+
+  return {
+    pluginDirs: pluginDirs.sort((left, right) =>
+      `${left.packageName}:${left.pluginDir}`.localeCompare(
+        `${right.packageName}:${right.pluginDir}`,
+      ),
+    ),
+    skillRoots: skillRoots.sort((left, right) =>
+      `${left.packageName}:${left.root}`.localeCompare(
+        `${right.packageName}:${right.root}`,
+      ),
+    ),
+  };
+}
+
 async function collectSkillDirectories(root: string): Promise<string[]> {
   const skillDirs: string[] = [];
 
@@ -308,8 +507,11 @@ function reportPluginResult(
     skillWarningCount,
   );
   const pluginName = result.manifest?.name ?? path.basename(result.pluginDir);
+  const label = result.packageName
+    ? `packaged plugin ${pluginName} (${result.packageName})`
+    : `plugin ${pluginName}`;
 
-  io.info(formatHeading(status, `plugin ${pluginName}`));
+  io.info(formatHeading(status, label));
   for (const [index, skillResult] of result.skillResults.entries()) {
     reportSkillResult(
       skillResult,
@@ -320,7 +522,8 @@ function reportPluginResult(
   }
 }
 
-function reportAppSkills(
+function reportSkillGroup(
+  label: string,
   skillResults: SkillValidationResult[],
   io: ValidationIo,
 ): void {
@@ -334,10 +537,17 @@ function reportAppSkills(
   );
   const status = formatStatus(errorCount, warningCount);
 
-  io.info(formatHeading(status, "app skills"));
+  io.info(formatHeading(status, label));
   for (const [index, skillResult] of skillResults.entries()) {
     reportSkillResult(skillResult, io, "  ", index === skillResults.length - 1);
   }
+}
+
+function reportAppSkills(
+  skillResults: SkillValidationResult[],
+  io: ValidationIo,
+): void {
+  reportSkillGroup("app skills", skillResults, io);
 }
 
 interface AppFileValidationResult {
@@ -406,38 +616,82 @@ export async function runCheck(
     );
   }
 
-  const pluginDirs = await collectPluginDirectories(resolvedRoot);
+  const rootPackageJson = await readRootPackageJson(resolvedRoot);
+  const packages = declaredPackages(rootPackageJson);
+  const packageWarnings = await collectPackageWarnings(resolvedRoot, packages);
+  const packagedContent = await collectPackagedContent(resolvedRoot, packages);
+  const appPluginDirs = await collectPluginDirectories(resolvedRoot);
+  const packagedPluginDirs = packagedContent.pluginDirs;
+  const pluginDirs = [
+    ...appPluginDirs.map((pluginDir) => ({
+      pluginDir,
+      packageName: undefined,
+    })),
+    ...packagedPluginDirs,
+  ];
   const appSkillsRoot = contentRoot(resolvedRoot, "skills");
   const appSkillDirs = await collectSkillDirectories(appSkillsRoot);
   const pluginSkillDirs = new Map<string, string[]>();
-  for (const pluginDir of pluginDirs) {
+  for (const { pluginDir } of pluginDirs) {
     pluginSkillDirs.set(
       pluginDir,
       await collectSkillDirectories(path.join(pluginDir, "skills")),
     );
   }
+  const packagedSkillDirsByPackage = new Map<string, string[]>();
+  for (const skillRoot of packagedContent.skillRoots) {
+    packagedSkillDirsByPackage.set(
+      skillRoot.packageName,
+      await collectSkillDirectories(skillRoot.root),
+    );
+  }
+  const packagedStandaloneSkillDirs = [
+    ...packagedSkillDirsByPackage.values(),
+  ].flat();
 
-  const skillDirs = [
+  const appAndLocalPluginSkillDirs = [
     ...appSkillDirs,
-    ...pluginDirs.flatMap((pluginDir) => pluginSkillDirs.get(pluginDir) ?? []),
+    ...appPluginDirs.flatMap(
+      (pluginDir) => pluginSkillDirs.get(pluginDir) ?? [],
+    ),
   ].sort((left, right) => left.localeCompare(right));
+  const packagedSkillDirs = [
+    ...packagedPluginDirs.flatMap(
+      ({ pluginDir }) => pluginSkillDirs.get(pluginDir) ?? [],
+    ),
+    ...packagedStandaloneSkillDirs,
+  ].sort((left, right) => left.localeCompare(right));
+  const skillDirs = [...appAndLocalPluginSkillDirs, ...packagedSkillDirs].sort(
+    (left, right) => left.localeCompare(right),
+  );
   const duplicateSkillNames = new Map<string, string>();
   const duplicatePluginNames = new Map<string, string>();
   const duplicateProviderDomains = new Map<string, string>();
+  const duplicatePackagedSkillNames = new Map<string, string>();
+  const duplicatePackagedPluginNames = new Map<string, string>();
+  const duplicatePackagedProviderDomains = new Map<string, string>();
   const warnings: string[] = [];
   const errors: string[] = [];
   const pluginResults: PluginValidationResult[] = [];
   const skillResultsByDir = new Map<string, SkillValidationResult>();
+  warnings.push(...packageWarnings);
 
-  for (const pluginDir of pluginDirs) {
+  for (const { pluginDir, packageName } of pluginDirs) {
+    const pluginNameMap = packageName
+      ? duplicatePackagedPluginNames
+      : duplicatePluginNames;
+    const providerDomainMap = packageName
+      ? duplicatePackagedProviderDomains
+      : duplicateProviderDomains;
     const result = await validatePluginDirectory(
       pluginDir,
-      duplicatePluginNames,
-      duplicateProviderDomains,
+      pluginNameMap,
+      providerDomainMap,
     );
     pluginResults.push({
       pluginDir,
       manifestPath: result.manifestPath,
+      ...(packageName ? { packageName } : {}),
       ...(result.manifest ? { manifest: result.manifest } : {}),
       errors: result.errors,
       skillResults: [],
@@ -445,8 +699,17 @@ export async function runCheck(
     errors.push(...result.errors);
   }
 
-  for (const skillDir of skillDirs) {
+  for (const skillDir of appAndLocalPluginSkillDirs) {
     const result = await validateSkillDirectory(skillDir, duplicateSkillNames);
+    skillResultsByDir.set(skillDir, result);
+    warnings.push(...result.warnings);
+    errors.push(...result.errors);
+  }
+  for (const skillDir of packagedSkillDirs) {
+    const result = await validateSkillDirectory(
+      skillDir,
+      duplicatePackagedSkillNames,
+    );
     skillResultsByDir.set(skillDir, result);
     warnings.push(...result.warnings);
     errors.push(...result.errors);
@@ -463,6 +726,21 @@ export async function runCheck(
   const appSkillResults = appSkillDirs
     .map((skillDir) => skillResultsByDir.get(skillDir))
     .filter((result): result is SkillValidationResult => Boolean(result));
+  const packagedStandaloneSkillResultsByPackage = new Map<
+    string,
+    SkillValidationResult[]
+  >();
+  for (const [packageName, packageSkillDirs] of packagedSkillDirsByPackage) {
+    const packageSkillResults = packageSkillDirs
+      .map((skillDir) => skillResultsByDir.get(skillDir))
+      .filter((result): result is SkillValidationResult => Boolean(result));
+    if (packageSkillResults.length > 0) {
+      packagedStandaloneSkillResultsByPackage.set(
+        packageName,
+        packageSkillResults,
+      );
+    }
+  }
 
   const appDir = path.resolve(resolvedRoot, "app");
   let appFileResult: AppFileValidationResult = {
@@ -494,6 +772,16 @@ export async function runCheck(
 
   for (const pluginResult of pluginResults) {
     reportPluginResult(pluginResult, io);
+  }
+  for (const [
+    packageName,
+    packageSkillResults,
+  ] of packagedStandaloneSkillResultsByPackage) {
+    reportSkillGroup(
+      `packaged skills (${packageName})`,
+      packageSkillResults,
+      io,
+    );
   }
   if (appSkillResults.length > 0) {
     reportAppSkills(appSkillResults, io);

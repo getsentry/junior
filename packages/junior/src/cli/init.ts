@@ -86,6 +86,7 @@ export async function runInit(
     type: "module",
     scripts: {
       dev: "vite dev",
+      check: "junior check",
       build: "junior snapshot create && vite build",
     },
     dependencies: {
