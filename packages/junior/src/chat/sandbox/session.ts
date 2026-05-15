@@ -613,7 +613,6 @@ export function createSandboxSessionManager(options?: {
     sandboxInstance: SandboxInstance,
   ): Promise<SandboxToolExecutors> => {
     const activeSandboxId = sandboxInstance.sandboxId;
-    const activeEgressId = sandboxInstance.sandboxEgressId;
     const toolkit = await withSandboxSpan(
       "sandbox.bash_tool.init",
       "sandbox.tool.init",
@@ -636,7 +635,8 @@ export function createSandboxSessionManager(options?: {
 
     return {
       bash: async (input) => {
-        await options?.beforeCommand?.(activeEgressId);
+        const commandEgressId = sandboxInstance.sandboxEgressId;
+        await options?.beforeCommand?.(commandEgressId);
         let timedOut = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let commandFinished = false;
@@ -645,7 +645,7 @@ export function createSandboxSessionManager(options?: {
             return;
           }
           commandFinished = true;
-          await options?.afterCommand?.(activeEgressId);
+          await options?.afterCommand?.(commandEgressId);
         };
         const finishCommandBestEffort = async (): Promise<void> => {
           try {

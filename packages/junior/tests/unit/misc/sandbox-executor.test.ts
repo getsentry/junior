@@ -368,7 +368,9 @@ describe("createSandboxExecutor", () => {
       },
     });
 
-    providerDomain = "api.second.example";
+    sandbox.currentSession.mockReturnValue({
+      sessionId: "sbx_cached_policy_resumed_session",
+    });
     await manager.createSandbox();
 
     expect(sandbox.update).toHaveBeenCalledTimes(2);
@@ -376,10 +378,28 @@ describe("createSandboxExecutor", () => {
       networkPolicy: {
         allow: {
           "*": [],
+          "api.first.example": [
+            {
+              forwardURL:
+                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy_resumed_session",
+            },
+          ],
+        },
+      },
+    });
+
+    providerDomain = "api.second.example";
+    await manager.createSandbox();
+
+    expect(sandbox.update).toHaveBeenCalledTimes(3);
+    expect(sandbox.update).toHaveBeenLastCalledWith({
+      networkPolicy: {
+        allow: {
+          "*": [],
           "api.second.example": [
             {
               forwardURL:
-                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy_session",
+                "https://junior.example.com/api/internal/sandbox-egress/sbx_cached_policy_resumed_session",
             },
           ],
         },
@@ -576,10 +596,17 @@ describe("createSandboxExecutor", () => {
     });
     const bash = (await manager.ensureToolExecutors()).bash;
 
+    sandbox.currentSession.mockReturnValue({
+      sessionId: "sbx_command_hooks_resumed_session",
+    });
     await bash({ command: "echo ok" });
 
-    expect(beforeCommand).toHaveBeenCalledWith("sbx_command_hooks_session");
-    expect(afterCommand).toHaveBeenCalledWith("sbx_command_hooks_session");
+    expect(beforeCommand).toHaveBeenCalledWith(
+      "sbx_command_hooks_resumed_session",
+    );
+    expect(afterCommand).toHaveBeenCalledWith(
+      "sbx_command_hooks_resumed_session",
+    );
     expect(beforeCommand.mock.invocationCallOrder[0]).toBeLessThan(
       sandbox.runCommand.mock.invocationCallOrder[0] as number,
     );

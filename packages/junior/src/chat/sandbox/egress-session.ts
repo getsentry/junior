@@ -89,7 +89,7 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   };
 }
 
-/** Persist the requester-bound authorization context for sandbox egress credential activation. */
+/** Persist requester authorization for credential activation by one forwarded VM session. */
 export async function upsertSandboxEgressSession(input: {
   egressId: string;
   requesterId: string;
@@ -125,7 +125,7 @@ export async function getSandboxEgressSession(
   return parseSession(await state.get(sessionKey(egressId)));
 }
 
-/** Cache a short-lived credential lease for repeated proxied requests in one sandbox session. */
+/** Cache a short-lived credential lease for repeated requests from one forwarded VM session. */
 export async function setSandboxEgressCredentialLease(
   egressId: string,
   session: SandboxEgressSession,
