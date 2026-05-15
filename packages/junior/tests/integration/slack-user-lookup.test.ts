@@ -349,6 +349,7 @@ describe("slackUserLookup", () => {
             canAddReactions: true,
           },
           sandbox: {} as any,
+          toolProfile: "slack",
         },
       );
 

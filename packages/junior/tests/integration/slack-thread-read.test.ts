@@ -19,6 +19,7 @@ function createContext(
       canAddReactions: true,
     },
     sandbox: {} as any,
+    toolProfile: "slack",
     ...overrides,
   };
 }

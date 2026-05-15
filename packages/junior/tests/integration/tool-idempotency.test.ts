@@ -101,6 +101,7 @@ describe("tool idempotency", () => {
           canAddReactions: true,
         },
         sandbox: noopSandbox,
+        toolProfile: "slack",
       },
       state,
     );
@@ -158,6 +159,7 @@ describe("tool idempotency", () => {
           canAddReactions: true,
         },
         sandbox: noopSandbox,
+        toolProfile: "slack",
       },
       state,
     );
@@ -195,6 +197,7 @@ describe("tool idempotency", () => {
           canAddReactions: false,
         },
         sandbox: noopSandbox,
+        toolProfile: "slack",
       },
       state,
     );
@@ -270,6 +273,7 @@ describe("tool idempotency", () => {
           canAddReactions: true,
         },
         sandbox: noopSandbox,
+        toolProfile: "slack",
       },
       state,
     );

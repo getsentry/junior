@@ -4,6 +4,7 @@ import {
   evalMcpAuthHandlers,
 } from "./handlers/eval-mcp-auth";
 import { setupServer } from "msw/node";
+import { githubApiHandlers } from "./handlers/github-api";
 import { slackApiHandlers } from "./handlers/slack-api";
 import { slackWebhookHandlers } from "./handlers/slack-webhooks";
 
@@ -14,9 +15,14 @@ function isSlackHost(hostname: string): boolean {
   return hostname === "slack.com" || hostname === "files.slack.com";
 }
 
+function isGitHubHost(hostname: string): boolean {
+  return hostname === "api.github.com";
+}
+
 function requiresMockedHandling(hostname: string): boolean {
   return (
     isSlackHost(hostname) ||
+    isGitHubHost(hostname) ||
     hostname === EVAL_MCP_AUTH_HOSTNAME ||
     hostname === EVAL_OAUTH_HOSTNAME
   );
@@ -34,6 +40,7 @@ export function enforceUnhandledSlackRequestFailure(request: Request): void {
 }
 
 export const mswServer = setupServer(
+  ...githubApiHandlers,
   ...slackApiHandlers,
   ...slackWebhookHandlers,
   ...evalMcpAuthHandlers,

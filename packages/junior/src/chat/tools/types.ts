@@ -3,6 +3,7 @@ import type { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
+import type { AssistantSurfaceToolProfile } from "@/chat/surface";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
 import type { ChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
@@ -30,6 +31,7 @@ export interface ToolRuntimeContext {
   advisor?: AdvisorToolRuntimeContext;
   channelId?: string;
   channelCapabilities: ChannelCapabilities;
+  toolProfile: AssistantSurfaceToolProfile;
   messageTs?: string;
   threadTs?: string;
   userText?: string;

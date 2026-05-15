@@ -109,14 +109,6 @@ export function createTools(
       hooks,
       hooks.toolOverrides?.imageGenerate,
     ),
-    slackCanvasRead: createSlackCanvasReadTool(),
-    slackCanvasUpdate: createSlackCanvasUpdateTool(state, context),
-    slackThreadRead: createSlackThreadReadTool(context),
-    slackUserLookup: createSlackUserLookupTool(),
-    slackListCreate: createSlackListCreateTool(state),
-    slackListAddItems: createSlackListAddItemsTool(state),
-    slackListGetItems: createSlackListGetItemsTool(state),
-    slackListUpdateItem: createSlackListUpdateItemTool(state),
   };
 
   if (context.advisor) {
@@ -134,26 +126,37 @@ export function createTools(
     );
   }
 
-  const { channelCapabilities } = context;
+  if (context.toolProfile === "slack") {
+    tools.slackCanvasRead = createSlackCanvasReadTool();
+    tools.slackCanvasUpdate = createSlackCanvasUpdateTool(state, context);
+    tools.slackThreadRead = createSlackThreadReadTool(context);
+    tools.slackUserLookup = createSlackUserLookupTool();
+    tools.slackListCreate = createSlackListCreateTool(state);
+    tools.slackListAddItems = createSlackListAddItemsTool(state);
+    tools.slackListGetItems = createSlackListGetItemsTool(state);
+    tools.slackListUpdateItem = createSlackListUpdateItemTool(state);
 
-  if (channelCapabilities.canCreateCanvas) {
-    tools.slackCanvasCreate = createSlackCanvasCreateTool(context, state);
-  }
+    const { channelCapabilities } = context;
 
-  if (channelCapabilities.canPostToChannel) {
-    tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
-      context,
-      state,
-    );
-    tools.slackChannelListMessages =
-      createSlackChannelListMessagesTool(context);
-  }
+    if (channelCapabilities.canCreateCanvas) {
+      tools.slackCanvasCreate = createSlackCanvasCreateTool(context, state);
+    }
 
-  if (channelCapabilities.canAddReactions) {
-    tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
-      context,
-      state,
-    );
+    if (channelCapabilities.canPostToChannel) {
+      tools.slackChannelPostMessage = createSlackChannelPostMessageTool(
+        context,
+        state,
+      );
+      tools.slackChannelListMessages =
+        createSlackChannelListMessagesTool(context);
+    }
+
+    if (channelCapabilities.canAddReactions) {
+      tools.slackMessageAddReaction = createSlackMessageAddReactionTool(
+        context,
+        state,
+      );
+    }
   }
 
   return tools;

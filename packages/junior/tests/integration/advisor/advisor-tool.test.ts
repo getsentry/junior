@@ -91,6 +91,7 @@ describe("advisor tool", () => {
     const baseContext = {
       channelCapabilities: resolveChannelCapabilities("D12345"),
       sandbox: {} as any,
+      toolProfile: "slack" as const,
     };
     expect(createTools([], {}, baseContext)).not.toHaveProperty("advisor");
 
@@ -185,6 +186,7 @@ describe("advisor tool", () => {
         {
           channelCapabilities: resolveChannelCapabilities("C12345"),
           sandbox: {} as any,
+          toolProfile: "slack",
         },
       ),
     );

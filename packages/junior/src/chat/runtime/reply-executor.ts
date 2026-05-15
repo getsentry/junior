@@ -66,6 +66,7 @@ import {
   finalizeFailedTurnReply,
   getAgentTurnDiagnosticsAttributes,
 } from "@/chat/services/turn-failure-response";
+import { SLACK_SURFACE } from "@/chat/surface";
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
@@ -286,6 +287,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
           let reply = await deps.services.generateAssistantReply(userText, {
+            surface: SLACK_SURFACE,
             requester: {
               userId: message.author.userId,
               userName: message.author.userName ?? fallbackIdentity?.userName,

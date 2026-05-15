@@ -41,6 +41,7 @@ function createContext(userText: string): ToolRuntimeContext {
       canAddReactions: false,
     },
     sandbox: {} as never,
+    toolProfile: "slack",
   };
 }
 

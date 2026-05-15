@@ -9,6 +9,7 @@ function ctx(channelId?: string) {
     channelId,
     channelCapabilities: resolveChannelCapabilities(channelId),
     sandbox: noopSandbox,
+    toolProfile: "slack" as const,
   };
 }
 

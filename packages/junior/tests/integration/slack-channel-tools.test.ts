@@ -50,6 +50,7 @@ function createContext(userText: string): ToolRuntimeContext {
     messageTs: "1700000000.321",
     userText,
     sandbox: {} as any,
+    toolProfile: "slack",
   };
 }
 

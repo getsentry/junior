@@ -67,6 +67,7 @@ import {
   toObservablePromptPart,
   upsertActiveSkill,
 } from "@/chat/respond-helpers";
+import { SLACK_SURFACE, type AssistantSurface } from "@/chat/surface";
 import {
   buildTurnResult,
   type AssistantReply,
@@ -145,6 +146,7 @@ export interface ReplyRequestContext {
     toolName: string;
     params: Record<string, unknown>;
   }) => void;
+  surface?: AssistantSurface;
 }
 
 let startupDiscoveryLogged = false;
@@ -373,6 +375,7 @@ export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {},
 ): Promise<AssistantReply> {
+  const surface = context.surface ?? SLACK_SURFACE;
   const replyStartedAtMs = Date.now();
   let timeoutResumeConversationId: string | undefined;
   let timeoutResumeSessionId: string | undefined;
@@ -717,7 +720,14 @@ export async function generateAssistantReply(
     // ── Tool creation ────────────────────────────────────────────────
     const toolChannelId =
       context.toolChannelId ?? context.correlation?.channelId;
-    const channelCapabilities = resolveChannelCapabilities(toolChannelId);
+    const channelCapabilities =
+      surface.toolProfile === "slack"
+        ? resolveChannelCapabilities(toolChannelId)
+        : {
+            canCreateCanvas: false,
+            canPostToChannel: false,
+            canAddReactions: false,
+          };
     const tools = createTools(
       availableSkills,
       {
@@ -776,6 +786,7 @@ export async function generateAssistantReply(
       {
         channelId: toolChannelId,
         channelCapabilities,
+        toolProfile: surface.toolProfile,
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
         userText: userInput,
@@ -816,7 +827,7 @@ export async function generateAssistantReply(
     const activeMcpCatalogs = toActiveMcpCatalogSummaries(
       turnMcpToolManager.getActiveToolCatalog(activeSkills),
     );
-    baseInstructions = buildSystemPrompt();
+    baseInstructions = buildSystemPrompt({ surface });
     const turnContextPrompt = buildTurnContextPrompt({
       availableSkills,
       activeSkills,
@@ -826,7 +837,9 @@ export async function generateAssistantReply(
         channelId: toolChannelId,
         fastModelId: botConfig.fastModelId,
         modelId: botConfig.modelId,
-        slackCapabilities: channelCapabilities,
+        slackCapabilities:
+          surface.platform === "slack" ? channelCapabilities : undefined,
+        surface,
         thinkingLevel: thinkingSelection.thinkingLevel,
       },
       invocation: skillInvocation,

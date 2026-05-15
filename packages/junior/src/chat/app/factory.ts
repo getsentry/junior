@@ -4,12 +4,17 @@ import {
   type AssistantLifecycleEvent,
   type SlackTurnRuntime,
 } from "@/chat/runtime/slack-runtime";
+import {
+  createGitHubTurnRuntime,
+  type GitHubTurnRuntime,
+} from "@/chat/github/runtime";
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { coerceThreadArtifactsState } from "@/chat/state/artifacts";
 import { logException, logWarn, withSpan } from "@/chat/logging";
 import { createReplyToThread } from "@/chat/runtime/reply-executor";
+import { createReplyToGitHubThread } from "@/chat/github/reply-executor";
 import {
   initializeAssistantThread as initializeAssistantThreadImpl,
   refreshAssistantThreadContext as refreshAssistantThreadContextImpl,
@@ -42,6 +47,11 @@ import { hasPotentialImageAttachment } from "@/chat/services/vision-context";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
+  now?: () => number;
+  services?: JuniorRuntimeServiceOverrides;
+}
+
+export interface CreateGitHubRuntimeOptions {
   now?: () => number;
   services?: JuniorRuntimeServiceOverrides;
 }
@@ -199,5 +209,33 @@ export function createSlackRuntime(
           }),
       });
     },
+  });
+}
+
+export function createGitHubRuntime(
+  options: CreateGitHubRuntimeOptions = {},
+): GitHubTurnRuntime {
+  const services = createJuniorRuntimeServices(options.services);
+  const prepareTurnState = createPrepareTurnState({
+    compactConversationIfNeeded:
+      services.conversationMemory.compactConversationIfNeeded,
+    hydrateConversationVisionContext:
+      services.visionContext.hydrateConversationVisionContext,
+  });
+  const replyToThread = createReplyToGitHubThread({
+    prepareTurnState,
+    services: {
+      generateAssistantReply: services.replyExecutor.generateAssistantReply,
+    },
+  });
+
+  return createGitHubTurnRuntime({
+    assistantUserName: botConfig.userName,
+    modelId: botConfig.modelId,
+    getThreadId,
+    getRunId,
+    logException,
+    withSpan,
+    replyToThread,
   });
 }

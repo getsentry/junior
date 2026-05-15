@@ -31,6 +31,7 @@ describe("slackMessageAddReaction tool", () => {
         },
         messageTs: "1700000000.100",
         sandbox: {} as any,
+        toolProfile: "slack",
       },
       createState() as any,
     );
@@ -60,6 +61,7 @@ describe("slackMessageAddReaction tool", () => {
         },
         messageTs: "1700000000.100",
         sandbox: {} as any,
+        toolProfile: "slack",
       },
       createState() as any,
     );
@@ -94,6 +96,7 @@ describe("slackMessageAddReaction tool", () => {
         },
         messageTs: "1700000000.100",
         sandbox: {} as any,
+        toolProfile: "slack",
       },
       createState() as any,
     );
