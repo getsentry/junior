@@ -169,6 +169,9 @@ describe("sandbox egress proxy", () => {
   });
 
   it("builds provider forwarding policy for sandbox egress", () => {
+    process.env.VERCEL_OIDC_AUDIENCE = "https://vercel.com/acme";
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+
     expect(matchesSandboxEgressDomain("SENTRY.IO", "sentry.io")).toBe(true);
     expect(matchesSandboxEgressDomain("eu.sentry.io", "sentry.io")).toBe(false);
     expect(buildSandboxEgressNetworkPolicy(SANDBOX_ID)).toEqual({
@@ -186,6 +189,32 @@ describe("sandbox egress proxy", () => {
         ],
       },
     });
+  });
+
+  it("fails sandbox egress policy setup without a public callback URL", () => {
+    delete process.env.JUNIOR_BASE_URL;
+    process.env.VERCEL_OIDC_AUDIENCE = "https://vercel.com/acme";
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+
+    expect(() => buildSandboxEgressNetworkPolicy(SANDBOX_ID)).toThrow(
+      "Cannot determine base URL for sandbox credential egress",
+    );
+  });
+
+  it("fails sandbox egress policy setup without trusted OIDC configuration", () => {
+    process.env.VERCEL_PROJECT_ID = "prj_123";
+
+    expect(() => buildSandboxEgressNetworkPolicy(SANDBOX_ID)).toThrow(
+      "VERCEL_OIDC_AUDIENCE is required for sandbox egress OIDC",
+    );
+  });
+
+  it("fails sandbox egress policy setup without the expected Vercel project", () => {
+    process.env.VERCEL_OIDC_AUDIENCE = "https://vercel.com/acme";
+
+    expect(() => buildSandboxEgressNetworkPolicy(SANDBOX_ID)).toThrow(
+      "VERCEL_PROJECT_ID is required for sandbox egress OIDC",
+    );
   });
 
   it("resolves command env for registered sandbox providers", async () => {
@@ -627,6 +656,7 @@ describe("sandbox egress proxy", () => {
   });
 
   it("requires OIDC claims to match the Vercel project and sandbox", () => {
+    process.env.VERCEL_OIDC_AUDIENCE = "https://vercel.com/acme";
     process.env.VERCEL_PROJECT_ID = "prj_123";
     process.env.VERCEL_TEAM_ID = "team_123";
 

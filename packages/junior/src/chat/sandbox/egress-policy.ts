@@ -4,6 +4,7 @@ import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { getPluginProviders } from "@/chat/plugins/registry";
 import type { PluginManifest } from "@/chat/plugins/types";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
+import { requireVercelSandboxOidcConfig } from "@/chat/sandbox/egress-oidc";
 
 const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
 
@@ -58,14 +59,17 @@ function proxyUrl(sandboxId: string): string | undefined {
 export function buildSandboxEgressNetworkPolicy(
   sandboxId: string,
 ): NetworkPolicy | undefined {
-  const forwardURL = proxyUrl(sandboxId);
-  if (!forwardURL) {
-    return undefined;
-  }
   const entries = providerEntries();
   if (entries.length === 0) {
     return undefined;
   }
+  const forwardURL = proxyUrl(sandboxId);
+  if (!forwardURL) {
+    throw new Error(
+      "Cannot determine base URL for sandbox credential egress (set JUNIOR_BASE_URL or deploy to Vercel)",
+    );
+  }
+  requireVercelSandboxOidcConfig();
 
   const allow: Record<string, NetworkPolicyRule[]> = {
     "*": [],

@@ -32,6 +32,17 @@ If your build command runs `junior snapshot create`:
 - `REDIS_URL` must be available during build.
 - `VERCEL_OIDC_TOKEN` must be available during build (via Vercel OIDC settings).
 
+## Sandbox credential egress
+
+If enabled plugins use host-managed credentials inside Vercel Sandbox, Junior forwards registered provider domains through its credential egress proxy. The deployment must be able to verify that each proxied request came from the expected Vercel project before it injects credentials.
+
+| Variable               | Required    | Purpose                                                                      |
+| ---------------------- | ----------- | ---------------------------------------------------------------------------- |
+| `JUNIOR_BASE_URL`      | Conditional | Public URL for the credential egress proxy, unless Vercel URL envs cover it. |
+| `VERCEL_OIDC_AUDIENCE` | Conditional | Expected Vercel OIDC audience, usually `https://vercel.com/<team-slug>`.     |
+| `VERCEL_PROJECT_ID`    | Conditional | Expected Vercel project ID for sandbox egress proxy requests.                |
+| `VERCEL_TEAM_ID`       | No          | Optional team ID check for sandbox egress proxy requests.                    |
+
 ## GitHub plugin
 
 | Variable                 | Required | Purpose                                         |

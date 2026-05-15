@@ -77,12 +77,28 @@ async function getJwks(
   return jwks;
 }
 
-function expectedVercelOidcAudience(): string {
+interface VercelSandboxOidcConfig {
+  audience: string;
+  projectId: string;
+  teamId?: string;
+}
+
+/** Require the verifier inputs before enabling host-brokered sandbox egress. */
+export function requireVercelSandboxOidcConfig(): VercelSandboxOidcConfig {
   const audience = process.env.VERCEL_OIDC_AUDIENCE?.trim();
   if (!audience) {
     throw new Error("VERCEL_OIDC_AUDIENCE is required for sandbox egress OIDC");
   }
-  return audience;
+  const expectedTeamId = process.env.VERCEL_TEAM_ID?.trim();
+  const expectedProjectId = process.env.VERCEL_PROJECT_ID?.trim();
+  if (!expectedProjectId) {
+    throw new Error("VERCEL_PROJECT_ID is required for sandbox egress OIDC");
+  }
+  return {
+    audience,
+    projectId: expectedProjectId,
+    ...(expectedTeamId ? { teamId: expectedTeamId } : {}),
+  };
 }
 
 /** Validate deployment and sandbox binding claims in a verified Vercel Sandbox OIDC payload. */
@@ -90,21 +106,17 @@ export function validateVercelSandboxOidcClaims(
   payload: JWTPayload,
   sandboxId: string,
 ): void {
-  const expectedTeamId = process.env.VERCEL_TEAM_ID?.trim();
-  const expectedProjectId = process.env.VERCEL_PROJECT_ID?.trim();
-  if (!expectedProjectId) {
-    throw new Error("VERCEL_PROJECT_ID is required for sandbox egress OIDC");
-  }
+  const expected = requireVercelSandboxOidcConfig();
   if (
-    expectedTeamId &&
+    expected.teamId &&
     (typeof payload.owner_id !== "string" ||
-      payload.owner_id !== expectedTeamId)
+      payload.owner_id !== expected.teamId)
   ) {
     throw new Error("Vercel OIDC token belongs to a different team");
   }
   if (
     typeof payload.project_id !== "string" ||
-    payload.project_id !== expectedProjectId
+    payload.project_id !== expected.projectId
   ) {
     throw new Error("Vercel OIDC token belongs to a different project");
   }
@@ -122,7 +134,7 @@ export async function verifyVercelSandboxOidcToken(
   if (typeof unverified.iss !== "string") {
     throw new Error("Vercel OIDC token did not include an issuer");
   }
-  const audience = expectedVercelOidcAudience();
+  const { audience } = requireVercelSandboxOidcConfig();
   const jwks = await getJwks(unverified.iss);
   const verified = await jwtVerify(token, jwks, {
     issuer: unverified.iss,
