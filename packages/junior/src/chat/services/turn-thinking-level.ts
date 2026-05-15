@@ -16,9 +16,36 @@ const TURN_THINKING_LEVELS = [
   "xhigh",
 ] as const;
 
+const CONFIDENCE_LABELS: Record<string, number> = {
+  low: 0.5,
+  medium: CLASSIFIER_CONFIDENCE_THRESHOLD,
+  high: 0.9,
+};
+
+function coerceClassifierConfidence(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) {
+    return value;
+  }
+
+  const numeric = Number.parseFloat(trimmed);
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+
+  return CONFIDENCE_LABELS[trimmed] ?? value;
+}
+
 const turnExecutionProfileSchema = z.object({
   thinking_level: z.enum(TURN_THINKING_LEVELS),
-  confidence: z.number().min(0).max(1),
+  confidence: z.preprocess(
+    coerceClassifierConfidence,
+    z.number().min(0).max(1),
+  ),
   reason: z.string().min(1),
 });
 
@@ -84,6 +111,7 @@ function buildClassifierSystemPrompt(): string {
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and the thread-background contains a pending task, classify the pending task — not the affirmation.",
     "",
     "Return JSON only with thinking_level, confidence, and reason.",
+    "confidence must be a number from 0 to 1, not a word label.",
   ].join("\n");
 }
 
