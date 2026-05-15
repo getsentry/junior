@@ -13,6 +13,7 @@ In GitHub:
 - Issues: Read and write
 - Contents: Read and write
 - Pull requests: Read and write
+- Actions: Read and write
 - Metadata: Read
 
 4. Create the app and generate a private key.

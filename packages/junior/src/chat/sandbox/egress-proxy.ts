@@ -298,6 +298,17 @@ export async function proxySandboxEgressRequest(
     redirect: "manual",
   });
   if (AUTH_REJECTION_STATUS.has(upstream.status)) {
+    logWarn(
+      "sandbox_egress_upstream_auth_rejected",
+      {},
+      {
+        "app.credential.provider": provider,
+        "http.request.method": request.method,
+        "http.response.status_code": upstream.status,
+        "server.address": upstreamUrl.hostname,
+      },
+      "Sandbox egress upstream auth rejected",
+    );
     await clearSandboxEgressCredentialLease(egressId, provider, session);
   }
 
