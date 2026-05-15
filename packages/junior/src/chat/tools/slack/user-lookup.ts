@@ -7,7 +7,6 @@ import {
 } from "@/chat/slack/users";
 import { tool } from "@/chat/tools/definition";
 
-/** Create a read-only tool for looking up Slack user profiles by ID, email, or name search. */
 export function createSlackUserLookupTool() {
   return tool({
     description:
@@ -66,7 +65,6 @@ export function createSlackUserLookupTool() {
       max_pages,
       include_bots,
     }) => {
-      // Validate mutually exclusive inputs
       const modes = [user_id, email, query].filter(Boolean);
       if (modes.length === 0) {
         return {
@@ -83,17 +81,14 @@ export function createSlackUserLookupTool() {
       }
 
       try {
-        // Exact user ID lookup
         if (user_id) {
-          const profile = await lookupSlackUserProfile(user_id);
           return {
             ok: true,
             mode: "user_id",
-            user: profile,
+            user: await lookupSlackUserProfile(user_id),
           };
         }
 
-        // Email lookup
         if (email) {
           const profile = await lookupSlackUserByEmail(email);
           if (!profile) {
@@ -104,73 +99,38 @@ export function createSlackUserLookupTool() {
               error: "No Slack user found with that email address.",
             };
           }
-          return {
-            ok: true,
-            mode: "email",
-            user: profile,
-          };
+          return { ok: true, mode: "email", user: profile };
         }
 
-        // Name search
-        if (query) {
-          const result = await searchSlackUsers({
-            query,
-            limit: limit ?? 10,
-            maxPages: max_pages ?? 3,
-            includeBots: include_bots ?? false,
-          });
+        const result = await searchSlackUsers({
+          query: query!,
+          limit: limit ?? 10,
+          maxPages: max_pages ?? 3,
+          includeBots: include_bots ?? false,
+        });
 
-          return {
-            ok: true,
-            mode: "query",
-            query,
-            count: result.users.length,
-            searched_pages: result.searched_pages,
-            searched_user_count: result.searched_user_count,
-            truncated: result.truncated,
-            users: result.users,
-          };
-        }
+        return {
+          ok: true,
+          mode: "query",
+          query,
+          count: result.users.length,
+          searched_pages: result.searched_pages,
+          searched_user_count: result.searched_user_count,
+          truncated: result.truncated,
+          users: result.users,
+        };
       } catch (error) {
         if (error instanceof SlackActionError) {
-          if (
-            error.code === "missing_token" ||
-            error.code === "missing_scope"
-          ) {
-            return {
-              ok: false,
-              error: `Slack API access issue: ${error.message}`,
-              slack_error: error.apiError,
-              ...(error.needed ? { needed_scope: error.needed } : {}),
-            };
-          }
-
-          if (
-            error.code === "not_found" ||
-            error.apiError === "user_not_found" ||
-            error.apiError === "users_not_found"
-          ) {
-            return {
-              ok: false,
-              error: "Slack user not found.",
-              slack_error: error.apiError,
-            };
-          }
-
           return {
             ok: false,
-            error: `Slack API error: ${error.message}`,
+            error: error.message,
             slack_error: error.apiError,
             code: error.code,
+            ...(error.needed ? { needed_scope: error.needed } : {}),
           };
         }
         throw error;
       }
-
-      return {
-        ok: false,
-        error: "Unexpected state: no lookup mode matched.",
-      };
     },
   });
 }

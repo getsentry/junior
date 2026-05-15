@@ -1,6 +1,6 @@
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 
-/** Normalized Slack user profile returned by lookup helpers. */
+/** Normalized Slack user profile with custom fields from the Slack workspace. */
 export interface SlackUserProfile {
   id: string;
   team_id?: string;
@@ -47,7 +47,6 @@ interface SlackUserRaw {
   };
 }
 
-/** Normalize a raw Slack user object into a clean profile. */
 function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
   const rawFields = raw.profile?.fields;
   const profileFields: SlackUserProfile["profile_fields"] = [];
@@ -81,7 +80,7 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
   };
 }
 
-/** Look up a single Slack user by ID. Returns full profile including custom fields. */
+/** Look up a Slack user by ID, returning the full profile including custom fields. */
 export async function lookupSlackUserProfile(
   userId: string,
 ): Promise<SlackUserProfile> {
@@ -100,7 +99,7 @@ export async function lookupSlackUserProfile(
   return normalizeUser(user);
 }
 
-/** Look up a Slack user by email address. Returns null if not found. */
+/** Look up a Slack user by email. Returns null when no user matches. */
 export async function lookupSlackUserByEmail(
   email: string,
 ): Promise<SlackUserProfile | null> {
@@ -129,7 +128,6 @@ export async function lookupSlackUserByEmail(
   return normalizeUser(user);
 }
 
-/** Search result from a bounded workspace user scan. */
 export interface SlackUserSearchResult {
   users: SlackUserProfile[];
   searched_pages: number;
@@ -137,7 +135,7 @@ export interface SlackUserSearchResult {
   truncated: boolean;
 }
 
-/** Score how well a user matches a search query. Higher is better, 0 means no match. */
+/** Rank match quality: exact > prefix > word-boundary > substring > miss. */
 function scoreMatch(user: SlackUserRaw, queryLower: string): number {
   const name = (user.name ?? "").toLowerCase();
   const realName = (
@@ -147,31 +145,23 @@ function scoreMatch(user: SlackUserRaw, queryLower: string): number {
   ).toLowerCase();
   const displayName = (user.profile?.display_name ?? "").toLowerCase();
 
-  // Exact matches on key fields
   if (name === queryLower || displayName === queryLower) return 100;
   if (realName === queryLower) return 90;
-
-  // Prefix matches
   if (name.startsWith(queryLower) || displayName.startsWith(queryLower))
     return 70;
   if (realName.startsWith(queryLower)) return 60;
 
-  // Word-boundary matches in real name (e.g. "markus" matches "Markus Unterwaditzer")
   const realNameWords = realName.split(/\s+/);
   if (realNameWords.some((w) => w === queryLower)) return 55;
   if (realNameWords.some((w) => w.startsWith(queryLower))) return 50;
 
-  // Substring matches
   if (name.includes(queryLower) || displayName.includes(queryLower)) return 30;
   if (realName.includes(queryLower)) return 20;
 
   return 0;
 }
 
-/**
- * Search workspace users by name. Paginates through `users.list` with
- * bounded page count, filters and ranks matches locally.
- */
+/** Search workspace users by name with bounded pagination through `users.list`. */
 export async function searchSlackUsers(options: {
   query: string;
   limit?: number;
@@ -193,7 +183,7 @@ export async function searchSlackUsers(options: {
   let cursor: string | undefined;
   let pages = 0;
   let totalScanned = 0;
-  let hasMore = false;
+  let truncated = false;
 
   while (pages < maxPages) {
     pages++;
@@ -214,7 +204,6 @@ export async function searchSlackUsers(options: {
     for (const member of members) {
       if (!includeDeleted && member.deleted) continue;
       if (!includeBots && member.is_bot) continue;
-      // Skip Slackbot
       if (member.id === "USLACKBOT") continue;
 
       const score = scoreMatch(member, queryLower);
@@ -224,24 +213,26 @@ export async function searchSlackUsers(options: {
     }
 
     const nextCursor = result.response_metadata?.next_cursor;
-    if (!nextCursor) break;
+    if (!nextCursor) {
+      break;
+    }
     cursor = nextCursor;
   }
 
-  hasMore = Boolean(cursor);
+  // True only when we hit the page cap with more data remaining.
+  if (pages >= maxPages && cursor) {
+    truncated = true;
+  }
 
-  // Sort by score descending, then alphabetically by name
   matches.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return (a.user.name ?? "").localeCompare(b.user.name ?? "");
   });
 
-  const topMatches = matches.slice(0, limit);
-
   return {
-    users: topMatches.map((m) => normalizeUser(m.user)),
+    users: matches.slice(0, limit).map((m) => normalizeUser(m.user)),
     searched_pages: pages,
     searched_user_count: totalScanned,
-    truncated: hasMore,
+    truncated,
   };
 }

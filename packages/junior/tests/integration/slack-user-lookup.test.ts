@@ -89,17 +89,13 @@ describe("slackUserLookup", () => {
     });
 
     it("handles user not found", async () => {
-      queueSlackApiError("users.info", {
-        error: "user_not_found",
-      });
+      queueSlackApiError("users.info", { error: "user_not_found" });
 
       const tool = createSlackUserLookupTool();
       const result = await executeTool(tool, { user_id: "U_NONEXISTENT" });
 
-      expect(result).toMatchObject({
-        ok: false,
-        slack_error: "user_not_found",
-      });
+      expect(result.ok).toBe(false);
+      expect(result.slack_error).toBe("user_not_found");
     });
   });
 
@@ -236,7 +232,7 @@ describe("slackUserLookup", () => {
       expect(result.users).toHaveLength(2);
     });
 
-    it("reports truncation when more pages exist", async () => {
+    it("reports truncated when page cap is reached with more data", async () => {
       queueSlackApiResponse("users.list", {
         body: usersListPage({
           members: [{ id: "U1", name: "alice", realName: "Alice Smith" }],
@@ -258,10 +254,36 @@ describe("slackUserLookup", () => {
 
       expect(result).toMatchObject({
         ok: true,
-        mode: "query",
         count: 2,
         searched_pages: 2,
         truncated: true,
+      });
+    });
+
+    it("reports not truncated when pagination ends naturally", async () => {
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [{ id: "U1", name: "alice", realName: "Alice Smith" }],
+          nextCursor: "cursor_page2",
+        }),
+      });
+      queueSlackApiResponse("users.list", {
+        body: usersListPage({
+          members: [{ id: "U2", name: "alice2", realName: "Alice Jones" }],
+        }),
+      });
+
+      const tool = createSlackUserLookupTool();
+      const result = await executeTool(tool, {
+        query: "alice",
+        max_pages: 3,
+      });
+
+      expect(result).toMatchObject({
+        ok: true,
+        count: 2,
+        searched_pages: 2,
+        truncated: false,
       });
     });
 
