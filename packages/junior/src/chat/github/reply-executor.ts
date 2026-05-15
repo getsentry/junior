@@ -29,8 +29,15 @@ import {
   startActiveTurn,
 } from "@/chat/runtime/turn";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
-import { getRunId, getThreadId, stripLeadingBotMention } from "@/chat/runtime/thread-context";
-import { mergeArtifactsState, persistThreadState } from "@/chat/runtime/thread-state";
+import {
+  getRunId,
+  getThreadId,
+  stripLeadingBotMention,
+} from "@/chat/runtime/thread-context";
+import {
+  mergeArtifactsState,
+  persistThreadState,
+} from "@/chat/runtime/thread-state";
 import { generateAssistantReply as generateAssistantReplyImpl } from "@/chat/respond";
 
 export interface GitHubReplyExecutorServices {

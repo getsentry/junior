@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createTools } from "@/chat/tools";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-function context(toolProfile: ToolRuntimeContext["toolProfile"]): ToolRuntimeContext {
+function context(
+  toolProfile: ToolRuntimeContext["toolProfile"],
+): ToolRuntimeContext {
   return {
     channelId: "C123",
     channelCapabilities: {

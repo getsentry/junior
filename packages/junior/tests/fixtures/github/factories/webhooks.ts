@@ -14,14 +14,19 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-export function signGitHubWebhookBody(body: string, webhookSecret: string): string {
+export function signGitHubWebhookBody(
+  body: string,
+  webhookSecret: string,
+): string {
   return `sha256=${createHmac("sha256", webhookSecret).update(body).digest("hex")}`;
 }
 
-export function githubIssueCommentWebhook(options: BaseWebhookOptions & {
-  issueNumber: number;
-  isPullRequest: boolean;
-}) {
+export function githubIssueCommentWebhook(
+  options: BaseWebhookOptions & {
+    issueNumber: number;
+    isPullRequest: boolean;
+  },
+) {
   const owner = options.owner ?? "acme";
   const repo = options.repo ?? "junior";
   const senderId = options.senderId ?? 42;
@@ -35,7 +40,9 @@ export function githubIssueCommentWebhook(options: BaseWebhookOptions & {
     },
     issue: {
       number: options.issueNumber,
-      ...(options.isPullRequest ? { pull_request: { url: "https://api.github.com/pr/1" } } : {}),
+      ...(options.isPullRequest
+        ? { pull_request: { url: "https://api.github.com/pr/1" } }
+        : {}),
     },
     comment: {
       id: commentId,
