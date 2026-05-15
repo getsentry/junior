@@ -198,6 +198,7 @@ describe("advisor tool", () => {
       "slackChannelListMessages",
       "slackListGetItems",
       "slackThreadRead",
+      "slackUserLookup",
       "systemTime",
       "webFetch",
       "webSearch",
