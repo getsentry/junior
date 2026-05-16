@@ -44,11 +44,13 @@ For a new app, you usually do not need to hand-create routes or runtime wrapper 
 
 Copy values into your local env file. The scaffold includes `.env.example` with the core runtime variables.
 
-Required:
+Required for the default Slack ingress:
 
 - `SLACK_SIGNING_SECRET`
 - `SLACK_BOT_TOKEN`
 - `REDIS_URL`
+
+For a GitHub-only deployment, use `createApp({ enabledPlatforms: ["github"] })` or `juniorNitro({ enabledPlatforms: ["github"] })`, then omit the Slack variables.
 
 Optional for GitHub mention webhook ingress (V1):
 
@@ -205,6 +207,16 @@ https://<your-domain>/api/webhooks/slack
 ```
 
 ### Configure GitHub webhook URL (optional, mention-only V1)
+
+Enable GitHub in the app initializer before configuring this webhook:
+
+```ts
+const app = await createApp({
+  enabledPlatforms: ["slack", "github"],
+});
+```
+
+If you keep deployment wiring in `nitro.config.ts`, use `juniorNitro({ enabledPlatforms: ["slack", "github"] })` instead and leave `createApp()` without platform options.
 
 Set your GitHub App webhook URL to:
 

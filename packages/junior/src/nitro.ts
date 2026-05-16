@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
+import type { ChatPlatform } from "@/chat/platforms";
 import {
   copyAppAndPluginContent,
   copyIncludedFiles,
@@ -9,6 +10,7 @@ import { injectVirtualConfig } from "@/build/virtual-config";
 
 export interface JuniorNitroOptions {
   cwd?: string;
+  enabledPlatforms?: readonly ChatPlatform[];
   maxDuration?: number;
   pluginPackages?: string[];
   /**
@@ -37,7 +39,10 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           options.maxDuration ?? 800;
 
         applyRolldownTreeshakeWorkaround(nitro);
-        injectVirtualConfig(nitro, options.pluginPackages ?? []);
+        injectVirtualConfig(nitro, {
+          enabledPlatforms: options.enabledPlatforms,
+          pluginPackages: options.pluginPackages ?? [],
+        });
 
         nitro.hooks.hook("compiled", () => {
           copyAppAndPluginContent(

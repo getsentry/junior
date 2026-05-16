@@ -3,6 +3,7 @@ import {
   type GitHubAdapter,
   type GitHubAdapterConfig,
 } from "@chat-adapter/github";
+import { normalizeGitHubMentionTarget } from "@/chat/github/mention";
 
 export interface JuniorGitHubAdapterConfig {
   appId: string;
@@ -27,7 +28,7 @@ export function createJuniorGitHubAdapter(
     privateKey: config.privateKey,
     installationId: config.installationId,
     webhookSecret: config.webhookSecret,
-    userName: config.userName,
+    userName: normalizeGitHubMentionTarget(config.userName),
     ...(config.logger ? { logger: config.logger } : {}),
   });
 }

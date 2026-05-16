@@ -160,6 +160,7 @@ import { generateAssistantReply } from "@/chat/respond";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import { GITHUB_COMMENT_SURFACE } from "@/chat/surface";
 
 describe("generateAssistantReply timeout resume", () => {
   beforeEach(async () => {
@@ -251,5 +252,27 @@ describe("generateAssistantReply timeout resume", () => {
         }),
       ]),
     );
+  });
+
+  it("does not park GitHub comment turns into the Slack timeout resume queue", async () => {
+    const replyPromise = generateAssistantReply("help me", {
+      surface: GITHUB_COMMENT_SURFACE,
+      requester: { userId: "github-user" },
+      correlation: {
+        conversationId: "github:conversation-1",
+        turnId: "github-turn-1",
+        runId: "github-run-1",
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    const reply = await replyPromise;
+
+    expect(promptAborted.value).toBe(true);
+    expect(reply.diagnostics.outcome).toBe("provider_error");
+    expect(reply.text).toContain("Error:");
+    await expect(
+      getAgentTurnSessionCheckpoint("github:conversation-1", "github-turn-1"),
+    ).resolves.toBeUndefined();
   });
 });

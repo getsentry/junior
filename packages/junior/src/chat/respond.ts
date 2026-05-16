@@ -35,7 +35,7 @@ import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { createTools } from "@/chat/tools";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
@@ -376,6 +376,7 @@ export async function generateAssistantReply(
   context: ReplyRequestContext = {},
 ): Promise<AssistantReply> {
   const surface = context.surface ?? SLACK_SURFACE;
+  const canResumePausedTurn = surface.platform === "slack";
   const replyStartedAtMs = Date.now();
   let timeoutResumeConversationId: string | undefined;
   let timeoutResumeSessionId: string | undefined;
@@ -1115,7 +1116,12 @@ export async function generateAssistantReply(
       assistantUserName: botConfig.userName,
     });
   } catch (error) {
-    if (timedOut && timeoutResumeConversationId && timeoutResumeSessionId) {
+    if (
+      canResumePausedTurn &&
+      timedOut &&
+      timeoutResumeConversationId &&
+      timeoutResumeSessionId
+    ) {
       const checkpoint = await persistTimeoutCheckpoint({
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
@@ -1148,6 +1154,7 @@ export async function generateAssistantReply(
 
     // ── MCP auth pause → checkpoint and retry ────────────────────────
     if (
+      canResumePausedTurn &&
       error instanceof AuthorizationPauseError &&
       timeoutResumeConversationId &&
       timeoutResumeSessionId

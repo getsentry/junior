@@ -15,6 +15,7 @@ function escapeRegExp(value: string): string {
 export function stripLeadingBotMention(
   text: string,
   options: {
+    botUserName?: string;
     stripLeadingSlackMentionToken?: boolean;
   } = {},
 ): string {
@@ -25,14 +26,16 @@ export function stripLeadingBotMention(
     next = next.replace(/^\s*<@[^>]+>[\s,:-]*/, "").trim();
   }
 
+  const botUserName = options.botUserName ?? botConfig.userName;
+  const mentionTarget = botUserName.trim().replace(/^@/, "");
   const mentionByNameRe = new RegExp(
-    `^\\s*@${escapeRegExp(botConfig.userName)}\\b[\\s,:-]*`,
+    `^\\s*@${escapeRegExp(mentionTarget)}(?=$|[\\s,:;.!?])[\\s,:;.!?-]*`,
     "i",
   );
   next = next.replace(mentionByNameRe, "").trim();
 
   const mentionByLabeledEntityRe = new RegExp(
-    `^\\s*<@[^>|]+\\|${escapeRegExp(botConfig.userName)}>[\\s,:-]*`,
+    `^\\s*<@[^>|]+\\|${escapeRegExp(mentionTarget)}>[\\s,:;.!?-]*`,
     "i",
   );
   next = next.replace(mentionByLabeledEntityRe, "").trim();

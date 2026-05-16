@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSlackMessageReference } from "@/chat/tools/slack/slack-message-url";
+import { parseSlackMessageReference } from "@/chat/slack/tools/slack-message-url";
 
 describe("parseSlackMessageReference", () => {
   it("parses a plain archive URL", () => {

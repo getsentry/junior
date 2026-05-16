@@ -26,6 +26,6 @@ describe("handlers webhooks module loading", () => {
 
   it("loads without requiring runtime env on module load", async () => {
     const mod = await import("@/handlers/webhooks");
-    expect(typeof mod.POST).toBe("function");
+    expect(typeof mod.handlePlatformWebhook).toBe("function");
   }, 15_000);
 });

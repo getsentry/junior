@@ -1,5 +1,5 @@
 import type { Message, Thread } from "chat";
-import { botConfig } from "@/chat/config";
+import { botConfig, getGitHubBotUsername } from "@/chat/config";
 import {
   buildTurnFailureResponse,
   logException,
@@ -8,6 +8,7 @@ import {
   withSpan,
 } from "@/chat/logging";
 import { GITHUB_COMMENT_SURFACE } from "@/chat/surface";
+import { normalizeGitHubMentionTarget } from "@/chat/github/mention";
 import { applyPendingAuthUpdate } from "@/chat/services/pending-auth";
 import {
   finalizeFailedTurnReply,
@@ -88,9 +89,17 @@ export function createReplyToGitHubThread(deps: GitHubReplyExecutorDeps) {
         modelId: botConfig.modelId,
       },
       async () => {
-        const strippedUserText = stripLeadingBotMention(message.text, {
-          stripLeadingSlackMentionToken: false,
-        });
+        const githubBotUserName = getGitHubBotUsername() ?? botConfig.userName;
+        const strippedUserText = stripLeadingBotMention(
+          stripLeadingBotMention(message.text, {
+            botUserName: githubBotUserName,
+            stripLeadingSlackMentionToken: false,
+          }),
+          {
+            botUserName: normalizeGitHubMentionTarget(githubBotUserName),
+            stripLeadingSlackMentionToken: false,
+          },
+        );
         const userText = strippedUserText || message.text;
         const preparedState =
           options.preparedState ??

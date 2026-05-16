@@ -5,11 +5,16 @@ import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill } from "@/chat/skills";
 import type { AssistantSurfaceToolProfile } from "@/chat/surface";
 import type { LoadSkillMetadata } from "@/chat/tools/skill/load-skill";
-import type { ChannelCapabilities } from "@/chat/tools/channel-capabilities";
 import type { AdvisorToolRuntimeContext } from "@/chat/tools/advisor/tool";
 
 export interface ImageGenerateToolDeps {
   fetch?: typeof fetch;
+}
+
+export interface ToolChannelCapabilities {
+  canAddReactions: boolean;
+  canCreateCanvas: boolean;
+  canPostToChannel: boolean;
 }
 
 export interface ToolHooks {
@@ -30,7 +35,7 @@ export interface ToolHooks {
 export interface ToolRuntimeContext {
   advisor?: AdvisorToolRuntimeContext;
   channelId?: string;
-  channelCapabilities: ChannelCapabilities;
+  channelCapabilities: ToolChannelCapabilities;
   toolProfile: AssistantSurfaceToolProfile;
   messageTs?: string;
   threadTs?: string;

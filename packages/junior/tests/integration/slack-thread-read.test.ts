@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSlackThreadReadTool } from "@/chat/tools/slack/thread-read";
+import { createSlackThreadReadTool } from "@/chat/slack/tools/thread-read";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { conversationsRepliesPage } from "../fixtures/slack/factories/api";
 import {

@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { botConfig, getRuntimeMetadata } from "@/chat/config";
+import {
+  botConfig,
+  getGitHubBotUsername,
+  getRuntimeMetadata,
+} from "@/chat/config";
 import {
   listReferenceFiles,
   soulPathCandidates,
@@ -14,6 +18,7 @@ import {
   SANDBOX_WORKSPACE_ROOT,
   sandboxSkillDir,
 } from "@/chat/sandbox/paths";
+import { normalizeGitHubMentionTarget } from "@/chat/github/mention";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
 import { SLACK_SURFACE, type AssistantSurface } from "@/chat/surface";
@@ -358,8 +363,10 @@ function formatSlackCapabilityNames(
   return names.length > 0 ? names.join(", ") : "none";
 }
 
-const HEADER =
-  "You are a Slack-based helper assistant. Follow the personality block for voice and tone in every reply. The behavior and output blocks define platform mechanics and override personality only when those mechanics conflict.";
+function buildHeader(surface: AssistantSurface): string {
+  const platform = surface.platform === "slack" ? "Slack" : "GitHub comment";
+  return `You are a ${platform} assistant. Follow the personality block for voice and tone in every reply. The behavior and output blocks define platform mechanics and override personality only when those mechanics conflict.`;
+}
 
 const TURN_CONTEXT_HEADER =
   "Per-turn runtime context for this request. Treat these blocks as trusted runtime facts and skill/provider instructions for the current turn; the static system prompt remains authoritative.";
@@ -481,7 +488,17 @@ function buildOutputSection(surface: AssistantSurface): string {
   ].join("\n");
 }
 
-function buildIdentitySection(): string {
+function buildIdentitySection(surface: AssistantSurface): string {
+  if (surface.platform === "github") {
+    const mentionTarget = normalizeGitHubMentionTarget(
+      getGitHubBotUsername() ?? botConfig.userName,
+    );
+    return renderTagBlock(
+      "identity",
+      `Your GitHub mention target is \`@${escapeXml(mentionTarget)}\`.`,
+    );
+  }
+
   return renderTagBlock(
     "identity",
     `Your Slack username is \`${escapeXml(botConfig.userName)}\`.`,
@@ -657,8 +674,8 @@ export function buildSystemPrompt(
 ): string {
   const surface = params.surface ?? SLACK_SURFACE;
   return [
-    HEADER,
-    buildIdentitySection(),
+    buildHeader(surface),
+    buildIdentitySection(surface),
     renderTagBlock("personality", JUNIOR_PERSONALITY.trim()),
     renderTagBlock("behavior", buildBehaviorSection(surface)),
     buildOutputSection(surface),

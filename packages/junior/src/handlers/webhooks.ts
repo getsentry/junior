@@ -1,4 +1,4 @@
-import { getProductionBot } from "@/chat/app/production";
+import type { ProductionBot } from "@/chat/app/production";
 import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
@@ -41,7 +41,7 @@ function getSlackPayloadTeamId(body: unknown): string | undefined {
 
 async function handleAuthenticatedSlackMessageChangedMention(args: {
   body: unknown;
-  bot: ReturnType<typeof getProductionBot>;
+  bot: ProductionBot;
   rawBody: string;
   request: Request;
   waitUntil: WaitUntilFn;
@@ -125,7 +125,7 @@ export async function handlePlatformWebhook(
   request: Request,
   platform: string,
   waitUntil: WaitUntilFn,
-  bot = getProductionBot(),
+  bot: ProductionBot,
 ): Promise<Response> {
   const handler = bot.webhooks[platform as keyof typeof bot.webhooks];
   const requestContext = createRequestContext(request, { platform });
@@ -247,12 +247,4 @@ export async function handlePlatformWebhook(
       throw error;
     }
   });
-}
-
-export async function POST(
-  request: Request,
-  platform: string,
-  waitUntil: WaitUntilFn,
-): Promise<Response> {
-  return handlePlatformWebhook(request, platform, waitUntil);
 }

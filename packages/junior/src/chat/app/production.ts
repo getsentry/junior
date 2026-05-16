@@ -15,10 +15,15 @@ import {
   getSlackClientSecret,
   getSlackSigningSecret,
 } from "@/chat/config";
+import {
+  resolveEnabledChatPlatforms,
+  type ChatPlatform,
+} from "@/chat/platforms";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { createChatSdkLogger, logException, withSpan } from "@/chat/logging";
 import { createJuniorGitHubAdapter } from "@/chat/github/adapter";
+import { normalizeGitHubMentionTarget } from "@/chat/github/mention";
 import { publishAppHomeView } from "@/chat/slack/app-home";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { getSlackClient } from "@/chat/slack/client";
@@ -26,40 +31,53 @@ import { rehydrateAttachmentFetchers } from "@/chat/queue/thread-message-dispatc
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { getStateAdapter } from "@/chat/state/adapter";
 
-type ProductionBot = JuniorChat<Record<string, Adapter>>;
+export type ProductionBot = JuniorChat<Record<string, Adapter>>;
 
-let productionBot: ProductionBot | undefined;
-let productionSlackRuntime: ReturnType<typeof createSlackRuntime> | undefined;
-let productionGitHubRuntime: ReturnType<typeof createGitHubRuntime> | undefined;
-
-function getAdapterName(thread: { adapter?: { name?: string } }): string | undefined {
+function getAdapterName(thread: {
+  adapter?: { name?: string };
+}): string | undefined {
   return thread.adapter?.name;
+}
+
+function createProductionSlackAdapter(
+  logger: ReturnType<typeof createChatSdkLogger>,
+): SlackAdapter {
+  const signingSecret = getSlackSigningSecret();
+  const botToken = getSlackBotToken();
+  const clientId = getSlackClientId();
+  const clientSecret = getSlackClientSecret();
+
+  if (!signingSecret) {
+    throw new Error("SLACK_SIGNING_SECRET is required when Slack is enabled");
+  }
+
+  return createJuniorSlackAdapter({
+    logger: logger.child("slack"),
+    signingSecret,
+    ...(botToken ? { botToken } : {}),
+    ...(clientId ? { clientId } : {}),
+    ...(clientSecret ? { clientSecret } : {}),
+  });
 }
 
 function createProductionGitHubAdapter(
   logger: ReturnType<typeof createChatSdkLogger>,
-): GitHubAdapter | undefined {
+): GitHubAdapter {
   const appId = getGitHubAppId();
   const privateKey = getGitHubAppPrivateKey();
   const installationId = getGitHubInstallationId();
   const webhookSecret = getGitHubWebhookSecret();
   const botUsername = getGitHubBotUsername();
-  const hasAnyGitHubConfig =
-    appId !== undefined ||
-    privateKey !== undefined ||
-    installationId !== undefined ||
-    webhookSecret !== undefined ||
-    botUsername !== undefined;
-  if (!hasAnyGitHubConfig) {
-    return undefined;
-  }
+  const mentionTarget = botUsername
+    ? normalizeGitHubMentionTarget(botUsername)
+    : undefined;
 
   const missing: string[] = [];
   if (!appId) missing.push("GITHUB_APP_ID");
   if (!privateKey) missing.push("GITHUB_APP_PRIVATE_KEY");
   if (installationId === undefined) missing.push("GITHUB_INSTALLATION_ID");
   if (!webhookSecret) missing.push("GITHUB_WEBHOOK_SECRET");
-  if (!botUsername) missing.push("GITHUB_BOT_USERNAME");
+  if (!mentionTarget) missing.push("GITHUB_BOT_USERNAME");
   if (missing.length > 0) {
     throw new Error(
       `GitHub adapter requires ${missing.join(", ")} when GitHub webhook support is enabled`,
@@ -71,7 +89,7 @@ function createProductionGitHubAdapter(
     privateKey: privateKey as string,
     installationId: installationId as number,
     webhookSecret: webhookSecret as string,
-    userName: botUsername as string,
+    userName: mentionTarget as string,
   };
 
   return createJuniorGitHubAdapter({
@@ -80,30 +98,27 @@ function createProductionGitHubAdapter(
   });
 }
 
-function createProductionBot(): ProductionBot {
+function includesPlatform(
+  enabledPlatforms: readonly ChatPlatform[],
+  platform: ChatPlatform,
+): boolean {
+  return enabledPlatforms.includes(platform);
+}
+
+function createProductionBot(
+  enabledPlatforms: readonly ChatPlatform[],
+): ProductionBot {
   const logger = createChatSdkLogger();
-  const githubAdapter = createProductionGitHubAdapter(logger);
-  const adapters: Record<string, Adapter> = {
-    slack: (() => {
-      const signingSecret = getSlackSigningSecret();
-      const botToken = getSlackBotToken();
-      const clientId = getSlackClientId();
-      const clientSecret = getSlackClientSecret();
-
-      if (!signingSecret) {
-        throw new Error("SLACK_SIGNING_SECRET is required");
-      }
-
-      return createJuniorSlackAdapter({
-        logger: logger.child("slack"),
-        signingSecret,
-        ...(botToken ? { botToken } : {}),
-        ...(clientId ? { clientId } : {}),
-        ...(clientSecret ? { clientSecret } : {}),
-      });
-    })(),
-    ...(githubAdapter ? { github: githubAdapter } : {}),
-  };
+  const adapters: Record<string, Adapter> = {};
+  if (includesPlatform(enabledPlatforms, "slack")) {
+    adapters.slack = createProductionSlackAdapter(logger);
+  }
+  if (includesPlatform(enabledPlatforms, "github")) {
+    adapters.github = createProductionGitHubAdapter(logger);
+  }
+  if (Object.keys(adapters).length === 0) {
+    throw new Error("At least one chat platform must be enabled");
+  }
 
   return new JuniorChat<Record<string, Adapter>>({
     userName: botConfig.userName,
@@ -127,20 +142,27 @@ function createProductionBot(): ProductionBot {
 // resumed via the OAuth callback path.
 function registerProductionHandlers(
   bot: ProductionBot,
-  slackRuntime: ReturnType<typeof createSlackRuntime>,
-  githubRuntime: ReturnType<typeof createGitHubRuntime>,
+  runtimes: {
+    github?: ReturnType<typeof createGitHubRuntime>;
+    slack?: ReturnType<typeof createSlackRuntime>;
+  },
 ): void {
   bot.onNewMention((thread, message) => {
     const adapterName = getAdapterName(thread);
-    if (adapterName === "github") {
-      return githubRuntime.handleNewMention(thread, message);
+    if (adapterName === "github" && runtimes.github) {
+      return runtimes.github.handleNewMention(thread, message);
     }
-    if (adapterName === "slack") {
+    if (adapterName === "slack" && runtimes.slack) {
       rehydrateAttachmentFetchers(message);
-      return slackRuntime.handleNewMention(thread, message);
+      return runtimes.slack.handleNewMention(thread, message);
     }
     return;
   });
+  if (!runtimes.slack) {
+    return;
+  }
+  const slackRuntime = runtimes.slack;
+
   // Route DMs through the mention handler so every DM gets a reply.
   // Without this, the SDK routes DMs in subscribed threads to
   // onSubscribedMessage (Chat.dispatchToHandlers checks isSubscribed
@@ -239,32 +261,47 @@ function registerProductionHandlers(
   });
 }
 
-function initializeProductionApp(): void {
-  if (productionBot && productionSlackRuntime && productionGitHubRuntime) {
-    return;
-  }
-
-  const bot = createProductionBot();
-  const registerSingleton = (
-    bot as unknown as { registerSingleton?: () => unknown }
-  ).registerSingleton;
-  if (typeof registerSingleton === "function") {
-    registerSingleton.call(bot);
-  }
-
-  const slackRuntime = createSlackRuntime({
-    getSlackAdapter: () => bot.getAdapter("slack") as SlackAdapter,
-  });
-  const githubRuntime = createGitHubRuntime();
-
-  registerProductionHandlers(bot, slackRuntime, githubRuntime);
-  productionBot = bot;
-  productionSlackRuntime = slackRuntime;
-  productionGitHubRuntime = githubRuntime;
+export interface ProductionBotOptions {
+  enabledPlatforms?: readonly ChatPlatform[];
 }
 
-/** Return the lazily initialized production chat app. */
-export function getProductionBot(): ProductionBot {
-  initializeProductionApp();
-  return productionBot as ProductionBot;
+/** Create an app-scoped lazy production bot resolver. */
+export function createProductionBotResolver(
+  options: ProductionBotOptions = {},
+): () => ProductionBot {
+  const enabledPlatforms = resolveEnabledChatPlatforms(
+    options.enabledPlatforms,
+    "enabledPlatforms",
+  );
+  let productionBot: ProductionBot | undefined;
+
+  return () => {
+    if (productionBot) {
+      return productionBot;
+    }
+
+    const bot = createProductionBot(enabledPlatforms);
+    const registerSingleton = (
+      bot as unknown as { registerSingleton?: () => unknown }
+    ).registerSingleton;
+    if (typeof registerSingleton === "function") {
+      registerSingleton.call(bot);
+    }
+
+    const slackRuntime = includesPlatform(enabledPlatforms, "slack")
+      ? createSlackRuntime({
+          getSlackAdapter: () => bot.getAdapter("slack") as SlackAdapter,
+        })
+      : undefined;
+    const githubRuntime = includesPlatform(enabledPlatforms, "github")
+      ? createGitHubRuntime()
+      : undefined;
+
+    registerProductionHandlers(bot, {
+      github: githubRuntime,
+      slack: slackRuntime,
+    });
+    productionBot = bot;
+    return bot;
+  };
 }

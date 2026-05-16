@@ -18,12 +18,12 @@ Handled `GET` routes:
 - `/`
 - `/health`
 - `/api/info`
-- `/api/oauth/callback/:provider`
-- `/api/oauth/callback/mcp/:provider`
+- `/api/oauth/callback/:provider` when Slack ingress is enabled
+- `/api/oauth/callback/mcp/:provider` when Slack ingress is enabled
 
 Handled `POST` routes:
 
-- `/api/internal/turn-resume`
+- `/api/internal/turn-resume` when Slack ingress is enabled
 - `/api/webhooks/:platform`
   - Slack: `/api/webhooks/slack`
   - GitHub mention webhook (V1): `/api/webhooks/github`
@@ -31,6 +31,7 @@ Handled `POST` routes:
 ## Expected behavior
 
 - Unknown routes return `404`.
+- Disabled webhook platforms return `404` without initializing that platform's bot adapter.
 - Queue callback validates queue topic and processes thread work.
 - Webhook handler logs and surfaces non-success behavior for operators.
 - GitHub webhook entry is mention-only in V1: explicit `@<bot>` tags in issue/PR/review comments trigger one turn; untagged comments are ignored.
