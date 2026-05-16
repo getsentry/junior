@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPluginAuthOrchestration,
   PluginAuthorizationPauseError,
+  PluginCredentialFailureError,
 } from "@/chat/services/plugin-auth-orchestration";
 import type { Skill } from "@/chat/skills";
 
@@ -95,7 +96,7 @@ describe("createPluginAuthOrchestration", () => {
     );
     getPluginOAuthConfig.mockReset();
     getPluginOAuthConfig.mockImplementation((provider: string) =>
-      provider === "github" || provider === "sentry" ? { provider } : undefined,
+      provider === "sentry" ? { provider } : undefined,
     );
     startOAuthFlow.mockReset();
     unlinkProvider.mockReset();
@@ -161,7 +162,7 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
-        userMessage: "check GitHub",
+        userMessage: "check Sentry",
         userTokenStore,
       },
       abortAgent,
@@ -169,8 +170,8 @@ describe("createPluginAuthOrchestration", () => {
 
     await expect(
       orchestration.handleCommandFailure({
-        activeSkill: githubSkill,
-        command: "gh issue view 123",
+        activeSkill: sentrySkill,
+        command: "sentry issue list",
         details: {
           exit_code: 1,
           stderr: "bad credentials",
@@ -181,7 +182,7 @@ describe("createPluginAuthOrchestration", () => {
     expect(order).toEqual(["oauth", "unlink"]);
     expect(unlinkProvider).toHaveBeenCalledWith(
       "U123",
-      "github",
+      "sentry",
       userTokenStore,
     );
     expect(abortAgent).toHaveBeenCalledTimes(1);
@@ -196,7 +197,31 @@ describe("createPluginAuthOrchestration", () => {
     const orchestration = createPluginAuthOrchestration(
       {
         requesterId: "U123",
-        userMessage: "check GitHub",
+        userMessage: "check Sentry",
+        userTokenStore: {} as any,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: sentrySkill,
+        command: "sentry issue list",
+        details: {
+          exit_code: 1,
+          stderr: "bad credentials",
+        },
+      }),
+    ).rejects.toThrow("Missing base URL");
+
+    expect(unlinkProvider).not.toHaveBeenCalled();
+  });
+
+  it("throws a deterministic credential error for rejected github app commands", async () => {
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "clone getsentry/test-internal-repo",
         userTokenStore: {} as any,
       },
       vi.fn(),
@@ -205,14 +230,43 @@ describe("createPluginAuthOrchestration", () => {
     await expect(
       orchestration.handleCommandFailure({
         activeSkill: githubSkill,
-        command: "gh issue view 123",
+        command: "gh auth status",
         details: {
           exit_code: 1,
-          stderr: "bad credentials",
+          stderr:
+            "The value of the GITHUB_TOKEN environment variable is invalid.",
         },
       }),
-    ).rejects.toThrow("Missing base URL");
+    ).rejects.toBeInstanceOf(PluginCredentialFailureError);
 
+    expect(startOAuthFlow).not.toHaveBeenCalled();
+    expect(unlinkProvider).not.toHaveBeenCalled();
+  });
+
+  it("treats github smart-http gzip failures as credential failures", async () => {
+    const orchestration = createPluginAuthOrchestration(
+      {
+        requesterId: "U123",
+        userMessage: "clone getsentry/test-internal-repo",
+        userTokenStore: {} as any,
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      orchestration.handleCommandFailure({
+        activeSkill: githubSkill,
+        command: "git clone https://github.com/getsentry/test-internal-repo",
+        details: {
+          exit_code: 128,
+          stderr: "fatal: unable to access repository: gzip: invalid header",
+        },
+      }),
+    ).rejects.toThrow(
+      "GitHub credentials were rejected while running `git clone https://github.com/getsentry/test-internal-repo`.",
+    );
+
+    expect(startOAuthFlow).not.toHaveBeenCalled();
     expect(unlinkProvider).not.toHaveBeenCalled();
   });
 

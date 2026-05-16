@@ -1,5 +1,5 @@
 name: github
-description: GitHub issue management via GitHub App
+description: GitHub issue, pull request, and repository workflows via GitHub App
 
 capabilities:
   - actions.read

@@ -22,7 +22,7 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 ## Command matrix
 
 | Operation                          | Command                                                                                   |
-| ---------------------------------- | ----------------------------------------------------------------------------------------- | -------- | ---------- |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- |
 | Clone repository (default shallow) | `gh repo clone owner/repo [DIRECTORY] -- --depth=1`                                       |
 | Deepen shallow clone               | `git -C DIRECTORY fetch --depth=N origin`                                                 |
 | Convert shallow clone to full      | `git -C DIRECTORY fetch --unshallow`                                                      |
@@ -30,9 +30,9 @@ Treat explicit repo flags as command-targeting safety rails, not as a credential
 | Create pull request                | `gh pr create --repo owner/repo --head BRANCH --base BASE --title "..." --body-file PATH` |
 | Update pull request                | `gh pr edit NUMBER --repo owner/repo [--title "..."] [--body-file PATH]`                  |
 | Close pull request                 | `gh pr close NUMBER --repo owner/repo`                                                    |
-| Merge pull request                 | `gh pr merge NUMBER --repo owner/repo [--merge                                            | --squash | --rebase]` |
+| Merge pull request                 | `gh pr merge NUMBER --repo owner/repo [--merge \| --squash \| --rebase]`                  |
 | View pull request                  | `gh pr view NUMBER --repo owner/repo [--json ...]`                                        |
-| List pull requests                 | `gh pr list --repo owner/repo [--state open                                               | closed   | merged]`   |
+| List pull requests                 | `gh pr list --repo owner/repo [--state open \| closed \| merged]`                         |
 | Diff pull request                  | `gh pr diff NUMBER --repo owner/repo`                                                     |
 | Check pull request status          | `gh pr checks NUMBER --repo owner/repo`                                                   |
 | View PR review comments            | `gh api repos/{owner}/{repo}/pulls/{number}/comments`                                     |
@@ -54,7 +54,7 @@ jr-rpc config set github.repo owner/repo
 - Prefer `--json` output for machine-readable parsing where available.
 - Pass extra `git clone` flags after `--` (e.g. `gh repo clone owner/repo -- --depth=1`).
 - Before `gh pr create`, push the head branch explicitly, then use `--head` so `gh` does not trigger hidden push/fork behavior. That push requires GitHub write access to the remote.
-- If the explicit `git push` fails with 401/403 or another auth/permission error, verify the repo context and retry once. If the error still clearly indicates bad credentials, rerun the real GitHub command and let the runtime trigger a reconnect flow.
+- If the explicit `git push` fails with 401/403 or another auth/permission error, verify the repo context and retry once. If it still fails, report the exact command failure and the GitHub App installation/permission remediation.
 - `gh pr edit` is not a single-permission command: title/body/base/reviewer changes fit `github.pull-requests.write`; label, assignee, milestone changes fit `github.issues.write` (use the `github-issues` skill); project flags are outside the current GitHub App capability model.
 - `gh pr close --comment` may need `github.issues.write` (use `github-issues`); `gh pr close --delete-branch` needs `github.contents.write`.
 - Return actionable errors for auth, permission, not-found, and validation failures.

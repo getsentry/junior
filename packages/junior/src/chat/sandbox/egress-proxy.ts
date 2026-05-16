@@ -37,6 +37,10 @@ const PROXY_ONLY_HEADERS = new Set([
   FORWARDED_SCHEME_HEADER,
   FORWARDED_PORT_HEADER,
 ]);
+const DECODED_RESPONSE_HEADERS = new Set([
+  "content-encoding",
+  "content-length",
+]);
 const AUTH_REJECTION_STATUS = new Set([401, 403]);
 interface ProxyDeps {
   fetch?: typeof fetch;
@@ -172,7 +176,10 @@ function responseHeaders(upstream: Response): Headers {
   const headers = new Headers();
   upstream.headers.forEach((value, key) => {
     const normalized = key.toLowerCase();
-    if (!HOP_BY_HOP_HEADERS.has(normalized)) {
+    if (
+      !HOP_BY_HOP_HEADERS.has(normalized) &&
+      !DECODED_RESPONSE_HEADERS.has(normalized)
+    ) {
       headers.append(key, value);
     }
   });

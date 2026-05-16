@@ -21,6 +21,16 @@ export class PluginAuthorizationPauseError extends AuthorizationPauseError {
   }
 }
 
+export class PluginCredentialFailureError extends Error {
+  readonly provider: string;
+
+  constructor(provider: string, message: string) {
+    super(message);
+    this.name = "PluginCredentialFailureError";
+    this.provider = provider;
+  }
+}
+
 export interface PluginAuthOrchestrationDeps {
   conversationId?: string;
   sessionId?: string;
@@ -75,6 +85,7 @@ function isCommandAuthFailure(details: unknown): details is {
     /\bunauthorized\b/,
     /\bbad credentials\b/,
     /\binvalid token\b/,
+    /\bgithub_token\b.*\binvalid\b/,
     /\btoken (?:expired|revoked)\b/,
     /\bexpired token\b/,
     /\bmissing scopes?\b/,
@@ -93,6 +104,19 @@ function commandText(details: unknown): string {
     stderr?: unknown;
   };
   return `${typeof result.stdout === "string" ? result.stdout : ""}\n${typeof result.stderr === "string" ? result.stderr : ""}`;
+}
+
+function isGitHubSmartHttpAuthFailure(
+  provider: string,
+  command: string,
+  details: unknown,
+): boolean {
+  if (provider !== "github" || !/^\s*(?:gh|git)\b/i.test(command)) {
+    return false;
+  }
+
+  const text = commandText(details).toLowerCase();
+  return /\bgzip:\s*invalid header\b/.test(text);
 }
 
 function explicitAuthRequiredProvider(details: unknown): string | undefined {
@@ -146,6 +170,31 @@ function commandTargetsProvider(
 
   const combinedText = `${normalizedCommand}\n${commandText(details).toLowerCase()}`;
   return [...candidates].some((candidate) => combinedText.includes(candidate));
+}
+
+function formatCommand(command: string): string {
+  const collapsed = command.replace(/\s+/g, " ").trim();
+  return collapsed.length > 160 ? `${collapsed.slice(0, 157)}...` : collapsed;
+}
+
+function buildCredentialFailureError(
+  provider: string,
+  command: string,
+): PluginCredentialFailureError {
+  const providerLabel =
+    provider === "github" ? "GitHub" : formatProviderLabel(provider);
+  const plugin = getPluginDefinition(provider);
+  const credentialType = plugin?.manifest.credentials?.type;
+  const commandSummary = formatCommand(command);
+  const remediation =
+    provider === "github" && credentialType === "github-app"
+      ? "Verify the GitHub App installation covers the target repository and the host GitHub App environment variables are current."
+      : `Verify the ${providerLabel} provider credentials before retrying.`;
+
+  return new PluginCredentialFailureError(
+    provider,
+    `${providerLabel} credentials were rejected while running \`${commandSummary}\`. ${remediation}`,
+  );
 }
 
 /**
@@ -231,10 +280,6 @@ export function createPluginAuthOrchestration(
   return {
     handleCommandFailure: async (input) => {
       const providers = registeredProviderNames();
-      const authFailure = isCommandAuthFailure(input.details);
-      if (!authFailure) {
-        return;
-      }
       const explicitProvider = explicitAuthRequiredProvider(input.details);
       const provider =
         explicitProvider && providers.includes(explicitProvider)
@@ -246,13 +291,23 @@ export function createPluginAuthOrchestration(
                 input.details,
               ),
             );
-      if (
-        !provider ||
-        !deps.requesterId ||
-        !deps.userTokenStore ||
-        !getPluginOAuthConfig(provider)
-      ) {
+      if (!provider) {
         return;
+      }
+
+      const authFailure =
+        isCommandAuthFailure(input.details) ||
+        isGitHubSmartHttpAuthFailure(provider, input.command, input.details);
+      if (!authFailure) {
+        return;
+      }
+
+      if (!deps.requesterId || !deps.userTokenStore) {
+        throw buildCredentialFailureError(provider, input.command);
+      }
+
+      if (!getPluginOAuthConfig(provider)) {
+        throw buildCredentialFailureError(provider, input.command);
       }
 
       await startAuthorizationPause(provider, input.activeSkill, {

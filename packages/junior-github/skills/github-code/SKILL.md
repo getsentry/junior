@@ -77,7 +77,7 @@ Repository checkout, source-code investigation, and pull request operations via 
 #### 4. Execute
 
 - Run `git push` first so `gh pr create` does not trigger hidden push/fork behavior; then `gh pr create --repo owner/repo --head BRANCH ...`.
-- If `git push` returns 401/403 or another auth/permission error, verify the command is targeting the right repository and retry once. If it still clearly indicates bad or revoked credentials, rerun the real GitHub command and let the runtime trigger a reconnect flow.
+- If `git push` returns 401/403 or another auth/permission error, verify the command is targeting the right repository and retry once. If it still fails, report the exact command failure and the GitHub App installation/permission remediation.
 - Treat `gh pr merge` as a contents mutation and keep repository context explicit.
 
 #### 5. Report result
@@ -91,4 +91,5 @@ Repository checkout, source-code investigation, and pull request operations via 
 - Answer source-code questions from repository evidence, not product framing or generic memory.
 - Default to shallow clones; do not use a full clone unless the task requires repository history or the user asks for it.
 - If repository or installation access is missing, stop and return a concrete remediation message.
+- GitHub App auth is host-managed; do not ask the user to reconnect a GitHub account.
 - Do not execute repository admin mutations.
