@@ -8,6 +8,11 @@ import {
   appendSlackLegacyAttachmentText,
   renderSlackLegacyAttachmentText,
 } from "@/chat/slack/legacy-attachments";
+import {
+  shouldKeepProcessingReactionForToolInvocation,
+  startSlackProcessingReaction,
+  type ProcessingReactionSession,
+} from "@/chat/runtime/processing-reaction";
 
 export interface AssistantLifecycleEvent {
   channelId: string;
@@ -28,6 +33,10 @@ export interface ThreadContext {
 
 export interface ReplyHooks {
   beforeFirstResponsePost?: () => Promise<void>;
+  onToolInvocation?: (invocation: {
+    params: Record<string, unknown>;
+    toolName: string;
+  }) => void;
 }
 
 const THREAD_OPTOUT_ACK =
@@ -124,6 +133,10 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     options?: {
       beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
+      onToolInvocation?: (invocation: {
+        params: Record<string, unknown>;
+        toolName: string;
+      }) => void;
       preparedState?: TPreparedState;
     },
   ) => Promise<void>;
@@ -206,6 +219,21 @@ export function createSlackTurnRuntime<
     runId?: string;
   }): RuntimeLogContext => buildLogContext(deps, args);
 
+  const createToolInvocationHook = (
+    processingReaction: ProcessingReactionSession,
+    hooks: ReplyHooks | undefined,
+  ) => {
+    return (invocation: {
+      params: Record<string, unknown>;
+      toolName: string;
+    }): void => {
+      if (shouldKeepProcessingReactionForToolInvocation(invocation)) {
+        processingReaction.keep();
+      }
+      hooks?.onToolInvocation?.(invocation);
+    };
+  };
+
   const postFallbackErrorReplyWithLogging = async (args: {
     thread: Thread;
     errorContext: RuntimeLogContext;
@@ -278,6 +306,7 @@ export function createSlackTurnRuntime<
       message: Message,
       hooks?: ReplyHooks,
     ): Promise<void> {
+      let processingReaction: ProcessingReactionSession | undefined;
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
@@ -289,12 +318,23 @@ export function createSlackTurnRuntime<
           requesterUserName: message.author.userName,
           runId,
         });
+        processingReaction = await startSlackProcessingReaction({
+          thread,
+          message,
+          logException: deps.logException,
+          logContext: context,
+        });
+        const toolInvocationHook = createToolInvocationHook(
+          processingReaction,
+          hooks,
+        );
 
         await deps.withSpan("chat.turn", "chat.turn", context, async () => {
           await thread.subscribe();
           await deps.replyToThread(thread, message, {
             explicitMention: true,
             beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+            onToolInvocation: toolInvocationHook,
           });
         });
       } catch (error) {
@@ -339,6 +379,8 @@ export function createSlackTurnRuntime<
           postFailureBody:
             "Failed to post fallback error reply for mention handler",
         });
+      } finally {
+        await processingReaction?.stop();
       }
     },
 
@@ -347,126 +389,134 @@ export function createSlackTurnRuntime<
       message: Message,
       hooks?: ReplyHooks,
     ): Promise<void> {
+      let processingReaction: ProcessingReactionSession | undefined;
       try {
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
         const runId = deps.getRunId(thread, message);
-        await deps.withSpan(
-          "chat.turn",
-          "chat.turn",
-          logContext({
+        const context = logContext({
+          threadId,
+          requesterId: message.author.userId,
+          requesterUserName: message.author.userName,
+          channelId,
+          runId,
+        });
+        processingReaction = await startSlackProcessingReaction({
+          thread,
+          message,
+          logException: deps.logException,
+          logContext: context,
+        });
+        const toolInvocationHook = createToolInvocationHook(
+          processingReaction,
+          hooks,
+        );
+        await deps.withSpan("chat.turn", "chat.turn", context, async () => {
+          // This path can compact context and run router/vision model calls
+          // before replyToThread() opens the main reply span.
+          const legacyAttachmentText = renderSlackLegacyAttachmentText(
+            message.raw,
+          );
+          const rawUserText = appendSlackLegacyAttachmentText(
+            message.text,
+            message.raw,
+          );
+          const strippedUserText = deps.stripLeadingBotMention(message.text, {
+            stripLeadingSlackMentionToken: Boolean(message.isMention),
+          });
+          const userText = appendSlackLegacyAttachmentText(
+            strippedUserText,
+            message.raw,
+          );
+          const context: ThreadContext = {
             threadId,
             requesterId: message.author.userId,
-            requesterUserName: message.author.userName,
             channelId,
             runId,
-          }),
-          async () => {
-            // This path can compact context and run router/vision model calls
-            // before replyToThread() opens the main reply span.
-            const legacyAttachmentText = renderSlackLegacyAttachmentText(
-              message.raw,
-            );
-            const rawUserText = appendSlackLegacyAttachmentText(
-              message.text,
-              message.raw,
-            );
-            const strippedUserText = deps.stripLeadingBotMention(message.text, {
-              stripLeadingSlackMentionToken: Boolean(message.isMention),
-            });
-            const userText = appendSlackLegacyAttachmentText(
-              strippedUserText,
-              message.raw,
-            );
-            const context: ThreadContext = {
-              threadId,
-              requesterId: message.author.userId,
-              channelId,
-              runId,
-            };
+          };
 
-            const preflightDecision = getSubscribedReplyPreflightDecision({
-              botUserName: deps.assistantUserName,
-              rawText: rawUserText,
-              text: userText,
-              isExplicitMention: Boolean(message.isMention),
-            });
+          const preflightDecision = getSubscribedReplyPreflightDecision({
+            botUserName: deps.assistantUserName,
+            rawText: rawUserText,
+            text: userText,
+            isExplicitMention: Boolean(message.isMention),
+          });
 
-            if (preflightDecision && !preflightDecision.shouldReply) {
-              const reason = preflightDecision.reasonDetail
-                ? `${preflightDecision.reason}:${preflightDecision.reasonDetail}`
-                : preflightDecision.reason;
-              await skipSubscribedMessage({
-                thread,
-                message,
-                decision: { shouldReply: false, reason },
-                context,
-                userText,
-              });
-              return;
-            }
-
-            const preparedState = await deps.prepareTurnState({
+          if (preflightDecision && !preflightDecision.shouldReply) {
+            const reason = preflightDecision.reasonDetail
+              ? `${preflightDecision.reason}:${preflightDecision.reasonDetail}`
+              : preflightDecision.reason;
+            await skipSubscribedMessage({
               thread,
               message,
+              decision: { shouldReply: false, reason },
+              context,
               userText,
-              explicitMention: Boolean(message.isMention),
-              context,
             });
+            return;
+          }
 
-            await deps.persistPreparedState({
+          const preparedState = await deps.prepareTurnState({
+            thread,
+            message,
+            userText,
+            explicitMention: Boolean(message.isMention),
+            context,
+          });
+
+          await deps.persistPreparedState({
+            thread,
+            preparedState,
+          });
+
+          const decision = await deps.decideSubscribedReply({
+            rawText: rawUserText,
+            text: userText,
+            conversationContext:
+              deps.getPreparedConversationContext(preparedState),
+            hasAttachments:
+              message.attachments.length > 0 || legacyAttachmentText !== "",
+            isExplicitMention: Boolean(message.isMention),
+            context,
+          });
+
+          if (
+            await maybeHandleThreadOptOutDecision({
               thread,
-              preparedState,
-            });
-
-            const decision = await deps.decideSubscribedReply({
-              rawText: rawUserText,
-              text: userText,
-              conversationContext:
-                deps.getPreparedConversationContext(preparedState),
-              hasAttachments:
-                message.attachments.length > 0 || legacyAttachmentText !== "",
-              isExplicitMention: Boolean(message.isMention),
-              context,
-            });
-
-            if (
-              await maybeHandleThreadOptOutDecision({
-                thread,
-                decision,
-                beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
-              })
-            ) {
-              await skipSubscribedMessage({
-                thread,
-                message,
-                decision,
-                context,
-                preparedState,
-                userText,
-              });
-              return;
-            }
-
-            if (!decision.shouldReply) {
-              await skipSubscribedMessage({
-                thread,
-                message,
-                decision,
-                context,
-                preparedState,
-                userText,
-              });
-              return;
-            }
-
-            await deps.replyToThread(thread, message, {
-              explicitMention: Boolean(message.isMention),
-              preparedState,
+              decision,
               beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+            })
+          ) {
+            await skipSubscribedMessage({
+              thread,
+              message,
+              decision,
+              context,
+              preparedState,
+              userText,
             });
-          },
-        );
+            return;
+          }
+
+          if (!decision.shouldReply) {
+            await skipSubscribedMessage({
+              thread,
+              message,
+              decision,
+              context,
+              preparedState,
+              userText,
+            });
+            return;
+          }
+
+          await deps.replyToThread(thread, message, {
+            explicitMention: Boolean(message.isMention),
+            preparedState,
+            beforeFirstResponsePost: hooks?.beforeFirstResponsePost,
+            onToolInvocation: toolInvocationHook,
+          });
+        });
       } catch (error) {
         const errorContext = logContext({
           threadId: deps.getThreadId(thread, message),
@@ -510,6 +560,8 @@ export function createSlackTurnRuntime<
           postFailureBody:
             "Failed to post fallback error reply for subscribed message handler",
         });
+      } finally {
+        await processingReaction?.stop();
       }
     },
 

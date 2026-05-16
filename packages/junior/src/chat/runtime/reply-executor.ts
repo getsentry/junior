@@ -123,6 +123,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     options: {
       beforeFirstResponsePost?: () => Promise<void>;
       explicitMention?: boolean;
+      onToolInvocation?: (invocation: {
+        params: Record<string, unknown>;
+        toolName: string;
+      }) => void;
       preparedState?: PreparedTurnState;
     } = {},
   ) {
@@ -406,6 +410,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               });
             },
             onStatus: (nextStatus) => status.update(nextStatus),
+            onToolInvocation: options.onToolInvocation,
           });
           const diagnosticsContext = {
             slackThreadId: threadId,
