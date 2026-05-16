@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
 
 const { logExceptionMock, postMessageMock, setStatusMock } = vi.hoisted(() => ({
   logExceptionMock: vi.fn(),
@@ -179,6 +180,13 @@ describe("resumeAuthorizedRequest", () => {
     });
 
     expect(onTimeoutPause).toHaveBeenCalledTimes(1);
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "C-test",
+        thread_ts: "1700000000.0002",
+        text: buildTurnContinuationResponse(),
+      }),
+    );
   });
 
   it("posts the canonical failure response when timeout pause handling throws", async () => {

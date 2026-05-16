@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-05-06
+- Last Edited: 2026-05-16
 
 ## Changelog
 
@@ -21,6 +21,8 @@
 - 2026-04-22: Required explicit progress messages to be written as proper sentence fragments (capitalized first letter, present-participle verb).
 - 2026-04-22: Reframed auth-blocked requests as completed thread replies plus thread-local pending-auth state, and removed the public OAuth "connected, continuing..." preamble from automatic resumes.
 - 2026-05-06: Removed the public thread-visible auth-pause note; private auth-link delivery is the only immediate user-facing auth handoff before callback resume.
+- 2026-05-13: Added the turn-continuation acknowledgement and follow-up retry contract for awaiting continuation checkpoints.
+- 2026-05-16: Added automatic processing reactions for Slack messages Junior is handling or evaluating for handling.
 
 ## Status
 
@@ -142,7 +144,19 @@ Design note:
    - Ordinary tool calls must not synthesize progress phases or override the generic loading-message rotation.
    - Footer metadata, when enabled, is a separate finalized-reply affordance and must not be treated as assistant progress.
 
-### 5. Primary Reply Contract
+### 5. Processing Reaction Contract
+
+Junior must acknowledge Slack messages it is handling, or evaluating for handling, with an automatic processing reaction.
+
+Current rules:
+
+1. DM, explicit-mention, and subscribed-thread message handlers add `:eyes:` before turn preparation, passive reply classification, or assistant execution.
+2. Junior removes that automatic `:eyes:` reaction when the handler completes, including reply, skip, opt-out, auth-pause, timeout-continuation, and fallback-error paths.
+3. Processing-reaction add and remove calls are best effort. Failures are observable but must not fail the turn or change reply routing.
+4. The automatic processing reaction is runtime-owned. It must not be exposed as model progress, and it must not count as a successful user-requested reaction tool call.
+5. If the assistant explicitly uses the Slack reaction tool to add `:eyes:` to the same inbound message, Junior leaves the reaction in place instead of removing the automatic acknowledgement.
+
+### 6. Primary Reply Contract
 
 Junior has one primary visible reply surface per turn: finalized Slack thread replies.
 
@@ -160,7 +174,7 @@ Current rules:
 
 This is intentional. Slack-native text streaming may still exist as an adapter capability, but it is not part of Junior's correctness contract.
 
-### 6. Continuation Contract
+### 7. Continuation Contract
 
 Slack continuation posts are part of the user-visible delivery contract.
 
@@ -174,7 +188,7 @@ Current rules:
 6. If a visible reply ended because the provider failed mid-turn, the final visible chunk ends with `[Response interrupted before completion]`.
 7. Continuation markers are delivery-time formatting, not model-authored text.
 
-### 7. Code Fence Continuation Contract
+### 8. Code Fence Continuation Contract
 
 Continuation behavior must preserve readable fenced markdown/code in Slack.
 
@@ -185,7 +199,7 @@ Current rules:
 
 This is required for readable Slack rendering, not an optional formatting nicety.
 
-### 8. File Delivery Contract
+### 9. File Delivery Contract
 
 Files are part of the same finalized reply-delivery plan as text.
 
@@ -196,7 +210,7 @@ Current rules:
 3. If thread text is intentionally suppressed, files may still be delivered through the thread reply planner when the reply contract requires visible artifacts.
 4. Resume and OAuth callback flows must use the same file-delivery semantics as the main runtime path.
 
-### 9. Image Ingress Contract
+### 10. Image Ingress Contract
 
 Images passed into Slack threads are part of the thread context contract.
 
@@ -208,7 +222,7 @@ Current rules:
 4. Later explicit mentions in the same thread may rely on previously skipped screenshots or image uploads still being recoverable from persisted conversation state.
 5. If Slack delivered an image attachment but the current Junior runtime cannot analyze images, replies must say that the image was received but cannot be analyzed; they must not claim that no image was attached.
 
-### 10. Resume Delivery Contract
+### 11. Resume Delivery Contract
 
 Paused turns resumed by timeout or OAuth must follow the same final Slack delivery contract as live turns.
 
@@ -222,8 +236,11 @@ Current rules:
 6. When a turn blocks on OAuth/MCP auth, Junior must end that live turn after privately delivering the auth link, clear `activeTurnId`, and persist thread-local pending-auth state. Do not post a second public thread reply just to say a private link was sent.
 7. Automatic auth resumes must not post a separate public "account connected, continuing..." banner before the real resumed answer. The resumed answer itself is the visible continuation.
 8. If auth completes after a newer thread message already superseded the blocked request, Junior stores the credentials but does not post a stale resumed answer.
+9. When a turn checkpoint is scheduled for automatic continuation, Junior must post a durable thread acknowledgement that the turn is continuing in the background. Assistant status alone is not sufficient because it is best effort and expires independently of thread history.
+10. If a user follow-up or duplicate delivery hits the same awaiting continuation, Junior should acknowledge the existing continuation instead of creating a second visible turn. Checkpoint rescheduling mechanics belong to `./agent-session-resumability-spec.md`.
+11. Turn-continuation acknowledgements are not final assistant replies. They do not mark the original turn completed, and the final resumed answer must still be delivered through the normal finalized-reply path.
 
-### 11. Testing Contract
+### 12. Testing Contract
 
 Slack integration coverage must be behavior-first while still protecting real Slack transport contracts.
 

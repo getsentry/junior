@@ -57,7 +57,9 @@ describe("createSlackTurnRuntime", () => {
 
       expect(thread.subscribeCalls).toBe(1);
       expect(deps.replyToThread).toHaveBeenCalledWith(thread, message, {
+        beforeFirstResponsePost: undefined,
         explicitMention: true,
+        onToolInvocation: expect.any(Function),
       });
     });
   });

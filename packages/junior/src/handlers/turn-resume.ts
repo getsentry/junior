@@ -38,7 +38,7 @@ import {
   canScheduleTurnTimeoutResume,
   scheduleTurnTimeoutResume,
   verifyTurnTimeoutResumeRequest,
-  type TurnTimeoutResumeRequest,
+  type TurnContinuationRequest,
 } from "@/chat/services/timeout-resume";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { AssistantReply } from "@/chat/respond";
@@ -48,6 +48,12 @@ import {
   clearPendingAuth,
 } from "@/chat/services/pending-auth";
 import type { WaitUntilFn } from "@/handlers/types";
+
+const TIMEOUT_RESUME_LOCK_RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function persistCompletedReplyState(args: {
   checkpoint: AgentTurnSessionCheckpoint;
@@ -126,7 +132,7 @@ async function persistFailedReplyState(
 }
 
 async function resumeTimedOutTurn(
-  payload: TurnTimeoutResumeRequest,
+  payload: TurnContinuationRequest,
 ): Promise<void> {
   const checkpoint = await getAgentTurnSessionCheckpoint(
     payload.conversationId,
@@ -278,6 +284,50 @@ async function resumeTimedOutTurn(
   });
 }
 
+async function resumeTimedOutTurnWithLockRetry(
+  payload: TurnContinuationRequest,
+): Promise<void> {
+  for (const [attempt, delayMs] of [
+    ...TIMEOUT_RESUME_LOCK_RETRY_DELAYS_MS,
+    undefined,
+  ].entries()) {
+    try {
+      await resumeTimedOutTurn(payload);
+      return;
+    } catch (error) {
+      if (!(error instanceof ResumeTurnBusyError)) {
+        throw error;
+      }
+      if (typeof delayMs !== "number") {
+        logWarn(
+          "timeout_resume_lock_busy",
+          {},
+          {
+            "app.ai.conversation_id": payload.conversationId,
+            "app.ai.session_id": payload.sessionId,
+            "app.ai.resume_lock_retry_count": attempt,
+          },
+          "Skipped timeout resume because another turn still owns the thread lock",
+        );
+        return;
+      }
+
+      logWarn(
+        "timeout_resume_lock_busy_retrying",
+        {},
+        {
+          "app.ai.conversation_id": payload.conversationId,
+          "app.ai.session_id": payload.sessionId,
+          "app.ai.resume_lock_retry_attempt": attempt + 1,
+          "app.ai.resume_lock_retry_delay_ms": delayMs,
+        },
+        "Timeout resume lock was busy; retrying",
+      );
+      await sleep(delayMs);
+    }
+  }
+}
+
 /** Handle the authenticated internal timeout-resume callback. */
 export async function POST(
   request: Request,
@@ -289,19 +339,7 @@ export async function POST(
   }
 
   waitUntil(() =>
-    resumeTimedOutTurn(payload).catch((error) => {
-      if (error instanceof ResumeTurnBusyError) {
-        logWarn(
-          "timeout_resume_lock_busy",
-          {},
-          {
-            "app.ai.conversation_id": payload.conversationId,
-            "app.ai.session_id": payload.sessionId,
-          },
-          "Skipped timeout resume because another turn owns the thread lock",
-        );
-        return;
-      }
+    resumeTimedOutTurnWithLockRetry(payload).catch((error) => {
       logException(
         error,
         "timeout_resume_handler_failed",

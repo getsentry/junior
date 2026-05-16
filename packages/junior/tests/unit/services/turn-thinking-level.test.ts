@@ -140,6 +140,28 @@ describe("selectTurnThinkingLevel", () => {
     expect(toAgentThinkingLevel(profile.thinkingLevel)).toBe("low");
   });
 
+  it("accepts common string confidence labels from the classifier", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        thinking_level: "low",
+        confidence: "high",
+        reason: "deterministic single-step command",
+      },
+    }));
+
+    const profile = await selectTurnThinkingLevel({
+      completeObject,
+      fastModelId: "anthropic/claude-haiku-4.5",
+      messageText: "can you clone getsentry/test-internal-repo",
+    });
+
+    expect(profile).toMatchObject({
+      confidence: 0.9,
+      thinkingLevel: "low",
+      reason: "deterministic single-step command",
+    });
+  });
+
   it("floors source-backed context turns at medium unless they are acknowledgments", async () => {
     const completeObject = vi.fn(async () => ({
       object: {

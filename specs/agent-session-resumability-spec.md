@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-05-06
+- Last Edited: 2026-05-13
 
 ## Changelog
 
@@ -14,6 +14,7 @@
 - 2026-04-16: Clarified that Slack delivery now waits for finalized replies, so timeout continuation remains eligible until final visible reply posting begins.
 - 2026-04-22: Added `superseded` checkpoint state and clarified that auth checkpoints do not keep `activeTurnId` alive; thread-local pending-auth state decides whether an auth-blocked request is still resumable.
 - 2026-05-06: Removed the public Slack auth-pause note; auth pauses complete the live turn after private auth-link delivery.
+- 2026-05-13: Clarified turn continuation as an idempotent checkpoint retry path, including user follow-up rescheduling and bounded lock-busy callback retries.
 
 ## Status
 
@@ -42,6 +43,10 @@ Define how a single assistant turn is split into resumable execution slices so s
 - Reconciling or rewriting partially visible Slack assistant output after timeout.
 
 ## Contracts
+
+### Spec Boundary
+
+This spec owns how one assistant turn is checkpointed and resumed across execution slices. The full Slack-event-to-agent-to-Slack data flow belongs to `./chat-architecture-spec.md`; user-visible Slack acknowledgements and final delivery belong to `./slack-agent-delivery-spec.md`.
 
 ### Identity Model
 
@@ -157,11 +162,14 @@ If the previous slice timed out after producing uncommitted partial assistant te
 
 ### Automatic Continuation Contract
 
-- Automatic timeout continuation is best-effort and currently uses a signed internal HTTP callback, not a generic queue/lease system.
+- Session continuation is the agent recovery model: Junior must be able to rebuild the runtime from durable thread state plus the latest safe checkpoint and continue the same turn session.
+- This spec covers checkpoint and resume mechanics. Transport retry/locking is defined in the chat architecture spec, and Slack-visible delivery behavior is defined in the Slack delivery spec.
+- Automatic timeout continuation is the current proactive producer of session-continuation work for serverless/Vercel time limits. It is best-effort and currently uses a signed internal HTTP callback, not a generic queue/lease system.
 - A timeout checkpoint may be auto-scheduled only when no assistant text has been made visible to the user for the current turn.
 - Once visible assistant output has started posting, the runtime must not auto-resume that turn or attempt to rewrite/reconcile the partial output.
 - In the current Slack delivery contract, assistant text is not posted until the reply is finalized, so ordinary agent-generation timeouts still occur before visible output begins.
-- In that case, the last safe checkpoint may still exist for inspection or operator-driven recovery, but the user-visible turn is allowed to fail.
+- If a later user message arrives while `activeTurnId` points at an awaiting automatic continuation checkpoint, the live runtime must treat that message as a retry signal for the existing session: reschedule the checkpoint callback, keep `activeTurnId` on the original session, and do not start a new agent turn.
+- In that case, the last safe checkpoint may still exist for inspection or operator-driven recovery, but the user-visible turn is allowed to fail only after automatic continuation is impossible or exhausted.
 
 ### Internal Timeout-Resume Callback Contract
 
@@ -181,7 +189,7 @@ The callback must:
    - `state !== awaiting_resume`
    - `resume_reason !== timeout`
    - `checkpoint_version !== expected_checkpoint_version`
-5. Acquire the same per-thread state-adapter lock used by live turn execution; if another worker already owns it, exit without mutating state.
+5. Acquire the same per-thread state-adapter lock used by live turn execution. Because callbacks are often scheduled before the scheduling live handler has released the lock, a busy lock must be retried for a short bounded window before the callback gives up.
 6. Rebuild turn runtime state from durable thread/configuration state:
    - user message
    - conversation context
@@ -191,22 +199,24 @@ The callback must:
 7. Restore Pi messages with `replaceMessages(...)` and resume with `continue()`.
 8. If the resumed slice times out again before visible output, schedule a new callback carrying the new `checkpoint_version`.
 
-### Conversation Flow
+### Slice Lifecycle
 
 1. User message starts a new `session_id` under `conversation_id`.
 2. Slice `1` runs and eagerly persists sandbox/artifact state as those values change.
-3. If the turn finishes, commit `completed` and persist final thread state/output.
-4. If MCP auth pauses at a safe boundary, commit `awaiting_resume` with `resume_reason=auth`; the live Slack turn ends after private auth-link delivery without a second public thread note, and the OAuth callback later consults thread-local pending-auth state before resuming.
+3. If the turn finishes, commit `completed` after the final delivery contract has succeeded.
+4. If MCP auth pauses at a safe boundary, commit `awaiting_resume` with `resume_reason=auth`; the OAuth callback later consults thread-local pending-auth state before resuming.
 5. If timeout is reached before any assistant text is visible, commit `awaiting_resume` with `resume_reason=timeout` and schedule the signed internal timeout-resume callback.
 6. The timeout-resume handler validates `expected_checkpoint_version`, rebuilds durable runtime state, restores Pi messages, and calls `continue()`.
-7. If timeout happens after visible assistant output begins, keep the timeout checkpoint but do not auto-schedule continuation.
+7. If the callback loses the per-thread lock because the scheduling live handler is still unwinding, it retries briefly and then either resumes or logs a lock-busy exit without mutating state.
+8. If the user pings the thread while the timeout checkpoint is still awaiting resume, the runtime reschedules the existing callback. The ping must not overwrite `activeTurnId` or create a second agent turn.
+9. If timeout happens after visible assistant output begins, keep the timeout checkpoint but do not auto-schedule continuation.
 
 ## Failure Model
 
 1. Timeout or crash before checkpoint commit: no new boundary exists; the system can only rely on whatever thread state had already been eagerly persisted.
-2. Checkpoint commit succeeds but the timeout-resume callback is never sent or delivered: there is no sweeper today; continuation requires another explicit callback or operator intervention.
+2. Checkpoint commit succeeds but the timeout-resume callback is never sent or delivered: there is no sweeper today; continuation requires another explicit callback, a later user follow-up that reschedules the existing checkpoint, or operator intervention.
 3. Stale timeout-resume callbacks with an older `expected_checkpoint_version` are dropped without doing work.
-4. Duplicate concurrent callbacks for the same thread are serialized by the shared per-thread state-adapter lock, but there is no delayed retry queue if a callback loses the race for that lock.
+4. Duplicate concurrent callbacks for the same thread are serialized by the shared per-thread state-adapter lock. Lock-busy callbacks retry for a short bounded window, but there is no durable delayed retry queue after that window is exhausted.
 5. Timeout after visible assistant output begins: automatic continuation is skipped to avoid duplicate/corrupt user-visible output.
 6. Repeated resumed timeouts before visible output may produce further `awaiting_resume` checkpoints with incremented `slice_id` and `checkpoint_version`.
 
@@ -217,9 +227,13 @@ Required log events/diagnostics:
 - `agent_turn_timeout`
 - `agent_turn_timeout_resume_checkpoint_failed`
 - `agent_turn_timeout_resume_schedule_failed`
+- `agent_turn_continuation_retry_schedule_failed`
 - `agent_turn_timeout_resume_skipped_after_visible_output`
 - `timeout_resume_failed`
 - `timeout_resume_handler_failed`
+- `timeout_resume_lock_busy`
+- `timeout_resume_lock_busy_retrying`
+- `slack_turn_continuation_notice_post_failed`
 
 Required attributes when available:
 
@@ -242,9 +256,11 @@ Required attributes when available:
 2. Unit: signed timeout-resume callbacks verify successfully and tampered payloads are rejected.
 3. Unit/integration: a timed-out turn resumes with `replaceMessages` + `continue` and reaches a successful terminal reply when no assistant text had been made visible.
 4. Unit/integration: a resumed timeout slice can time out again and schedule the next callback with the new `checkpoint_version`.
-5. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
-6. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across slices.
-7. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
+5. Unit/integration: a lock-busy timeout callback retries before giving up.
+6. Integration: a user follow-up or duplicate delivery during an awaiting automatic continuation checkpoint reschedules the existing session instead of starting a new turn.
+7. Unit/integration: auth-driven resume restores the same active skill/MCP tool universe before `continue()`.
+8. Unit/integration: eager sandbox/artifact persistence preserves resumed tool context across slices.
+9. Manual/eval: once assistant text is already visible, timeout does not auto-resume or attempt to reconcile partial thread output.
 
 ## Related Specs
 
