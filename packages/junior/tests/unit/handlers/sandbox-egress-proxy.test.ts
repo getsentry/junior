@@ -521,6 +521,31 @@ describe("sandbox egress proxy", () => {
     expect(response.headers.get("x-request-id")).toBe("req-123");
   });
 
+  it("drops upstream encoding headers after host fetch decodes the body", async () => {
+    await authorizeSandboxEgress();
+    mockSentryLease();
+
+    const response = await proxy(
+      egressRequest(),
+      vi.fn(
+        async () =>
+          new Response("ok", {
+            headers: {
+              "content-encoding": "gzip",
+              "content-length": "999",
+              "x-request-id": "req-123",
+            },
+          }),
+      ) as typeof fetch,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("ok");
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("content-length")).toBeNull();
+    expect(response.headers.get("x-request-id")).toBe("req-123");
+  });
+
   it("rejects forwarded hosts with embedded ports", async () => {
     const fetchMock = vi.fn();
 
