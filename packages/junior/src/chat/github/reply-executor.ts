@@ -63,6 +63,14 @@ interface GitHubReplyExecutorDeps {
   services: GitHubReplyExecutorServices;
 }
 
+function buildAuthUnavailableResponse(provider: string | undefined): string {
+  const providerText = provider ? `${provider} ` : "";
+  return [
+    `I can't complete this from GitHub yet because it requires interactive ${providerText}authorization.`,
+    "Please retry from Slack after connecting the required account.",
+  ].join(" ");
+}
+
 export function createReplyToGitHubThread(deps: GitHubReplyExecutorDeps) {
   return async function replyToGitHubThread(
     thread: Thread,
@@ -266,10 +274,28 @@ export function createReplyToGitHubThread(deps: GitHubReplyExecutorDeps) {
             isRetryableTurnError(error, "mcp_auth_resume") ||
             isRetryableTurnError(error, "plugin_auth_resume")
           ) {
+            const authUnavailableText = buildAuthUnavailableResponse(
+              error.metadata?.authProvider,
+            );
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: error.metadata?.sessionId ?? turnId,
             });
+            upsertConversationMessage(preparedState.conversation, {
+              id: generateConversationId("assistant"),
+              role: "assistant",
+              text: authUnavailableText,
+              createdAtMs: Date.now(),
+              author: {
+                userName: botConfig.userName,
+                isBot: true,
+              },
+              meta: {
+                replied: true,
+              },
+            });
+            await beforeFirstResponsePost();
+            await thread.post(authUnavailableText);
             await persistThreadState(thread, {
               conversation: preparedState.conversation,
             });

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubRuntime } from "@/chat/app/factory";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
+import { RetryableTurnError } from "@/chat/runtime/turn";
 import type { WaitUntilFn } from "@/handlers/types";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
 import {
@@ -217,6 +218,45 @@ describe("GitHub webhook mention handling", () => {
     expect(commentPosts).toHaveLength(1);
     expect(commentPosts[0]?.body).toMatchObject({
       body: expect.stringContaining("event_id=unknown"),
+    });
+  });
+
+  it("posts an auth unavailable reply when auth pause reaches GitHub", async () => {
+    const { bot } = await createGitHubBot(async () => {
+      throw new RetryableTurnError("plugin_auth_resume", "github auth needed", {
+        authProvider: "github",
+      });
+    });
+    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const payload = githubIssueCommentWebhook({
+      issueNumber: 14,
+      isPullRequest: false,
+      body: "@junior please use my GitHub account",
+    }) as Record<string, unknown>;
+    const request = createGitHubRequest({
+      eventType: "issue_comment",
+      payload,
+    });
+
+    const response = await handlePlatformWebhook(
+      request,
+      "github",
+      collectWaitUntil(waitUntilTasks),
+      bot,
+    );
+    await flushWaitUntil(waitUntilTasks);
+
+    expect(response.status).toBe(200);
+    const commentPosts = getCapturedGitHubApiCalls().filter(
+      (entry) =>
+        entry.method === "POST" &&
+        entry.url.includes("/repos/acme/junior/issues/14/comments"),
+    );
+    expect(commentPosts).toHaveLength(1);
+    expect(commentPosts[0]?.body).toMatchObject({
+      body: expect.stringContaining(
+        "requires interactive github authorization",
+      ),
     });
   });
 
