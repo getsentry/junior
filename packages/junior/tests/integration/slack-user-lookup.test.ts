@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSlackUserLookupTool } from "@/chat/tools/slack/user-lookup";
+import { createSlackUserLookupTool } from "@/chat/slack/tools/user-lookup";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -349,6 +349,7 @@ describe("slackUserLookup", () => {
             canAddReactions: true,
           },
           sandbox: {} as any,
+          toolProfile: "slack",
         },
       );
 

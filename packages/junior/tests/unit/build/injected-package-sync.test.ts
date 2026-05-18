@@ -1,12 +1,11 @@
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-const require = createRequire(import.meta.url);
 const { isLinkedDirectory, linkDirectory, resolveInjectedPackageDir } =
-  require("../../../../../scripts/lib/injected-package-sync.mjs") as {
+  // @ts-expect-error - runtime script module has no published .d.ts file.
+  (await import("../../../../../scripts/lib/injected-package-sync.mjs")) as {
     isLinkedDirectory: (sourceDir: string, targetDir: string) => boolean;
     linkDirectory: (sourceDir: string, targetDir: string) => void;
     resolveInjectedPackageDir: (

@@ -111,9 +111,7 @@ const DEFAULT_TODO_SCHEMA = [
 ];
 
 /** Create a new Slack todo list with the default schema. */
-export async function createTodoList(
-  name: string,
-): Promise<{
+export async function createTodoList(name: string): Promise<{
   listId: string;
   listColumnMap: ListColumnMap;
   permalink?: string;

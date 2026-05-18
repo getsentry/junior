@@ -81,10 +81,19 @@ const REQUESTER_ID = "U123";
 
 async function authorizeSandboxEgress(
   requesterId = REQUESTER_ID,
+  providerNames?: readonly string[],
 ): Promise<void> {
   await upsertSandboxEgressSession({
     egressId: EGRESS_ID,
+    providerNames,
     requesterId,
+    ttlMs: 60_000,
+  });
+}
+
+async function authorizeHostSandboxEgress(): Promise<void> {
+  await upsertSandboxEgressSession({
+    egressId: EGRESS_ID,
     ttlMs: 60_000,
   });
 }
@@ -301,6 +310,33 @@ describe("sandbox egress proxy", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("can issue host-scoped credential leases without a requester", async () => {
+    await authorizeHostSandboxEgress();
+    mockSentryLease();
+
+    const response = await proxy(egressRequest());
+
+    expect(response.status).toBe(200);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
+      provider: "sentry",
+      requesterId: undefined,
+      reason: "sandbox-egress:sentry",
+    });
+  });
+
+  it("rejects providers outside the sandbox session allowlist", async () => {
+    await authorizeSandboxEgress(REQUESTER_ID, ["github"]);
+    mockSentryLease();
+
+    const response = await proxy(egressRequest());
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Provider is not enabled for this sandbox session",
+    });
+    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
   });
 
   it("scopes cached credential leases to the requester", async () => {

@@ -276,6 +276,9 @@ export async function proxySandboxEgressRequest(
   if (!session) {
     return jsonError("Sandbox egress session is not authorized", 403);
   }
+  if (session.providerNames && !session.providerNames.includes(provider)) {
+    return jsonError("Provider is not enabled for this sandbox session", 403);
+  }
 
   let lease: SandboxEgressCredentialLease;
   try {

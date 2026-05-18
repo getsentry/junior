@@ -107,6 +107,7 @@ Co-Authored-By: (agent model name) <email>
 - `specs/security-policy.md` (global runtime/container/token security policy)
 - `specs/chat-architecture-spec.md` (chat composition, service, and test-seam architecture contract)
 - `specs/slack-agent-delivery-spec.md` (Slack entry surfaces, reply delivery, continuation, files, images, and resume behavior contract)
+- `specs/github-agent-delivery-spec.md` (GitHub mention entry surfaces, one-turn comment delivery, and platform/tool boundary contract)
 - `specs/slack-outbound-contract-spec.md` (Slack outbound boundary, message/file/reaction safety rules, and markdown-to-`mrkdwn` ownership)
 - `specs/skill-capabilities-spec.md` (capability declaration + broker/injection contract)
 - `specs/oauth-flows-spec.md` (OAuth authorization code flow + Slack UX contract)

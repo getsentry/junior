@@ -1,6 +1,7 @@
 import { resetEvalOAuthMockState } from "./handlers/eval-oauth";
 import { resetEvalMcpAuthMockState } from "./handlers/eval-mcp-auth";
 import { afterAll, afterEach, beforeAll } from "vitest";
+import { resetGitHubApiMockState } from "./handlers/github-api";
 import { resetSlackApiMockState } from "./handlers/slack-api";
 import { enforceUnhandledSlackRequestFailure, mswServer } from "./server";
 
@@ -29,6 +30,7 @@ afterEach(() => {
   mswServer.resetHandlers();
   resetEvalOAuthMockState();
   resetEvalMcpAuthMockState();
+  resetGitHubApiMockState();
   resetSlackApiMockState();
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
+import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 
 const addReactionToMessage = vi.fn();
 
@@ -31,6 +31,7 @@ describe("slackMessageAddReaction tool", () => {
         },
         messageTs: "1700000000.100",
         sandbox: {} as any,
+        toolProfile: "slack",
       },
       createState() as any,
     );
@@ -60,6 +61,7 @@ describe("slackMessageAddReaction tool", () => {
         },
         messageTs: "1700000000.100",
         sandbox: {} as any,
+        toolProfile: "slack",
       },
       createState() as any,
     );
@@ -94,6 +96,7 @@ describe("slackMessageAddReaction tool", () => {
         },
         messageTs: "1700000000.100",
         sandbox: {} as any,
+        toolProfile: "slack",
       },
       createState() as any,
     );

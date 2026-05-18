@@ -4,7 +4,7 @@ import { Type } from "@sinclair/typebox";
 import type { AdvisorConfig } from "@/chat/config";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createTools } from "@/chat/tools";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
 import type { AdvisorSessionStore } from "@/chat/tools/advisor/session-store";
 import {
   createAdvisorToolDefinitions,
@@ -91,6 +91,7 @@ describe("advisor tool", () => {
     const baseContext = {
       channelCapabilities: resolveChannelCapabilities("D12345"),
       sandbox: {} as any,
+      toolProfile: "slack" as const,
     };
     expect(createTools([], {}, baseContext)).not.toHaveProperty("advisor");
 
@@ -185,6 +186,7 @@ describe("advisor tool", () => {
         {
           channelCapabilities: resolveChannelCapabilities("C12345"),
           sandbox: {} as any,
+          toolProfile: "slack",
         },
       ),
     );

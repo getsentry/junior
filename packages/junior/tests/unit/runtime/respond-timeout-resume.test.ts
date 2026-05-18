@@ -1,8 +1,9 @@
 import { Buffer } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { promptAborted } = vi.hoisted(() => ({
+const { promptAborted, sandboxExecutorOptions } = vi.hoisted(() => ({
   promptAborted: { value: false },
+  sandboxExecutorOptions: { value: [] as Array<Record<string, unknown>> },
 }));
 
 vi.mock("@mariozechner/pi-agent-core", () => {
@@ -122,25 +123,28 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 }));
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
-  createSandboxExecutor: () => ({
-    configureSkills: () => undefined,
-    configureReferenceFiles: () => undefined,
-    createSandbox: async () => ({
-      readFileToBuffer: async () => Buffer.from("", "utf8"),
-      runCommand: async () => ({
-        stdout: "",
-        stderr: "",
-        exitCode: 0,
+  createSandboxExecutor: (options: Record<string, unknown>) => {
+    sandboxExecutorOptions.value.push(options);
+    return {
+      configureSkills: () => undefined,
+      configureReferenceFiles: () => undefined,
+      createSandbox: async () => ({
+        readFileToBuffer: async () => Buffer.from("", "utf8"),
+        runCommand: async () => ({
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        }),
       }),
-    }),
-    canExecute: () => false,
-    execute: async () => {
-      throw new Error("sandbox executor should not execute in this test");
-    },
-    getSandboxId: () => undefined,
-    getDependencyProfileHash: () => undefined,
-    dispose: async () => undefined,
-  }),
+      canExecute: () => false,
+      execute: async () => {
+        throw new Error("sandbox executor should not execute in this test");
+      },
+      getSandboxId: () => undefined,
+      getDependencyProfileHash: () => undefined,
+      dispose: async () => undefined,
+    };
+  },
 }));
 
 vi.mock("@/chat/plugins/registry", async (importOriginal) => ({
@@ -160,10 +164,12 @@ import { generateAssistantReply } from "@/chat/respond";
 import { isRetryableTurnError } from "@/chat/runtime/turn";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getAgentTurnSessionCheckpoint } from "@/chat/state/turn-session-store";
+import { GITHUB_COMMENT_SURFACE } from "@/chat/surface";
 
 describe("generateAssistantReply timeout resume", () => {
   beforeEach(async () => {
     promptAborted.value = false;
+    sandboxExecutorOptions.value = [];
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     await disconnectStateAdapter();
     vi.useFakeTimers();
@@ -251,5 +257,46 @@ describe("generateAssistantReply timeout resume", () => {
         }),
       ]),
     );
+  });
+
+  it("does not use GitHub requester IDs for user-scoped auth", async () => {
+    const replyPromise = generateAssistantReply("help me", {
+      surface: GITHUB_COMMENT_SURFACE,
+      requester: { userId: "github-user" },
+      correlation: {
+        conversationId: "github:conversation-auth",
+        turnId: "github-turn-auth",
+        runId: "github-run-auth",
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await replyPromise;
+
+    expect(sandboxExecutorOptions.value[0]?.credentialEgress).toMatchObject({
+      requesterId: undefined,
+    });
+  });
+
+  it("does not park GitHub comment turns into the Slack timeout resume queue", async () => {
+    const replyPromise = generateAssistantReply("help me", {
+      surface: GITHUB_COMMENT_SURFACE,
+      requester: { userId: "github-user" },
+      correlation: {
+        conversationId: "github:conversation-1",
+        turnId: "github-turn-1",
+        runId: "github-run-1",
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    const reply = await replyPromise;
+
+    expect(promptAborted.value).toBe(true);
+    expect(reply.diagnostics.outcome).toBe("provider_error");
+    expect(reply.text).toContain("Error:");
+    await expect(
+      getAgentTurnSessionCheckpoint("github:conversation-1", "github-turn-1"),
+    ).resolves.toBeUndefined();
   });
 });

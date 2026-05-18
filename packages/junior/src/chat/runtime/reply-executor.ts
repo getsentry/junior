@@ -66,7 +66,9 @@ import {
   finalizeFailedTurnReply,
   getAgentTurnDiagnosticsAttributes,
 } from "@/chat/services/turn-failure-response";
+import { SLACK_SURFACE } from "@/chat/surface";
 import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
+import type { PlatformRuntimeConfig } from "@/chat/platform-config";
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
@@ -83,6 +85,7 @@ export interface ReplyExecutorServices {
 
 interface ReplyExecutorDeps {
   getSlackAdapter: () => SlackAdapter;
+  platformConfig?: PlatformRuntimeConfig;
   resolveUserAttachments: (
     attachments: Message["attachments"] | undefined,
     context: {
@@ -358,6 +361,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const toolChannelId =
             preparedState.artifacts.assistantContextChannelId ?? channelId;
           let reply = await deps.services.generateAssistantReply(userText, {
+            surface: SLACK_SURFACE,
             requester: {
               userId: message.author.userId,
               userName: message.author.userName ?? fallbackIdentity?.userName,
@@ -369,6 +373,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             piMessages: preparedState.conversation.piMessages,
             pendingAuth: preparedState.conversation.processing.pendingAuth,
             configuration: preparedState.configuration,
+            platformConfig: deps.platformConfig,
             channelConfiguration: preparedState.channelConfiguration,
             inboundAttachmentCount: message.attachments.length,
             omittedImageAttachmentCount,

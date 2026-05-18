@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTools } from "@/chat/tools";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
 
 const noopSandbox = {} as any;
 
@@ -9,6 +9,7 @@ function ctx(channelId?: string) {
     channelId,
     channelCapabilities: resolveChannelCapabilities(channelId),
     sandbox: noopSandbox,
+    toolProfile: "slack" as const,
   };
 }
 

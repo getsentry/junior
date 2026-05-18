@@ -177,4 +177,34 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.turnTimeoutMs).toBe(480000);
   });
+
+  it("reads explicit GitHub adapter env mapping", async () => {
+    process.env.GITHUB_APP_ID = "123456";
+    process.env.GITHUB_APP_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\n...";
+    process.env.GITHUB_INSTALLATION_ID = "999";
+    process.env.GITHUB_WEBHOOK_SECRET = "webhook-secret";
+    process.env.GITHUB_BOT_USERNAME = "junior-bot";
+
+    const {
+      getGitHubAppId,
+      getGitHubAppPrivateKey,
+      getGitHubInstallationId,
+      getGitHubWebhookSecret,
+      getGitHubBotUsername,
+    } = await loadConfig();
+
+    expect(getGitHubAppId()).toBe("123456");
+    expect(getGitHubAppPrivateKey()).toBe("-----BEGIN PRIVATE KEY-----\n...");
+    expect(getGitHubInstallationId()).toBe(999);
+    expect(getGitHubWebhookSecret()).toBe("webhook-secret");
+    expect(getGitHubBotUsername()).toBe("junior-bot");
+  });
+
+  it("throws when GITHUB_INSTALLATION_ID is not a positive integer", async () => {
+    process.env.GITHUB_INSTALLATION_ID = "not-a-number";
+
+    await expect(loadConfig()).rejects.toThrow(
+      "GITHUB_INSTALLATION_ID must be a positive integer",
+    );
+  });
 });

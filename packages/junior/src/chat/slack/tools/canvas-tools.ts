@@ -6,7 +6,7 @@ import {
   lookupCanvasSection,
   readCanvas,
   updateCanvas,
-} from "@/chat/tools/slack/canvases";
+} from "@/chat/slack/tools/canvases";
 import { isConversationScopedChannel } from "@/chat/slack/client";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { logError, logWarn } from "@/chat/logging";

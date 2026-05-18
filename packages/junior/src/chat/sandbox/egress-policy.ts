@@ -23,8 +23,10 @@ function manifestDomains(manifest: PluginManifest): string[] {
   return [...domains].sort((left, right) => left.localeCompare(right));
 }
 
-function providerEntries(): Array<{ provider: string; domains: string[] }> {
-  return getPluginProviders()
+function providerEntries(options?: {
+  providerNames?: readonly string[];
+}): Array<{ provider: string; domains: string[] }> {
+  return getPluginProviders(options?.providerNames)
     .map((plugin) => ({
       provider: plugin.manifest.name,
       domains: manifestDomains(plugin.manifest),
@@ -57,8 +59,11 @@ function proxyUrl(egressId: string): string | undefined {
 /** Build the forwarding policy that keeps provider credentials outside the sandbox. */
 export function buildSandboxEgressNetworkPolicy(
   egressId: string,
+  options?: {
+    providerNames?: readonly string[];
+  },
 ): NetworkPolicy | undefined {
-  const entries = providerEntries();
+  const entries = providerEntries(options);
   if (entries.length === 0) {
     return undefined;
   }
@@ -84,12 +89,12 @@ export function buildSandboxEgressNetworkPolicy(
 }
 
 /** Resolve non-secret command environment values for registered sandbox providers. */
-export async function resolveSandboxCommandEnvironment(): Promise<
-  Record<string, string>
-> {
+export async function resolveSandboxCommandEnvironment(options?: {
+  providerNames?: readonly string[];
+}): Promise<Record<string, string>> {
   const env: Record<string, string> = {};
-  for (const plugin of getPluginProviders().sort((left, right) =>
-    left.manifest.name.localeCompare(right.manifest.name),
+  for (const plugin of getPluginProviders(options?.providerNames).sort(
+    (left, right) => left.manifest.name.localeCompare(right.manifest.name),
   )) {
     Object.assign(env, resolvePluginCommandEnv(plugin.manifest));
     const credentials = plugin.manifest.credentials;

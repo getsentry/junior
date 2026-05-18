@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-13
+- Last Edited: 2026-05-16
 
 ## Changelog
 
@@ -17,6 +17,7 @@
 - 2026-04-28: Added canonical agent prompt spec.
 - 2026-05-06: Added draft advisor tool spec.
 - 2026-05-13: Added ownership map for chat, agent session, and Slack delivery specs.
+- 2026-05-16: Added canonical GitHub agent delivery spec.
 
 ## Status
 
@@ -51,6 +52,7 @@ Define spec taxonomy, naming conventions, and canonical source-of-truth document
 - `specs/security-policy.md`
 - `specs/chat-architecture-spec.md`
 - `specs/slack-agent-delivery-spec.md`
+- `specs/github-agent-delivery-spec.md`
 - `specs/slack-outbound-contract-spec.md`
 - `specs/skill-capabilities-spec.md`
 - `specs/oauth-flows-spec.md`

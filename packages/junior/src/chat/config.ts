@@ -52,6 +52,13 @@ export interface AdvisorConfig {
 export interface ChatConfig {
   bot: BotConfig;
   functionMaxDurationSeconds: number;
+  github: {
+    appId?: string;
+    appPrivateKey?: string;
+    botUsername?: string;
+    installationId?: number;
+    webhookSecret?: string;
+  };
   slack: {
     botToken?: string;
     clientId?: string;
@@ -137,6 +144,23 @@ function parseAdvisorThinkingLevel(
   );
 }
 
+function parseOptionalPositiveInteger(
+  rawValue: string | undefined,
+  envName: string,
+): number | undefined {
+  const trimmed = toOptionalTrimmed(rawValue);
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    throw new Error(`${envName} must be a positive integer`);
+  }
+
+  return parsed;
+}
+
 // Compile-time assertion: `getModel`'s second generic is constrained to
 // `keyof (typeof MODELS)[TProvider]`, so a stale default becomes a tsc error.
 const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "openai/gpt-5.4").id;
@@ -191,6 +215,16 @@ export function readChatConfig(
   return {
     bot: readBotConfig(env),
     functionMaxDurationSeconds: resolveFunctionMaxDurationSeconds(env),
+    github: {
+      appId: toOptionalTrimmed(env.GITHUB_APP_ID),
+      appPrivateKey: toOptionalTrimmed(env.GITHUB_APP_PRIVATE_KEY),
+      installationId: parseOptionalPositiveInteger(
+        env.GITHUB_INSTALLATION_ID,
+        "GITHUB_INSTALLATION_ID",
+      ),
+      webhookSecret: toOptionalTrimmed(env.GITHUB_WEBHOOK_SECRET),
+      botUsername: toOptionalTrimmed(env.GITHUB_BOT_USERNAME),
+    },
     slack: {
       botToken:
         toOptionalTrimmed(env.SLACK_BOT_TOKEN) ??
@@ -234,6 +268,26 @@ export function getSlackClientId(): string | undefined {
 
 export function getSlackClientSecret(): string | undefined {
   return chatConfig.slack.clientSecret;
+}
+
+export function getGitHubAppId(): string | undefined {
+  return chatConfig.github.appId;
+}
+
+export function getGitHubAppPrivateKey(): string | undefined {
+  return chatConfig.github.appPrivateKey;
+}
+
+export function getGitHubInstallationId(): number | undefined {
+  return chatConfig.github.installationId;
+}
+
+export function getGitHubWebhookSecret(): string | undefined {
+  return chatConfig.github.webhookSecret;
+}
+
+export function getGitHubBotUsername(): string | undefined {
+  return chatConfig.github.botUsername;
 }
 
 export function hasRedisConfig(): boolean {

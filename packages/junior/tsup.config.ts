@@ -24,6 +24,7 @@ export default defineConfig({
     "@sentry/node",
     // All runtime npm dependencies stay external
     "@ai-sdk/gateway",
+    "@chat-adapter/github",
     "@chat-adapter/slack",
     "@chat-adapter/state-memory",
     "@chat-adapter/state-redis",

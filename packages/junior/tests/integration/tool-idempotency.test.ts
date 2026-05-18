@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createSlackCanvasCreateTool } from "@/chat/tools/slack/canvas-tools";
+import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas-tools";
 import { createOperationKey } from "@/chat/tools/idempotency";
-import { createSlackListAddItemsTool } from "@/chat/tools/slack/list-tools";
+import { createSlackListAddItemsTool } from "@/chat/slack/tools/list-tools";
 import { SlackActionError } from "@/chat/slack/client";
 import type { ToolState } from "@/chat/tools/types";
 import {
@@ -101,6 +101,7 @@ describe("tool idempotency", () => {
           canAddReactions: true,
         },
         sandbox: noopSandbox,
+        toolProfile: "slack",
       },
       state,
     );
@@ -158,6 +159,7 @@ describe("tool idempotency", () => {
           canAddReactions: true,
         },
         sandbox: noopSandbox,
+        toolProfile: "slack",
       },
       state,
     );
@@ -195,6 +197,7 @@ describe("tool idempotency", () => {
           canAddReactions: false,
         },
         sandbox: noopSandbox,
+        toolProfile: "slack",
       },
       state,
     );
@@ -270,6 +273,7 @@ describe("tool idempotency", () => {
           canAddReactions: true,
         },
         sandbox: noopSandbox,
+        toolProfile: "slack",
       },
       state,
     );

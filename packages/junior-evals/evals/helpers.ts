@@ -456,6 +456,34 @@ export function mention(
   };
 }
 
+/** Builds a first-turn mention event for a harnessed GitHub comment eval. */
+export function githubMention(
+  text: string,
+  opts?: { author?: AuthorOverrides; thread?: ThreadOverrides },
+) {
+  const seq = nextId();
+  return {
+    type: "github_mention" as const,
+    thread: {
+      id: `github:issue:acme/junior:${seq}`,
+      ...opts?.thread,
+    },
+    message: {
+      id: `github-m-${seq}`,
+      text,
+      is_mention: true,
+      author: {
+        user_id: `github-user-${seq}`,
+        user_name: "github-testuser",
+        full_name: "GitHub Test User",
+        is_me: false,
+        is_bot: false,
+        ...opts?.author,
+      },
+    },
+  };
+}
+
 /** Builds a follow-up subscribed-thread message for a harnessed Slack eval. */
 export function threadMessage(
   text: string,

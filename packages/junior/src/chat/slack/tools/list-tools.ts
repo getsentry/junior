@@ -5,7 +5,7 @@ import {
   createTodoList,
   listItems,
   updateListItem,
-} from "@/chat/tools/slack/lists";
+} from "@/chat/slack/tools/lists";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import type { ToolState } from "@/chat/tools/types";
 

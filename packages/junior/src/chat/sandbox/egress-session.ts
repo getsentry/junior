@@ -7,7 +7,8 @@ const SANDBOX_EGRESS_LEASE_PREFIX = "sandbox-egress-lease";
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 
 export interface SandboxEgressSession {
-  requesterId: string;
+  providerNames?: string[];
+  requesterId?: string;
   expiresAtMs: number;
   activationId: string;
 }
@@ -27,7 +28,10 @@ function leaseKey(
   provider: string,
   session: SandboxEgressSession,
 ): string {
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${egressId}:${provider}:${session.requesterId}:${session.activationId}`;
+  const requesterKey = session.requesterId
+    ? `user:${session.requesterId}`
+    : "host";
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${egressId}:${provider}:${requesterKey}:${session.activationId}`;
 }
 
 function parseSession(value: unknown): SandboxEgressSession | undefined {
@@ -36,7 +40,11 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
   }
   const record = value as Partial<SandboxEgressSession>;
   if (
-    typeof record.requesterId !== "string" ||
+    (record.providerNames !== undefined &&
+      (!Array.isArray(record.providerNames) ||
+        record.providerNames.some((name) => typeof name !== "string"))) ||
+    (record.requesterId !== undefined &&
+      typeof record.requesterId !== "string") ||
     typeof record.expiresAtMs !== "number" ||
     !Number.isFinite(record.expiresAtMs) ||
     typeof record.activationId !== "string" ||
@@ -48,7 +56,10 @@ function parseSession(value: unknown): SandboxEgressSession | undefined {
     return undefined;
   }
   return {
-    requesterId: record.requesterId,
+    ...(record.providerNames
+      ? { providerNames: [...new Set(record.providerNames)].sort() }
+      : {}),
+    ...(record.requesterId ? { requesterId: record.requesterId } : {}),
     expiresAtMs: record.expiresAtMs,
     activationId: record.activationId,
   };
@@ -89,18 +100,23 @@ function parseLease(value: unknown): SandboxEgressCredentialLease | undefined {
   };
 }
 
-/** Persist requester authorization for credential activation by one forwarded VM session. */
+/** Persist credential activation context for one forwarded VM session. */
 export async function upsertSandboxEgressSession(input: {
   egressId: string;
-  requesterId: string;
+  providerNames?: readonly string[];
+  requesterId?: string;
   ttlMs?: number;
 }): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
   const ttlMs = Math.max(1, input.ttlMs ?? DEFAULT_SESSION_TTL_MS);
   const now = Date.now();
+  const providerNames = input.providerNames
+    ? [...new Set(input.providerNames)].sort()
+    : undefined;
   const session: SandboxEgressSession = {
-    requesterId: input.requesterId,
+    ...(providerNames ? { providerNames } : {}),
+    ...(input.requesterId ? { requesterId: input.requesterId } : {}),
     expiresAtMs: now + ttlMs,
     activationId: randomUUID(),
   };

@@ -24,6 +24,7 @@
 - 2026-05-03: Added plugin-level `api-headers` injection backed by declared deployment env vars.
 - 2026-05-08: Added plugin-level `command-env` for non-secret sandbox CLI placeholders, default-backed deployment values, and explicit public host env bindings.
 - 2026-05-12: Clarified that credentialed provider HTTP traffic is authenticated through the sandbox egress proxy.
+- 2026-05-16: Added per-platform plugin and skill availability configuration.
 
 ## Status
 
@@ -63,6 +64,7 @@ Define a plugin model where provider integrations are self-contained directories
 8. `loadSkill` activates the provider catalog and returns provider/count metadata once the MCP server is connected and `listTools` succeeds. If connection/listing needs MCP OAuth, `loadSkill` initiates the MCP auth pause and the resumed turn re-activates the catalog before the model continues. `searchMcpTools` returns focused descriptors, including input/output schema and annotations, for any available active-provider tool before `callMcpTool` executes it.
 9. Runtime setup belongs to `plugin.yaml`: CLI packages, system packages, postinstall commands, MCP endpoints/tool allowlists, credential delivery, command env, OAuth, and provider config keys are manifest declarations, not skill instructions.
 10. Skills consume the plugin-provided runtime surface. They must not instruct the agent to install packages, bootstrap CLIs, configure MCP servers, create credentials, or repair sandbox package installation as part of normal workflow.
+11. Installed plugin packages are a deployment bundle allowlist. Runtime provider availability is scoped again per platform through app configuration.
 
 ## Plugin directory structure
 
@@ -478,7 +480,36 @@ Keys must be registered plugin config keys (`provider.key` declared in a loaded 
 Resolution precedence (highest wins):
 
 1. Channel-scoped overrides (persisted via `jr-rpc config set`)
-2. Install-wide defaults (`configDefaults` in `createApp()`)
+2. Platform defaults (`platforms.<platform>.configDefaults`)
+3. Install-wide defaults (`configDefaults` in `createApp()`)
+
+### Platform availability
+
+`pluginPackages` controls which plugin package content is bundled into the deployment. It does not by itself grant every chat surface access to every provider. Deployers can scope provider and skill availability per platform:
+
+```typescript
+juniorNitro({
+  pluginPackages: ["@sentry/junior-github", "@sentry/junior-sentry"],
+  platforms: {
+    slack: {
+      plugins: ["github", "sentry"],
+      skills: ["github-issues", "sentry-issues"],
+    },
+    github: {
+      plugins: ["github"],
+      skills: ["github-issues", "github-pr-review"],
+    },
+  },
+});
+```
+
+Rules:
+
+- `platforms` keys enable platforms. When `platforms` is present, `enabledPlatforms` must match those keys if it is also provided.
+- `plugins` uses plugin manifest names, not npm package names. The list is explicit and may be empty.
+- `skills` is optional. When omitted, all standalone skills plus skills owned by enabled plugins are available. When present, it is an exact skill-name allowlist.
+- A skill owned by a disabled plugin is invalid configuration.
+- Platform plugin availability scopes prompt provider catalogs, MCP providers, plugin auth handling, sandbox command env, sandbox egress network policy, and sandbox egress credential activation.
 
 ## Skill integration
 

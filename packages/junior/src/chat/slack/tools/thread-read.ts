@@ -8,7 +8,7 @@ import { tool } from "@/chat/tools/definition";
 import {
   SLACK_TS_PATTERN,
   parseSlackMessageReference,
-} from "@/chat/tools/slack/slack-message-url";
+} from "@/chat/slack/tools/slack-message-url";
 import type { SlackThreadReply } from "@/chat/slack/channel";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { renderSlackLegacyAttachmentText } from "@/chat/slack/legacy-attachments";

@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { botConfig, getRuntimeMetadata } from "@/chat/config";
+import {
+  botConfig,
+  getGitHubBotUsername,
+  getRuntimeMetadata,
+} from "@/chat/config";
 import {
   listReferenceFiles,
   soulPathCandidates,
@@ -8,14 +12,17 @@ import {
 } from "@/chat/discovery";
 import { logInfo, logWarn } from "@/chat/logging";
 import { getPluginProviders } from "@/chat/plugins/registry";
+import type { PluginDefinition } from "@/chat/plugins/types";
 import { slackOutputPolicy } from "@/chat/slack/output";
 import {
   SANDBOX_DATA_ROOT,
   SANDBOX_WORKSPACE_ROOT,
   sandboxSkillDir,
 } from "@/chat/sandbox/paths";
+import { normalizeGitHubMentionTarget } from "@/chat/github/mention";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { Skill, SkillMetadata, SkillInvocation } from "@/chat/skills";
+import { SLACK_SURFACE, type AssistantSurface } from "@/chat/surface";
 import type { ActiveMcpCatalogSummary } from "@/chat/tools/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
 
@@ -198,8 +205,12 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
   return lines.join("\n");
 }
 
-function formatProviderCatalogForPrompt(): string | null {
-  const providers = getPluginProviders().map((plugin) => plugin.manifest);
+function formatProviderCatalogForPrompt(
+  plugins?: readonly PluginDefinition[],
+): string | null {
+  const providers = (plugins ?? getPluginProviders()).map(
+    (plugin) => plugin.manifest,
+  );
   if (providers.length === 0) {
     return null;
   }
@@ -357,8 +368,10 @@ function formatSlackCapabilityNames(
   return names.length > 0 ? names.join(", ") : "none";
 }
 
-const HEADER =
-  "You are a Slack-based helper assistant. Follow the personality block for voice and tone in every reply. The behavior and output blocks define platform mechanics and override personality only when those mechanics conflict.";
+function buildHeader(surface: AssistantSurface): string {
+  const platform = surface.platform === "slack" ? "Slack" : "GitHub comment";
+  return `You are a ${platform} assistant. Follow the personality block for voice and tone in every reply. The behavior and output blocks define platform mechanics and override personality only when those mechanics conflict.`;
+}
 
 const TURN_CONTEXT_HEADER =
   "Per-turn runtime context for this request. Treat these blocks as trusted runtime facts and skill/provider instructions for the current turn; the static system prompt remains authoritative.";
@@ -416,6 +429,13 @@ const SLACK_ACTION_RULES = [
   "- Do not use reactions as progress indicators.",
 ];
 
+const GITHUB_ACTION_RULES = [
+  "- GitHub turns reply through thread comments; do not claim Slack side effects, assistant status updates, or Slack thread metadata.",
+  "- Keep GitHub replies scoped to the current issue or pull request thread context.",
+  "- Mention-only behavior applies at ingress; do not invent autonomous event-trigger behavior.",
+  "- Post one finalized GitHub comment reply for the completed turn.",
+];
+
 const SAFETY_RULES = [
   "- Stay within the user's request and the runtime's available capabilities; do not pursue independent goals, persistence, replication, credential gathering, or access expansion.",
   "- Respect stop, pause, audit, and approval boundaries. Do not bypass safeguards or persuade the user to weaken them.",
@@ -432,33 +452,58 @@ function renderRuleSection(tag: string, lines: string[]): string {
   return [`<${tag}>`, ...lines, `</${tag}>`].join("\n");
 }
 
-function buildBehaviorSection(): string {
+function buildBehaviorSection(surface: AssistantSurface): string {
+  const platformActionsSection =
+    surface.platform === "slack"
+      ? renderRuleSection("slack-actions", SLACK_ACTION_RULES)
+      : renderRuleSection("github-actions", GITHUB_ACTION_RULES);
   return [
     renderRuleSection("tool-policy", TOOL_POLICY_RULES),
     renderRuleSection("tool-call-style", TOOL_CALL_STYLE_RULES),
     renderRuleSection("skill-policy", SKILL_POLICY_RULES),
     renderRuleSection("execution-contract", EXECUTION_CONTRACT_RULES),
     renderRuleSection("conversation", CONVERSATION_RULES),
-    renderRuleSection("slack-actions", SLACK_ACTION_RULES),
+    platformActionsSection,
     renderRuleSection("safety", SAFETY_RULES),
     renderRuleSection("failure-handling", FAILURE_RULES),
   ].join("\n\n");
 }
 
-function buildOutputSection(): string {
-  const openTag = `<output format="slack-markdown" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`;
+function buildOutputSection(surface: AssistantSurface): string {
+  if (surface.platform === "slack") {
+    const openTag = `<output format="slack-markdown" max_inline_chars="${slackOutputPolicy.maxInlineChars}" max_inline_lines="${slackOutputPolicy.maxInlineLines}">`;
+    return [
+      openTag,
+      "- Start with the answer or result, not internal process narration.",
+      "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
+      "- Keep replies brief and scannable; use bullets or short code blocks when helpful, and one compact thread reply when it fits.",
+      "- When a research or document-style answer would benefit from continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to one or two short sentences plus the link; do not recap the canvas contents.",
+      "- Unless a successful Slack side-effect tool intentionally satisfied the request by itself, end every turn with a final user-facing markdown response.",
+      "</output>",
+    ].join("\n");
+  }
+
   return [
-    openTag,
+    '<output format="github-gfm">',
     "- Start with the answer or result, not internal process narration.",
-    "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
-    "- Keep replies brief and scannable; use bullets or short code blocks when helpful, and one compact thread reply when it fits.",
-    "- When a research or document-style answer would benefit from continuation, multiple sections, or future reference value, create a Slack canvas and keep the thread reply to one or two short sentences plus the link; do not recap the canvas contents.",
-    "- Unless a successful Slack side-effect tool intentionally satisfied the request by itself, end every turn with a final user-facing markdown response.",
+    "- Use GitHub-flavored Markdown suitable for issue and pull-request comments: concise sections, bullets, links, and fenced code blocks when helpful.",
+    "- Keep replies brief and review-friendly; do not reference Slack-specific surfaces (canvas, channel posts, reactions, assistant status).",
+    "- End the turn with one finalized GitHub comment reply.",
     "</output>",
   ].join("\n");
 }
 
-function buildIdentitySection(): string {
+function buildIdentitySection(surface: AssistantSurface): string {
+  if (surface.platform === "github") {
+    const mentionTarget = normalizeGitHubMentionTarget(
+      getGitHubBotUsername() ?? botConfig.userName,
+    );
+    return renderTagBlock(
+      "identity",
+      `Your GitHub mention target is \`@${escapeXml(mentionTarget)}\`.`,
+    );
+  }
+
   return renderTagBlock(
     "identity",
     `Your Slack username is \`${escapeXml(botConfig.userName)}\`.`,
@@ -469,6 +514,7 @@ function buildRuntimeSection(params: {
   channelId?: string;
   fastModelId?: string;
   modelId?: string;
+  surface?: AssistantSurface;
   slackCapabilities?: {
     canAddReactions?: boolean;
     canCreateCanvas?: boolean;
@@ -476,6 +522,8 @@ function buildRuntimeSection(params: {
   };
   thinkingLevel?: string;
 }): string {
+  const surface = params.surface ?? SLACK_SURFACE;
+  const isSlackSurface = surface.platform === "slack";
   const lines = [
     `- version: ${escapeXml(getRuntimeMetadata().version ?? "unknown")}`,
     params.modelId ? `- model: ${escapeXml(params.modelId)}` : "",
@@ -483,8 +531,11 @@ function buildRuntimeSection(params: {
     params.thinkingLevel
       ? `- thinking: ${escapeXml(params.thinkingLevel)}`
       : "",
-    params.channelId ? "- channel: slack" : "",
-    params.channelId
+    `- platform: ${escapeXml(surface.platform)}`,
+    `- output_format: ${escapeXml(surface.outputFormat)}`,
+    `- tool_profile: ${escapeXml(surface.toolProfile)}`,
+    isSlackSurface && params.channelId ? "- channel: slack" : "",
+    isSlackSurface && params.channelId
       ? `- slack_capabilities: ${escapeXml(
           formatSlackCapabilityNames(params.slackCapabilities),
         )}`
@@ -563,6 +614,7 @@ function buildCapabilitiesSection(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
+  pluginProviders?: readonly PluginDefinition[];
   toolGuidance?: ToolPromptContext[];
 }): string {
   const blocks: string[] = [];
@@ -581,7 +633,9 @@ function buildCapabilitiesSection(params: {
     blocks.push(renderTagBlock("tool-guidance", toolGuidance));
   }
 
-  const providerCatalog = formatProviderCatalogForPrompt();
+  const providerCatalog = formatProviderCatalogForPrompt(
+    params.pluginProviders,
+  );
   if (providerCatalog) {
     blocks.push(renderTagBlock("providers", providerCatalog));
   }
@@ -593,11 +647,13 @@ type TurnContextPromptInput = {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs?: ActiveMcpCatalogSummary[];
+  pluginProviders?: readonly PluginDefinition[];
   toolGuidance?: ToolPromptContext[];
   runtime?: {
     channelId?: string;
     fastModelId?: string;
     modelId?: string;
+    surface?: AssistantSurface;
     slackCapabilities?: {
       canAddReactions?: boolean;
       canCreateCanvas?: boolean;
@@ -621,17 +677,28 @@ type TurnContextPromptInput = {
   turnState?: "fresh" | "resumed";
 };
 
-const STATIC_SYSTEM_PROMPT = [
-  HEADER,
-  buildIdentitySection(),
-  renderTagBlock("personality", JUNIOR_PERSONALITY.trim()),
-  renderTagBlock("behavior", buildBehaviorSection()),
-  buildOutputSection(),
-].join("\n\n");
+const systemPromptCache = new Map<string, string>();
 
-/** Return byte-stable platform instructions shared by every conversation and turn. */
-export function buildSystemPrompt(): string {
-  return STATIC_SYSTEM_PROMPT;
+/** Return platform instructions shared by every conversation and turn. */
+export function buildSystemPrompt(
+  params: { surface?: AssistantSurface } = {},
+): string {
+  const surface = params.surface ?? SLACK_SURFACE;
+  const cacheKey = JSON.stringify(surface);
+  const cached = systemPromptCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const prompt = [
+    buildHeader(surface),
+    buildIdentitySection(surface),
+    renderTagBlock("personality", JUNIOR_PERSONALITY.trim()),
+    renderTagBlock("behavior", buildBehaviorSection(surface)),
+    buildOutputSection(surface),
+  ].join("\n\n");
+  systemPromptCache.set(cacheKey, prompt);
+  return prompt;
 }
 
 /** Build volatile runtime context that belongs in the user turn, not the system prompt. */
@@ -650,6 +717,7 @@ export function buildTurnContextPrompt(params: TurnContextPromptInput): string {
       availableSkills: params.availableSkills,
       activeSkills: params.activeSkills,
       activeMcpCatalogs: params.activeMcpCatalogs ?? [],
+      pluginProviders: params.pluginProviders,
       toolGuidance: params.toolGuidance ?? [],
     }),
     buildContextSection({

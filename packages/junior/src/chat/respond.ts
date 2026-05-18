@@ -31,11 +31,12 @@ import {
   getPluginMcpProviders,
   getPluginProviders,
 } from "@/chat/plugins/registry";
+import type { PlatformRuntimeConfig } from "@/chat/platform-config";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import type { ThreadArtifactsState } from "@/chat/state/artifacts";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 import { createTools } from "@/chat/tools";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
 import type { ToolDefinition } from "@/chat/tools/definition";
 import { toActiveMcpCatalogSummaries } from "@/chat/tools/skill/mcp-tool-summary";
 import type { ImageGenerateToolDeps } from "@/chat/tools/types";
@@ -67,6 +68,7 @@ import {
   toObservablePromptPart,
   upsertActiveSkill,
 } from "@/chat/respond-helpers";
+import { SLACK_SURFACE, type AssistantSurface } from "@/chat/surface";
 import {
   buildTurnResult,
   type AssistantReply,
@@ -113,6 +115,7 @@ export interface ReplyRequestContext {
   artifactState?: ThreadArtifactsState;
   pendingAuth?: ConversationPendingAuthState;
   configuration?: Record<string, unknown>;
+  platformConfig?: PlatformRuntimeConfig;
   /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
   piMessages?: PiMessage[];
   channelConfiguration?: ChannelConfigurationService;
@@ -145,9 +148,10 @@ export interface ReplyRequestContext {
     toolName: string;
     params: Record<string, unknown>;
   }) => void;
+  surface?: AssistantSurface;
 }
 
-let startupDiscoveryLogged = false;
+const startupDiscoveryLoggedKeys = new Set<string>();
 const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
 
 type UserTurnContentPart =
@@ -167,6 +171,18 @@ function buildOmittedImageAttachmentNotice(count: number): string {
     "If the user asks about image contents, explain that image analysis is unavailable in this runtime and continue with any text or non-image files that are still available.",
     "</omitted-image-attachments>",
   ].join("\n");
+}
+
+function startupDiscoveryLogKey(args: {
+  platform: string;
+  pluginNames?: readonly string[];
+  skillNames?: readonly string[];
+}): string {
+  return JSON.stringify({
+    platform: args.platform,
+    pluginNames: args.pluginNames ?? null,
+    skillNames: args.skillNames ?? null,
+  });
 }
 
 function trimRouterAttachmentText(text: string): string {
@@ -373,6 +389,8 @@ export async function generateAssistantReply(
   messageText: string,
   context: ReplyRequestContext = {},
 ): Promise<AssistantReply> {
+  const surface = context.surface ?? SLACK_SURFACE;
+  const canResumePausedTurn = surface.platform === "slack";
   const replyStartedAtMs = Date.now();
   let timeoutResumeConversationId: string | undefined;
   let timeoutResumeSessionId: string | undefined;
@@ -417,12 +435,21 @@ export async function generateAssistantReply(
     };
 
     // ── Skill discovery ──────────────────────────────────────────────
+    const platformPluginNames = context.platformConfig?.pluginNames;
+    const platformSkillNames = context.platformConfig?.skillNames;
+    const pluginProviders = getPluginProviders(platformPluginNames);
     const availableSkills = await discoverSkills({
       additionalRoots: context.skillDirs,
+      allowedPluginNames: platformPluginNames,
+      allowedSkillNames: platformSkillNames,
     });
-    if (!startupDiscoveryLogged) {
-      startupDiscoveryLogged = true;
-      const plugins = getPluginProviders();
+    const discoveryLogKey = startupDiscoveryLogKey({
+      platform: surface.platform,
+      pluginNames: platformPluginNames,
+      skillNames: platformSkillNames,
+    });
+    if (!startupDiscoveryLoggedKeys.has(discoveryLogKey)) {
+      startupDiscoveryLoggedKeys.add(discoveryLogKey);
       const roots = [
         ...new Set(availableSkills.map((skill) => skill.skillPath)),
       ].sort();
@@ -433,8 +460,8 @@ export async function generateAssistantReply(
           "app.skill.count": availableSkills.length,
           "app.skill.names": availableSkills.map((skill) => skill.name).sort(),
           "app.file.directories": roots,
-          "app.plugin.count": plugins.length,
-          "app.plugin.names": plugins
+          "app.plugin.count": pluginProviders.length,
+          "app.plugin.names": pluginProviders
             .map((plugin) => plugin.manifest.name)
             .sort(),
         },
@@ -487,22 +514,30 @@ export async function generateAssistantReply(
       : {};
     configurationValues = {
       ...getConfigDefaults(),
+      ...(context.platformConfig?.configDefaults ?? {}),
       ...(context.configuration ?? {}),
       ...persistedConfigurationValues,
     };
     // ── Sandbox ──────────────────────────────────────────────────────
-    const requesterId = context.requester?.userId;
+    // Interactive auth links are Slack-user scoped today. GitHub turns may use
+    // host credentials, but must not reuse GitHub IDs as Slack user-token keys.
+    const authRequesterId = canResumePausedTurn
+      ? context.requester?.userId
+      : undefined;
+    const credentialEgress =
+      authRequesterId || surface.platform === "github"
+        ? {
+            requesterId: authRequesterId,
+            providerNames: platformPluginNames,
+          }
+        : undefined;
     const userTokenStore = createUserTokenStore();
     sandboxExecutor = createSandboxExecutor({
       sandboxId: context.sandbox?.sandboxId,
       sandboxDependencyProfileHash:
         context.sandbox?.sandboxDependencyProfileHash,
       traceContext: spanContext,
-      credentialEgress: requesterId
-        ? {
-            requesterId,
-          }
-        : undefined,
+      credentialEgress,
       onSandboxAcquired: async (sandbox) => {
         lastKnownSandboxId = sandbox.sandboxId;
         lastKnownSandboxDependencyProfileHash =
@@ -513,7 +548,7 @@ export async function generateAssistantReply(
         const result = await maybeExecuteJrRpcCustomCommand(command, {
           activeSkill: skillSandbox.getActiveSkill(),
           channelConfiguration: context.channelConfiguration,
-          requesterId: context.requester?.userId,
+          requesterId: authRequesterId,
           onConfigurationValueChanged: (key, value) => {
             if (value === undefined) {
               delete configurationValues[key];
@@ -664,7 +699,7 @@ export async function generateAssistantReply(
       {
         conversationId: sessionConversationId,
         sessionId,
-        requesterId: context.requester?.userId,
+        requesterId: authRequesterId,
         channelId: context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
         toolChannelId: context.toolChannelId,
@@ -682,7 +717,8 @@ export async function generateAssistantReply(
       {
         conversationId: sessionConversationId,
         sessionId,
-        requesterId: context.requester?.userId,
+        requesterId: authRequesterId,
+        providerNames: platformPluginNames,
         channelId: context.correlation?.channelId,
         threadTs: context.correlation?.threadTs,
         userMessage: userInput,
@@ -694,10 +730,13 @@ export async function generateAssistantReply(
       () => agent?.abort(),
     );
 
-    mcpToolManager = new McpToolManager(getPluginMcpProviders(), {
-      authProviderFactory: mcpAuth.authProviderFactory,
-      onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
-    });
+    mcpToolManager = new McpToolManager(
+      getPluginMcpProviders(platformPluginNames),
+      {
+        authProviderFactory: mcpAuth.authProviderFactory,
+        onAuthorizationRequired: mcpAuth.onAuthorizationRequired,
+      },
+    );
     const turnMcpToolManager = mcpToolManager;
     const getPendingAuthPause = () =>
       pluginAuth.getPendingPause() ?? mcpAuth.getPendingPause();
@@ -717,7 +756,14 @@ export async function generateAssistantReply(
     // ── Tool creation ────────────────────────────────────────────────
     const toolChannelId =
       context.toolChannelId ?? context.correlation?.channelId;
-    const channelCapabilities = resolveChannelCapabilities(toolChannelId);
+    const channelCapabilities =
+      surface.toolProfile === "slack"
+        ? resolveChannelCapabilities(toolChannelId)
+        : {
+            canCreateCanvas: false,
+            canPostToChannel: false,
+            canAddReactions: false,
+          };
     const tools = createTools(
       availableSkills,
       {
@@ -776,6 +822,7 @@ export async function generateAssistantReply(
       {
         channelId: toolChannelId,
         channelCapabilities,
+        toolProfile: surface.toolProfile,
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
         userText: userInput,
@@ -816,17 +863,20 @@ export async function generateAssistantReply(
     const activeMcpCatalogs = toActiveMcpCatalogSummaries(
       turnMcpToolManager.getActiveToolCatalog(activeSkills),
     );
-    baseInstructions = buildSystemPrompt();
+    baseInstructions = buildSystemPrompt({ surface });
     const turnContextPrompt = buildTurnContextPrompt({
       availableSkills,
       activeSkills,
       activeMcpCatalogs,
+      pluginProviders,
       toolGuidance,
       runtime: {
         channelId: toolChannelId,
         fastModelId: botConfig.fastModelId,
         modelId: botConfig.modelId,
-        slackCapabilities: channelCapabilities,
+        slackCapabilities:
+          surface.platform === "slack" ? channelCapabilities : undefined,
+        surface,
         thinkingLevel: thinkingSelection.thinkingLevel,
       },
       invocation: skillInvocation,
@@ -1102,7 +1152,12 @@ export async function generateAssistantReply(
       assistantUserName: botConfig.userName,
     });
   } catch (error) {
-    if (timedOut && timeoutResumeConversationId && timeoutResumeSessionId) {
+    if (
+      canResumePausedTurn &&
+      timedOut &&
+      timeoutResumeConversationId &&
+      timeoutResumeSessionId
+    ) {
       const checkpoint = await persistTimeoutCheckpoint({
         conversationId: timeoutResumeConversationId,
         sessionId: timeoutResumeSessionId,
@@ -1133,8 +1188,9 @@ export async function generateAssistantReply(
       }
     }
 
-    // ── MCP auth pause → checkpoint and retry ────────────────────────
+    // ── Auth pause → checkpoint and retry ────────────────────────────
     if (
+      canResumePausedTurn &&
       error instanceof AuthorizationPauseError &&
       timeoutResumeConversationId &&
       timeoutResumeSessionId
@@ -1190,6 +1246,49 @@ export async function generateAssistantReply(
 
     if (isRetryableTurnError(error)) {
       throw error;
+    }
+
+    if (error instanceof AuthorizationPauseError) {
+      logException(
+        error,
+        "assistant_reply_auth_pause_unsupported",
+        {
+          slackThreadId: context.correlation?.threadId,
+          slackUserId: context.correlation?.requesterId,
+          slackChannelId: context.correlation?.channelId,
+          runId: context.correlation?.runId,
+          assistantUserName: botConfig.userName,
+          modelId: botConfig.modelId,
+        },
+        {
+          "app.auth.kind": error.kind,
+          "app.credential.provider": error.provider,
+          "app.surface.platform": surface.platform,
+        },
+        "Authorization pause reached a surface without resume support",
+      );
+      const authUnavailableText = [
+        `I can't complete this from ${surface.platform} yet because it requires interactive ${error.provider} authorization.`,
+        "Please retry from Slack after connecting that account.",
+      ].join(" ");
+      return {
+        text: authUnavailableText,
+        ...getSandboxMetadata(),
+        diagnostics: {
+          outcome: "provider_error",
+          modelId: botConfig.modelId,
+          assistantMessageCount: 0,
+          ...(thinkingSelection
+            ? {
+                thinkingLevel: thinkingSelection.thinkingLevel,
+              }
+            : {}),
+          toolCalls: [],
+          toolResultCount: 0,
+          toolErrorCount: 0,
+          usedPrimaryText: false,
+        },
+      };
     }
 
     logException(

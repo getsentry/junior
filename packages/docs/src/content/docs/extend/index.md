@@ -53,7 +53,7 @@ For reuse across apps or teams, package plugin manifests + skills as npm package
 pnpm add @sentry/junior @sentry/junior-datadog @sentry/junior-github @sentry/junior-hex @sentry/junior-linear @sentry/junior-notion @sentry/junior-sentry
 ```
 
-List the plugin packages in `juniorNitro` so they are bundled at build time and available at runtime:
+List the plugin packages in `juniorNitro` so they are bundled at build time, then enable the plugin manifest names on each platform that should use them:
 
 ```ts title="nitro.config.ts"
 import { defineConfig } from "nitro";
@@ -71,6 +71,14 @@ export default defineConfig({
         "@sentry/junior-notion",
         "@sentry/junior-sentry",
       ],
+      platforms: {
+        slack: {
+          plugins: ["datadog", "github", "hex", "linear", "notion", "sentry"],
+        },
+        github: {
+          plugins: ["github"],
+        },
+      },
     }),
   ],
   routes: {
@@ -271,7 +279,7 @@ Then install it in the host app:
 pnpm add @acme/junior-example
 ```
 
-The `juniorNitro({ pluginPackages: [...] })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. The plugin list is automatically available at runtime via `createApp()` — no need to declare it twice.
+The `juniorNitro({ pluginPackages: [...] })` module includes `app/**/*` and the declared plugin package content in the deployed function bundle. Use `platforms.<platform>.plugins` to decide which bundled providers each chat surface may use.
 
 ## Validate extensions
 

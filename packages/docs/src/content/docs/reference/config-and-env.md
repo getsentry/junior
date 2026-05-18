@@ -12,18 +12,70 @@ related:
 
 ## Core runtime
 
-| Variable                                    | Required | Purpose                                                                                                                                              |
-| ------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SLACK_SIGNING_SECRET`                      | Yes      | Verifies Slack request signatures.                                                                                                                   |
-| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes      | Posts thread replies and calls Slack APIs.                                                                                                           |
-| `REDIS_URL`                                 | Yes      | Queue and runtime state storage.                                                                                                                     |
-| `JUNIOR_BOT_NAME`                           | No       | Bot display/config naming.                                                                                                                           |
-| `AI_MODEL`                                  | No       | Primary model selection override for main assistant turns. Defaults to `openai/gpt-5.4`; Junior chooses the reasoning effort per turn automatically. |
-| `AI_FAST_MODEL`                             | No       | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-5.4-mini`.                 |
-| `AI_VISION_MODEL`                           | No       | Dedicated image-understanding model; unset disables vision features.                                                                                 |
-| `AI_WEB_SEARCH_MODEL`                       | No       | Override for the `webSearch` tool model. Defaults to a search-tuned model; does not fall through to `AI_MODEL`.                                      |
-| `JUNIOR_BASE_URL`                           | No       | Canonical base URL for callback/auth URL generation.                                                                                                 |
-| `AI_GATEWAY_API_KEY`                        | No       | AI gateway auth if used in your setup.                                                                                                               |
+| Variable                                    | Required    | Purpose                                                                                                                                              |
+| ------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SLACK_SIGNING_SECRET`                      | Conditional | Verifies Slack request signatures. Required when `slack` is enabled via `enabledPlatforms` or `platforms`.                                           |
+| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Conditional | Posts thread replies and calls Slack APIs. Required when `slack` is enabled via `enabledPlatforms` or `platforms`.                                   |
+| `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                                                                                                     |
+| `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                           |
+| `AI_MODEL`                                  | No          | Primary model selection override for main assistant turns. Defaults to `openai/gpt-5.4`; Junior chooses the reasoning effort per turn automatically. |
+| `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and routing/classification passes before the main turn begins. Defaults to `openai/gpt-5.4-mini`.                 |
+| `AI_VISION_MODEL`                           | No          | Dedicated image-understanding model; unset disables vision features.                                                                                 |
+| `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to a search-tuned model; does not fall through to `AI_MODEL`.                                      |
+| `JUNIOR_BASE_URL`                           | No          | Canonical base URL for callback/auth URL generation.                                                                                                 |
+| `AI_GATEWAY_API_KEY`                        | No          | AI gateway auth if used in your setup.                                                                                                               |
+
+## Chat ingress platforms
+
+Slack is enabled by default. Configure chat ingress platforms in the app initializer:
+
+```ts
+import { createApp } from "@sentry/junior";
+
+const app = await createApp({
+  enabledPlatforms: ["slack", "github"],
+});
+```
+
+Use `enabledPlatforms: ["github"]` for a GitHub-only deployment without Slack.
+
+You can also put the same setting in `juniorNitro(...)`; `createApp()` reads that build-time config automatically.
+
+For one deployment that serves multiple platforms, prefer per-platform configuration:
+
+```ts
+juniorNitro({
+  pluginPackages: ["@sentry/junior-github", "@sentry/junior-sentry"],
+  platforms: {
+    slack: {
+      plugins: ["github", "sentry"],
+      skills: ["github-issues", "sentry-issues"],
+    },
+    github: {
+      plugins: ["github"],
+      skills: ["github-issues", "github-pr-review"],
+    },
+  },
+});
+```
+
+`pluginPackages` controls what plugin package content is bundled. `platforms.<platform>.plugins` controls which plugin providers that platform can use at runtime. `platforms.<platform>.skills` is an optional exact skill allowlist.
+
+## GitHub mention webhook (optional, V1)
+
+Enable this when you want inbound GitHub mentions to run Junior through `/api/webhooks/github`.
+
+Add `github` to `createApp({ enabledPlatforms })`, `juniorNitro({ enabledPlatforms })`, or `platforms.github` before adding these values.
+
+| Variable                 | Required | Purpose                                                                                       |
+| ------------------------ | -------- | --------------------------------------------------------------------------------------------- |
+| `GITHUB_APP_ID`          | Yes      | GitHub App identity.                                                                          |
+| `GITHUB_APP_PRIVATE_KEY` | Yes      | GitHub App signing key used for GitHub API calls.                                             |
+| `GITHUB_INSTALLATION_ID` | Yes      | Initial single-installation target for V1 mention handling.                                   |
+| `GITHUB_WEBHOOK_SECRET`  | Yes      | Verifies GitHub webhook signatures (`x-hub-signature-256`).                                   |
+| `GITHUB_BOT_USERNAME`    | Yes      | Mention handle Junior listens for in issue/PR/review comment webhooks, without a leading `@`. |
+
+V1 behavior is mention-only. Untagged GitHub comments do not trigger a turn.
 
 ## Build-time snapshot warmup
 
@@ -59,7 +111,7 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request and bind
 | `SENTRY_CLIENT_ID`     | Yes      | OAuth client ID.     |
 | `SENTRY_CLIENT_SECRET` | Yes      | OAuth client secret. |
 
-## Install-wide config defaults
+## Config defaults
 
 Pass `configDefaults` to `createApp()` to set provider defaults across all conversations:
 
@@ -75,13 +127,35 @@ const app = await createApp({
 });
 ```
 
-Keys must be registered plugin config keys. Channel-scoped overrides (`jr-rpc config set`) take precedence.
+Use `platforms.<platform>.configDefaults` when Slack and GitHub need different defaults in the same deployment:
+
+```ts
+juniorNitro({
+  platforms: {
+    slack: {
+      plugins: ["sentry"],
+      configDefaults: {
+        "sentry.org": "sentry",
+      },
+    },
+    github: {
+      plugins: ["github"],
+      configDefaults: {
+        "github.repo": "myorg/myrepo",
+      },
+    },
+  },
+});
+```
+
+Keys must be registered plugin config keys. Channel-scoped overrides (`jr-rpc config set`) take precedence over platform defaults, and platform defaults take precedence over install-wide defaults.
 
 ## Verification
 
 - Validate required variables exist in deployment environment.
 - Redeploy after variable changes.
 - Run one end-to-end Slack thread action per enabled integration.
+- If GitHub webhook mode is enabled, send one explicit `@<bot>` mention in a supported GitHub comment and confirm one final comment reply.
 
 ## Next step
 

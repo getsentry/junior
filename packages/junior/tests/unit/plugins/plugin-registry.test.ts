@@ -87,6 +87,9 @@ describe("plugin registry", () => {
 
     expect(registry.getPluginProviders()).toHaveLength(1);
     expect(registry.getPluginProviders()[0]?.manifest.name).toBe("demo");
+    const providers = registry.getPluginProviders();
+    providers.pop();
+    expect(registry.getPluginProviders()).toHaveLength(1);
     expect(registry.getPluginSkillRoots()).toContain(skillsRoot);
     expect(registry.isPluginProvider("demo")).toBe(true);
   });

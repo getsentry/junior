@@ -9,6 +9,7 @@ import type { PluginDefinition } from "@/chat/plugins/types";
 import { discoverSkills } from "@/chat/skills";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { getRuntimeMetadata } from "@/chat/config";
+import type { PlatformRuntimeConfig } from "@/chat/platform-config";
 
 interface HomeView {
   type: "home";
@@ -41,10 +42,15 @@ function loadDescriptionText(): string {
   return DEFAULT_DESCRIPTION_TEXT;
 }
 
-async function buildSkillsSummaryText(): Promise<string> {
-  const skills = (await discoverSkills()).filter(
-    (skill) => !HIDDEN_HOME_SKILLS.has(skill.name),
-  );
+async function buildSkillsSummaryText(
+  platformConfig?: PlatformRuntimeConfig,
+): Promise<string> {
+  const skills = (
+    await discoverSkills({
+      allowedPluginNames: platformConfig?.pluginNames,
+      allowedSkillNames: platformConfig?.skillNames,
+    })
+  ).filter((skill) => !HIDDEN_HOME_SKILLS.has(skill.name));
   if (skills.length === 0) {
     return "No skills installed.";
   }
@@ -86,11 +92,12 @@ async function hasConnectedAccount(
 export async function buildHomeView(
   userId: string,
   userTokenStore: UserTokenStore,
+  platformConfig?: PlatformRuntimeConfig,
 ): Promise<HomeView> {
   const runtimeMetadata = getRuntimeMetadata();
   const descriptionText = loadDescriptionText();
-  const skillsSummaryText = await buildSkillsSummaryText();
-  const providers = getPluginProviders();
+  const skillsSummaryText = await buildSkillsSummaryText(platformConfig);
+  const providers = getPluginProviders(platformConfig?.pluginNames);
   const connectedSections: SectionBlock[] = [];
 
   for (const plugin of providers) {
@@ -184,7 +191,8 @@ export async function publishAppHomeView(
   slackClient: WebClient,
   userId: string,
   userTokenStore: UserTokenStore,
+  platformConfig?: PlatformRuntimeConfig,
 ): Promise<void> {
-  const view = await buildHomeView(userId, userTokenStore);
+  const view = await buildHomeView(userId, userTokenStore, platformConfig);
   await slackClient.views.publish({ user_id: userId, view });
 }

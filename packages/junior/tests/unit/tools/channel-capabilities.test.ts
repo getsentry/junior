@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveChannelCapabilities } from "@/chat/tools/channel-capabilities";
+import { resolveChannelCapabilities } from "@/chat/slack/tools/channel-capabilities";
 
 describe("resolveChannelCapabilities", () => {
   it.each([
