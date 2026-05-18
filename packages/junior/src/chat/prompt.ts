@@ -12,6 +12,7 @@ import {
 } from "@/chat/discovery";
 import { logInfo, logWarn } from "@/chat/logging";
 import { getPluginProviders } from "@/chat/plugins/registry";
+import type { PluginDefinition } from "@/chat/plugins/types";
 import { slackOutputPolicy } from "@/chat/slack/output";
 import {
   SANDBOX_DATA_ROOT,
@@ -204,8 +205,12 @@ function formatLoadedSkillsForPrompt(skills: Skill[]): string {
   return lines.join("\n");
 }
 
-function formatProviderCatalogForPrompt(): string | null {
-  const providers = getPluginProviders().map((plugin) => plugin.manifest);
+function formatProviderCatalogForPrompt(
+  plugins?: readonly PluginDefinition[],
+): string | null {
+  const providers = (plugins ?? getPluginProviders()).map(
+    (plugin) => plugin.manifest,
+  );
   if (providers.length === 0) {
     return null;
   }
@@ -609,6 +614,7 @@ function buildCapabilitiesSection(params: {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
+  pluginProviders?: readonly PluginDefinition[];
   toolGuidance?: ToolPromptContext[];
 }): string {
   const blocks: string[] = [];
@@ -627,7 +633,9 @@ function buildCapabilitiesSection(params: {
     blocks.push(renderTagBlock("tool-guidance", toolGuidance));
   }
 
-  const providerCatalog = formatProviderCatalogForPrompt();
+  const providerCatalog = formatProviderCatalogForPrompt(
+    params.pluginProviders,
+  );
   if (providerCatalog) {
     blocks.push(renderTagBlock("providers", providerCatalog));
   }
@@ -639,6 +647,7 @@ type TurnContextPromptInput = {
   availableSkills: SkillMetadata[];
   activeSkills: Skill[];
   activeMcpCatalogs?: ActiveMcpCatalogSummary[];
+  pluginProviders?: readonly PluginDefinition[];
   toolGuidance?: ToolPromptContext[];
   runtime?: {
     channelId?: string;
@@ -698,6 +707,7 @@ export function buildTurnContextPrompt(params: TurnContextPromptInput): string {
       availableSkills: params.availableSkills,
       activeSkills: params.activeSkills,
       activeMcpCatalogs: params.activeMcpCatalogs ?? [],
+      pluginProviders: params.pluginProviders,
       toolGuidance: params.toolGuidance ?? [],
     }),
     buildContextSection({

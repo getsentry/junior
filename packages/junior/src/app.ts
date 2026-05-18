@@ -1,11 +1,13 @@
 import { Hono } from "hono";
 import { setConfigDefaults } from "@/chat/configuration/defaults";
 import { logException } from "@/chat/logging";
-import { createProductionBotResolver } from "@/chat/app/production";
+import type { ProductionBot } from "@/chat/app/production";
+import type { ChatPlatform } from "@/chat/platforms";
 import {
-  resolveEnabledChatPlatforms,
-  type ChatPlatform,
-} from "@/chat/platforms";
+  resolvePlatformConfig,
+  validatePlatformConfig,
+  type JuniorPlatformOptionsMap,
+} from "@/chat/platform-config";
 import { setPluginPackages } from "@/chat/plugins/package-discovery";
 import { GET as diagnosticsGET } from "@/handlers/diagnostics";
 import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
@@ -19,12 +21,15 @@ export interface JuniorAppOptions {
   configDefaults?: Record<string, unknown>;
   /** Chat ingress platforms to enable for this app. Defaults to Slack only. */
   enabledPlatforms?: readonly ChatPlatform[];
+  /** Per-platform plugin, skill, and config defaults. Keys also enable platforms. */
+  platforms?: JuniorPlatformOptionsMap;
   pluginPackages?: string[];
   waitUntil?: WaitUntilFn;
 }
 
 interface JuniorBuildConfig {
   enabledPlatforms?: string[];
+  platforms?: JuniorPlatformOptionsMap;
   pluginPackages?: string[];
 }
 
@@ -93,15 +98,34 @@ async function resolveBuildConfig(): Promise<JuniorBuildConfig> {
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const buildConfig = await resolveBuildConfig();
-  const enabledPlatforms = resolveEnabledChatPlatforms(
-    options?.enabledPlatforms ?? buildConfig.enabledPlatforms,
-    "enabledPlatforms",
-  );
-  const getBot = createProductionBotResolver({ enabledPlatforms });
+  const appPlatformInput =
+    options?.enabledPlatforms !== undefined || options?.platforms !== undefined
+      ? {
+          enabledPlatforms: options.enabledPlatforms,
+          platforms: options.platforms,
+        }
+      : {
+          enabledPlatforms: buildConfig.enabledPlatforms,
+          platforms: buildConfig.platforms,
+        };
+  const { enabledPlatforms, platformConfigs } = resolvePlatformConfig({
+    enabledPlatforms: appPlatformInput.enabledPlatforms,
+    platforms: appPlatformInput.platforms,
+  });
+  let getBotPromise: Promise<() => ProductionBot> | undefined;
+  const resolveBot = async (): Promise<ProductionBot> => {
+    getBotPromise ??= import("@/chat/app/production").then(
+      ({ createProductionBotResolver }) =>
+        createProductionBotResolver({ enabledPlatforms, platformConfigs }),
+    );
+    const getBot = await getBotPromise;
+    return getBot();
+  };
   const slackEnabled = enabledPlatforms.includes("slack");
 
   setPluginPackages(options?.pluginPackages ?? buildConfig.pluginPackages);
   setConfigDefaults(options?.configDefaults);
+  await validatePlatformConfig(platformConfigs);
 
   const waitUntil = options?.waitUntil ?? (await defaultWaitUntil());
 
@@ -145,12 +169,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     return sandboxEgressProxyALL(c.req.raw, c.req.param("egressId"));
   });
 
-  app.post("/api/webhooks/:platform", (c) => {
+  app.post("/api/webhooks/:platform", async (c) => {
     const platform = c.req.param("platform");
     if (!enabledPlatforms.includes(platform as ChatPlatform)) {
       return c.text(`Unknown platform: ${platform}`, 404);
     }
-    return handlePlatformWebhook(c.req.raw, platform, waitUntil, getBot());
+    return handlePlatformWebhook(
+      c.req.raw,
+      platform,
+      waitUntil,
+      await resolveBot(),
+    );
   });
 
   return app;

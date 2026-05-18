@@ -232,6 +232,8 @@ export interface SkillInvocation {
 
 export interface DiscoverSkillsOptions {
   additionalRoots?: string[];
+  allowedPluginNames?: readonly string[];
+  allowedSkillNames?: readonly string[];
 }
 
 let skillCache: {
@@ -268,6 +270,30 @@ function resolveSkillRoots(options?: DiscoverSkillsOptions): string[] {
     resolved.push(normalized);
   }
   return resolved;
+}
+
+function filterDiscoveredSkills(
+  skills: SkillMetadata[],
+  options?: DiscoverSkillsOptions,
+): SkillMetadata[] {
+  const allowedPlugins = options?.allowedPluginNames
+    ? new Set(options.allowedPluginNames)
+    : undefined;
+  const allowedSkills = options?.allowedSkillNames
+    ? new Set(options.allowedSkillNames)
+    : undefined;
+
+  return skills.filter((skill) => {
+    if (allowedPlugins && skill.pluginProvider) {
+      if (!allowedPlugins.has(skill.pluginProvider)) {
+        return false;
+      }
+    }
+    if (allowedSkills && !allowedSkills.has(skill.name)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function resolveSkillPlugin(
@@ -366,7 +392,15 @@ export async function discoverSkills(
   options?: DiscoverSkillsOptions,
 ): Promise<SkillMetadata[]> {
   const roots = resolveSkillRoots(options);
-  const cacheKey = roots.join(path.delimiter);
+  const cacheKey = JSON.stringify({
+    roots,
+    allowedPluginNames: options?.allowedPluginNames
+      ? [...options.allowedPluginNames].sort()
+      : undefined,
+    allowedSkillNames: options?.allowedSkillNames
+      ? [...options.allowedSkillNames].sort()
+      : undefined,
+  });
   if (
     skillCache &&
     skillCache.expiresAt > Date.now() &&
@@ -408,7 +442,10 @@ export async function discoverSkills(
     }
   }
 
-  const sorted = discovered.sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = filterDiscoveredSkills(
+    discovered.sort((a, b) => a.name.localeCompare(b.name)),
+    options,
+  );
   skillCache = {
     expiresAt: Date.now() + SKILL_CACHE_TTL_MS,
     key: cacheKey,

@@ -15,6 +15,7 @@
 - 2026-05-08: Added plugin-owned `command-env` as a non-secret CLI compatibility surface.
 - 2026-05-12: Added Vercel Sandbox egress proxy activation for request-time credential issuance.
 - 2026-05-13: Removed the old per-turn credential runtime in favor of egress proxy-only credential activation.
+- 2026-05-16: Scoped registered provider availability by platform configuration.
 
 ## Status
 
@@ -34,7 +35,7 @@ Define how Junior maps registered plugin provider domains to host-managed creden
 
 1. Plugins own provider permissions in `plugin.yaml`.
 2. Skills do not declare capabilities or config keys.
-3. Registered providers are always available to sandbox commands.
+3. Registered providers are available to sandbox commands only when enabled for the current platform turn.
 4. The agent runs the real provider command.
 5. The runtime resolves the provider from the outgoing request host, issues a command-scoped provider lease, and injects credentials for that request only.
 6. If auth is missing or stale, the proxy returns a command-readable auth-required response and the command failure path starts a private OAuth flow, then resumes the paused turn after authorization.
@@ -76,7 +77,7 @@ Rules:
 ### Lease issuance
 
 - Resolve provider from the Vercel Sandbox forwarded host for proxied sandbox egress.
-- Require requester context before issuing provider credentials.
+- Preserve requester context when issuing user-scoped provider credentials; host-scoped providers may issue without a requester when the platform explicitly enables that provider.
 - Return short-lived leases only.
 - Keep any host-side egress lease cache bounded by the sandbox egress session expiry and lease expiry.
 
@@ -91,6 +92,7 @@ Rules:
 ### Sandbox egress proxy
 
 - New sandbox sessions use a Vercel Sandbox network policy that forwards declared credential provider domains to Junior's internal egress route.
+- New sandbox sessions persist the platform-enabled provider names, and the egress route rejects forwarded requests for providers outside that session allowlist.
 - The internal egress route must verify the Vercel Sandbox OIDC token before proxying.
 - The egress route must reconstruct the upstream URL only from Vercel forwarded host/scheme/port headers and the request path.
 - The egress route must reject forwarded hosts that do not match a registered provider domain.

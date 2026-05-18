@@ -109,7 +109,7 @@ function getSandboxEgressRouter(): ProviderCredentialRouter {
 /** Issue one provider credential lease for host-side sandbox egress proxying. */
 export async function issueProviderCredentialLease(input: {
   provider: string;
-  requesterId: string;
+  requesterId?: string;
   reason: string;
 }): Promise<CredentialLease> {
   return await getSandboxEgressRouter().issue(input);

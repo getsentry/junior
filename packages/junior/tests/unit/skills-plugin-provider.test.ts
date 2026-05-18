@@ -86,6 +86,28 @@ describe("discoverSkills plugin ownership", () => {
       expect(
         skills.find((skill) => skill.name === "notes")?.pluginProvider,
       ).toBeUndefined();
+
+      await expect(
+        discoverSkills({ allowedPluginNames: ["other"] }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          name: "notes",
+        }),
+      ]);
+      await expect(
+        discoverSkills({
+          allowedPluginNames: ["demo"],
+          allowedSkillNames: ["triage"],
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          name: "triage",
+          pluginProvider: "demo",
+        }),
+      ]);
+      await expect(
+        discoverSkills({ allowedPluginNames: ["demo"], allowedSkillNames: [] }),
+      ).resolves.toEqual([]);
     } finally {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }

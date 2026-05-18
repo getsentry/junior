@@ -102,7 +102,8 @@ export function createSandboxExecutor(options?: {
   timeoutMs?: number;
   traceContext?: LogContext;
   credentialEgress?: {
-    requesterId: string;
+    providerNames?: readonly string[];
+    requesterId?: string;
   };
   onSandboxAcquired?: (sandbox: SandboxAcquiredState) => void | Promise<void>;
   runBashCustomCommand?: (
@@ -117,6 +118,7 @@ export function createSandboxExecutor(options?: {
     ? async (egressId: string): Promise<void> => {
         await upsertSandboxEgressSession({
           egressId,
+          providerNames: credentialEgress.providerNames,
           requesterId: credentialEgress.requesterId,
           ttlMs: options?.timeoutMs,
         });
@@ -133,10 +135,16 @@ export function createSandboxExecutor(options?: {
     timeoutMs: options?.timeoutMs,
     traceContext,
     commandEnv: credentialEgress
-      ? async () => await resolveSandboxCommandEnvironment()
+      ? async () =>
+          await resolveSandboxCommandEnvironment({
+            providerNames: credentialEgress.providerNames,
+          })
       : undefined,
     createNetworkPolicy: credentialEgress
-      ? buildSandboxEgressNetworkPolicy
+      ? (egressId) =>
+          buildSandboxEgressNetworkPolicy(egressId, {
+            providerNames: credentialEgress.providerNames,
+          })
       : undefined,
     beforeCommand: syncSandboxEgressSession,
     afterCommand: clearSandboxEgressSessionForCommand,

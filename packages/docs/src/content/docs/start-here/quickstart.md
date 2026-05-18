@@ -218,6 +218,8 @@ const app = await createApp({
 
 If you keep deployment wiring in `nitro.config.ts`, use `juniorNitro({ enabledPlatforms: ["slack", "github"] })` instead and leave `createApp()` without platform options.
 
+For one deployment where Slack and GitHub should expose different plugins or skills, use `juniorNitro({ platforms: { slack: { plugins: [...] }, github: { plugins: [...] } } })` instead of `enabledPlatforms`.
+
 Set your GitHub App webhook URL to:
 
 ```text

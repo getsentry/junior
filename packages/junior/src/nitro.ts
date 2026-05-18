@@ -2,6 +2,7 @@ import path from "node:path";
 import type { Nitro } from "nitro/types";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import type { ChatPlatform } from "@/chat/platforms";
+import type { JuniorPlatformOptionsMap } from "@/chat/platform-config";
 import {
   copyAppAndPluginContent,
   copyIncludedFiles,
@@ -13,6 +14,7 @@ export interface JuniorNitroOptions {
   enabledPlatforms?: readonly ChatPlatform[];
   maxDuration?: number;
   pluginPackages?: string[];
+  platforms?: JuniorPlatformOptionsMap;
   /**
    * Extra file patterns to copy into the server output for files that the
    * bundler cannot trace (e.g. dynamically imported providers).
@@ -42,6 +44,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         injectVirtualConfig(nitro, {
           enabledPlatforms: options.enabledPlatforms,
           pluginPackages: options.pluginPackages ?? [],
+          platforms: options.platforms,
         });
 
         nitro.hooks.hook("compiled", () => {

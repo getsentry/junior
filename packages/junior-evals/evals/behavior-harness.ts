@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Message } from "chat";
-import { createSlackRuntime } from "@/chat/app/factory";
+import { createGitHubRuntime, createSlackRuntime } from "@/chat/app/factory";
 import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -76,6 +76,11 @@ interface MentionEvent extends EvalBaseEvent {
   type: "new_mention";
 }
 
+interface GitHubMentionEvent extends EvalBaseEvent {
+  message: EvalEventMessageFixture;
+  type: "github_mention";
+}
+
 interface SubscribedMessageEvent extends EvalBaseEvent {
   message: EvalEventMessageFixture;
   type: "subscribed_message";
@@ -93,6 +98,7 @@ interface AssistantContextChangedEvent extends EvalBaseEvent {
 
 export type EvalEvent =
   | MentionEvent
+  | GitHubMentionEvent
   | SubscribedMessageEvent
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent;
@@ -1078,6 +1084,7 @@ function buildRuntimeServices(
 async function processEvents(args: {
   scenario: EvalScenario;
   env: HarnessEnvironment;
+  githubRuntime: ReturnType<typeof createGitHubRuntime>;
   slackRuntime: ReturnType<typeof createSlackRuntime>;
   dispatch: ReturnType<typeof createThreadMessageDispatcher>;
   getThreadRecord: (fixture: EvalEventThreadFixture) => EvalThreadRecord;
@@ -1086,6 +1093,7 @@ async function processEvents(args: {
   const {
     scenario,
     env,
+    githubRuntime,
     slackRuntime,
     dispatch,
     getThreadRecord,
@@ -1141,6 +1149,16 @@ async function processEvents(args: {
     readyQueueDeliveries.push({ kind, message, thread });
   };
 
+  const runGitHubMention = async (event: GitHubMentionEvent): Promise<void> => {
+    const { thread, transcript } = getThreadRecord(event.thread);
+    const message = toIncomingMessage({
+      ...event,
+      type: "new_mention",
+    }) as unknown as Message;
+    upsertThreadTranscriptMessage(transcript, message);
+    await githubRuntime.handleNewMention(thread, message);
+  };
+
   const runLifecycleEvent = async (
     event: AssistantThreadStartedEvent | AssistantContextChangedEvent,
   ): Promise<void> => {
@@ -1160,6 +1178,8 @@ async function processEvents(args: {
   for (const event of scenario.events) {
     if (event.type === "new_mention" || event.type === "subscribed_message") {
       enqueueEvent(event);
+    } else if (event.type === "github_mention") {
+      await runGitHubMention(event);
     } else {
       await runLifecycleEvent(event);
     }
@@ -1291,12 +1311,14 @@ export async function runEvalScenario(
     getSlackAdapter: () => slackAdapter as any,
     services,
   });
+  const githubRuntime = createGitHubRuntime({ services });
   const dispatch = createThreadMessageDispatcher({ runtime: slackRuntime });
 
   try {
     await processEvents({
       scenario,
       env,
+      githubRuntime,
       slackRuntime,
       dispatch,
       getThreadRecord,

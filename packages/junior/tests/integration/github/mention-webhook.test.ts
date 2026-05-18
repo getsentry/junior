@@ -1,8 +1,9 @@
 import type { Message } from "chat";
 import { createGitHubAdapter } from "@chat-adapter/github";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubRuntime } from "@/chat/app/factory";
+import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import type { WaitUntilFn } from "@/handlers/types";
 import { handlePlatformWebhook } from "@/handlers/webhooks";
@@ -12,6 +13,14 @@ import {
   signGitHubWebhookBody,
 } from "../../fixtures/github/factories/webhooks";
 import { getCapturedGitHubApiCalls } from "../../msw/handlers/github-api";
+
+vi.mock("@sentry/node", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/node")>();
+  return {
+    ...actual,
+    captureException: vi.fn(() => undefined),
+  };
+});
 
 const GITHUB_WEBHOOK_SECRET = "github-webhook-secret";
 
@@ -61,9 +70,14 @@ function makeDiagnostics() {
 describe("GitHub webhook mention handling", () => {
   afterEach(() => {
     delete process.env.GITHUB_BOT_USERNAME;
+    vi.restoreAllMocks();
   });
 
-  async function createGitHubBot() {
+  async function createGitHubBot(
+    generateAssistantReply?: NonNullable<
+      JuniorRuntimeServiceOverrides["replyExecutor"]
+    >["generateAssistantReply"],
+  ) {
     process.env.GITHUB_BOT_USERNAME = "junior";
     const bot = new JuniorChat({
       userName: "junior",
@@ -79,10 +93,12 @@ describe("GitHub webhook mention handling", () => {
     const runtime = createGitHubRuntime({
       services: {
         replyExecutor: {
-          generateAssistantReply: async () => ({
-            text: "GitHub final reply",
-            diagnostics: makeDiagnostics(),
-          }),
+          generateAssistantReply:
+            generateAssistantReply ??
+            (async () => ({
+              text: "GitHub final reply",
+              diagnostics: makeDiagnostics(),
+            })),
         },
       },
     });
@@ -167,6 +183,74 @@ describe("GitHub webhook mention handling", () => {
     expect(commentPosts[0]?.body).toMatchObject({
       body: "GitHub final reply",
     });
+  });
+
+  it("posts a failure reply when Sentry is not configured", async () => {
+    const { bot } = await createGitHubBot(async () => {
+      throw new Error("agent failed");
+    });
+    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const payload = githubIssueCommentWebhook({
+      issueNumber: 13,
+      isPullRequest: false,
+      body: "@junior please handle this failure",
+    }) as Record<string, unknown>;
+    const request = createGitHubRequest({
+      eventType: "issue_comment",
+      payload,
+    });
+
+    const response = await handlePlatformWebhook(
+      request,
+      "github",
+      collectWaitUntil(waitUntilTasks),
+      bot,
+    );
+    await flushWaitUntil(waitUntilTasks);
+
+    expect(response.status).toBe(200);
+    const commentPosts = getCapturedGitHubApiCalls().filter(
+      (entry) =>
+        entry.method === "POST" &&
+        entry.url.includes("/repos/acme/junior/issues/13/comments"),
+    );
+    expect(commentPosts).toHaveLength(1);
+    expect(commentPosts[0]?.body).toMatchObject({
+      body: expect.stringContaining("event_id=unknown"),
+    });
+  });
+
+  it("relies on Chat SDK message dedupe for repeated webhook deliveries", async () => {
+    const { bot, handledMessages } = await createGitHubBot();
+    const waitUntilTasks: Array<Promise<unknown>> = [];
+    const payload = githubIssueCommentWebhook({
+      issueNumber: 12,
+      isPullRequest: false,
+      commentId: 9_001,
+      body: "@junior handle this once",
+    }) as Record<string, unknown>;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await handlePlatformWebhook(
+        createGitHubRequest({
+          eventType: "issue_comment",
+          payload,
+        }),
+        "github",
+        collectWaitUntil(waitUntilTasks),
+        bot,
+      );
+      expect(response.status).toBe(200);
+    }
+    await flushWaitUntil(waitUntilTasks);
+
+    expect(handledMessages).toHaveLength(1);
+    const commentPosts = getCapturedGitHubApiCalls().filter(
+      (entry) =>
+        entry.method === "POST" &&
+        entry.url.includes("/repos/acme/junior/issues/12/comments"),
+    );
+    expect(commentPosts).toHaveLength(1);
   });
 
   it("replies to explicit mentions in PR conversation comments", async () => {

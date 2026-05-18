@@ -35,6 +35,7 @@ export interface PluginAuthOrchestrationDeps {
   conversationId?: string;
   sessionId?: string;
   requesterId?: string;
+  providerNames?: readonly string[];
   channelId?: string;
   threadTs?: string;
   userMessage: string;
@@ -126,9 +127,9 @@ function explicitAuthRequiredProvider(details: unknown): string | undefined {
   return match?.[1];
 }
 
-function registeredProviderNames(): string[] {
+function registeredProviderNames(allowedNames?: readonly string[]): string[] {
   const providers = new Set<string>();
-  for (const plugin of getPluginProviders()) {
+  for (const plugin of getPluginProviders(allowedNames)) {
     const domains = [
       ...(plugin.manifest.credentials?.domains ?? []),
       ...(plugin.manifest.domains ?? []),
@@ -279,7 +280,7 @@ export function createPluginAuthOrchestration(
 
   return {
     handleCommandFailure: async (input) => {
-      const providers = registeredProviderNames();
+      const providers = registeredProviderNames(deps.providerNames);
       const explicitProvider = explicitAuthRequiredProvider(input.details);
       const provider =
         explicitProvider && providers.includes(explicitProvider)

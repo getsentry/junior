@@ -8,7 +8,8 @@ import {
   withSpan,
 } from "@/chat/logging";
 import { GITHUB_COMMENT_SURFACE } from "@/chat/surface";
-import { normalizeGitHubMentionTarget } from "@/chat/github/mention";
+import { getGitHubMentionTargets } from "@/chat/github/mention";
+import type { PlatformRuntimeConfig } from "@/chat/platform-config";
 import { applyPendingAuthUpdate } from "@/chat/services/pending-auth";
 import {
   finalizeFailedTurnReply,
@@ -46,6 +47,7 @@ export interface GitHubReplyExecutorServices {
 }
 
 interface GitHubReplyExecutorDeps {
+  platformConfig?: PlatformRuntimeConfig;
   prepareTurnState: (args: {
     explicitMention: boolean;
     message: Message;
@@ -89,16 +91,15 @@ export function createReplyToGitHubThread(deps: GitHubReplyExecutorDeps) {
         modelId: botConfig.modelId,
       },
       async () => {
-        const githubBotUserName = getGitHubBotUsername() ?? botConfig.userName;
-        const strippedUserText = stripLeadingBotMention(
-          stripLeadingBotMention(message.text, {
-            botUserName: githubBotUserName,
-            stripLeadingSlackMentionToken: false,
-          }),
-          {
-            botUserName: normalizeGitHubMentionTarget(githubBotUserName),
-            stripLeadingSlackMentionToken: false,
-          },
+        const strippedUserText = getGitHubMentionTargets(
+          getGitHubBotUsername() ?? botConfig.userName,
+        ).reduce(
+          (next, botUserName) =>
+            stripLeadingBotMention(next, {
+              botUserName,
+              stripLeadingSlackMentionToken: false,
+            }),
+          message.text,
         );
         const userText = strippedUserText || message.text;
         const preparedState =
@@ -155,6 +156,7 @@ export function createReplyToGitHubThread(deps: GitHubReplyExecutorDeps) {
             piMessages: preparedState.conversation.piMessages,
             pendingAuth: preparedState.conversation.processing.pendingAuth,
             configuration: preparedState.configuration,
+            platformConfig: deps.platformConfig,
             channelConfiguration: preparedState.channelConfiguration,
             inboundAttachmentCount: message.attachments.length,
             correlation: {
@@ -290,15 +292,9 @@ export function createReplyToGitHubThread(deps: GitHubReplyExecutorDeps) {
             },
             "GitHub turn reply failed",
           );
-          if (!eventId) {
-            throw new Error(
-              "Sentry did not return an event ID for github_turn_reply_failed",
-            );
-          }
-
           await beforeFirstResponsePost();
           try {
-            await thread.post(buildTurnFailureResponse(eventId));
+            await thread.post(buildTurnFailureResponse(eventId ?? "unknown"));
           } catch (fallbackError) {
             logException(
               fallbackError,

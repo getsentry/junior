@@ -14,8 +14,8 @@ related:
 
 | Variable                                    | Required    | Purpose                                                                                                                                              |
 | ------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SLACK_SIGNING_SECRET`                      | Conditional | Verifies Slack request signatures. Required when `slack` is included in `enabledPlatforms`.                                                          |
-| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Conditional | Posts thread replies and calls Slack APIs. Required when `slack` is included in `enabledPlatforms`.                                                  |
+| `SLACK_SIGNING_SECRET`                      | Conditional | Verifies Slack request signatures. Required when `slack` is enabled via `enabledPlatforms` or `platforms`.                                           |
+| `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Conditional | Posts thread replies and calls Slack APIs. Required when `slack` is enabled via `enabledPlatforms` or `platforms`.                                   |
 | `REDIS_URL`                                 | Yes         | Queue and runtime state storage.                                                                                                                     |
 | `JUNIOR_BOT_NAME`                           | No          | Bot display/config naming.                                                                                                                           |
 | `AI_MODEL`                                  | No          | Primary model selection override for main assistant turns. Defaults to `openai/gpt-5.4`; Junior chooses the reasoning effort per turn automatically. |
@@ -41,11 +41,31 @@ Use `enabledPlatforms: ["github"]` for a GitHub-only deployment without Slack.
 
 You can also put the same setting in `juniorNitro(...)`; `createApp()` reads that build-time config automatically.
 
+For one deployment that serves multiple platforms, prefer per-platform configuration:
+
+```ts
+juniorNitro({
+  pluginPackages: ["@sentry/junior-github", "@sentry/junior-sentry"],
+  platforms: {
+    slack: {
+      plugins: ["github", "sentry"],
+      skills: ["github-issues", "sentry-issues"],
+    },
+    github: {
+      plugins: ["github"],
+      skills: ["github-issues", "github-pr-review"],
+    },
+  },
+});
+```
+
+`pluginPackages` controls what plugin package content is bundled. `platforms.<platform>.plugins` controls which plugin providers that platform can use at runtime. `platforms.<platform>.skills` is an optional exact skill allowlist.
+
 ## GitHub mention webhook (optional, V1)
 
 Enable this when you want inbound GitHub mentions to run Junior through `/api/webhooks/github`.
 
-Add `github` to `createApp({ enabledPlatforms })` or `juniorNitro({ enabledPlatforms })` before adding these values.
+Add `github` to `createApp({ enabledPlatforms })`, `juniorNitro({ enabledPlatforms })`, or `platforms.github` before adding these values.
 
 | Variable                 | Required | Purpose                                                                                       |
 | ------------------------ | -------- | --------------------------------------------------------------------------------------------- |
@@ -91,7 +111,7 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request and bind
 | `SENTRY_CLIENT_ID`     | Yes      | OAuth client ID.     |
 | `SENTRY_CLIENT_SECRET` | Yes      | OAuth client secret. |
 
-## Install-wide config defaults
+## Config defaults
 
 Pass `configDefaults` to `createApp()` to set provider defaults across all conversations:
 
@@ -107,7 +127,28 @@ const app = await createApp({
 });
 ```
 
-Keys must be registered plugin config keys. Channel-scoped overrides (`jr-rpc config set`) take precedence.
+Use `platforms.<platform>.configDefaults` when Slack and GitHub need different defaults in the same deployment:
+
+```ts
+juniorNitro({
+  platforms: {
+    slack: {
+      plugins: ["sentry"],
+      configDefaults: {
+        "sentry.org": "sentry",
+      },
+    },
+    github: {
+      plugins: ["github"],
+      configDefaults: {
+        "github.repo": "myorg/myrepo",
+      },
+    },
+  },
+});
+```
+
+Keys must be registered plugin config keys. Channel-scoped overrides (`jr-rpc config set`) take precedence over platform defaults, and platform defaults take precedence over install-wide defaults.
 
 ## Verification
 

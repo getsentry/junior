@@ -297,6 +297,17 @@ function ensurePluginsLoaded(): LoadedPluginState {
   return state;
 }
 
+function filterPluginsByName(
+  plugins: PluginDefinition[],
+  allowedNames?: readonly string[],
+): PluginDefinition[] {
+  if (!allowedNames) {
+    return [...plugins];
+  }
+  const allowed = new Set(allowedNames);
+  return plugins.filter((plugin) => allowed.has(plugin.manifest.name));
+}
+
 // --- Sync exports ---
 
 /** Return the current plugin catalog signature used for cache invalidation. */
@@ -304,6 +315,7 @@ export function getPluginCatalogSignature(): string {
   return ensurePluginsLoaded().signature;
 }
 
+/** Return plugin capability metadata for install-wide capability registration. */
 export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
   const state = ensurePluginsLoaded();
   return state.pluginDefinitions.map((plugin) => ({
@@ -323,14 +335,24 @@ export function getPluginCapabilityProviders(): CapabilityProviderDefinition[] {
   }));
 }
 
-export function getPluginProviders(): PluginDefinition[] {
-  return [...ensurePluginsLoaded().pluginDefinitions];
+/** Return installed plugin definitions, optionally constrained to platform-enabled providers. */
+export function getPluginProviders(
+  allowedNames?: readonly string[],
+): PluginDefinition[] {
+  return filterPluginsByName(
+    ensurePluginsLoaded().pluginDefinitions,
+    allowedNames,
+  );
 }
 
-export function getPluginMcpProviders(): PluginDefinition[] {
-  return ensurePluginsLoaded().pluginDefinitions.filter((plugin) =>
-    Boolean(plugin.manifest.mcp),
-  );
+/** Return installed MCP-capable plugins, optionally constrained to platform-enabled providers. */
+export function getPluginMcpProviders(
+  allowedNames?: readonly string[],
+): PluginDefinition[] {
+  return filterPluginsByName(
+    ensurePluginsLoaded().pluginDefinitions,
+    allowedNames,
+  ).filter((plugin) => Boolean(plugin.manifest.mcp));
 }
 
 export function getPluginRuntimeDependencies(): PluginRuntimeDependency[] {

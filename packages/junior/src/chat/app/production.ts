@@ -15,10 +15,8 @@ import {
   getSlackClientSecret,
   getSlackSigningSecret,
 } from "@/chat/config";
-import {
-  resolveEnabledChatPlatforms,
-  type ChatPlatform,
-} from "@/chat/platforms";
+import { DEFAULT_CHAT_PLATFORMS, type ChatPlatform } from "@/chat/platforms";
+import type { PlatformRuntimeConfigMap } from "@/chat/platform-config";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
 import { createChatSdkLogger, logException, withSpan } from "@/chat/logging";
@@ -75,6 +73,9 @@ function createProductionGitHubAdapter(
   const missing: string[] = [];
   if (!appId) missing.push("GITHUB_APP_ID");
   if (!privateKey) missing.push("GITHUB_APP_PRIVATE_KEY");
+  // V1 production wiring is intentionally single-installation. The adapter can
+  // support webhook-derived installations later, but that needs an explicit
+  // multi-tenant config and auth story instead of happening accidentally.
   if (installationId === undefined) missing.push("GITHUB_INSTALLATION_ID");
   if (!webhookSecret) missing.push("GITHUB_WEBHOOK_SECRET");
   if (!mentionTarget) missing.push("GITHUB_BOT_USERNAME");
@@ -145,6 +146,9 @@ function registerProductionHandlers(
   runtimes: {
     github?: ReturnType<typeof createGitHubRuntime>;
     slack?: ReturnType<typeof createSlackRuntime>;
+  },
+  options?: {
+    slackPlatformConfig?: PlatformRuntimeConfigMap["slack"];
   },
 ): void {
   bot.onNewMention((thread, message) => {
@@ -220,6 +224,7 @@ function registerProductionHandlers(
             getSlackClient(),
             event.userId,
             createUserTokenStore(),
+            options?.slackPlatformConfig,
           );
         } catch (error) {
           logException(error, "app_home_opened_failed", {
@@ -245,6 +250,7 @@ function registerProductionHandlers(
             getSlackClient(),
             userId,
             createUserTokenStore(),
+            options?.slackPlatformConfig,
           );
         } catch (error) {
           logException(
@@ -263,16 +269,22 @@ function registerProductionHandlers(
 
 export interface ProductionBotOptions {
   enabledPlatforms?: readonly ChatPlatform[];
+  platformConfigs?: PlatformRuntimeConfigMap;
 }
 
 /** Create an app-scoped lazy production bot resolver. */
 export function createProductionBotResolver(
   options: ProductionBotOptions = {},
 ): () => ProductionBot {
-  const enabledPlatforms = resolveEnabledChatPlatforms(
-    options.enabledPlatforms,
-    "enabledPlatforms",
-  );
+  const enabledPlatforms = options.enabledPlatforms
+    ? [...options.enabledPlatforms]
+    : options.platformConfigs
+      ? (Object.keys(options.platformConfigs) as ChatPlatform[])
+      : [...DEFAULT_CHAT_PLATFORMS];
+  if (enabledPlatforms.length === 0) {
+    throw new Error("At least one production chat platform must be enabled");
+  }
+  const platformConfigs = options.platformConfigs ?? {};
   let productionBot: ProductionBot | undefined;
 
   return () => {
@@ -291,16 +303,23 @@ export function createProductionBotResolver(
     const slackRuntime = includesPlatform(enabledPlatforms, "slack")
       ? createSlackRuntime({
           getSlackAdapter: () => bot.getAdapter("slack") as SlackAdapter,
+          platformConfig: platformConfigs.slack,
         })
       : undefined;
     const githubRuntime = includesPlatform(enabledPlatforms, "github")
-      ? createGitHubRuntime()
+      ? createGitHubRuntime({ platformConfig: platformConfigs.github })
       : undefined;
 
-    registerProductionHandlers(bot, {
-      github: githubRuntime,
-      slack: slackRuntime,
-    });
+    registerProductionHandlers(
+      bot,
+      {
+        github: githubRuntime,
+        slack: slackRuntime,
+      },
+      {
+        slackPlatformConfig: platformConfigs.slack,
+      },
+    );
     productionBot = bot;
     return bot;
   };
