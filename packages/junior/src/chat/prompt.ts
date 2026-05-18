@@ -677,18 +677,28 @@ type TurnContextPromptInput = {
   turnState?: "fresh" | "resumed";
 };
 
+const systemPromptCache = new Map<string, string>();
+
 /** Return platform instructions shared by every conversation and turn. */
 export function buildSystemPrompt(
   params: { surface?: AssistantSurface } = {},
 ): string {
   const surface = params.surface ?? SLACK_SURFACE;
-  return [
+  const cacheKey = JSON.stringify(surface);
+  const cached = systemPromptCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const prompt = [
     buildHeader(surface),
     buildIdentitySection(surface),
     renderTagBlock("personality", JUNIOR_PERSONALITY.trim()),
     renderTagBlock("behavior", buildBehaviorSection(surface)),
     buildOutputSection(surface),
   ].join("\n\n");
+  systemPromptCache.set(cacheKey, prompt);
+  return prompt;
 }
 
 /** Build volatile runtime context that belongs in the user turn, not the system prompt. */

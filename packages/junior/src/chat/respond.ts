@@ -151,7 +151,7 @@ export interface ReplyRequestContext {
   surface?: AssistantSurface;
 }
 
-let startupDiscoveryLogged = false;
+const startupDiscoveryLoggedKeys = new Set<string>();
 const MAX_ROUTER_ATTACHMENT_PREVIEW_CHARS = 2_000;
 
 type UserTurnContentPart =
@@ -171,6 +171,18 @@ function buildOmittedImageAttachmentNotice(count: number): string {
     "If the user asks about image contents, explain that image analysis is unavailable in this runtime and continue with any text or non-image files that are still available.",
     "</omitted-image-attachments>",
   ].join("\n");
+}
+
+function startupDiscoveryLogKey(args: {
+  platform: string;
+  pluginNames?: readonly string[];
+  skillNames?: readonly string[];
+}): string {
+  return JSON.stringify({
+    platform: args.platform,
+    pluginNames: args.pluginNames ?? null,
+    skillNames: args.skillNames ?? null,
+  });
 }
 
 function trimRouterAttachmentText(text: string): string {
@@ -431,8 +443,13 @@ export async function generateAssistantReply(
       allowedPluginNames: platformPluginNames,
       allowedSkillNames: platformSkillNames,
     });
-    if (!startupDiscoveryLogged) {
-      startupDiscoveryLogged = true;
+    const discoveryLogKey = startupDiscoveryLogKey({
+      platform: surface.platform,
+      pluginNames: platformPluginNames,
+      skillNames: platformSkillNames,
+    });
+    if (!startupDiscoveryLoggedKeys.has(discoveryLogKey)) {
+      startupDiscoveryLoggedKeys.add(discoveryLogKey);
       const roots = [
         ...new Set(availableSkills.map((skill) => skill.skillPath)),
       ].sort();
