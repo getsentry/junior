@@ -75,6 +75,25 @@ describe("createApp", () => {
     ).toBe(404);
   });
 
+  it("normalizes platform keys before resolving their config", async () => {
+    const app = await createApp({
+      platforms: {
+        GitHub: {
+          plugins: [],
+          skills: [],
+        },
+      } as never,
+    });
+
+    expect(
+      (
+        await app.request("/api/internal/turn-resume", {
+          method: "POST",
+        })
+      ).status,
+    ).toBe(404);
+  });
+
   it("lets runtime platform options override build-time platform config", async () => {
     vi.doMock("#junior/config", () => ({
       pluginPackages: [],

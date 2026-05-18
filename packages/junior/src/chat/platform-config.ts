@@ -88,7 +88,9 @@ export function resolvePlatformConfig(input: {
       );
     }
 
-    const config = input.platforms[platform as ChatPlatform];
+    const config = (input.platforms as Record<string, JuniorPlatformOptions>)[
+      rawPlatform
+    ];
     if (!config || typeof config !== "object") {
       throw new Error(`platforms.${platform} must be an object`);
     }
