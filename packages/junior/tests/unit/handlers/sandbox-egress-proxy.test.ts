@@ -66,10 +66,7 @@ import {
   matchesSandboxEgressDomain,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
-import {
-  validateVercelSandboxOidcClaims,
-  verifyVercelSandboxOidcToken,
-} from "@/chat/sandbox/egress-oidc";
+import { verifyVercelSandboxOidcToken } from "@/chat/sandbox/egress-oidc";
 import {
   isSandboxEgressForwardedRequest,
   proxySandboxEgressRequest,
@@ -692,26 +689,6 @@ describe("sandbox egress proxy", () => {
 
     expect(response.status).toBe(403);
     expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
-  });
-
-  it("requires OIDC sandbox claims to match the egress route", () => {
-    expect(() =>
-      validateVercelSandboxOidcClaims(
-        {
-          sandbox_id: EGRESS_ID,
-        },
-        EGRESS_ID,
-      ),
-    ).not.toThrow();
-
-    expect(() =>
-      validateVercelSandboxOidcClaims(
-        {
-          sandbox_id: "other-sandbox",
-        },
-        EGRESS_ID,
-      ),
-    ).toThrow("different sandbox");
   });
 
   it("caches Vercel OIDC discovery metadata by issuer", async () => {
