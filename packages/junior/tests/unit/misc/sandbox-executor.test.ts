@@ -1114,6 +1114,70 @@ describe("createSandboxExecutor", () => {
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 
+  it("returns a readFile tool result when the sandbox path is missing", async () => {
+    const sandbox = makeSandbox("sbx_missing_read_file");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: {
+          execute: vi.fn(async () => {
+            throw new Error("File not found: /vercel/sandbox/missing.ts");
+          }),
+        },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    const response = await executor.execute({
+      toolName: "readFile",
+      input: {
+        path: "missing.ts",
+      },
+    });
+
+    expect(response.result).toEqual({
+      content: "",
+      error: "not_found",
+      path: "missing.ts",
+      success: false,
+    });
+  });
+
+  it("keeps sandbox API failures as readFile errors", async () => {
+    const sandbox = makeSandbox("sbx_read_file_api_error");
+    sandboxCreateMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: {
+          execute: vi.fn(async () => {
+            throw createApiError(
+              410,
+              "Gone",
+              "sandbox_stopped",
+              "Sandbox has stopped execution and is no longer available",
+            );
+          }),
+        },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor();
+    executor.configureSkills([]);
+
+    await expect(
+      executor.execute({
+        toolName: "readFile",
+        input: {
+          path: "missing.ts",
+        },
+      }),
+    ).rejects.toThrow("Status code 410 is not ok");
+  });
+
   it("reads virtual skill files from sandbox when a sandbox id hint exists", async () => {
     const skillRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "junior-skill-read-hinted-"),

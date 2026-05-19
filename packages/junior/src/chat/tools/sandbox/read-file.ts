@@ -18,6 +18,13 @@ interface TextRangeResult {
   continuation?: string;
 }
 
+interface TextRangeMissingPathResult {
+  content: "";
+  error: "not_found";
+  path: string;
+  success: false;
+}
+
 /** Return a bounded line window so large files can be read incrementally. */
 export function sliceFileContent(params: {
   content: string;
@@ -53,6 +60,16 @@ export function sliceFileContent(params: {
           continuation: `Read more with offset=${endLine + 1} and limit=${maxLines}.`,
         }
       : {}),
+  };
+}
+
+/** Return a model-visible result for expected missing read targets. */
+export function missingFileResult(path: string): TextRangeMissingPathResult {
+  return {
+    content: "",
+    error: "not_found",
+    path,
+    success: false,
   };
 }
 

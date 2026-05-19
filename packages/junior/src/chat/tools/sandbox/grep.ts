@@ -3,6 +3,8 @@ import { Type } from "@sinclair/typebox";
 import {
   MAX_TEXT_CHARS,
   collectFiles,
+  isMissingPathError,
+  missingPathSearchResult,
   normalizeToLf,
   positiveInteger,
   resolveWorkspacePath,
@@ -71,11 +73,17 @@ export async function grepFiles(params: {
   const regex = params.literal
     ? undefined
     : new RegExp(params.pattern, params.ignoreCase ? "i" : "");
-  const { files } = await collectFiles({
+  const { files, missingPath, missingRoot } = await collectFiles({
     fs: params.fs,
     root,
     pattern: params.glob,
   });
+  if (missingPath) {
+    return missingPathSearchResult({
+      path: params.path ?? ".",
+      ...(missingRoot ? { displayPath: params.path ?? "." } : { missingPath }),
+    });
+  }
   const output: string[] = [];
   let matchCount = 0;
   let matchLimitReached = false;
@@ -86,8 +94,14 @@ export async function grepFiles(params: {
     let content: string;
     try {
       content = await params.fs.readFile(filePath, { encoding: "utf8" });
-    } catch {
-      continue;
+    } catch (error) {
+      if (isMissingPathError(error)) {
+        return missingPathSearchResult({
+          path: params.path ?? ".",
+          missingPath: filePath,
+        });
+      }
+      throw error;
     }
     if (content.includes("\u0000")) {
       continue;

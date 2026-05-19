@@ -26,10 +26,16 @@ import type { SandboxInstance } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 import { editFile } from "@/chat/tools/sandbox/edit-file";
 import { findFiles } from "@/chat/tools/sandbox/find-files";
-import { positiveInteger } from "@/chat/tools/sandbox/file-utils";
+import {
+  isMissingPathError,
+  positiveInteger,
+} from "@/chat/tools/sandbox/file-utils";
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 import { listDir } from "@/chat/tools/sandbox/list-dir";
-import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
+import {
+  missingFileResult,
+  sliceFileContent,
+} from "@/chat/tools/sandbox/read-file";
 
 // Spec: specs/security-policy.md (sandbox isolation, network policy, credential lifecycle)
 // Spec: specs/logging/tracing-spec.md (required sandbox span semantics)
@@ -295,7 +301,16 @@ export function createSandboxExecutor(options?: {
         "app.sandbox.path.length": filePath.length,
       },
       async () => {
-        const response = await executeReadFile({ path: filePath });
+        let response: { content: string };
+        try {
+          response = await executeReadFile({ path: filePath });
+        } catch (error) {
+          if (isMissingPathError(error)) {
+            setSpanStatus("ok");
+            return missingFileResult(filePath);
+          }
+          throw error;
+        }
         const content = String(response.content ?? "");
         setSpanAttributes({
           "app.sandbox.read.bytes": Buffer.byteLength(content, "utf8"),

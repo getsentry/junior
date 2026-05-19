@@ -7,10 +7,23 @@ export type { SandboxFileSystem };
 export const MAX_TEXT_CHARS = 60_000;
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules"]);
 
-export interface TextSearchResultDetails {
-  ok: true;
-  path: string;
-  truncated: boolean;
+export type TextSearchResultDetails =
+  | {
+      ok: true;
+      path: string;
+      truncated: boolean;
+    }
+  | {
+      ok: false;
+      error: "not_found";
+      path: string;
+      missing_path?: string;
+      truncated: false;
+    };
+
+export interface TextSearchToolResult {
+  content: [{ type: "text"; text: string }];
+  details: TextSearchResultDetails;
 }
 
 /** Normalize model-supplied numeric knobs before they reach filesystem tools. */
@@ -40,6 +53,40 @@ export function truncateText(
   return {
     content: `${value.slice(0, maxChars)}\n\n[output truncated: ${removed} characters removed]`,
     truncated: true,
+  };
+}
+
+/** Detect model-facing missing paths without swallowing sandbox lifecycle/API failures. */
+export function isMissingPathError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (candidate.code === "ENOENT") {
+    return true;
+  }
+  return (
+    typeof candidate.message === "string" &&
+    candidate.message.startsWith("File not found:")
+  );
+}
+
+/** Build the shared model-visible result for expected missing search/list paths. */
+export function missingPathSearchResult(params: {
+  path: string;
+  displayPath?: string;
+  missingPath?: string;
+}): TextSearchToolResult {
+  const textPath = params.displayPath ?? params.missingPath ?? params.path;
+  return {
+    content: [{ type: "text", text: `Path not found: ${textPath}` }],
+    details: {
+      ok: false,
+      error: "not_found",
+      path: params.path,
+      ...(params.missingPath ? { missing_path: params.missingPath } : {}),
+      truncated: false,
+    },
   };
 }
 
@@ -118,17 +165,44 @@ export async function collectFiles(params: {
   root: string;
   limit?: number;
   pattern?: string;
-}): Promise<{ files: string[]; limitReached: boolean }> {
+}): Promise<{
+  files: string[];
+  limitReached: boolean;
+  missingPath?: string;
+  missingRoot: boolean;
+}> {
   const files: string[] = [];
   let limitReached = false;
+  let missingPath: string | undefined;
 
   const visit = async (dirPath: string): Promise<void> => {
-    const entries = (await params.fs.readdir(dirPath)).sort((a, b) =>
-      a.toLowerCase().localeCompare(b.toLowerCase()),
-    );
+    if (missingPath) {
+      return;
+    }
+    let entries: string[];
+    try {
+      entries = (await params.fs.readdir(dirPath)).sort((a, b) =>
+        a.toLowerCase().localeCompare(b.toLowerCase()),
+      );
+    } catch (error) {
+      if (isMissingPathError(error)) {
+        missingPath = dirPath;
+        return;
+      }
+      throw error;
+    }
     for (const entry of entries) {
       const fullPath = path.posix.join(dirPath, entry);
-      const stat = await params.fs.stat(fullPath);
+      let stat: Awaited<ReturnType<SandboxFileSystem["stat"]>>;
+      try {
+        stat = await params.fs.stat(fullPath);
+      } catch (error) {
+        if (isMissingPathError(error)) {
+          missingPath = fullPath;
+          return;
+        }
+        throw error;
+      }
       if (stat.isDirectory()) {
         if (!SKIPPED_DIRECTORIES.has(entry)) {
           await visit(fullPath);
@@ -148,7 +222,20 @@ export async function collectFiles(params: {
     }
   };
 
-  const stat = await params.fs.stat(params.root);
+  let stat: Awaited<ReturnType<SandboxFileSystem["stat"]>>;
+  try {
+    stat = await params.fs.stat(params.root);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return {
+        files,
+        limitReached: false,
+        missingPath: params.root,
+        missingRoot: true,
+      };
+    }
+    throw error;
+  }
   if (!stat.isDirectory()) {
     const relativePath = path.posix.basename(params.root);
     return {
@@ -157,9 +244,15 @@ export async function collectFiles(params: {
           ? [params.root]
           : [],
       limitReached: false,
+      missingRoot: false,
     };
   }
 
   await visit(params.root);
-  return { files, limitReached };
+  return {
+    files,
+    limitReached,
+    missingPath,
+    missingRoot: missingPath === params.root,
+  };
 }

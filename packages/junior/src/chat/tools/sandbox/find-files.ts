@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import {
   MAX_TEXT_CHARS,
   collectFiles,
+  missingPathSearchResult,
   positiveInteger,
   resolveWorkspacePath,
   truncateText,
@@ -33,12 +34,18 @@ export async function findFiles(params: {
 
   const root = resolveWorkspacePath(params.path);
   const limit = positiveInteger(params.limit) ?? DEFAULT_FIND_LIMIT;
-  const { files, limitReached } = await collectFiles({
+  const { files, limitReached, missingPath, missingRoot } = await collectFiles({
     fs: params.fs,
     root,
     pattern: params.pattern,
     limit,
   });
+  if (missingPath) {
+    return missingPathSearchResult({
+      path: params.path ?? ".",
+      ...(missingRoot ? { displayPath: params.path ?? "." } : { missingPath }),
+    });
+  }
   const relativePaths = files.map((filePath) =>
     path.posix.relative(root, filePath),
   );

@@ -2,6 +2,8 @@ import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import {
   MAX_TEXT_CHARS,
+  isMissingPathError,
+  missingPathSearchResult,
   positiveInteger,
   resolveWorkspacePath,
   truncateText,
@@ -27,14 +29,30 @@ export async function listDir(params: {
 }): Promise<ListDirResult> {
   const dirPath = resolveWorkspacePath(params.path);
   const limit = positiveInteger(params.limit) ?? DEFAULT_LIST_LIMIT;
-  const stat = await params.fs.stat(dirPath);
+  let stat: Awaited<ReturnType<SandboxFileSystem["stat"]>>;
+  try {
+    stat = await params.fs.stat(dirPath);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return missingPathSearchResult({ path: params.path ?? "." });
+    }
+    throw error;
+  }
   if (!stat.isDirectory()) {
     throw new Error(`Not a directory: ${params.path ?? "."}`);
   }
 
-  const entries = (await params.fs.readdir(dirPath)).sort((a, b) =>
-    a.toLowerCase().localeCompare(b.toLowerCase()),
-  );
+  let entries: string[];
+  try {
+    entries = (await params.fs.readdir(dirPath)).sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase()),
+    );
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return missingPathSearchResult({ path: params.path ?? "." });
+    }
+    throw error;
+  }
   const output: string[] = [];
   let entryLimitReached = false;
   for (const entry of entries) {
@@ -46,8 +64,14 @@ export async function listDir(params: {
     try {
       const entryStat = await params.fs.stat(entryPath);
       output.push(`${entry}${entryStat.isDirectory() ? "/" : ""}`);
-    } catch {
-      continue;
+    } catch (error) {
+      if (isMissingPathError(error)) {
+        return missingPathSearchResult({
+          path: params.path ?? ".",
+          missingPath: entryPath,
+        });
+      }
+      throw error;
     }
   }
 

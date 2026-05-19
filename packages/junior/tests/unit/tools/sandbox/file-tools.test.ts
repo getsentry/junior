@@ -15,6 +15,10 @@ function workspacePath(filePath: string): string {
   return path.posix.join(SANDBOX_WORKSPACE_ROOT, filePath);
 }
 
+function missingPathError(message: string): Error {
+  return Object.assign(new Error(message), { code: "ENOENT" });
+}
+
 function createMemoryFs(initialFiles: Record<string, string>) {
   const files = new Map(
     Object.entries(initialFiles).map(([filePath, content]) => [
@@ -32,7 +36,7 @@ function createMemoryFs(initialFiles: Record<string, string>) {
     async readFile(filePath) {
       const content = files.get(filePath);
       if (content === undefined) {
-        throw new Error(`missing file: ${filePath}`);
+        throw missingPathError(`missing file: ${filePath}`);
       }
       return content;
     },
@@ -41,7 +45,7 @@ function createMemoryFs(initialFiles: Record<string, string>) {
     },
     async readdir(directoryPath) {
       if (!hasDirectory(directoryPath)) {
-        throw new Error(`missing directory: ${directoryPath}`);
+        throw missingPathError(`missing directory: ${directoryPath}`);
       }
       const entries = new Set<string>();
       for (const filePath of files.keys()) {
@@ -59,7 +63,7 @@ function createMemoryFs(initialFiles: Record<string, string>) {
       if (hasDirectory(filePath)) {
         return { isDirectory: () => true };
       }
-      throw new Error(`missing path: ${filePath}`);
+      throw missingPathError(`missing path: ${filePath}`);
     },
   };
 
@@ -186,6 +190,84 @@ describe("sandbox file tools", () => {
     ).resolves.toEqual({
       content: [{ type: "text", text: "src/app.ts\nsrc/nested/test.ts" }],
       details: { ok: true, path: ".", truncated: false },
+    });
+  });
+
+  it("returns tool results for missing search roots", async () => {
+    const memory = createMemoryFs({
+      "src/app.ts": "const needle = true;\n",
+    });
+
+    await expect(
+      findFiles({ fs: memory.fs, path: "missing", pattern: "*.ts" }),
+    ).resolves.toEqual({
+      content: [{ type: "text", text: "Path not found: missing" }],
+      details: {
+        ok: false,
+        error: "not_found",
+        path: "missing",
+        truncated: false,
+      },
+    });
+    await expect(
+      grepFiles({
+        fs: memory.fs,
+        path: "missing",
+        pattern: "needle",
+        literal: true,
+      }),
+    ).resolves.toEqual({
+      content: [{ type: "text", text: "Path not found: missing" }],
+      details: {
+        ok: false,
+        error: "not_found",
+        path: "missing",
+        truncated: false,
+      },
+    });
+    await expect(listDir({ fs: memory.fs, path: "missing" })).resolves.toEqual({
+      content: [{ type: "text", text: "Path not found: missing" }],
+      details: {
+        ok: false,
+        error: "not_found",
+        path: "missing",
+        truncated: false,
+      },
+    });
+  });
+
+  it("reports files that disappear during traversal", async () => {
+    const memory = createMemoryFs({
+      "src/kept.ts": "needle\n",
+      "src/gone.ts": "needle\n",
+    });
+    let hideGone = false;
+    const originalStat = memory.fs.stat;
+    memory.fs.stat = async (filePath) => {
+      if (hideGone && filePath.endsWith("/gone.ts")) {
+        throw missingPathError(`missing path: ${filePath}`);
+      }
+      return originalStat(filePath);
+    };
+
+    hideGone = true;
+
+    await expect(
+      findFiles({ fs: memory.fs, path: "src", pattern: "*.ts" }),
+    ).resolves.toEqual({
+      content: [
+        {
+          type: "text",
+          text: `Path not found: ${SANDBOX_WORKSPACE_ROOT}/src/gone.ts`,
+        },
+      ],
+      details: {
+        ok: false,
+        error: "not_found",
+        path: "src",
+        missing_path: `${SANDBOX_WORKSPACE_ROOT}/src/gone.ts`,
+        truncated: false,
+      },
     });
   });
 
