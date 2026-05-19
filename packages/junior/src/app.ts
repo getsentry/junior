@@ -7,7 +7,10 @@ import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
-import { ALL as sandboxEgressProxyALL } from "@/handlers/sandbox-egress-proxy";
+import {
+  ALL as sandboxEgressProxyALL,
+  isSandboxEgressRequest,
+} from "@/handlers/sandbox-egress-proxy";
 import { POST as turnResumePOST } from "@/handlers/turn-resume";
 import { POST as webhooksPOST } from "@/handlers/webhooks";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -70,6 +73,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     return c.text("Internal Server Error", 500);
   });
 
+  app.use("*", async (c, next) => {
+    // Vercel Sandbox proxying preserves the original upstream path, so detect
+    // authenticated proxy traffic before ordinary application routes claim it.
+    if (isSandboxEgressRequest(c.req.raw)) {
+      return await sandboxEgressProxyALL(c.req.raw);
+    }
+    await next();
+  });
+
   app.get("/", () => dashboardGET());
   app.get("/health", () => healthGET());
 
@@ -89,13 +101,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/internal/turn-resume", (c) => {
     return turnResumePOST(c.req.raw, waitUntil);
-  });
-
-  app.all("/api/internal/sandbox-egress/:egressId", (c) => {
-    return sandboxEgressProxyALL(c.req.raw, c.req.param("egressId"));
-  });
-  app.all("/api/internal/sandbox-egress/:egressId/*", (c) => {
-    return sandboxEgressProxyALL(c.req.raw, c.req.param("egressId"));
   });
 
   app.post("/api/webhooks/:platform", (c) => {

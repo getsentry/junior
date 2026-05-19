@@ -90,8 +90,8 @@ Rules:
 
 ### Sandbox egress proxy
 
-- New sandbox sessions use a Vercel Sandbox network policy that forwards declared credential provider domains to Junior's internal egress route.
-- The internal egress route must verify the Vercel Sandbox OIDC token before proxying.
+- New sandbox sessions use a Vercel Sandbox network policy that forwards declared credential provider domains to Junior's internal egress handler.
+- The internal egress handler must verify the Vercel Sandbox OIDC token before proxying.
 - The egress route must reconstruct the upstream URL only from Vercel forwarded host/scheme/port headers and the request path.
 - The egress route must reject forwarded hosts that do not match a registered provider domain.
 - The proxy must not use method/URL/body-only replay fingerprints as an authorization boundary because duplicate request shapes can be legitimate client retries.

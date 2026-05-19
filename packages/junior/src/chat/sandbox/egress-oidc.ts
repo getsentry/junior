@@ -94,7 +94,6 @@ export function validateVercelSandboxOidcClaims(
 /** Verify Vercel signed this Sandbox firewall proxy request for the active VM session. */
 export async function verifyVercelSandboxOidcToken(
   token: string,
-  egressId: string,
 ): Promise<JWTPayload> {
   const unverified = decodeJwt(token);
   if (typeof unverified.iss !== "string") {
@@ -107,6 +106,5 @@ export async function verifyVercelSandboxOidcToken(
   // The Sandbox proxy token is request identity. Do not compare its audience,
   // team, or project claims with deployment OIDC; the egress session decides
   // whether this VM session may activate requester-bound credentials.
-  validateSandboxClaim(verified.payload, egressId);
   return verified.payload;
 }

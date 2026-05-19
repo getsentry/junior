@@ -14,12 +14,12 @@ import {
   type SandboxEgressCredentialLease,
   type SandboxEgressSession,
 } from "@/chat/sandbox/egress-session";
+import type { JWTPayload } from "jose";
 
 const OIDC_TOKEN_HEADER = "vercel-sandbox-oidc-token";
 const FORWARDED_HOST_HEADER = "vercel-forwarded-host";
 const FORWARDED_SCHEME_HEADER = "vercel-forwarded-scheme";
 const FORWARDED_PORT_HEADER = "vercel-forwarded-port";
-const ROUTE_PREFIX = "/api/internal/sandbox-egress";
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "host",
@@ -44,7 +44,7 @@ const DECODED_RESPONSE_HEADERS = new Set([
 const AUTH_REJECTION_STATUS = new Set([401, 403]);
 interface ProxyDeps {
   fetch?: typeof fetch;
-  verifyOidc?: (token: string, egressId: string) => Promise<unknown>;
+  verifyOidc?: (token: string) => Promise<JWTPayload>;
 }
 
 type UpstreamUrlResult = { ok: true; url: URL } | { ok: false; error: string };
@@ -82,22 +82,18 @@ function normalizePort(value: string | null): string | undefined {
   return port >= 1 && port <= 65_535 ? trimmed : undefined;
 }
 
-function upstreamPath(request: Request, egressId: string): string | undefined {
-  const url = new URL(request.url);
-  const prefix = `${ROUTE_PREFIX}/${encodeURIComponent(egressId)}`;
-  if (url.pathname === prefix) {
-    return `/${url.search}`;
-  }
-  if (url.pathname.startsWith(`${prefix}/`)) {
-    return `${url.pathname.slice(prefix.length)}${url.search}`;
-  }
-  return undefined;
+function sandboxIdFromPayload(payload: JWTPayload): string | undefined {
+  return typeof payload.sandbox_id === "string"
+    ? payload.sandbox_id
+    : undefined;
 }
 
-function buildUpstreamUrl(
-  request: Request,
-  egressId: string,
-): UpstreamUrlResult {
+function upstreamPath(request: Request): string {
+  const url = new URL(request.url);
+  return `${url.pathname}${url.search}`;
+}
+
+function buildUpstreamUrl(request: Request): UpstreamUrlResult {
   const forwardedHost = request.headers.get(FORWARDED_HOST_HEADER);
   if (!forwardedHost?.trim()) {
     return { ok: false, error: "Missing forwarded host" };
@@ -119,10 +115,7 @@ function buildUpstreamUrl(
   if (forwardedPort && !port) {
     return { ok: false, error: "Invalid forwarded port" };
   }
-  const path = upstreamPath(request, egressId);
-  if (!path) {
-    return { ok: false, error: "Invalid egress route" };
-  }
+  const path = upstreamPath(request);
   try {
     const url = new URL(`${scheme}://${host}${port ? `:${port}` : ""}${path}`);
     return { ok: true, url };
@@ -230,10 +223,18 @@ function hasTransformForHost(
   );
 }
 
+/** Return whether a request appears to be from the Vercel Sandbox egress proxy. */
+export function isSandboxEgressForwardedRequest(request: Request): boolean {
+  return Boolean(
+    request.headers.get(OIDC_TOKEN_HEADER)?.trim() &&
+    request.headers.get(FORWARDED_HOST_HEADER)?.trim() &&
+    request.headers.get(FORWARDED_SCHEME_HEADER)?.trim(),
+  );
+}
+
 /** Proxy one Vercel Sandbox firewall egress request through Junior credential activation. */
 export async function proxySandboxEgressRequest(
   request: Request,
-  egressId: string,
   deps: ProxyDeps = {},
 ): Promise<Response> {
   const oidcToken = request.headers.get(OIDC_TOKEN_HEADER)?.trim();
@@ -241,10 +242,10 @@ export async function proxySandboxEgressRequest(
     return jsonError("Missing Vercel Sandbox OIDC token", 401);
   }
 
+  let oidcPayload: JWTPayload;
   try {
-    await (deps.verifyOidc ?? verifyVercelSandboxOidcToken)(
+    oidcPayload = await (deps.verifyOidc ?? verifyVercelSandboxOidcToken)(
       oidcToken,
-      egressId,
     );
   } catch (error) {
     logWarn(
@@ -259,7 +260,15 @@ export async function proxySandboxEgressRequest(
     return jsonError("Invalid Vercel Sandbox OIDC token", 401);
   }
 
-  const upstreamResult = buildUpstreamUrl(request, egressId);
+  const activeEgressId = sandboxIdFromPayload(oidcPayload);
+  if (!activeEgressId) {
+    return jsonError(
+      "Vercel Sandbox OIDC token did not include sandbox_id",
+      401,
+    );
+  }
+
+  const upstreamResult = buildUpstreamUrl(request);
   if (!upstreamResult.ok) {
     return jsonError(upstreamResult.error, 400);
   }
@@ -272,14 +281,14 @@ export async function proxySandboxEgressRequest(
 
   // Vercel OIDC authenticates the forwarded VM session; Junior's egress
   // session authorizes credential activation for the current requester.
-  const session = await getSandboxEgressSession(egressId);
+  const session = await getSandboxEgressSession(activeEgressId);
   if (!session) {
     return jsonError("Sandbox egress session is not authorized", 403);
   }
 
   let lease: SandboxEgressCredentialLease;
   try {
-    lease = await credentialLease(egressId, provider, session);
+    lease = await credentialLease(activeEgressId, provider, session);
   } catch (error) {
     if (error instanceof CredentialUnavailableError) {
       return new Response(
@@ -316,7 +325,7 @@ export async function proxySandboxEgressRequest(
       },
       "Sandbox egress upstream auth rejected",
     );
-    await clearSandboxEgressCredentialLease(egressId, provider, session);
+    await clearSandboxEgressCredentialLease(activeEgressId, provider, session);
   }
 
   return new Response(upstream.body, {

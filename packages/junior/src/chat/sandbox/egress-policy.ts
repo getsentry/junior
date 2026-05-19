@@ -5,8 +5,6 @@ import { getPluginProviders } from "@/chat/plugins/registry";
 import type { PluginManifest } from "@/chat/plugins/types";
 import { resolveBaseUrl } from "@/chat/oauth-flow";
 
-const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
-
 /** Return whether an outbound host is covered by a sandbox egress domain rule. */
 export function matchesSandboxEgressDomain(
   host: string,
@@ -42,27 +40,21 @@ export function resolveSandboxEgressProviderForHost(
   )?.provider;
 }
 
-function proxyUrl(egressId: string): string | undefined {
+function proxyUrl(): string | undefined {
   const baseUrl = resolveBaseUrl();
   if (!baseUrl) {
     return undefined;
   }
-  const url = new URL(
-    `${SANDBOX_EGRESS_PROXY_PATH}/${encodeURIComponent(egressId)}`,
-    baseUrl,
-  );
-  return url.toString();
+  return new URL("/", baseUrl).toString();
 }
 
 /** Build the forwarding policy that keeps provider credentials outside the sandbox. */
-export function buildSandboxEgressNetworkPolicy(
-  egressId: string,
-): NetworkPolicy | undefined {
+export function buildSandboxEgressNetworkPolicy(): NetworkPolicy | undefined {
   const entries = providerEntries();
   if (entries.length === 0) {
     return undefined;
   }
-  const forwardURL = proxyUrl(egressId);
+  const forwardURL = proxyUrl();
   if (!forwardURL) {
     // Credential placeholders must not reach real provider domains. If Junior
     // cannot receive forwarded requests, fail setup before running commands.

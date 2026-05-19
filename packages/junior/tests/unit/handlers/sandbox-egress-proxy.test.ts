@@ -70,7 +70,10 @@ import {
   validateVercelSandboxOidcClaims,
   verifyVercelSandboxOidcToken,
 } from "@/chat/sandbox/egress-oidc";
-import { proxySandboxEgressRequest } from "@/chat/sandbox/egress-proxy";
+import {
+  isSandboxEgressForwardedRequest,
+  proxySandboxEgressRequest,
+} from "@/chat/sandbox/egress-proxy";
 import { upsertSandboxEgressSession } from "@/chat/sandbox/egress-session";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
@@ -116,7 +119,7 @@ function egressRequest(
   } = {},
 ): Request {
   return new Request(
-    `https://junior.example.com/api/internal/sandbox-egress/${EGRESS_ID}${input.path ?? "/api/0/issues/"}`,
+    `https://junior.example.com${input.path ?? "/api/0/issues/"}`,
     {
       method: input.method ?? "GET",
       headers: {
@@ -139,9 +142,9 @@ function proxy(
     async () => new Response("ok"),
   ) as typeof fetch,
 ): Promise<Response> {
-  return proxySandboxEgressRequest(request, EGRESS_ID, {
+  return proxySandboxEgressRequest(request, {
     fetch: fetchMock,
-    verifyOidc: async () => ({ sub: "sandbox" }),
+    verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
   });
 }
 
@@ -168,17 +171,17 @@ describe("sandbox egress proxy", () => {
   it("builds provider forwarding policy for sandbox egress", () => {
     expect(matchesSandboxEgressDomain("SENTRY.IO", "sentry.io")).toBe(true);
     expect(matchesSandboxEgressDomain("eu.sentry.io", "sentry.io")).toBe(false);
-    expect(buildSandboxEgressNetworkPolicy(EGRESS_ID)).toEqual({
+    expect(buildSandboxEgressNetworkPolicy()).toEqual({
       allow: {
         "*": [],
         "sentry.io": [
           {
-            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${EGRESS_ID}`,
+            forwardURL: "https://junior.example.com/",
           },
         ],
         "us.sentry.io": [
           {
-            forwardURL: `https://junior.example.com/api/internal/sandbox-egress/${EGRESS_ID}`,
+            forwardURL: "https://junior.example.com/",
           },
         ],
       },
@@ -188,7 +191,7 @@ describe("sandbox egress proxy", () => {
   it("fails sandbox egress policy setup without a public callback URL", () => {
     delete process.env.JUNIOR_BASE_URL;
 
-    expect(() => buildSandboxEgressNetworkPolicy(EGRESS_ID)).toThrow(
+    expect(() => buildSandboxEgressNetworkPolicy()).toThrow(
       "Cannot determine base URL for sandbox credential egress",
     );
   });
@@ -210,14 +213,11 @@ describe("sandbox egress proxy", () => {
     });
   });
 
-  it("requires OIDC before route configuration details", async () => {
+  it("requires OIDC before proxy configuration details", async () => {
     delete process.env.JUNIOR_BASE_URL;
 
     const response = await ALL(
-      new Request(
-        `https://junior.example.com/api/internal/sandbox-egress/${EGRESS_ID}`,
-      ),
-      EGRESS_ID,
+      new Request("https://junior.example.com/api/0/issues/"),
     );
 
     expect(response.status).toBe(401);
@@ -282,6 +282,51 @@ describe("sandbox egress proxy", () => {
     await expect(repeated.text()).resolves.toBe("ok");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards root-path sandbox proxy requests using the verified OIDC session", async () => {
+    await authorizeSandboxEgress();
+    mockSentryLease();
+
+    const fetchMock = vi.fn(async (url: URL | string, init?: RequestInit) => {
+      expect(String(url)).toBe(
+        "https://sentry.io/api/0/issues/?query=forwarded",
+      );
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer sentry-token",
+      );
+      return new Response("ok", { status: 200 });
+    });
+
+    const response = await proxySandboxEgressRequest(
+      egressRequest({ path: "/api/0/issues/?query=forwarded" }),
+      {
+        fetch: fetchMock as typeof fetch,
+        verifyOidc: async () => ({ sandbox_id: EGRESS_ID }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("ok");
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
+      provider: "sentry",
+      requesterId: REQUESTER_ID,
+      reason: "sandbox-egress:sentry",
+    });
+  });
+
+  it("recognizes root-path forwarded sandbox proxy requests", () => {
+    expect(isSandboxEgressForwardedRequest(egressRequest())).toBe(true);
+    expect(
+      isSandboxEgressForwardedRequest(
+        new Request("https://junior.example.com/api/0/issues/", {
+          headers: {
+            "vercel-forwarded-host": "sentry.io",
+            "vercel-forwarded-scheme": "https",
+          },
+        }),
+      ),
+    ).toBe(false);
   });
 
   it("does not synthesize an empty body for bodyless methods", async () => {
@@ -576,26 +621,19 @@ describe("sandbox egress proxy", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("rejects requests outside the sandbox egress route", async () => {
+  it("requires the verified OIDC token to identify the sandbox session", async () => {
     const fetchMock = vi.fn();
 
-    const response = await proxy(
-      new Request(`https://junior.example.com/not-egress/${EGRESS_ID}`, {
-        headers: {
-          "vercel-forwarded-host": "sentry.io",
-          "vercel-forwarded-scheme": "https",
-          "vercel-sandbox-oidc-token": "signed-token",
-        },
-      }),
-      fetchMock as typeof fetch,
-    );
+    const response = await proxySandboxEgressRequest(egressRequest(), {
+      fetch: fetchMock as typeof fetch,
+      verifyOidc: async () => ({ sub: "sandbox" }),
+    });
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
-      error: "Invalid egress route",
+      error: "Vercel Sandbox OIDC token did not include sandbox_id",
     });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
   });
 
   it("rejects plaintext forwarded schemes before credential injection", async () => {
@@ -692,8 +730,8 @@ describe("sandbox egress proxy", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await verifyVercelSandboxOidcToken("signed-token-1", EGRESS_ID);
-    await verifyVercelSandboxOidcToken("signed-token-2", EGRESS_ID);
+    await verifyVercelSandboxOidcToken("signed-token-1");
+    await verifyVercelSandboxOidcToken("signed-token-2");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[1]).toEqual({ redirect: "error" });
@@ -721,7 +759,7 @@ describe("sandbox egress proxy", () => {
       ),
     );
 
-    await verifyVercelSandboxOidcToken("signed-token", EGRESS_ID);
+    await verifyVercelSandboxOidcToken("signed-token");
 
     expect(jwtVerifyMock).toHaveBeenCalledWith(
       "signed-token",
@@ -743,9 +781,9 @@ describe("sandbox egress proxy", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(
-      verifyVercelSandboxOidcToken("signed-token", EGRESS_ID),
-    ).rejects.toThrow("jwks_uri");
+    await expect(verifyVercelSandboxOidcToken("signed-token")).rejects.toThrow(
+      "jwks_uri",
+    );
 
     expect(createRemoteJWKSetMock).not.toHaveBeenCalled();
     expect(jwtVerifyMock).not.toHaveBeenCalled();
