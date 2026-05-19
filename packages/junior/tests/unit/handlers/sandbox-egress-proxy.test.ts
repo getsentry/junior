@@ -312,6 +312,53 @@ describe("sandbox egress proxy", () => {
     });
   });
 
+  it("restores slashless Sentry API paths before forwarding", async () => {
+    await authorizeSandboxEgress();
+    mockSentryLease();
+
+    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
+
+    const response = await proxy(
+      egressRequest({ path: "/api/0/organizations/sentry" }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("ok");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("https://sentry.io/api/0/organizations/sentry/"),
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("restores slashless Sentry API paths for unsafe methods before forwarding", async () => {
+    await authorizeSandboxEgress();
+    mockSentryLease();
+
+    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
+      expect(init?.body).toBeInstanceOf(ArrayBuffer);
+      return new Response("created", { status: 201 });
+    });
+
+    const response = await proxy(
+      egressRequest({
+        method: "POST",
+        path: "/api/0/organizations/sentry/releases",
+        body: "{}",
+      }),
+      fetchMock as typeof fetch,
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.text()).resolves.toBe("created");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("https://sentry.io/api/0/organizations/sentry/releases/"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("recognizes root-path forwarded sandbox proxy requests", () => {
     expect(isSandboxEgressForwardedRequest(egressRequest())).toBe(true);
     expect(

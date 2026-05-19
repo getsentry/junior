@@ -1,6 +1,6 @@
 import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import { logWarn } from "@/chat/logging";
+import { logInfo, logWarn } from "@/chat/logging";
 import {
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
@@ -51,6 +51,24 @@ type UpstreamUrlResult = { ok: true; url: URL } | { ok: false; error: string };
 
 function jsonError(message: string, status: number): Response {
   return Response.json({ error: message }, { status });
+}
+
+function egressAttributes(input: {
+  egressId?: string;
+  host?: string;
+  method?: string;
+  path?: string;
+  provider?: string;
+  status?: number;
+}): Record<string, unknown> {
+  return {
+    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : {}),
+    ...(input.provider ? { "app.credential.provider": input.provider } : {}),
+    ...(input.host ? { "server.address": input.host } : {}),
+    ...(input.method ? { "http.request.method": input.method } : {}),
+    ...(input.path ? { "url.path": input.path } : {}),
+    ...(input.status ? { "http.response.status_code": input.status } : {}),
+  };
 }
 
 function normalizeHost(value: string): string | undefined {
@@ -124,6 +142,44 @@ function buildUpstreamUrl(request: Request): UpstreamUrlResult {
   }
 }
 
+function logForwardedProviderApiPath(request: Request): void {
+  const requestUrl = new URL(request.url);
+  if (!requestUrl.pathname.startsWith("/api/")) {
+    return;
+  }
+
+  const forwardedHost = request.headers.get(FORWARDED_HOST_HEADER);
+  if (!forwardedHost?.trim()) {
+    return;
+  }
+  const host = normalizeHost(forwardedHost);
+  if (!host) {
+    return;
+  }
+
+  const provider = resolveSandboxEgressProviderForHost(host);
+  if (provider !== "sentry") {
+    return;
+  }
+
+  logInfo(
+    "sandbox_egress_provider_api_path_observed",
+    {},
+    {
+      ...egressAttributes({
+        host,
+        method: request.method,
+        path: requestUrl.pathname,
+        provider,
+      }),
+      "app.sandbox.egress.path_has_trailing_slash":
+        requestUrl.pathname.endsWith("/"),
+      "app.sandbox.egress.query_present": requestUrl.search.length > 0,
+    },
+    `Sandbox egress received Sentry API path ${requestUrl.pathname}`,
+  );
+}
+
 async function requestBodyBytes(
   request: Request,
 ): Promise<ArrayBuffer | undefined> {
@@ -135,6 +191,18 @@ async function requestBodyBytes(
     return undefined;
   }
   return await request.arrayBuffer();
+}
+
+async function responseBodyPreview(
+  response: Response,
+): Promise<string | undefined> {
+  try {
+    const text = await response.clone().text();
+    const preview = text.replace(/\s+/g, " ").trim();
+    return preview ? preview.slice(0, 500) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function requestHeaders(
@@ -177,6 +245,20 @@ function responseHeaders(upstream: Response): Headers {
     }
   });
   return headers;
+}
+
+function restoreProviderApiPath(upstreamUrl: URL, provider: string): URL {
+  if (
+    provider !== "sentry" ||
+    upstreamUrl.pathname.endsWith("/") ||
+    !upstreamUrl.pathname.startsWith("/api/")
+  ) {
+    return upstreamUrl;
+  }
+
+  const restoredUrl = new URL(upstreamUrl);
+  restoredUrl.pathname = `${upstreamUrl.pathname}/`;
+  return restoredUrl;
 }
 
 async function credentialLease(
@@ -241,6 +323,7 @@ export async function proxySandboxEgressRequest(
   if (!oidcToken) {
     return jsonError("Missing Vercel Sandbox OIDC token", 401);
   }
+  logForwardedProviderApiPath(request);
 
   let oidcPayload: JWTPayload;
   try {
@@ -262,6 +345,15 @@ export async function proxySandboxEgressRequest(
 
   const activeEgressId = sandboxIdFromPayload(oidcPayload);
   if (!activeEgressId) {
+    logWarn(
+      "sandbox_egress_oidc_session_missing",
+      {},
+      {
+        "http.request.method": request.method,
+        "url.path": new URL(request.url).pathname,
+      },
+      "Sandbox egress OIDC payload did not include a VM session id",
+    );
     return jsonError(
       "Vercel Sandbox OIDC token did not include sandbox_id",
       401,
@@ -270,19 +362,74 @@ export async function proxySandboxEgressRequest(
 
   const upstreamResult = buildUpstreamUrl(request);
   if (!upstreamResult.ok) {
+    logWarn(
+      "sandbox_egress_upstream_url_invalid",
+      {},
+      egressAttributes({
+        egressId: activeEgressId,
+        method: request.method,
+        path: new URL(request.url).pathname,
+        status: 400,
+      }),
+      "Sandbox egress forwarded request had invalid upstream routing headers",
+    );
     return jsonError(upstreamResult.error, 400);
   }
-  const upstreamUrl = upstreamResult.url;
+  let upstreamUrl = upstreamResult.url;
 
   const provider = resolveSandboxEgressProviderForHost(upstreamUrl.hostname);
   if (!provider) {
+    logWarn(
+      "sandbox_egress_provider_unresolved",
+      {},
+      egressAttributes({
+        egressId: activeEgressId,
+        host: upstreamUrl.hostname,
+        method: request.method,
+        path: upstreamUrl.pathname,
+        status: 403,
+      }),
+      "Sandbox egress forwarded host is not owned by any credential provider",
+    );
     return jsonError("No provider owns forwarded host", 403);
+  }
+  const restoredUpstreamUrl = restoreProviderApiPath(upstreamUrl, provider);
+  if (restoredUpstreamUrl.href !== upstreamUrl.href) {
+    logInfo(
+      "sandbox_egress_upstream_path_restored",
+      {},
+      {
+        ...egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: restoredUpstreamUrl.pathname,
+          provider,
+        }),
+        "app.sandbox.egress.original_path": upstreamUrl.pathname,
+      },
+      "Sandbox egress restored provider API path before forwarding",
+    );
+    upstreamUrl = restoredUpstreamUrl;
   }
 
   // Vercel OIDC authenticates the forwarded VM session; Junior's egress
   // session authorizes credential activation for the current requester.
   const session = await getSandboxEgressSession(activeEgressId);
   if (!session) {
+    logWarn(
+      "sandbox_egress_session_unauthorized",
+      {},
+      egressAttributes({
+        egressId: activeEgressId,
+        host: upstreamUrl.hostname,
+        method: request.method,
+        path: upstreamUrl.pathname,
+        provider,
+        status: 403,
+      }),
+      "Sandbox egress VM session is not authorized for requester credentials",
+    );
     return jsonError("Sandbox egress session is not authorized", 403);
   }
 
@@ -291,6 +438,19 @@ export async function proxySandboxEgressRequest(
     lease = await credentialLease(activeEgressId, provider, session);
   } catch (error) {
     if (error instanceof CredentialUnavailableError) {
+      logWarn(
+        "sandbox_egress_credential_unavailable",
+        {},
+        egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: upstreamUrl.pathname,
+          provider,
+          status: 401,
+        }),
+        "Sandbox egress provider credential is unavailable",
+      );
       return new Response(
         `junior-auth-required provider=${error.provider} 401 unauthorized\n${error.message}`,
         {
@@ -303,25 +463,69 @@ export async function proxySandboxEgressRequest(
   }
 
   if (!hasTransformForHost(lease, upstreamUrl.hostname)) {
+    logWarn(
+      "sandbox_egress_transform_missing",
+      {},
+      {
+        ...egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: upstreamUrl.pathname,
+          provider,
+          status: 403,
+        }),
+        "app.sandbox.egress.transform_domains": lease.headerTransforms.map(
+          (transform) => transform.domain,
+        ),
+      },
+      "Sandbox egress credential lease does not cover forwarded host",
+    );
     return jsonError("Credential lease does not cover forwarded host", 403);
   }
 
   const body = await requestBodyBytes(request);
-  const upstream = await (deps.fetch ?? fetch)(upstreamUrl, {
+  const fetchImpl = deps.fetch ?? fetch;
+  const headers = requestHeaders(request, lease, upstreamUrl.hostname);
+  const upstream = await fetchImpl(upstreamUrl, {
     method: request.method,
-    headers: requestHeaders(request, lease, upstreamUrl.hostname),
+    headers,
     ...(body ? { body } : {}),
     redirect: "manual",
   });
+  if (!upstream.ok) {
+    logWarn(
+      "sandbox_egress_upstream_error_response",
+      {},
+      {
+        ...egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: upstreamUrl.pathname,
+          provider,
+          status: upstream.status,
+        }),
+        "error.type": `http_${upstream.status}`,
+        "app.sandbox.egress.upstream_response_body":
+          await responseBodyPreview(upstream),
+      },
+      `Sandbox egress upstream returned HTTP ${upstream.status}`,
+    );
+  }
   if (AUTH_REJECTION_STATUS.has(upstream.status)) {
     logWarn(
       "sandbox_egress_upstream_auth_rejected",
       {},
       {
-        "app.credential.provider": provider,
-        "http.request.method": request.method,
-        "http.response.status_code": upstream.status,
-        "server.address": upstreamUrl.hostname,
+        ...egressAttributes({
+          egressId: activeEgressId,
+          host: upstreamUrl.hostname,
+          method: request.method,
+          path: upstreamUrl.pathname,
+          provider,
+          status: upstream.status,
+        }),
       },
       "Sandbox egress upstream auth rejected",
     );
