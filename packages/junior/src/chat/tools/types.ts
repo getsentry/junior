@@ -33,6 +33,7 @@ export interface ToolRuntimeContext {
   messageTs?: string;
   threadTs?: string;
   userText?: string;
+  conversationContext?: string;
   artifactState?: ThreadArtifactsState;
   configuration?: Record<string, unknown>;
   getActiveSkills?: () => Skill[];

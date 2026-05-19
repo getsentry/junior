@@ -2,13 +2,13 @@
 
 Use this matrix to choose queue helpers, fixtures, and assertions.
 
-| Module under test | Slack endpoints to queue | Fixture builders | Assertion helpers |
-| --- | --- | --- | --- |
-| `src/chat/slack-actions/channel.ts` | `chat.postMessage`, `chat.getPermalink`, `conversations.history`, `conversations.members`, `conversations.replies` | `chatPostMessageOk`, `chatGetPermalinkOk`, `conversationsHistoryPage`, `conversationsMembersPage`, `conversationsRepliesPage` | `getCapturedSlackApiCalls(method)` |
-| `src/chat/slack-actions/canvases.ts` | `canvases.create`, `conversations.canvases.create`, `canvases.sections.lookup`, `canvases.edit`, `files.info` | `canvasesCreateOk`, `conversationsCanvasesCreateOk`, `canvasesSectionsLookupOk`, `canvasesEditOk`, `filesInfoOk` | `getCapturedSlackApiCalls(method)` |
-| `src/chat/slack-actions/lists.ts` | `slackLists.create`, `slackLists.items.create`, `slackLists.items.list`, `slackLists.items.update`, `files.info` | `slackListsCreateOk`, `slackListsItemsCreateOk`, `slackListsItemsListPage`, `slackListsItemsUpdateOk`, `filesInfoOk` | `getCapturedSlackApiCalls(method)` |
-| `src/chat/slack-actions/client.ts` (upload path) | `files.getUploadURLExternal`, `files.completeUploadExternal`, `files.slack.com/upload/*` | `filesGetUploadUrlOk`, `filesCompleteUploadOk` | `getCapturedSlackApiCalls(method)`, `getCapturedSlackFileUploadCalls()` |
-| `src/chat/slack-user.ts` | `GET /api/users.info` | `usersInfoOk` | `getCapturedSlackApiCalls("users.info")` |
+| Module under test                                | Slack endpoints to queue                                                                                           | Fixture builders                                                                                                              | Assertion helpers                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `src/chat/slack-actions/channel.ts`              | `chat.postMessage`, `chat.getPermalink`, `conversations.history`, `conversations.members`, `conversations.replies` | `chatPostMessageOk`, `chatGetPermalinkOk`, `conversationsHistoryPage`, `conversationsMembersPage`, `conversationsRepliesPage` | `getCapturedSlackApiCalls(method)`                                       |
+| `src/chat/tools/slack/canvas-tools.ts`           | `canvases.create`, `canvases.access.set`, `canvases.edit`, `files.info`, `files.slack.com/*`                       | `canvasesCreateOk`, `canvasesAccessSetOk`, `canvasesEditOk`, `filesInfoOk`                                                    | `getCapturedSlackApiCalls(method)`, `queueSlackPrivateFileDownload(...)` |
+| `src/chat/slack-actions/lists.ts`                | `slackLists.create`, `slackLists.items.create`, `slackLists.items.list`, `slackLists.items.update`, `files.info`   | `slackListsCreateOk`, `slackListsItemsCreateOk`, `slackListsItemsListPage`, `slackListsItemsUpdateOk`, `filesInfoOk`          | `getCapturedSlackApiCalls(method)`                                       |
+| `src/chat/slack-actions/client.ts` (upload path) | `files.getUploadURLExternal`, `files.completeUploadExternal`, `files.slack.com/upload/*`                           | `filesGetUploadUrlOk`, `filesCompleteUploadOk`                                                                                | `getCapturedSlackApiCalls(method)`, `getCapturedSlackFileUploadCalls()`  |
+| `src/chat/slack-user.ts`                         | `GET /api/users.info`                                                                                              | `usersInfoOk`                                                                                                                 | `getCapturedSlackApiCalls("users.info")`                                 |
 
 ## Generic response helpers
 

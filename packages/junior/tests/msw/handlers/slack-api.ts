@@ -4,7 +4,6 @@ import {
   canvasesAccessSetOk,
   canvasesCreateOk,
   canvasesEditOk,
-  canvasesSectionsLookupOk,
   chatGetPermalinkOk,
   chatPostEphemeralOk,
   chatPostMessageOk,
@@ -46,7 +45,6 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "canvases.access.set",
   "canvases.create",
   "conversations.canvases.create",
-  "canvases.sections.lookup",
   "canvases.edit",
   "slackLists.create",
   "slackLists.items.create",
@@ -213,8 +211,6 @@ function defaultSlackApiResponse(
       return { body: canvasesCreateOk() };
     case "conversations.canvases.create":
       return { body: conversationsCanvasesCreateOk() };
-    case "canvases.sections.lookup":
-      return { body: canvasesSectionsLookupOk() };
     case "canvases.edit":
       return { body: canvasesEditOk() };
     case "slackLists.create":

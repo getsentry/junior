@@ -3,12 +3,12 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-03-03
+- Last Edited: 2026-05-19
 
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-
+- 2026-05-19: Reframed Slack Canvas follow-up tools as file-like document tools with explicit known canvas handles.
 
 ## Status
 
@@ -36,25 +36,30 @@ Define how tool execution context is sourced and enforced so model outputs canno
 
 ## Core Rule
 
-For context-bound tools, target selection is owned by the harness/runtime, not by model-provided tool arguments.
+For context-bound side-effect tools, target selection is owned by the harness/runtime, not by model-provided tool arguments.
 
 Examples:
+
 - Slack channel operations resolve destination from `ToolRuntimeContext.channelId`.
-- Canvas/list follow-up operations resolve target artifacts from harness-managed artifact state (`lastCanvasId`, `lastListId`, turn-created IDs).
+- List follow-up operations resolve target artifacts from harness-managed artifact state (`lastListId`, turn-created IDs).
+- Slack Canvas document operations use explicit file-like handles (`canvas`) but only for canvases known from artifact state, created in the current turn, or visible in the routed conversation context provided to the model. A handle that appears only in the active user instruction is not sufficient authority.
 
 ## Security Contract
 
-1. Tool schemas for context-bound tools must not expose destination override fields (for example `channel_id`, `canvas_id`, `list_id`) unless explicitly approved in a separate spec.
+1. Tool schemas for context-bound tools must not expose destination override fields (for example `channel_id` or `list_id`) unless explicitly approved in a separate spec.
 2. Runtime must validate context before execution and return `ok: false` for missing/invalid context.
 3. Runtime must not silently fall back to broader/private scopes that change visibility semantics.
 4. Canvas creation must stay bound to the active assistant conversation context; runtime must not silently retarget to unrelated/private scopes.
+5. Canvas read/edit/write tools must reject handles that are neither known from artifact state nor visible in the current conversation context.
 
 ## Slack-Specific Targeting Rules
 
 1. Channel-scoped Slack tools use the active harness channel context.
 2. Canvas creation uses the active conversation context (`C*`/`G*`/`D*` channel scope) without model-provided destination overrides.
-3. Canvas/list update/read tools use artifact state context, not model-chosen IDs.
-4. `slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` must not accept `list_id` input; target list resolution is harness-owned via artifact state.
+3. Canvas read/edit/write tools are document tools: `canvas` is analogous to a file path, accepts a Slack canvas/file ID or URL, and must not expose Slack section IDs or section lookup criteria.
+4. Canvas edit uses exact markdown replacements against the current body; Canvas write is explicit full-document replacement. Slack section-scoped mutation APIs are implementation details, not model-facing contracts.
+5. List update/read tools use artifact state context, not model-chosen IDs.
+6. `slackListAddItems`, `slackListGetItems`, and `slackListUpdateItem` must not accept `list_id` input; target list resolution is harness-owned via artifact state.
 
 ## Error Behavior
 
@@ -63,6 +68,7 @@ When required context is unavailable, tools should return actionable structured 
 ## Testing Requirements
 
 Integration coverage for context-bound tools must verify:
+
 1. Tool inputs do not include model-selectable destination IDs for context-bound tools.
 2. Operations execute against harness-provided context.
 3. Missing context fails safely.

@@ -780,6 +780,7 @@ export async function generateAssistantReply(
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
         userText: userInput,
+        conversationContext: context.conversationContext,
         artifactState: context.artifactState,
         configuration: configurationValues,
         getActiveSkills: () => activeSkills,

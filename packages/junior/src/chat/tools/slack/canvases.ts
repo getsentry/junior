@@ -1,7 +1,4 @@
-import type {
-  CanvasesSectionsLookupResponse,
-  FilesInfoResponse,
-} from "@slack/web-api";
+import type { FilesInfoResponse } from "@slack/web-api";
 import { logWarn } from "@/chat/logging";
 import {
   downloadPrivateSlackFile,
@@ -16,13 +13,6 @@ export interface CanvasCreateInput {
   title: string;
   markdown: string;
   channelId?: string;
-}
-
-export interface CanvasUpdateInput {
-  canvasId: string;
-  markdown: string;
-  operation: "insert_at_end" | "insert_at_start" | "replace";
-  sectionId?: string;
 }
 
 export interface CanvasReadResult {
@@ -162,35 +152,11 @@ async function grantChannelCanvasAccess(
   }
 }
 
-/** Find a canvas section whose content contains the given text. */
-export async function lookupCanvasSection(
-  canvasId: string,
-  containsText: string,
-): Promise<string | undefined> {
-  const client = getSlackClient();
-  const response: CanvasesSectionsLookupResponse = await withSlackRetries(
-    () =>
-      client.canvases.sections.lookup({
-        canvas_id: canvasId,
-        criteria: {
-          contains_text: containsText,
-        },
-      }),
-    3,
-    {
-      action: "canvases.sections.lookup",
-      attributes: {
-        "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),
-        "app.slack.canvas.contains_text_length": containsText.length,
-      },
-    },
-  );
-
-  return response.sections?.[0]?.id;
-}
-
-/** Insert or replace content in an existing Slack canvas. */
-export async function updateCanvas(input: CanvasUpdateInput): Promise<void> {
+/** Replace an existing Slack canvas body with the provided markdown. */
+export async function writeCanvasMarkdown(input: {
+  canvasId: string;
+  markdown: string;
+}): Promise<{ markdown: string; normalizedHeadingCount: number }> {
   const client = getSlackClient();
   const normalizedContent = normalizeCanvasMarkdown(input.markdown);
 
@@ -200,8 +166,7 @@ export async function updateCanvas(input: CanvasUpdateInput): Promise<void> {
         canvas_id: input.canvasId,
         changes: [
           {
-            operation: input.operation,
-            section_id: input.sectionId,
+            operation: "replace",
             document_content: {
               type: "markdown",
               markdown: normalizedContent.markdown,
@@ -214,7 +179,7 @@ export async function updateCanvas(input: CanvasUpdateInput): Promise<void> {
       action: "canvases.edit",
       attributes: {
         "app.slack.canvas.canvas_id_prefix": input.canvasId.slice(0, 1),
-        "app.slack.canvas.operation": input.operation,
+        "app.slack.canvas.operation": "replace",
         "app.slack.canvas.markdown_length": normalizedContent.markdown.length,
         "app.slack.canvas.markdown_normalized":
           normalizedContent.normalizedHeadingCount > 0,
@@ -223,6 +188,8 @@ export async function updateCanvas(input: CanvasUpdateInput): Promise<void> {
       },
     },
   );
+
+  return normalizedContent;
 }
 
 const CANVAS_ID_PATTERN = /^F[A-Z0-9]+$/i;

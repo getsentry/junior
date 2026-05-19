@@ -3,19 +3,27 @@ import { Type } from "@sinclair/typebox";
 import {
   createCanvas,
   extractCanvasId,
-  lookupCanvasSection,
+  normalizeCanvasMarkdown,
   readCanvas,
-  updateCanvas,
+  writeCanvasMarkdown,
 } from "@/chat/tools/slack/canvases";
 import { isConversationScopedChannel } from "@/chat/slack/client";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { logError, logWarn } from "@/chat/logging";
+import { sliceFileContent } from "@/chat/tools/sandbox/read-file";
+import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
+import {
+  buildCompactDiff,
+  prepareTextReplacementArguments,
+  validateAndApplyTextEdits,
+  type TextReplacement,
+} from "@/chat/tools/sandbox/text-edits";
 import type { CanvasArtifactSummary } from "@/chat/state/artifacts";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 
-const MAX_CANVAS_READ_CHARS = 40_000;
-
 const MAX_RECENT_CANVASES = 5;
+const CANVAS_ID_REFERENCE_PATTERN =
+  /(?:^|[^A-Z0-9])(F[A-Z0-9]+)(?=$|[^A-Z0-9])/gi;
 
 function mergeRecentCanvases(
   existing: CanvasArtifactSummary[] | undefined,
@@ -31,6 +39,110 @@ function mergeRecentCanvases(
   const deduped = prior.filter((entry) => entry.id !== created.id);
   return [nextEntry, ...deduped].slice(0, MAX_RECENT_CANVASES);
 }
+
+function prepareCanvasEditArguments(input: unknown): {
+  canvas: string;
+  edits: TextReplacement[];
+} {
+  return prepareTextReplacementArguments(input);
+}
+
+function canvasIdsInText(text: string): Set<string> {
+  const ids = new Set<string>();
+  for (const match of text.matchAll(CANVAS_ID_REFERENCE_PATTERN)) {
+    if (match[1]) ids.add(match[1].toUpperCase());
+  }
+  return ids;
+}
+
+function knownCanvasIds(state: ToolState): Set<string> {
+  const ids = new Set<string>();
+  const turnCanvasId = state.getTurnCreatedCanvasId();
+  if (turnCanvasId) ids.add(turnCanvasId.toUpperCase());
+  const currentCanvasId = state.getCurrentCanvasId();
+  if (currentCanvasId) ids.add(currentCanvasId.toUpperCase());
+  const lastCanvasUrl = state.artifactState.lastCanvasUrl;
+  if (lastCanvasUrl) {
+    const canvasId = extractCanvasId(lastCanvasUrl);
+    if (canvasId) ids.add(canvasId);
+  }
+  for (const canvas of state.artifactState.recentCanvases ?? []) {
+    ids.add(canvas.id.toUpperCase());
+    if (canvas.url) {
+      const canvasId = extractCanvasId(canvas.url);
+      if (canvasId) ids.add(canvasId);
+    }
+  }
+  return ids;
+}
+
+function knownCanvasUrl(
+  state: ToolState,
+  canvasId: string,
+): string | undefined {
+  const lastCanvasUrl = state.artifactState.lastCanvasUrl;
+  if (lastCanvasUrl && extractCanvasId(lastCanvasUrl) === canvasId) {
+    return lastCanvasUrl;
+  }
+  for (const canvas of state.artifactState.recentCanvases ?? []) {
+    if (canvas.id.toUpperCase() === canvasId) {
+      return canvas.url;
+    }
+    if (canvas.url && extractCanvasId(canvas.url) === canvasId) {
+      return canvas.url;
+    }
+  }
+  return undefined;
+}
+
+function isCanvasInConversationContext(
+  context: ToolRuntimeContext,
+  canvasId: string,
+): boolean {
+  return canvasIdsInText(context.conversationContext ?? "").has(canvasId);
+}
+
+function resolveKnownCanvas(input: {
+  canvas: string;
+  context: ToolRuntimeContext;
+  state: ToolState;
+}): { ok: true; canvasId: string } | { ok: false; error: string } {
+  const canvasId = extractCanvasId(input.canvas);
+  if (!canvasId) {
+    return {
+      ok: false,
+      error:
+        "Could not parse a Slack canvas/file ID from input. Provide an F-prefixed ID or a Slack canvas/docs URL.",
+    };
+  }
+
+  if (
+    knownCanvasIds(input.state).has(canvasId) ||
+    isCanvasInConversationContext(input.context, canvasId)
+  ) {
+    return { ok: true, canvasId };
+  }
+
+  return {
+    ok: false,
+    error:
+      "Canvas access requires a canvas from this thread's artifact context or visible conversation context.",
+  };
+}
+
+const editReplacementSchema = Type.Object(
+  {
+    oldText: Type.String({
+      minLength: 1,
+      description:
+        "Exact Canvas markdown to replace. It must be unique in the current Canvas body and must not overlap another edit.",
+    }),
+    newText: Type.String({
+      description: "Replacement Canvas markdown for this edit.",
+    }),
+  },
+  { additionalProperties: false },
+);
 
 /** Create a tool that provisions a new Slack canvas in the active channel. */
 export function createSlackCanvasCreateTool(
@@ -117,150 +229,55 @@ export function createSlackCanvasCreateTool(
   });
 }
 
-/** Create a tool that updates the active Slack canvas. */
-export function createSlackCanvasUpdateTool(
-  state: ToolState,
-  _context: ToolRuntimeContext,
-) {
-  return tool({
-    description:
-      "Update the active Slack canvas tracked in artifact context. Use when continuing or correcting a document already tracked in this thread. Do not use to create a brand-new long-form artifact.",
-    inputSchema: Type.Object({
-      markdown: Type.String({
-        minLength: 1,
-        description: "Markdown content to insert or use as replacement text.",
-      }),
-      operation: Type.Optional(
-        Type.Union(
-          [
-            Type.Literal("insert_at_end"),
-            Type.Literal("insert_at_start"),
-            Type.Literal("replace"),
-          ],
-          { description: "Canvas update mode." },
-        ),
-      ),
-      section_id: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description:
-            "Optional section ID required for targeted replace operations.",
-        }),
-      ),
-      section_contains_text: Type.Optional(
-        Type.String({
-          minLength: 1,
-          description:
-            "Optional helper text used to find the target section when section_id is not provided.",
-        }),
-      ),
-    }),
-    execute: async ({
-      markdown,
-      operation,
-      section_id,
-      section_contains_text,
-    }) => {
-      const targetCanvasId =
-        state.getTurnCreatedCanvasId() ?? state.getCurrentCanvasId();
-      const resolvedOperation = operation ?? "insert_at_end";
-      if (!targetCanvasId) {
-        logWarn(
-          "slack_canvas_update_missing_target",
-          {},
-          {
-            "gen_ai.tool.name": "slackCanvasUpdate",
-            "app.artifacts.last_canvas_id":
-              state.artifactState.lastCanvasId ?? "none",
-            "app.artifacts.turn_created_canvas_id":
-              state.getTurnCreatedCanvasId() ?? "none",
-          },
-          "Canvas update rejected because no explicit target canvas was provided",
-        );
-        return {
-          ok: false,
-          error: "No active canvas found in artifact context",
-        };
-      }
-      const operationKey = createOperationKey("slackCanvasUpdate", {
-        canvas_id: targetCanvasId,
-        markdown,
-        operation: resolvedOperation,
-        section_id: section_id ?? null,
-        section_contains_text: section_contains_text ?? null,
-      });
-      const cached = state.getOperationResult<{
-        ok: true;
-        canvas_id: string;
-        operation: "insert_at_end" | "insert_at_start" | "replace";
-        section_id?: string;
-      }>(operationKey);
-      if (cached) {
-        return {
-          ...cached,
-          deduplicated: true,
-        };
-      }
-
-      const sectionId =
-        section_id ??
-        (section_contains_text
-          ? await lookupCanvasSection(targetCanvasId, section_contains_text)
-          : undefined);
-
-      await updateCanvas({
-        canvasId: targetCanvasId,
-        markdown,
-        operation: resolvedOperation,
-        sectionId,
-      });
-      await state.patchArtifactState({ lastCanvasId: targetCanvasId });
-
-      const response = {
-        ok: true,
-        canvas_id: targetCanvasId,
-        operation: resolvedOperation,
-        section_id: sectionId,
-      };
-      state.setOperationResult(operationKey, response);
-      return response;
-    },
-  });
-}
-
 /**
  * Create a tool that reads a Slack canvas the bot has access to. Accepts
  * either a canvas/file ID (`F...`) or a Slack canvas/docs URL and returns the
  * canvas body downloaded via the bot's file access.
  */
-export function createSlackCanvasReadTool() {
+export function createSlackCanvasReadTool(
+  state: ToolState,
+  context: ToolRuntimeContext,
+) {
   return tool({
     description:
-      "Read a Slack canvas the bot has access to (including canvases the bot created) by canvas ID or Slack canvas/docs URL. Use when the user shares a Slack canvas link (https://*.slack.com/docs/... or /canvas/...) or references a canvas ID and you need its contents. Do not use for generic web pages — use webFetch for those.",
+      "Read a bounded line range from a Slack canvas as markdown. Use when you need exact Canvas contents to verify facts or make edits safely. Do not use for generic web pages — use webFetch for those.",
     annotations: { readOnlyHint: true, destructiveHint: false },
-    inputSchema: Type.Object({
-      canvas: Type.String({
-        minLength: 1,
-        description:
-          "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL (e.g. `https://team.slack.com/docs/T.../F...`).",
-      }),
-    }),
-    execute: async ({ canvas }) => {
-      const canvasId = extractCanvasId(canvas);
-      if (!canvasId) {
-        return {
-          ok: false,
-          error:
-            "Could not parse a Slack canvas/file ID from input. Provide an F-prefixed ID or a Slack canvas/docs URL.",
-        };
+    inputSchema: Type.Object(
+      {
+        canvas: Type.String({
+          minLength: 1,
+          description:
+            "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL (e.g. `https://team.slack.com/docs/T.../F...`).",
+        }),
+        offset: Type.Optional(
+          Type.Integer({
+            minimum: 1,
+            description: "1-indexed line number to start reading from.",
+          }),
+        ),
+        limit: Type.Optional(
+          Type.Integer({
+            minimum: 1,
+            description: "Maximum number of lines to read. Defaults to 1000.",
+          }),
+        ),
+      },
+      { additionalProperties: false },
+    ),
+    execute: async ({ canvas, offset, limit }) => {
+      const target = resolveKnownCanvas({ canvas, context, state });
+      if (!target.ok) {
+        return target;
       }
 
       try {
-        const result = await readCanvas(canvas);
-        const truncated = result.content.length > MAX_CANVAS_READ_CHARS;
-        const content = truncated
-          ? result.content.slice(0, MAX_CANVAS_READ_CHARS)
-          : result.content;
+        const result = await readCanvas(target.canvasId);
+        const range = sliceFileContent({
+          content: normalizeToLf(result.content),
+          limit,
+          offset,
+          path: result.canvasId,
+        });
 
         return {
           ok: true,
@@ -270,8 +287,12 @@ export function createSlackCanvasReadTool() {
           mimetype: result.mimetype,
           filetype: result.filetype,
           original_byte_length: result.byteLength,
-          truncated,
-          content,
+          content: range.content,
+          start_line: range.start_line,
+          end_line: range.end_line,
+          total_lines: range.total_lines,
+          truncated: range.truncated,
+          continuation: range.continuation,
         };
       } catch (error) {
         const message =
@@ -281,13 +302,209 @@ export function createSlackCanvasReadTool() {
           {},
           {
             "gen_ai.tool.name": "slackCanvasRead",
-            "app.slack.canvas.canvas_id_prefix": canvasId.slice(0, 1),
+            "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
           },
           message,
         );
         return {
           ok: false,
-          canvas_id: canvasId,
+          canvas_id: target.canvasId,
+          error: message,
+        };
+      }
+    },
+  });
+}
+
+/** Create a tool that edits a Slack canvas like a markdown file. */
+export function createSlackCanvasEditTool(
+  state: ToolState,
+  context: ToolRuntimeContext,
+) {
+  return tool({
+    description:
+      "Edit one Slack canvas with exact markdown replacements. Use for precise changes to existing Canvas content. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff.",
+    promptSnippet: "existing-canvas exact edits; returns diff",
+    promptGuidelines: [
+      "prefer over slackCanvasWrite for targeted changes",
+      "oldText exact, unique, non-overlapping",
+      "multiple same-canvas changes: one edits[] call",
+    ],
+    prepareArguments: prepareCanvasEditArguments,
+    executionMode: "sequential",
+    inputSchema: Type.Object(
+      {
+        canvas: Type.String({
+          minLength: 1,
+          description:
+            "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL.",
+        }),
+        edits: Type.Array(editReplacementSchema, {
+          minItems: 1,
+          description:
+            "Exact replacements matched against the current Canvas body, not incrementally.",
+        }),
+      },
+      { additionalProperties: false },
+    ),
+    execute: async ({ canvas, edits }) => {
+      const target = resolveKnownCanvas({ canvas, context, state });
+      if (!target.ok) {
+        return target;
+      }
+
+      const operationKey = createOperationKey("slackCanvasEdit", {
+        canvas_id: target.canvasId,
+        edits,
+      });
+      const cached = state.getOperationResult<{
+        ok: true;
+        canvas_id: string;
+        diff: string;
+        first_changed_line?: number;
+        replacements: number;
+      }>(operationKey);
+      if (cached) {
+        return {
+          ...cached,
+          deduplicated: true,
+        };
+      }
+
+      try {
+        const current = await readCanvas(target.canvasId);
+        const normalizedContent = normalizeToLf(current.content);
+        const { baseContent, newContent } = validateAndApplyTextEdits(
+          normalizedContent,
+          edits,
+          target.canvasId,
+        );
+        const written = await writeCanvasMarkdown({
+          canvasId: target.canvasId,
+          markdown: newContent,
+        });
+        await state.patchArtifactState({
+          lastCanvasId: target.canvasId,
+          lastCanvasUrl: current.permalink ?? state.artifactState.lastCanvasUrl,
+        });
+
+        const diff = buildCompactDiff(
+          normalizeCanvasMarkdown(baseContent).markdown,
+          written.markdown,
+        );
+        const response = {
+          ok: true,
+          canvas_id: target.canvasId,
+          title: current.title,
+          permalink: current.permalink,
+          diff: diff.diff,
+          first_changed_line: diff.firstChangedLine,
+          replacements: edits.length,
+          normalized_heading_count: written.normalizedHeadingCount,
+          summary: `Edited canvas ${target.canvasId}`,
+        };
+        state.setOperationResult(operationKey, response);
+        return response;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "canvas edit failed";
+        logWarn(
+          "slack_canvas_edit_failed",
+          {},
+          {
+            "gen_ai.tool.name": "slackCanvasEdit",
+            "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
+          },
+          message,
+        );
+        return {
+          ok: false,
+          canvas_id: target.canvasId,
+          error: message,
+        };
+      }
+    },
+  });
+}
+
+/** Create a tool that deliberately replaces a Slack canvas body. */
+export function createSlackCanvasWriteTool(
+  state: ToolState,
+  context: ToolRuntimeContext,
+) {
+  return tool({
+    description:
+      "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation. Do not use for targeted edits.",
+    promptSnippet: "deliberate full-canvas replacement",
+    promptGuidelines: ["targeted existing-canvas changes: slackCanvasEdit"],
+    executionMode: "sequential",
+    inputSchema: Type.Object(
+      {
+        canvas: Type.String({
+          minLength: 1,
+          description:
+            "Canvas/file ID (e.g. `F0ABCDEF`) or Slack canvas/docs URL.",
+        }),
+        content: Type.String({
+          description: "UTF-8 markdown content to write.",
+        }),
+      },
+      { additionalProperties: false },
+    ),
+    execute: async ({ canvas, content }) => {
+      const target = resolveKnownCanvas({ canvas, context, state });
+      if (!target.ok) {
+        return target;
+      }
+
+      const operationKey = createOperationKey("slackCanvasWrite", {
+        canvas_id: target.canvasId,
+        content,
+      });
+      const cached = state.getOperationResult<{
+        ok: true;
+        canvas_id: string;
+        normalized_heading_count: number;
+      }>(operationKey);
+      if (cached) {
+        return {
+          ...cached,
+          deduplicated: true,
+        };
+      }
+
+      try {
+        const written = await writeCanvasMarkdown({
+          canvasId: target.canvasId,
+          markdown: content,
+        });
+        await state.patchArtifactState({
+          lastCanvasId: target.canvasId,
+          lastCanvasUrl: knownCanvasUrl(state, target.canvasId),
+        });
+        const response = {
+          ok: true,
+          canvas_id: target.canvasId,
+          normalized_heading_count: written.normalizedHeadingCount,
+          summary: `Wrote canvas ${target.canvasId}`,
+        };
+        state.setOperationResult(operationKey, response);
+        return response;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "canvas write failed";
+        logWarn(
+          "slack_canvas_write_failed",
+          {},
+          {
+            "gen_ai.tool.name": "slackCanvasWrite",
+            "app.slack.canvas.canvas_id_prefix": target.canvasId.slice(0, 1),
+          },
+          message,
+        );
+        return {
+          ok: false,
+          canvas_id: target.canvasId,
           error: message,
         };
       }
