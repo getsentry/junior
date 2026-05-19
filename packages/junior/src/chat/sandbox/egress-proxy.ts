@@ -155,18 +155,6 @@ async function requestBodyBytes(
   return await request.arrayBuffer();
 }
 
-async function responseBodyPreview(
-  response: Response,
-): Promise<string | undefined> {
-  try {
-    const text = await response.clone().text();
-    const preview = text.replace(/\s+/g, " ").trim();
-    return preview ? preview.slice(0, 500) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function requestHeaders(
   request: Request,
   lease: SandboxEgressCredentialLease,
@@ -435,8 +423,6 @@ export async function proxySandboxEgressRequest(
           status: upstream.status,
         }),
         "error.type": `http_${upstream.status}`,
-        "app.sandbox.egress.upstream_response_body":
-          await responseBodyPreview(upstream),
       },
       `Sandbox egress upstream returned HTTP ${upstream.status}`,
     );
