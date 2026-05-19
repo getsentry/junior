@@ -1,5 +1,5 @@
 import type { NetworkPolicy, NetworkPolicyRule } from "@vercel/sandbox";
-import type { CredentialHeaderTransform } from "@/chat/credentials/broker";
+import { resolveBaseUrl } from "@/chat/oauth-flow";
 import { resolveAuthTokenPlaceholder } from "@/chat/plugins/auth/auth-token-placeholder";
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { getPluginProviders } from "@/chat/plugins/registry";
@@ -31,10 +31,6 @@ function providerEntries(): Array<{ provider: string; domains: string[] }> {
     .sort((left, right) => left.provider.localeCompare(right.provider));
 }
 
-function normalizeDomain(domain: string): string {
-  return domain.toLowerCase();
-}
-
 /** Resolve the plugin provider responsible for an outbound sandbox host. */
 export function resolveSandboxEgressProviderForHost(
   host: string,
@@ -44,53 +40,30 @@ export function resolveSandboxEgressProviderForHost(
   )?.provider;
 }
 
-/** Return whether a provider can supply host-managed sandbox credential headers. */
-export function hasSandboxCredentialEgress(provider: string): boolean {
-  const plugin = getPluginProviders().find(
-    (candidate) => candidate.manifest.name === provider,
-  );
-  return Boolean(plugin?.manifest.credentials || plugin?.manifest.apiHeaders);
-}
-
-function mergeHeaderTransforms(
-  headerTransforms: CredentialHeaderTransform[],
-): Map<string, Record<string, string>> {
-  const headersByDomain = new Map<string, Record<string, string>>();
-  for (const transform of headerTransforms) {
-    const domain = normalizeDomain(transform.domain);
-    const existing = headersByDomain.get(domain) ?? {};
-    headersByDomain.set(domain, {
-      ...existing,
-      ...transform.headers,
-    });
+function sandboxProxyUrl(): string {
+  const baseUrl = resolveBaseUrl();
+  if (!baseUrl) {
+    throw new Error(
+      "Cannot determine base URL for sandbox credential egress (set JUNIOR_BASE_URL or deploy to Vercel)",
+    );
   }
-  return headersByDomain;
+  return new URL("/", baseUrl).toString();
 }
 
-/** Build the command-scoped policy that injects credential headers without rewriting URLs. */
-export function buildSandboxEgressNetworkPolicy(input?: {
-  headerTransforms?: CredentialHeaderTransform[];
-}): NetworkPolicy {
-  const headerTransforms = input?.headerTransforms ?? [];
-  const headersByDomain = mergeHeaderTransforms(headerTransforms);
+/** Build the policy that forwards provider requests back to Junior for credentials. */
+export function buildSandboxEgressNetworkPolicy(): NetworkPolicy {
   const allow: Record<string, NetworkPolicyRule[]> = {
     "*": [],
   };
-
-  for (const entry of providerEntries()) {
-    for (const domain of entry.domains) {
-      const headers = headersByDomain.get(normalizeDomain(domain));
-      if (headers && Object.keys(headers).length > 0) {
-        allow[domain] = [{ transform: [{ headers }] }];
-      }
-      headersByDomain.delete(normalizeDomain(domain));
-    }
+  const entries = providerEntries();
+  if (entries.length === 0) {
+    return { allow };
   }
-  for (const [domain, headers] of [...headersByDomain.entries()].sort(
-    ([left], [right]) => left.localeCompare(right),
-  )) {
-    if (Object.keys(headers).length > 0) {
-      allow[domain] = [{ transform: [{ headers }] }];
+
+  const forwardURL = sandboxProxyUrl();
+  for (const entry of entries) {
+    for (const domain of entry.domains) {
+      allow[domain] = [{ forwardURL }];
     }
   }
 

@@ -1,9 +1,4 @@
 import fs from "node:fs/promises";
-import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
-import {
-  CredentialUnavailableError,
-  type CredentialHeaderTransform,
-} from "@/chat/credentials/broker";
 import {
   logInfo,
   setSpanAttributes,
@@ -13,7 +8,6 @@ import {
 } from "@/chat/logging";
 import {
   buildSandboxEgressNetworkPolicy,
-  hasSandboxCredentialEgress,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
 import {
@@ -120,36 +114,17 @@ export function createSandboxExecutor(options?: {
   let referenceFiles: string[] = [];
   const traceContext = options?.traceContext ?? {};
   const credentialEgress = options?.credentialEgress;
-  let commandHeaderTransforms: CredentialHeaderTransform[] = [];
-  const activateSandboxEgressForCommand = credentialEgress
+  const authorizeSandboxEgressForCommand = credentialEgress
     ? async (egressId: string): Promise<void> => {
         await upsertSandboxEgressSession({
           egressId,
           requesterId: credentialEgress.requesterId,
           ttlMs: options?.timeoutMs,
         });
-        commandHeaderTransforms = [];
-        const provider = credentialEgress.activeProvider?.();
-        if (!provider || !hasSandboxCredentialEgress(provider)) {
-          return;
-        }
-        const lease = await issueProviderCredentialLease({
-          provider,
-          requesterId: credentialEgress.requesterId,
-          reason: `sandbox-command:${provider}`,
-        });
-        const headerTransforms = lease.headerTransforms ?? [];
-        if (headerTransforms.length === 0) {
-          throw new Error(
-            `Credential lease for ${provider} did not include header transforms`,
-          );
-        }
-        commandHeaderTransforms = headerTransforms;
       }
     : undefined;
   const clearSandboxEgressForCommand = credentialEgress
     ? async (egressId: string): Promise<void> => {
-        commandHeaderTransforms = [];
         await clearSandboxEgressSession(egressId);
       }
     : undefined;
@@ -167,12 +142,9 @@ export function createSandboxExecutor(options?: {
         }
       : undefined,
     createNetworkPolicy: credentialEgress
-      ? () =>
-          buildSandboxEgressNetworkPolicy({
-            headerTransforms: commandHeaderTransforms,
-          })
+      ? buildSandboxEgressNetworkPolicy
       : undefined,
-    beforeCommand: activateSandboxEgressForCommand,
+    beforeCommand: authorizeSandboxEgressForCommand,
     afterCommand: clearSandboxEgressForCommand,
     onSandboxAcquired: async (sandbox) => {
       await options?.onSandboxAcquired?.(sandbox);
@@ -245,27 +217,6 @@ export function createSandboxExecutor(options?: {
           setSpanStatus(response.exitCode === 0 ? "ok" : "error");
           return response;
         } catch (error) {
-          if (error instanceof CredentialUnavailableError) {
-            const response = {
-              stdout: "",
-              stderr: `junior-auth-required provider=${error.provider} 401 unauthorized\n${error.message}`,
-              exitCode: 1,
-              stdoutTruncated: false,
-              stderrTruncated: false,
-              timedOut: false,
-            };
-            setSpanAttributes({
-              "process.exit.code": response.exitCode,
-              "app.sandbox.stdout_bytes": 0,
-              "app.sandbox.stderr_bytes": Buffer.byteLength(
-                response.stderr,
-                "utf8",
-              ),
-              "error.type": error.name,
-            });
-            setSpanStatus("error");
-            return response;
-          }
           setSpanAttributes({
             "error.type":
               error instanceof Error ? error.name : "sandbox_execute_error",
