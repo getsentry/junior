@@ -17,6 +17,7 @@
 - 2026-04-28: Added canonical agent prompt spec.
 - 2026-05-06: Added draft advisor tool spec.
 - 2026-05-13: Added ownership map for chat, agent session, and Slack delivery specs.
+- 2026-05-18: Added draft scheduler spec for scheduled Junior tasks.
 
 ## Status
 
@@ -82,6 +83,7 @@ For chat/agent/Slack turn behavior:
 ## Draft Specs
 
 - `specs/advisor-tool-spec.md`
+- `specs/scheduler-spec.md`
 
 ## Archive Policy
 

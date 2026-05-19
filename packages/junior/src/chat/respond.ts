@@ -127,6 +127,7 @@ export interface ReplyRequestContext {
     turnId?: string;
     runId?: string;
     channelId?: string;
+    teamId?: string;
     messageTs?: string;
     threadTs?: string;
     requesterId?: string;
@@ -738,6 +739,8 @@ export async function generateAssistantReply(
       {
         channelId: toolChannelId,
         channelCapabilities,
+        requester: context.requester,
+        teamId: context.correlation?.teamId,
         messageTs: context.correlation?.messageTs,
         threadTs: context.correlation?.threadTs,
         userText: userInput,

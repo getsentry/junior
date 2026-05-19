@@ -15,6 +15,12 @@ import { createSlackChannelListMessagesTool } from "@/chat/tools/slack/channel-l
 import { createSlackChannelPostMessageTool } from "@/chat/tools/slack/channel-post-message";
 import { createSlackMessageAddReactionTool } from "@/chat/tools/slack/message-add-reaction";
 import {
+  createSlackScheduleCreateTaskTool,
+  createSlackScheduleDeleteTaskTool,
+  createSlackScheduleListTasksTool,
+  createSlackScheduleUpdateTaskTool,
+} from "@/chat/tools/slack/schedule-tools";
+import {
   createSlackCanvasCreateTool,
   createSlackCanvasEditTool,
   createSlackCanvasReadTool,
@@ -150,6 +156,13 @@ export function createTools(
       context,
       state,
     );
+  }
+
+  if (context.channelId) {
+    tools.slackScheduleCreateTask = createSlackScheduleCreateTaskTool(context);
+    tools.slackScheduleListTasks = createSlackScheduleListTasksTool(context);
+    tools.slackScheduleUpdateTask = createSlackScheduleUpdateTaskTool(context);
+    tools.slackScheduleDeleteTask = createSlackScheduleDeleteTaskTool(context);
   }
 
   return tools;

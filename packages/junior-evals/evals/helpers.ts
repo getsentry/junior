@@ -68,6 +68,9 @@ function toToolCallRecord(
   invocation: EvalResult["toolInvocations"][number],
 ): ToolCallRecord {
   const args: Record<string, JsonValue> = {};
+  if (invocation.arguments) {
+    args.arguments = toJson(invocation.arguments);
+  }
   if (invocation.bash_command) {
     args.command = invocation.bash_command;
   }

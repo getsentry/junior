@@ -23,6 +23,7 @@ import {
   getAssistantThreadContext,
   getChannelId,
   getMessageTs,
+  getTeamId,
   getThreadId,
   getThreadTs,
   getRunId,
@@ -211,6 +212,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
     const threadTs = getThreadTs(threadId);
     const assistantThreadContext = getAssistantThreadContext(message);
     const messageTs = getMessageTs(message);
+    const teamId = getTeamId(message);
     const runId = getRunId(thread, message);
     const conversationId = threadId ?? runId;
 
@@ -528,6 +530,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               turnId,
               threadTs,
               messageTs,
+              teamId,
               runId,
               channelId,
               requesterId: message.author.userId,

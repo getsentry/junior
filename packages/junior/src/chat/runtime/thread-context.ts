@@ -127,3 +127,18 @@ export function getMessageTs(message: Message): string | undefined {
     toOptionalString((rawRecord.message as { ts?: unknown } | undefined)?.ts)
   );
 }
+
+/** Resolve the Slack workspace/team id from the raw inbound message payload. */
+export function getTeamId(message: Message): string | undefined {
+  const raw = (message as unknown as { raw?: unknown }).raw;
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+
+  const rawRecord = raw as Record<string, unknown>;
+  return (
+    toOptionalString(rawRecord.team_id) ??
+    toOptionalString(rawRecord.team) ??
+    toOptionalString(rawRecord.user_team)
+  );
+}

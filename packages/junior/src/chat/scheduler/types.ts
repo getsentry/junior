@@ -1,0 +1,90 @@
+export type ScheduledTaskStatus = "active" | "paused" | "blocked" | "deleted";
+
+export type ScheduledRunStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "blocked"
+  | "skipped";
+
+export interface ScheduledTaskPrincipal {
+  slackUserId: string;
+  fullName?: string;
+  userName?: string;
+}
+
+export interface ScheduledTaskDestination {
+  platform: "slack";
+  teamId: string;
+  channelId: string;
+  threadTs?: string;
+}
+
+export type ScheduledCalendarFrequency =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "yearly";
+
+export interface ScheduledLocalTime {
+  hour: number;
+  minute: number;
+}
+
+export interface ScheduledTaskRecurrence {
+  dayOfMonth?: number;
+  frequency: ScheduledCalendarFrequency;
+  interval: number;
+  month?: number;
+  startDate: string;
+  time: ScheduledLocalTime;
+  weekdays?: number[];
+}
+
+export interface ScheduledTaskSchedule {
+  description: string;
+  timezone: string;
+  kind: "one_off" | "recurring";
+  recurrence?: ScheduledTaskRecurrence;
+}
+
+export interface ScheduledTaskSpec {
+  title: string;
+  objective: string;
+  instructions: string[];
+  expectedOutput?: string;
+  constraints?: string[];
+  sourceContext?: string[];
+}
+
+export interface ScheduledTask {
+  id: string;
+  createdAtMs: number;
+  createdBy: ScheduledTaskPrincipal;
+  destination: ScheduledTaskDestination;
+  lastRunAtMs?: number;
+  nextRunAtMs?: number;
+  originalRequest?: string;
+  schedule: ScheduledTaskSchedule;
+  status: ScheduledTaskStatus;
+  statusReason?: string;
+  task: ScheduledTaskSpec;
+  updatedAtMs: number;
+  version: number;
+}
+
+export interface ScheduledRun {
+  id: string;
+  attempt: number;
+  claimedAtMs: number;
+  completedAtMs?: number;
+  errorMessage?: string;
+  idempotencyKey: string;
+  resultMessageTs?: string;
+  scheduledForMs: number;
+  startedAtMs?: number;
+  status: ScheduledRunStatus;
+  taskId: string;
+  taskVersion: number;
+}

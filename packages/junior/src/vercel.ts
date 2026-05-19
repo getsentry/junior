@@ -9,6 +9,12 @@ export function juniorVercelConfig(options: JuniorVercelConfigOptions = {}) {
 
   const config: Record<string, unknown> = {
     framework: "nitro",
+    crons: [
+      {
+        path: "/api/internal/scheduler/tick",
+        schedule: "* * * * *",
+      },
+    ],
   };
 
   if (buildCommand !== null) {

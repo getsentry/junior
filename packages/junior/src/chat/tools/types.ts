@@ -46,6 +46,12 @@ export interface ToolRuntimeContext {
   advisor?: AdvisorToolRuntimeContext;
   channelId?: string;
   channelCapabilities: ChannelCapabilities;
+  requester?: {
+    userId?: string;
+    userName?: string;
+    fullName?: string;
+  };
+  teamId?: string;
   messageTs?: string;
   threadTs?: string;
   userText?: string;

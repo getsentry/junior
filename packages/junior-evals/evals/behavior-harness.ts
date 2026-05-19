@@ -195,6 +195,7 @@ export interface EvalCanvasArtifact {
 }
 
 export interface EvalToolInvocation {
+  arguments?: Record<string, unknown>;
   tool: string;
   bash_command?: string;
   mcp_arguments?: Record<string, unknown>;
@@ -324,6 +325,24 @@ function toEvalToolInvocation(input: {
   params: Record<string, unknown>;
 }): EvalToolInvocation {
   const invocation: EvalToolInvocation = { tool: input.toolName };
+
+  if (input.toolName.startsWith("slackSchedule")) {
+    invocation.arguments = Object.fromEntries(
+      [
+        "title",
+        "objective",
+        "schedule_description",
+        "timezone",
+        "next_run_at_iso",
+        "recurrence_frequency",
+        "recurrence_interval",
+        "recurrence_weekdays",
+        "status",
+      ]
+        .filter((key) => key in input.params)
+        .map((key) => [key, input.params[key]]),
+    );
+  }
 
   if (input.toolName === "bash" && typeof input.params.command === "string") {
     invocation.bash_command = input.params.command.trim();
@@ -708,6 +727,7 @@ function toIncomingMessage(event: MentionEvent | SubscribedMessageEvent) {
     runId: event.thread.run_id,
     raw: {
       channel: event.thread.channel_id,
+      team_id: "T_EVAL",
       ts: messageTs,
       thread_ts: event.thread.thread_ts,
     },

@@ -19,6 +19,7 @@ import { GET as dashboardGET } from "@/handlers/diagnostics-dashboard";
 import { GET as healthGET } from "@/handlers/health";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
 import { GET as oauthCallbackGET } from "@/handlers/oauth-callback";
+import { ALL as schedulerTickALL } from "@/handlers/scheduler-tick";
 import {
   ALL as sandboxEgressProxyALL,
   isSandboxEgressRequest,
@@ -241,6 +242,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/internal/turn-resume", (c) => {
     return turnResumePOST(c.req.raw, waitUntil);
+  });
+
+  app.all("/api/internal/scheduler/tick", (c) => {
+    return schedulerTickALL(c.req.raw, waitUntil);
   });
 
   app.post("/api/webhooks/:platform", (c) => {

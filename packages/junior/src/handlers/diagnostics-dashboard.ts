@@ -126,6 +126,7 @@ export async function GET(): Promise<Response> {
     { method: "GET", path: "/api/info" },
     { method: "GET", path: "/api/oauth/callback/mcp/:provider" },
     { method: "GET", path: "/api/oauth/callback/:provider" },
+    { method: "POST", path: "/api/internal/scheduler/tick" },
     { method: "POST", path: "/api/webhooks/:platform" },
   ];
   html += `\n  <div class="section">
