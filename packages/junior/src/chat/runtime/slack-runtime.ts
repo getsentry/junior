@@ -394,24 +394,14 @@ export function createSlackTurnRuntime<
         const threadId = deps.getThreadId(thread, message);
         const channelId = deps.getChannelId(thread, message);
         const runId = deps.getRunId(thread, message);
-        const context = logContext({
+        const turnContext = logContext({
           threadId,
           requesterId: message.author.userId,
           requesterUserName: message.author.userName,
           channelId,
           runId,
         });
-        processingReaction = await startSlackProcessingReaction({
-          thread,
-          message,
-          logException: deps.logException,
-          logContext: context,
-        });
-        const toolInvocationHook = createToolInvocationHook(
-          processingReaction,
-          hooks,
-        );
-        await deps.withSpan("chat.turn", "chat.turn", context, async () => {
+        await deps.withSpan("chat.turn", "chat.turn", turnContext, async () => {
           // This path can compact context and run router/vision model calls
           // before replyToThread() opens the main reply span.
           const legacyAttachmentText = renderSlackLegacyAttachmentText(
@@ -428,7 +418,7 @@ export function createSlackTurnRuntime<
             strippedUserText,
             message.raw,
           );
-          const context: ThreadContext = {
+          const threadContext: ThreadContext = {
             threadId,
             requesterId: message.author.userId,
             channelId,
@@ -450,7 +440,7 @@ export function createSlackTurnRuntime<
               thread,
               message,
               decision: { shouldReply: false, reason },
-              context,
+              context: threadContext,
               userText,
             });
             return;
@@ -461,7 +451,7 @@ export function createSlackTurnRuntime<
             message,
             userText,
             explicitMention: Boolean(message.isMention),
-            context,
+            context: threadContext,
           });
 
           await deps.persistPreparedState({
@@ -477,7 +467,7 @@ export function createSlackTurnRuntime<
             hasAttachments:
               message.attachments.length > 0 || legacyAttachmentText !== "",
             isExplicitMention: Boolean(message.isMention),
-            context,
+            context: threadContext,
           });
 
           if (
@@ -491,7 +481,7 @@ export function createSlackTurnRuntime<
               thread,
               message,
               decision,
-              context,
+              context: threadContext,
               preparedState,
               userText,
             });
@@ -503,12 +493,23 @@ export function createSlackTurnRuntime<
               thread,
               message,
               decision,
-              context,
+              context: threadContext,
               preparedState,
               userText,
             });
             return;
           }
+
+          processingReaction = await startSlackProcessingReaction({
+            thread,
+            message,
+            logException: deps.logException,
+            logContext: turnContext,
+          });
+          const toolInvocationHook = createToolInvocationHook(
+            processingReaction,
+            hooks,
+          );
 
           await deps.replyToThread(thread, message, {
             explicitMention: Boolean(message.isMention),

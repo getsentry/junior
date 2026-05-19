@@ -75,19 +75,24 @@ describe("Slack behavior: processing reaction", () => {
     ]);
   });
 
-  it("removes eyes when a subscribed message is skipped", async () => {
+  it("does not add eyes when a subscribed message is skipped", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
         subscribedReplyPolicy: {
-          completeObject: async () =>
-            ({
+          completeObject: async () => {
+            expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(0);
+            expect(getCapturedSlackApiCalls("reactions.remove")).toHaveLength(
+              0,
+            );
+            return {
               object: {
                 should_reply: false,
                 confidence: 0,
                 reason: "side conversation",
               },
               text: '{"should_reply":false,"confidence":0,"reason":"side conversation"}',
-            }) as never,
+            } as never;
+          },
         },
         replyExecutor: {
           generateAssistantReply: async () => {
@@ -116,8 +121,80 @@ describe("Slack behavior: processing reaction", () => {
     );
 
     expect(thread.posts).toHaveLength(0);
-    expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(1);
-    expect(getCapturedSlackApiCalls("reactions.remove")).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(0);
+    expect(getCapturedSlackApiCalls("reactions.remove")).toHaveLength(0);
+  });
+
+  it("adds eyes after a subscribed message is approved and removes it after the reply", async () => {
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        subscribedReplyPolicy: {
+          completeObject: async () => {
+            expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(0);
+            expect(getCapturedSlackApiCalls("reactions.remove")).toHaveLength(
+              0,
+            );
+            return {
+              object: {
+                should_reply: true,
+                confidence: 1,
+                reason: "direct follow-up",
+              },
+              text: '{"should_reply":true,"confidence":1,"reason":"direct follow-up"}',
+            } as never;
+          },
+        },
+        replyExecutor: {
+          generateAssistantReply: async () => {
+            expect(getCapturedSlackApiCalls("reactions.add")).toHaveLength(1);
+            expect(getCapturedSlackApiCalls("reactions.remove")).toHaveLength(
+              0,
+            );
+            return {
+              text: "Done.",
+              diagnostics: successDiagnostics(),
+            };
+          },
+        },
+      },
+    });
+
+    const thread = createTestThread({
+      id: "slack:C_PROCESSING:1700007150.000000",
+    });
+    await slackRuntime.handleSubscribedMessage(
+      thread,
+      createTestMessage({
+        id: "1700007151.000000",
+        text: "can you check this next?",
+        isMention: false,
+        threadId: thread.id,
+        raw: {
+          channel: "C_PROCESSING",
+          ts: "1700007151.000000",
+          thread_ts: "1700007150.000000",
+        },
+      }),
+    );
+
+    expect(getCapturedSlackApiCalls("reactions.add")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C_PROCESSING",
+          timestamp: "1700007151.000000",
+          name: "eyes",
+        }),
+      }),
+    ]);
+    expect(getCapturedSlackApiCalls("reactions.remove")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C_PROCESSING",
+          timestamp: "1700007151.000000",
+          name: "eyes",
+        }),
+      }),
+    ]);
   });
 
   it("keeps eyes when the assistant explicitly adds an eyes reaction", async () => {
