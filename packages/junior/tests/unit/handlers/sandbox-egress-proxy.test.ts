@@ -63,6 +63,7 @@ vi.mock("@/chat/capabilities/factory", () => ({
 
 import {
   buildSandboxEgressNetworkPolicy,
+  hasSandboxCredentialEgress,
   matchesSandboxEgressDomain,
   resolveSandboxCommandEnvironment,
 } from "@/chat/sandbox/egress-policy";
@@ -148,7 +149,6 @@ function proxy(
 describe("sandbox egress proxy", () => {
   beforeEach(async () => {
     process.env.JUNIOR_STATE_ADAPTER = "memory";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
     createRemoteJWKSetMock.mockClear();
     createRemoteJWKSetMock.mockReturnValue(async () => null);
     decodeJwtMock.mockReset();
@@ -160,37 +160,39 @@ describe("sandbox egress proxy", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
-    delete process.env.JUNIOR_BASE_URL;
     delete process.env.SENTRY_BOT_EMAIL;
     vi.restoreAllMocks();
   });
 
-  it("builds provider forwarding policy for sandbox egress", () => {
+  it("builds provider transform policy for sandbox egress", () => {
     expect(matchesSandboxEgressDomain("SENTRY.IO", "sentry.io")).toBe(true);
     expect(matchesSandboxEgressDomain("eu.sentry.io", "sentry.io")).toBe(false);
+    expect(hasSandboxCredentialEgress("sentry")).toBe(true);
+    expect(hasSandboxCredentialEgress("github")).toBe(false);
     expect(buildSandboxEgressNetworkPolicy()).toEqual({
+      allow: {
+        "*": [],
+      },
+    });
+    expect(
+      buildSandboxEgressNetworkPolicy({
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer sentry-token" },
+          },
+        ],
+      }),
+    ).toEqual({
       allow: {
         "*": [],
         "sentry.io": [
           {
-            forwardURL: "https://junior.example.com/",
-          },
-        ],
-        "us.sentry.io": [
-          {
-            forwardURL: "https://junior.example.com/",
+            transform: [{ headers: { Authorization: "Bearer sentry-token" } }],
           },
         ],
       },
     });
-  });
-
-  it("fails sandbox egress policy setup without a public callback URL", () => {
-    delete process.env.JUNIOR_BASE_URL;
-
-    expect(() => buildSandboxEgressNetworkPolicy()).toThrow(
-      "Cannot determine base URL for sandbox credential egress",
-    );
   });
 
   it("resolves command env for registered sandbox providers", async () => {
@@ -198,6 +200,16 @@ describe("sandbox egress proxy", () => {
       SENTRY_READ_ONLY: "1",
       SENTRY_AUTH_TOKEN: "host_managed_credential",
     });
+  });
+
+  it("resolves command env for a single active sandbox provider", async () => {
+    await expect(resolveSandboxCommandEnvironment("sentry")).resolves.toEqual({
+      SENTRY_READ_ONLY: "1",
+      SENTRY_AUTH_TOKEN: "host_managed_credential",
+    });
+    await expect(resolveSandboxCommandEnvironment("github")).resolves.toEqual(
+      {},
+    );
   });
 
   it("resolves host env bindings for sandbox commands", async () => {
@@ -210,9 +222,7 @@ describe("sandbox egress proxy", () => {
     });
   });
 
-  it("requires OIDC before proxy configuration details", async () => {
-    delete process.env.JUNIOR_BASE_URL;
-
+  it("requires OIDC before forwarded routing details", async () => {
     const response = await ALL(
       new Request("https://junior.example.com/api/0/issues/"),
     );
@@ -310,53 +320,6 @@ describe("sandbox egress proxy", () => {
       requesterId: REQUESTER_ID,
       reason: "sandbox-egress:sentry",
     });
-  });
-
-  it("restores slashless Sentry API paths before forwarding", async () => {
-    await authorizeSandboxEgress();
-    mockSentryLease();
-
-    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
-
-    const response = await proxy(
-      egressRequest({ path: "/api/0/organizations/sentry" }),
-      fetchMock as typeof fetch,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("ok");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      new URL("https://sentry.io/api/0/organizations/sentry/"),
-      expect.objectContaining({ method: "GET" }),
-    );
-  });
-
-  it("restores slashless Sentry API paths for unsafe methods before forwarding", async () => {
-    await authorizeSandboxEgress();
-    mockSentryLease();
-
-    const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
-      expect(init?.body).toBeInstanceOf(ArrayBuffer);
-      return new Response("created", { status: 201 });
-    });
-
-    const response = await proxy(
-      egressRequest({
-        method: "POST",
-        path: "/api/0/organizations/sentry/releases",
-        body: "{}",
-      }),
-      fetchMock as typeof fetch,
-    );
-
-    expect(response.status).toBe(201);
-    await expect(response.text()).resolves.toBe("created");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      new URL("https://sentry.io/api/0/organizations/sentry/releases/"),
-      expect.objectContaining({ method: "POST" }),
-    );
   });
 
   it("recognizes root-path forwarded sandbox proxy requests", () => {

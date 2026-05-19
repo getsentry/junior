@@ -636,7 +636,6 @@ export function createSandboxSessionManager(options?: {
     return {
       bash: async (input) => {
         const commandEgressId = sandboxInstance.sandboxEgressId;
-        await options?.beforeCommand?.(commandEgressId);
         let timedOut = false;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let commandFinished = false;
@@ -646,6 +645,7 @@ export function createSandboxSessionManager(options?: {
           }
           commandFinished = true;
           await options?.afterCommand?.(commandEgressId);
+          await refreshNetworkPolicy(sandboxInstance);
         };
         const finishCommandBestEffort = async (): Promise<void> => {
           try {
@@ -666,6 +666,8 @@ export function createSandboxSessionManager(options?: {
           }
         };
         try {
+          await options?.beforeCommand?.(commandEgressId);
+          await refreshNetworkPolicy(sandboxInstance);
           const sandboxCommandEnv = await resolveCommandEnv();
           const script = buildNonInteractiveShellScript(input.command, {
             env: { ...sandboxCommandEnv, ...(input.env ?? {}) },

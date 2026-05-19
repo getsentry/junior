@@ -1,14 +1,17 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CredentialUnavailableError } from "@/chat/credentials/broker";
 import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxInstance } from "@/chat/sandbox/workspace";
 
-const { sandboxGetMock, sandboxCreateMock } = vi.hoisted(() => ({
-  sandboxGetMock: vi.fn(),
-  sandboxCreateMock: vi.fn(),
-}));
+const { sandboxGetMock, sandboxCreateMock, issueProviderCredentialLeaseMock } =
+  vi.hoisted(() => ({
+    sandboxGetMock: vi.fn(),
+    sandboxCreateMock: vi.fn(),
+    issueProviderCredentialLeaseMock: vi.fn(),
+  }));
 
 vi.mock("@vercel/sandbox", () => ({
   Sandbox: {
@@ -19,6 +22,45 @@ vi.mock("@vercel/sandbox", () => ({
 
 vi.mock("bash-tool", () => ({
   createBashTool: vi.fn(),
+}));
+
+vi.mock("@/chat/config", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/chat/config")>();
+  const memoryConfig = original.readChatConfig({
+    ...process.env,
+    JUNIOR_STATE_ADAPTER: "memory",
+  });
+  return {
+    ...original,
+    botConfig: memoryConfig.bot,
+    getChatConfig: () => memoryConfig,
+  };
+});
+
+vi.mock("@/chat/capabilities/factory", () => ({
+  issueProviderCredentialLease: issueProviderCredentialLeaseMock,
+}));
+
+vi.mock("@/chat/plugins/registry", () => ({
+  getPluginProviders: () => [
+    {
+      manifest: {
+        name: "sentry",
+        description: "Sentry",
+        capabilities: ["sentry.api"],
+        configKeys: [],
+        commandEnv: {
+          SENTRY_READ_ONLY: "1",
+        },
+        credentials: {
+          type: "oauth-bearer",
+          domains: ["sentry.io"],
+          authTokenEnv: "SENTRY_AUTH_TOKEN",
+          authTokenPlaceholder: "host_managed_credential",
+        },
+      },
+    },
+  ],
 }));
 
 const {
@@ -54,6 +96,7 @@ vi.mock("@/chat/sandbox/runtime-dependency-snapshots", () => ({
 
 import { createSandboxExecutor } from "@/chat/sandbox/sandbox";
 import { createSandboxSessionManager } from "@/chat/sandbox/session";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createBashTool } from "bash-tool";
 
 interface MockSandbox {
@@ -175,6 +218,7 @@ describe("createSandboxExecutor", () => {
   beforeEach(() => {
     sandboxGetMock.mockReset();
     sandboxCreateMock.mockReset();
+    issueProviderCredentialLeaseMock.mockReset();
     vi.mocked(createBashTool).mockReset();
     resolveRuntimeDependencySnapshotMock.mockReset();
     resolveRuntimeDependencySnapshotMock.mockResolvedValue({
@@ -192,6 +236,10 @@ describe("createSandboxExecutor", () => {
     delete process.env.VERCEL_OIDC_TOKEN;
     delete process.env.VERCEL_SANDBOX_KEEPALIVE_MS;
     delete process.env.EVAL_ENABLE_TEST_CREDENTIALS;
+  });
+
+  afterEach(async () => {
+    await disconnectStateAdapter();
   });
 
   it("recreates a sandbox when sandboxId hint points to a stopped sandbox", async () => {
@@ -613,6 +661,159 @@ describe("createSandboxExecutor", () => {
     expect(afterCommand.mock.invocationCallOrder[0]).toBeGreaterThan(
       sandbox.runCommand.mock.invocationCallOrder[0] as number,
     );
+  });
+
+  it("applies credential transforms only while running bash commands", async () => {
+    const sandbox = makeSandbox("sbx_transform_credentials");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+    issueProviderCredentialLeaseMock.mockResolvedValue({
+      id: "lease-1",
+      provider: "sentry",
+      env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
+      headerTransforms: [
+        {
+          domain: "sentry.io",
+          headers: { Authorization: "Bearer sentry-token" },
+        },
+      ],
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_transform_credentials",
+      credentialEgress: {
+        requesterId: "U123",
+        activeProvider: () => "sentry",
+      },
+    });
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "sentry-cli issues list",
+      },
+    });
+
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledWith({
+      provider: "sentry",
+      requesterId: "U123",
+      reason: "sandbox-command:sentry",
+    });
+    expect(sandbox.update).toHaveBeenNthCalledWith(1, {
+      networkPolicy: { allow: { "*": [] } },
+    });
+    expect(sandbox.update).toHaveBeenNthCalledWith(2, {
+      networkPolicy: {
+        allow: {
+          "*": [],
+          "sentry.io": [
+            {
+              transform: [
+                { headers: { Authorization: "Bearer sentry-token" } },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    expect(sandbox.update).toHaveBeenNthCalledWith(3, {
+      networkPolicy: { allow: { "*": [] } },
+    });
+    const invocation = sandbox.runCommand.mock.calls[0]?.[0];
+    expect(invocation.args?.[1]).toContain(
+      "export SENTRY_AUTH_TOKEN='host_managed_credential'",
+    );
+    expect(invocation.args?.[1]).toContain("sentry-cli issues list");
+  });
+
+  it("runs active provider commands without credentials when no credential surface exists", async () => {
+    const sandbox = makeSandbox("sbx_provider_without_credentials");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_provider_without_credentials",
+      credentialEgress: {
+        requesterId: "U123",
+        activeProvider: () => "docs",
+      },
+    });
+    executor.configureSkills([]);
+
+    await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "echo local-only",
+      },
+    });
+
+    expect(issueProviderCredentialLeaseMock).not.toHaveBeenCalled();
+    expect(sandbox.update).toHaveBeenCalledTimes(1);
+    expect(sandbox.update).toHaveBeenCalledWith({
+      networkPolicy: { allow: { "*": [] } },
+    });
+    const invocation = sandbox.runCommand.mock.calls[0]?.[0];
+    expect(invocation.args?.[1]).not.toContain("SENTRY_AUTH_TOKEN");
+    expect(invocation.args?.[1]).toContain("echo local-only");
+  });
+
+  it("returns an auth marker when command credential activation is unavailable", async () => {
+    const sandbox = makeSandbox("sbx_missing_credentials");
+    sandboxGetMock.mockResolvedValue(sandbox);
+    vi.mocked(createBashTool).mockResolvedValue({
+      tools: {
+        readFile: { execute: vi.fn(async () => ({ content: "" })) },
+        writeFile: { execute: vi.fn(async () => ({ success: true })) },
+      },
+    } as never);
+    issueProviderCredentialLeaseMock.mockRejectedValue(
+      new CredentialUnavailableError(
+        "sentry",
+        "No sentry credentials available.",
+      ),
+    );
+
+    const executor = createSandboxExecutor({
+      sandboxId: "sbx_missing_credentials",
+      credentialEgress: {
+        requesterId: "U123",
+        activeProvider: () => "sentry",
+      },
+    });
+    executor.configureSkills([]);
+
+    const response = await executor.execute({
+      toolName: "bash",
+      input: {
+        command: "sentry-cli issues list",
+      },
+    });
+
+    expect(response.result).toMatchObject({
+      ok: false,
+      exit_code: 1,
+      stdout: "",
+      stderr: expect.stringContaining(
+        "junior-auth-required provider=sentry 401 unauthorized",
+      ),
+    });
+    expect(sandbox.update).toHaveBeenCalledTimes(1);
+    expect(sandbox.update).toHaveBeenCalledWith({
+      networkPolicy: { allow: { "*": [] } },
+    });
+    expect(sandbox.runCommand).not.toHaveBeenCalled();
   });
 
   it("clears sandbox command hooks when command env resolution fails", async () => {

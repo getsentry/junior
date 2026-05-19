@@ -1,6 +1,6 @@
 import { issueProviderCredentialLease } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import { logInfo, logWarn } from "@/chat/logging";
+import { logWarn } from "@/chat/logging";
 import {
   matchesSandboxEgressDomain,
   resolveSandboxEgressProviderForHost,
@@ -142,44 +142,6 @@ function buildUpstreamUrl(request: Request): UpstreamUrlResult {
   }
 }
 
-function logForwardedProviderApiPath(request: Request): void {
-  const requestUrl = new URL(request.url);
-  if (!requestUrl.pathname.startsWith("/api/")) {
-    return;
-  }
-
-  const forwardedHost = request.headers.get(FORWARDED_HOST_HEADER);
-  if (!forwardedHost?.trim()) {
-    return;
-  }
-  const host = normalizeHost(forwardedHost);
-  if (!host) {
-    return;
-  }
-
-  const provider = resolveSandboxEgressProviderForHost(host);
-  if (provider !== "sentry") {
-    return;
-  }
-
-  logInfo(
-    "sandbox_egress_provider_api_path_observed",
-    {},
-    {
-      ...egressAttributes({
-        host,
-        method: request.method,
-        path: requestUrl.pathname,
-        provider,
-      }),
-      "app.sandbox.egress.path_has_trailing_slash":
-        requestUrl.pathname.endsWith("/"),
-      "app.sandbox.egress.query_present": requestUrl.search.length > 0,
-    },
-    `Sandbox egress received Sentry API path ${requestUrl.pathname}`,
-  );
-}
-
 async function requestBodyBytes(
   request: Request,
 ): Promise<ArrayBuffer | undefined> {
@@ -247,20 +209,6 @@ function responseHeaders(upstream: Response): Headers {
   return headers;
 }
 
-function restoreProviderApiPath(upstreamUrl: URL, provider: string): URL {
-  if (
-    provider !== "sentry" ||
-    upstreamUrl.pathname.endsWith("/") ||
-    !upstreamUrl.pathname.startsWith("/api/")
-  ) {
-    return upstreamUrl;
-  }
-
-  const restoredUrl = new URL(upstreamUrl);
-  restoredUrl.pathname = `${upstreamUrl.pathname}/`;
-  return restoredUrl;
-}
-
 async function credentialLease(
   egressId: string,
   provider: string,
@@ -323,7 +271,6 @@ export async function proxySandboxEgressRequest(
   if (!oidcToken) {
     return jsonError("Missing Vercel Sandbox OIDC token", 401);
   }
-  logForwardedProviderApiPath(request);
 
   let oidcPayload: JWTPayload;
   try {
@@ -375,7 +322,7 @@ export async function proxySandboxEgressRequest(
     );
     return jsonError(upstreamResult.error, 400);
   }
-  let upstreamUrl = upstreamResult.url;
+  const upstreamUrl = upstreamResult.url;
 
   const provider = resolveSandboxEgressProviderForHost(upstreamUrl.hostname);
   if (!provider) {
@@ -392,25 +339,6 @@ export async function proxySandboxEgressRequest(
       "Sandbox egress forwarded host is not owned by any credential provider",
     );
     return jsonError("No provider owns forwarded host", 403);
-  }
-  const restoredUpstreamUrl = restoreProviderApiPath(upstreamUrl, provider);
-  if (restoredUpstreamUrl.href !== upstreamUrl.href) {
-    logInfo(
-      "sandbox_egress_upstream_path_restored",
-      {},
-      {
-        ...egressAttributes({
-          egressId: activeEgressId,
-          host: upstreamUrl.hostname,
-          method: request.method,
-          path: restoredUpstreamUrl.pathname,
-          provider,
-        }),
-        "app.sandbox.egress.original_path": upstreamUrl.pathname,
-      },
-      "Sandbox egress restored provider API path before forwarding",
-    );
-    upstreamUrl = restoredUpstreamUrl;
   }
 
   // Vercel OIDC authenticates the forwarded VM session; Junior's egress

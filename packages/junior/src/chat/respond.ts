@@ -501,6 +501,7 @@ export async function generateAssistantReply(
       credentialEgress: requesterId
         ? {
             requesterId,
+            activeProvider: () => skillSandbox.getActiveSkill()?.pluginProvider,
           }
         : undefined,
       onSandboxAcquired: async (sandbox) => {
