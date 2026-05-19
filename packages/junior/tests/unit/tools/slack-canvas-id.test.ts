@@ -4,6 +4,7 @@ import { extractCanvasId } from "@/chat/tools/slack/canvases";
 describe("extractCanvasId", () => {
   it("returns an uppercased F-prefixed ID as-is", () => {
     expect(extractCanvasId("F0AU9MRL63T")).toBe("F0AU9MRL63T");
+    expect(extractCanvasId("FABCD12345")).toBe("FABCD12345");
     expect(extractCanvasId("f0abcdef")).toBe("F0ABCDEF");
   });
 
@@ -11,6 +12,9 @@ describe("extractCanvasId", () => {
     expect(
       extractCanvasId("https://sentry.slack.com/docs/T024ZCV9U/F0AU9MRL63T"),
     ).toBe("F0AU9MRL63T");
+    expect(
+      extractCanvasId("https://sentry.slack.com/docs/T024ZCV9U/FABCD12345"),
+    ).toBe("FABCD12345");
     expect(
       extractCanvasId(
         "<https://sentry.slack.com/docs/T024ZCV9U/F0AU9MRL63T|Canvas>",

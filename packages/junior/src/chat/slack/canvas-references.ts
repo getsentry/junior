@@ -1,6 +1,6 @@
-const SLACK_FILE_ID_PATTERN = /^F[0-9][A-Z0-9]{4,}$/i;
+const SLACK_FILE_ID_PATTERN = /^F[A-Z0-9]{4,}$/i;
 const SLACK_CANVAS_PATH_PATTERN =
-  /^\/(?:docs|canvas|files)\/(?:T[A-Z0-9]+\/)?(?:U[A-Z0-9]+\/)?(F[0-9][A-Z0-9]{4,})(?:\/|$)/i;
+  /^\/(?:docs|canvas|files)\/(?:T[A-Z0-9]+\/)?(?:U[A-Z0-9]+\/)?(F[A-Z0-9]{4,})(?:\/|$)/i;
 
 function isSlackHost(hostname: string): boolean {
   return hostname === "slack.com" || hostname.endsWith(".slack.com");
