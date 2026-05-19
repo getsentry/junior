@@ -45,7 +45,7 @@ function prepareCanvasEditArguments(input: unknown): {
   return prepareTextReplacementArguments(input);
 }
 
-function knownCanvasUrl(
+function storedCanvasUrl(
   state: ToolState,
   canvasId: string,
 ): string | undefined {
@@ -151,7 +151,6 @@ export function createSlackCanvasCreateTool(
         markdown,
         channelId: targetChannelId,
       });
-      state.setTurnCreatedCanvasId(created.canvasId);
       await state.patchArtifactState({
         lastCanvasId: created.canvasId,
         lastCanvasUrl: created.permalink,
@@ -182,10 +181,7 @@ export function createSlackCanvasCreateTool(
  * either a canvas/file ID (`F...`) or a Slack canvas/docs URL and returns the
  * canvas body downloaded via the bot's file access.
  */
-export function createSlackCanvasReadTool(
-  _state: ToolState,
-  _context: ToolRuntimeContext,
-) {
+export function createSlackCanvasReadTool() {
   return tool({
     description:
       "Read a bounded line range from a Slack canvas as markdown. Use when you need exact Canvas contents to verify facts or make edits safely. Do not use for generic web pages — use webFetch for those.",
@@ -265,10 +261,7 @@ export function createSlackCanvasReadTool(
 }
 
 /** Create a tool that edits a Slack canvas like a markdown file. */
-export function createSlackCanvasEditTool(
-  state: ToolState,
-  _context: ToolRuntimeContext,
-) {
+export function createSlackCanvasEditTool(state: ToolState) {
   return tool({
     description:
       "Edit one Slack canvas with exact markdown replacements. Use for precise changes to existing Canvas content. Each oldText must match exactly, be unique, and not overlap another edit. Returns a diff.",
@@ -376,10 +369,7 @@ export function createSlackCanvasEditTool(
 }
 
 /** Create a tool that deliberately replaces a Slack canvas body. */
-export function createSlackCanvasWriteTool(
-  state: ToolState,
-  _context: ToolRuntimeContext,
-) {
+export function createSlackCanvasWriteTool(state: ToolState) {
   return tool({
     description:
       "Write UTF-8 markdown content to a Slack canvas. Use for deliberate full-Canvas replacement after validation. Do not use for targeted edits.",
@@ -428,7 +418,7 @@ export function createSlackCanvasWriteTool(
         });
         await state.patchArtifactState({
           lastCanvasId: target.canvasId,
-          lastCanvasUrl: knownCanvasUrl(state, target.canvasId),
+          lastCanvasUrl: storedCanvasUrl(state, target.canvasId),
         });
         const response = {
           ok: true,

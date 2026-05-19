@@ -8,7 +8,7 @@
 ## Changelog
 
 - 2026-03-03: Standardized metadata headers and reconciled spec references/structure.
-- 2026-05-19: Reframed Slack Canvas follow-up tools as file-like document tools with explicit known canvas handles.
+- 2026-05-19: Reframed Slack Canvas follow-up tools as file-like document tools with explicit canvas handles.
 
 ## Status
 
@@ -25,14 +25,15 @@ Define how tool execution context is sourced and enforced so model outputs canno
 
 ## Scope
 
-- Context-bound Slack channel/canvas/list tool targeting.
+- Context-bound Slack channel/list targeting and Canvas creation targeting.
 - Runtime-owned destination resolution rules.
 - Failure behavior for missing or invalid context.
+- File-like Slack Canvas document handle semantics.
 
 ## Non-Goals
 
 - Provider credential issuance and OAuth flow definitions.
-- Non-context-bound general-purpose tool semantics.
+- Other non-context-bound general-purpose tool semantics.
 
 ## Core Rule
 
@@ -72,4 +73,4 @@ Integration coverage for context-bound tools must verify:
 1. Tool inputs do not include model-selectable destination IDs for context-bound tools.
 2. Operations execute against harness-provided context.
 3. Missing context fails safely.
-4. Disallowed fallback targets (for example context-less or cross-thread canvases) are not invoked.
+4. Canvas document tools validate handles and Slack metadata without enforcing a separate visible-context allowlist.

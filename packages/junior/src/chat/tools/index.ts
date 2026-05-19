@@ -46,7 +46,6 @@ function createToolState(
   context: ToolRuntimeContext,
 ): ToolState {
   const operationResultCache = new Map<string, unknown>();
-  let turnCreatedCanvasId: string | undefined;
   const artifactState: ThreadArtifactsState = {
     ...(context.artifactState ?? {}),
     listColumnMap: {
@@ -68,11 +67,6 @@ function createToolState(
   return {
     artifactState,
     patchArtifactState,
-    getCurrentCanvasId: () => artifactState.lastCanvasId,
-    getTurnCreatedCanvasId: () => turnCreatedCanvasId,
-    setTurnCreatedCanvasId: (canvasId: string) => {
-      turnCreatedCanvasId = canvasId;
-    },
     getCurrentListId: () => artifactState.lastListId,
     getOperationResult: <T>(operationKey: string): T | undefined =>
       operationResultCache.get(operationKey) as T | undefined,
@@ -110,9 +104,9 @@ export function createTools(
       hooks,
       hooks.toolOverrides?.imageGenerate,
     ),
-    slackCanvasRead: createSlackCanvasReadTool(state, context),
-    slackCanvasEdit: createSlackCanvasEditTool(state, context),
-    slackCanvasWrite: createSlackCanvasWriteTool(state, context),
+    slackCanvasRead: createSlackCanvasReadTool(),
+    slackCanvasEdit: createSlackCanvasEditTool(state),
+    slackCanvasWrite: createSlackCanvasWriteTool(state),
     slackThreadRead: createSlackThreadReadTool(context),
     slackUserLookup: createSlackUserLookupTool(),
     slackListCreate: createSlackListCreateTool(state),

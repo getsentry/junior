@@ -3,7 +3,7 @@ import {
   createSlackCanvasEditTool,
   createSlackCanvasWriteTool,
 } from "@/chat/tools/slack/canvas-tools";
-import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
+import type { ToolState } from "@/chat/tools/types";
 import { canvasesEditOk, filesInfoOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -13,28 +13,21 @@ import {
 
 function createState(
   options: {
-    currentCanvasId?: string;
+    lastCanvasId?: string;
     lastCanvasUrl?: string;
     recentCanvases?: ToolState["artifactState"]["recentCanvases"];
-    turnCreatedCanvasId?: string;
   } = {},
 ): ToolState {
   const operationResultCache = new Map<string, unknown>();
   const artifactState: Record<string, unknown> = {
-    lastCanvasId: options.currentCanvasId,
+    lastCanvasId: options.lastCanvasId,
     lastCanvasUrl: options.lastCanvasUrl,
     recentCanvases: options.recentCanvases,
   };
-  let turnCreatedCanvasId = options.turnCreatedCanvasId;
   return {
     artifactState: artifactState as ToolState["artifactState"],
     patchArtifactState: (patch) => {
       Object.assign(artifactState, patch);
-    },
-    getCurrentCanvasId: () => options.currentCanvasId,
-    getTurnCreatedCanvasId: () => turnCreatedCanvasId,
-    setTurnCreatedCanvasId: (canvasId: string) => {
-      turnCreatedCanvasId = canvasId;
     },
     getCurrentListId: () => undefined,
     getOperationResult: <T>(operationKey: string) =>
@@ -42,18 +35,6 @@ function createState(
     setOperationResult: (operationKey: string, result: unknown) => {
       operationResultCache.set(operationKey, result);
     },
-  };
-}
-
-function createContext(userText: string): ToolRuntimeContext {
-  return {
-    userText,
-    channelCapabilities: {
-      canCreateCanvas: false,
-      canPostToChannel: false,
-      canAddReactions: false,
-    },
-    sandbox: {} as never,
   };
 }
 
@@ -78,11 +59,8 @@ describe("Slack canvas file-like tools", () => {
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ currentCanvasId: "F0PREVIOUS" });
-    const tool = createSlackCanvasEditTool(
-      state,
-      createContext("update the canvas"),
-    );
+    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasEdit execute function missing");
@@ -133,11 +111,8 @@ describe("Slack canvas file-like tools", () => {
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ currentCanvasId: "F0PREVIOUS" });
-    const tool = createSlackCanvasEditTool(
-      state,
-      createContext("update two canvas sections"),
-    );
+    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasEdit execute function missing");
@@ -180,11 +155,8 @@ describe("Slack canvas file-like tools", () => {
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ currentCanvasId: "F0PREVIOUS" });
-    const tool = createSlackCanvasEditTool(
-      state,
-      createContext("update the canvas"),
-    );
+    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasEdit execute function missing");
@@ -212,11 +184,8 @@ describe("Slack canvas file-like tools", () => {
 
   it("rejects missing exact text without writing to Slack", async () => {
     queueCanvasRead("F0PREVIOUS", "# Section\n\nOriginal");
-    const state = createState({ currentCanvasId: "F0PREVIOUS" });
-    const tool = createSlackCanvasEditTool(
-      state,
-      createContext("update the canvas"),
-    );
+    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasEdit execute function missing");
@@ -240,11 +209,8 @@ describe("Slack canvas file-like tools", () => {
 
   it("rejects ambiguous exact text without writing to Slack", async () => {
     queueCanvasRead("F0PREVIOUS", "# A\n\nDuplicate\n\n# B\n\nDuplicate");
-    const state = createState({ currentCanvasId: "F0PREVIOUS" });
-    const tool = createSlackCanvasEditTool(
-      state,
-      createContext("update the canvas"),
-    );
+    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const tool = createSlackCanvasEditTool(state);
 
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasEdit execute function missing");
@@ -270,11 +236,8 @@ describe("Slack canvas file-like tools", () => {
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ currentCanvasId: "F0PREVIOUS" });
-    const tool = createSlackCanvasWriteTool(
-      state,
-      createContext("replace the canvas"),
-    );
+    const state = createState({ lastCanvasId: "F0PREVIOUS" });
+    const tool = createSlackCanvasWriteTool(state);
 
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasWrite execute function missing");
@@ -313,7 +276,7 @@ describe("Slack canvas file-like tools", () => {
       body: canvasesEditOk(),
     });
     const state = createState({
-      currentCanvasId: "F0NEWCANV",
+      lastCanvasId: "F0NEWCANV",
       lastCanvasUrl: "https://sentry.slack.com/docs/T000/F0OLDCANV",
       recentCanvases: [
         {
@@ -322,10 +285,7 @@ describe("Slack canvas file-like tools", () => {
         },
       ],
     });
-    const tool = createSlackCanvasWriteTool(
-      state,
-      createContext("replace the canvas"),
-    );
+    const tool = createSlackCanvasWriteTool(state);
 
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasWrite execute function missing");

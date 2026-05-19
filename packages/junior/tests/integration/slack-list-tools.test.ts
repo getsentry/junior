@@ -13,17 +13,11 @@ function createToolState(options: { currentListId?: string } = {}): ToolState {
   const artifactState: Record<string, unknown> = {
     listColumnMap: {},
   };
-  let turnCreatedCanvasId: string | undefined;
 
   return {
     artifactState: artifactState as ToolState["artifactState"],
     patchArtifactState: (patch) => {
       Object.assign(artifactState, patch);
-    },
-    getCurrentCanvasId: () => undefined,
-    getTurnCreatedCanvasId: () => turnCreatedCanvasId,
-    setTurnCreatedCanvasId: (canvasId: string) => {
-      turnCreatedCanvasId = canvasId;
     },
     getCurrentListId: () => options.currentListId,
     getOperationResult: <T>(operationKey: string): T | undefined =>

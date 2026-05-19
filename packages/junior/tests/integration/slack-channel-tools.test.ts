@@ -20,16 +20,10 @@ function createToolState(): ToolState {
   const artifactState: Record<string, unknown> = {
     listColumnMap: {},
   };
-  let turnCreatedCanvasId: string | undefined;
 
   return {
     artifactState: artifactState as ToolState["artifactState"],
     patchArtifactState: () => undefined,
-    getCurrentCanvasId: () => undefined,
-    getTurnCreatedCanvasId: () => turnCreatedCanvasId,
-    setTurnCreatedCanvasId: (canvasId: string) => {
-      turnCreatedCanvasId = canvasId;
-    },
     getCurrentListId: () => undefined,
     getOperationResult: <T>(operationKey: string): T | undefined =>
       operationResultCache.get(operationKey) as T | undefined,

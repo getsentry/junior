@@ -18,7 +18,6 @@ import {
 
 function createToolState(
   options: {
-    currentCanvasId?: string;
     currentListId?: string;
     listColumnMap?: {
       titleColumnId?: string;
@@ -29,7 +28,6 @@ function createToolState(
   } = {},
 ): ToolState {
   const operationResultCache = new Map<string, unknown>();
-  let turnCreatedCanvasId: string | undefined;
   const artifactState: Record<string, unknown> = {
     listColumnMap: options.listColumnMap ?? {},
   };
@@ -38,11 +36,6 @@ function createToolState(
     artifactState: artifactState as ToolState["artifactState"],
     patchArtifactState: (patch) => {
       Object.assign(artifactState, patch);
-    },
-    getCurrentCanvasId: () => options.currentCanvasId,
-    getTurnCreatedCanvasId: () => turnCreatedCanvasId,
-    setTurnCreatedCanvasId: (canvasId: string) => {
-      turnCreatedCanvasId = canvasId;
     },
     getCurrentListId: () => options.currentListId,
     getOperationResult: <T>(operationKey: string): T | undefined =>

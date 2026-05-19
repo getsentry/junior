@@ -29,9 +29,6 @@ function createToolState(
     patchArtifactState: (patch) => {
       Object.assign(artifactState, patch);
     },
-    getCurrentCanvasId: () => undefined,
-    getTurnCreatedCanvasId: () => undefined,
-    setTurnCreatedCanvasId: () => undefined,
     getCurrentListId: () => options.currentListId,
     getOperationResult: <T>(operationKey: string): T | undefined =>
       operationResultCache.get(operationKey) as T | undefined,
