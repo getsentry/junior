@@ -8,6 +8,9 @@ import {
   normalizeSlackConversationId,
   withSlackRetries,
 } from "@/chat/slack/client";
+import { extractCanvasId } from "@/chat/slack/canvas-references";
+
+export { extractCanvasId } from "@/chat/slack/canvas-references";
 
 export interface CanvasCreateInput {
   title: string;
@@ -192,29 +195,15 @@ export async function writeCanvasMarkdown(input: {
   return normalizedContent;
 }
 
-const CANVAS_ID_PATTERN = /^F[A-Z0-9]+$/i;
-const CANVAS_URL_FILE_ID_PATTERN =
-  /\/(?:docs|canvas|files)\/(?:T[A-Z0-9]+\/)?(?:U[A-Z0-9]+\/)?(F[A-Z0-9]+)/i;
-
-/**
- * Resolve a Slack canvas ID from a raw canvas ID or Slack docs/canvas URL.
- * Accepts forms like `F0ABCDE`, `https://team.slack.com/docs/T.../F...`, and
- * `https://team.slack.com/canvas/F...`.
- */
-export function extractCanvasId(input: string): string | undefined {
-  const trimmed = input.trim();
-  if (!trimmed) return undefined;
-
-  if (CANVAS_ID_PATTERN.test(trimmed)) {
-    return trimmed.toUpperCase();
-  }
-
-  const urlMatch = trimmed.match(CANVAS_URL_FILE_ID_PATTERN);
-  if (urlMatch?.[1]) {
-    return urlMatch[1].toUpperCase();
-  }
-
-  return undefined;
+function isCanvasFile(file: NonNullable<FilesInfoResponse["file"]>): boolean {
+  const filetype = file.filetype?.toLowerCase() ?? "";
+  const mimetype = file.mimetype?.toLowerCase() ?? "";
+  return (
+    filetype === "quip" ||
+    filetype === "canvas" ||
+    mimetype.includes("quip") ||
+    mimetype.includes("canvas")
+  );
 }
 
 /**
@@ -251,6 +240,9 @@ export async function readCanvas(
   const file = info.file;
   if (!file) {
     throw new Error("Slack returned no file metadata for canvas.");
+  }
+  if (!isCanvasFile(file)) {
+    throw new Error("Slack file metadata did not describe a Canvas document.");
   }
 
   const downloadUrl = file.url_private_download ?? file.url_private;

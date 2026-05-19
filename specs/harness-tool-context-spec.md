@@ -42,7 +42,7 @@ Examples:
 
 - Slack channel operations resolve destination from `ToolRuntimeContext.channelId`.
 - List follow-up operations resolve target artifacts from harness-managed artifact state (`lastListId`, turn-created IDs).
-- Slack Canvas document operations use explicit file-like handles (`canvas`) but only for canvases known from artifact state, created in the current turn, or visible in the routed conversation context provided to the model. A handle that appears only in the active user instruction is not sufficient authority.
+- Slack Canvas document operations use explicit file-like handles (`canvas`). Canvas IDs and URLs may be attempted directly; Slack file permissions and Canvas metadata decide whether the operation can proceed.
 
 ## Security Contract
 
@@ -50,7 +50,7 @@ Examples:
 2. Runtime must validate context before execution and return `ok: false` for missing/invalid context.
 3. Runtime must not silently fall back to broader/private scopes that change visibility semantics.
 4. Canvas creation must stay bound to the active assistant conversation context; runtime must not silently retarget to unrelated/private scopes.
-5. Canvas read/edit/write tools must reject handles that are neither known from artifact state nor visible in the current conversation context.
+5. Canvas read/edit/write tools must validate that the handle parses as a Slack Canvas/file ID. Canvas reads must confirm Slack metadata describes a Canvas document before downloading content; writes still depend on Slack `canvases.edit` permission and type checks.
 
 ## Slack-Specific Targeting Rules
 

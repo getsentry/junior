@@ -271,8 +271,8 @@ export function filesInfoOk(
         : {}),
       ...(input.title ? { title: input.title } : {}),
       ...(input.name ? { name: input.name } : {}),
-      ...(input.filetype ? { filetype: input.filetype } : {}),
-      ...(input.mimetype ? { mimetype: input.mimetype } : {}),
+      filetype: input.filetype ?? "quip",
+      mimetype: input.mimetype ?? "text/plain",
     },
   });
 }

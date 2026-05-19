@@ -119,7 +119,7 @@ describe("createSlackCanvasReadTool", () => {
       body: "canvas body",
     });
 
-    const tool = createTool("read the earlier canvas", undefined, "F0ABCDEF");
+    const tool = createTool("read the earlier canvas");
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasRead execute function missing");
     }
@@ -176,37 +176,6 @@ describe("createSlackCanvasReadTool", () => {
       "Read more with offset=1001 and limit=1000.",
     );
     expect(result.original_byte_length).toBe(body.length);
-  });
-
-  it("reads a canvas referenced in visible conversation context", async () => {
-    queueSlackApiResponse("files.info", {
-      body: filesInfoOk({
-        fileId: "F0THREADCTX",
-        urlPrivate:
-          "https://files.slack.com/files-pri/T000-F0THREADCTX/canvas.md",
-      }),
-    });
-    queueSlackPrivateFileDownload({
-      status: 200,
-      body: "thread canvas body",
-    });
-
-    const tool = createTool(
-      "read the canvas from above",
-      undefined,
-      "[user] Alice: shared https://sentry.slack.com/docs/T024ZCV9U/F0THREADCTX",
-    );
-    if (typeof tool.execute !== "function") {
-      throw new Error("slackCanvasRead execute function missing");
-    }
-
-    const result = await tool.execute({ canvas: "F0THREADCTX" }, {} as never);
-
-    expect(result).toMatchObject({
-      ok: true,
-      canvas_id: "F0THREADCTX",
-      content: "thread canvas body",
-    });
   });
 
   it("reads a requested line window", async () => {
@@ -286,22 +255,18 @@ describe("createSlackCanvasReadTool", () => {
     expect(getCapturedSlackApiCalls("files.info")).toHaveLength(0);
   });
 
-  it("rejects a canvas that is neither in artifact nor conversation context", async () => {
-    const tool = createTool("read the canvas");
-    if (typeof tool.execute !== "function") {
-      throw new Error("slackCanvasRead execute function missing");
-    }
+  it("reads a canvas referenced by the active user text", async () => {
+    queueSlackApiResponse("files.info", {
+      body: filesInfoOk({
+        fileId: "F0ACTIVE",
+        urlPrivate: "https://files.slack.com/files-pri/T000-F0ACTIVE/canvas.md",
+      }),
+    });
+    queueSlackPrivateFileDownload({
+      status: 200,
+      body: "active canvas body",
+    });
 
-    const result = await tool.execute({ canvas: "F0PRIVATE" }, {} as never);
-
-    expect(result).toMatchObject({ ok: false });
-    expect((result as { error: string }).error).toContain(
-      "visible conversation context",
-    );
-    expect(getCapturedSlackApiCalls("files.info")).toHaveLength(0);
-  });
-
-  it("rejects a canvas referenced only by the active user text", async () => {
     const tool = createTool("read F0ACTIVE");
     if (typeof tool.execute !== "function") {
       throw new Error("slackCanvasRead execute function missing");
@@ -309,24 +274,11 @@ describe("createSlackCanvasReadTool", () => {
 
     const result = await tool.execute({ canvas: "F0ACTIVE" }, {} as never);
 
-    expect(result).toMatchObject({ ok: false });
-    expect(getCapturedSlackApiCalls("files.info")).toHaveLength(0);
-  });
-
-  it("rejects a canvas ID that is only a substring of a referenced canvas", async () => {
-    const tool = createTool(
-      "read the shorter canvas",
-      undefined,
-      "Alice shared F0ACTIVEEXTRA",
-    );
-    if (typeof tool.execute !== "function") {
-      throw new Error("slackCanvasRead execute function missing");
-    }
-
-    const result = await tool.execute({ canvas: "F0ACTIVE" }, {} as never);
-
-    expect(result).toMatchObject({ ok: false });
-    expect(getCapturedSlackApiCalls("files.info")).toHaveLength(0);
+    expect(result).toMatchObject({
+      ok: true,
+      canvas_id: "F0ACTIVE",
+      content: "active canvas body",
+    });
   });
 
   it("returns an error when files.info fails", async () => {
@@ -365,5 +317,26 @@ describe("createSlackCanvasReadTool", () => {
     const result = await tool.execute({ canvas: "F0ABCDEF" }, {} as never);
 
     expect(result).toMatchObject({ ok: false, canvas_id: "F0ABCDEF" });
+  });
+
+  it("rejects non-Canvas Slack files before download", async () => {
+    queueSlackApiResponse("files.info", {
+      body: filesInfoOk({
+        fileId: "F0SCRIPT",
+        filetype: "javascript",
+        mimetype: "application/javascript",
+        urlPrivate: "https://files.slack.com/files-pri/T000-F0SCRIPT/app.js",
+      }),
+    });
+
+    const tool = createTool("");
+    if (typeof tool.execute !== "function") {
+      throw new Error("slackCanvasRead execute function missing");
+    }
+
+    const result = await tool.execute({ canvas: "F0SCRIPT" }, {} as never);
+
+    expect(result).toMatchObject({ ok: false, canvas_id: "F0SCRIPT" });
+    expect((result as { error: string }).error).toContain("Canvas document");
   });
 });

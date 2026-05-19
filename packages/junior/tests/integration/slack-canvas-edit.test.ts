@@ -72,13 +72,13 @@ function queueCanvasRead(canvasId: string, body: string): void {
 describe("Slack canvas file-like tools", () => {
   it("edits a canvas with exact replacements and writes the full next markdown body", async () => {
     queueCanvasRead(
-      "FPREVIOUS",
+      "F0PREVIOUS",
       "# Section A\n\nOld summary\n\n# Section B\n\nKeep me",
     );
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ currentCanvasId: "FPREVIOUS" });
+    const state = createState({ currentCanvasId: "F0PREVIOUS" });
     const tool = createSlackCanvasEditTool(
       state,
       createContext("update the canvas"),
@@ -90,7 +90,7 @@ describe("Slack canvas file-like tools", () => {
 
     const result = await tool.execute(
       {
-        canvas: "FPREVIOUS",
+        canvas: "F0PREVIOUS",
         edits: [{ oldText: "Old summary", newText: "New summary" }],
       },
       {} as never,
@@ -99,7 +99,7 @@ describe("Slack canvas file-like tools", () => {
     const editCalls = getCapturedSlackApiCalls("canvases.edit");
     expect(editCalls).toHaveLength(1);
     expect(editCalls[0]?.params).toMatchObject({
-      canvas_id: "FPREVIOUS",
+      canvas_id: "F0PREVIOUS",
       changes: [
         {
           operation: "replace",
@@ -116,21 +116,24 @@ describe("Slack canvas file-like tools", () => {
     expect(change?.[0]).not.toHaveProperty("section_id");
     expect(result).toMatchObject({
       ok: true,
-      canvas_id: "FPREVIOUS",
+      canvas_id: "F0PREVIOUS",
       replacements: 1,
       first_changed_line: 3,
     });
     expect((result as { diff: string }).diff).toContain("-3 Old summary");
     expect((result as { diff: string }).diff).toContain("+3 New summary");
-    expect(state.artifactState.lastCanvasId).toBe("FPREVIOUS");
+    expect(state.artifactState.lastCanvasId).toBe("F0PREVIOUS");
   });
 
   it("applies multiple edits against the original canvas content in one write", async () => {
-    queueCanvasRead("FPREVIOUS", "# A\n\nAlpha\n\n# B\n\nBeta\n\n# C\n\nGamma");
+    queueCanvasRead(
+      "F0PREVIOUS",
+      "# A\n\nAlpha\n\n# B\n\nBeta\n\n# C\n\nGamma",
+    );
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ currentCanvasId: "FPREVIOUS" });
+    const state = createState({ currentCanvasId: "F0PREVIOUS" });
     const tool = createSlackCanvasEditTool(
       state,
       createContext("update two canvas sections"),
@@ -142,7 +145,7 @@ describe("Slack canvas file-like tools", () => {
 
     const result = await tool.execute(
       {
-        canvas: "FPREVIOUS",
+        canvas: "F0PREVIOUS",
         edits: [
           { oldText: "Alpha", newText: "Alpha updated" },
           { oldText: "Gamma", newText: "Gamma updated" },
@@ -170,11 +173,14 @@ describe("Slack canvas file-like tools", () => {
   });
 
   it("returns an edit diff without unrelated heading normalization noise", async () => {
-    queueCanvasRead("FPREVIOUS", "#### Deep heading\n\nOld summary\n\nKeep me");
+    queueCanvasRead(
+      "F0PREVIOUS",
+      "#### Deep heading\n\nOld summary\n\nKeep me",
+    );
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ currentCanvasId: "FPREVIOUS" });
+    const state = createState({ currentCanvasId: "F0PREVIOUS" });
     const tool = createSlackCanvasEditTool(
       state,
       createContext("update the canvas"),
@@ -186,7 +192,7 @@ describe("Slack canvas file-like tools", () => {
 
     const result = await tool.execute(
       {
-        canvas: "FPREVIOUS",
+        canvas: "F0PREVIOUS",
         edits: [{ oldText: "Old summary", newText: "New summary" }],
       },
       {} as never,
@@ -205,8 +211,8 @@ describe("Slack canvas file-like tools", () => {
   });
 
   it("rejects missing exact text without writing to Slack", async () => {
-    queueCanvasRead("FPREVIOUS", "# Section\n\nOriginal");
-    const state = createState({ currentCanvasId: "FPREVIOUS" });
+    queueCanvasRead("F0PREVIOUS", "# Section\n\nOriginal");
+    const state = createState({ currentCanvasId: "F0PREVIOUS" });
     const tool = createSlackCanvasEditTool(
       state,
       createContext("update the canvas"),
@@ -218,7 +224,7 @@ describe("Slack canvas file-like tools", () => {
 
     const result = await tool.execute(
       {
-        canvas: "FPREVIOUS",
+        canvas: "F0PREVIOUS",
         edits: [{ oldText: "Missing", newText: "Replacement" }],
       },
       {} as never,
@@ -226,15 +232,15 @@ describe("Slack canvas file-like tools", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      canvas_id: "FPREVIOUS",
+      canvas_id: "F0PREVIOUS",
     });
     expect((result as { error: string }).error).toContain("Could not find");
     expect(getCapturedSlackApiCalls("canvases.edit")).toHaveLength(0);
   });
 
   it("rejects ambiguous exact text without writing to Slack", async () => {
-    queueCanvasRead("FPREVIOUS", "# A\n\nDuplicate\n\n# B\n\nDuplicate");
-    const state = createState({ currentCanvasId: "FPREVIOUS" });
+    queueCanvasRead("F0PREVIOUS", "# A\n\nDuplicate\n\n# B\n\nDuplicate");
+    const state = createState({ currentCanvasId: "F0PREVIOUS" });
     const tool = createSlackCanvasEditTool(
       state,
       createContext("update the canvas"),
@@ -246,7 +252,7 @@ describe("Slack canvas file-like tools", () => {
 
     const result = await tool.execute(
       {
-        canvas: "FPREVIOUS",
+        canvas: "F0PREVIOUS",
         edits: [{ oldText: "Duplicate", newText: "Replacement" }],
       },
       {} as never,
@@ -254,7 +260,7 @@ describe("Slack canvas file-like tools", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      canvas_id: "FPREVIOUS",
+      canvas_id: "F0PREVIOUS",
     });
     expect((result as { error: string }).error).toContain("occurrences");
     expect(getCapturedSlackApiCalls("canvases.edit")).toHaveLength(0);
@@ -264,7 +270,7 @@ describe("Slack canvas file-like tools", () => {
     queueSlackApiResponse("canvases.edit", {
       body: canvasesEditOk(),
     });
-    const state = createState({ currentCanvasId: "FPREVIOUS" });
+    const state = createState({ currentCanvasId: "F0PREVIOUS" });
     const tool = createSlackCanvasWriteTool(
       state,
       createContext("replace the canvas"),
@@ -276,7 +282,7 @@ describe("Slack canvas file-like tools", () => {
 
     const result = await tool.execute(
       {
-        canvas: "FPREVIOUS",
+        canvas: "F0PREVIOUS",
         content: "# Replacement\n\nNew body",
       },
       {} as never,
@@ -284,12 +290,12 @@ describe("Slack canvas file-like tools", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      canvas_id: "FPREVIOUS",
+      canvas_id: "F0PREVIOUS",
     });
     const editCalls = getCapturedSlackApiCalls("canvases.edit");
     expect(editCalls).toHaveLength(1);
     expect(editCalls[0]?.params).toMatchObject({
-      canvas_id: "FPREVIOUS",
+      canvas_id: "F0PREVIOUS",
       changes: [
         {
           operation: "replace",
@@ -307,12 +313,12 @@ describe("Slack canvas file-like tools", () => {
       body: canvasesEditOk(),
     });
     const state = createState({
-      currentCanvasId: "FNEW",
-      lastCanvasUrl: "https://sentry.slack.com/docs/T000/FOLD",
+      currentCanvasId: "F0NEWCANV",
+      lastCanvasUrl: "https://sentry.slack.com/docs/T000/F0OLDCANV",
       recentCanvases: [
         {
-          id: "FNEW",
-          url: "https://sentry.slack.com/docs/T000/FNEW",
+          id: "F0NEWCANV",
+          url: "https://sentry.slack.com/docs/T000/F0NEWCANV",
         },
       ],
     });
@@ -327,7 +333,7 @@ describe("Slack canvas file-like tools", () => {
 
     const result = await tool.execute(
       {
-        canvas: "FNEW",
+        canvas: "F0NEWCANV",
         content: "# Replacement\n\nNew body",
       },
       {} as never,
@@ -335,11 +341,11 @@ describe("Slack canvas file-like tools", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      canvas_id: "FNEW",
+      canvas_id: "F0NEWCANV",
     });
-    expect(state.artifactState.lastCanvasId).toBe("FNEW");
+    expect(state.artifactState.lastCanvasId).toBe("F0NEWCANV");
     expect(state.artifactState.lastCanvasUrl).toBe(
-      "https://sentry.slack.com/docs/T000/FNEW",
+      "https://sentry.slack.com/docs/T000/F0NEWCANV",
     );
   });
 });

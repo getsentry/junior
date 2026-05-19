@@ -22,8 +22,6 @@ import type { CanvasArtifactSummary } from "@/chat/state/artifacts";
 import type { ToolRuntimeContext, ToolState } from "@/chat/tools/types";
 
 const MAX_RECENT_CANVASES = 5;
-const CANVAS_ID_REFERENCE_PATTERN =
-  /(?:^|[^A-Z0-9])(F[A-Z0-9]+)(?=$|[^A-Z0-9])/gi;
 
 function mergeRecentCanvases(
   existing: CanvasArtifactSummary[] | undefined,
@@ -47,35 +45,6 @@ function prepareCanvasEditArguments(input: unknown): {
   return prepareTextReplacementArguments(input);
 }
 
-function canvasIdsInText(text: string): Set<string> {
-  const ids = new Set<string>();
-  for (const match of text.matchAll(CANVAS_ID_REFERENCE_PATTERN)) {
-    if (match[1]) ids.add(match[1].toUpperCase());
-  }
-  return ids;
-}
-
-function knownCanvasIds(state: ToolState): Set<string> {
-  const ids = new Set<string>();
-  const turnCanvasId = state.getTurnCreatedCanvasId();
-  if (turnCanvasId) ids.add(turnCanvasId.toUpperCase());
-  const currentCanvasId = state.getCurrentCanvasId();
-  if (currentCanvasId) ids.add(currentCanvasId.toUpperCase());
-  const lastCanvasUrl = state.artifactState.lastCanvasUrl;
-  if (lastCanvasUrl) {
-    const canvasId = extractCanvasId(lastCanvasUrl);
-    if (canvasId) ids.add(canvasId);
-  }
-  for (const canvas of state.artifactState.recentCanvases ?? []) {
-    ids.add(canvas.id.toUpperCase());
-    if (canvas.url) {
-      const canvasId = extractCanvasId(canvas.url);
-      if (canvasId) ids.add(canvasId);
-    }
-  }
-  return ids;
-}
-
 function knownCanvasUrl(
   state: ToolState,
   canvasId: string,
@@ -85,7 +54,7 @@ function knownCanvasUrl(
     return lastCanvasUrl;
   }
   for (const canvas of state.artifactState.recentCanvases ?? []) {
-    if (canvas.id.toUpperCase() === canvasId) {
+    if (extractCanvasId(canvas.id) === canvasId) {
       return canvas.url;
     }
     if (canvas.url && extractCanvasId(canvas.url) === canvasId) {
@@ -95,19 +64,10 @@ function knownCanvasUrl(
   return undefined;
 }
 
-function isCanvasInConversationContext(
-  context: ToolRuntimeContext,
-  canvasId: string,
-): boolean {
-  return canvasIdsInText(context.conversationContext ?? "").has(canvasId);
-}
-
-function resolveKnownCanvas(input: {
-  canvas: string;
-  context: ToolRuntimeContext;
-  state: ToolState;
-}): { ok: true; canvasId: string } | { ok: false; error: string } {
-  const canvasId = extractCanvasId(input.canvas);
+function resolveCanvasTarget(
+  canvas: string,
+): { ok: true; canvasId: string } | { ok: false; error: string } {
+  const canvasId = extractCanvasId(canvas);
   if (!canvasId) {
     return {
       ok: false,
@@ -115,19 +75,7 @@ function resolveKnownCanvas(input: {
         "Could not parse a Slack canvas/file ID from input. Provide an F-prefixed ID or a Slack canvas/docs URL.",
     };
   }
-
-  if (
-    knownCanvasIds(input.state).has(canvasId) ||
-    isCanvasInConversationContext(input.context, canvasId)
-  ) {
-    return { ok: true, canvasId };
-  }
-
-  return {
-    ok: false,
-    error:
-      "Canvas access requires a canvas from this thread's artifact context or visible conversation context.",
-  };
+  return { ok: true, canvasId };
 }
 
 const editReplacementSchema = Type.Object(
@@ -235,8 +183,8 @@ export function createSlackCanvasCreateTool(
  * canvas body downloaded via the bot's file access.
  */
 export function createSlackCanvasReadTool(
-  state: ToolState,
-  context: ToolRuntimeContext,
+  _state: ToolState,
+  _context: ToolRuntimeContext,
 ) {
   return tool({
     description:
@@ -265,7 +213,7 @@ export function createSlackCanvasReadTool(
       { additionalProperties: false },
     ),
     execute: async ({ canvas, offset, limit }) => {
-      const target = resolveKnownCanvas({ canvas, context, state });
+      const target = resolveCanvasTarget(canvas);
       if (!target.ok) {
         return target;
       }
@@ -319,7 +267,7 @@ export function createSlackCanvasReadTool(
 /** Create a tool that edits a Slack canvas like a markdown file. */
 export function createSlackCanvasEditTool(
   state: ToolState,
-  context: ToolRuntimeContext,
+  _context: ToolRuntimeContext,
 ) {
   return tool({
     description:
@@ -348,7 +296,7 @@ export function createSlackCanvasEditTool(
       { additionalProperties: false },
     ),
     execute: async ({ canvas, edits }) => {
-      const target = resolveKnownCanvas({ canvas, context, state });
+      const target = resolveCanvasTarget(canvas);
       if (!target.ok) {
         return target;
       }
@@ -430,7 +378,7 @@ export function createSlackCanvasEditTool(
 /** Create a tool that deliberately replaces a Slack canvas body. */
 export function createSlackCanvasWriteTool(
   state: ToolState,
-  context: ToolRuntimeContext,
+  _context: ToolRuntimeContext,
 ) {
   return tool({
     description:
@@ -452,7 +400,7 @@ export function createSlackCanvasWriteTool(
       { additionalProperties: false },
     ),
     execute: async ({ canvas, content }) => {
-      const target = resolveKnownCanvas({ canvas, context, state });
+      const target = resolveCanvasTarget(canvas);
       if (!target.ok) {
         return target;
       }

@@ -11,6 +11,11 @@ describe("extractCanvasId", () => {
     expect(
       extractCanvasId("https://sentry.slack.com/docs/T024ZCV9U/F0AU9MRL63T"),
     ).toBe("F0AU9MRL63T");
+    expect(
+      extractCanvasId(
+        "<https://sentry.slack.com/docs/T024ZCV9U/F0AU9MRL63T|Canvas>",
+      ),
+    ).toBe("F0AU9MRL63T");
   });
 
   it("parses canvas IDs from /canvas/ URLs", () => {
@@ -29,7 +34,11 @@ describe("extractCanvasId", () => {
 
   it("returns undefined for unparseable input", () => {
     expect(extractCanvasId("")).toBeUndefined();
+    expect(extractCanvasId("file")).toBeUndefined();
     expect(extractCanvasId("https://example.com/foo")).toBeUndefined();
+    expect(
+      extractCanvasId("https://example.com/docs/T024ZCV9U/F0AU9MRL63T"),
+    ).toBeUndefined();
     expect(extractCanvasId("not-a-canvas")).toBeUndefined();
   });
 });
