@@ -18,6 +18,7 @@ import {
   getTurnUserMessage,
   getTurnUserReplyAttachmentContext,
   getTurnUserMessageId,
+  getTurnUserSlackMessageTs,
 } from "@/chat/runtime/turn-user-message";
 import {
   buildConversationContext,
@@ -229,6 +230,7 @@ async function resumeAuthorizedMcpTurn(args: {
     messageText: userMessage.text,
     channelId: authSession.channelId,
     threadTs: authSession.threadTs,
+    messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: authSession.conversationId,
     connectedText: "",
     replyContext: {

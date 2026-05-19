@@ -88,6 +88,7 @@ This policy applies to:
 - Authorization URLs contain user-specific CSRF state tokens and must **only** be visible to the requesting user.
 - Deliver authorization links via Slack `chat.postEphemeral` (channels) or `chat.postMessage` in 1:1 DMs (where the conversation is already private).
 - If private delivery fails, fall back to a DM to the user — **never** post an authorization URL as a visible message in a channel or group conversation.
+- Visible Slack thread acknowledgements may say that authorization is needed and that a private link was sent, but must not include the authorization URL.
 - The agent must **never** receive or relay raw authorization URLs. If private delivery fails entirely, return an error instructing the user to DM the bot.
 
 ### Sentry baseline

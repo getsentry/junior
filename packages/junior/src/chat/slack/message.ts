@@ -1,5 +1,9 @@
 import type { Message } from "chat";
 
+function isSlackMessageTs(value: string): boolean {
+  return /^\d+(?:\.\d+)?$/.test(value.trim());
+}
+
 /**
  * Preserve the native Slack message timestamp when a synthetic message ID is
  * used for routing or deduplication.
@@ -7,11 +11,11 @@ import type { Message } from "chat";
 export function getSlackMessageTs(
   message: Pick<Message, "id" | "raw">,
 ): string {
-  if (
-    message.id.endsWith(":message_changed_mention") &&
-    message.raw &&
-    typeof message.raw === "object"
-  ) {
+  if (isSlackMessageTs(message.id)) {
+    return message.id;
+  }
+
+  if (message.raw && typeof message.raw === "object") {
     const ts = (message.raw as Record<string, unknown>).ts;
     if (typeof ts === "string" && ts.length > 0) {
       return ts;

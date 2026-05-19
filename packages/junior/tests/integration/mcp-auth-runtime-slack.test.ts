@@ -248,6 +248,25 @@ async function mirrorThreadStateToAdapter(thread: TestThread): Promise<void> {
     .set(`thread-state:${thread.id}`, thread.getState());
 }
 
+function expectProcessingReactionLifecycles(args: {
+  channel: string;
+  count: number;
+  timestamp: string;
+}): void {
+  const call = () =>
+    expect.objectContaining({
+      params: expect.objectContaining({
+        channel: args.channel,
+        timestamp: args.timestamp,
+        name: "eyes",
+      }),
+    });
+  const expected = Array.from({ length: args.count }, call);
+
+  expect(getCapturedSlackApiCalls("reactions.add")).toEqual(expected);
+  expect(getCapturedSlackApiCalls("reactions.remove")).toEqual(expected);
+}
+
 describe("mcp auth runtime slack integration", () => {
   beforeEach(async () => {
     resetAgentProbe();
@@ -322,6 +341,11 @@ describe("mcp auth runtime slack integration", () => {
           userId: "U123",
           userName: "dcramer",
         },
+        raw: {
+          channel: "C123",
+          ts: "1700000000.002",
+          thread_ts: "1700000000.001",
+        },
       }),
     );
 
@@ -340,8 +364,17 @@ describe("mcp auth runtime slack integration", () => {
         }),
       }),
     ]);
-    expect(thread.posts).toHaveLength(0);
+    expect(thread.posts).toEqual([
+      expect.objectContaining({
+        markdown: expect.stringContaining("private link"),
+      }),
+    ]);
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(0);
+    expectProcessingReactionLifecycles({
+      channel: "C123",
+      timestamp: "1700000000.002",
+      count: 1,
+    });
 
     const pendingAuthSession =
       await mcpAuthStoreModule.getLatestMcpAuthSessionForUserProvider(
@@ -479,6 +512,11 @@ describe("mcp auth runtime slack integration", () => {
         }),
       }),
     ]);
+    expectProcessingReactionLifecycles({
+      channel: "C123",
+      timestamp: "1700000000.002",
+      count: 2,
+    });
   });
 
   it("parks a subscribed-thread MCP auth challenge with the same pending-auth state", async () => {
@@ -541,7 +579,11 @@ describe("mcp auth runtime slack integration", () => {
 
     expect(agentProbe.promptCallCount).toBe(1);
     expect(agentProbe.continueCallCount).toBe(0);
-    expect(thread.posts).toHaveLength(0);
+    expect(thread.posts).toEqual([
+      expect.objectContaining({
+        markdown: expect.stringContaining("private link"),
+      }),
+    ]);
 
     const pendingCheckpoint =
       await turnSessionStoreModule.getAgentTurnSessionCheckpoint(

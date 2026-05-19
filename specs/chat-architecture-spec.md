@@ -78,7 +78,7 @@ flowchart TD
   O -->|terminal failure| S[Capture failure and build fallback reply]
   R --> T[Schedule signed internal continuation callback]
   T --> U[Post durable continuation acknowledgement]
-  Q --> V[Private auth link; live turn ends]
+  Q --> V[Private auth link plus visible URL-free auth acknowledgement; live turn ends]
   V --> AB[OAuth/MCP callback resumes session]
   P --> W[Deliver finalized Slack reply/files]
   S --> W

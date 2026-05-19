@@ -61,10 +61,31 @@ export async function startSlackProcessingReaction(args: {
     return noProcessingReaction;
   }
 
+  return startSlackProcessingReactionForMessage({
+    channelId,
+    timestamp: messageTs,
+    logException: args.logException,
+    logContext: args.logContext,
+  });
+}
+
+/** Start Junior's automatic Slack processing reaction for a known Slack message. */
+export async function startSlackProcessingReactionForMessage(args: {
+  channelId: string;
+  timestamp: string;
+  logException: (
+    error: unknown,
+    eventName: string,
+    context?: Record<string, unknown>,
+    attributes?: Record<string, unknown>,
+    body?: string,
+  ) => string | undefined;
+  logContext: Record<string, unknown>;
+}): Promise<ProcessingReactionSession> {
   try {
     await addReactionToMessage({
-      channelId,
-      timestamp: messageTs,
+      channelId: args.channelId,
+      timestamp: args.timestamp,
       emoji: PROCESSING_REACTION_EMOJI,
     });
   } catch (error) {
@@ -74,7 +95,7 @@ export async function startSlackProcessingReaction(args: {
       args.logContext,
       {
         "app.slack.action": "reactions.add",
-        "messaging.message.id": messageTs,
+        "messaging.message.id": args.timestamp,
         ...getSlackErrorObservabilityAttributes(error),
       },
       "Failed to add Slack processing reaction",
@@ -94,8 +115,8 @@ export async function startSlackProcessingReaction(args: {
 
       try {
         await removeReactionFromMessage({
-          channelId,
-          timestamp: messageTs,
+          channelId: args.channelId,
+          timestamp: args.timestamp,
           emoji: PROCESSING_REACTION_EMOJI,
         });
       } catch (error) {
@@ -105,7 +126,7 @@ export async function startSlackProcessingReaction(args: {
           args.logContext,
           {
             "app.slack.action": "reactions.remove",
-            "messaging.message.id": messageTs,
+            "messaging.message.id": args.timestamp,
             ...getSlackErrorObservabilityAttributes(error),
           },
           "Failed to remove Slack processing reaction",

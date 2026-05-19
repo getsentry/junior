@@ -4,6 +4,13 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 
+function normalizeSlackMessageTs(
+  value: string | undefined,
+): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && /^\d+(?:\.\d+)?$/.test(trimmed) ? trimmed : undefined;
+}
+
 /** Return the user message for a persisted turn/session, if one exists. */
 export function getTurnUserMessage(
   conversation: ThreadConversationState,
@@ -28,6 +35,16 @@ export function getTurnUserMessageId(
   sessionId: string,
 ): string | undefined {
   return getTurnUserMessage(conversation, sessionId)?.id;
+}
+
+/** Return the Slack timestamp for the user message that a resumed turn acts on. */
+export function getTurnUserSlackMessageTs(
+  message: ConversationMessage | undefined,
+): string | undefined {
+  return (
+    normalizeSlackMessageTs(message?.meta?.slackTs) ??
+    normalizeSlackMessageTs(message?.id)
+  );
 }
 
 /** Rebuild attachment context for a resumed turn from the persisted user message. */

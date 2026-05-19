@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-04-15
-- Last Edited: 2026-05-16
+- Last Edited: 2026-05-19
 
 ## Changelog
 
@@ -23,6 +23,7 @@
 - 2026-05-06: Removed the public thread-visible auth-pause note; private auth-link delivery is the only immediate user-facing auth handoff before callback resume.
 - 2026-05-13: Added the turn-continuation acknowledgement and follow-up retry contract for awaiting continuation checkpoints.
 - 2026-05-16: Added automatic processing reactions for Slack messages Junior is handling or evaluating for handling.
+- 2026-05-19: Restored the visible URL-free auth-pause thread acknowledgement and required processing reaction restoration during auth resumes.
 
 ## Status
 
@@ -152,9 +153,10 @@ Current rules:
 
 1. DM, explicit-mention, and subscribed-thread message handlers add `:eyes:` before turn preparation, passive reply classification, or assistant execution.
 2. Junior removes that automatic `:eyes:` reaction when the handler completes, including reply, skip, opt-out, auth-pause, timeout-continuation, and fallback-error paths.
-3. Processing-reaction add and remove calls are best effort. Failures are observable but must not fail the turn or change reply routing.
-4. The automatic processing reaction is runtime-owned. It must not be exposed as model progress, and it must not count as a successful user-requested reaction tool call.
-5. If the assistant explicitly uses the Slack reaction tool to add `:eyes:` to the same inbound message, Junior leaves the reaction in place instead of removing the automatic acknowledgement.
+3. When an OAuth/MCP callback resumes an auth-paused request, Junior re-adds `:eyes:` to the original triggering Slack message while resumed processing runs, then removes it when the resumed handler completes.
+4. Processing-reaction add and remove calls are best effort. Failures are observable but must not fail the turn or change reply routing.
+5. The automatic processing reaction is runtime-owned. It must not be exposed as model progress, and it must not count as a successful user-requested reaction tool call.
+6. If the assistant explicitly uses the Slack reaction tool to add `:eyes:` to the same inbound message, Junior leaves the reaction in place instead of removing the automatic acknowledgement.
 
 ### 6. Primary Reply Contract
 
@@ -233,7 +235,7 @@ Current rules:
 3. Resume success is defined by final visible Slack delivery, not only by successful assistant generation.
 4. Persisted thread state is updated only after the final reply has been delivered to Slack.
 5. Because live turns do not publish provisional assistant text, timeout continuation remains eligible until final reply delivery starts.
-6. When a turn blocks on OAuth/MCP auth, Junior must end that live turn after privately delivering the auth link, clear `activeTurnId`, and persist thread-local pending-auth state. Do not post a second public thread reply just to say a private link was sent.
+6. When a turn blocks on OAuth/MCP auth, Junior must privately deliver the auth link, post a brief visible thread acknowledgement that authorization is needed, clear `activeTurnId`, and persist thread-local pending-auth state. The visible acknowledgement must not include the auth URL or other secret-bearing state.
 7. Automatic auth resumes must not post a separate public "account connected, continuing..." banner before the real resumed answer. The resumed answer itself is the visible continuation.
 8. If auth completes after a newer thread message already superseded the blocked request, Junior stores the credentials but does not post a stale resumed answer.
 9. When a turn checkpoint is scheduled for automatic continuation, Junior must post a durable thread acknowledgement that the turn is continuing in the background. Assistant status alone is not sufficient because it is best effort and expires independently of thread history.

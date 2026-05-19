@@ -67,6 +67,7 @@ import {
   getAgentTurnDiagnosticsAttributes,
 } from "@/chat/services/turn-failure-response";
 import { buildTurnContinuationResponse } from "@/chat/services/turn-continuation-response";
+import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 
 export interface ReplyExecutorServices {
   generateAssistantReply: typeof generateAssistantReplyImpl;
@@ -220,6 +221,26 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               "Failed to post turn continuation notice",
             );
             throw error;
+          }
+        };
+        const postAuthPauseNotice = async (): Promise<void> => {
+          try {
+            await beforeFirstResponsePost();
+            await thread.post(
+              buildSlackOutputMessage(buildAuthPauseResponse()),
+            );
+          } catch (error) {
+            logException(
+              error,
+              "slack_auth_pause_notice_post_failed",
+              turnTraceContext,
+              {
+                "app.slack.reply_stage": "thread_reply_auth_pause_notice",
+                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                ...getSlackErrorObservabilityAttributes(error),
+              },
+              "Failed to post auth pause notice",
+            );
           }
         };
         const activeTurnId = preparedState.conversation.processing.activeTurnId;
@@ -592,6 +613,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             isRetryableTurnError(error, "mcp_auth_resume") ||
             isRetryableTurnError(error, "plugin_auth_resume")
           ) {
+            await postAuthPauseNotice();
             completeAuthPauseTurn({
               conversation: preparedState.conversation,
               sessionId: error.metadata?.sessionId ?? turnId,

@@ -38,6 +38,7 @@ import {
 } from "@/chat/plugins/auth/oauth-request";
 import {
   getTurnUserMessage,
+  getTurnUserSlackMessageTs,
   getTurnUserReplyAttachmentContext,
 } from "@/chat/runtime/turn-user-message";
 import {
@@ -253,6 +254,7 @@ async function resumeCheckpointedOAuthTurn(
     messageText: stored.pendingMessage ?? userMessage.text,
     channelId: stored.channelId,
     threadTs: stored.threadTs,
+    messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: stored.resumeConversationId,
     initialText: "",
     replyContext: {
@@ -350,16 +352,17 @@ async function resumePendingOAuthMessage(
   const conversation = coerceThreadConversationState(
     await getPersistedThreadState(threadId),
   );
-  const latestUserMessageId = [...conversation.messages]
+  const latestUserMessage = [...conversation.messages]
     .reverse()
-    .find((message) => message.role === "user")?.id;
+    .find((message) => message.role === "user");
   const conversationContext = buildConversationContext(conversation, {
-    excludeMessageId: latestUserMessageId,
+    excludeMessageId: latestUserMessage?.id,
   });
   await resumeAuthorizedRequest({
     messageText: stored.pendingMessage,
     channelId: stored.channelId,
     threadTs: stored.threadTs,
+    messageTs: getTurnUserSlackMessageTs(latestUserMessage),
     connectedText: "",
     replyContext: {
       requester: { userId: stored.userId },

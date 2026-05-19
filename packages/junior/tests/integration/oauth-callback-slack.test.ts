@@ -216,6 +216,9 @@ describe("oauth callback slack integration", () => {
                 userId: "U123",
                 userName: "dcramer",
               },
+              meta: {
+                slackTs: "1700000000.010",
+              },
             },
           ],
           processing: {
@@ -289,6 +292,24 @@ describe("oauth callback slack integration", () => {
         }),
       ]),
     );
+    expect(getCapturedSlackApiCalls("reactions.add")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          timestamp: "1700000000.010",
+          name: "eyes",
+        }),
+      }),
+    ]);
+    expect(getCapturedSlackApiCalls("reactions.remove")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C123",
+          timestamp: "1700000000.010",
+          name: "eyes",
+        }),
+      }),
+    ]);
   });
 
   it("does not re-post the pending message when the checkpoint is already superseded", async () => {

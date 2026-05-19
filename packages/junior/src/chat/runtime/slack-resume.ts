@@ -28,6 +28,11 @@ import {
 } from "@/chat/slack/reply";
 import { postSlackMessage as postSlackApiMessage } from "@/chat/slack/outbound";
 import { getStateAdapter } from "@/chat/state/adapter";
+import {
+  startSlackProcessingReactionForMessage,
+  type ProcessingReactionSession,
+} from "@/chat/runtime/processing-reaction";
+import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 
 function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
   if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
@@ -55,7 +60,7 @@ async function postSlackMessageBestEffort(
       text,
     });
   } catch {
-    // The connected notice should not decide whether the resumed turn succeeds.
+    // Resume-side status notices should not decide whether the turn succeeds.
   }
 }
 
@@ -103,6 +108,7 @@ interface ResumeSlackTurnArgs {
   messageText: string;
   channelId: string;
   threadTs: string;
+  messageTs?: string;
   replyContext?: ReplyRequestContext;
   lockKey?: string;
   initialText?: string;
@@ -281,10 +287,19 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
     channelId: args.channelId,
     threadTs: args.threadTs,
   });
+  let processingReaction: ProcessingReactionSession | undefined;
   let deferredPauseKind: "auth" | "timeout" | undefined;
   let deferredPauseHandler: (() => Promise<void>) | undefined;
   let deferredFailureHandler: (() => Promise<void>) | undefined;
   try {
+    if (args.messageTs) {
+      processingReaction = await startSlackProcessingReactionForMessage({
+        channelId: args.channelId,
+        timestamp: args.messageTs,
+        logException,
+        logContext: { ...getResumeLogContext(args, lockKey) },
+      });
+    }
     if (args.initialText) {
       await postSlackMessageBestEffort(
         args.channelId,
@@ -370,12 +385,20 @@ export async function resumeSlackTurn(args: ResumeSlackTurnArgs) {
       };
     }
   } finally {
+    await processingReaction?.stop();
     await stateAdapter.releaseLock(lock);
   }
 
   if (deferredPauseHandler) {
     try {
       await deferredPauseHandler();
+      if (deferredPauseKind === "auth") {
+        await postSlackMessageBestEffort(
+          args.channelId,
+          args.threadTs,
+          buildAuthPauseResponse(),
+        );
+      }
       if (deferredPauseKind === "timeout") {
         await postTurnContinuationNoticeBestEffort({
           lockKey,
@@ -405,6 +428,7 @@ export async function resumeAuthorizedRequest(args: {
   messageText: string;
   channelId: string;
   threadTs: string;
+  messageTs?: string;
   connectedText: string;
   replyContext?: ReplyRequestContext;
   lockKey?: string;
@@ -419,6 +443,7 @@ export async function resumeAuthorizedRequest(args: {
     messageText: args.messageText,
     channelId: args.channelId,
     threadTs: args.threadTs,
+    messageTs: args.messageTs,
     replyContext: args.replyContext,
     lockKey: args.lockKey,
     initialText: args.connectedText,

@@ -383,7 +383,11 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(thread.posts).toHaveLength(0);
+    expect(thread.posts).toEqual([
+      expect.objectContaining({
+        markdown: expect.stringContaining("private link"),
+      }),
+    ]);
     const state = thread.getState();
     const conversation = (
       state as {
@@ -453,7 +457,11 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(thread.posts).toHaveLength(0);
+    expect(thread.posts).toEqual([
+      expect.objectContaining({
+        markdown: expect.stringContaining("private link"),
+      }),
+    ]);
     const state = thread.getState();
     const conversation = (
       state as {

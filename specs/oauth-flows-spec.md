@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-03
-- Last Edited: 2026-05-06
+- Last Edited: 2026-05-19
 
 ## Changelog
 
@@ -13,6 +13,7 @@
 - 2026-04-17: Removed explicit model-facing auth commands and documented implicit runtime-owned OAuth initiation for plugin-backed commands.
 - 2026-04-22: Reframed auth-blocked work as completed Slack turns plus persisted thread-local `pendingAuth` state, documented deduped re-prompts, and limited auto-resume to the latest still-relevant blocked request.
 - 2026-05-06: Removed the public thread-visible auth-pause note; the private auth-link delivery is the only immediate auth handoff.
+- 2026-05-19: Restored a visible URL-free Slack thread acknowledgement for auth pauses while keeping authorization links private.
 
 ## Status
 
@@ -67,6 +68,7 @@ Agent: loads the matching plugin skill and runs the real provider command
   ├─ If auth is missing or stale:
   │    • runtime creates OAuth state
   │    • runtime privately delivers the authorization link
+  │    • runtime posts a brief visible thread note that authorization is needed
   │    • runtime checkpoints the turn as awaiting auth resume
   │    • runtime records thread-local `pendingAuth`
   └─ Current turn ends cleanly; it is not kept as the active in-flight turn
@@ -98,6 +100,7 @@ Agent: calls an MCP tool from the same plugin
   ├─ MCP server responds with 401 / auth challenge
   ├─ MCP OAuth provider persists auth session state
   ├─ Runtime privately delivers the authorization link to the requesting user
+  ├─ Runtime posts a brief visible thread note that authorization is needed
   ├─ Turn checkpoint is written as awaiting auth resume
   ├─ Runtime records thread-local `pendingAuth`
   └─ Current turn ends cleanly; it is not kept as the active in-flight turn
@@ -196,7 +199,7 @@ Providers define OAuth through plugin manifests:
 ## Security invariants
 
 - Authorization links are delivered privately to the requesting user only.
-- The runtime must not post the authorization URL into the public thread or add a second public thread note just to announce that a private link was sent.
+- The runtime must not post the authorization URL into the public thread. Slack-thread acknowledgements for auth pauses must stay URL-free and only say that authorization is needed and the private link was sent.
 - Authorization URLs are never returned to the model.
 - Tokens are stored server-side and never appear in sandbox files or model-visible tool arguments.
 - Leases are requester-bound; sandbox egress leases are scoped to one command activation.

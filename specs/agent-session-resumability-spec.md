@@ -3,7 +3,7 @@
 ## Metadata
 
 - Created: 2026-03-05
-- Last Edited: 2026-05-13
+- Last Edited: 2026-05-19
 
 ## Changelog
 
@@ -15,6 +15,7 @@
 - 2026-04-22: Added `superseded` checkpoint state and clarified that auth checkpoints do not keep `activeTurnId` alive; thread-local pending-auth state decides whether an auth-blocked request is still resumable.
 - 2026-05-06: Removed the public Slack auth-pause note; auth pauses complete the live turn after private auth-link delivery.
 - 2026-05-13: Clarified turn continuation as an idempotent checkpoint retry path, including user follow-up rescheduling and bounded lock-busy callback retries.
+- 2026-05-19: Clarified that Slack auth pauses also post a visible URL-free acknowledgement owned by the Slack delivery contract.
 
 ## Status
 
