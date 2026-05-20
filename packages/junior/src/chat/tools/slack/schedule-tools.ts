@@ -516,12 +516,15 @@ export function createSlackScheduleUpdateTaskTool(context: ToolRuntimeContext) {
       if (!recurrence.ok) {
         return recurrence;
       }
+      const nextStatus = status ?? lookup.task.status;
 
       const next: ScheduledTask = {
         ...lookup.task,
         updatedAtMs: Date.now(),
         nextRunAtMs,
-        status: status ?? lookup.task.status,
+        status: nextStatus,
+        statusReason:
+          nextStatus === "blocked" ? lookup.task.statusReason : undefined,
         schedule: {
           ...lookup.task.schedule,
           description:

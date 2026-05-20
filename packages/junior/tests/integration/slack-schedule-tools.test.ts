@@ -277,8 +277,46 @@ describe("Slack schedule tools", () => {
     });
   });
 
-  it("removes deleted tasks from scheduler indexes", async () => {
+  it("clears stale block reasons when resuming a task", async () => {
     const context = createContext({ threadTs: "1700000005.000000" });
+    const created = (await createTask(context)) as {
+      task: { id: string };
+    };
+    const store = createStateSchedulerStore();
+    const task = await store.getTask(created.task.id);
+    expect(task).toBeDefined();
+    await store.saveTask({
+      ...task!,
+      status: "blocked",
+      statusReason: "Missing GitHub credentials.",
+      updatedAtMs: Date.parse("2026-05-25T16:01:00.000Z"),
+      version: task!.version + 1,
+    });
+
+    const updated = await executeTool(
+      createSlackScheduleUpdateTaskTool(context),
+      {
+        task_id: created.task.id,
+        status: "active",
+      },
+    );
+
+    expect(updated).toMatchObject({
+      ok: true,
+      task: {
+        id: created.task.id,
+        status: "active",
+      },
+    });
+    const resumed = await store.getTask(created.task.id);
+    expect(resumed).toMatchObject({
+      status: "active",
+    });
+    expect(resumed?.statusReason).toBeUndefined();
+  });
+
+  it("removes deleted tasks from scheduler indexes", async () => {
+    const context = createContext({ threadTs: "1700000006.000000" });
     const created = (await createTask(context)) as {
       task: { id: string };
     };
@@ -298,7 +336,7 @@ describe("Slack schedule tools", () => {
   });
 
   it("claims due runs idempotently", async () => {
-    const context = createContext({ threadTs: "1700000006.000000" });
+    const context = createContext({ threadTs: "1700000007.000000" });
     const created = (await createTask(context)) as {
       task: { id: string };
     };
