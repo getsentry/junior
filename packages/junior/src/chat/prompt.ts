@@ -402,7 +402,7 @@ const TOOL_CALL_STYLE_RULES = [
 
 const SKILL_POLICY_RULES = [
   "- Before answering, scan `<auto-selectable-skills>` inside `<available-skills>`. For matching operational or conceptual provider/repository workflow questions, load the most specific auto-selectable skill; do not answer from memory first. If none fits, do not load a skill.",
-  "- Skills listed under `<explicit-only-skills>` must not be loaded based on context match or semantic relevance. Only load an explicit-only skill when the user's current message invokes it with `/skill-name`. Do not use their descriptions as source material for answering.",
+  "- Skills listed under `<explicit-only-skills>` must not be loaded based on context match or semantic relevance. Only load an explicit-only skill when the user's current message explicitly references that skill by name. Do not use their descriptions as source material for answering.",
   "- Never load multiple skills up front. After `loadSkill`, follow `<loaded-skills>` and resolve relative references under that skill's location.",
   "- For explicit `/skill` triggers, treat that skill as selected unless the tool says it is unavailable; this applies to both auto-selectable and explicit-only skills.",
   "- For active MCP catalogs, use `searchMcpTools` to inspect descriptors before `callMcpTool`; pass exact returned `tool_name` values and put provider fields inside `arguments`.",
