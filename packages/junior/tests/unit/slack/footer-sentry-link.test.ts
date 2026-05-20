@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe("Slack footer Sentry links", () => {
-  it("links the ID to an Explore traces search using org slug subdomain for SaaS", async () => {
+  it("links the ID to the conversations page using org slug subdomain for SaaS", async () => {
     process.env.SENTRY_ORG_SLUG = "my-org";
     mockSentryClient({
       dsn: {
@@ -55,7 +55,7 @@ describe("Slack footer Sentry links", () => {
         elements: [
           {
             type: "mrkdwn",
-            text: "*ID:* <https://my-org.sentry.io/explore/traces/?query=gen_ai.conversation.id%3A%22slack%3AC123%3A1700000000.000100%22&amp;project=4501&amp;statsPeriod=14d|slack:C123:1700000000.000100>",
+            text: "*ID:* <https://my-org.sentry.io/explore/conversations/slack%3AC123%3A1700000000.000100/?project=4501|slack:C123:1700000000.000100>",
           },
         ],
       },
@@ -103,7 +103,7 @@ describe("Slack footer Sentry links", () => {
         items: [
           {
             label: "ID",
-            url: "https://sentry.example.com/organizations/my-org/explore/traces/?query=gen_ai.conversation.id%3A%22conversation-1%22&project=4501&statsPeriod=14d",
+            url: "https://sentry.example.com/organizations/my-org/explore/conversations/conversation-1/?project=4501",
             value: "conversation-1",
           },
         ],

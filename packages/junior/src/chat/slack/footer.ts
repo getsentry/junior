@@ -2,8 +2,6 @@ import * as Sentry from "@/chat/sentry";
 import type { TurnThinkingSelection } from "@/chat/services/turn-thinking-level";
 import type { AgentTurnUsage } from "@/chat/usage";
 
-const SENTRY_CONVERSATION_SEARCH_STATS_PERIOD = "14d";
-
 interface SlackMrkdwnTextObject {
   text: string;
   type: "mrkdwn";
@@ -54,10 +52,6 @@ function escapeSlackLinkUrl(url: string): string {
     .replaceAll(">", "%3E");
 }
 
-function quoteSentrySearchValue(value: string): string {
-  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-}
-
 function getSentryOrgSlug(): string | undefined {
   const slug = process.env.SENTRY_ORG_SLUG?.trim();
   return slug || undefined;
@@ -82,9 +76,7 @@ function buildSentryWebBaseUrl(dsn: {
   return `${dsn.protocol}://${dsn.host}${port}${path}`;
 }
 
-function getSentryConversationSearchUrl(
-  conversationId: string,
-): string | undefined {
+function getSentryConversationUrl(conversationId: string): string | undefined {
   const client = Sentry.getClient();
   const dsn = client?.getDsn();
   if (!dsn?.host || !dsn.projectId) {
@@ -96,21 +88,17 @@ function getSentryConversationSearchUrl(
     return undefined;
   }
 
+  const encodedId = encodeURIComponent(conversationId);
   const params = new URLSearchParams();
-  params.set(
-    "query",
-    `gen_ai.conversation.id:${quoteSentrySearchValue(conversationId)}`,
-  );
   params.set("project", dsn.projectId);
-  params.set("statsPeriod", SENTRY_CONVERSATION_SEARCH_STATS_PERIOD);
 
-  const search = `explore/traces/?${params.toString()}`;
+  const path = `explore/conversations/${encodedId}/?${params.toString()}`;
 
   if (isSentrySaasDsnHost(dsn.host)) {
-    return `https://${orgSlug}.sentry.io/${search}`;
+    return `https://${orgSlug}.sentry.io/${path}`;
   }
 
-  return `${buildSentryWebBaseUrl(dsn)}/organizations/${orgSlug}/${search}`;
+  return `${buildSentryWebBaseUrl(dsn)}/organizations/${orgSlug}/${path}`;
 }
 
 function formatSlackTokenCount(value: number): string {
@@ -194,7 +182,7 @@ export function buildSlackReplyFooter(args: {
       label: "ID",
       value: conversationId,
     };
-    const conversationUrl = getSentryConversationSearchUrl(conversationId);
+    const conversationUrl = getSentryConversationUrl(conversationId);
     if (conversationUrl) {
       idItem.url = conversationUrl;
     }
